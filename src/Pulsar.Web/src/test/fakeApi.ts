@@ -18,6 +18,7 @@ export const adminUser: Schemas['CurrentUserResponse'] = {
   id: '0192f1a0-0000-7000-8000-000000000001',
   userName: 'admin',
   displayName: 'Ada Admin',
+  email: null,
   permissions: ['audit.view', 'role.manage', 'user.manage', 'user.view'],
 };
 

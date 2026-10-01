@@ -10,6 +10,7 @@ public static class AuditActions
         public const string Logout = "auth.logout";
         public const string Setup = "auth.setup";
         public const string PasswordChanged = "auth.password_changed";
+        public const string ProfileUpdated = "auth.profile_updated";
     }
 
     public static class User

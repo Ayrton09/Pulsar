@@ -9,7 +9,15 @@ namespace Pulsar.Api.Auth;
 public sealed record SessionResponse(bool SetupRequired, CurrentUserResponse? User, bool InsecureConnection);
 
 /// <summary>The signed-in user and their global permissions (the UI hides what the user cannot do; the API enforces it).</summary>
-public sealed record CurrentUserResponse(Guid Id, string UserName, string? DisplayName, IReadOnlyList<string> Permissions);
+public sealed record CurrentUserResponse(Guid Id, string UserName, string? DisplayName, string? Email, IReadOnlyList<string> Permissions);
+
+public sealed record UpdateProfileRequest(
+    [property: StringLength(128)] string? DisplayName,
+    [property: EmailAddress, StringLength(256)] string? Email);
+
+public sealed record ChangePasswordRequest(
+    [property: Required, StringLength(256)] string CurrentPassword,
+    [property: Required, StringLength(256)] string NewPassword);
 
 public sealed record LoginRequest(
     [property: Required, StringLength(64)] string UserName,

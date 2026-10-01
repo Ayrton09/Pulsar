@@ -22,7 +22,8 @@
     "administration": "Administración",
     "users": "Usuarios",
     "roles": "Roles",
-    "audit": "Auditoría"
+    "audit": "Auditoría",
+    "account": "Mi cuenta"
   },
   "auth": {
     "userName": "Usuario",
@@ -125,17 +126,30 @@
       "stop": "Detener",
       "restart": "Reiniciar",
       "kill": "Forzar cierre",
-      "console": { "view": "Ver la consola", "write": "Enviar comandos a la consola" },
-      "files": { "view": "Ver archivos", "edit": "Editar archivos" },
+      "console": {
+        "view": "Ver la consola",
+        "write": "Enviar comandos a la consola"
+      },
+      "files": {
+        "view": "Ver archivos",
+        "edit": "Editar archivos"
+      },
       "backups": {
         "view": "Ver backups",
         "create": "Crear backups",
         "restore": "Restaurar backups",
         "delete": "Eliminar backups"
       },
-      "schedules": { "view": "Ver tareas programadas", "edit": "Editar tareas programadas" },
-      "startup": { "edit": "Editar variables de inicio" },
-      "settings": { "edit": "Editar la configuración del servidor" },
+      "schedules": {
+        "view": "Ver tareas programadas",
+        "edit": "Editar tareas programadas"
+      },
+      "startup": {
+        "edit": "Editar variables de inicio"
+      },
+      "settings": {
+        "edit": "Editar la configuración del servidor"
+      },
       "install": "Instalar y actualizar",
       "create": "Crear servidores",
       "delete": "Eliminar servidores"
@@ -143,13 +157,27 @@
     "node": {
       "view": "Ver nodos",
       "manage": "Administrar nodos",
-      "credentials": { "manage": "Administrar credenciales de nodos" }
+      "credentials": {
+        "manage": "Administrar credenciales de nodos"
+      }
     },
-    "template": { "view": "Ver plantillas", "manage": "Administrar plantillas" },
-    "user": { "view": "Ver usuarios", "manage": "Administrar usuarios" },
-    "role": { "manage": "Administrar roles" },
-    "audit": { "view": "Ver la auditoría" },
-    "settings": { "manage": "Administrar la configuración del panel" }
+    "template": {
+      "view": "Ver plantillas",
+      "manage": "Administrar plantillas"
+    },
+    "user": {
+      "view": "Ver usuarios",
+      "manage": "Administrar usuarios"
+    },
+    "role": {
+      "manage": "Administrar roles"
+    },
+    "audit": {
+      "view": "Ver la auditoría"
+    },
+    "settings": {
+      "manage": "Administrar la configuración del panel"
+    }
   },
   "audit": {
     "title": "Auditoría",
@@ -177,7 +205,8 @@
         "login_failed": "Ingreso fallido",
         "logout": "Cerró sesión",
         "setup": "Configuración inicial",
-        "password_changed": "Cambió su contraseña"
+        "password_changed": "Cambió su contraseña",
+        "profile_updated": "Modificó su perfil"
       },
       "user": {
         "created": "Creó un usuario",
@@ -203,15 +232,22 @@
     "auth": {
       "invalid_credentials": "Usuario o contraseña incorrectos.",
       "required": "Tu sesión terminó. Volvé a ingresar.",
-      "forbidden": "No tenés permiso para hacer esto."
+      "forbidden": "No tenés permiso para hacer esto.",
+      "wrong_current_password": "La contraseña actual no es correcta."
     },
     "setup": {
       "invalid_token": "El token de configuración no es válido. Copialo de nuevo del log del panel.",
       "completed": "El panel ya fue configurado."
     },
-    "antiforgery": { "invalid": "La página está desactualizada. Recargala y probá de nuevo." },
-    "rate_limit": { "exceeded": "Demasiados intentos. Esperá un minuto y probá de nuevo." },
-    "validation": { "failed": "Algunos campos no son válidos." },
+    "antiforgery": {
+      "invalid": "La página está desactualizada. Recargala y probá de nuevo."
+    },
+    "rate_limit": {
+      "exceeded": "Demasiados intentos. Esperá un minuto y probá de nuevo."
+    },
+    "validation": {
+      "failed": "Algunos campos no son válidos."
+    },
     "role": {
       "name_invalid": "El nombre del rol debe tener entre 1 y 64 caracteres.",
       "description_too_long": "La descripción es demasiado larga.",
@@ -228,7 +264,22 @@
       "escalation": "Solo podés otorgar o cambiar permisos que vos mismo tenés.",
       "last_administrator": "Tiene que quedar al menos un administrador."
     },
-    "transport": { "https_required": "Este panel solo acepta HTTPS. Abrilo con https://." },
-    "user": { "not_found": "El usuario no existe." }
+    "transport": {
+      "https_required": "Este panel solo acepta HTTPS. Abrilo con https://."
+    },
+    "user": {
+      "not_found": "El usuario no existe."
+    }
+  },
+  "account": {
+    "title": "Mi cuenta",
+    "description": "Tu perfil y tu contraseña.",
+    "profile": "Perfil",
+    "userNameFixed": "El usuario no se puede cambiar.",
+    "emailHint": "Opcional. No lo ven otros usuarios.",
+    "password": "Contraseña",
+    "currentPassword": "Contraseña actual",
+    "changePassword": "Cambiar contraseña",
+    "passwordChanged": "Contraseña cambiada. Se cerraron tus otras sesiones."
   }
 }

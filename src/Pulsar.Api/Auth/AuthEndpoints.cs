@@ -28,7 +28,62 @@ public static class AuthEndpoints
         group.MapPost("/login", LoginAsync).AllowAnonymous().RequireRateLimiting(RateLimitPolicy);
         group.MapPost("/logout", LogoutAsync).RequireSignedInUser();
         group.MapGet("/me", GetMeAsync).RequireSignedInUser();
+        group.MapPut("/profile", UpdateProfileAsync).RequireSignedInUser();
+        group.MapPost("/password", ChangePasswordAsync).RequireSignedInUser().RequireRateLimiting(RateLimitPolicy);
         return group;
+    }
+
+    /// <summary>The signed-in user's own display name and email (administrators change others through /users).</summary>
+    private static async Task<Results<Ok<CurrentUserResponse>, ValidationProblem, UnauthorizedHttpResult>> UpdateProfileAsync(
+        UpdateProfileRequest request, HttpContext http, UserManager<PulsarUser> users, IPermissionEvaluator evaluator, IAuditLog audit, CancellationToken ct)
+    {
+        var user = await users.FindByIdAsync(http.User.GetRequiredUserId().ToString());
+        if (user is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        user.DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? null : request.DisplayName.Trim();
+        user.Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim();
+        audit.Record(AuditActions.Auth.ProfileUpdated).WithTarget("user", user.Id.ToString());
+        var updated = await users.UpdateAsync(user);
+        return updated.Succeeded ? TypedResults.Ok(await DescribeAsync(user, evaluator, ct)) : IdentityProblems.Validation(updated);
+    }
+
+    /// <summary>
+    /// Changes the signed-in user's password. Other sessions of the user end (new security stamp); this one is
+    /// renewed so the user stays signed in here.
+    /// </summary>
+    private static async Task<Results<NoContent, ProblemHttpResult, ValidationProblem, UnauthorizedHttpResult>> ChangePasswordAsync(
+        ChangePasswordRequest request, HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn,
+        IAuditLog audit, CancellationToken ct)
+    {
+        var user = await users.FindByIdAsync(http.User.GetRequiredUserId().ToString());
+        if (user is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var changed = await users.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
+        if (!changed.Succeeded)
+        {
+            if (changed.Errors.Any(e => e.Code == nameof(IdentityErrorDescriber.PasswordMismatch)))
+            {
+                audit.Record(AuditActions.Auth.PasswordChanged, AuditOutcome.Failure, new { reason = "wrong_current_password" })
+                    .WithTarget("user", user.Id.ToString());
+                await db.SaveChangesAsync(ct);
+                return ApiProblems.Create(StatusCodes.Status400BadRequest, "auth.wrong_current_password", "The current password is not correct.");
+            }
+
+            return IdentityProblems.Validation(changed);
+        }
+
+        audit.Record(AuditActions.Auth.PasswordChanged).WithTarget("user", user.Id.ToString());
+        await db.SaveChangesAsync(ct);
+        await signIn.RefreshSignInAsync(user);
+        http.User = await signIn.CreateUserPrincipalAsync(user);
+        AntiforgeryProtection.IssueToken(http);
+        return TypedResults.NoContent();
     }
 
     /// <summary>Called by the SPA on startup. Also issues the antiforgery token for the following requests.</summary>
@@ -180,7 +235,7 @@ public static class AuthEndpoints
     private static async Task<CurrentUserResponse> DescribeAsync(PulsarUser user, IPermissionEvaluator evaluator, CancellationToken ct)
     {
         var permissions = await evaluator.GetAsync(user.Id, ct);
-        return new CurrentUserResponse(user.Id.Value, user.UserName!, user.DisplayName,
+        return new CurrentUserResponse(user.Id.Value, user.UserName!, user.DisplayName, user.Email,
             [.. permissions.Global.Order(StringComparer.Ordinal)]);
     }
 

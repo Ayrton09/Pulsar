@@ -138,3 +138,36 @@ describe('login', () => {
     expect(router.state.location.pathname).toBe('/admin/audit');
   });
 });
+
+describe('account', () => {
+  it('shows a translated error for a wrong current password', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(adminUser),
+      'POST /api/v1/auth/password': () =>
+        problem(400, 'auth.wrong_current_password', 'The current password is not correct.'),
+    });
+    renderAt('/account');
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText('Current password'), 'not it');
+    await user.type(screen.getByLabelText('New password'), 'a brand new password');
+    await user.type(screen.getByLabelText('Confirm password'), 'a brand new password');
+    await user.click(screen.getByRole('button', { name: 'Change password' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The current password is not correct.');
+  });
+
+  it('checks that both new passwords match before calling the API', async () => {
+    const api = fakeApi({ 'GET /api/v1/auth/session': session(adminUser) });
+    renderAt('/account');
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText('Current password'), 'current one');
+    await user.type(screen.getByLabelText('New password'), 'a brand new password');
+    await user.type(screen.getByLabelText('Confirm password'), 'a different password');
+    await user.click(screen.getByRole('button', { name: 'Change password' }));
+
+    expect(await screen.findByText('The passwords do not match.')).toBeInTheDocument();
+    expect(api).toHaveBeenCalledTimes(1);
+  });
+});

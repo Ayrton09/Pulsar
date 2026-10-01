@@ -9,7 +9,11 @@ test.describe.configure({ mode: 'serial' });
 
 const suffix = Date.now().toString(36);
 const roleName = `Auditors ${suffix}`;
-const auditor = { userName: `auditor-${suffix}`, password: 'auditor password for e2e' };
+const auditor = {
+  userName: `auditor-${suffix}`,
+  password: 'auditor password for e2e',
+  newPassword: 'auditor changed password',
+};
 
 async function signInAsAdministrator(page: Page) {
   await page.goto('/');
@@ -38,6 +42,13 @@ async function signIn(page: Page, userName: string, password: string) {
 }
 
 test('administrator delegates audit access to a limited user', async ({ page }) => {
+  // The panel serves a strict CSP; any violation means the UI relies on something it blocks.
+  const cspViolations: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error' && /Content Security Policy/i.test(message.text())) {
+      cspViolations.push(message.text());
+    }
+  });
   await signInAsAdministrator(page);
   await page.screenshot({ path: 'test-results/screens/dashboard.png', fullPage: true });
 
@@ -82,11 +93,30 @@ test('administrator delegates audit access to a limited user', async ({ page }) 
   await expect(log).toContainText('Assigned a role');
   await page.screenshot({ path: 'test-results/screens/audit.png', fullPage: true });
 
+  // Everyone manages their own password; afterwards only the new one works.
+  await page.getByRole('link', { name: /My account/ }).click();
+  await page.getByLabel('Current password').fill(auditor.password);
+  await page.getByLabel('New password').fill(auditor.newPassword);
+  await page.getByLabel('Confirm password').fill(auditor.newPassword);
+  await page.getByRole('button', { name: 'Change password' }).click();
+  await expect(page.getByText(/^Password changed\./)).toBeVisible();
+  await page.screenshot({ path: 'test-results/screens/account.png', fullPage: true });
+
   // Pages outside the role are refused, and the API agrees.
   await page.goto('/admin/users');
   await expect(page.getByRole('heading', { name: 'Not available' })).toBeVisible();
   const status = await page.evaluate(async () => (await fetch('/api/v1/users')).status);
   expect(status).toBe(403);
+
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await signIn(page, auditor.userName, auditor.password);
+  await expect(page.getByRole('alert')).toHaveText('Invalid user name or password.');
+  await page.getByLabel('User name').fill('');
+  await signIn(page, auditor.userName, auditor.newPassword);
+  // Back where the sign-out happened (returnTo), signed in.
+  await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
+
+  expect(cspViolations, 'Content Security Policy violations').toEqual([]);
 });
 
 test('wrong credentials are rejected with a clear message', async ({ page }) => {

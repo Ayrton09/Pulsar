@@ -52,6 +52,23 @@ export function useSetup() {
   });
 }
 
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Schemas['UpdateProfileRequest']) => unwrap(api.PUT('/api/v1/auth/profile', { body })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: sessionKey }),
+  });
+}
+
+/** Other sessions of the user end; this one is renewed (with a new antiforgery token, hence the session reload). */
+export function useChangePassword() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Schemas['ChangePasswordRequest']) => unwrap(api.POST('/api/v1/auth/password', { body })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: sessionKey }),
+  });
+}
+
 export function useLogout() {
   const identityChanged = useIdentityChange();
   return useMutation({

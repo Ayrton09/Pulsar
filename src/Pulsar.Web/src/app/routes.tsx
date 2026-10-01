@@ -1,4 +1,5 @@
 import type { RouteObject } from 'react-router';
+import { AccountPage } from '../features/auth/AccountPage';
 import { PublicOnly, RequirePermission, RequireSession } from '../features/auth/guards';
 import { LoginPage } from '../features/auth/LoginPage';
 import { SetupPage } from '../features/auth/SetupPage';
@@ -17,6 +18,7 @@ export const routes: RouteObject[] = [
         element: <AppLayout />,
         children: [
           { index: true, element: <DashboardPage /> },
+          { path: 'account', element: <AccountPage /> },
           // Administration pages load on demand: most sessions never open them.
           {
             path: 'admin/users',

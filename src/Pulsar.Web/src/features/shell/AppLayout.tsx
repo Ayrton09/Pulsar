@@ -64,8 +64,10 @@ export function AppLayout() {
             <NavSection title={t('nav.administration')} items={admin} />
           </nav>
           <div className="border-t border-border px-6 py-4 text-sm">
-            <p className="truncate font-medium">{user.displayName ?? user.userName}</p>
-            <p className="truncate text-xs text-muted">{user.userName}</p>
+            <NavLink to="/account" className="block rounded-md hover:text-accent">
+              <span className="block truncate font-medium">{user.displayName ?? user.userName}</span>
+              <span className="block truncate text-xs text-muted">{t('nav.account')}</span>
+            </NavLink>
             <Button
               variant="secondary"
               size="sm"

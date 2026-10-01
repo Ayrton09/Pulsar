@@ -22,7 +22,8 @@
     "administration": "Administration",
     "users": "Users",
     "roles": "Roles",
-    "audit": "Audit log"
+    "audit": "Audit log",
+    "account": "My account"
   },
   "auth": {
     "userName": "User name",
@@ -125,17 +126,30 @@
       "stop": "Stop",
       "restart": "Restart",
       "kill": "Kill",
-      "console": { "view": "View console", "write": "Send console commands" },
-      "files": { "view": "View files", "edit": "Edit files" },
+      "console": {
+        "view": "View console",
+        "write": "Send console commands"
+      },
+      "files": {
+        "view": "View files",
+        "edit": "Edit files"
+      },
       "backups": {
         "view": "View backups",
         "create": "Create backups",
         "restore": "Restore backups",
         "delete": "Delete backups"
       },
-      "schedules": { "view": "View schedules", "edit": "Edit schedules" },
-      "startup": { "edit": "Edit startup variables" },
-      "settings": { "edit": "Edit server settings" },
+      "schedules": {
+        "view": "View schedules",
+        "edit": "Edit schedules"
+      },
+      "startup": {
+        "edit": "Edit startup variables"
+      },
+      "settings": {
+        "edit": "Edit server settings"
+      },
       "install": "Install and update",
       "create": "Create servers",
       "delete": "Delete servers"
@@ -143,13 +157,27 @@
     "node": {
       "view": "View nodes",
       "manage": "Manage nodes",
-      "credentials": { "manage": "Manage node credentials" }
+      "credentials": {
+        "manage": "Manage node credentials"
+      }
     },
-    "template": { "view": "View templates", "manage": "Manage templates" },
-    "user": { "view": "View users", "manage": "Manage users" },
-    "role": { "manage": "Manage roles" },
-    "audit": { "view": "View the audit log" },
-    "settings": { "manage": "Manage panel settings" }
+    "template": {
+      "view": "View templates",
+      "manage": "Manage templates"
+    },
+    "user": {
+      "view": "View users",
+      "manage": "Manage users"
+    },
+    "role": {
+      "manage": "Manage roles"
+    },
+    "audit": {
+      "view": "View the audit log"
+    },
+    "settings": {
+      "manage": "Manage panel settings"
+    }
   },
   "audit": {
     "title": "Audit log",
@@ -177,7 +205,8 @@
         "login_failed": "Failed sign-in",
         "logout": "Signed out",
         "setup": "Initial setup",
-        "password_changed": "Changed own password"
+        "password_changed": "Changed own password",
+        "profile_updated": "Updated own profile"
       },
       "user": {
         "created": "Created a user",
@@ -203,15 +232,22 @@
     "auth": {
       "invalid_credentials": "Invalid user name or password.",
       "required": "Your session ended. Sign in again.",
-      "forbidden": "You do not have permission to do this."
+      "forbidden": "You do not have permission to do this.",
+      "wrong_current_password": "The current password is not correct."
     },
     "setup": {
       "invalid_token": "The setup token is not valid. Copy it again from the panel log.",
       "completed": "The panel has already been set up."
     },
-    "antiforgery": { "invalid": "The page is out of date. Reload it and try again." },
-    "rate_limit": { "exceeded": "Too many attempts. Wait a minute and try again." },
-    "validation": { "failed": "Some fields are not valid." },
+    "antiforgery": {
+      "invalid": "The page is out of date. Reload it and try again."
+    },
+    "rate_limit": {
+      "exceeded": "Too many attempts. Wait a minute and try again."
+    },
+    "validation": {
+      "failed": "Some fields are not valid."
+    },
     "role": {
       "name_invalid": "The role name must have between 1 and 64 characters.",
       "description_too_long": "The description is too long.",
@@ -228,7 +264,22 @@
       "escalation": "You can only grant or change permissions you hold yourself.",
       "last_administrator": "At least one administrator must remain."
     },
-    "transport": { "https_required": "This panel only accepts HTTPS. Open it with https://." },
-    "user": { "not_found": "The user does not exist." }
+    "transport": {
+      "https_required": "This panel only accepts HTTPS. Open it with https://."
+    },
+    "user": {
+      "not_found": "The user does not exist."
+    }
+  },
+  "account": {
+    "title": "My account",
+    "description": "Your profile and password.",
+    "profile": "Profile",
+    "userNameFixed": "The user name cannot be changed.",
+    "emailHint": "Optional. Not shown to other users.",
+    "password": "Password",
+    "currentPassword": "Current password",
+    "changePassword": "Change password",
+    "passwordChanged": "Password changed. Your other sessions have been signed out."
   }
 }

@@ -59,6 +59,7 @@ try
         return 0;
     }
 
+    app.UseSecurityHeaders();
     app.UseTransportSecurity(app.Services.GetRequiredService<SecurityOptions>());
     app.UseSerilogRequestLogging();
     app.UseExceptionHandler();
