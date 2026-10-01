@@ -27,6 +27,14 @@
   <Target Name="BuildWebClient" BeforeTargets="BeforeBuild" Condition="'$(BuildWebClient)' == 'true'">
     <Exec Command="npm ci" WorkingDirectory="$(WebClientRoot)" />
     <Exec Command="npm run build" WorkingDirectory="$(WebClientRoot)" />
+    <!--
+      wwwroot was globbed when the project was evaluated, before this target ran; Vite empties it and writes new
+      hashed file names, so refresh the items or the static web assets would point to the previous build's files.
+    -->
+    <ItemGroup>
+      <Content Remove="wwwroot\**" />
+      <Content Include="wwwroot\**" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
   </Target>
 
 </Project>
