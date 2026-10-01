@@ -74,6 +74,7 @@ try
     api.MapGroup("/auth").WithTags("Auth").MapAuthEndpoints();
     api.MapUserEndpoints();
     api.MapRoleEndpoints();
+    api.MapAuditEndpoints();
 
     // API, hub and agent routes must never fall through to the SPA's index.html.
     app.MapNotFoundFallback("/api");

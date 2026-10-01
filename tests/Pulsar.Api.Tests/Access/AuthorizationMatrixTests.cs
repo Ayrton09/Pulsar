@@ -36,6 +36,7 @@ public sealed class AuthorizationMatrixTests(PulsarApiFactory factory) : IClassF
         { "POST", "/api/v1/roles", [RoleManager, Administrator] },
         { "PUT", $"/api/v1/roles/{s_someId}", [RoleManager, Administrator] },
         { "DELETE", $"/api/v1/roles/{s_someId}", [RoleManager, Administrator] },
+        { "GET", "/api/v1/audit", [Administrator] },
     };
 
     [DatabaseTheory]

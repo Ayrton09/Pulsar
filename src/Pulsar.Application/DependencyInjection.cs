@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
         services.AddScoped<IAuditLog, AuditLog>();
         services.AddScoped<RoleManagement>();
+        services.AddScoped<AuditQueries>();
         return services;
     }
 }
