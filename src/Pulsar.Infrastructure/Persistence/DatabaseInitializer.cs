@@ -1,5 +1,7 @@
 using System.Net.Sockets;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -31,8 +33,11 @@ internal sealed partial class DatabaseInitializer(
 
         await CheckServerAsync(where, cancellationToken);
 
-        // EF Core takes a database-wide migration lock, so several panel instances starting together are safe.
-        var pending = (await db.Database.GetPendingMigrationsAsync(cancellationToken)).ToList();
+        // On a fresh database the history table does not exist yet; asking EF for pending migrations then logs a
+        // failed query as an error, which would alarm whoever installs the panel.
+        var pending = await db.GetService<IHistoryRepository>().ExistsAsync(cancellationToken)
+            ? (await db.Database.GetPendingMigrationsAsync(cancellationToken)).ToList()
+            : db.Database.GetMigrations().ToList();
         if (pending.Count > 0)
         {
             if (!applyMigrations)
@@ -42,6 +47,7 @@ internal sealed partial class DatabaseInitializer(
                     "Run 'Pulsar.Api migrate' or set Database:ApplyMigrationsOnStartup to true.");
             }
 
+            // EF Core takes a database-wide migration lock, so several panel instances starting together are safe.
             LogApplyingMigrations(pending.Count, pending);
             await db.Database.MigrateAsync(cancellationToken);
         }
