@@ -1,56 +1,61 @@
-# Arquitectura de Pulsar v1
+# Pulsar v1 architecture
 
-> Estado: **borrador para revisión**. Nada de esto está implementado todavía. Las decisiones difíciles de revertir están en [`../adr`](../adr) con estado *Propuesta* hasta que se aprueben.
+> Status: **draft under review**. Phase 0 (repository skeleton and Windows spikes) is in progress; nothing in these documents is implemented beyond that. Decisions that are hard to reverse live in [`../adr`](../adr/README.md).
 
-## Resumen en diez líneas
+## Summary in ten lines
 
-1. **Monolito modular** ASP.NET Core (.NET 10) + PostgreSQL + SPA React servida por el propio panel. Una instancia, sin Redis ni colas externas.
-2. **Pulsar Agent** como servicio Windows en cada nodo; **el agent inicia** una conexión WebSocket (SignalR) saliente hacia el panel. Los nodos no abren puertos para Pulsar.
-3. **Identidad por nodo** con clave ECDSA P-256 no exportable (TPM si existe); autenticación por challenge firmado; **todos los comandos del panel van firmados** y con anti-replay.
-4. **Operaciones tipadas** únicamente. No existe ejecución de shell en ninguna API.
-5. **Juegos como manifests declarativos** con un conjunto cerrado de pasos; argumentos renderizados como argv sin shell y variables tipadas con validación estricta.
-6. **Windows Job Objects** por servidor (`KILL_ON_JOB_CLOSE`, proceso creado dentro del Job) → sin procesos huérfanos.
-7. **ConPTY o pipes** según el manifest, para capturar consolas de juegos Windows que no usan stdout.
-8. **Una cuenta Windows por servidor**: el código de plugins nunca corre como SYSTEM ni ve otros servidores.
-9. **RBAC con scopes** (global ⊃ nodo ⊃ servidor), permisos definidos en código, anti-escalada.
-10. **Tiempo real por eventos** (agent → panel → navegador); métricas en memoria, no en PostgreSQL.
+1. **Modular monolith** on ASP.NET Core (.NET 10) + PostgreSQL + a React SPA served by the panel itself. One instance, no Redis or external queues.
+2. **Pulsar Agent** is a Windows service on every node; **the agent opens** an outbound WebSocket (SignalR) connection to the panel. Nodes open no ports for Pulsar.
+3. **Per-node identity** with a non-exportable ECDSA P-256 key (TPM-backed when available); authentication by signed challenge; **every panel command is signed** and replay-protected.
+4. **Typed operations only.** No API anywhere executes a shell.
+5. **Games are declarative manifests** with a closed set of steps; arguments are rendered as argv without a shell and variables are strictly typed and validated.
+6. **One Windows Job Object per server** (`KILL_ON_JOB_CLOSE`, process created inside the Job) → no orphaned processes.
+7. **ConPTY or pipes**, chosen by the manifest, to capture consoles of Windows game servers that don't use stdout.
+8. **One Windows account per server**: plugin code never runs as SYSTEM and cannot see other servers.
+9. **Scoped RBAC** (global ⊃ node ⊃ server), permissions defined in code, anti-escalation rules.
+10. **Event-driven real time** (agent → panel → browser); metrics live in memory, not in PostgreSQL.
 
-## Documentos
+## Documents
 
-| # | Documento | Puntos del encargo |
-|---|---|---|
-| 01 | [Arquitectura, repositorio y dependencias](01-arquitectura-y-repositorio.md) | 1, 2, 3, 4 |
-| 02 | [Entidades, permisos y esquema PostgreSQL](02-dominio-y-base-de-datos.md) | 5, 6 |
-| 03 | [Protocolo Panel ↔ Agent y autenticación de nodos](03-protocolo-panel-agent.md) | 7, 8 |
-| 04 | [Game Manifests](04-game-manifests.md) | 9 |
-| 05 | [Ciclo de vida de un servidor](05-lifecycle-servidor.md) | 10 |
-| 06 | [Procesos en Windows: Job Objects, ConPTY, aislamiento](06-windows-procesos.md) | 11 |
-| 07 | [Frontend](07-frontend.md) | 12 |
-| 08 | [Seguridad y riesgos](08-seguridad-y-riesgos.md) | 13, 14 |
-| 09 | [Roadmap técnico](09-roadmap.md) | 15 |
+| # | Document |
+|---|---|
+| 01 | [Architecture, repository and dependencies](01-architecture-and-repository.md) |
+| 02 | [Entities, permissions and PostgreSQL schema](02-domain-and-database.md) |
+| 03 | [Panel ↔ Agent protocol and node authentication](03-panel-agent-protocol.md) |
+| 04 | [Game manifests](04-game-manifests.md) |
+| 05 | [Game server lifecycle](05-server-lifecycle.md) |
+| 06 | [Windows process management: Job Objects, ConPTY, isolation](06-windows-process-management.md) |
+| 07 | [Frontend](07-frontend.md) |
+| 08 | [Security model and risks](08-security-and-risks.md) |
+| 09 | [Technical roadmap](09-roadmap.md) |
 
-## Decisiones difíciles de cambiar después
+## Decisions that are hard to change later
 
-| ADR | Decisión | Por qué cuesta revertirla |
-|---|---|---|
-| [0001](../adr/0001-monolito-modular-instancia-unica.md) | Monolito modular, panel de instancia única | Estado en memoria (conexiones, métricas) asume un proceso. |
-| [0002](../adr/0002-conexion-iniciada-por-agent-signalr.md) | Agent → Panel por SignalR/WebSockets | Todos los agents desplegados hablan este protocolo. |
-| [0003](../adr/0003-identidad-de-nodo-y-comandos-firmados.md) | Claves por nodo + PoP + comandos firmados | Cambiar identidad = re-enrolar todos los nodos. |
-| [0004](../adr/0004-uuidv7.md) | UUIDv7 generados en la aplicación | IDs en BD, URLs, protocolo y nombres de recursos. |
-| [0005](../adr/0005-cuenta-windows-por-servidor.md) | Cuenta Windows por servidor, agent como SYSTEM | ACLs y layout de disco de todos los servidores existentes. |
-| [0006](../adr/0006-kill-on-job-close.md) | Servidores mueren con el agent (v1) | Afecta expectativas operativas y diseño del agent. |
-| [0007](../adr/0007-consola-conpty-pipes.md) | Consola ConPTY/pipes; no se guarda en PostgreSQL | Formato de stream y UX de consola. |
-| [0008](../adr/0008-manifests-declarativos.md) | Manifests declarativos, pasos cerrados, pinning de versión | La comunidad escribe manifests contra este formato. |
-| [0009](../adr/0009-identity-cookies-rbac-propio.md) | Identity + cookies; RBAC propio con scopes | Tablas de usuarios y modelo de permisos. |
-| [0010](../adr/0010-scheduler-en-panel.md) | Scheduler en el panel sobre PostgreSQL | Semántica de tareas si el panel cae. |
-| [0011](../adr/0011-secretos-data-protection.md) | Secretos con Data Protection | Key ring imprescindible para restaurar el panel. |
-| [0012](../adr/0012-backups-locales-zip.md) | Backups zip locales al nodo (v1) | Formato de backup que los usuarios acumulan. |
-| [0013](../adr/0013-licencias.md) | AGPL-3.0 para el core, MIT para manifests y schema | Re-licenciar requiere consentimiento de todos los contribuidores. |
+| ADR | Decision | Status | Why it is expensive to reverse |
+|---|---|---|---|
+| [0001](../adr/0001-modular-monolith-single-instance.md) | Modular monolith, single panel instance | Proposed | In-memory state (connections, metrics) assumes one process. |
+| [0002](../adr/0002-agent-initiated-signalr-connection.md) | Agent → panel over SignalR/WebSockets | Proposed | Every deployed agent speaks this protocol. |
+| [0003](../adr/0003-node-identity-and-signed-commands.md) | Per-node keys + proof of possession + signed commands | Proposed | Changing identity means re-enrolling every node. |
+| [0004](../adr/0004-uuidv7.md) | Application-generated UUIDv7 | Proposed | IDs live in the database, URLs, protocol and resource names. |
+| [0005](../adr/0005-windows-account-per-server.md) | One Windows account per server, agent as SYSTEM | **Accepted** | ACLs and disk layout of every existing server. |
+| [0006](../adr/0006-kill-on-job-close.md) | Servers die with the agent (v1) | Proposed (pending spikes) | Operational expectations and agent design. |
+| [0007](../adr/0007-console-conpty-or-pipes.md) | Console via ConPTY/pipes; not stored in PostgreSQL | Proposed (pending spikes) | Stream format and console UX. |
+| [0008](../adr/0008-declarative-manifests.md) | Declarative manifests, closed steps, version pinning | Proposed | The community writes manifests against this format. |
+| [0009](../adr/0009-identity-cookies-and-scoped-rbac.md) | Identity + cookies; own scoped RBAC | Proposed | User tables and permission model. |
+| [0010](../adr/0010-panel-side-scheduler.md) | Panel-side scheduler on PostgreSQL | Proposed | Task semantics when the panel is down. |
+| [0011](../adr/0011-secrets-with-data-protection.md) | Secrets with Data Protection | Proposed | The key ring is required to restore the panel. |
+| [0012](../adr/0012-node-local-zip-backups.md) | Node-local zip backups (v1) | Proposed | Backup format users accumulate. |
+| [0013](../adr/0013-licensing.md) | AGPL-3.0 core, MIT manifests and schemas, DCO | **Accepted** | Relicensing needs every contributor's consent. |
 
-## Preguntas abiertas para el mantenedor
+## Decisions already taken
 
-1. **Idioma público del proyecto.** Recomiendo inglés para código, comentarios, commits, issues y documentación pública (alcance de contribuidores), con la UI en inglés y español desde el día 1. Estos documentos de diseño están en español para la revisión; se traducirían antes de publicar.
-2. **Licencia de los manifests** (ADR-0013): ¿MIT para `games/` y `schemas/`?
-3. **DCO vs CLA**: recomiendo DCO (`Signed-off-by`), más ligero; un CLA solo tiene sentido si se prevé re-licenciar.
-4. **Panel en Linux**: el panel no tiene nada específico de Windows; propongo soportarlo también en Linux sin coste extra (el agent sigue siendo Windows-first). ¿De acuerdo?
-5. **Windows 10**: fuera de soporte desde octubre de 2025. Propuesta: "best effort" en 22H2, soporte pleno en Windows 11 y Server 2019/2022/2025.
+- **Language:** code, comments, commits, issues and public documentation in English. The UI ships in English and Spanish from day one.
+- **Licensing:** AGPL-3.0-only for the core; MIT for `games/` and `schemas/`; contributions under the DCO (ADR-0013).
+- **Isolation:** one Windows account per game server, implemented in Phase 3 together with process management (ADR-0005).
+- **Starting point:** Phase 0 = repository skeleton + Windows spikes in parallel (see [roadmap](09-roadmap.md)).
+
+## Open questions
+
+1. **Panel on Linux.** The panel has nothing Windows-specific; supporting it on Linux costs nothing extra (the agent stays Windows-first). Proposed: yes.
+2. **Windows 10.** Out of support since October 2025. Proposed: best effort on 22H2, full support for Windows 11 and Windows Server 2019/2022/2025.
+3. **Code of conduct contact.** `CODE_OF_CONDUCT.md` needs a reporting address before the first public release.

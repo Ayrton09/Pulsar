@@ -1,17 +1,17 @@
-# ADR-0006 — Job Objects con KILL_ON_JOB_CLOSE: los servidores no sobreviven al agent (v1)
+# ADR-0006 — Job Objects with KILL_ON_JOB_CLOSE: servers do not survive the agent (v1)
 
-Estado: Propuesta
+Status: Proposed — to be confirmed by the Phase 0 spikes.
 
-## Contexto
-Hay que evitar procesos huérfanos y garantizar la limpieza del árbol de procesos. Si el agent muere, la consola (ConPTY/pipes) que posee también se pierde.
+## Context
+Orphaned processes must be impossible and the process tree must always be cleaned up. If the agent dies, the console (ConPTY/pipes) it owns is lost as well.
 
-## Decisión
-Un Job Object sin nombre por servidor, con `KILL_ON_JOB_CLOSE`, `DIE_ON_UNHANDLED_EXCEPTION`, restricciones de UI y sin breakaway. El proceso se crea dentro del Job (`PROC_THREAD_ATTRIBUTE_JOB_LIST` + `CREATE_SUSPENDED`). Si el agent termina, Windows mata todos los servidores. Al arrancar, el agent reinicia los que tengan `auto_start` o estuvieran en ejecución antes de una parada ordenada.
+## Decision
+One unnamed Job Object per server, with `KILL_ON_JOB_CLOSE`, `DIE_ON_UNHANDLED_EXCEPTION`, UI restrictions and no breakaway. The process is created inside the Job (`PROC_THREAD_ATTRIBUTE_JOB_LIST` + `CREATE_SUSPENDED`). If the agent terminates, Windows kills all its servers. On start, the agent restarts the servers with `auto_start` or those that were running before an orderly stop.
 
-## Alternativas
-- Servidores que sobreviven al agent (Jobs con nombre y reattach): la consola se pierde de todos modos y aparecen estados ambiguos.
-- Proceso shim por servidor que posea Job y consola: la solución correcta a largo plazo, pero añade IPC y otro binario. Pospuesto; `IGameProcess` está diseñado para permitirlo.
+## Alternatives
+- Servers that survive the agent (named Jobs and reattach): the console is lost anyway and ambiguous states appear.
+- A shim process per server owning the Job and console: the right long-term answer, but adds IPC and another binary. Deferred; `IGameProcess` is designed to allow it.
 
-## Consecuencias
-- Garantía fuerte de que no hay huérfanos y de que el estado es siempre coherente.
-- Actualizar o reiniciar el agent implica downtime de los servidores del nodo: debe programarse y documentarse.
+## Consequences
+- Strong guarantee of no orphans and always-consistent state.
+- Updating or restarting the agent means downtime for the node's servers: it must be scheduled and documented.

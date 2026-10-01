@@ -1,33 +1,35 @@
-# 04 — Game Manifests
+# 04 — Game manifests
 
-> Estado: **propuesta para revisión** · Cubre el punto 9. Decisión: ADR-0008.
+> Status: **proposal under review** · Decision: ADR-0008.
 
-## Objetivos
+## Goals
 
-1. Añadir un juego sin tocar Pulsar Core.
-2. **Declarativo y cerrado**: un manifest describe *qué* hacer con un conjunto finito de pasos tipados; nunca contiene shell, scripts ni expresiones arbitrarias.
-3. Validado igual en panel y agent (`Pulsar.Manifests`), con JSON Schema público para editores y CI de la comunidad.
-4. Versionado e inmutable: un servidor queda fijado a `key@version`; actualizar el manifest no cambia servidores existentes sin acción explícita.
+1. Add a game without touching Pulsar Core.
+2. **Declarative and closed**: a manifest describes *what* to do with a finite set of typed steps; it never contains shell, scripts or arbitrary expressions.
+3. Validated identically by panel and agent (`Pulsar.Manifests`), with a public JSON Schema for editors and community CI.
+4. Versioned and immutable: a server is pinned to `key@version`; updating a manifest does not change existing servers without an explicit action.
 
-## Modelo de confianza
+## Trust model
 
-Un manifest decide qué ejecutable se lanza y qué se descarga. **Importar un manifest equivale a instalar software en todos los nodos.** Por eso:
+A manifest decides which executable is launched and what is downloaded. **Importing a manifest is equivalent to installing software on every node.** Therefore:
 
-- Solo `template.manage` (global) puede importar; la UI muestra un resumen de "capacidades" (ejecutables, dominios de descarga, puertos) y el diff con la versión previa.
-- Los manifests oficiales vienen empaquetados con el panel (`games/`) y se registran como `source = bundled`.
-- (Post-v1) firma opcional del catálogo oficial y política local por nodo para aceptar solo manifests firmados.
+- Only `template.manage` (global) can import; the UI shows a summary of "capabilities" (executables, download domains, ports) and the diff against the previous version.
+- Official manifests ship with the panel (`games/`) and are registered as `source = bundled`.
+- (Post-v1) optional signing of the official catalog and a per-node local policy that only accepts signed manifests.
 
-## Estructura
+## Layout
 
 ```
-games/<key>/manifest.json      un solo archivo = un solo hash
-games/<key>/README.md          notas para mantenedores (no se carga)
+games/<key>/manifest.json      one file = one hash
+games/<key>/README.md          notes for maintainers (not loaded)
 schemas/manifest.v1.schema.json
 ```
 
-## Ejemplo: Counter-Strike 2
+Manifests and schemas are MIT licensed so communities and hosting companies can write their own without licensing friction.
 
-> Ilustrativo. Los argumentos exactos, patrones de readiness y comportamiento de consola se confirman en los spikes de la Fase 0.
+## Example: Counter-Strike 2
+
+> Illustrative. Exact arguments, readiness patterns and console behavior are confirmed by the Phase 0 spikes.
 
 ```json
 {
@@ -36,32 +38,32 @@ schemas/manifest.v1.schema.json
   "key": "cs2",
   "version": "1.0.0",
   "name": "Counter-Strike 2",
-  "description": "Servidor dedicado de Counter-Strike 2.",
+  "description": "Counter-Strike 2 dedicated server.",
   "authors": ["Pulsar contributors"],
   "platforms": ["windows-x64"],
 
   "requirements": { "minDiskGb": 60, "minMemoryMb": 4096 },
 
   "variables": [
-    { "key": "hostname", "label": "Nombre del servidor", "type": "string",
+    { "key": "hostname", "label": "Server name", "type": "string",
       "default": "Pulsar CS2", "maxLength": 64, "pattern": "^[^\"\\r\\n;]{1,64}$" },
-    { "key": "map", "label": "Mapa inicial", "type": "string",
+    { "key": "map", "label": "Starting map", "type": "string",
       "default": "de_dust2", "pattern": "^[A-Za-z0-9_]{1,64}$" },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 10, "min": 2, "max": 64 },
-    { "key": "gameMode", "label": "Modo", "type": "enum", "default": "competitive",
+    { "key": "gameMode", "label": "Mode", "type": "enum", "default": "competitive",
       "options": [
         { "value": "casual",      "label": "Casual",      "map": { "gameType": "0", "gameMode": "0" } },
-        { "value": "competitive", "label": "Competitivo", "map": { "gameType": "0", "gameMode": "1" } }
+        { "value": "competitive", "label": "Competitive", "map": { "gameType": "0", "gameMode": "1" } }
       ] },
-    { "key": "rconPassword", "label": "Contraseña RCON", "type": "string", "secret": true,
+    { "key": "rconPassword", "label": "RCON password", "type": "string", "secret": true,
       "pattern": "^[A-Za-z0-9_\\-]{8,64}$", "required": false },
     { "key": "gslt", "label": "Game Server Login Token", "type": "string", "secret": true,
       "pattern": "^[A-Za-z0-9]{1,64}$", "required": false }
   ],
 
   "ports": [
-    { "name": "game", "label": "Juego", "protocols": ["udp", "tcp"], "default": 27015, "required": true },
-    { "name": "tv",   "label": "CSTV",  "protocols": ["udp"],        "default": 27020, "required": false }
+    { "name": "game", "label": "Game", "protocols": ["udp", "tcp"], "default": 27015, "required": true },
+    { "name": "tv",   "label": "CSTV", "protocols": ["udp"],        "default": 27020, "required": false }
   ],
 
   "install": {
@@ -103,7 +105,7 @@ schemas/manifest.v1.schema.json
       } }
   ],
 
-  "readiness": { "type": "logPattern", "pattern": "<a confirmar en spike>", "timeoutSeconds": 300 },
+  "readiness": { "type": "logPattern", "pattern": "<to be confirmed by spike>", "timeoutSeconds": 300 },
 
   "stop": {
     "steps": [ { "type": "consoleCommand", "command": "quit" } ],
@@ -117,93 +119,93 @@ schemas/manifest.v1.schema.json
 }
 ```
 
-## Secciones y reglas
+## Sections and rules
 
-### Identidad y versionado
+### Identity and versioning
 
-- `schemaVersion`: versión del **formato** (lo interpreta `Pulsar.Manifests`). Un formato nuevo implica nuevo schema y validador; el viejo se sigue leyendo.
-- `key` (`^[a-z0-9][a-z0-9-]{1,63}$`) + `version` (semver) identifican una plantilla inmutable.
+- `schemaVersion`: version of the **format** (interpreted by `Pulsar.Manifests`). A new format means a new schema and validator; the old one keeps being read.
+- `key` (`^[a-z0-9][a-z0-9-]{1,63}$`) + `version` (semver) identify an immutable template.
 
 ### Variables
 
-| Tipo | Restricciones obligatorias |
+| Type | Mandatory constraints |
 |---|---|
-| `string` | `pattern` **obligatorio** si se usa en `arguments` o `configFiles` (lo exige el linter); `maxLength`. |
-| `integer` | `min` y `max`. |
+| `string` | `pattern` is **mandatory** when used in `arguments` or `configFiles` (enforced by the validator); `maxLength`. |
+| `integer` | `min` and `max`. |
 | `boolean` | — |
-| `enum` | `options` cerradas; cada opción puede mapear sub-valores (`{{var.gameMode.gameType}}`). |
+| `enum` | Closed `options`; each option can map sub-values (`{{var.gameMode.gameType}}`). |
 
-Atributos: `secret` (cifrada en BD, write-only en la API, enmascarada en UI y logs), `required`, `userEditable` (si `false`, solo quien tiene `server.settings.edit` a nivel nodo/global la modifica).
+Attributes: `secret` (encrypted in the database, write-only in the API, masked in UI and logs), `required`, `userEditable` (when `false`, only users with `server.settings.edit` at node/global scope can change it).
 
-Validación por defecto adicional para `string` usadas como argumento: sin espacios en blanco al inicio, sin caracteres de control, y **no pueden empezar por `-` ni `+`** (evita que un valor se convierta en flag o comando de consola de Source). Las regex se evalúan con `RegexOptions.NonBacktracking` y timeout (sin ReDoS desde un manifest).
+Additional default validation for `string` values used as arguments: no leading whitespace, no control characters, and they **cannot start with `-` or `+`** (prevents a value from becoming a flag or a Source console command). Regexes are evaluated with `RegexOptions.NonBacktracking` and a timeout (no ReDoS from a manifest).
 
-### Plantillas de argumentos
+### Argument templates
 
-- Placeholders permitidos: `{{var.<key>}}`, `{{var.<key>.<sub>}}`, `{{port.<name>}}`, `{{port.<name>.ip}}`, `{{server.shortId}}`. Nada más: sin funciones, sin expresiones, sin acceso a entorno.
-- **Cada elemento del array es exactamente un argumento (argv) después de sustituir.** Un valor jamás se divide en varios argumentos.
-- Condicional único: `{ "if": "var.x", "then": [...] }` (verdadero si boolean `true` o string no vacío).
-- El agent construye la línea de comandos Windows con el algoritmo de quoting de MSVCRT/`CommandLineToArgvW` (comillas y backslashes correctamente escapados) y la pasa a `CreateProcessAsUser` con `lpApplicationName` explícito. Nunca vía `cmd.exe`.
-- `allowExtraArguments`: si `true`, los usuarios con `server.startup.edit` pueden añadir argumentos (cada uno un argv, con la misma validación de caracteres de control). Si `false`, no.
+- Allowed placeholders: `{{var.<key>}}`, `{{var.<key>.<sub>}}`, `{{port.<name>}}`, `{{port.<name>.ip}}`, `{{server.shortId}}`. Nothing else: no functions, no expressions, no environment access.
+- **Every array element is exactly one argument (argv) after substitution.** A value is never split into several arguments.
+- A single conditional: `{ "if": "var.x", "then": [...] }` (true for boolean `true` or a non-empty string).
+- The agent builds the Windows command line with the MSVCRT/`CommandLineToArgvW` quoting algorithm (quotes and backslashes escaped correctly) and passes it to `CreateProcessAsUser` with an explicit `lpApplicationName`. Never through `cmd.exe`.
+- `allowExtraArguments`: when `true`, users with `server.startup.edit` can add arguments (each one argv, with the same control-character validation). When `false`, they cannot.
 
-### Ejecutable y rutas
+### Executable and paths
 
-- `executable` y `workingDirectory`: rutas **relativas** al directorio del servidor, con `/`, sin `..`, sin raíz, sin unidad, sin `:` (ADS), sin nombres reservados (`CON`, `NUL`, `COM1`…), sin puntos/espacios finales.
-- Solo extensión `.exe`. Prohibidos `.bat`, `.cmd`, `.ps1`, `.vbs`, `.js`, `.msi`: implican intérpretes/shell.
-- (Post-v1) `executable: { "runtime": "java-21", "path": "bin/java.exe" }` para runtimes gestionados por el agent (Minecraft). El hueco está previsto en el schema pero no se implementa en v1.
+- `executable` and `workingDirectory`: **relative** to the server directory, using `/`, no `..`, no root, no drive letter, no `:` (alternate data streams), no reserved names (`CON`, `NUL`, `COM1`…), no trailing dots/spaces.
+- `.exe` only. `.bat`, `.cmd`, `.ps1`, `.vbs`, `.js` and `.msi` are forbidden: they involve interpreters or a shell.
+- (Post-v1) `executable: { "runtime": "java-21", "path": "bin/java.exe" }` for agent-managed runtimes (Minecraft). The schema reserves the slot but v1 does not implement it.
 
-### Entorno
+### Environment
 
-`environment` permite fijar variables con placeholders. Lista de denegación: `PATH`, `PATHEXT`, `ComSpec`, `SystemRoot`, `windir`, `PSModulePath`, `TEMP`/`TMP` (los fija el agent dentro del directorio del servidor), `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`.
+`environment` sets variables with placeholders. Deny list: `PATH`, `PATHEXT`, `ComSpec`, `SystemRoot`, `windir`, `PSModulePath`, `TEMP`/`TMP` (set by the agent inside the server directory), `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`.
 
-### Pasos de instalación/actualización (conjunto cerrado)
+### Install/update steps (closed set)
 
-| Tipo | v1 | Parámetros |
+| Type | v1 | Parameters |
 |---|---|---|
-| `steamcmd` | Sí | `appId`, `login` (`anonymous` en v1), `beta?`, `betaPasswordVar?` (secreta), `validate?`, `platform?` |
-| `ensureDirectory` | Sí | `path` |
-| `writeFileIfMissing` | Sí | `path`, `content` (plantilla con encoder del `format`) |
-| `download` | Post-v1 | `url` (**solo https**), `sha256` **obligatorio**, `path` |
-| `extractArchive` | Post-v1 | `archive`, `destination`, protección zip-slip |
+| `steamcmd` | Yes | `appId`, `login` (`anonymous` in v1), `beta?`, `betaPasswordVar?` (secret), `validate?`, `platform?` |
+| `ensureDirectory` | Yes | `path` |
+| `writeFileIfMissing` | Yes | `path`, `content` (template using the encoder of its `format`) |
+| `download` | Post-v1 | `url` (**https only**), **mandatory** `sha256`, `path` |
+| `extractArchive` | Post-v1 | `archive`, `destination`, zip-slip protection |
 
-No hay paso `run`/`exec`/`script`. Si un juego necesitara un instalador propio, se discutirá como paso tipado nuevo con su propio análisis de seguridad.
+There is no `run`/`exec`/`script` step. If a game needed its own installer, it would be discussed as a new typed step with its own security review.
 
-### Archivos de configuración
+### Configuration files
 
-- `mode: "patch"`: el agent modifica solo las claves declaradas y conserva el resto del archivo (el usuario puede seguir editándolo en el file manager). `mode: "managed"`: el archivo se regenera completo; la UI avisa de que las ediciones manuales se pierden.
-- Formatos v1: `source-cfg` (`cvar "valor"` por línea) y `properties` (`clave=valor`). `ini` y `json` post-v1.
-- Cada formato tiene un **encoder** que rechaza lo que rompería el formato: en `source-cfg` se rechazan `"`, `;`, `\r`, `\n` (en Source, `;` separa comandos: `hostname "x"; rcon_password y` sería una inyección).
-- Variables vacías no secretas → la línea se elimina en modo patch; secretos vacíos → la línea no se toca.
+- `mode: "patch"`: the agent changes only the declared keys and keeps the rest of the file (users can still edit it in the file manager). `mode: "managed"`: the file is regenerated entirely; the UI warns that manual edits are lost.
+- v1 formats: `source-cfg` (`cvar "value"` per line) and `properties` (`key=value`). `ini` and `json` post-v1.
+- Each format has an **encoder** that rejects whatever would break it: `source-cfg` rejects `"`, `;`, `\r`, `\n` (in Source, `;` separates commands: `hostname "x"; rcon_password y` would be an injection).
+- Empty non-secret variables → the line is removed in patch mode; empty secrets → the line is left untouched.
 
-### Consola
+### Console
 
-- `mode`: `pty` (ConPTY; necesario para procesos que escriben en la consola Windows en vez de stdout) o `pipes` (stdout/stderr/stdin redirigidos; p. ej. Java).
-- `encoding` (solo `pipes`): `utf-8` (defecto), `oem`, `ansi`.
-- `inputNewline`, `sensitiveCommandPrefixes` (los comandos que empiezan así se auditan como `rcon_password ***`).
+- `mode`: `pty` (ConPTY; needed for processes that write to the Windows console instead of stdout) or `pipes` (redirected stdout/stderr/stdin; e.g. Java).
+- `encoding` (`pipes` only): `utf-8` (default), `oem`, `ansi`.
+- `inputNewline`, `sensitiveCommandPrefixes` (commands starting with these are audited as `rcon_password ***`).
 
-### Readiness y parada
+### Readiness and stop
 
-- Readiness: `logPattern` (regex sobre la salida), `processAlive` (`graceSeconds`), post-v1 `query` (A2S para Source). Pasa `Starting → Running`.
-- Parada: pasos `consoleCommand`, `ctrlC` (solo `pty`), `wait`; tras `timeoutSeconds` el agent **termina el Job** (kill del árbol completo).
+- Readiness: `logPattern` (regex over the output), `processAlive` (`graceSeconds`), post-v1 `query` (A2S for Source). Moves `Starting → Running`.
+- Stop: steps `consoleCommand`, `ctrlC` (`pty` only), `wait`; after `timeoutSeconds` the agent **terminates the Job** (kills the whole tree).
 
 ### Backups
 
-Globs (`Microsoft.Extensions.FileSystemGlobbing`) relativos al directorio del servidor. **Por defecto se excluye el contenido reinstalable vía SteamCMD**: un backup de CS2 debe ocupar megas de configuración, no 60 GB de binarios. Sin `backup` declarado, se respalda todo el directorio.
+Globs (`Microsoft.Extensions.FileSystemGlobbing`) relative to the server directory. **Content reinstallable through SteamCMD is excluded by default**: a CS2 backup should weigh megabytes of configuration, not 60 GB of binaries. Without a `backup` section the whole directory is backed up.
 
-### Reservado para versiones posteriores
+### Reserved for later versions
 
-`query` (protocolo de consulta), `healthChecks` adicionales, `databases` (solicitar una base MySQL/MariaDB al módulo de game databases), `runtime` gestionados, `linux-x64`.
+`query` (query protocol), additional `healthChecks`, `databases` (request a MySQL/MariaDB database from the game databases module), managed `runtime`s, `linux-x64`.
 
-## Validación
+## Validation
 
-`Pulsar.Manifests` expone:
+`Pulsar.Manifests` exposes:
 
 ```csharp
-ManifestParseResult ManifestParser.Parse(ReadOnlySpan<byte> utf8Json);   // JSON Schema + modelo tipado
-IReadOnlyList<ManifestError> ManifestValidator.Validate(GameManifest m);  // reglas semánticas
+ManifestParseResult ManifestParser.Parse(ReadOnlySpan<byte> utf8Json);   // JSON Schema + typed model
+IReadOnlyList<ManifestError> ManifestValidator.Validate(GameManifest m);  // semantic rules
 Result<LaunchPlan> LaunchPlanRenderer.Render(GameManifest m, Platform p,
     IReadOnlyDictionary<string, VariableValue> values, PortAssignments ports, IReadOnlyList<string> extraArgs);
 ```
 
-Reglas semánticas (además del schema): placeholders referencian variables/puertos existentes; strings usados en argumentos tienen `pattern` o son `enum`; rutas válidas; ejecutable `.exe`; puertos sin duplicar; regex compilables en modo NonBacktracking.
+Semantic rules (beyond the schema): placeholders reference existing variables/ports; strings used in arguments have a `pattern` or are `enum`s; valid paths; `.exe` executable; no duplicate ports; regexes compile in NonBacktracking mode.
 
-Un test en el repo carga **todos** los `games/*/manifest.json` y falla si alguno es inválido. Los tests de renderizado incluyen casos de inyección (`map = "de_dust2 +rcon_password x"`, valores con comillas, `;`, saltos de línea, `-insecure`).
+A repository test loads **every** `games/*/manifest.json` and fails if any is invalid. Rendering tests include injection cases (`map = "de_dust2 +rcon_password x"`, values with quotes, `;`, line breaks, `-insecure`).

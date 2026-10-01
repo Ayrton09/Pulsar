@@ -1,119 +1,119 @@
-# 02 — Entidades principales y esquema PostgreSQL
+# 02 — Main entities and PostgreSQL schema
 
-> Estado: **propuesta para revisión** · Cubre los puntos 5–6 y el modelo de permisos.
+> Status: **proposal under review** · Includes the permission model.
 
-## 5. Entidades principales
+## Main entities
 
-### Persistentes (PostgreSQL)
+### Persistent (PostgreSQL)
 
-| Módulo | Entidad (raíz de agregado en **negrita**) | Notas |
+| Module | Entity (aggregate root in **bold**) | Notes |
 |---|---|---|
-| Access | **User** | Gestionado con ASP.NET Core Identity (`IdentityUserContext`, sin roles de Identity). |
-| Access | **Role**, RolePermission | Roles definidos por administradores; permisos = catálogo en código. |
-| Access | UserRole, NodeAccess, ServerAccess | Asignación de un rol a un usuario en un *scope* (global / nodo / servidor). |
-| Nodes | **Node**, NodeCredential, NodeEnrollmentToken | Identidad criptográfica por nodo. |
-| Nodes | NodeAllocation | Par `ip:puerto` reservable (TCP y UDP) asignable a un servidor. |
-| Templates | **GameTemplate** | Manifest validado, versionado e inmutable (`key` + `version`). |
-| Servers | **Server**, ServerVariable | Estado deseado, estado observado, variables (secretas cifradas). |
-| Operations | **Operation** | Trabajo largo ejecutado por un Agent (instalar, actualizar, backup…). |
-| Backups | **Backup** | Metadatos; el archivo vive en el nodo. |
-| Scheduling | **ScheduledTask**, ScheduledTaskRun | Acción tipada + cron + zona horaria IANA. |
-| Audit | **AuditEntry** | Append-only, sin FKs (sobrevive a borrados). |
-| Settings | SystemSetting, PanelSigningKey | Configuración y clave de firma del panel. |
+| Access | **User** | Managed with ASP.NET Core Identity (`IdentityUserContext`, no Identity roles). |
+| Access | **Role**, RolePermission | Roles defined by administrators; permissions come from a catalog in code. |
+| Access | UserRole, NodeAccess, ServerAccess | A role granted to a user in a *scope* (global / node / server). |
+| Nodes | **Node**, NodeCredential, NodeEnrollmentToken | Cryptographic identity per node. |
+| Nodes | NodeAllocation | Reservable `ip:port` pair (TCP and UDP) assignable to a server. |
+| Templates | **GameTemplate** | Validated, versioned, immutable manifest (`key` + `version`). |
+| Servers | **Server**, ServerVariable | Desired state, observed state, variables (secrets encrypted). |
+| Operations | **Operation** | Long-running work executed by an agent (install, update, backup…). |
+| Backups | **Backup** | Metadata; the archive lives on the node. |
+| Scheduling | **ScheduledTask**, ScheduledTaskRun | Typed action + cron + IANA time zone. |
+| Audit | **AuditEntry** | Append-only, no foreign keys (survives deletions). |
+| Settings | SystemSetting, PanelSigningKey | Configuration and the panel's signing key. |
 
-### Volátiles (memoria del Panel, nunca en PostgreSQL)
+### Volatile (panel memory, never in PostgreSQL)
 
-- `NodeConnection`: nodo conectado, connectionId, sesión, versión de protocolo.
-- `LiveServerMetrics` / `LiveNodeMetrics`: última muestra + ventana corta (~1 h a 1 muestra/min) para sparklines.
-- `ConsoleSubscription`: cuántos navegadores miran la consola de cada servidor.
+- `NodeConnection`: connected node, connection id, session, protocol version.
+- `LiveServerMetrics` / `LiveNodeMetrics`: last sample + a short window (~1 h at one sample per minute) for sparklines.
+- `ConsoleSubscription`: how many browsers watch each server's console.
 
-Si el panel se reinicia, todo esto se reconstruye en segundos con el `AgentHello` de cada nodo.
+When the panel restarts, all of this is rebuilt within seconds from each node's `AgentHello`.
 
-### Comportamiento en el dominio (ejemplos)
+### Behavior in the domain (example)
 
 ```csharp
 public sealed class Server
 {
     public ServerId Id { get; }
     public InstallState InstallState { get; private set; }
-    public RuntimeState RuntimeState { get; private set; }   // último observado por el Agent
+    public RuntimeState RuntimeState { get; private set; }   // last state observed by the agent
     public DesiredState DesiredState { get; private set; }
     public OperationId? ActiveOperationId { get; private set; }
     public bool IsSuspended { get; private set; }
 
-    // Devuelve error de dominio si la transición no es válida (instalado, no suspendido,
-    // sin operación exclusiva activa, estado runtime compatible).
+    // Returns a domain error if the transition is not valid (installed, not suspended,
+    // no exclusive operation running, compatible runtime state).
     public Result RequestStart(TimeProvider clock) { ... }
     public Result RequestStop(...) { ... }
-    public Result BeginOperation(Operation op) { ... }      // exclusividad por servidor
+    public Result BeginOperation(Operation op) { ... }      // per-server exclusivity
     public void ApplyObservedState(RuntimeState state, DateTime atUtc, int? exitCode) { ... }
 }
 ```
 
-## Modelo de permisos (RBAC con scopes)
+## Permission model (scoped RBAC)
 
-### Conceptos
+### Concepts
 
-- **Permission**: clave estable definida en código (`Permissions.Server.Start = "server.start"`). El catálogo es código porque es el código el que la comprueba; la BD solo guarda qué roles la incluyen.
-- **Role**: conjunto de permisos con un `scope` asignable: `global`, `node` o `server`.
-- **Asignación**: (usuario, rol, scope concreto). `ServerAccess` y `NodeAccess` del encargo son asignaciones con scope servidor/nodo, en tablas separadas para tener FKs reales y borrado en cascada.
+- **Permission**: stable key defined in code (`Permissions.Server.Start = "server.start"`). The catalog is code because code checks it; the database only stores which roles include it.
+- **Role**: set of permissions with an assignable `scope`: `global`, `node` or `server`.
+- **Assignment**: (user, role, concrete scope). `ServerAccess` and `NodeAccess` are assignments with a server/node scope, stored in separate tables to get real foreign keys and cascading deletes.
 
-### Catálogo inicial
+### Initial catalog
 
-| Permiso | Scopes donde puede concederse |
+| Permission | Scopes where it can be granted |
 |---|---|
 | `server.view` `server.start` `server.stop` `server.restart` `server.kill` | server, node, global |
 | `server.console.view` `server.console.write` | server, node, global |
 | `server.files.view` `server.files.edit` | server, node, global |
 | `server.backups.view` `server.backups.create` `server.backups.restore` `server.backups.delete` | server, node, global |
 | `server.schedules.view` `server.schedules.edit` | server, node, global |
-| `server.startup.edit` (variables y argumentos de arranque) | server, node, global |
-| `server.settings.edit` (nombre, auto-restart, etc.) | server, node, global |
-| `server.install` (instalar/actualizar/reinstalar) | server, node, global |
-| `server.create` `server.delete` `server.transfer` (futuro) | node, global |
+| `server.startup.edit` (startup variables and arguments) | server, node, global |
+| `server.settings.edit` (name, auto-restart, …) | server, node, global |
+| `server.install` (install/update/reinstall) | server, node, global |
+| `server.create` `server.delete` `server.transfer` (future) | node, global |
 | `node.view` `node.manage` `node.credentials.manage` | node, global |
 | `template.view` `template.manage` | global |
 | `user.view` `user.manage` `role.manage` `audit.view` `settings.manage` | global |
 
-Regla de herencia: **global ⊃ nodo ⊃ servidor**. Un rol de scope `node` puede contener `node.*` y `server.*` (aplica a todos los servidores del nodo). Un rol de scope `server` solo puede contener `server.*` salvo `server.create/delete`.
+Inheritance: **global ⊃ node ⊃ server**. A `node`-scoped role may contain `node.*` and `server.*` (applies to every server on the node). A `server`-scoped role may only contain `server.*`, except `server.create/delete`.
 
-### Evaluación
+### Evaluation
 
 ```
-Permisos efectivos(usuario, servidor S en nodo N) =
-     permisos(roles globales del usuario)
-   ∪ permisos(roles del usuario en NodeAccess para N)
-   ∪ permisos(roles del usuario en ServerAccess para S)
+Effective permissions(user, server S on node N) =
+     permissions(user's global roles)
+   ∪ permissions(user's roles in NodeAccess for N)
+   ∪ permissions(user's roles in ServerAccess for S)
 ```
 
-- Sin reglas *deny* en v1 (más simple de razonar y auditar).
-- `IPermissionEvaluator` cachea los grants por usuario en memoria (TTL corto + invalidación explícita al modificar roles/accesos; válido porque v1 es una sola instancia).
-- Endpoints REST y métodos de hub usan el mismo evaluador. Cada endpoint declara su permiso con metadata (`.RequirePermission(Permissions.Server.Start)`); un test recorre todos los endpoints y **falla si alguno no declara permiso ni `AllowAnonymous`**.
-- Los listados filtran por recursos visibles (`server.view`); pedir un recurso sin acceso devuelve **404** (no 403) para no revelar existencia.
+- No *deny* rules in v1 (simpler to reason about and audit).
+- `IPermissionEvaluator` caches grants per user in memory (short TTL + explicit invalidation when roles/access change; valid because v1 is a single instance).
+- REST endpoints and hub methods use the same evaluator. Every endpoint declares its permission as metadata (`.RequirePermission(Permissions.Server.Start)`); a test enumerates all endpoints and **fails if one declares neither a permission nor `AllowAnonymous`**.
+- Listings filter by visible resources (`server.view`); requesting a resource without access returns **404** (not 403) so its existence is not revealed.
 
-### Reglas anti-escalada
+### Anti-escalation rules
 
-1. Rol de sistema **Administrator** (`is_system = true`): siempre contiene todos los permisos del catálogo (se calcula; los permisos nuevos se incluyen solos). No editable ni borrable.
-2. No se puede quitar la última asignación global de Administrator.
-3. Quien tiene `role.manage`/`user.manage` **solo puede conceder permisos que él mismo posee** en ese scope.
-4. Nadie puede modificar sus propias asignaciones.
-5. Todo cambio de roles/accesos se audita con el diff de permisos.
+1. System role **Administrator** (`is_system = true`): always holds every permission in the catalog (computed, so new permissions are included automatically). Not editable or deletable.
+2. The last global Administrator assignment cannot be removed.
+3. Holders of `role.manage`/`user.manage` **can only grant permissions they hold themselves** in that scope.
+4. Nobody can change their own assignments.
+5. Every role/access change is audited with the permission diff.
 
-No existe `Admin = true`: "administrador" es simplemente un rol.
+There is no `Admin = true`: "administrator" is just a role.
 
-## 6. Esquema inicial de PostgreSQL
+## PostgreSQL schema
 
-Convenciones:
+Conventions:
 
-- Base de datos dedicada (`pulsar`). PostgreSQL **15+** soportado (recomendado 17/18). Al arrancar se verifica conexión y versión; si falla, el panel termina con un error claro (host, puerto, causa) — **sin fallback**.
-- Nombres `snake_case` (paquete `EFCore.NamingConventions`).
-- PK `uuid` con **UUIDv7 generado en la aplicación** (`Guid.CreateVersion7()`, ver ADR-0004).
-- Fechas `timestamptz`, siempre UTC.
-- Enums como `text` + `CHECK` (legible al inspeccionar la BD; añadir valores es una migración trivial, a diferencia de los enums nativos de PostgreSQL).
-- Concurrencia optimista con la columna de sistema `xmin` (mapeada como row version por Npgsql) en agregados mutables (`servers`, `nodes`, `roles`, `scheduled_tasks`).
-- Migraciones con EF Core. Se aplican al arrancar dentro de un advisory lock (configurable: `Database:ApplyMigrationsOnStartup`), o explícitamente con `Pulsar.Api.exe migrate`. También se publican scripts SQL idempotentes por release.
+- Dedicated database (`pulsar`). PostgreSQL **15+** supported (17/18 recommended). At startup the panel checks connectivity and version; on failure it exits with a clear error (host, port, cause) — **no fallback**.
+- `snake_case` names (`EFCore.NamingConventions`).
+- `uuid` primary keys with **UUIDv7 generated by the application** (`Guid.CreateVersion7()`, see ADR-0004).
+- Timestamps as `timestamptz`, always UTC.
+- Enums as `text` + `CHECK` (readable when inspecting the database; adding a value is a trivial migration, unlike native PostgreSQL enums).
+- Optimistic concurrency with the `xmin` system column (mapped as a row version by Npgsql) on mutable aggregates (`servers`, `nodes`, `roles`, `scheduled_tasks`).
+- EF Core migrations, applied at startup inside an advisory lock (configurable: `Database:ApplyMigrationsOnStartup`) or explicitly with `Pulsar.Api.exe migrate`. Idempotent SQL scripts are published with each release.
 
-El DDL siguiente es la **referencia de diseño**; la fuente real serán las migraciones EF.
+The DDL below is the **design reference**; the real source will be the EF migrations.
 
 ```sql
 -- ===================== Access =====================
@@ -136,8 +136,8 @@ CREATE TABLE users (
     created_at            timestamptz  NOT NULL,
     last_login_at         timestamptz
 );
--- + user_tokens, user_logins, user_claims: tablas estándar de IdentityUserContext
---   (tokens TOTP/recovery codes; logins externos sin uso en v1).
+-- + user_tokens, user_logins, user_claims: standard IdentityUserContext tables
+--   (TOTP tokens / recovery codes; external logins unused in v1).
 
 CREATE TABLE roles (
     id               uuid PRIMARY KEY,
@@ -148,16 +148,16 @@ CREATE TABLE roles (
     is_system        boolean NOT NULL DEFAULT false,
     created_at       timestamptz NOT NULL,
     updated_at       timestamptz NOT NULL,
-    UNIQUE (id, scope)                       -- permite FKs compuestas que fijan el scope
+    UNIQUE (id, scope)                       -- enables composite FKs that pin the role scope
 );
 
 CREATE TABLE role_permissions (
     role_id     uuid NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-    permission  varchar(64) NOT NULL,        -- validado contra el catálogo en código
+    permission  varchar(64) NOT NULL,        -- validated against the catalog in code
     PRIMARY KEY (role_id, permission)
 );
 
-CREATE TABLE user_roles (                    -- asignaciones globales
+CREATE TABLE user_roles (                    -- global assignments
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role_id     uuid NOT NULL,
     role_scope  text NOT NULL DEFAULT 'global' CHECK (role_scope = 'global'),
@@ -167,7 +167,7 @@ CREATE TABLE user_roles (                    -- asignaciones globales
     FOREIGN KEY (role_id, role_scope) REFERENCES roles(id, scope) ON DELETE RESTRICT
 );
 
--- node_access y server_access se crean tras nodes/servers (abajo).
+-- node_access and server_access are created after nodes/servers (below).
 
 -- ===================== Nodes =====================
 CREATE TABLE nodes (
@@ -175,9 +175,9 @@ CREATE TABLE nodes (
     name                varchar(64) NOT NULL UNIQUE,
     description         varchar(512),
     status              text NOT NULL CHECK (status IN ('pending_enrollment','active','disabled','revoked')),
-    public_host         varchar(255),        -- host/IP mostrado a jugadores
+    public_host         varchar(255),        -- host/IP shown to players
     maintenance_mode    boolean NOT NULL DEFAULT false,
-    -- inventario reportado por el Agent (última conexión)
+    -- inventory reported by the agent (last connection)
     hostname            varchar(255),
     os_description      varchar(255),
     os_build            varchar(64),
@@ -196,9 +196,9 @@ CREATE TABLE node_credentials (
     id             uuid PRIMARY KEY,
     node_id        uuid NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
     algorithm      text NOT NULL CHECK (algorithm IN ('ecdsa-p256-sha256')),
-    public_key     bytea NOT NULL,           -- SubjectPublicKeyInfo DER
+    public_key     bytea NOT NULL,               -- SubjectPublicKeyInfo DER
     fingerprint    varchar(80) NOT NULL UNIQUE,  -- 'sha256:<base64url>'
-    key_storage    text NOT NULL CHECK (key_storage IN ('tpm','software')),  -- informativo
+    key_storage    text NOT NULL CHECK (key_storage IN ('tpm','software')),  -- informational
     status         text NOT NULL CHECK (status IN ('pending','active','superseded','revoked')),
     created_at     timestamptz NOT NULL,
     activated_at   timestamptz,
@@ -214,7 +214,7 @@ CREATE UNIQUE INDEX ux_node_credentials_single_active
 CREATE TABLE node_enrollment_tokens (
     id                         uuid PRIMARY KEY,
     node_id                    uuid NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
-    token_hash                 bytea NOT NULL UNIQUE,   -- SHA-256 de 32 bytes aleatorios
+    token_hash                 bytea NOT NULL UNIQUE,   -- SHA-256 of 32 random bytes
     created_by                 uuid REFERENCES users(id) ON DELETE SET NULL,
     created_at                 timestamptz NOT NULL,
     expires_at                 timestamptz NOT NULL,
@@ -226,11 +226,11 @@ CREATE TABLE node_enrollment_tokens (
 CREATE TABLE game_templates (
     id              uuid PRIMARY KEY,
     key             varchar(64) NOT NULL,       -- 'cs2'
-    version         varchar(32) NOT NULL,       -- semver del contenido
-    schema_version  integer NOT NULL,           -- versión del formato de manifest
+    version         varchar(32) NOT NULL,       -- semver of the content
+    schema_version  integer NOT NULL,           -- manifest format version
     name            varchar(128) NOT NULL,
     source          text NOT NULL CHECK (source IN ('bundled','imported')),
-    content         text NOT NULL,              -- bytes exactos del manifest (text, no jsonb: jsonb no preserva el original y rompe el hash)
+    content         text NOT NULL,              -- exact manifest bytes (text, not jsonb: jsonb does not preserve the original and breaks the hash)
     content_sha256  bytea NOT NULL,
     is_enabled      boolean NOT NULL DEFAULT true,
     imported_by     uuid REFERENCES users(id) ON DELETE SET NULL,
@@ -241,7 +241,7 @@ CREATE TABLE game_templates (
 -- ===================== Servers =====================
 CREATE TABLE servers (
     id                   uuid PRIMARY KEY,
-    short_id             varchar(12) NOT NULL UNIQUE,  -- aleatorio base32; nombres de cuenta Windows y carpeta
+    short_id             varchar(12) NOT NULL UNIQUE,  -- random base32; Windows account and folder names
     node_id              uuid NOT NULL REFERENCES nodes(id) ON DELETE RESTRICT,
     template_id          uuid NOT NULL REFERENCES game_templates(id) ON DELETE RESTRICT,
     name                 varchar(64) NOT NULL,
@@ -249,12 +249,12 @@ CREATE TABLE servers (
     install_state        text NOT NULL CHECK (install_state IN ('not_installed','installing','installed','failed')),
     runtime_state        text NOT NULL CHECK (runtime_state IN ('offline','starting','running','stopping','crashed')),
     desired_state        text NOT NULL CHECK (desired_state IN ('stopped','running')),
-    active_operation_id  uuid,                 -- FK añadida tras crear operations
+    active_operation_id  uuid,                 -- FK added after operations is created
     is_suspended         boolean NOT NULL DEFAULT false,
-    auto_start           boolean NOT NULL DEFAULT false,  -- arrancar cuando arranca el Agent
+    auto_start           boolean NOT NULL DEFAULT false,  -- start when the agent starts
     restart_on_crash     boolean NOT NULL DEFAULT true,
-    extra_arguments      text[] NOT NULL DEFAULT '{}',    -- solo si el manifest lo permite
-    memory_limit_mb      integer,              -- reservado (límites vía Job Object, post-v1)
+    extra_arguments      text[] NOT NULL DEFAULT '{}',    -- only if the manifest allows it
+    memory_limit_mb      integer,              -- reserved (Job Object limits, post-v1)
     last_exit_code       integer,
     last_started_at      timestamptz,
     last_stopped_at      timestamptz,
@@ -266,8 +266,8 @@ CREATE INDEX ix_servers_node ON servers (node_id);
 CREATE TABLE server_variables (
     server_id        uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     key              varchar(64) NOT NULL,
-    value            text,                     -- NULL si la variable es secreta
-    protected_value  bytea,                    -- secreta, cifrada con Data Protection
+    value            text,                     -- NULL when the variable is secret
+    protected_value  bytea,                    -- secret, encrypted with Data Protection
     updated_at       timestamptz NOT NULL,
     updated_by       uuid REFERENCES users(id) ON DELETE SET NULL,
     PRIMARY KEY (server_id, key),
@@ -277,16 +277,16 @@ CREATE TABLE server_variables (
 CREATE TABLE node_allocations (
     id          uuid PRIMARY KEY,
     node_id     uuid NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
-    ip_address  inet NOT NULL,                 -- 0.0.0.0 = todas las interfaces
+    ip_address  inet NOT NULL,                 -- 0.0.0.0 = all interfaces
     port        integer NOT NULL CHECK (port BETWEEN 1 AND 65535),
     server_id   uuid REFERENCES servers(id) ON DELETE SET NULL,
-    port_name   varchar(32),                   -- puerto del manifest ('game','tv'…)
+    port_name   varchar(32),                   -- manifest port name ('game', 'tv'…)
     notes       varchar(128),
     UNIQUE (node_id, ip_address, port),
     UNIQUE (server_id, port_name),
     CHECK ((server_id IS NULL) = (port_name IS NULL))
 );
--- El conflicto 0.0.0.0:P vs 192.168.1.10:P en el mismo nodo se valida en la aplicación.
+-- Conflicts between 0.0.0.0:P and 192.168.1.10:P on the same node are validated in the application.
 
 CREATE TABLE node_access (
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -335,8 +335,8 @@ CREATE TABLE operations (
 CREATE INDEX ix_operations_server ON operations (server_id, created_at DESC);
 CREATE INDEX ix_operations_active ON operations (node_id) WHERE status IN ('queued','running');
 ALTER TABLE servers ADD FOREIGN KEY (active_operation_id) REFERENCES operations(id) ON DELETE SET NULL;
--- El progreso se emite en tiempo real por SignalR; a la BD solo se escribe con throttling
--- (cambio de etapa o cada ~15 s), nunca en cada línea de SteamCMD.
+-- Progress is pushed in real time over SignalR; the database is only written with throttling
+-- (stage change or every ~15 s), never on every SteamCMD line.
 
 -- ===================== Backups =====================
 CREATE TABLE backups (
@@ -349,12 +349,12 @@ CREATE TABLE backups (
     size_bytes     bigint,
     file_count     integer,
     sha256         bytea,
-    is_locked      boolean NOT NULL DEFAULT false,   -- excluido de la rotación automática
+    is_locked      boolean NOT NULL DEFAULT false,   -- excluded from automatic rotation
     created_by     uuid REFERENCES users(id) ON DELETE SET NULL,
     created_via    text NOT NULL CHECK (created_via IN ('user','schedule','system')),
     operation_id   uuid REFERENCES operations(id) ON DELETE SET NULL,
     started_at     timestamptz,
-    completed_at   timestamptz,                      -- duración = completed_at - started_at
+    completed_at   timestamptz,                      -- duration = completed_at - started_at
     error_message  varchar(1024),
     created_at     timestamptz NOT NULL
 );
@@ -365,10 +365,10 @@ CREATE TABLE scheduled_tasks (
     id               uuid PRIMARY KEY,
     server_id        uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     name             varchar(128) NOT NULL,
-    cron_expression  varchar(128) NOT NULL,          -- 5 campos, parseado con Cronos
-    time_zone        varchar(64)  NOT NULL,          -- IANA, p.ej. 'America/Argentina/Buenos_Aires'
+    cron_expression  varchar(128) NOT NULL,          -- 5 fields, parsed with Cronos
+    time_zone        varchar(64)  NOT NULL,          -- IANA, e.g. 'America/Argentina/Buenos_Aires'
     action_type      text NOT NULL CHECK (action_type IN ('start','stop','restart','backup','update','console_command')),
-    action_payload   jsonb NOT NULL DEFAULT '{}',    -- tipado por acción y validado en la aplicación
+    action_payload   jsonb NOT NULL DEFAULT '{}',    -- typed per action and validated by the application
     only_if_running  boolean NOT NULL DEFAULT false,
     is_enabled       boolean NOT NULL DEFAULT true,
     next_run_at      timestamptz,                    -- UTC
@@ -395,24 +395,24 @@ CREATE INDEX ix_task_runs_task ON scheduled_task_runs (task_id, started_at DESC)
 CREATE TABLE audit_logs (
     id              uuid PRIMARY KEY,
     occurred_at     timestamptz NOT NULL,
-    action          varchar(64) NOT NULL,          -- catálogo en código: 'server.start', 'auth.login_failed'…
+    action          varchar(64) NOT NULL,          -- catalog in code: 'server.start', 'auth.login_failed'…
     outcome         text NOT NULL CHECK (outcome IN ('success','failure','denied')),
     actor_type      text NOT NULL CHECK (actor_type IN ('user','node','schedule','system','anonymous')),
-    actor_user_id   uuid,                          -- sin FK a propósito
-    actor_display   varchar(128),                  -- nombre en el momento del evento
+    actor_user_id   uuid,                          -- no FK on purpose
+    actor_display   varchar(128),                  -- name at the time of the event
     node_id         uuid,
     server_id       uuid,
     target_type     varchar(32),
-    target_id       varchar(512),                  -- uuid o ruta relativa de archivo
+    target_id       varchar(512),                  -- uuid or relative file path
     ip_address      inet,
     user_agent      varchar(512),
     correlation_id  varchar(64),
-    metadata        jsonb NOT NULL DEFAULT '{}'    -- estructurado y saneado: nunca secretos
+    metadata        jsonb NOT NULL DEFAULT '{}'    -- structured and sanitized: never secrets
 );
 CREATE INDEX ix_audit_time   ON audit_logs (occurred_at DESC);
 CREATE INDEX ix_audit_server ON audit_logs (server_id, occurred_at DESC) WHERE server_id IS NOT NULL;
 CREATE INDEX ix_audit_actor  ON audit_logs (actor_user_id, occurred_at DESC) WHERE actor_user_id IS NOT NULL;
--- Retención configurable (por defecto 365 días). Particionado mensual si el volumen lo exige (post-v1).
+-- Configurable retention (365 days by default). Monthly partitioning if volume requires it (post-v1).
 
 -- ===================== Settings =====================
 CREATE TABLE system_settings (
@@ -426,16 +426,16 @@ CREATE TABLE panel_signing_keys (
     id                     uuid PRIMARY KEY,
     algorithm              text NOT NULL CHECK (algorithm IN ('ecdsa-p256-sha256')),
     public_key             bytea NOT NULL,
-    protected_private_key  bytea NOT NULL,        -- cifrada con Data Protection
+    protected_private_key  bytea NOT NULL,        -- encrypted with Data Protection
     status                 text NOT NULL CHECK (status IN ('active','retiring','retired')),
     created_at             timestamptz NOT NULL,
     retired_at             timestamptz
 );
 ```
 
-### Lo que deliberadamente NO está en PostgreSQL
+### What is deliberately NOT in PostgreSQL
 
-- Métricas por segundo (solo memoria; histórico agregado es post-v1).
-- Salida de consola (vive en ring buffers y archivos de log rotados en el nodo).
-- Archivos de backups (en el nodo).
-- Bases MySQL/MariaDB de los juegos: módulo futuro independiente (`GameDatabases`) con sus propias tablas de *metadatos* (host, usuario, servidor asignado); los datos de los juegos jamás tocan la BD de Pulsar.
+- Per-second metrics (memory only; aggregated history is post-v1).
+- Console output (ring buffers and rotated log files on the node).
+- Backup archives (on the node).
+- MySQL/MariaDB databases for games: a future, independent module (`GameDatabases`) with its own *metadata* tables (host, user, assigned server). Game data never touches Pulsar's database.
