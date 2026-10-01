@@ -14,6 +14,7 @@ namespace Pulsar.Api.Tests.Infrastructure;
 public sealed class PanelClient : IDisposable
 {
     private static readonly Uri s_baseAddress = new("https://localhost");
+    private static readonly PanelCookies s_secureCookies = new(secure: true);
     private readonly CookieContainer _cookies = new();
 
     private PanelClient(WebApplicationFactory<Program> factory, bool sendAntiforgeryHeader)
@@ -59,7 +60,7 @@ public sealed class PanelClient : IDisposable
         {
             if (enabled && request.Method != HttpMethod.Get && request.RequestUri is not null)
             {
-                var token = cookies.GetCookies(request.RequestUri)[AntiforgeryProtection.RequestTokenCookie]?.Value;
+                var token = cookies.GetCookies(request.RequestUri)[s_secureCookies.AntiforgeryRequestToken]?.Value;
                 if (token is not null)
                 {
                     request.Headers.Add(AntiforgeryProtection.HeaderName, token);

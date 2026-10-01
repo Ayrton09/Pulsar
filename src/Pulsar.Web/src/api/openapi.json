@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "Pulsar API",
-    "description": "Pulsar panel API. Cookie authentication; state-changing requests need the X-XSRF-TOKEN header with the token from the __Host-pulsar-xsrf cookie.",
+    "description": "Pulsar panel API. Cookie authentication; state-changing requests need the X-XSRF-TOKEN header with the token from the __Host-pulsar-xsrf cookie (pulsar-xsrf when Security:AllowInsecureHttp is on).",
     "version": "v1"
   },
   "servers": [
@@ -1035,11 +1035,7 @@
             "name": "limit",
             "in": "query",
             "schema": {
-              "pattern": "^-?(?:0|[1-9]\\d*)$",
-              "type": [
-                "integer",
-                "string"
-              ],
+              "type": "integer",
               "format": "int32",
               "default": 50
             }
@@ -1734,11 +1730,9 @@
             ]
           },
           "status": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "null",
-              "integer",
-              "string"
+              "integer"
             ],
             "format": "int32"
           },
@@ -1826,11 +1820,9 @@
             ]
           },
           "status": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "null",
-              "integer",
-              "string"
+              "integer"
             ],
             "format": "int32"
           },
@@ -1917,11 +1909,7 @@
             }
           },
           "assignedUsers": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
+            "type": "integer",
             "format": "int32"
           },
           "createdAt": {
@@ -1937,7 +1925,8 @@
       "SessionResponse": {
         "required": [
           "setupRequired",
-          "user"
+          "user",
+          "insecureConnection"
         ],
         "type": "object",
         "properties": {
@@ -1953,6 +1942,9 @@
                 "$ref": "#/components/schemas/CurrentUserResponse"
               }
             ]
+          },
+          "insecureConnection": {
+            "type": "boolean"
           }
         }
       },

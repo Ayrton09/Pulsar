@@ -2,8 +2,11 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Pulsar.Api.Auth;
 
-/// <summary>What the SPA needs at startup: whether the panel still needs its first administrator, and who is signed in.</summary>
-public sealed record SessionResponse(bool SetupRequired, CurrentUserResponse? User);
+/// <summary>
+/// What the SPA needs at startup: whether the panel still needs its first administrator, who is signed in, and
+/// whether this connection is unencrypted (plain HTTP allowed by Security:AllowInsecureHttp), to warn the user.
+/// </summary>
+public sealed record SessionResponse(bool SetupRequired, CurrentUserResponse? User, bool InsecureConnection);
 
 /// <summary>The signed-in user and their global permissions (the UI hides what the user cannot do; the API enforces it).</summary>
 public sealed record CurrentUserResponse(Guid Id, string UserName, string? DisplayName, IReadOnlyList<string> Permissions);

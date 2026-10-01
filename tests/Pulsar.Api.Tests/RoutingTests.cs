@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Pulsar.Api.Tests.Infrastructure;
 
 namespace Pulsar.Api.Tests;
@@ -22,7 +23,7 @@ public sealed class RoutingTests(NoDatabaseApiFactory factory) : IClassFixture<N
     [InlineData("/agent/v1/unknown")]
     public async Task UnknownBackendRoutesReturnProblemDetailsInsteadOfTheSpa(string path)
     {
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
 
         using var response = await client.GetAsync(new Uri(path, UriKind.Relative), TestContext.Current.CancellationToken);
 

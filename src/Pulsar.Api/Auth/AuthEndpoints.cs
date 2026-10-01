@@ -43,7 +43,7 @@ public static class AuthEndpoints
         }
 
         AntiforgeryProtection.IssueToken(http);
-        return TypedResults.Ok(new SessionResponse(setupRequired, current));
+        return TypedResults.Ok(new SessionResponse(setupRequired, current, InsecureConnection: !http.Request.IsHttps));
     }
 
     private static async Task<Results<Ok<CurrentUserResponse>, ProblemHttpResult, ValidationProblem>> SetupAsync(

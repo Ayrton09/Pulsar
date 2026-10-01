@@ -1037,7 +1037,7 @@ export interface paths {
                     before?: string;
                     action?: string;
                     actorUserId?: string;
-                    limit?: number | string;
+                    limit?: number;
                 };
                 header?: never;
                 path?: never;
@@ -1526,7 +1526,7 @@ export interface components {
             type?: null | string;
             title?: null | string;
             /** Format: int32 */
-            status?: null | number | string;
+            status?: null | number;
             detail?: null | string;
             instance?: null | string;
             errors?: {
@@ -1548,7 +1548,7 @@ export interface components {
             type?: null | string;
             title?: null | string;
             /** Format: int32 */
-            status?: null | number | string;
+            status?: null | number;
             detail?: null | string;
             instance?: null | string;
         };
@@ -1569,7 +1569,7 @@ export interface components {
             isSystem: boolean;
             permissions: string[];
             /** Format: int32 */
-            assignedUsers: number | string;
+            assignedUsers: number;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -1578,6 +1578,7 @@ export interface components {
         SessionResponse: {
             setupRequired: boolean;
             user: null | components["schemas"]["CurrentUserResponse"];
+            insecureConnection: boolean;
         };
         SetupRequest: {
             token: string;

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Pulsar.Api.Access;
 using Pulsar.Api.Auth;
@@ -33,7 +34,12 @@ internal static class ApiServiceCollectionExtensions
         services.AddScoped<UserManagement>();
 
         services.ConfigureHttpJsonOptions(options =>
-            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
+        {
+            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+
+            // Numbers are numbers: the web default also accepts "42", which leaks into the OpenAPI types as number | string.
+            options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
+        });
 
         // The document drives the generated TypeScript client (src/Pulsar.Web/src/api).
         services.AddOpenApi("v1", options => options.AddDocumentTransformer((document, _, _) =>
@@ -41,23 +47,30 @@ internal static class ApiServiceCollectionExtensions
             document.Info.Title = "Pulsar API";
             document.Info.Version = "v1";
             document.Info.Description = "Pulsar panel API. Cookie authentication; state-changing requests need the " +
-                $"{AntiforgeryProtection.HeaderName} header with the token from the {AntiforgeryProtection.RequestTokenCookie} cookie.";
+                $"{AntiforgeryProtection.HeaderName} header with the token from the __Host-pulsar-xsrf cookie " +
+                "(pulsar-xsrf when Security:AllowInsecureHttp is on).";
             return Task.CompletedTask;
         }));
 
-        AddAuthentication(services);
+        var security = configuration.GetSection(SecurityOptions.SectionName).Get<SecurityOptions>() ?? new SecurityOptions();
+        var cookies = new PanelCookies(secure: !security.AllowInsecureHttp);
+        services.AddSingleton(security);
+        services.AddSingleton(cookies);
+        services.Configure<ForwardedHeadersOptions>(options => TransportSecurity.ConfigureForwardedHeaders(options, security));
+
+        AddAuthentication(services, cookies);
         AddRateLimiting(services, configuration);
         return services;
     }
 
-    private static void AddAuthentication(IServiceCollection services)
+    private static void AddAuthentication(IServiceCollection services, PanelCookies cookies)
     {
         services.AddAuthentication(IdentityConstants.ApplicationScheme).AddIdentityCookies();
         services.ConfigureApplicationCookie(options =>
         {
-            options.Cookie.Name = "__Host-pulsar-session";
+            options.Cookie.Name = cookies.Session;
             options.Cookie.HttpOnly = true;
-            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            options.Cookie.SecurePolicy = cookies.SecurePolicy;
             options.Cookie.SameSite = SameSiteMode.Strict;
             options.ExpireTimeSpan = TimeSpan.FromHours(12);
             options.SlidingExpiration = true;
@@ -78,8 +91,8 @@ internal static class ApiServiceCollectionExtensions
         services.AddAntiforgery(options =>
         {
             options.HeaderName = AntiforgeryProtection.HeaderName;
-            options.Cookie.Name = AntiforgeryProtection.CookieTokenCookie;
-            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            options.Cookie.Name = cookies.AntiforgeryCookieToken;
+            options.Cookie.SecurePolicy = cookies.SecurePolicy;
             options.Cookie.SameSite = SameSiteMode.Strict;
         });
     }

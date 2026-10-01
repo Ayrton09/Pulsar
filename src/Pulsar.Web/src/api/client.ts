@@ -4,8 +4,11 @@ import type { components, paths } from './schema';
 /** Types of the panel API, generated from src/api/openapi.json (`npm run api:generate`). */
 export type Schemas = components['schemas'];
 
-/** Readable cookie with the antiforgery request token, and the header the API expects it in. */
-export const XSRF_COOKIE = '__Host-pulsar-xsrf';
+/**
+ * Readable cookie with the antiforgery request token (the __Host- name over HTTPS, the plain one when the panel
+ * allows HTTP), and the header the API expects it in.
+ */
+export const XSRF_COOKIES = ['__Host-pulsar-xsrf', 'pulsar-xsrf'] as const;
 export const XSRF_HEADER = 'X-XSRF-TOKEN';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE']);
@@ -65,9 +68,12 @@ export function createApiClient(options: ApiClientOptions = {}) {
   const client = createClient<paths>({
     baseUrl: options.baseUrl ?? globalThis.location?.origin ?? '',
     credentials: 'same-origin',
-    ...(options.fetch ? { fetch: options.fetch } : {}),
+    // Resolved on every call (not captured once), so tests can replace the global fetch.
+    fetch: options.fetch ?? ((input: Request) => globalThis.fetch(input)),
   });
-  client.use(antiforgeryMiddleware(options.readToken ?? (() => readCookie(XSRF_COOKIE))));
+  client.use(
+    antiforgeryMiddleware(options.readToken ?? (() => XSRF_COOKIES.map((name) => readCookie(name)).find(Boolean))),
+  );
   return client;
 }
 

@@ -23,8 +23,9 @@ Explicit assumptions:
 ### Users and web
 
 - ASP.NET Core Identity: password hashing (Identity's default PBKDF2), lockout, security stamp, TOTP 2FA (enforceable per role in settings). Recovery codes.
-- Protected initial setup: when no users exist, `/setup` requires a **single-use token printed in the panel log/console** at startup (prevents someone else on the network from creating the first admin before you).
-- `HttpOnly; Secure; SameSite=Strict` cookies, antiforgery on mutations, strict CSP, `X-Content-Type-Options`, `Referrer-Policy`, HSTS.
+- Protected initial setup: when no users exist, `/setup` requires a **single-use token printed in the panel log/console** at startup (prevents someone else on the network from creating the first admin before you). Automated installations can provide it instead with `InitialSetup:Token` (at least 32 characters; then it is never printed).
+- **HTTPS by default.** Cookies are `__Host-` prefixed, `HttpOnly; Secure; SameSite=Strict`; HSTS and HTTP→HTTPS redirection are on, and API calls over plain HTTP get `400 transport.https_required`. TLS can terminate at Kestrel or at a reverse proxy: `X-Forwarded-For/Proto` are trusted from loopback and from `Security:TrustedProxies`. Plain HTTP is only possible with the explicit opt-in `Security:AllowInsecureHttp=true` (development, trusted networks): cookies lose `Secure` and the prefix, the panel logs a warning at startup and the UI shows a permanent banner.
+- Antiforgery token (readable `__Host-pulsar-xsrf` cookie, `X-XSRF-TOKEN` header) on every state-changing API call; strict CSP, `X-Content-Type-Options`, `Referrer-Policy` (CSP and headers: Phase 9).
 - Built-in rate limiting (`Microsoft.AspNetCore.RateLimiting`) on login, setup, enrollment and the agent challenge.
 - Resource authorization on **every** endpoint and hub method (enforced by a test); IDs of other users' resources → 404.
 - RBAC anti-escalation (doc 02).

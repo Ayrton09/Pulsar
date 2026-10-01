@@ -55,6 +55,7 @@ try
         return 0;
     }
 
+    app.UseTransportSecurity(app.Services.GetRequiredService<SecurityOptions>());
     app.UseSerilogRequestLogging();
     app.UseExceptionHandler();
     app.UseStatusCodePages();
@@ -100,7 +101,7 @@ try
     await app.RunAsync();
     return 0;
 }
-catch (DatabaseStartupException ex)
+catch (Exception ex) when (ex is DatabaseStartupException or PanelStartupException)
 {
     // Expected configuration/environment problem: a clear message, no stack trace.
     Log.Fatal("Pulsar panel cannot start: {Reason}", ex.Message);

@@ -11,11 +11,6 @@ public static class AntiforgeryProtection
 {
     public const string HeaderName = "X-XSRF-TOKEN";
 
-    /// <summary>Readable by JavaScript on purpose (it only holds the request token, never the session).</summary>
-    public const string RequestTokenCookie = "__Host-pulsar-xsrf";
-
-    public const string CookieTokenCookie = "__Host-pulsar-af";
-
     /// <summary>
     /// Issues a fresh request token. Tokens are bound to the current user, so call this again after sign-in and
     /// sign-out with <see cref="HttpContext.User"/> already updated.
@@ -23,11 +18,12 @@ public static class AntiforgeryProtection
     public static void IssueToken(HttpContext context)
     {
         var antiforgery = context.RequestServices.GetRequiredService<IAntiforgery>();
+        var cookies = context.RequestServices.GetRequiredService<PanelCookies>();
         var tokens = antiforgery.GetAndStoreTokens(context);
-        context.Response.Cookies.Append(RequestTokenCookie, tokens.RequestToken!, new CookieOptions
+        context.Response.Cookies.Append(cookies.AntiforgeryRequestToken, tokens.RequestToken!, new CookieOptions
         {
             HttpOnly = false,
-            Secure = true,
+            Secure = context.Request.IsHttps,
             SameSite = SameSiteMode.Strict,
             Path = "/",
             IsEssential = true,
@@ -49,8 +45,9 @@ internal sealed class AntiforgeryValidationFilter(IAntiforgery antiforgery) : IE
             }
             catch (AntiforgeryValidationException)
             {
-                return ApiProblems.Create(StatusCodes.Status400BadRequest, "antiforgery.invalid",
-                    "Missing or invalid antiforgery token.", $"Send the token from the {AntiforgeryProtection.RequestTokenCookie} cookie in the {AntiforgeryProtection.HeaderName} header.");
+                var cookies = context.HttpContext.RequestServices.GetRequiredService<PanelCookies>();
+                return ApiProblems.Create(StatusCodes.Status400BadRequest, "antiforgery.invalid", "Missing or invalid antiforgery token.",
+                    $"Send the token from the {cookies.AntiforgeryRequestToken} cookie in the {AntiforgeryProtection.HeaderName} header.");
             }
         }
 
