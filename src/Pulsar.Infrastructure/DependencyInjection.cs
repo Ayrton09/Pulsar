@@ -3,7 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Nodes;
 using Pulsar.Infrastructure.Identity;
+using Pulsar.Infrastructure.Nodes;
 using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Infrastructure;
@@ -36,6 +38,9 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
 
         services.AddHealthChecks().AddDbContextCheck<PulsarDbContext>("database", tags: [HealthTags.Ready]);
+
+        services.AddPulsarDataProtection(configuration);
+        services.AddSingleton<IPanelKeyRing, PanelKeyRing>();
 
         services.AddIdentityCore<PulsarUser>(options =>
             {

@@ -49,4 +49,12 @@ public sealed record CommandAck(Guid CommandId, AckStatus Status, string? ErrorC
 public static class AgentCapabilities
 {
     public const string Ping = PingCommand.Type;
+
+    /// <summary>The capability an agent must announce to receive <paramref name="command"/>.</summary>
+    public static string Of(AgentCommand command) => command switch
+    {
+        PingCommand => Ping,
+        null => throw new ArgumentNullException(nameof(command)),
+        _ => throw new ArgumentOutOfRangeException(nameof(command), command.GetType().Name, "Command without a capability."),
+    };
 }

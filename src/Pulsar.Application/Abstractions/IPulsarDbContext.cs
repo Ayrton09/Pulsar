@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
+using Pulsar.Domain.Nodes;
 
 namespace Pulsar.Application.Abstractions;
 
@@ -15,6 +17,15 @@ public interface IPulsarDbContext
     DbSet<UserRoleAssignment> UserRoles { get; }
 
     DbSet<AuditEntry> AuditLog { get; }
+
+    DbSet<Node> Nodes { get; }
+
+    DbSet<NodeCredential> NodeCredentials { get; }
+
+    DbSet<NodeEnrollmentToken> NodeEnrollmentTokens { get; }
+
+    /// <summary>Transactions and set-based updates (e.g. consuming a token atomically).</summary>
+    DatabaseFacade Database { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

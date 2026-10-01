@@ -67,7 +67,8 @@ internal static partial class TransportSecurity
         app.UseHttpsRedirection();
         app.Use(async (context, next) =>
         {
-            if (!context.Request.IsHttps && context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+            if (!context.Request.IsHttps && (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
+                || context.Request.Path.StartsWithSegments("/agent", StringComparison.OrdinalIgnoreCase)))
             {
                 await ApiProblems.Create(StatusCodes.Status400BadRequest, "transport.https_required",
                     "This panel only accepts HTTPS.",

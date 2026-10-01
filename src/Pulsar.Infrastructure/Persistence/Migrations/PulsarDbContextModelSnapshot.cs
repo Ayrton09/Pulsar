@@ -303,6 +303,265 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Nodes.Node", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("description");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("normalized_name");
+
+                    b.Property<string>("PublicHost")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("public_host");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_nodes");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_nodes_normalized_name");
+
+                    b.ToTable("nodes", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_nodes_status", "status IN ('active', 'disabled', 'pending_enrollment')");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Nodes.NodeCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ActivatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("activated_at");
+
+                    b.Property<string>("Algorithm")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("ecdsa-p256-sha256")
+                        .HasColumnName("algorithm");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("fingerprint");
+
+                    b.Property<string>("KeyStorage")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("key_storage");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_used_at");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<byte[]>("PublicKey")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("public_key");
+
+                    b.Property<string>("RevokeReason")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("revoke_reason");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<Guid?>("RevokedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("revoked_by");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_node_credentials");
+
+                    b.HasIndex("Fingerprint")
+                        .IsUnique()
+                        .HasDatabaseName("ix_node_credentials_fingerprint");
+
+                    b.HasIndex("NodeId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_node_credentials_single_active")
+                        .HasFilter("status = 'active'");
+
+                    b.HasIndex("RevokedBy")
+                        .HasDatabaseName("ix_node_credentials_revoked_by");
+
+                    b.ToTable("node_credentials", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_node_credentials_algorithm", "algorithm = 'ecdsa-p256-sha256'");
+
+                            t.HasCheckConstraint("ck_node_credentials_key_storage", "key_storage IN ('software', 'tpm')");
+
+                            t.HasCheckConstraint("ck_node_credentials_status", "status IN ('active', 'pending', 'revoked', 'superseded')");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Nodes.NodeEnrollmentToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consumed_at");
+
+                    b.Property<Guid?>("ConsumedByCredentialId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("consumed_by_credential_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("token_hash");
+
+                    b.HasKey("Id")
+                        .HasName("pk_node_enrollment_tokens");
+
+                    b.HasIndex("ConsumedByCredentialId")
+                        .HasDatabaseName("ix_node_enrollment_tokens_consumed_by_credential_id");
+
+                    b.HasIndex("CreatedBy")
+                        .HasDatabaseName("ix_node_enrollment_tokens_created_by");
+
+                    b.HasIndex("NodeId")
+                        .HasDatabaseName("ix_node_enrollment_tokens_node_id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_node_enrollment_tokens_token_hash");
+
+                    b.ToTable("node_enrollment_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Nodes.PanelSigningKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("KeyId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("key_id");
+
+                    b.Property<byte[]>("ProtectedPrivateKey")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("protected_private_key");
+
+                    b.Property<byte[]>("PublicKey")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("public_key");
+
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("retired_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_panel_signing_keys");
+
+                    b.HasIndex("KeyId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_panel_signing_keys_key_id");
+
+                    b.HasIndex("Status")
+                        .IsUnique()
+                        .HasDatabaseName("ux_panel_signing_keys_single_active")
+                        .HasFilter("status = 'active'");
+
+                    b.ToTable("panel_signing_keys", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_panel_signing_keys_status", "status IN ('active', 'retired', 'retiring')");
+                        });
+                });
+
             modelBuilder.Entity("Pulsar.Infrastructure.Identity.PulsarUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -478,6 +737,110 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_user_roles_roles_role_id_role_scope");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Nodes.Node", b =>
+                {
+                    b.OwnsOne("Pulsar.Domain.Nodes.NodeInventorySnapshot", "Inventory", b1 =>
+                        {
+                            b1.Property<Guid>("NodeId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("id");
+
+                            b1.Property<string>("AgentVersion")
+                                .IsRequired()
+                                .HasMaxLength(32)
+                                .HasColumnType("character varying(32)")
+                                .HasColumnName("agent_version");
+
+                            b1.Property<string>("CpuModel")
+                                .HasMaxLength(255)
+                                .HasColumnType("character varying(255)")
+                                .HasColumnName("cpu_model");
+
+                            b1.Property<string>("Hostname")
+                                .IsRequired()
+                                .HasMaxLength(255)
+                                .HasColumnType("character varying(255)")
+                                .HasColumnName("hostname");
+
+                            b1.Property<int>("LogicalCores")
+                                .HasColumnType("integer")
+                                .HasColumnName("cpu_logical_cores");
+
+                            b1.Property<long>("MemoryTotalBytes")
+                                .HasColumnType("bigint")
+                                .HasColumnName("memory_total_bytes");
+
+                            b1.Property<string>("OsBuild")
+                                .IsRequired()
+                                .HasMaxLength(64)
+                                .HasColumnType("character varying(64)")
+                                .HasColumnName("os_build");
+
+                            b1.Property<string>("OsDescription")
+                                .IsRequired()
+                                .HasMaxLength(255)
+                                .HasColumnType("character varying(255)")
+                                .HasColumnName("os_description");
+
+                            b1.Property<int>("ProtocolVersion")
+                                .HasColumnType("integer")
+                                .HasColumnName("protocol_version");
+
+                            b1.Property<string>("ServersRoot")
+                                .HasMaxLength(1024)
+                                .HasColumnType("character varying(1024)")
+                                .HasColumnName("servers_root");
+
+                            b1.HasKey("NodeId");
+
+                            b1.ToTable("nodes");
+
+                            b1.WithOwner()
+                                .HasForeignKey("NodeId")
+                                .HasConstraintName("fk_nodes_nodes_id");
+                        });
+
+                    b.Navigation("Inventory");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Nodes.NodeCredential", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Nodes.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_credentials_nodes_node_id");
+
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithMany()
+                        .HasForeignKey("RevokedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_node_credentials_users_revoked_by");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Nodes.NodeEnrollmentToken", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Nodes.NodeCredential", null)
+                        .WithMany()
+                        .HasForeignKey("ConsumedByCredentialId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_node_enrollment_tokens_node_credentials_consumed_by_credent");
+
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_node_enrollment_tokens_users_created_by");
+
+                    b.HasOne("Pulsar.Domain.Nodes.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_enrollment_tokens_nodes_node_id");
                 });
 #pragma warning restore 612, 618
         }

@@ -5,6 +5,7 @@ using Pulsar.Application.Abstractions;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Nodes;
 using Pulsar.Infrastructure.Identity;
 
 namespace Pulsar.Infrastructure.Persistence;
@@ -18,6 +19,14 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
     public DbSet<UserRoleAssignment> UserRoles => Set<UserRoleAssignment>();
 
     public DbSet<AuditEntry> AuditLog => Set<AuditEntry>();
+
+    public DbSet<Node> Nodes => Set<Node>();
+
+    public DbSet<NodeCredential> NodeCredentials => Set<NodeCredential>();
+
+    public DbSet<NodeEnrollmentToken> NodeEnrollmentTokens => Set<NodeEnrollmentToken>();
+
+    public DbSet<PanelSigningKey> PanelSigningKeys => Set<PanelSigningKey>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {

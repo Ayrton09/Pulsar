@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Pulsar.Api.Agents;
 using Pulsar.Api.Security;
 using Pulsar.Api.Tests.Infrastructure;
 
@@ -23,6 +24,7 @@ public sealed class EndpointAuthorizationCoverageTests(NoDatabaseApiFactory fact
             .Where(e => e.Metadata.GetMetadata<RequiredPermissionMetadata>() is null
                 && e.Metadata.GetMetadata<SignedInUserMetadata>() is null
                 && e.Metadata.GetMetadata<IAllowAnonymous>() is null
+                && e.Metadata.GetMetadata<AgentEndpointMetadata>() is null
                 && !IsFrameworkEndpoint(e))
             .Select(e => $"{string.Join(",", e.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods ?? [])} {e.RoutePattern.RawText}")
             .ToList();

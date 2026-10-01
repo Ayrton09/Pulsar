@@ -20,6 +20,20 @@ public static class AuditActions
         public const string PasswordReset = "user.password_reset";
     }
 
+    public static class Node
+    {
+        public const string Created = "node.created";
+        public const string Updated = "node.updated";
+        public const string Deleted = "node.deleted";
+        public const string Disabled = "node.disabled";
+        public const string Enabled = "node.enabled";
+        public const string EnrollmentTokenCreated = "node.enrollment_token_created";
+        public const string Enrolled = "node.enrolled";
+        public const string EnrollmentFailed = "node.enrollment_failed";
+        public const string CredentialRevoked = "node.credential_revoked";
+        public const string AuthenticationFailed = "node.authentication_failed";
+    }
+
     public static class Role
     {
         public const string Created = "role.created";

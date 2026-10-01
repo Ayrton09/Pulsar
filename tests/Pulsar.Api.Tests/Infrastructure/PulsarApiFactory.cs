@@ -20,6 +20,9 @@ public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public TestDatabase Database => _database ?? throw new InvalidOperationException("Database tests are disabled.");
 
+    /// <summary>Data Protection key ring of this panel instance (never the machine-wide default).</summary>
+    public string KeysDirectory { get; } = TestKeys.NewDirectory();
+
     public async ValueTask InitializeAsync()
     {
         if (TestDatabase.IsEnabled)
@@ -31,6 +34,7 @@ public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     public override async ValueTask DisposeAsync()
     {
         await base.DisposeAsync();
+        TestKeys.Delete(KeysDirectory);
         _setupLock.Dispose();
         if (_database is not null)
         {
@@ -88,16 +92,26 @@ public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:Pulsar", _database?.ConnectionString ?? "Host=database-tests-disabled");
         builder.UseSetting("RateLimiting:Auth:PermitLimit", "1000");
+        builder.UseSetting("DataProtection:KeysPath", KeysDirectory);
     }
 }
 
 /// <summary>The panel without a database, for tests of the HTTP pipeline only.</summary>
 public sealed class NoDatabaseApiFactory : WebApplicationFactory<Program>
 {
+    private readonly string _keys = TestKeys.NewDirectory();
+
+    public override async ValueTask DisposeAsync()
+    {
+        await base.DisposeAsync();
+        TestKeys.Delete(_keys);
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:Pulsar", "Host=no-database-in-these-tests");
+        builder.UseSetting("DataProtection:KeysPath", _keys);
         builder.ConfigureTestServices(services => services.AddScoped<IDatabaseInitializer, NoOpDatabaseInitializer>());
     }
 

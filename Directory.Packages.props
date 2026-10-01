@@ -14,6 +14,7 @@
 
   <ItemGroup Label="Web API">
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup Label="Persistence and identity">

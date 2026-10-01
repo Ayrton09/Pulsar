@@ -44,6 +44,8 @@ public sealed class DatabaseStartupTests(PulsarApiFactory factory) : IClassFixtu
 
 public sealed class DatabaseInitializerTests
 {
+    private static readonly string s_keys = TestKeys.NewDirectory();
+
     [Fact]
     public void MissingConnectionStringFailsWithAnActionableMessage()
     {
@@ -101,7 +103,11 @@ public sealed class DatabaseInitializerTests
     private static ServiceProvider Build(string connectionString, ILoggerProvider? logs = null)
     {
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Pulsar"] = connectionString })
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Pulsar"] = connectionString,
+                ["DataProtection:KeysPath"] = s_keys,
+            })
             .Build();
         return new ServiceCollection()
             .AddLogging(builder =>

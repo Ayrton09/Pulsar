@@ -1,14 +1,18 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Pulsar.Api.Access;
+using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Http;
 using Pulsar.Api.Security;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Nodes;
+using Pulsar.Contracts;
 
 namespace Pulsar.Api;
 
@@ -60,7 +64,18 @@ internal static class ApiServiceCollectionExtensions
 
         AddAuthentication(services, cookies);
         AddRateLimiting(services, configuration);
+        AddAgentChannel(services);
         return services;
+    }
+
+    private static void AddAgentChannel(IServiceCollection services)
+    {
+        services.AddSignalR(options => options.MaximumReceiveMessageSize = AgentProtocol.MaximumMessageSize)
+            .AddJsonProtocol(options => ProtocolJson.Configure(options.PayloadSerializerOptions));
+        services.AddSingleton<AgentConnectionRegistry>();
+        services.AddSingleton<IAgentConnections>(sp => sp.GetRequiredService<AgentConnectionRegistry>());
+        services.AddAuthentication()
+            .AddScheme<AuthenticationSchemeOptions, AgentAuthenticationHandler>(AgentAuthenticationHandler.Scheme, null);
     }
 
     private static void AddAuthentication(IServiceCollection services, PanelCookies cookies)
@@ -105,6 +120,12 @@ internal static class ApiServiceCollectionExtensions
             options.AddPolicy(AuthEndpoints.RateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
                 context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.PermitLimit, Window = limits.Window, QueueLimit = 0 }));
+            options.AddPolicy(AgentEndpoints.EnrollRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            options.AddPolicy(AgentEndpoints.AuthRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
             options.OnRejected = (context, _) => new ValueTask(WriteProblemAsync(context.HttpContext,
                 StatusCodes.Status429TooManyRequests, "rate_limit.exceeded", "Too many attempts. Try again in a minute."));
         });

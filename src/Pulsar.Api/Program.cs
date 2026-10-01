@@ -1,11 +1,15 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.Extensions.Options;
 using Pulsar.Api;
 using Pulsar.Api.Access;
+using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
+using Pulsar.Api.Nodes;
 using Pulsar.Api.Security;
 using Pulsar.Application;
+using Pulsar.Contracts;
 using Pulsar.Infrastructure;
 using Pulsar.Infrastructure.Persistence;
 using Serilog;
@@ -89,6 +93,15 @@ try
     api.MapUserEndpoints();
     api.MapRoleEndpoints();
     api.MapAuditEndpoints();
+    api.MapNodeEndpoints();
+
+    // Agent protocol: its own authentication, never the browser's (docs/architecture/03).
+    app.MapAgentEndpoints();
+    app.MapHub<AgentHub>(AgentProtocol.HubPath, options =>
+    {
+        options.Transports = HttpTransportType.WebSockets;
+        options.CloseOnAuthenticationExpiration = true;
+    }).WithMetadata(AgentEndpointMetadata.Instance);
 
     // API, hub and agent routes must never fall through to the SPA's index.html.
     app.MapNotFoundFallback("/api");

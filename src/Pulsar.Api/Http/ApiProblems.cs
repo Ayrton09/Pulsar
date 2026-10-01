@@ -26,7 +26,8 @@ public static class ApiProblems
     {
         _ when code.EndsWith(".not_found", StringComparison.Ordinal) => StatusCodes.Status404NotFound,
         "access.escalation" or "access.self_change" => StatusCodes.Status403Forbidden,
-        "role.name_taken" or "role.in_use" or "access.last_administrator" or "role.system_immutable" => StatusCodes.Status409Conflict,
+        "role.name_taken" or "role.in_use" or "access.last_administrator" or "role.system_immutable"
+            or "node.name_taken" or "node.not_connected" => StatusCodes.Status409Conflict,
         _ => StatusCodes.Status400BadRequest,
     };
 
