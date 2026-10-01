@@ -1,6 +1,6 @@
 # ADR-0009 — ASP.NET Core Identity with cookies and an own scoped RBAC
 
-Status: Proposed
+Status: Accepted (2026-10-01) — implemented in Phase 1 (global scope; node and server assignments arrive with nodes and servers).
 
 ## Context
 Robust authentication (hashing, lockout, 2FA) and granular RBAC per server/node are required, without `Admin = true`.

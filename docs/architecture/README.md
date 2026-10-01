@@ -36,12 +36,12 @@
 | [0001](../adr/0001-modular-monolith-single-instance.md) | Modular monolith, single panel instance | Proposed | In-memory state (connections, metrics) assumes one process. |
 | [0002](../adr/0002-agent-initiated-signalr-connection.md) | Agent → panel over SignalR/WebSockets | Proposed | Every deployed agent speaks this protocol. |
 | [0003](../adr/0003-node-identity-and-signed-commands.md) | Per-node keys + proof of possession + signed commands | Proposed | Changing identity means re-enrolling every node. |
-| [0004](../adr/0004-uuidv7.md) | Application-generated UUIDv7 | Proposed | IDs live in the database, URLs, protocol and resource names. |
+| [0004](../adr/0004-uuidv7.md) | Application-generated UUIDv7 | Accepted | IDs live in the database, URLs, protocol and resource names. |
 | [0005](../adr/0005-windows-account-per-server.md) | One Windows account per server, agent as SYSTEM | **Accepted** | ACLs and disk layout of every existing server. |
 | [0006](../adr/0006-kill-on-job-close.md) | Servers die with the agent (v1) | **Accepted** | Operational expectations and agent design. |
 | [0007](../adr/0007-console-conpty-or-pipes.md) | Console modes per manifest (ConPTY, pipes, log file + RCON); not stored in PostgreSQL | **Accepted** | Stream format and console UX. |
 | [0008](../adr/0008-declarative-manifests.md) | Declarative manifests, closed steps, version pinning | Proposed | The community writes manifests against this format. |
-| [0009](../adr/0009-identity-cookies-and-scoped-rbac.md) | Identity + cookies; own scoped RBAC | Proposed | User tables and permission model. |
+| [0009](../adr/0009-identity-cookies-and-scoped-rbac.md) | Identity + cookies; own scoped RBAC | Accepted | User tables and permission model. |
 | [0010](../adr/0010-panel-side-scheduler.md) | Panel-side scheduler on PostgreSQL | Proposed | Task semantics when the panel is down. |
 | [0011](../adr/0011-secrets-with-data-protection.md) | Secrets with Data Protection | Proposed | The key ring is required to restore the panel. |
 | [0012](../adr/0012-node-local-zip-backups.md) | Node-local zip backups (v1) | Proposed | Backup format users accumulate. |
