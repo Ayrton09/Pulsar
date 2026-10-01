@@ -1,10 +1,32 @@
 namespace Pulsar.Contracts;
 
 /// <summary>
-/// Versioning of the panel ↔ agent protocol. The major version is also part of the agent endpoints
-/// (<c>/agent/v1/...</c>); within a major version only additive changes are allowed.
+/// Versioning and endpoints of the panel ↔ agent protocol (docs/architecture/03). The major version is also part of
+/// the agent endpoints (<c>/agent/v1/...</c>); within a major version only additive changes are allowed.
 /// </summary>
 public static class AgentProtocol
 {
     public const int CurrentVersion = 1;
+
+    /// <summary>Oldest protocol version the panel still accepts (N-1 support, docs/architecture/03).</summary>
+    public const int MinimumSupportedVersion = 1;
+
+    public const string BasePath = "/agent/v1";
+    public const string PanelIdentityPath = BasePath + "/panel-identity";
+    public const string EnrollPath = BasePath + "/enroll";
+    public const string ChallengePath = BasePath + "/auth/challenge";
+    public const string TokenPath = BasePath + "/auth/token";
+    public const string HubPath = BasePath + "/hub";
+
+    /// <summary>Largest hub message either side accepts.</summary>
+    public const long MaximumMessageSize = 1024 * 1024;
+
+    /// <summary>Signature domains: a signature made for one purpose can never be replayed as another.</summary>
+    public static class Purposes
+    {
+        public const string Enroll = "pulsar-enroll-v1";
+        public const string Authenticate = "pulsar-agent-auth-v1";
+        public const string EnrollmentResult = "pulsar-enrollment-result-v1";
+        public const string Command = "pulsar-command-v1";
+    }
 }
