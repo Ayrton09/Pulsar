@@ -13,8 +13,8 @@ To add an ADR, copy an existing one and use the next number.
 | [0003](0003-node-identity-and-signed-commands.md) | Per-node keys, proof of possession and signed commands | Proposed |
 | [0004](0004-uuidv7.md) | Application-generated UUIDv7 identifiers | Proposed |
 | [0005](0005-windows-account-per-server.md) | Agent as LocalSystem, one Windows account per game server | Accepted |
-| [0006](0006-kill-on-job-close.md) | Job Objects with KILL_ON_JOB_CLOSE | Proposed |
-| [0007](0007-console-conpty-or-pipes.md) | Console via ConPTY or pipes, not persisted in PostgreSQL | Proposed |
+| [0006](0006-kill-on-job-close.md) | Job Objects with KILL_ON_JOB_CLOSE | Accepted |
+| [0007](0007-console-conpty-or-pipes.md) | Console modes per manifest (ConPTY, pipes, log file + RCON) | Accepted |
 | [0008](0008-declarative-manifests.md) | Declarative manifests with closed steps and version pinning | Proposed |
 | [0009](0009-identity-cookies-and-scoped-rbac.md) | ASP.NET Core Identity with cookies and scoped RBAC | Proposed |
 | [0010](0010-panel-side-scheduler.md) | Panel-side scheduler on PostgreSQL | Proposed |

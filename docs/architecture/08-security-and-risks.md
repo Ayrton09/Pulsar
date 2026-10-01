@@ -43,6 +43,7 @@ Explicit assumptions:
 - ACLs: each server only sees its directory; agent directories (`%ProgramData%\Pulsar\Agent`) are SYSTEM/Administrators only.
 - Jobs with UI restrictions and no breakaway.
 - Explicit inherited handles (`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`).
+- RCON (Source servers in `logfile+rcon` mode) is a credential exposed on the game's TCP port: the agent generates and keeps a long random password per server (T18).
 
 ### File manager (critical)
 
@@ -114,6 +115,7 @@ Append-only from the application, no secrets, with IP and actor. Minimum actions
 | T15 | Secret leakage in logs/audit | Redaction, write-only secrets, sensitive console prefixes |
 | T16 | First admin created by a third party | Locally printed setup token |
 | T17 | Repudiation | Audit with actor, IP, correlation |
+| T18 | RCON brute force on the game's TCP port (`logfile+rcon` servers) | Agent-generated random password per server (≥ 32 chars, never user-chosen by default), RCON ban settings in the manifest (`sv_rcon_maxfailures`, `sv_rcon_banpenalty`), password rotated on reinstall; firewall rules only open the ports the manifest declares |
 
 ## Main project risks
 

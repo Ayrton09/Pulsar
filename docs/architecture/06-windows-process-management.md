@@ -98,7 +98,9 @@ public interface IGameProcess : IAsyncDisposable
 | Output format | Rendered screen (cursor moves, redraws, wrapping at the width) | Clean line stream |
 | Per-line timestamps | Approximate (per chunk) | Exact |
 
-**Decision:** the manifest chooses (`console.mode`). `pty` is expected for the Source family (CS2, CS:S, GMod) and `pipes` for Java/Minecraft. **[spike]** Confirm on Windows 11 and Windows Server 2022/2025 how `cs2.exe` and `srcds.exe` behave in each mode, and how `steamcmd.exe` outputs (its output reportedly arrives in bursts with redirected stdout; ConPTY may fix that).
+**Decision (validated by [spike 0001](../spikes/0001-console-capture.md)):** the manifest chooses `console.mode` among `pty`, `pipes` and `logfile+rcon`. SteamCMD runs under `pty` (block-buffered on pipes). `srcds.exe` (CS:S, GMod) needs `logfile+rcon`: on pipes it crashes because it requires a console for input, and given a ConPTY it allocates its own console and writes nothing to ours, so output is read from `-condebug`'s log file and commands/stop go through RCON. CS2 is still to be measured.
+
+A ConPTY child inherits the caller's standard handles when the caller has them; the agent service has none, and in development the agent clears its standard handles (or passes explicit ones) before creating ConPTY children.
 
 Known gotchas to cover with tests:
 
@@ -110,7 +112,7 @@ Known gotchas to cover with tests:
 
 Windows has no SIGTERM. Pulsar runs the manifest steps in order:
 
-1. `consoleCommand` (e.g. `quit`, `stop`) written to the input.
+1. `consoleCommand` (e.g. `quit`, `stop`) written to the input, or `rconCommand` sent over RCON (`logfile+rcon` mode: `quit` over RCON stopped CS:S with exit code 0 in about 1 s).
 2. `ctrlC` (Pty only).
 3. Wait up to `timeoutSeconds` for the main process.
 4. `TerminateJobObject` → kills **the whole tree** atomically.
@@ -161,9 +163,9 @@ Cost: a few syscalls per server every 5 s. No performance counters (slow and fra
 - One installation per node in `%ProgramData%\Pulsar\Agent\steamcmd`, run under a dedicated `pulsar_steamcmd` account (not SYSTEM, not the server accounts: SteamCMD updates itself and writes into its directory; if a server account could write there it would compromise every other server).
 - Per-node queue with concurrency 1 in v1 (SteamCMD shares `appcache`/config; concurrent runs on the same installation are fragile). The queue is visible in the UI. Concurrency > 1 with separate installations: post-v1.
 - Arguments: `+force_install_dir <dir>` **before** `+login anonymous`, `+app_update <appId> [-beta …] [validate]`, `+quit`. Built as argv, never concatenated for a shell.
-- Initial download from Valve's official URL over HTTPS; **[spike]** verify the Authenticode signature of `steamcmd.exe` (`WinVerifyTrust`) if Valve signs it. The first run updates itself: treated as a "bootstrap" stage.
-- Progress through a regex over `Update state (0x…) downloading, progress: NN.NN (x / y)` lines, tolerant to format changes (if not recognized, the log is shown without a percentage).
-- Retries with backoff for known transient failures (max 3); disk space or credential errors are not retried. Cancellation = terminating its Job.
+- Initial download from Valve's official URL over HTTPS, then verify the Authenticode signature of `steamcmd.exe` (`WinVerifyTrust`; spike 0001: signed by `CN=Valve`). The first run updates itself and exits with code 7: treated as a separate "bootstrap" step.
+- Runs under ConPTY (live output). Progress through a regex over ` Update state (0x61) downloading, progress: 9.44 (238319757 / 2524405728)` lines (`0x81` verifying, `0x3` reconfiguring), tolerant to format changes. Some messages are localized to the OS language, so parsing relies only on language-neutral lines (`Update state`, `Success!`, `ERROR!`) and exit codes.
+- Retries with backoff for transient failures (max 3) — spike 0001 hit `ERROR! Failed to install app (Missing configuration)` (exit code 8) on the first attempt and the retry succeeded; disk space or credential errors are not retried. Cancellation = terminating its Job.
 - v1: `anonymous` only (CS2, CS:S and GMod allow it). Steam account login and Steam Guard: post-v1, with node-level encrypted credentials.
 
 ### Windows Firewall

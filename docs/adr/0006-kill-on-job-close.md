@@ -1,6 +1,6 @@
 # ADR-0006 — Job Objects with KILL_ON_JOB_CLOSE: servers do not survive the agent (v1)
 
-Status: Proposed — to be confirmed by the Phase 0 spikes.
+Status: Accepted (2026-10-01) — confirmed by [spike 0001](../spikes/0001-console-capture.md): terminating the Job always removed the whole tree (including srcds and the `conhost.exe` it creates), with no orphans.
 
 ## Context
 Orphaned processes must be impossible and the process tree must always be cleaned up. If the agent dies, the console (ConPTY/pipes) it owns is lost as well.

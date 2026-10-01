@@ -29,7 +29,7 @@ Manifests and schemas are MIT licensed so communities and hosting companies can 
 
 ## Example: Counter-Strike 2
 
-> Illustrative. Exact arguments, readiness patterns and console behavior are confirmed by the Phase 0 spikes.
+> Illustrative and **not validated yet**: CS2 (Source 2) was not part of spike 0001. Its console mode (`pty` below vs `logfile+rcon` like srcds), arguments and readiness pattern must be confirmed with a CS2 run before this manifest is written.
 
 ```json
 {
@@ -178,14 +178,41 @@ There is no `run`/`exec`/`script` step. If a game needed its own installer, it w
 
 ### Console
 
-- `mode`: `pty` (ConPTY; needed for processes that write to the Windows console instead of stdout) or `pipes` (redirected stdout/stderr/stdin; e.g. Java).
-- `encoding` (`pipes` only): `utf-8` (default), `oem`, `ansi`.
-- `inputNewline`, `sensitiveCommandPrefixes` (commands starting with these are audited as `rcon_password ***`).
+Three modes, chosen per game from the evidence of [spike 0001](../spikes/0001-console-capture.md) (ADR-0007):
+
+| `mode` | Output | Input / graceful stop | For |
+|---|---|---|---|
+| `pty` | ConPTY stream | Written to the ConPTY (Ctrl+C = `0x03`) | Console applications that use their console normally (SteamCMD) |
+| `pipes` | Redirected stdout/stderr | stdin | Processes that only use stdio (e.g. Java) |
+| `logfile+rcon` | Tail of `console.logFile` | RCON (`console.rcon`) | **Source engine on Windows** (srcds allocates its own console and crashes without one) |
+
+- `encoding` (`pipes` and `logfile+rcon`): `utf-8` (default), `oem`, `ansi`.
+- `inputNewline` (`pty`/`pipes`), `sensitiveCommandPrefixes` (commands starting with these are audited as `rcon_password ***`).
+- `logFile` (`logfile+rcon`): relative path of the log the game writes (e.g. `cstrike/console.log` with `-condebug`). The agent rotates it before each start and follows truncation/recreation.
+- `rcon` (`logfile+rcon`): `{ "protocol": "source", "port": "game", "passwordArgument": ["+rcon_password", "{{rcon.password}}"] }`. The agent generates a random password per server (`{{rcon.password}}` is the only placeholder not backed by a user variable) and keeps the RCON session; RCON responses are inserted into the console stream.
+
+Fragment for Counter-Strike: Source (validated by spike 0001):
+
+```json
+"runtime": {
+  "windows-x64": {
+    "executable": "srcds.exe",
+    "arguments": [
+      "-game", "cstrike", "-console", "-condebug",
+      "-port", "{{port.game}}", "+maxplayers", "{{var.maxPlayers}}", "+map", "{{var.map}}",
+      "+rcon_password", "{{rcon.password}}", "+sv_rcon_maxfailures", "5", "+sv_rcon_banpenalty", "30"
+    ],
+    "console": { "mode": "logfile+rcon", "logFile": "cstrike/console.log", "rcon": { "protocol": "source", "port": "game" } }
+  }
+},
+"readiness": { "type": "logPattern", "pattern": "^Server is hibernating", "timeoutSeconds": 120 },
+"stop": { "steps": [ { "type": "rconCommand", "command": "quit" } ], "timeoutSeconds": 30 }
+```
 
 ### Readiness and stop
 
-- Readiness: `logPattern` (regex over the output), `processAlive` (`graceSeconds`), post-v1 `query` (A2S for Source). Moves `Starting → Running`.
-- Stop: steps `consoleCommand`, `ctrlC` (`pty` only), `wait`; after `timeoutSeconds` the agent **terminates the Job** (kills the whole tree).
+- Readiness: `logPattern` (regex over the output), `processAlive` (`graceSeconds`), `rcon` (first successful RCON command), post-v1 `query` (A2S for Source). Moves `Starting → Running`.
+- Stop: steps `consoleCommand` (`pty`/`pipes`), `rconCommand` (`logfile+rcon`), `ctrlC` (`pty` only), `wait`; after `timeoutSeconds` the agent **terminates the Job** (kills the whole tree).
 
 ### Backups
 
