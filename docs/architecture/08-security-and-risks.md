@@ -39,7 +39,7 @@ Explicit assumptions:
 ### Node
 
 - Agent without listening ports.
-- Per-server accounts outside the `Users` group, without interactive/RDP/network logon.
+- Per-server accounts without interactive/RDP/network logon; the game runs with a restricted token without privileges (no `SeShutdownPrivilege`). The token still contains `BUILTIN\Users`, so isolation comes from ACLs, not group membership. Residual risk: files a server writes into Users-writable system locations (`C:\ProgramData`, `C:\Users\Public`) are readable by the other servers.
 - ACLs: each server only sees its directory; agent directories (`%ProgramData%\Pulsar\Agent`) are SYSTEM/Administrators only.
 - Jobs with UI restrictions and no breakaway.
 - Explicit inherited handles (`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`).
@@ -105,7 +105,7 @@ Append-only from the application, no secrets, with IP and actor. Minimum actions
 | T5 | Argument/console command injection through variables | Typing, mandatory regex, no leading `-`/`+`, argv without a shell, encoders |
 | T6 | Path traversal / junctions / ADS / devices | Lexical validation + handle final path + impersonation + ACL |
 | T7 | Zip slip on restore | Per-entry validator |
-| T8 | Malicious plugin escalates to SYSTEM or other servers | Per-server account, ACL, Job, not in Users |
+| T8 | Malicious plugin escalates to SYSTEM, reaches other servers or shuts the node down | Per-server account, ACL, Job, restricted token without privileges |
 | T9 | Malicious manifest | Privileged import, closed steps, capability review |
 | T10 | RBAC privilege escalation / IDOR | Single per-resource evaluator, anti-escalation, authorization matrix tests |
 | T11 | XSS / CSRF / clickjacking | Escaped React, CSP, SameSite + antiforgery, frame-ancestors |

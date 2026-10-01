@@ -68,8 +68,10 @@ public interface IGameProcess : IAsyncDisposable
       SetInformationJobObject(JobObjectAssociateCompletionPortInformation) → agent's shared IOCP
  3. Identity:
       LogonUser(server account, LOGON32_LOGON_BATCH) → token
-      LoadUserProfile(token)                                         [spike: is it actually needed per game]
+      LoadUserProfile(token)              (required: without it the child gets SYSTEM's environment, spike 0002)
       CreateEnvironmentBlock(token) + manifest overrides + TEMP/TMP inside the server directory
+      CreateRestrictedToken(token, DISABLE_MAX_PRIVILEGE) → child token (only SeChangeNotifyPrivilege;
+         removes SeShutdownPrivilege, which Users hold on client editions)
  4. Console:
       Pty:   CreatePipe ×2 → CreatePseudoConsole(COORD{220, 50}, inRead, outWrite)
       Pipes: CreatePipe ×3 (stdin/stdout/stderr), only the child ends inheritable
@@ -77,8 +79,9 @@ public interface IGameProcess : IAsyncDisposable
       PROC_THREAD_ATTRIBUTE_JOB_LIST       → the process is born inside the Job (Windows 10+)
       PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE  (Pty)  or
       PROC_THREAD_ATTRIBUTE_HANDLE_LIST    (Pipes) → inherits ONLY those handles
-      lpDesktop = dedicated agent window station/desktop with a DACL for the server SID  [spike]
- 6. CreateProcessAsUser(token, lpApplicationName = absolute exe, lpCommandLine = quoted argv,
+      lpDesktop = dedicated agent window station/desktop with a DACL for the server SID  [spike: not needed
+         for a console process; to confirm with srcds]
+ 6. CreateProcessAsUser(child token, lpApplicationName = absolute exe, lpCommandLine = quoted argv,
       flags: EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED
              (+ CREATE_NO_WINDOW in Pipes))
  7. Check IsProcessInJob; ResumeThread; close the thread handle and the child pipe ends.
@@ -150,12 +153,14 @@ Cost: a few syscalls per server every 5 s. No performance counters (slow and fra
 
 **Decision: C**, implemented in Phase 3 together with process management (before the file manager, which relies on impersonation). Details:
 
-- Account `pulsar_<shortId>` (≤ 20 characters) created with `NetUserAdd`, random 64-character password (satisfies complexity policies), `UF_DONT_EXPIRE_PASSWD | UF_PASSWD_CANT_CHANGE`, **removed from the `Users` group**. Password stored encrypted with DPAPI (LocalMachine) in the agent state.
+- Account `pulsar_<shortId>` (≤ 20 characters) created with `NetUserAdd`, random 64-character password (satisfies complexity policies), `UF_DONT_EXPIRE_PASSWD | UF_PASSWD_CANT_CHANGE`. Password stored encrypted with DPAPI (LocalMachine) in the agent state.
+- The token **always contains `BUILTIN\Users`** (through `Authenticated Users`; removing group membership has no effect, spike 0002), so isolation relies on directory ACLs and never on the account being outside Users. The child runs with a restricted token without privileges (start sequence, step 3).
+- Residual risk: locations writable by Users (`C:\ProgramData`, `C:\Users\Public`) are readable by every server. `TEMP`/`TMP` point into the server directory and manifests keep game data there; system ACLs are not modified.
 - LSA rights (`LsaAddAccountRights`): `SeBatchLogonRight`; **denied** `SeDenyInteractiveLogonRight`, `SeDenyRemoteInteractiveLogonRight`, `SeDenyNetworkLogonRight` (nobody can use it for RDP or SMB).
 - ACLs: `<ServersRoot>` with inheritance disabled (SYSTEM and Administrators only). Each `<ServersRoot>\<shortId>`: SYSTEM and Administrators full control, `pulsar_<shortId>` Modify, the SteamCMD account Modify. A server cannot list or read another one.
-- Alternative to evaluate in the spike: S4U logon (no stored password). `LogonUser` + password is chosen because it is better documented.
+- Not evaluated: S4U logon (no stored password). `LogonUser` + password is kept because it is better documented and validated by spike 0002.
 - Known limitation: a **domain controller** has no local accounts; the agent refuses to install on a DC with a clear message.
-- **[spike]** Window station / desktop: a process launched with another token from a service fails to initialize user32 (`0xC0000142`) if its SID cannot access the window station/desktop. A dedicated desktop with a proper DACL is created and passed in `lpDesktop`.
+- **[spike]** Window station / desktop: a process launched with another token from a service can fail to initialize user32 (`0xC0000142`) if its SID cannot access the window station/desktop. Spike 0002 did not reproduce it with a console process; since `srcds.exe` creates a console window, a dedicated desktop with a proper DACL is still created and passed in `lpDesktop` until a real game is validated without it.
 - A "current user" mode exists only for development with the agent running in a console, with explicit warnings.
 
 ### SteamCMD
