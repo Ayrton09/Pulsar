@@ -1,15 +1,21 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Application.Abstractions;
+using Pulsar.Infrastructure.Identity;
 using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Infrastructure;
 
+/// <summary>Health check tags: <see cref="Ready"/> checks gate <c>/health/ready</c>.</summary>
+public static class HealthTags
+{
+    public const string Ready = "ready";
+}
+
 public static class DependencyInjection
 {
-    public const string ReadyHealthTag = "ready";
-
     public static IServiceCollection AddPulsarInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         var connectionString = configuration.GetConnectionString(DatabaseOptions.ConnectionStringName);
@@ -29,7 +35,28 @@ public static class DependencyInjection
         services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
         services.AddSingleton(TimeProvider.System);
 
-        services.AddHealthChecks().AddDbContextCheck<PulsarDbContext>("database", tags: [ReadyHealthTag]);
+        services.AddHealthChecks().AddDbContextCheck<PulsarDbContext>("database", tags: [HealthTags.Ready]);
+
+        services.AddIdentityCore<PulsarUser>(options =>
+            {
+                // Length over composition rules (NIST SP 800-63B); Identity hashes with PBKDF2.
+                options.Password.RequiredLength = 12;
+                options.Password.RequireDigit = false;
+                options.Password.RequireLowercase = false;
+                options.Password.RequireUppercase = false;
+                options.Password.RequireNonAlphanumeric = false;
+                options.Password.RequiredUniqueChars = 1;
+
+                options.Lockout.AllowedForNewUsers = true;
+                options.Lockout.MaxFailedAccessAttempts = 5;
+                options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+
+                options.User.RequireUniqueEmail = false;
+                options.SignIn.RequireConfirmedAccount = false;
+            })
+            .AddEntityFrameworkStores<PulsarDbContext>()
+            .AddSignInManager<PulsarSignInManager>()
+            .AddDefaultTokenProviders();
 
         return services;
     }

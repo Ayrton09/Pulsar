@@ -2,14 +2,20 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Pulsar.Api.Auth;
 using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Tests.Infrastructure;
 
 /// <summary>The panel against its own fresh PostgreSQL database (created lazily, only when a test uses it).</summary>
-public sealed class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    public const string AdminUserName = "admin";
+    public const string AdminPassword = "correct horse battery staple";
+
+    private readonly SemaphoreSlim _setupLock = new(1, 1);
     private TestDatabase? _database;
+    private bool _adminCreated;
 
     public TestDatabase Database => _database ?? throw new InvalidOperationException("Database tests are disabled.");
 
@@ -24,16 +30,48 @@ public sealed class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLif
     public override async ValueTask DisposeAsync()
     {
         await base.DisposeAsync();
+        _setupLock.Dispose();
         if (_database is not null)
         {
             await _database.DisposeAsync();
         }
+
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>Completes the initial setup once per database and returns a client signed in as that administrator.</summary>
+    public async Task<PanelClient> CreateAdminClientAsync()
+    {
+        await _setupLock.WaitAsync();
+        try
+        {
+            if (!_adminCreated)
+            {
+                using var setupClient = await PanelClient.CreateAsync(this);
+                var token = Services.GetRequiredService<InitialSetup>().IssueToken();
+                using var response = await setupClient.PostAsync("/api/v1/auth/setup",
+                    new SetupRequest(token, AdminUserName, AdminPassword, "Administrator", null));
+                response.EnsureSuccessStatusCode();
+                _adminCreated = true;
+            }
+        }
+        finally
+        {
+            _setupLock.Release();
+        }
+
+        var client = await PanelClient.CreateAsync(this);
+        using var login = await client.LoginAsync(AdminUserName, AdminPassword);
+        login.EnsureSuccessStatusCode();
+        await client.GetSessionAsync(); // fresh antiforgery token for the signed-in user
+        return client;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:Pulsar", _database?.ConnectionString ?? "Host=database-tests-disabled");
+        builder.UseSetting("RateLimiting:Auth:PermitLimit", "1000");
     }
 }
 
@@ -49,6 +87,7 @@ public sealed class NoDatabaseApiFactory : WebApplicationFactory<Program>
 
     private sealed class NoOpDatabaseInitializer : IDatabaseInitializer
     {
-        public Task InitializeAsync(bool applyMigrations, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<DatabaseStatus> InitializeAsync(bool applyMigrations, CancellationToken cancellationToken) =>
+            Task.FromResult(new DatabaseStatus(HasUsers: true));
     }
 }

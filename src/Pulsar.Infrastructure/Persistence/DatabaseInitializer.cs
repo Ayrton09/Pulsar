@@ -7,6 +7,10 @@ using Pulsar.Domain.Access;
 
 namespace Pulsar.Infrastructure.Persistence;
 
+/// <summary>State of the database after initialization.</summary>
+/// <param name="HasUsers">False on a fresh installation: the panel then waits for the initial setup.</param>
+public sealed record DatabaseStatus(bool HasUsers);
+
 /// <summary>Prepares the database before the panel accepts requests.</summary>
 public interface IDatabaseInitializer
 {
@@ -14,13 +18,13 @@ public interface IDatabaseInitializer
     /// Checks connectivity and the PostgreSQL version, applies migrations (when <paramref name="applyMigrations"/> is true)
     /// and creates the built-in data. Throws <see cref="DatabaseStartupException"/> with an actionable message.
     /// </summary>
-    Task InitializeAsync(bool applyMigrations, CancellationToken cancellationToken);
+    Task<DatabaseStatus> InitializeAsync(bool applyMigrations, CancellationToken cancellationToken);
 }
 
 internal sealed partial class DatabaseInitializer(
     PulsarDbContext db, TimeProvider clock, ILogger<DatabaseInitializer> logger) : IDatabaseInitializer
 {
-    public async Task InitializeAsync(bool applyMigrations, CancellationToken cancellationToken)
+    public async Task<DatabaseStatus> InitializeAsync(bool applyMigrations, CancellationToken cancellationToken)
     {
         var builder = new NpgsqlConnectionStringBuilder(db.Database.GetConnectionString());
         var where = $"{builder.Host}:{builder.Port}, database '{builder.Database}', user '{builder.Username}'";
@@ -43,6 +47,7 @@ internal sealed partial class DatabaseInitializer(
         }
 
         await EnsureAdministratorRoleAsync(cancellationToken);
+        return new DatabaseStatus(HasUsers: await db.Users.AnyAsync(cancellationToken));
     }
 
     private async Task CheckServerAsync(string where, CancellationToken cancellationToken)
