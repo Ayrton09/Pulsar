@@ -10,4 +10,8 @@
     <Project Path="src/Pulsar.Infrastructure/Pulsar.Infrastructure.csproj" />
     <Project Path="src/Pulsar.Manifests/Pulsar.Manifests.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Pulsar.Api.Tests/Pulsar.Api.Tests.csproj" />
+    <Project Path="tests/Pulsar.Architecture.Tests/Pulsar.Architecture.Tests.csproj" />
+  </Folder>
 </Solution>
