@@ -70,7 +70,20 @@ try
         Predicate = check => check.Tags.Contains(HealthTags.Ready),
     }).AllowAnonymous();
 
-    var api = app.MapGroup("/api/v1").AddEndpointFilter<AntiforgeryValidationFilter>();
+    // The OpenAPI document is a development tool (the TypeScript client is generated from a committed copy).
+    if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
+    {
+        app.MapOpenApi("/openapi/{documentName}.json").AllowAnonymous();
+    }
+
+    // Every error is ProblemDetails with a "code" (documented on all operations so the client knows the error shape).
+    var api = app.MapGroup("/api/v1")
+        .AddEndpointFilter<AntiforgeryValidationFilter>()
+        .ProducesProblem(StatusCodes.Status400BadRequest)
+        .ProducesProblem(StatusCodes.Status401Unauthorized)
+        .ProducesProblem(StatusCodes.Status403Forbidden)
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status409Conflict);
     api.MapGroup("/auth").WithTags("Auth").MapAuthEndpoints();
     api.MapUserEndpoints();
     api.MapRoleEndpoints();

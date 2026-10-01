@@ -47,20 +47,25 @@ public static class RoleEndpoints
     private static async Task<Ok<IReadOnlyList<RoleSummary>>> ListAsync(RoleManagement roles, CancellationToken ct) =>
         TypedResults.Ok(await roles.ListAsync(ct));
 
-    private static async Task<IResult> GetAsync(Guid id, RoleManagement roles, CancellationToken ct) =>
+    private static async Task<Results<Ok<RoleSummary>, ProblemHttpResult>> GetAsync(Guid id, RoleManagement roles, CancellationToken ct) =>
         (await roles.GetAsync(new RoleId(id), ct)).ToHttp();
 
-    private static async Task<IResult> CreateAsync(CreateRoleRequest request, RoleManagement roles, CancellationToken ct)
+    private static async Task<Results<Created<RoleSummary>, ProblemHttpResult>> CreateAsync(
+        CreateRoleRequest request, RoleManagement roles, CancellationToken ct)
     {
         var result = await roles.CreateAsync(new RoleInput(request.Name, request.Description, request.Scope, request.Permissions), ct);
-        return result.IsSuccess
-            ? TypedResults.Created($"/api/v1/roles/{result.Value.Id}", result.Value)
-            : ApiProblems.FromDomainError(result.Error!);
+        if (!result.IsSuccess)
+        {
+            return ApiProblems.FromDomainError(result.Error!);
+        }
+
+        return TypedResults.Created($"/api/v1/roles/{result.Value.Id}", result.Value);
     }
 
-    private static async Task<IResult> UpdateAsync(Guid id, UpdateRoleRequest request, RoleManagement roles, CancellationToken ct) =>
+    private static async Task<Results<Ok<RoleSummary>, ProblemHttpResult>> UpdateAsync(
+        Guid id, UpdateRoleRequest request, RoleManagement roles, CancellationToken ct) =>
         (await roles.UpdateAsync(new RoleId(id), request.Name, request.Description, request.Permissions, ct)).ToHttp();
 
-    private static async Task<IResult> DeleteAsync(Guid id, RoleManagement roles, CancellationToken ct) =>
+    private static async Task<Results<NoContent, ProblemHttpResult>> DeleteAsync(Guid id, RoleManagement roles, CancellationToken ct) =>
         (await roles.DeleteAsync(new RoleId(id), ct)).ToHttp();
 }

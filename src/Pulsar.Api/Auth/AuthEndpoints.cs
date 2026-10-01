@@ -46,7 +46,7 @@ public static class AuthEndpoints
         return TypedResults.Ok(new SessionResponse(setupRequired, current));
     }
 
-    private static async Task<IResult> SetupAsync(
+    private static async Task<Results<Ok<CurrentUserResponse>, ProblemHttpResult, ValidationProblem>> SetupAsync(
         SetupRequest request,
         HttpContext http,
         InitialSetup setup,
@@ -110,7 +110,7 @@ public static class AuthEndpoints
         }
     }
 
-    private static async Task<IResult> LoginAsync(
+    private static async Task<Results<Ok<CurrentUserResponse>, ProblemHttpResult>> LoginAsync(
         LoginRequest request,
         HttpContext http,
         PulsarDbContext db,
@@ -144,7 +144,7 @@ public static class AuthEndpoints
         AntiforgeryProtection.IssueToken(http);
         return TypedResults.Ok(await DescribeAsync(user, evaluator, ct));
 
-        async Task<IResult> FailAsync(PulsarUser? known, string reason)
+        async Task<ProblemHttpResult> FailAsync(PulsarUser? known, string reason)
         {
             var entry = audit.Record(AuditActions.Auth.LoginFailed, AuditOutcome.Failure,
                 new { userName = Truncate(request.UserName, 64), reason });

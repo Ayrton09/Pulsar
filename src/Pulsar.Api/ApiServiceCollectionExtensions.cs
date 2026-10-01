@@ -35,6 +35,16 @@ internal static class ApiServiceCollectionExtensions
         services.ConfigureHttpJsonOptions(options =>
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 
+        // The document drives the generated TypeScript client (src/Pulsar.Web/src/api).
+        services.AddOpenApi("v1", options => options.AddDocumentTransformer((document, _, _) =>
+        {
+            document.Info.Title = "Pulsar API";
+            document.Info.Version = "v1";
+            document.Info.Description = "Pulsar panel API. Cookie authentication; state-changing requests need the " +
+                $"{AntiforgeryProtection.HeaderName} header with the token from the {AntiforgeryProtection.RequestTokenCookie} cookie.";
+            return Task.CompletedTask;
+        }));
+
         AddAuthentication(services);
         AddRateLimiting(services, configuration);
         return services;

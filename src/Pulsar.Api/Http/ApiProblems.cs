@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http.HttpResults;
 using Pulsar.Domain.Common;
 
 namespace Pulsar.Api.Http;
@@ -10,12 +11,12 @@ public static class ApiProblems
 {
     public const string CodeExtension = "code";
 
-    public static IResult Create(int status, string code, string title, string? detail = null) =>
+    public static ProblemHttpResult Create(int status, string code, string title, string? detail = null) =>
         TypedResults.Problem(statusCode: status, title: title, detail: detail,
             extensions: new Dictionary<string, object?> { [CodeExtension] = code });
 
     /// <summary>A business rule violation, with the status derived from its code.</summary>
-    public static IResult FromDomainError(DomainError error) => Create(StatusFor(error.Code), error.Code, error.Message);
+    public static ProblemHttpResult FromDomainError(DomainError error) => Create(StatusFor(error.Code), error.Code, error.Message);
 
     /// <summary>
     /// <c>*.not_found</c> → 404; escalation and self-changes → 403 (the actor lacks the right to do it);
@@ -30,8 +31,10 @@ public static class ApiProblems
     };
 
     /// <summary>Maps a result to 200 with the value, or to the problem of its error.</summary>
-    public static IResult ToHttp<T>(this Result<T> result) => result.IsSuccess ? TypedResults.Ok(result.Value) : FromDomainError(result.Error!);
+    public static Results<Ok<T>, ProblemHttpResult> ToHttp<T>(this Result<T> result) =>
+        result.IsSuccess ? TypedResults.Ok(result.Value) : FromDomainError(result.Error!);
 
     /// <summary>Maps a result to 204, or to the problem of its error.</summary>
-    public static IResult ToHttp(this Result result) => result.IsSuccess ? TypedResults.NoContent() : FromDomainError(result.Error!);
+    public static Results<NoContent, ProblemHttpResult> ToHttp(this Result result) =>
+        result.IsSuccess ? TypedResults.NoContent() : FromDomainError(result.Error!);
 }

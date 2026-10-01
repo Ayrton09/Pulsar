@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 
 namespace Pulsar.Api.Http;
@@ -5,7 +6,7 @@ namespace Pulsar.Api.Http;
 /// <summary>Turns ASP.NET Core Identity errors (password policy, duplicate names…) into a validation problem.</summary>
 public static class IdentityProblems
 {
-    public static IResult Validation(IdentityResult result)
+    public static ValidationProblem Validation(IdentityResult result)
     {
         var errors = result.Errors
             .GroupBy(e => FieldFor(e.Code))

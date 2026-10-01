@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Http;
@@ -31,15 +32,18 @@ public sealed class UserManagement(
         return [.. all.Select(u => Describe(u, roles))];
     }
 
-    public async Task<IResult> GetAsync(UserId id, CancellationToken ct)
+    public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> GetAsync(UserId id, CancellationToken ct)
     {
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == id, ct);
-        return user is null
-            ? ApiProblems.FromDomainError(AccessErrors.UserNotFound)
-            : TypedResults.Ok(Describe(user, await RoleReferencesAsync(id, ct)));
+        if (user is null)
+        {
+            return ApiProblems.FromDomainError(AccessErrors.UserNotFound);
+        }
+
+        return TypedResults.Ok(Describe(user, await RoleReferencesAsync(id, ct)));
     }
 
-    public async Task<IResult> CreateAsync(CreateUserRequest input, CancellationToken ct)
+    public async Task<Results<Created<UserResponse>, ProblemHttpResult, ValidationProblem>> CreateAsync(CreateUserRequest input, CancellationToken ct)
     {
         var actor = Actor;
         var actorPermissions = await evaluator.GetAsync(actor, ct);
@@ -92,7 +96,7 @@ public sealed class UserManagement(
         return TypedResults.Created($"/api/v1/users/{user.Id}", response);
     }
 
-    public async Task<IResult> UpdateAsync(UserId id, UpdateUserRequest input, CancellationToken ct)
+    public async Task<Results<Ok<UserResponse>, ProblemHttpResult, ValidationProblem>> UpdateAsync(UserId id, UpdateUserRequest input, CancellationToken ct)
     {
         var (user, problem) = await FindManageableAsync(id, ct);
         if (problem is not null)
@@ -140,7 +144,7 @@ public sealed class UserManagement(
         return TypedResults.Ok(Describe(user, await RoleReferencesAsync(id, ct)));
     }
 
-    public async Task<IResult> ResetPasswordAsync(UserId id, ResetPasswordRequest input, CancellationToken ct)
+    public async Task<Results<NoContent, ProblemHttpResult, ValidationProblem>> ResetPasswordAsync(UserId id, ResetPasswordRequest input, CancellationToken ct)
     {
         var (user, problem) = await FindManageableAsync(id, ct);
         if (problem is not null)
@@ -161,7 +165,7 @@ public sealed class UserManagement(
         return TypedResults.NoContent();
     }
 
-    public async Task<IResult> DeleteAsync(UserId id, CancellationToken ct)
+    public async Task<Results<NoContent, ProblemHttpResult, ValidationProblem>> DeleteAsync(UserId id, CancellationToken ct)
     {
         var (user, problem) = await FindManageableAsync(id, ct);
         if (problem is not null)
@@ -187,7 +191,7 @@ public sealed class UserManagement(
         return TypedResults.NoContent();
     }
 
-    public async Task<IResult> SetRolesAsync(UserId id, SetUserRolesRequest input, CancellationToken ct)
+    public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> SetRolesAsync(UserId id, SetUserRolesRequest input, CancellationToken ct)
     {
         var user = await db.Users.SingleOrDefaultAsync(u => u.Id == id, ct);
         if (user is null)
@@ -248,7 +252,7 @@ public sealed class UserManagement(
     private UserId Actor => request.UserId ?? throw new InvalidOperationException("User management requires a signed-in user.");
 
     /// <summary>Loads a user the actor may change (rule 6 of docs/architecture/02), or the problem to return.</summary>
-    private async Task<(PulsarUser? User, IResult? Problem)> FindManageableAsync(UserId id, CancellationToken ct)
+    private async Task<(PulsarUser? User, ProblemHttpResult? Problem)> FindManageableAsync(UserId id, CancellationToken ct)
     {
         var user = await users.FindByIdAsync(id.ToString());
         if (user is null)
