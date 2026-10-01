@@ -40,6 +40,15 @@ Requirements:
 - Node.js 22 or newer
 - Windows 10 1809+ / Windows 11 / Windows Server 2019+ to work on the agent's Windows code
 
+PostgreSQL 15 or newer is required by the panel and by the database integration tests. Any installation works; for a throwaway local one without a Windows service, extract the [PostgreSQL binaries zip](https://www.enterprisedb.com/download-postgresql-binaries) and run:
+
+```powershell
+.\scripts\dev\postgres.ps1 -Action Init  -PgHome <extracted>\pgsql -Root <folder>   # once: creates the cluster and roles
+.\scripts\dev\postgres.ps1 -Action Start -PgHome <extracted>\pgsql -Root <folder>   # after a reboot
+```
+
+`<folder>\connection.txt` holds the generated connection strings. The panel reads `ConnectionStrings:Pulsar` (use `dotnet user-secrets` in `src/Pulsar.Api`), and the integration tests read `PULSAR_TEST_POSTGRES` (a connection string without a database; each test run creates and drops its own databases). Without that variable the database tests are skipped, unless `PULSAR_REQUIRE_DATABASE=true` is set, as in CI.
+
 Backend:
 
 ```bash
