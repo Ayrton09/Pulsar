@@ -13,5 +13,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/Pulsar.Api.Tests/Pulsar.Api.Tests.csproj" />
     <Project Path="tests/Pulsar.Architecture.Tests/Pulsar.Architecture.Tests.csproj" />
+    <Project Path="tests/Pulsar.Domain.Tests/Pulsar.Domain.Tests.csproj" />
   </Folder>
 </Solution>
