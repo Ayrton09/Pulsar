@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <!-- EF Core without a provider: handlers query through IPulsarDbContext (docs/architecture/01, option A). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Pulsar.Domain\Pulsar.Domain.csproj" />
     <ProjectReference Include="..\Pulsar.Manifests\Pulsar.Manifests.csproj" />
     <ProjectReference Include="..\Pulsar.Contracts\Pulsar.Contracts.csproj" />

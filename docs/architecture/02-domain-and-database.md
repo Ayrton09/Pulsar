@@ -111,7 +111,7 @@ Conventions:
 - Timestamps as `timestamptz`, always UTC.
 - Enums as `text` + `CHECK` (readable when inspecting the database; adding a value is a trivial migration, unlike native PostgreSQL enums).
 - Optimistic concurrency with the `xmin` system column (mapped as a row version by Npgsql) on mutable aggregates (`servers`, `nodes`, `roles`, `scheduled_tasks`).
-- EF Core migrations, applied at startup inside an advisory lock (configurable: `Database:ApplyMigrationsOnStartup`) or explicitly with `Pulsar.Api.exe migrate`. Idempotent SQL scripts are published with each release.
+- EF Core migrations, applied at startup (configurable: `Database:ApplyMigrationsOnStartup`, default true; when false the panel refuses to start with pending migrations) or explicitly with `Pulsar.Api.exe migrate`. EF Core takes its own database-wide migration lock, so concurrent starts are safe without an extra advisory lock. Idempotent SQL scripts are published with each release.
 
 The DDL below is the **design reference**; the real source will be the EF migrations.
 

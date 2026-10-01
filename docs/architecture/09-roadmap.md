@@ -104,7 +104,7 @@ SCP: Secret Laboratory → Minecraft (managed runtimes, `download` step) → MyS
 | Architecture | xUnit (`Pulsar.Architecture.Tests`) | Project dependency rules |
 | Domain | xUnit | State machines, permission evaluation, anti-escalation rules |
 | Manifests | xUnit | Schema, validation, rendering, injection cases, every `games/*` |
-| Application/API | xUnit + `WebApplicationFactory` + real PostgreSQL (Testcontainers on Linux; connection string from an environment variable on Windows) | Authorization (endpoint × role matrix), IDOR, flows, migrations |
+| Application/API | xUnit + `WebApplicationFactory` + real PostgreSQL (`PULSAR_TEST_POSTGRES`, a fresh database per test class; CI starts the PostgreSQL preinstalled on the runners) | Authorization (endpoint × role matrix), IDOR, flows, migrations |
 | Protocol | xUnit | Signature, replay, expiry, versioning, revoked session |
 | Agent Core | xUnit | Supervisor, mailbox, SteamCMD parser, path validator |
 | Agent Windows | xUnit (Windows runner) | Jobs, accounts, ACL, ConPTY, junctions, process cleanup |

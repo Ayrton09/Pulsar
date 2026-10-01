@@ -1,12 +1,12 @@
 using System.Net;
-using Microsoft.AspNetCore.Mvc.Testing;
+using Pulsar.Api.Tests.Infrastructure;
 
 namespace Pulsar.Api.Tests;
 
-public sealed class RoutingTests(WebApplicationFactory<Program> factory) : IClassFixture<WebApplicationFactory<Program>>
+public sealed class RoutingTests(NoDatabaseApiFactory factory) : IClassFixture<NoDatabaseApiFactory>
 {
     [Fact]
-    public async Task LivenessEndpointReturnsOk()
+    public async Task LivenessEndpointReturnsOkWithoutTouchingTheDatabase()
     {
         using var client = factory.CreateClient();
 
