@@ -1,0 +1,12 @@
+<Project>
+  <!-- Spikes are throwaway prototypes: keep the repository defaults but relax what only matters for product code. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <AnalysisLevel>latest-minimum</AnalysisLevel>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>
