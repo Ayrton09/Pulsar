@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pulsar.Application\Pulsar.Application.csproj" />
+    <ProjectReference Include="..\Pulsar.Domain\Pulsar.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!-- Set to true (e.g. dotnet publish -p:BuildWebClient=true) to compile the React app into wwwroot first. -->
+    <BuildWebClient Condition="'$(BuildWebClient)' == ''">false</BuildWebClient>
+    <WebClientRoot>$(MSBuildProjectDirectory)\..\Pulsar.Web\</WebClientRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pulsar.Application\Pulsar.Application.csproj" />
+    <ProjectReference Include="..\Pulsar.Infrastructure\Pulsar.Infrastructure.csproj" />
+    <ProjectReference Include="..\Pulsar.Contracts\Pulsar.Contracts.csproj" />
+    <ProjectReference Include="..\Pulsar.Manifests\Pulsar.Manifests.csproj" />
+  </ItemGroup>
+
+  <!--
+    The Vite build writes straight into wwwroot (see src/Pulsar.Web/vite.config.ts), so the SPA is picked up
+    as regular static web assets (fingerprinting and compression via MapStaticAssets).
+    Node.js is only needed when this target runs; the published panel never needs it.
+  -->
+  <Target Name="BuildWebClient" BeforeTargets="BeforeBuild" Condition="'$(BuildWebClient)' == 'true'">
+    <Exec Command="npm ci" WorkingDirectory="$(WebClientRoot)" />
+    <Exec Command="npm run build" WorkingDirectory="$(WebClientRoot)" />
+  </Target>
+
+</Project>

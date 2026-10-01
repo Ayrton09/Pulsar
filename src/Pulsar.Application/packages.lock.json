@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "pulsar.contracts": {
+        "type": "Project"
+      },
+      "pulsar.domain": {
+        "type": "Project"
+      },
+      "pulsar.manifests": {
+        "type": "Project"
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Pulsar.Agent.Core/Pulsar.Agent.Core.csproj" />
+    <Project Path="src/Pulsar.Agent.Windows/Pulsar.Agent.Windows.csproj" />
+    <Project Path="src/Pulsar.Agent/Pulsar.Agent.csproj" />
+    <Project Path="src/Pulsar.Api/Pulsar.Api.csproj" />
+    <Project Path="src/Pulsar.Application/Pulsar.Application.csproj" />
+    <Project Path="src/Pulsar.Contracts/Pulsar.Contracts.csproj" />
+    <Project Path="src/Pulsar.Domain/Pulsar.Domain.csproj" />
+    <Project Path="src/Pulsar.Infrastructure/Pulsar.Infrastructure.csproj" />
+    <Project Path="src/Pulsar.Manifests/Pulsar.Manifests.csproj" />
+  </Folder>
+</Solution>
