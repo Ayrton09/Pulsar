@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Infrastructure;
 using Pulsar.Infrastructure.Persistence;
@@ -80,11 +81,65 @@ public sealed class DatabaseInitializerTests
         Assert.Contains("migrate", ex.Message, StringComparison.Ordinal);
     }
 
-    private static ServiceProvider Build(string connectionString)
+    [DatabaseFact]
+    public async Task FreshDatabaseInitializesWithoutLoggingErrors()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await TestDatabase.CreateAsync(ct);
+        var errors = new ErrorCollector();
+        await using var services = Build(database.ConnectionString, errors);
+
+        for (var start = 0; start < 2; start++)
+        {
+            await using var scope = services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<IDatabaseInitializer>().InitializeAsync(applyMigrations: true, ct);
+        }
+
+        Assert.Empty(errors.Messages);
+    }
+
+    private static ServiceProvider Build(string connectionString, ILoggerProvider? logs = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Pulsar"] = connectionString })
             .Build();
-        return new ServiceCollection().AddLogging().AddPulsarInfrastructure(configuration).BuildServiceProvider();
+        return new ServiceCollection()
+            .AddLogging(builder =>
+            {
+                if (logs is not null)
+                {
+                    builder.AddProvider(logs);
+                }
+            })
+            .AddPulsarInfrastructure(configuration)
+            .BuildServiceProvider();
+    }
+
+    /// <summary>Collects every error-level log line (the test runner does not show output of passing tests).</summary>
+    private sealed class ErrorCollector : ILoggerProvider, ILogger
+    {
+        public List<string> Messages { get; } = [];
+
+        public ILogger CreateLogger(string categoryName) => this;
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Error;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (IsEnabled(logLevel))
+            {
+                lock (Messages)
+                {
+                    Messages.Add(formatter(state, exception));
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+        }
     }
 }

@@ -33,9 +33,17 @@ internal sealed partial class DatabaseInitializer(
 
         await CheckServerAsync(where, cancellationToken);
 
-        // On a fresh database the history table does not exist yet; asking EF for pending migrations then logs a
-        // failed query as an error, which would alarm whoever installs the panel.
-        var pending = await db.GetService<IHistoryRepository>().ExistsAsync(cancellationToken)
+        // On a fresh database the migrations history table does not exist, and the provider finds that out by running
+        // a query that fails, which EF logs as an error (alarming whoever installs the panel). Check it with
+        // to_regclass instead, and create the empty table up front when migrations will be applied anyway.
+        var historyExists = await HistoryTableExistsAsync(cancellationToken);
+        if (!historyExists && applyMigrations)
+        {
+            await db.Database.ExecuteSqlRawAsync(db.GetService<IHistoryRepository>().GetCreateIfNotExistsScript(), cancellationToken);
+            historyExists = true;
+        }
+
+        var pending = historyExists
             ? (await db.Database.GetPendingMigrationsAsync(cancellationToken)).ToList()
             : db.Database.GetMigrations().ToList();
         if (pending.Count > 0)
@@ -55,6 +63,11 @@ internal sealed partial class DatabaseInitializer(
         await EnsureAdministratorRoleAsync(cancellationToken);
         return new DatabaseStatus(HasUsers: await db.Users.AnyAsync(cancellationToken));
     }
+
+    private Task<bool> HistoryTableExistsAsync(CancellationToken cancellationToken) =>
+        db.Database
+            .SqlQueryRaw<bool>($"SELECT to_regclass('\"{HistoryRepository.DefaultTableName}\"') IS NOT NULL AS \"Value\"")
+            .SingleAsync(cancellationToken);
 
     private async Task CheckServerAsync(string where, CancellationToken cancellationToken)
     {
