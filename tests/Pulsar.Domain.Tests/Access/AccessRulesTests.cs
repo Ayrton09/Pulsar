@@ -15,10 +15,11 @@ public sealed class AccessRulesTests
     [Fact]
     public void ServerPermissionsComeFromGlobalNodeAndServerAssignments()
     {
-        var permissions = new EffectivePermissions()
+        var permissions = new EffectivePermissions.Builder()
             .Add(Role("Global", PermissionScope.Global, Permissions.Audit.View), AccessTarget.Global)
             .Add(Role("Node", PermissionScope.Node, Permissions.Server.Start), AccessTarget.ForNode(s_node))
-            .Add(Role("Server", PermissionScope.Server, Permissions.Server.ConsoleView), AccessTarget.ForServer(s_server, s_node));
+            .Add(Role("Server", PermissionScope.Server, Permissions.Server.ConsoleView), AccessTarget.ForServer(s_server, s_node))
+            .Build();
 
         var onServer = AccessTarget.ForServer(s_server, s_node);
         Assert.True(permissions.Has(Permissions.Audit.View, onServer));
@@ -37,13 +38,13 @@ public sealed class AccessRulesTests
     {
         var serverRole = Role("Server", PermissionScope.Server, Permissions.Server.View);
 
-        Assert.Throws<ArgumentException>(() => new EffectivePermissions().Add(serverRole, AccessTarget.Global));
+        Assert.Throws<ArgumentException>(() => new EffectivePermissions.Builder().Add(serverRole, AccessTarget.Global));
     }
 
     [Fact]
     public void AdministratorCanGrantAnything()
     {
-        var actor = new EffectivePermissions().Add(Domain.Access.Role.CreateAdministrator(s_now), AccessTarget.Global);
+        var actor = new EffectivePermissions.Builder().Add(Domain.Access.Role.CreateAdministrator(s_now), AccessTarget.Global).Build();
         var role = Role("Ops", PermissionScope.Node, Permissions.Node.Manage, Permissions.Server.Delete);
 
         Assert.True(AccessRules.CanChangeAssignment(s_actor, actor, s_target, role, AccessTarget.ForNode(s_node)).IsSuccess);
@@ -52,7 +53,7 @@ public sealed class AccessRulesTests
     [Fact]
     public void NobodyChangesTheirOwnAssignments()
     {
-        var actor = new EffectivePermissions().Add(Domain.Access.Role.CreateAdministrator(s_now), AccessTarget.Global);
+        var actor = new EffectivePermissions.Builder().Add(Domain.Access.Role.CreateAdministrator(s_now), AccessTarget.Global).Build();
 
         var result = AccessRules.CanChangeAssignment(s_actor, actor, s_actor,
             Role("Viewer", PermissionScope.Global, Permissions.Audit.View), AccessTarget.Global);
@@ -63,7 +64,7 @@ public sealed class AccessRulesTests
     [Fact]
     public void RoleScopeMustMatchTheTarget()
     {
-        var actor = new EffectivePermissions().Add(Domain.Access.Role.CreateAdministrator(s_now), AccessTarget.Global);
+        var actor = new EffectivePermissions.Builder().Add(Domain.Access.Role.CreateAdministrator(s_now), AccessTarget.Global).Build();
 
         var result = AccessRules.CanChangeAssignment(s_actor, actor, s_target,
             Role("Node role", PermissionScope.Node, Permissions.Server.View), AccessTarget.ForServer(s_server, s_node));
@@ -74,9 +75,9 @@ public sealed class AccessRulesTests
     [Fact]
     public void ActorCannotGrantPermissionsTheyDoNotHoldAtTheTarget()
     {
-        var actor = new EffectivePermissions()
+        var actor = new EffectivePermissions.Builder()
             .Add(Role("Users", PermissionScope.Global, Permissions.User.Manage), AccessTarget.Global)
-            .Add(Role("Node ops", PermissionScope.Node, Permissions.Server.Start), AccessTarget.ForNode(s_node));
+            .Add(Role("Node ops", PermissionScope.Node, Permissions.Server.Start), AccessTarget.ForNode(s_node)).Build();
         var role = Role("Starter", PermissionScope.Server, Permissions.Server.Start, Permissions.Server.Kill);
 
         var result = AccessRules.CanChangeAssignment(s_actor, actor, s_target, role, AccessTarget.ForServer(s_server, s_node));
@@ -89,8 +90,8 @@ public sealed class AccessRulesTests
     [Fact]
     public void NodePermissionsAllowGrantingOnThatNodeOnly()
     {
-        var actor = new EffectivePermissions()
-            .Add(Role("Node ops", PermissionScope.Node, Permissions.Server.Start), AccessTarget.ForNode(s_node));
+        var actor = new EffectivePermissions.Builder()
+            .Add(Role("Node ops", PermissionScope.Node, Permissions.Server.Start), AccessTarget.ForNode(s_node)).Build();
         var role = Role("Starter", PermissionScope.Server, Permissions.Server.Start);
 
         Assert.True(AccessRules.CanChangeAssignment(s_actor, actor, s_target, role, AccessTarget.ForServer(s_server, s_node)).IsSuccess);
@@ -101,7 +102,7 @@ public sealed class AccessRulesTests
     public void GrantingTheAdministratorRoleRequiresTheWholeCatalog()
     {
         var almostAll = PermissionCatalog.AllKeys.Where(p => p != Permissions.Settings.Manage).ToArray();
-        var actor = new EffectivePermissions().Add(Role("Almost", PermissionScope.Global, almostAll), AccessTarget.Global);
+        var actor = new EffectivePermissions.Builder().Add(Role("Almost", PermissionScope.Global, almostAll), AccessTarget.Global).Build();
 
         var result = AccessRules.CanChangeAssignment(s_actor, actor, s_target,
             Domain.Access.Role.CreateAdministrator(s_now), AccessTarget.Global);
@@ -112,9 +113,9 @@ public sealed class AccessRulesTests
     [Fact]
     public void RolesCanOnlyBeDefinedWithGloballyHeldPermissions()
     {
-        var actor = new EffectivePermissions()
+        var actor = new EffectivePermissions.Builder()
             .Add(Role("Roles", PermissionScope.Global, Permissions.Role.Manage, Permissions.Server.View), AccessTarget.Global)
-            .Add(Role("Node", PermissionScope.Node, Permissions.Server.Start), AccessTarget.ForNode(s_node));
+            .Add(Role("Node", PermissionScope.Node, Permissions.Server.Start), AccessTarget.ForNode(s_node)).Build();
 
         Assert.True(AccessRules.CanDefineRole(actor, [Permissions.Server.View]).IsSuccess);
         Assert.Equal("access.escalation", AccessRules.CanDefineRole(actor, [Permissions.Server.Start]).Error?.Code);

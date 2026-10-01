@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using Pulsar.Domain.Common;
 
 namespace Pulsar.Domain.Access;
@@ -36,40 +37,31 @@ public abstract record AccessTarget
     }
 }
 
+
 /// <summary>
 /// What a user may do, computed from their assignments:
 /// permissions on server S of node N = global roles ∪ roles on N ∪ roles on S. There are no deny rules in v1.
+/// Immutable once built, so one instance can be cached and shared.
 /// </summary>
 public sealed class EffectivePermissions
 {
-    private readonly HashSet<string> _global = new(StringComparer.Ordinal);
-    private readonly Dictionary<NodeId, HashSet<string>> _nodes = [];
-    private readonly Dictionary<ServerId, HashSet<string>> _servers = [];
+    private readonly FrozenSet<string> _global;
+    private readonly FrozenDictionary<NodeId, FrozenSet<string>> _nodes;
+    private readonly FrozenDictionary<ServerId, FrozenSet<string>> _servers;
+
+    private EffectivePermissions(
+        FrozenSet<string> global, FrozenDictionary<NodeId, FrozenSet<string>> nodes, FrozenDictionary<ServerId, FrozenSet<string>> servers)
+    {
+        _global = global;
+        _nodes = nodes;
+        _servers = servers;
+    }
+
+    public static EffectivePermissions None { get; } = new Builder().Build();
 
     public IReadOnlySet<string> Global => _global;
 
     public bool IsEmpty => _global.Count == 0 && _nodes.Count == 0 && _servers.Count == 0;
-
-    /// <summary>Adds a role granted at <paramref name="target"/>. The role must be of the target's scope.</summary>
-    public EffectivePermissions Add(Role role, AccessTarget target)
-    {
-        ArgumentNullException.ThrowIfNull(role);
-        ArgumentNullException.ThrowIfNull(target);
-        if (role.Scope != target.Scope)
-        {
-            throw new ArgumentException($"A {role.Scope} role cannot be granted at {target.Scope} level.", nameof(target));
-        }
-
-        var set = target switch
-        {
-            AccessTarget.GlobalTarget => _global,
-            AccessTarget.NodeTarget n => GetOrAdd(_nodes, n.Node),
-            AccessTarget.ServerTarget s => GetOrAdd(_servers, s.Server),
-            _ => throw new ArgumentOutOfRangeException(nameof(target)),
-        };
-        set.UnionWith(role.Permissions);
-        return this;
-    }
 
     /// <summary>True when the permission applies at <paramref name="target"/>, directly or inherited from a wider scope.</summary>
     public bool Has(string permission, AccessTarget target) => target switch
@@ -84,18 +76,52 @@ public sealed class EffectivePermissions
 
     public bool HasGlobal(string permission) => _global.Contains(permission);
 
-    private static HashSet<string> GetOrAdd<TKey>(Dictionary<TKey, HashSet<string>> map, TKey key)
-        where TKey : notnull
+    private static bool Contains<TKey>(FrozenDictionary<TKey, FrozenSet<string>> map, TKey key, string permission)
+        where TKey : notnull => map.TryGetValue(key, out var set) && set.Contains(permission);
+
+    /// <summary>Collects role assignments and produces an immutable <see cref="EffectivePermissions"/>.</summary>
+    public sealed class Builder
     {
-        if (!map.TryGetValue(key, out var set))
+        private readonly HashSet<string> _global = new(StringComparer.Ordinal);
+        private readonly Dictionary<NodeId, HashSet<string>> _nodes = [];
+        private readonly Dictionary<ServerId, HashSet<string>> _servers = [];
+
+        /// <summary>Adds a role granted at <paramref name="target"/>. The role must be of the target's scope.</summary>
+        public Builder Add(Role role, AccessTarget target)
         {
-            set = new HashSet<string>(StringComparer.Ordinal);
-            map.Add(key, set);
+            ArgumentNullException.ThrowIfNull(role);
+            ArgumentNullException.ThrowIfNull(target);
+            if (role.Scope != target.Scope)
+            {
+                throw new ArgumentException($"A {role.Scope} role cannot be granted at {target.Scope} level.", nameof(target));
+            }
+
+            var set = target switch
+            {
+                AccessTarget.GlobalTarget => _global,
+                AccessTarget.NodeTarget n => GetOrAdd(_nodes, n.Node),
+                AccessTarget.ServerTarget s => GetOrAdd(_servers, s.Server),
+                _ => throw new ArgumentOutOfRangeException(nameof(target)),
+            };
+            set.UnionWith(role.Permissions);
+            return this;
         }
 
-        return set;
-    }
+        public EffectivePermissions Build() => new(
+            _global.ToFrozenSet(StringComparer.Ordinal),
+            _nodes.ToFrozenDictionary(p => p.Key, p => p.Value.ToFrozenSet(StringComparer.Ordinal)),
+            _servers.ToFrozenDictionary(p => p.Key, p => p.Value.ToFrozenSet(StringComparer.Ordinal)));
 
-    private static bool Contains<TKey>(Dictionary<TKey, HashSet<string>> map, TKey key, string permission)
-        where TKey : notnull => map.TryGetValue(key, out var set) && set.Contains(permission);
+        private static HashSet<string> GetOrAdd<TKey>(Dictionary<TKey, HashSet<string>> map, TKey key)
+            where TKey : notnull
+        {
+            if (!map.TryGetValue(key, out var set))
+            {
+                set = new HashSet<string>(StringComparer.Ordinal);
+                map.Add(key, set);
+            }
+
+            return set;
+        }
+    }
 }
