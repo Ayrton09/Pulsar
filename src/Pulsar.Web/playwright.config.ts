@@ -9,6 +9,12 @@ const baseURL = `http://127.0.0.1:${port}`;
 const apiProject = fileURLToPath(new URL('../Pulsar.Api/Pulsar.Api.csproj', import.meta.url));
 const publishDir = fileURLToPath(new URL('../../artifacts/e2e-panel', import.meta.url));
 
+// The panel needs PostgreSQL: a connection string to a database used only by these tests (its content is disposable).
+const connectionString = process.env.PULSAR_E2E_POSTGRES;
+if (!connectionString) {
+  throw new Error('Set PULSAR_E2E_POSTGRES to a connection string for a disposable database (see CONTRIBUTING.md).');
+}
+
 export default defineConfig({
   testDir: './e2e',
   forbidOnly: !!process.env.CI,
@@ -23,7 +29,8 @@ export default defineConfig({
     command:
       `dotnet publish "${apiProject}" -c Release -o "${publishDir}"` +
       ` && dotnet "${publishDir}/Pulsar.Api.dll" --contentRoot "${publishDir}" --urls ${baseURL}`,
-    url: `${baseURL}/health/live`,
+    env: { ConnectionStrings__Pulsar: connectionString },
+    url: `${baseURL}/health/ready`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
   },

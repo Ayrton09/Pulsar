@@ -40,8 +40,27 @@ jobs:
       - name: Build
         run: dotnet build Pulsar.slnx -c Release --no-restore
 
+      # The runner images ship PostgreSQL with its service stopped (Ubuntu: 16, Windows: 17).
+      - name: Start PostgreSQL (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE pulsar_ci LOGIN CREATEDB PASSWORD 'pulsar_ci';"
+
+      - name: Start PostgreSQL (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $service = Get-Service -Name 'postgresql*' | Select-Object -First 1
+          Set-Service -Name $service.Name -StartupType Manual
+          Start-Service -Name $service.Name
+          & "$env:PGBIN\psql.exe" -v ON_ERROR_STOP=1 -c "CREATE ROLE pulsar_ci LOGIN CREATEDB PASSWORD 'pulsar_ci';"
+
       - name: Test
         run: dotnet test --solution Pulsar.slnx -c Release --no-build
+        env:
+          PULSAR_TEST_POSTGRES: Host=localhost;Port=5432;Username=pulsar_ci;Password=pulsar_ci
+          PULSAR_REQUIRE_DATABASE: 'true'
 
   web:
     name: Web
@@ -84,10 +103,17 @@ jobs:
           cache: npm
           cache-dependency-path: src/Pulsar.Web/package-lock.json
 
+      - name: Start PostgreSQL
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE pulsar_ci LOGIN PASSWORD 'pulsar_ci';" -c "CREATE DATABASE pulsar_e2e OWNER pulsar_ci;"
+
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run e2e
+        env:
+          PULSAR_E2E_POSTGRES: Host=localhost;Port=5432;Database=pulsar_e2e;Username=pulsar_ci;Password=pulsar_ci
 
       - uses: actions/upload-artifact@v7
         if: failure()

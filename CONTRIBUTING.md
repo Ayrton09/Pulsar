@@ -69,7 +69,7 @@ npm run build
 npm run dev   # Vite dev server, proxies /api, /hubs and /agent to the panel
 ```
 
-End-to-end tests use Playwright (`npm run e2e`) against a published panel.
+End-to-end tests use Playwright (`npm run e2e`) against a published panel; set `PULSAR_E2E_POSTGRES` to a connection string for a disposable database (for example `pulsar_e2e`).
 
 ## Code guidelines
 
