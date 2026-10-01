@@ -6,7 +6,7 @@
 
 | Need | Choice | Why | Status |
 |---|---|---|---|
-| Build | Vite + React + TypeScript (strict) | Requirement. No SSR. | In place |
+| Build | Vite + React + TypeScript (strict) | Requirement. No SSR. Type checking runs on TypeScript 7 (native compiler, `@typescript/native` → `tsc`); the `typescript` package is an alias of `@typescript/typescript6`, the TS 6 API that typescript-eslint and openapi-typescript still need (Microsoft's side-by-side setup). Drop the alias once those tools support TS 7. | In place |
 | Styles | Tailwind CSS v4 | No CSS-in-JS runtime. | In place |
 | i18n | i18next (en + es from day one) | Adding it later means touching every screen. | In place |
 | Tests | Vitest + Testing Library; Playwright for E2E | Requirement. | In place |
