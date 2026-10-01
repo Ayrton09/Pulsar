@@ -1,0 +1,38 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens. Components use the Tailwind utilities generated from @theme
+ * (bg-surface, text-muted, …); the values switch with the color scheme.
+ */
+:root {
+  --pulsar-bg: #0b0d12;
+  --pulsar-surface: #141821;
+  --pulsar-border: #262c3a;
+  --pulsar-text: #e6e9ef;
+  --pulsar-muted: #9aa3b5;
+  --pulsar-accent: #a08cff;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --pulsar-bg: #f6f7fb;
+    --pulsar-surface: #ffffff;
+    --pulsar-border: #dde1ea;
+    --pulsar-text: #141821;
+    --pulsar-muted: #5b6475;
+    --pulsar-accent: #5b3df5;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--pulsar-bg);
+  --color-surface: var(--pulsar-surface);
+  --color-border: var(--pulsar-border);
+  --color-text: var(--pulsar-text);
+  --color-muted: var(--pulsar-muted);
+  --color-accent: var(--pulsar-accent);
+}
+
+body {
+  @apply bg-bg text-text antialiased;
+}
