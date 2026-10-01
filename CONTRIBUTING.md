@@ -69,6 +69,15 @@ npm run build
 npm run dev   # Vite dev server, proxies /api, /hubs and /agent to the panel
 ```
 
+The frontend's API types are generated from the panel's OpenAPI document. After changing an endpoint or a DTO:
+
+```powershell
+$env:PULSAR_UPDATE_OPENAPI = 'true'; dotnet test --project tests/Pulsar.Api.Tests   # rewrites src/Pulsar.Web/src/api/openapi.json
+cd src/Pulsar.Web; npm run api:generate                                            # regenerates src/api/schema.d.ts
+```
+
+CI fails when either file is stale.
+
 End-to-end tests use Playwright (`npm run e2e`) against a published panel; set `PULSAR_E2E_POSTGRES` to a connection string for a disposable database (for example `pulsar_e2e`).
 
 ## Code guidelines

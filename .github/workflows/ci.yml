@@ -78,6 +78,13 @@ jobs:
           cache-dependency-path: src/Pulsar.Web/package-lock.json
 
       - run: npm ci
+
+      # The API tests check openapi.json against the API; this checks the TypeScript types against openapi.json.
+      - name: Check generated API client
+        run: |
+          npm run api:generate
+          git diff --exit-code -- src/api
+
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
