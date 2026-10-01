@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
+import { E2E_SETUP_TOKEN } from './e2e/constants';
 
 // End-to-end tests run against the *published* panel serving the built SPA (run `npm run build` first).
 // Publishing matters: `dotnet run` outside Development does not serve the precompressed static assets.
@@ -29,7 +30,12 @@ export default defineConfig({
     command:
       `dotnet publish "${apiProject}" -c Release -o "${publishDir}"` +
       ` && dotnet "${publishDir}/Pulsar.Api.dll" --contentRoot "${publishDir}" --urls ${baseURL}`,
-    env: { ConnectionStrings__Pulsar: connectionString },
+    // Plain HTTP on 127.0.0.1 (Security:AllowInsecureHttp); the HTTPS cookie mode is covered by the API tests.
+    env: {
+      ConnectionStrings__Pulsar: connectionString,
+      InitialSetup__Token: E2E_SETUP_TOKEN,
+      Security__AllowInsecureHttp: 'true',
+    },
     url: `${baseURL}/health/ready`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

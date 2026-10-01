@@ -3,7 +3,7 @@
 > Status: **proposal under review**.
 > Every phase ends with a clean build, green tests and a verifiable demo. A phase does not start before the previous one is closed.
 
-## Phase 0 — Foundations and spikes (de-risking) · *in progress*
+## Phase 0 — Foundations and spikes (de-risking) · *done* (CI pending a remote)
 
 **Repository** (done): `.slnx` solution, `Directory.Build.props`, `Directory.Packages.props`, `global.json`, `.editorconfig`, projects with the references of doc 01, architecture tests, minimal panel (health endpoint, SPA hosting, 404 for unknown backend routes), minimal agent host (Windows service ready), Vite + React + Tailwind + i18n skeleton with Vitest and Playwright, CI (Windows + Linux, `dotnet format --verify-no-changes`, tests, web lint/test/build, E2E), CodeQL, Dependabot, open source files (README, LICENSE AGPL-3.0, CONTRIBUTING with DCO, SECURITY, CODE_OF_CONDUCT), issue/PR templates, English documentation.
 
@@ -16,7 +16,7 @@
 
 **Done when:** CI is green on both OSes; spike reports confirm or correct docs 04 and 06 and ADR-0006/0007.
 
-## Phase 1 — Panel core
+## Phase 1 — Panel core · *done*
 
 - PostgreSQL connection with a clear failure, migrations, health checks (`/health/live`, `/health/ready`).
 - Identity, login/logout, initial setup with a token, cookies, antiforgery, rate limiting.

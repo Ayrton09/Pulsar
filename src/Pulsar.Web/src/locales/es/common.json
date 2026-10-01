@@ -1,6 +1,234 @@
 {
-  "home": {
-    "tagline": "Administración de servidores de juegos, pensada para Windows.",
-    "status": "Pre-alpha — en diseño"
+  "common": {
+    "loading": "Cargando…",
+    "none": "Ninguno",
+    "never": "Nunca",
+    "actions": "Acciones"
+  },
+  "actions": {
+    "close": "Cerrar",
+    "retry": "Reintentar",
+    "signOut": "Cerrar sesión",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "create": "Crear",
+    "loadMore": "Cargar más"
+  },
+  "nav": {
+    "label": "Navegación principal",
+    "dashboard": "Inicio",
+    "administration": "Administración",
+    "users": "Usuarios",
+    "roles": "Roles",
+    "audit": "Auditoría"
+  },
+  "auth": {
+    "userName": "Usuario",
+    "password": "Contraseña",
+    "passwordHint": "Al menos {{min}} caracteres. Unas cuantas palabras sin relación forman una contraseña fuerte y fácil de recordar.",
+    "login": {
+      "title": "Iniciar sesión",
+      "subtitle": "Administración de servidores de juegos, pensada para Windows.",
+      "submit": "Ingresar"
+    },
+    "setup": {
+      "title": "Crear el administrador",
+      "subtitle": "Este panel todavía no tiene usuarios. La primera cuenta tiene acceso completo.",
+      "token": "Token de configuración",
+      "tokenHint": "Aparece en el log del panel al iniciar. Demuestra que tenés acceso al servidor.",
+      "confirmPassword": "Repetir contraseña",
+      "submit": "Crear administrador"
+    }
+  },
+  "validation": {
+    "required": "Obligatorio.",
+    "tooLong": "Demasiado largo.",
+    "email": "Ingresá un email válido.",
+    "passwordLength": "Usá al menos {{min}} caracteres.",
+    "passwordsDiffer": "Las contraseñas no coinciden."
+  },
+  "forbidden": {
+    "title": "No disponible",
+    "description": "Tus roles no incluyen acceso a esta página."
+  },
+  "notFound": {
+    "title": "Página no encontrada",
+    "description": "Esta página no existe o todavía no está disponible.",
+    "home": "Ir al inicio"
+  },
+  "dashboard": {
+    "title": "Inicio",
+    "welcome": "Hola, {{name}}.",
+    "nextSteps": "Los nodos y servidores de juegos llegan en las próximas versiones. Por ahora podés administrar usuarios y roles y revisar la auditoría."
+  },
+  "users": {
+    "title": "Usuarios",
+    "description": "Personas que pueden ingresar al panel y sus roles globales.",
+    "create": "Agregar usuario",
+    "user": "Usuario",
+    "roles": "Roles",
+    "status": "Estado",
+    "lastLogin": "Último ingreso",
+    "active": "Activo",
+    "disabled": "Deshabilitado",
+    "displayName": "Nombre visible",
+    "email": "Email",
+    "editTitle": "Editar {{name}}",
+    "selfNotice": "Es tu propia cuenta: tus roles, estado y contraseña los administra otro administrador.",
+    "disableLabel": "Deshabilitado (no puede ingresar; sus sesiones abiertas terminan en menos de un minuto)",
+    "saveProfile": "Guardar perfil",
+    "saveRoles": "Guardar roles",
+    "newPassword": "Nueva contraseña",
+    "resetPassword": "Cambiar contraseña",
+    "passwordReset": "Contraseña cambiada. Se cerraron las sesiones del usuario.",
+    "saved": "Cambios guardados.",
+    "deleteConfirm": "¿Eliminar al usuario {{name}}? No se puede deshacer."
+  },
+  "roles": {
+    "title": "Roles",
+    "description": "Conjuntos de permisos que se asignan a los usuarios. Administrator viene incluido y siempre tiene todos los permisos.",
+    "create": "Crear rol",
+    "edit": "Editar rol",
+    "name": "Nombre",
+    "descriptionLabel": "Descripción",
+    "scope": "Alcance",
+    "scopeHint": "Dónde se asigna el rol: todo el panel, un nodo o un servidor. No se puede cambiar después.",
+    "scopeFixed": "El alcance no se puede cambiar una vez creado el rol.",
+    "scopes": {
+      "global": "Global",
+      "node": "Nodo",
+      "server": "Servidor"
+    },
+    "permissions": "Permisos",
+    "assignedUsers": "Usuarios",
+    "builtIn": "Incluido",
+    "allPermissions": "Todos los permisos",
+    "permissionCount_one": "{{count}} permiso",
+    "permissionCount_other": "{{count}} permisos",
+    "deleteConfirm": "¿Eliminar el rol {{name}}?"
+  },
+  "permissionGroups": {
+    "server": "Servidores",
+    "node": "Nodos",
+    "template": "Plantillas de juegos",
+    "user": "Usuarios",
+    "role": "Roles",
+    "audit": "Auditoría",
+    "settings": "Configuración"
+  },
+  "permissions": {
+    "server": {
+      "view": "Ver servidores",
+      "start": "Iniciar",
+      "stop": "Detener",
+      "restart": "Reiniciar",
+      "kill": "Forzar cierre",
+      "console": { "view": "Ver la consola", "write": "Enviar comandos a la consola" },
+      "files": { "view": "Ver archivos", "edit": "Editar archivos" },
+      "backups": {
+        "view": "Ver backups",
+        "create": "Crear backups",
+        "restore": "Restaurar backups",
+        "delete": "Eliminar backups"
+      },
+      "schedules": { "view": "Ver tareas programadas", "edit": "Editar tareas programadas" },
+      "startup": { "edit": "Editar variables de inicio" },
+      "settings": { "edit": "Editar la configuración del servidor" },
+      "install": "Instalar y actualizar",
+      "create": "Crear servidores",
+      "delete": "Eliminar servidores"
+    },
+    "node": {
+      "view": "Ver nodos",
+      "manage": "Administrar nodos",
+      "credentials": { "manage": "Administrar credenciales de nodos" }
+    },
+    "template": { "view": "Ver plantillas", "manage": "Administrar plantillas" },
+    "user": { "view": "Ver usuarios", "manage": "Administrar usuarios" },
+    "role": { "manage": "Administrar roles" },
+    "audit": { "view": "Ver la auditoría" },
+    "settings": { "manage": "Administrar la configuración del panel" }
+  },
+  "audit": {
+    "title": "Auditoría",
+    "description": "Quién hizo qué y cuándo. Los registros no se pueden modificar.",
+    "when": "Cuándo",
+    "who": "Quién",
+    "action": "Acción",
+    "outcome": "Resultado",
+    "from": "Desde",
+    "empty": "Todavía no hay registros.",
+    "actors": {
+      "node": "Nodo",
+      "schedule": "Tarea programada",
+      "system": "Sistema",
+      "anonymous": "Anónimo"
+    },
+    "outcomes": {
+      "success": "Correcto",
+      "failure": "Falló",
+      "denied": "Denegado"
+    },
+    "actions": {
+      "auth": {
+        "login": "Inició sesión",
+        "login_failed": "Ingreso fallido",
+        "logout": "Cerró sesión",
+        "setup": "Configuración inicial",
+        "password_changed": "Cambió su contraseña"
+      },
+      "user": {
+        "created": "Creó un usuario",
+        "updated": "Modificó un usuario",
+        "deleted": "Eliminó un usuario",
+        "password_reset": "Cambió la contraseña de un usuario"
+      },
+      "role": {
+        "created": "Creó un rol",
+        "updated": "Modificó un rol",
+        "deleted": "Eliminó un rol",
+        "assigned": "Asignó un rol",
+        "revoked": "Quitó un rol"
+      }
+    }
+  },
+  "security": {
+    "insecureTitle": "Conexión sin cifrar.",
+    "insecureDescription": "Las contraseñas y la sesión viajan en texto plano. Usá HTTPS fuera de una red de confianza."
+  },
+  "errors": {
+    "unexpected": "Algo salió mal. Probá de nuevo.",
+    "auth": {
+      "invalid_credentials": "Usuario o contraseña incorrectos.",
+      "required": "Tu sesión terminó. Volvé a ingresar.",
+      "forbidden": "No tenés permiso para hacer esto."
+    },
+    "setup": {
+      "invalid_token": "El token de configuración no es válido. Copialo de nuevo del log del panel.",
+      "completed": "El panel ya fue configurado."
+    },
+    "antiforgery": { "invalid": "La página está desactualizada. Recargala y probá de nuevo." },
+    "rate_limit": { "exceeded": "Demasiados intentos. Esperá un minuto y probá de nuevo." },
+    "validation": { "failed": "Algunos campos no son válidos." },
+    "role": {
+      "name_invalid": "El nombre del rol debe tener entre 1 y 64 caracteres.",
+      "description_too_long": "La descripción es demasiado larga.",
+      "system_immutable": "Los roles incluidos no se pueden modificar ni eliminar.",
+      "permission_unknown": "Uno de los permisos no existe.",
+      "permission_not_grantable": "Uno de los permisos no puede formar parte de un rol con este alcance.",
+      "not_found": "El rol no existe.",
+      "name_taken": "Ya existe otro rol con ese nombre.",
+      "in_use": "El rol está asignado a usuarios. Quitáselo primero."
+    },
+    "access": {
+      "scope_mismatch": "Ese rol no se puede asignar acá.",
+      "self_change": "No podés cambiar tu propio acceso.",
+      "escalation": "Solo podés otorgar o cambiar permisos que vos mismo tenés.",
+      "last_administrator": "Tiene que quedar al menos un administrador."
+    },
+    "transport": { "https_required": "Este panel solo acepta HTTPS. Abrilo con https://." },
+    "user": { "not_found": "El usuario no existe." }
   }
 }

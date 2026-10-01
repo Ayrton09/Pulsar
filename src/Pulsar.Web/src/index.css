@@ -7,30 +7,42 @@
 :root {
   --pulsar-bg: #0b0d12;
   --pulsar-surface: #141821;
+  --pulsar-surface-raised: #1c2130;
   --pulsar-border: #262c3a;
   --pulsar-text: #e6e9ef;
   --pulsar-muted: #9aa3b5;
   --pulsar-accent: #a08cff;
+  --pulsar-accent-contrast: #0b0d12;
+  --pulsar-danger: #f26d6d;
+  --pulsar-success: #4cc38a;
 }
 
 @media (prefers-color-scheme: light) {
   :root {
     --pulsar-bg: #f6f7fb;
     --pulsar-surface: #ffffff;
+    --pulsar-surface-raised: #eef0f6;
     --pulsar-border: #dde1ea;
     --pulsar-text: #141821;
     --pulsar-muted: #5b6475;
     --pulsar-accent: #5b3df5;
+    --pulsar-accent-contrast: #ffffff;
+    --pulsar-danger: #c62828;
+    --pulsar-success: #1e7a4f;
   }
 }
 
 @theme inline {
   --color-bg: var(--pulsar-bg);
   --color-surface: var(--pulsar-surface);
+  --color-surface-raised: var(--pulsar-surface-raised);
   --color-border: var(--pulsar-border);
   --color-text: var(--pulsar-text);
   --color-muted: var(--pulsar-muted);
   --color-accent: var(--pulsar-accent);
+  --color-accent-contrast: var(--pulsar-accent-contrast);
+  --color-danger: var(--pulsar-danger);
+  --color-success: var(--pulsar-success);
 }
 
 body {

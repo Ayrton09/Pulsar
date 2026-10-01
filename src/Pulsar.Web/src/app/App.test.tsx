@@ -1,7 +1,28 @@
+import { QueryClient } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import { App } from './App.tsx';
-import { initI18n, resolveLanguage } from './i18n.ts';
+import userEvent from '@testing-library/user-event';
+import { createMemoryRouter } from 'react-router';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { safeReturnTo } from '../features/auth/returnTo';
+import { adminUser, fakeApi, json, problem, session } from '../test/fakeApi';
+import { App } from './App';
+import { initI18n, resolveLanguage } from './i18n';
+import { routes } from './routes';
+
+function renderAt(path: string) {
+  const router = createMemoryRouter(routes, { initialEntries: [path] });
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<App router={router} queryClient={queryClient} />);
+  return router;
+}
+
+beforeAll(async () => {
+  await initI18n('en-US');
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('resolveLanguage', () => {
   it.each([
@@ -15,13 +36,105 @@ describe('resolveLanguage', () => {
   });
 });
 
-describe('App', () => {
-  it('renders the tagline in the browser language', async () => {
-    await initI18n('es-ES');
+describe('safeReturnTo', () => {
+  it.each([
+    ['/admin/users', '/admin/users'],
+    ['//evil.example', '/'],
+    ['/\\evil.example', '/'],
+    ['https://evil.example', '/'],
+    [null, '/'],
+  ])('maps %s to %s', (value, expected) => {
+    expect(safeReturnTo(value)).toBe(expected);
+  });
+});
 
-    render(<App />);
+describe('routing', () => {
+  it('sends a fresh installation to the setup page', async () => {
+    fakeApi({ 'GET /api/v1/auth/session': session(null, true) });
 
-    expect(screen.getByRole('heading', { name: 'Pulsar' })).toBeInTheDocument();
-    expect(screen.getByText('Administración de servidores de juegos, pensada para Windows.')).toBeInTheDocument();
+    const router = renderAt('/admin/users');
+
+    expect(await screen.findByRole('heading', { name: 'Create the administrator' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/setup');
+  });
+
+  it('asks anonymous users to sign in and remembers where they were going', async () => {
+    fakeApi({ 'GET /api/v1/auth/session': session(null) });
+
+    const router = renderAt('/admin/audit');
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(router.state.location.search).toBe('?returnTo=%2Fadmin%2Faudit');
+  });
+
+  it('shows administrators every administration entry', async () => {
+    fakeApi({ 'GET /api/v1/auth/session': session(adminUser) });
+
+    renderAt('/');
+
+    expect(await screen.findByText('Welcome, Ada Admin.')).toBeInTheDocument();
+    const nav = screen.getByRole('navigation', { name: 'Main navigation' });
+    for (const name of ['Users', 'Roles', 'Audit log']) {
+      expect(nav).toContainElement(screen.getByRole('link', { name }));
+    }
+  });
+
+  it('hides pages and links the user has no permission for', async () => {
+    fakeApi({ 'GET /api/v1/auth/session': session({ ...adminUser, permissions: [] }) });
+
+    renderAt('/admin/users');
+
+    expect(await screen.findByRole('heading', { name: 'Not available' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+  });
+});
+
+describe('login', () => {
+  it('shows the translated API error', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(null),
+      'POST /api/v1/auth/login': () => problem(401, 'auth.invalid_credentials', 'Invalid user name or password.'),
+    });
+    renderAt('/login');
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText('User name'), 'admin');
+    await user.type(screen.getByLabelText('Password'), 'wrong password');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid user name or password.');
+  });
+
+  it('validates required fields before calling the API', async () => {
+    const api = fakeApi({ 'GET /api/v1/auth/session': session(null) });
+    renderAt('/login');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findAllByText('Required.')).toHaveLength(2);
+    expect(api).toHaveBeenCalledTimes(1); // only the session
+  });
+
+  it('goes back to the requested page after signing in', async () => {
+    let signedIn = false;
+    fakeApi({
+      'GET /api/v1/auth/session': () =>
+        json({ setupRequired: false, user: signedIn ? adminUser : null, insecureConnection: false }),
+      'POST /api/v1/auth/login': () => {
+        signedIn = true;
+        return json(adminUser);
+      },
+      'GET /api/v1/audit': () => json({ entries: [], nextBefore: null }),
+    });
+    const router = renderAt('/login?returnTo=%2Fadmin%2Faudit');
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText('User name'), 'admin');
+    await user.type(screen.getByLabelText('Password'), 'correct horse battery staple');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByRole('heading', { name: 'Audit log' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/admin/audit');
   });
 });

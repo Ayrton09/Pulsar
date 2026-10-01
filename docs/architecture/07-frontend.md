@@ -31,16 +31,19 @@ src/Pulsar.Web/
 ├─ playwright.config.ts      E2E against the *published* panel
 ├─ e2e/
 └─ src/
-   ├─ app/                   App, i18n setup (later: router, providers, layout, error boundaries)
+   ├─ app/                   App, route table, query client, i18n setup
+   ├─ api/                   openapi.json (committed copy of the API document), schema.d.ts (generated),
+   │                         client.ts (openapi-fetch + antiforgery middleware + ApiError)
    ├─ locales/en, es
-   ├─ test/                  Vitest setup
-   ├─ components/ui/         (Phase 1) Button, Dialog, Table, Tabs, Badge, Toast… no business logic
-   ├─ lib/                   (Phase 1+) api client, realtime connection, permissions, formatting
-   └─ features/              (Phase 1+) auth, dashboard, servers, console, files, backups, schedules,
-                             network, startup, activity, nodes, admin
+   ├─ test/                  Vitest setup and a fake API (routes keyed by "METHOD /path")
+   ├─ components/ui/         Button, Form (Field, Input, Select, Checkbox), Dialog (Radix), Display (Table,
+   │                         Badge, Alert, PageHeader…): no business logic
+   ├─ lib/                   permissions, error messages (translated by ProblemDetails code), formatting
+   └─ features/              auth, shell, admin (Phase 1); later dashboard, servers, console, files, backups,
+                             schedules, network, startup, activity, nodes
 ```
 
-Each `feature` will hold `api.ts` (queries/mutations), `components/`, `routes.tsx` and tests next to the code.
+Each `feature` holds `api.ts` (TanStack Query hooks), its pages/components and tests next to the code. Pages that most sessions never open (administration) are loaded on demand through React Router's `lazy`.
 
 ## Routes
 

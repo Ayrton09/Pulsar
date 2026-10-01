@@ -1,0 +1,61 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, unwrap, type Schemas } from '../../api/client';
+
+export const sessionKey = ['session'] as const;
+
+export type CurrentUser = Schemas['CurrentUserResponse'];
+export type Session = Schemas['SessionResponse'];
+
+/** The session also issues the antiforgery token, so it is loaded before anything else. */
+export function useSession() {
+  return useQuery({
+    queryKey: sessionKey,
+    queryFn: () => unwrap(api.GET('/api/v1/auth/session')),
+    staleTime: Infinity,
+  });
+}
+
+/** The signed-in user. Only use below the session guard, where it is always present. */
+export function useCurrentUser(): CurrentUser {
+  const { data } = useSession();
+  if (!data?.user) {
+    throw new Error('useCurrentUser is only valid inside the signed-in layout.');
+  }
+  return data.user;
+}
+
+/**
+ * After sign-in, setup or sign-out the identity changed: the old cache belongs to someone else, and the session
+ * must be reloaded because the antiforgery token is bound to the user.
+ */
+function useIdentityChange() {
+  const queryClient = useQueryClient();
+  return async () => {
+    queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== sessionKey[0] });
+    await queryClient.invalidateQueries({ queryKey: sessionKey });
+  };
+}
+
+export function useLogin() {
+  const identityChanged = useIdentityChange();
+  return useMutation({
+    mutationFn: (body: Schemas['LoginRequest']) => unwrap(api.POST('/api/v1/auth/login', { body })),
+    onSuccess: identityChanged,
+  });
+}
+
+export function useSetup() {
+  const identityChanged = useIdentityChange();
+  return useMutation({
+    mutationFn: (body: Schemas['SetupRequest']) => unwrap(api.POST('/api/v1/auth/setup', { body })),
+    onSuccess: identityChanged,
+  });
+}
+
+export function useLogout() {
+  const identityChanged = useIdentityChange();
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/api/v1/auth/logout')),
+    onSettled: identityChanged,
+  });
+}

@@ -1,6 +1,234 @@
 {
-  "home": {
-    "tagline": "Game server management, built for Windows.",
-    "status": "Pre-alpha — under design"
+  "common": {
+    "loading": "Loading…",
+    "none": "None",
+    "never": "Never",
+    "actions": "Actions"
+  },
+  "actions": {
+    "close": "Close",
+    "retry": "Try again",
+    "signOut": "Sign out",
+    "edit": "Edit",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "save": "Save",
+    "create": "Create",
+    "loadMore": "Load more"
+  },
+  "nav": {
+    "label": "Main navigation",
+    "dashboard": "Dashboard",
+    "administration": "Administration",
+    "users": "Users",
+    "roles": "Roles",
+    "audit": "Audit log"
+  },
+  "auth": {
+    "userName": "User name",
+    "password": "Password",
+    "passwordHint": "At least {{min}} characters. A few unrelated words make a strong, memorable password.",
+    "login": {
+      "title": "Sign in",
+      "subtitle": "Game server management, built for Windows.",
+      "submit": "Sign in"
+    },
+    "setup": {
+      "title": "Create the administrator",
+      "subtitle": "This panel has no users yet. The first account gets full access.",
+      "token": "Setup token",
+      "tokenHint": "Printed in the panel log when it started. It proves you have access to the server.",
+      "confirmPassword": "Confirm password",
+      "submit": "Create administrator"
+    }
+  },
+  "validation": {
+    "required": "Required.",
+    "tooLong": "Too long.",
+    "email": "Enter a valid email address.",
+    "passwordLength": "Use at least {{min}} characters.",
+    "passwordsDiffer": "The passwords do not match."
+  },
+  "forbidden": {
+    "title": "Not available",
+    "description": "Your roles do not include access to this page."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "This page does not exist, or it is not available yet.",
+    "home": "Go to the dashboard"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome, {{name}}.",
+    "nextSteps": "Nodes and game servers arrive in the next versions. For now you can manage users, roles and review the audit log."
+  },
+  "users": {
+    "title": "Users",
+    "description": "People who can sign in to this panel and their global roles.",
+    "create": "Add user",
+    "user": "User",
+    "roles": "Roles",
+    "status": "Status",
+    "lastLogin": "Last sign-in",
+    "active": "Active",
+    "disabled": "Disabled",
+    "displayName": "Display name",
+    "email": "Email",
+    "editTitle": "Edit {{name}}",
+    "selfNotice": "This is your own account: your roles, status and password are managed by another administrator.",
+    "disableLabel": "Disabled (cannot sign in; open sessions end within a minute)",
+    "saveProfile": "Save profile",
+    "saveRoles": "Save roles",
+    "newPassword": "New password",
+    "resetPassword": "Set password",
+    "passwordReset": "Password changed. The user's sessions have ended.",
+    "saved": "Changes saved.",
+    "deleteConfirm": "Delete the user {{name}}? This cannot be undone."
+  },
+  "roles": {
+    "title": "Roles",
+    "description": "Sets of permissions you assign to users. Administrator is built in and always has every permission.",
+    "create": "Create role",
+    "edit": "Edit role",
+    "name": "Name",
+    "descriptionLabel": "Description",
+    "scope": "Scope",
+    "scopeHint": "Where the role is assigned: the whole panel, one node or one server. It cannot change later.",
+    "scopeFixed": "The scope cannot change once the role exists.",
+    "scopes": {
+      "global": "Global",
+      "node": "Node",
+      "server": "Server"
+    },
+    "permissions": "Permissions",
+    "assignedUsers": "Users",
+    "builtIn": "Built-in",
+    "allPermissions": "All permissions",
+    "permissionCount_one": "{{count}} permission",
+    "permissionCount_other": "{{count}} permissions",
+    "deleteConfirm": "Delete the role {{name}}?"
+  },
+  "permissionGroups": {
+    "server": "Servers",
+    "node": "Nodes",
+    "template": "Game templates",
+    "user": "Users",
+    "role": "Roles",
+    "audit": "Audit",
+    "settings": "Settings"
+  },
+  "permissions": {
+    "server": {
+      "view": "View servers",
+      "start": "Start",
+      "stop": "Stop",
+      "restart": "Restart",
+      "kill": "Kill",
+      "console": { "view": "View console", "write": "Send console commands" },
+      "files": { "view": "View files", "edit": "Edit files" },
+      "backups": {
+        "view": "View backups",
+        "create": "Create backups",
+        "restore": "Restore backups",
+        "delete": "Delete backups"
+      },
+      "schedules": { "view": "View schedules", "edit": "Edit schedules" },
+      "startup": { "edit": "Edit startup variables" },
+      "settings": { "edit": "Edit server settings" },
+      "install": "Install and update",
+      "create": "Create servers",
+      "delete": "Delete servers"
+    },
+    "node": {
+      "view": "View nodes",
+      "manage": "Manage nodes",
+      "credentials": { "manage": "Manage node credentials" }
+    },
+    "template": { "view": "View templates", "manage": "Manage templates" },
+    "user": { "view": "View users", "manage": "Manage users" },
+    "role": { "manage": "Manage roles" },
+    "audit": { "view": "View the audit log" },
+    "settings": { "manage": "Manage panel settings" }
+  },
+  "audit": {
+    "title": "Audit log",
+    "description": "Who did what, and when. Entries cannot be edited.",
+    "when": "When",
+    "who": "Who",
+    "action": "Action",
+    "outcome": "Result",
+    "from": "From",
+    "empty": "No entries yet.",
+    "actors": {
+      "node": "Node",
+      "schedule": "Schedule",
+      "system": "System",
+      "anonymous": "Anonymous"
+    },
+    "outcomes": {
+      "success": "Success",
+      "failure": "Failed",
+      "denied": "Denied"
+    },
+    "actions": {
+      "auth": {
+        "login": "Signed in",
+        "login_failed": "Failed sign-in",
+        "logout": "Signed out",
+        "setup": "Initial setup",
+        "password_changed": "Changed own password"
+      },
+      "user": {
+        "created": "Created a user",
+        "updated": "Updated a user",
+        "deleted": "Deleted a user",
+        "password_reset": "Set a user's password"
+      },
+      "role": {
+        "created": "Created a role",
+        "updated": "Updated a role",
+        "deleted": "Deleted a role",
+        "assigned": "Assigned a role",
+        "revoked": "Removed a role"
+      }
+    }
+  },
+  "security": {
+    "insecureTitle": "Unencrypted connection.",
+    "insecureDescription": "Passwords and sessions travel in clear text. Use HTTPS outside a trusted network."
+  },
+  "errors": {
+    "unexpected": "Something went wrong. Try again.",
+    "auth": {
+      "invalid_credentials": "Invalid user name or password.",
+      "required": "Your session ended. Sign in again.",
+      "forbidden": "You do not have permission to do this."
+    },
+    "setup": {
+      "invalid_token": "The setup token is not valid. Copy it again from the panel log.",
+      "completed": "The panel has already been set up."
+    },
+    "antiforgery": { "invalid": "The page is out of date. Reload it and try again." },
+    "rate_limit": { "exceeded": "Too many attempts. Wait a minute and try again." },
+    "validation": { "failed": "Some fields are not valid." },
+    "role": {
+      "name_invalid": "The role name must have between 1 and 64 characters.",
+      "description_too_long": "The description is too long.",
+      "system_immutable": "Built-in roles cannot be changed or deleted.",
+      "permission_unknown": "One of the permissions does not exist.",
+      "permission_not_grantable": "One of the permissions cannot be part of a role with this scope.",
+      "not_found": "The role does not exist.",
+      "name_taken": "Another role already has this name.",
+      "in_use": "The role is assigned to users. Remove it from them first."
+    },
+    "access": {
+      "scope_mismatch": "That role cannot be assigned here.",
+      "self_change": "You cannot change your own access.",
+      "escalation": "You can only grant or change permissions you hold yourself.",
+      "last_administrator": "At least one administrator must remain."
+    },
+    "transport": { "https_required": "This panel only accepts HTTPS. Open it with https://." },
+    "user": { "not_found": "The user does not exist." }
   }
 }
