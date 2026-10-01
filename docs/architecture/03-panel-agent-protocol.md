@@ -245,7 +245,8 @@ Agent                                         Panel
 ```
 
 - Including `panelOrigin` in the signed data prevents replaying a response against another panel.
-- The session JWT only works for the agent hub and transfers, lasts 15 minutes, and the connection closes when it expires (the agent re-authenticates transparently).
+- **Implementation note (Phase 2):** the session is an opaque random token (stored as SHA-256, in memory) rather than a JWT. The panel is a single instance in v1 and keeps per-session state anyway (command sequence, immediate revocation), so a JWT would add signing-key management without removing that state. A panel restart ends every session; agents re-authenticate on reconnect.
+- The session token only works for the agent hub and transfers, lasts 15 minutes, and the connection closes when it expires (the agent re-authenticates transparently).
 - One active connection per node.
 
 ### Rotation
