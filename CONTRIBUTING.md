@@ -1,0 +1,84 @@
+# Contributing to Pulsar
+
+Thanks for your interest in Pulsar! This document explains how to propose changes.
+
+## Before you start
+
+- For anything larger than a small fix, open an issue first so the approach can be discussed.
+- Architectural changes need an [ADR](docs/adr/README.md). If you think an existing decision is wrong, open an issue describing the problem, its impact, the proposed solution, alternatives and trade-offs.
+- Security issues must **not** be reported in public issues. See [SECURITY.md](SECURITY.md).
+
+## Developer Certificate of Origin (DCO)
+
+Every commit must be signed off, certifying that you wrote the change or have the right to submit it under the project's license ([developercertificate.org](https://developercertificate.org/)):
+
+```bash
+git commit -s -m "feat(agent): add Windows process manager"
+```
+
+This adds a `Signed-off-by: Your Name <you@example.com>` line. Pull requests with unsigned commits cannot be merged.
+
+## Commit messages
+
+We use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+feat(agent): add Windows process manager
+fix(files): prevent path traversal
+refactor(auth): simplify permission evaluation
+test(agent): add process cleanup tests
+docs(adr): accept ADR-0005
+```
+
+Keep commits focused: one coherent change per commit, no unrelated features bundled together.
+
+## Development setup
+
+Requirements:
+
+- .NET SDK 10.0.400 or newer (see `global.json`)
+- Node.js 22 or newer
+- Windows 10 1809+ / Windows 11 / Windows Server 2019+ to work on the agent's Windows code
+
+Backend:
+
+```bash
+dotnet restore
+dotnet build
+dotnet test
+dotnet format --verify-no-changes
+```
+
+Frontend (`src/Pulsar.Web`):
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run dev   # Vite dev server, proxies /api, /hubs and /agent to the panel
+```
+
+End-to-end tests use Playwright (`npm run e2e`) against a published panel.
+
+## Code guidelines
+
+- Nullable reference types are enabled and warnings are errors: keep the build clean.
+- Use `async`/`await` correctly and pass `CancellationToken` where it applies.
+- Use dependency injection and the options pattern; no service locator, no unnecessary static state.
+- Never swallow exceptions, never use `Thread.Sleep`, avoid aggressive polling.
+- Don't log secrets or whole request/response objects.
+- No magic strings for critical states; use the types and constants that exist for them.
+- Add tests with your change. Authorization, path handling, process lifecycle and agent communication changes always need tests.
+- Avoid adding dependencies "just in case". Every new package must be justified in the pull request.
+
+## Game manifests
+
+Manifests in `games/` are licensed under MIT. Each manifest must validate against `schemas/manifest.v1.schema.json`; the test suite checks every manifest in the repository.
+
+## Pull requests
+
+- Fill in the pull request template.
+- Make sure CI is green.
+- Update documentation when behavior changes.

@@ -1,0 +1,41 @@
+name: Game support request
+description: Ask for (or offer to write) a manifest for a new game.
+labels: ["game-support", "triage"]
+body:
+  - type: input
+    id: game
+    attributes:
+      label: Game
+    validations:
+      required: true
+  - type: input
+    id: steam-app-id
+    attributes:
+      label: Steam dedicated server App ID (if any)
+  - type: dropdown
+    id: anonymous
+    attributes:
+      label: Can the dedicated server be downloaded with anonymous SteamCMD login?
+      options:
+        - "Yes"
+        - "No"
+        - Not distributed through Steam
+        - Unknown
+  - type: textarea
+    id: launch
+    attributes:
+      label: How is the server launched on Windows?
+      description: Executable, typical arguments, ports (UDP/TCP), config files.
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console behavior
+      description: Does it write to stdout or to its own console window? How do you stop it cleanly?
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to write and test the manifest.
