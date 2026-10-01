@@ -49,6 +49,14 @@ internal sealed class CaptureSession : IDisposable
 
     public static unsafe CaptureSession Start(CaptureOptions options, Recorder recorder)
     {
+        if (options.DetachStdHandles)
+        {
+            // Our own console echo stops working from here on; the JSONL capture is unaffected.
+            PInvoke.SetStdHandle(STD_HANDLE.STD_INPUT_HANDLE, HANDLE.Null);
+            PInvoke.SetStdHandle(STD_HANDLE.STD_OUTPUT_HANDLE, HANDLE.Null);
+            PInvoke.SetStdHandle(STD_HANDLE.STD_ERROR_HANDLE, HANDLE.Null);
+        }
+
         var job = CreateKillOnCloseJob();
         var pty = options.Mode == CaptureMode.Pty;
 
@@ -271,6 +279,33 @@ internal sealed class CaptureSession : IDisposable
         { IsBackground = true, Name = $"reader-{stream}" };
         _readers.Add(thread);
         thread.Start();
+    }
+
+    /// <summary>Lists the processes currently in the job with their image name and main window, if any.</summary>
+    public unsafe IReadOnlyList<string> DescribeJobProcesses()
+    {
+        // JOBOBJECT_BASIC_PROCESS_ID_LIST: two DWORD counters followed by an array of ULONG_PTR process ids.
+        var buffer = stackalloc byte[4096];
+        Check(PInvoke.QueryInformationJobObject((HANDLE)_job.DangerousGetHandle(),
+            JOBOBJECTINFOCLASS.JobObjectBasicProcessIdList, buffer, 4096, null), "QueryInformationJobObject(ProcessIdList)");
+        var count = *(uint*)(buffer + 4);
+        var ids = (nuint*)(buffer + 8);
+        var result = new List<string>();
+        for (var i = 0; i < count; i++)
+        {
+            var pid = (int)ids[i];
+            try
+            {
+                using var process = Process.GetProcessById(pid);
+                result.Add($"{pid}:{process.ProcessName} window=0x{process.MainWindowHandle:X} title='{process.MainWindowTitle}' path={process.MainModule?.FileName}");
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                result.Add($"{pid}:<{ex.GetType().Name}>");
+            }
+        }
+
+        return result;
     }
 
     private unsafe JOBOBJECT_BASIC_ACCOUNTING_INFORMATION QueryAccounting()

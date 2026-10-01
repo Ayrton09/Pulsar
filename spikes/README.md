@@ -20,7 +20,9 @@ spikes/ConsoleCapture/bin/Release/net10.0-windows/ConsoleCapture.exe --mode pty 
     --exe spikes/ConsoleProbe/bin/Release/net10.0-windows/ConsoleProbe.exe --duration 6 --send 1:hello --send 2:spawn --ctrlc 4
 ```
 
-Real game servers: `run-spike1-games.ps1 -Root <folder>` downloads SteamCMD from Valve, installs CS:S and GMod anonymously (a few GB; `-IncludeCs2` adds ~60 GB) and captures them in both modes. Servers bind to `127.0.0.1` with `sv_lan 1`.
+Other options: `--detach-std` clears the tool's own standard handles before launching (what a Windows service looks like), `--snapshot <sec>` records the processes inside the Job. `rcon_probe.py` is a minimal Source RCON client used to validate the `logfile+rcon` console mode.
+
+Real game servers: `run-spike1-games.ps1 -Root <folder> [-Games css,gmod]` downloads SteamCMD from Valve, installs CS:S and GMod anonymously (a few GB; `-IncludeCs2` adds ~60 GB) and captures them in both modes. Servers bind to `127.0.0.1` with `sv_lan 1`.
 
 ## Spike 2 — isolated launch
 

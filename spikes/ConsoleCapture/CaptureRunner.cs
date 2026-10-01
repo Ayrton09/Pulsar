@@ -21,7 +21,11 @@ internal static class CaptureRunner
                 break;
             }
 
-            if (action.Text is { } text)
+            if (action.Snapshot)
+            {
+                recorder.Event("job", string.Join("; ", session.DescribeJobProcesses()));
+            }
+            else if (action.Text is { } text)
             {
                 recorder.Input(text);
                 session.WriteInput(text + options.InputNewline);

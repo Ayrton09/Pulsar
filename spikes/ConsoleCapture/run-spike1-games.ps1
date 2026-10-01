@@ -3,10 +3,12 @@
 #
 #   .\spikes\ConsoleCapture\run-spike1-games.ps1 -Root D:\PulsarSpike1            # SteamCMD + CS:S + GMod (a few GB)
 #   .\spikes\ConsoleCapture\run-spike1-games.ps1 -Root D:\PulsarSpike1 -IncludeCs2 # + CS2 (~60 GB)
+#   .\spikes\ConsoleCapture\run-spike1-games.ps1 -Root D:\PulsarSpike1 -Games css  # CS:S only
 #
 # Downloads SteamCMD from Valve's official URL. Captures go to <repo>\artifacts\spike1.
 param(
     [Parameter(Mandatory)] [string] $Root,
+    [ValidateSet('css', 'gmod')] [string[]] $Games = @('css', 'gmod'),
     [switch] $IncludeCs2,
     [switch] $SkipInstall
 )
@@ -53,17 +55,24 @@ Invoke-Capture 'steamcmd-bootstrap' 'pipes' $steamExe 600 @() @('+quit')
 Invoke-Capture 'steamcmd-idle' 'pty' $steamExe 300 @() @('+quit')
 
 # --- Installs (progress format and exit codes) ---------------------------------------------------
-$games = [ordered]@{
+$catalog = @{
     css  = @{ AppId = 232330; Mode = 'pty' }
     gmod = @{ AppId = 4020; Mode = 'pipes' }
 }
-if ($IncludeCs2) { $games['cs2'] = @{ AppId = 730; Mode = 'pty' } }
+$selected = [ordered]@{}
+foreach ($name in $Games) { $selected[$name] = $catalog[$name] }
+if ($IncludeCs2) { $selected['cs2'] = @{ AppId = 730; Mode = 'pty' } }
 
 if (-not $SkipInstall) {
-    foreach ($game in $games.Keys) {
+    foreach ($game in $selected.Keys) {
         $dir = Join-Path $Root $game
-        Invoke-Capture "install-$game" $games[$game].Mode $steamExe 7200 @() @(
-            '+force_install_dir', $dir, '+login', 'anonymous', '+app_update', $games[$game].AppId, 'validate', '+quit')
+        Invoke-Capture "install-$game" $selected[$game].Mode $steamExe 7200 @() @(
+            '+force_install_dir', $dir, '+login', 'anonymous', '+app_update', $selected[$game].AppId, 'validate', '+quit')
+
+        # A second (validate-only) pass in the other mode, to compare SteamCMD output in pty vs pipes.
+        $otherMode = if ($selected[$game].Mode -eq 'pty') { 'pipes' } else { 'pty' }
+        Invoke-Capture "validate-$game" $otherMode $steamExe 3600 @() @(
+            '+force_install_dir', $dir, '+login', 'anonymous', '+app_update', $selected[$game].AppId, 'validate', '+quit')
     }
 }
 
@@ -74,7 +83,8 @@ $srcdsArgs = @{
     gmod = @('-game', 'garrysmod', '-console', '+ip', '127.0.0.1', '-port', '27116', '+sv_lan', '1', '+maxplayers', '8', '+gamemode', 'sandbox', '+map', 'gm_construct')
 }
 
-foreach ($game in @('css', 'gmod')) {
+foreach ($game in $selected.Keys) {
+    if ($game -eq 'cs2') { continue }
     $exe = Join-Path $Root "$game\srcds.exe"
     foreach ($mode in @('pty', 'pipes')) {
         Invoke-Capture "run-$game" $mode $exe 90 $commonActions $srcdsArgs[$game]

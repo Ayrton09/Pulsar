@@ -5,7 +5,7 @@ namespace ConsoleCapture;
 
 internal enum CaptureMode { Pty, Pipes }
 
-internal sealed record ScheduledAction(TimeSpan At, string? Text);
+internal sealed record ScheduledAction(TimeSpan At, string? Text, bool Snapshot = false);
 
 internal sealed record CaptureOptions(
     CaptureMode Mode,
@@ -28,6 +28,9 @@ internal sealed record CaptureOptions(
     /// <summary>"winsta\desktop" for STARTUPINFO.lpDesktop; null = default.</summary>
     public string? Desktop { get; init; }
 
+    /// <summary>Clear this process's standard handles before launching, like a Windows service (which has none).</summary>
+    public bool DetachStdHandles { get; init; }
+
     public static CaptureOptions Parse(string[] args)
     {
         CaptureMode? mode = null;
@@ -38,6 +41,7 @@ internal sealed record CaptureOptions(
         Encoding encoding = Encoding.UTF8;
         var useStdHandles = false;
         var newline = "\r\n";
+        var detach = false;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -52,6 +56,7 @@ internal sealed record CaptureOptions(
                 case "--duration": duration = int.Parse(Next(), CultureInfo.InvariantCulture); break;
                 case "--newline": newline = Next() == "lf" ? "\n" : "\r\n"; break;
                 case "--usestdhandles": useStdHandles = true; break;
+                case "--detach-std": detach = true; break;
                 case "--encoding":
                     var name = Next();
                     encoding = name == "oem"
@@ -64,6 +69,9 @@ internal sealed record CaptureOptions(
                     if (colon <= 0) { throw new ArgumentException("--send expects <seconds>:<text>"); }
                     actions.Add(new ScheduledAction(
                         TimeSpan.FromSeconds(double.Parse(value[..colon], CultureInfo.InvariantCulture)), value[(colon + 1)..]));
+                    break;
+                case "--snapshot":
+                    actions.Add(new ScheduledAction(TimeSpan.FromSeconds(double.Parse(Next(), CultureInfo.InvariantCulture)), null, Snapshot: true));
                     break;
                 case "--ctrlc":
                     actions.Add(new ScheduledAction(TimeSpan.FromSeconds(double.Parse(Next(), CultureInfo.InvariantCulture)), null));
@@ -81,7 +89,10 @@ internal sealed record CaptureOptions(
             throw new ArgumentException("Usage: ConsoleCapture --mode pty|pipes --exe <path> [options] [-- args]");
         }
 
-        return new CaptureOptions(mode.Value, exe, cwd, output, duration, actions, arguments, encoding, useStdHandles, newline);
+        return new CaptureOptions(mode.Value, exe, cwd, output, duration, actions, arguments, encoding, useStdHandles, newline)
+        {
+            DetachStdHandles = detach,
+        };
     }
 }
 
