@@ -54,6 +54,7 @@ if (Directory.Exists(root))
 
 var serversRoot = Path.Combine(root, "servers");
 var accounts = new List<ServerAccount>();
+var sharedFiles = new List<string>();
 try
 {
     // 1. Directory layout and ACLs: servers root only for SYSTEM/Administrators, one subfolder per server.
@@ -75,7 +76,16 @@ try
     }
 
     var a = accounts[0];
+    var b = accounts[1];
     var probeExe = Path.Combine(serversRoot, "a", "probe", "ConsoleProbe.exe");
+    var probeExeB = Path.Combine(serversRoot, "b", "probe", "ConsoleProbe.exe");
+
+    // Locations writable by BUILTIN\Users on a default install: the token keeps that group (see the findings),
+    // so a server can drop files there and every other server can read them.
+    var sharedProgramData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "pulsar-spike-a.txt");
+    var sharedPublic = Path.Combine(Environment.GetEnvironmentVariable("PUBLIC") ?? @"C:\Users\Public", "pulsar-spike-a.txt");
+    var profileFileA = Path.Combine(Path.GetPathRoot(Environment.SystemDirectory)!, "Users", a.Name, "AppData", "Local", "Temp", "pulsar-spike-a.txt");
+    sharedFiles.AddRange([sharedProgramData, sharedPublic]);
     string[] script =
     [
         "whoami",
@@ -84,18 +94,36 @@ try
         $"read {Path.Combine(serversRoot, "b", "secret.txt")}",
         $"write {Path.Combine(serversRoot, "b", "injected.txt")}",
         $"write {Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "pulsar-spike.txt")}",
+        $"write {sharedProgramData}",
+        $"write {sharedPublic}",
         "spawn",
         "quit",
     ];
 
     // 2. Scenarios: what is the minimum needed for the child to start correctly?
-    await RunScenario("s1-token-only", a, probeExe, script, loadProfile: false, desktop: null);
-    await RunScenario("s2-profile-and-environment", a, probeExe, script, loadProfile: true, desktop: null);
+    await RunScenario("s1-token-only", a, probeExe, script, loadProfile: false, restrict: false, desktop: null);
+    await RunScenario("s2-profile-and-environment", a, probeExe, script, loadProfile: true, restrict: false, desktop: null);
 
     using (var desktop = DedicatedDesktop.Create("PulsarSpike", a.Sid, Log))
     {
-        await RunScenario("s3-profile-environment-desktop", a, probeExe, script, loadProfile: true, desktop: desktop.Name);
+        await RunScenario("s3-profile-environment-desktop", a, probeExe, script, loadProfile: true, restrict: false, desktop: desktop.Name);
     }
+
+    // 3. Same as s2 with every privilege but SeChangeNotifyPrivilege removed; also leaves a file in a's profile.
+    string[] restrictedScript = [.. script[..^2], $"write {profileFileA}", "spawn", "quit"];
+    await RunScenario("s4-restricted-token", a, probeExe, restrictedScript, loadProfile: true, restrict: true, desktop: null);
+
+    // 4. Server b: can it read what a left in the Users-writable locations and in a's profile?
+    string[] crossScript =
+    [
+        "whoami",
+        $"read {sharedProgramData}",
+        $"read {sharedPublic}",
+        $"read {profileFileA}",
+        $"write {sharedProgramData}",
+        "quit",
+    ];
+    await RunScenario("s5-other-server-shared-locations", b, probeExeB, crossScript, loadProfile: true, restrict: true, desktop: null);
 
     Log("done; see the s*.jsonl captures next to this log");
     return 0;
@@ -107,6 +135,12 @@ catch (Exception ex)
 }
 finally
 {
+    foreach (var file in sharedFiles.Where(File.Exists))
+    {
+        File.Delete(file);
+        Log($"removed {file}");
+    }
+
     foreach (var account in accounts)
     {
         account.Delete(Log);
@@ -123,10 +157,10 @@ finally
     }
 }
 
-async Task RunScenario(string name, ServerAccount account, string exe, string[] commands, bool loadProfile, string? desktop)
+async Task RunScenario(string name, ServerAccount account, string exe, string[] commands, bool loadProfile, bool restrict, string? desktop)
 {
-    Log($"--- scenario {name}: loadProfile={loadProfile} desktop={desktop ?? "(inherited)"}");
-    using var logon = account.LogOn(loadProfile, Log);
+    Log($"--- scenario {name}: account={account.Name} loadProfile={loadProfile} restrict={restrict} desktop={desktop ?? "(inherited)"}");
+    using var logon = account.LogOn(loadProfile, restrict, Log);
     var actions = commands.Select((c, i) => new ScheduledAction(TimeSpan.FromSeconds(2 + (i * 1.5)), c)).ToList();
     var options = new CaptureOptions(CaptureMode.Pty, exe, Path.GetDirectoryName(exe), null,
         DurationSeconds: 2 + (commands.Length * 2), actions, [], Encoding.UTF8, UseStdHandlesInPty: true, "\r\n")

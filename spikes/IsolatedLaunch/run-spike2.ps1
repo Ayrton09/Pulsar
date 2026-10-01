@@ -43,6 +43,8 @@ try {
     Write-Host 'leftover accounts:' (@(Get-LocalUser | Where-Object Name -like 'pulsar_spk_*').Name -join ', ')
     Write-Host 'leftover work dir:' (Test-Path $WorkRoot)
     Write-Host 'leftover probe processes:' @(Get-Process ConsoleProbe -ErrorAction SilentlyContinue).Count
+    Write-Host 'leftover shared files:' (@(Get-ChildItem $env:ProgramData, $env:PUBLIC -Filter 'pulsar-spike-*' -ErrorAction SilentlyContinue).FullName -join ', ')
+    Write-Host 'leftover profiles:' (@(Get-ChildItem "$env:SystemDrive\Users" -Filter 'pulsar_spk_*' -ErrorAction SilentlyContinue).Name -join ', ')
 
     Get-Content (Join-Path $report 'spike2.log') | Write-Host
 }

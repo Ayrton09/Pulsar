@@ -14,6 +14,8 @@ TerminateJobObject
 IsProcessInJob
 GetExitCodeProcess
 WaitForSingleObject
+SetStdHandle
+STD_HANDLE
 JOBOBJECT_EXTENDED_LIMIT_INFORMATION
 JOBOBJECT_BASIC_ACCOUNTING_INFORMATION
 STARTUPINFOEXW
@@ -44,3 +46,4 @@ CloseWindowStation
 CloseDesktop
 ConvertStringSecurityDescriptorToSecurityDescriptor
 LocalFree
+CreateRestrictedToken

@@ -33,6 +33,8 @@ Real game servers: `run-spike1-games.ps1 -Root <folder> [-Games css,gmod]` downl
 3. The script runs `IsolatedLaunch` as SYSTEM through a temporary scheduled task (session 0, like the agent service), then writes `report/spike2.log` and one capture per scenario:
    - `s1-token-only`: `LogonUser` (batch) + `CreateProcessAsUser`, inherited desktop;
    - `s2-profile-and-environment`: + `LoadUserProfile` + `CreateEnvironmentBlock`;
-   - `s3-profile-environment-desktop`: + a dedicated window station/desktop.
+   - `s3-profile-environment-desktop`: + a dedicated window station/desktop;
+   - `s4-restricted-token`: s2 with `CreateRestrictedToken(DISABLE_MAX_PRIVILEGE)`;
+   - `s5-other-server-shared-locations`: server b (restricted) reads what server a left in `C:\ProgramData`, `C:\Users\Public` and its profile.
 
-   In each scenario the probe prints its token (`whoami /all`), its environment, and tries to read its own file, read and write the other server's folder, and write into `C:\Windows`.
+   In each scenario the probe prints its token (`whoami /all`), its environment, and tries to read its own file, read and write the other server's folder, and write into `C:\Windows`, `C:\ProgramData` and `C:\Users\Public`.

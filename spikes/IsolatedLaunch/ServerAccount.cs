@@ -66,7 +66,7 @@ internal sealed class ServerAccount
         return account;
     }
 
-    public unsafe Logon LogOn(bool loadProfile, Action<string> log)
+    public unsafe Logon LogOn(bool loadProfile, bool restrict, Action<string> log)
     {
         HANDLE token;
         fixed (char* namePtr = Name)
@@ -104,7 +104,22 @@ internal sealed class ServerAccount
             log("LoadUserProfile + CreateEnvironmentBlock OK");
         }
 
-        return new Logon(token, profile, environment);
+        // The profile is loaded with the full token; only the child runs with the restricted one.
+        // DISABLE_MAX_PRIVILEGE deletes every privilege except SeChangeNotifyPrivilege (e.g. SeShutdownPrivilege,
+        // which Users hold by default on client editions).
+        var restricted = HANDLE.Null;
+        if (restrict)
+        {
+            if (!PInvoke.CreateRestrictedToken(token, CREATE_RESTRICTED_TOKEN_FLAGS.DISABLE_MAX_PRIVILEGE,
+                    0, null, 0, null, 0, null, &restricted))
+            {
+                throw new InvalidOperationException($"CreateRestrictedToken failed: {Marshal.GetLastPInvokeErrorMessage()}");
+            }
+
+            log("CreateRestrictedToken(DISABLE_MAX_PRIVILEGE) OK");
+        }
+
+        return new Logon(token, restricted, profile, environment);
     }
 
     public unsafe void Delete(Action<string> log)
@@ -126,8 +141,9 @@ internal sealed class ServerAccount
         }
     }
 
-    // NOTE for the findings: BUILTIN\Users also contains NT AUTHORITY\Authenticated Users, so the token
-    // may still carry the Users SID after this. The probe's "whoami" output shows the effective groups.
+    // Finding (spike 2): NetUserAdd does not make the account a direct member (this returns 1377,
+    // ERROR_MEMBER_NOT_IN_ALIAS), yet the token still carries BUILTIN\Users through its nested
+    // NT AUTHORITY\Authenticated Users member. Kept to show it has no effect.
     private unsafe void RemoveFromUsersGroup(Action<string> log)
     {
         var users = (NTAccount)new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null).Translate(typeof(NTAccount));
@@ -194,13 +210,19 @@ internal sealed class ServerAccount
     }
 }
 
-internal sealed unsafe class Logon(HANDLE token, HANDLE profile, void* environment) : IDisposable
+internal sealed unsafe class Logon(HANDLE token, HANDLE restricted, HANDLE profile, void* environment) : IDisposable
 {
-    public nint Token => (nint)token.Value;
+    /// <summary>The token the child is created with: the restricted one when requested.</summary>
+    public nint Token => restricted != HANDLE.Null ? (nint)restricted.Value : (nint)token.Value;
     public nint Environment => (nint)environment;
 
     public void Dispose()
     {
+        if (restricted != HANDLE.Null)
+        {
+            PInvoke.CloseHandle(restricted);
+        }
+
         if (environment is not null)
         {
             PInvoke.DestroyEnvironmentBlock(environment);
