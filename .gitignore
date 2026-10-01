@@ -1,0 +1,42 @@
+# .NET build output
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+.vs/
+*.binlog
+TestResults/
+coverage*/
+
+# Rider / VS Code
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Node / frontend
+node_modules/
+src/Pulsar.Web/dist/
+src/Pulsar.Web/coverage/
+src/Pulsar.Web/test-results/
+src/Pulsar.Web/playwright-report/
+src/Pulsar.Web/blob-report/
+src/Pulsar.Web/playwright/.cache/
+
+# Frontend build copied into the panel at publish time
+src/Pulsar.Api/wwwroot/
+
+# Local configuration and secrets
+appsettings.Development.local.json
+*.local.json
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
