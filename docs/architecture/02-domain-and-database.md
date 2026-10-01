@@ -98,6 +98,7 @@ Effective permissions(user, server S on node N) =
 3. Holders of `role.manage`/`user.manage` **can only grant permissions they hold themselves** in that scope.
 4. Nobody can change their own assignments.
 5. Every role/access change is audited with the permission diff.
+6. `user.manage` can only disable, delete or reset the password of users whose global permissions the actor also holds, and never of themselves (a user manager cannot lock out an administrator).
 
 There is no `Admin = true`: "administrator" is just a role.
 

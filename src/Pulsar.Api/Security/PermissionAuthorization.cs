@@ -5,8 +5,8 @@ using Pulsar.Domain.Access;
 
 namespace Pulsar.Api.Security;
 
-/// <summary>Endpoint metadata: the global permission an endpoint requires (read by the endpoint coverage test).</summary>
-public sealed record RequiredPermissionMetadata(string Permission);
+/// <summary>Endpoint metadata: the endpoint requires any of these global permissions (read by the endpoint coverage test).</summary>
+public sealed record RequiredPermissionMetadata(IReadOnlyList<string> AnyOf);
 
 /// <summary>Endpoint metadata: the endpoint is available to any signed-in user (e.g. "who am I", logout).</summary>
 public sealed class SignedInUserMetadata
@@ -14,7 +14,7 @@ public sealed class SignedInUserMetadata
     public static SignedInUserMetadata Instance { get; } = new();
 }
 
-internal sealed record PermissionRequirement(string Permission) : IAuthorizationRequirement;
+internal sealed record PermissionRequirement(IReadOnlyList<string> AnyOf) : IAuthorizationRequirement;
 
 internal sealed class PermissionAuthorizationHandler(IPermissionEvaluator evaluator) : AuthorizationHandler<PermissionRequirement>
 {
@@ -26,7 +26,8 @@ internal sealed class PermissionAuthorizationHandler(IPermissionEvaluator evalua
         }
 
         var cancellationToken = (context.Resource as HttpContext)?.RequestAborted ?? CancellationToken.None;
-        if (await evaluator.HasAsync(user, requirement.Permission, AccessTarget.Global, cancellationToken))
+        var permissions = await evaluator.GetAsync(user, cancellationToken);
+        if (requirement.AnyOf.Any(permissions.HasGlobal))
         {
             context.Succeed(requirement);
         }
@@ -36,22 +37,23 @@ internal sealed class PermissionAuthorizationHandler(IPermissionEvaluator evalua
 public static class PermissionEndpointExtensions
 {
     /// <summary>
-    /// Requires a signed-in user holding <paramref name="permission"/> globally. Resource-scoped checks (node/server)
-    /// happen in the handler, which answers 404 for resources the user cannot see.
+    /// Requires a signed-in user holding any of <paramref name="anyOf"/> globally. Resource-scoped checks
+    /// (node/server) happen in the handler, which answers 404 for resources the user cannot see.
     /// </summary>
-    public static TBuilder RequirePermission<TBuilder>(this TBuilder builder, string permission)
+    public static TBuilder RequirePermission<TBuilder>(this TBuilder builder, params string[] anyOf)
         where TBuilder : IEndpointConventionBuilder
     {
-        if (!PermissionCatalog.Exists(permission))
+        ArgumentOutOfRangeException.ThrowIfZero(anyOf.Length, nameof(anyOf));
+        if (anyOf.FirstOrDefault(p => !PermissionCatalog.Exists(p)) is { } unknown)
         {
-            throw new ArgumentException($"Unknown permission '{permission}'.", nameof(permission));
+            throw new ArgumentException($"Unknown permission '{unknown}'.", nameof(anyOf));
         }
 
         var policy = new AuthorizationPolicyBuilder(IdentityConstants.ApplicationScheme)
             .RequireAuthenticatedUser()
-            .AddRequirements(new PermissionRequirement(permission))
+            .AddRequirements(new PermissionRequirement(anyOf))
             .Build();
-        return builder.RequireAuthorization(policy).WithMetadata(new RequiredPermissionMetadata(permission));
+        return builder.RequireAuthorization(policy).WithMetadata(new RequiredPermissionMetadata(anyOf));
     }
 
     /// <summary>Requires a signed-in user, without any particular permission.</summary>

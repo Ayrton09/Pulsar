@@ -119,6 +119,20 @@ public sealed class Role
             return AccessErrors.RoleDescriptionTooLong;
         }
 
+        var valid = ValidatePermissions(scope, permissions);
+        if (!valid.IsSuccess)
+        {
+            return valid;
+        }
+
+        normalized.UnionWith(permissions);
+        return Result.Success();
+    }
+
+    /// <summary>Every permission exists in the catalog and can be part of a role of <paramref name="scope"/>.</summary>
+    public static Result ValidatePermissions(PermissionScope scope, IEnumerable<string> permissions)
+    {
+        ArgumentNullException.ThrowIfNull(permissions);
         foreach (var permission in permissions)
         {
             if (!PermissionCatalog.Exists(permission))
@@ -130,8 +144,6 @@ public sealed class Role
             {
                 return AccessErrors.PermissionNotGrantable(permission, scope);
             }
-
-            normalized.Add(permission);
         }
 
         return Result.Success();
@@ -140,10 +152,12 @@ public sealed class Role
     private static string? NormalizeDescription(string? description) =>
         string.IsNullOrWhiteSpace(description) ? null : description.Trim();
 
-    private void ReplaceGrants(IEnumerable<string> permissions)
+    // Applies only the difference: unchanged grants keep their identity, so persistence touches only changed rows.
+    private void ReplaceGrants(SortedSet<string> permissions)
     {
-        _grants.Clear();
-        _grants.AddRange(permissions.Select(p => new RoleGrant(Id, p)));
+        _grants.RemoveAll(g => !permissions.Contains(g.Permission));
+        var existing = _grants.Select(g => g.Permission).ToHashSet(StringComparer.Ordinal);
+        _grants.AddRange(permissions.Where(p => !existing.Contains(p)).Select(p => new RoleGrant(Id, p)));
     }
 }
 

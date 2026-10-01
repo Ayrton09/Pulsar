@@ -1,0 +1,304 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Pulsar.Api.Http;
+using Pulsar.Application.Abstractions;
+using Pulsar.Application.Access;
+using Pulsar.Application.Audit;
+using Pulsar.Domain.Access;
+using Pulsar.Domain.Audit;
+using Pulsar.Domain.Common;
+using Pulsar.Infrastructure.Identity;
+using Pulsar.Infrastructure.Persistence;
+
+namespace Pulsar.Api.Access;
+
+/// <summary>
+/// User administration (ASP.NET Core Identity accounts + global role assignments) with the anti-escalation rules of
+/// docs/architecture/02. Lives in the API because it works directly with Identity's UserManager.
+/// </summary>
+public sealed class UserManagement(
+    PulsarDbContext db,
+    UserManager<PulsarUser> users,
+    IPermissionEvaluator evaluator,
+    IRequestContext request,
+    IAuditLog audit,
+    TimeProvider clock)
+{
+    public async Task<IReadOnlyList<UserResponse>> ListAsync(CancellationToken ct)
+    {
+        var all = await db.Users.AsNoTracking().OrderBy(u => u.NormalizedUserName).ToListAsync(ct);
+        var roles = await RoleReferencesAsync(null, ct);
+        return [.. all.Select(u => Describe(u, roles))];
+    }
+
+    public async Task<IResult> GetAsync(UserId id, CancellationToken ct)
+    {
+        var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == id, ct);
+        return user is null
+            ? ApiProblems.FromDomainError(AccessErrors.UserNotFound)
+            : TypedResults.Ok(Describe(user, await RoleReferencesAsync(id, ct)));
+    }
+
+    public async Task<IResult> CreateAsync(CreateUserRequest input, CancellationToken ct)
+    {
+        var actor = Actor;
+        var actorPermissions = await evaluator.GetAsync(actor, ct);
+        var newId = UserId.New();
+
+        var roleIds = (input.RoleIds ?? []).Distinct().Select(g => new RoleId(g)).ToList();
+        var roles = await db.Roles.Where(r => roleIds.Contains(r.Id)).ToListAsync(ct);
+        if (roles.Count != roleIds.Count)
+        {
+            return ApiProblems.FromDomainError(AccessErrors.RoleNotFound);
+        }
+
+        foreach (var role in roles)
+        {
+            var allowed = AccessRules.CanChangeAssignment(actor, actorPermissions, newId, role, AccessTarget.Global);
+            if (!allowed.IsSuccess)
+            {
+                return ApiProblems.FromDomainError(allowed.Error!);
+            }
+        }
+
+        var now = clock.GetUtcNow();
+        var user = new PulsarUser
+        {
+            Id = newId,
+            UserName = input.UserName.Trim(),
+            DisplayName = Clean(input.DisplayName),
+            Email = Clean(input.Email),
+            CreatedAt = now,
+        };
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var created = await users.CreateAsync(user, input.Password);
+        if (!created.Succeeded)
+        {
+            return IdentityProblems.Validation(created);
+        }
+
+        audit.Record(AuditActions.User.Created, metadata: new { userName = user.UserName }).WithTarget("user", user.Id.ToString());
+        foreach (var role in roles)
+        {
+            db.UserRoles.Add(new UserRoleAssignment(user.Id, role.Id, actor, now));
+            RecordAssignment(AuditActions.Role.Assigned, user, role);
+        }
+
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+
+        var response = Describe(user, roles.Select(r => (user.Id, new RoleReference(r.Id.Value, r.Name))).ToList());
+        return TypedResults.Created($"/api/v1/users/{user.Id}", response);
+    }
+
+    public async Task<IResult> UpdateAsync(UserId id, UpdateUserRequest input, CancellationToken ct)
+    {
+        var (user, problem) = await FindManageableAsync(id, ct);
+        if (problem is not null)
+        {
+            return problem;
+        }
+
+        var changed = new List<string>();
+        if (user!.DisplayName != Clean(input.DisplayName))
+        {
+            user.DisplayName = Clean(input.DisplayName);
+            changed.Add("displayName");
+        }
+
+        if (user.Email != Clean(input.Email))
+        {
+            user.Email = Clean(input.Email);
+            changed.Add("email");
+        }
+
+        var disabledChanged = user.IsDisabled != input.IsDisabled;
+        if (disabledChanged)
+        {
+            user.IsDisabled = input.IsDisabled;
+            changed.Add("isDisabled");
+        }
+
+        if (changed.Count > 0)
+        {
+            audit.Record(AuditActions.User.Updated, metadata: new { userName = user.UserName, changed, isDisabled = user.IsDisabled })
+                .WithTarget("user", user.Id.ToString());
+            var updated = await users.UpdateAsync(user);
+            if (!updated.Succeeded)
+            {
+                return IdentityProblems.Validation(updated);
+            }
+
+            if (disabledChanged)
+            {
+                // A new security stamp ends the user's existing sessions at the next validation.
+                await users.UpdateSecurityStampAsync(user);
+            }
+        }
+
+        return TypedResults.Ok(Describe(user, await RoleReferencesAsync(id, ct)));
+    }
+
+    public async Task<IResult> ResetPasswordAsync(UserId id, ResetPasswordRequest input, CancellationToken ct)
+    {
+        var (user, problem) = await FindManageableAsync(id, ct);
+        if (problem is not null)
+        {
+            return problem;
+        }
+
+        audit.Record(AuditActions.User.PasswordReset, metadata: new { userName = user!.UserName }).WithTarget("user", user.Id.ToString());
+        var token = await users.GeneratePasswordResetTokenAsync(user);
+        var reset = await users.ResetPasswordAsync(user, token, input.NewPassword); // also renews the security stamp
+        if (!reset.Succeeded)
+        {
+            return IdentityProblems.Validation(reset);
+        }
+
+        await users.ResetAccessFailedCountAsync(user);
+        await users.SetLockoutEndDateAsync(user, null);
+        return TypedResults.NoContent();
+    }
+
+    public async Task<IResult> DeleteAsync(UserId id, CancellationToken ct)
+    {
+        var (user, problem) = await FindManageableAsync(id, ct);
+        if (problem is not null)
+        {
+            return problem;
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        if (await HoldsLastAdministratorAssignmentAsync(id, ct))
+        {
+            return ApiProblems.FromDomainError(AccessErrors.LastAdministrator);
+        }
+
+        audit.Record(AuditActions.User.Deleted, metadata: new { userName = user!.UserName }).WithTarget("user", user.Id.ToString());
+        var deleted = await users.DeleteAsync(user);
+        if (!deleted.Succeeded)
+        {
+            return IdentityProblems.Validation(deleted);
+        }
+
+        await transaction.CommitAsync(ct);
+        evaluator.Invalidate(id);
+        return TypedResults.NoContent();
+    }
+
+    public async Task<IResult> SetRolesAsync(UserId id, SetUserRolesRequest input, CancellationToken ct)
+    {
+        var user = await db.Users.SingleOrDefaultAsync(u => u.Id == id, ct);
+        if (user is null)
+        {
+            return ApiProblems.FromDomainError(AccessErrors.UserNotFound);
+        }
+
+        var actor = Actor;
+        var actorPermissions = await evaluator.GetAsync(actor, ct);
+        var desired = input.RoleIds.Distinct().Select(g => new RoleId(g)).ToHashSet();
+        var current = await db.UserRoles.Where(a => a.UserId == id).ToListAsync(ct);
+        var currentIds = current.Select(a => a.RoleId).ToHashSet();
+
+        var involvedIds = desired.Union(currentIds).ToList();
+        var roles = await db.Roles.Where(r => involvedIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, ct);
+        if (desired.Any(r => !roles.ContainsKey(r)))
+        {
+            return ApiProblems.FromDomainError(AccessErrors.RoleNotFound);
+        }
+
+        var added = desired.Except(currentIds).Select(r => roles[r]).ToList();
+        var removed = current.Where(a => !desired.Contains(a.RoleId)).ToList();
+        foreach (var role in added.Concat(removed.Select(a => roles[a.RoleId])))
+        {
+            var allowed = AccessRules.CanChangeAssignment(actor, actorPermissions, id, role, AccessTarget.Global);
+            if (!allowed.IsSuccess)
+            {
+                return ApiProblems.FromDomainError(allowed.Error!);
+            }
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var removesAdministrator = removed.Any(a => roles[a.RoleId].IsSystem);
+        if (removesAdministrator && await HoldsLastAdministratorAssignmentAsync(id, ct))
+        {
+            return ApiProblems.FromDomainError(AccessErrors.LastAdministrator);
+        }
+
+        var now = clock.GetUtcNow();
+        foreach (var role in added)
+        {
+            db.UserRoles.Add(new UserRoleAssignment(id, role.Id, actor, now));
+            RecordAssignment(AuditActions.Role.Assigned, user, role);
+        }
+
+        foreach (var assignment in removed)
+        {
+            db.UserRoles.Remove(assignment);
+            RecordAssignment(AuditActions.Role.Revoked, user, roles[assignment.RoleId]);
+        }
+
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        evaluator.Invalidate(id);
+        return TypedResults.Ok(Describe(user, await RoleReferencesAsync(id, ct)));
+    }
+
+    private UserId Actor => request.UserId ?? throw new InvalidOperationException("User management requires a signed-in user.");
+
+    /// <summary>Loads a user the actor may change (rule 6 of docs/architecture/02), or the problem to return.</summary>
+    private async Task<(PulsarUser? User, IResult? Problem)> FindManageableAsync(UserId id, CancellationToken ct)
+    {
+        var user = await users.FindByIdAsync(id.ToString());
+        if (user is null)
+        {
+            return (null, ApiProblems.FromDomainError(AccessErrors.UserNotFound));
+        }
+
+        var allowed = AccessRules.CanManageUser(Actor, await evaluator.GetAsync(Actor, ct), id, await evaluator.GetAsync(id, ct));
+        return allowed.IsSuccess ? (user, null) : (null, ApiProblems.FromDomainError(allowed.Error!));
+    }
+
+    /// <summary>
+    /// True when <paramref name="user"/> holds the only global Administrator assignment. Locks the Administrator role
+    /// row first, so two concurrent removals cannot both see "another administrator remains". Call inside a transaction.
+    /// </summary>
+    private async Task<bool> HoldsLastAdministratorAssignmentAsync(UserId user, CancellationToken ct)
+    {
+        await db.Database.ExecuteSqlAsync($"SELECT id FROM roles WHERE is_system FOR UPDATE", ct);
+        var administrators = await db.UserRoles
+            .Where(a => db.Roles.Any(r => r.Id == a.RoleId && r.IsSystem))
+            .Select(a => a.UserId)
+            .ToListAsync(ct);
+        return administrators.Contains(user) && administrators.Count == 1;
+    }
+
+    private void RecordAssignment(string action, PulsarUser user, Role role) =>
+        audit.Record(action, metadata: new { userName = user.UserName, role = role.Name, permissions = role.Permissions.Order(StringComparer.Ordinal) })
+            .WithTarget("user", user.Id.ToString());
+
+    private async Task<List<(UserId UserId, RoleReference Role)>> RoleReferencesAsync(UserId? user, CancellationToken ct)
+    {
+        var rows = await (
+                from a in db.UserRoles
+                join r in db.Roles on a.RoleId equals r.Id
+                where user == null || a.UserId == user
+                orderby r.NormalizedName
+                select new { a.UserId, RoleId = r.Id, r.Name })
+            .ToListAsync(ct);
+        return [.. rows.Select(x => (x.UserId, new RoleReference(x.RoleId.Value, x.Name)))];
+    }
+
+    private static UserResponse Describe(PulsarUser user, List<(UserId UserId, RoleReference Role)> roles) => new(
+        user.Id.Value,
+        user.UserName!,
+        user.DisplayName,
+        user.Email,
+        user.IsDisabled,
+        user.CreatedAt,
+        user.LastLoginAt,
+        [.. roles.Where(r => r.UserId == user.Id).Select(r => r.Role)]);
+
+    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}

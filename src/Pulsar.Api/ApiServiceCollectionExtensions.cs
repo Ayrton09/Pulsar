@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Pulsar.Api.Access;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Http;
 using Pulsar.Api.Security;
@@ -29,6 +30,7 @@ internal static class ApiServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.AddScoped<IRequestContext, HttpRequestContext>();
         services.AddSingleton<InitialSetup>();
+        services.AddScoped<UserManagement>();
 
         services.ConfigureHttpJsonOptions(options =>
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));

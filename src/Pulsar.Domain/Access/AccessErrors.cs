@@ -32,4 +32,13 @@ public static class AccessErrors
 
     public static DomainError LastAdministrator { get; } =
         new("access.last_administrator", "The last global Administrator assignment cannot be removed.");
+
+    public static DomainError RoleNotFound { get; } = new("role.not_found", "The role does not exist.");
+
+    public static DomainError RoleNameTaken { get; } = new("role.name_taken", "Another role already has this name.");
+
+    public static DomainError RoleInUse { get; } =
+        new("role.in_use", "The role is assigned to users; remove those assignments before deleting it.");
+
+    public static DomainError UserNotFound { get; } = new("user.not_found", "The user does not exist.");
 }

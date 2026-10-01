@@ -121,6 +121,24 @@ public sealed class AccessRulesTests
         Assert.Equal("access.escalation", AccessRules.CanDefineRole(actor, [Permissions.Server.Start]).Error?.Code);
     }
 
+    [Fact]
+    public void UserManagersCannotTouchMorePowerfulUsersOrThemselves()
+    {
+        var manager = new EffectivePermissions.Builder()
+            .Add(Role("Users", PermissionScope.Global, Permissions.User.Manage, Permissions.User.View), AccessTarget.Global)
+            .Build();
+        var viewer = new EffectivePermissions.Builder()
+            .Add(Role("Viewer", PermissionScope.Global, Permissions.User.View), AccessTarget.Global)
+            .Build();
+        var administrator = new EffectivePermissions.Builder()
+            .Add(Domain.Access.Role.CreateAdministrator(s_now), AccessTarget.Global)
+            .Build();
+
+        Assert.True(AccessRules.CanManageUser(s_actor, manager, s_target, viewer).IsSuccess);
+        Assert.Equal("access.escalation", AccessRules.CanManageUser(s_actor, manager, s_target, administrator).Error?.Code);
+        Assert.Equal(AccessErrors.SelfChange, AccessRules.CanManageUser(s_actor, administrator, s_actor, viewer).Error);
+    }
+
     private static Role Role(string name, PermissionScope scope, params string[] permissions) =>
         Domain.Access.Role.Create(name, null, scope, permissions, s_now).Value;
 }

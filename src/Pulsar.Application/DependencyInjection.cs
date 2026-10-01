@@ -12,6 +12,7 @@ public static class DependencyInjection
         services.AddSingleton<PermissionCacheVersion>();
         services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
         services.AddScoped<IAuditLog, AuditLog>();
+        services.AddScoped<RoleManagement>();
         return services;
     }
 }

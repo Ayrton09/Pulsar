@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Pulsar.Api;
+using Pulsar.Api.Access;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Security;
 using Pulsar.Application;
@@ -71,6 +72,8 @@ try
 
     var api = app.MapGroup("/api/v1").AddEndpointFilter<AntiforgeryValidationFilter>();
     api.MapGroup("/auth").WithTags("Auth").MapAuthEndpoints();
+    api.MapUserEndpoints();
+    api.MapRoleEndpoints();
 
     // API, hub and agent routes must never fall through to the SPA's index.html.
     app.MapNotFoundFallback("/api");

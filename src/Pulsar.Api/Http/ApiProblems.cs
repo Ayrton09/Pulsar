@@ -14,10 +14,24 @@ public static class ApiProblems
         TypedResults.Problem(statusCode: status, title: title, detail: detail,
             extensions: new Dictionary<string, object?> { [CodeExtension] = code });
 
-    /// <summary>A business rule violation (default 400; use 409 for conflicts with the current state).</summary>
-    public static IResult FromDomainError(DomainError error, int status = StatusCodes.Status400BadRequest) =>
-        Create(status, error.Code, error.Message);
+    /// <summary>A business rule violation, with the status derived from its code.</summary>
+    public static IResult FromDomainError(DomainError error) => Create(StatusFor(error.Code), error.Code, error.Message);
 
-    public static IResult NotFound(string code = "resource.not_found", string title = "The resource does not exist.") =>
-        Create(StatusCodes.Status404NotFound, code, title);
+    /// <summary>
+    /// <c>*.not_found</c> → 404; escalation and self-changes → 403 (the actor lacks the right to do it);
+    /// conflicts with existing state → 409; any other rule → 400.
+    /// </summary>
+    public static int StatusFor(string code) => code switch
+    {
+        _ when code.EndsWith(".not_found", StringComparison.Ordinal) => StatusCodes.Status404NotFound,
+        "access.escalation" or "access.self_change" => StatusCodes.Status403Forbidden,
+        "role.name_taken" or "role.in_use" or "access.last_administrator" or "role.system_immutable" => StatusCodes.Status409Conflict,
+        _ => StatusCodes.Status400BadRequest,
+    };
+
+    /// <summary>Maps a result to 200 with the value, or to the problem of its error.</summary>
+    public static IResult ToHttp<T>(this Result<T> result) => result.IsSuccess ? TypedResults.Ok(result.Value) : FromDomainError(result.Error!);
+
+    /// <summary>Maps a result to 204, or to the problem of its error.</summary>
+    public static IResult ToHttp(this Result result) => result.IsSuccess ? TypedResults.NoContent() : FromDomainError(result.Error!);
 }

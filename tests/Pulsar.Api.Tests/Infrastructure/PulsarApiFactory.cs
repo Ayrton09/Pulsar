@@ -14,6 +14,7 @@ public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     public const string AdminPassword = "correct horse battery staple";
 
     private readonly SemaphoreSlim _setupLock = new(1, 1);
+    private readonly Dictionary<string, Task> _once = [];
     private TestDatabase? _database;
     private bool _adminCreated;
 
@@ -65,6 +66,21 @@ public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         login.EnsureSuccessStatusCode();
         await client.GetSessionAsync(); // fresh antiforgery token for the signed-in user
         return client;
+    }
+
+    /// <summary>Runs <paramref name="action"/> once per database (e.g. creating users shared by a theory's rows).</summary>
+    public Task OnceAsync(string key, Func<Task> action)
+    {
+        lock (_once)
+        {
+            if (!_once.TryGetValue(key, out var task))
+            {
+                task = action();
+                _once.Add(key, task);
+            }
+
+            return task;
+        }
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

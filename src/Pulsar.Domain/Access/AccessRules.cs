@@ -43,6 +43,24 @@ public static class AccessRules
         return EnsureHeld(permissions, actorPermissions.HasGlobal);
     }
 
+    /// <summary>
+    /// Changing another user's account (disable, delete, reset password): nobody does it to themselves through user
+    /// management, and the target may not hold any global permission the actor lacks, so a <c>user.manage</c> holder
+    /// cannot lock out an administrator.
+    /// </summary>
+    public static Result CanManageUser(UserId actor, EffectivePermissions actorPermissions, UserId targetUser, EffectivePermissions targetPermissions)
+    {
+        ArgumentNullException.ThrowIfNull(actorPermissions);
+        ArgumentNullException.ThrowIfNull(targetPermissions);
+
+        if (actor == targetUser)
+        {
+            return AccessErrors.SelfChange;
+        }
+
+        return EnsureHeld(targetPermissions.Global, actorPermissions.HasGlobal);
+    }
+
     private static Result EnsureHeld(IEnumerable<string> permissions, Func<string, bool> holds)
     {
         var missing = permissions.Where(p => !holds(p)).Order(StringComparer.Ordinal).ToList();

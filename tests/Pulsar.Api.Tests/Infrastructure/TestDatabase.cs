@@ -72,3 +72,15 @@ public sealed class DatabaseFactAttribute : FactAttribute
         SkipType = typeof(TestDatabase);
     }
 }
+
+/// <summary>A theory that needs PostgreSQL; skipped when <see cref="TestDatabase.IsEnabled"/> is false.</summary>
+public sealed class DatabaseTheoryAttribute : TheoryAttribute
+{
+    public DatabaseTheoryAttribute([CallerFilePath] string? sourceFilePath = null, [CallerLineNumber] int sourceLineNumber = -1)
+        : base(sourceFilePath, sourceLineNumber)
+    {
+        Skip = "Set PULSAR_TEST_POSTGRES to run database tests (see CONTRIBUTING.md).";
+        SkipUnless = nameof(TestDatabase.IsEnabled);
+        SkipType = typeof(TestDatabase);
+    }
+}
