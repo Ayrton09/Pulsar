@@ -300,12 +300,11 @@ public sealed partial class ServerManagement(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // The agent already reported the result (a quick operation): it wins over "started".
+            // The agent already reported the result (a quick operation): it wins over "started". Both rows are read
+            // again (a deleted server becomes detached).
             LogOperationAlreadyReported(operation.Id);
-            foreach (var entry in db.ChangeTracker.Entries())
-            {
-                await entry.ReloadAsync(cancellationToken);
-            }
+            await db.Entry(operation).ReloadAsync(cancellationToken);
+            await db.Entry(server).ReloadAsync(cancellationToken);
         }
 
         return Result.Success();
