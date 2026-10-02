@@ -39,7 +39,7 @@ public static class DependencyInjection
         services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
         services.AddSingleton(TimeProvider.System);
 
-        services.AddHealthChecks().AddDbContextCheck<PulsarDbContext>("database", tags: [HealthTags.Ready]);
+        services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: [HealthTags.Ready]);
 
         services.AddPulsarDataProtection(configuration);
         services.AddSingleton<IPanelKeyRing, PanelKeyRing>();

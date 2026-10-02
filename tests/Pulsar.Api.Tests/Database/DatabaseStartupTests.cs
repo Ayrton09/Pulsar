@@ -100,7 +100,7 @@ public sealed class DatabaseInitializerTests
         Assert.Empty(errors.Messages);
     }
 
-    private static ServiceProvider Build(string connectionString, ILoggerProvider? logs = null)
+    internal static ServiceProvider Build(string connectionString, ILoggerProvider? logs = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
