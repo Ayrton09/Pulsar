@@ -199,7 +199,10 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
               {t('actions.create')}
             </Button>
           ) : (
-            <Button onClick={next}>{t('servers.wizard.next')}</Button>
+            // The next steps come from the chosen game's details: wait for them instead of ignoring the click.
+            <Button onClick={next} busy={!!templateId && template.isPending}>
+              {t('servers.wizard.next')}
+            </Button>
           )}
         </div>
       </div>

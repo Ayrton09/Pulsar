@@ -11,6 +11,7 @@ import { errorMessage, fieldErrors } from '../../lib/errors';
 import { useFormatDate, useFormatGigabytes } from '../../lib/format';
 import { can, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
+import { useWatchNodes } from '../live/hooks';
 import { useCreateNode, useNodes, type CreatedNode } from './api';
 import { EnrollmentCommand, NodeStateBadge } from './components';
 import { nodeSchema, type NodeFormValues } from './nodeForm';
@@ -20,6 +21,7 @@ export function NodesPage() {
   const { t } = useTranslation();
   const me = useCurrentUser();
   const nodes = useNodes();
+  useWatchNodes();
   const formatDate = useFormatDate();
   const formatGigabytes = useFormatGigabytes();
   const [creating, setCreating] = useState(false);

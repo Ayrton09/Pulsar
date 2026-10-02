@@ -10,12 +10,6 @@ export type TemplateDetails = Schemas['TemplateDetails'];
 export type TemplateVariable = Schemas['TemplateVariable'];
 export type ServerSettings = Schemas['ServerSettings'];
 
-/**
- * Server states change in seconds (starting, stopping, an install finishing): poll faster than nodes. Phase 5 replaces
- * polling with the browser's live channel.
- */
-const REFRESH_MS = 2_000;
-
 export const serverKeys = {
   all: ['servers'] as const,
   detail: (id: string) => ['servers', id] as const,
@@ -24,19 +18,28 @@ export const serverKeys = {
   template: (id: string) => ['templates', id] as const,
 };
 
-export function useServers() {
+/** Kept fresh by the live channel (useWatchServers), not by polling. */
+export function useServers(enabled = true) {
   return useQuery({
     queryKey: serverKeys.all,
     queryFn: () => unwrap(api.GET('/api/v1/servers')),
-    refetchInterval: REFRESH_MS,
+    enabled,
   });
 }
 
+/** Kept fresh by the live channel (useWatchServers), not by polling. */
 export function useServer(id: string) {
   return useQuery({
     queryKey: serverKeys.detail(id),
     queryFn: () => unwrap(api.GET('/api/v1/servers/{id}', { params: { path: { id } } })),
-    refetchInterval: REFRESH_MS,
+  });
+}
+
+/** Sends a line to the server's console (its output shows up in the console stream). */
+export function useConsoleCommand() {
+  return useMutation({
+    mutationFn: ({ id, command }: { id: string; command: string }) =>
+      unwrap(api.POST('/api/v1/servers/{id}/console', { params: { path: { id } }, body: { command } })),
   });
 }
 

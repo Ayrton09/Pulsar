@@ -1,0 +1,210 @@
+import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
+import { Card, PageHeader } from '../../components/ui/Display';
+import { useFormatDate, useFormatGigabytes } from '../../lib/format';
+import { can, Permission } from '../../lib/permissions';
+import { useRecentActivity, type AuditEntry } from '../admin/api';
+import { useCurrentUser } from '../auth/api';
+import { useWatchNodes, useWatchServers } from '../live/hooks';
+import { useNodes, type NodeSummary } from '../nodes/api';
+import { nodeState } from '../nodes/nodeStatus';
+import { useServers, type ServerSummary } from '../servers/api';
+
+/**
+ * Dashboard v1 (docs/architecture/07): servers and nodes at a glance, the nodes' combined usage, what needs attention
+ * and the latest activity. Each part shows only with the permission it needs, and stays current through the live
+ * channel.
+ */
+export function DashboardPage() {
+  const { t } = useTranslation();
+  const me = useCurrentUser();
+  const canServers = can(me, Permission.ServerView);
+  const canNodes = can(me, Permission.NodeView, Permission.NodeManage);
+  const canAudit = can(me, Permission.AuditView);
+  const servers = useServersIf(canServers);
+  const nodes = useNodesIf(canNodes);
+  const activity = useRecentActivity(8, canAudit);
+
+  return (
+    <>
+      <PageHeader
+        title={t('dashboard.title')}
+        description={t('dashboard.welcome', { name: me.displayName ?? me.userName })}
+      />
+      {!canServers && !canNodes && !canAudit && (
+        <Card className="p-6">
+          <p className="text-sm text-muted">{t('dashboard.nothing')}</p>
+        </Card>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {servers && <ServersCard servers={servers} />}
+        {nodes && <NodesCard nodes={nodes} />}
+        {nodes && <UsageCards nodes={nodes} />}
+      </div>
+      {(servers || nodes) && <Alerts servers={servers ?? []} nodes={nodes ?? []} />}
+      {canAudit && activity.data && <RecentActivity entries={activity.data.entries} />}
+    </>
+  );
+}
+
+function useServersIf(enabled: boolean): ServerSummary[] | null {
+  // Hooks run either way; without the permission nothing is fetched or watched.
+  const servers = useServers(enabled);
+  useWatchServers(enabled);
+  return enabled ? (servers.data ?? null) : null;
+}
+
+function useNodesIf(enabled: boolean): NodeSummary[] | null {
+  const nodes = useNodes(enabled);
+  useWatchNodes(enabled);
+  return enabled ? (nodes.data ?? null) : null;
+}
+
+function Stat({ title, value, detail, to }: { title: string; value: ReactNode; detail?: ReactNode; to?: string }) {
+  const body = (
+    <Card className="h-full p-5">
+      <p className="text-sm text-muted">{title}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+      {detail && <p className="mt-1 text-xs text-muted">{detail}</p>}
+    </Card>
+  );
+  return to ? (
+    <Link to={to} className="block rounded-lg hover:ring-1 hover:ring-accent">
+      {body}
+    </Link>
+  ) : (
+    body
+  );
+}
+
+function ServersCard({ servers }: { servers: ServerSummary[] }) {
+  const { t } = useTranslation();
+  const running = servers.filter((s) => s.runtimeState === 'running' || s.runtimeState === 'starting').length;
+  return (
+    <Stat
+      title={t('dashboard.servers')}
+      value={t('dashboard.runningOf', { running, total: servers.length })}
+      detail={t('dashboard.serversOffline', { count: servers.length - running })}
+      to="/servers"
+    />
+  );
+}
+
+function NodesCard({ nodes }: { nodes: NodeSummary[] }) {
+  const { t } = useTranslation();
+  const enrolled = nodes.filter((n) => nodeState(n) !== 'pending');
+  const online = enrolled.filter((n) => nodeState(n) === 'online').length;
+  return (
+    <Stat
+      title={t('dashboard.nodes')}
+      value={t('dashboard.onlineOf', { online, total: enrolled.length })}
+      detail={t('dashboard.nodesOffline', { count: enrolled.length - online })}
+      to="/nodes"
+    />
+  );
+}
+
+/** CPU weighted by each node's cores, memory added up: the combined load of every connected node. */
+function UsageCards({ nodes }: { nodes: NodeSummary[] }) {
+  const { t } = useTranslation();
+  const formatGigabytes = useFormatGigabytes();
+  const reporting = nodes.flatMap((n) =>
+    nodeState(n) === 'online' && n.metrics ? [{ metrics: n.metrics, cores: n.inventory?.logicalCores ?? 1 }] : [],
+  );
+  const cores = reporting.reduce((sum, n) => sum + n.cores, 0);
+  const cpu = cores === 0 ? null : reporting.reduce((sum, n) => sum + n.metrics.cpuPercent * n.cores, 0) / cores;
+  const used = reporting.reduce((sum, n) => sum + n.metrics.memoryUsedBytes, 0);
+  const total = reporting.reduce((sum, n) => sum + n.metrics.memoryTotalBytes, 0);
+  return (
+    <>
+      <Stat
+        title={t('dashboard.cpu')}
+        value={cpu === null ? '—' : t('nodes.cpuValue', { value: Math.round(cpu * 10) / 10 })}
+        detail={t('dashboard.acrossNodes', { count: reporting.length })}
+      />
+      <Stat
+        title={t('dashboard.memory')}
+        value={total === 0 ? '—' : `${Math.round((100 * used) / total)} %`}
+        detail={
+          total === 0
+            ? undefined
+            : t('dashboard.memoryDetail', { used: formatGigabytes(used), total: formatGigabytes(total) })
+        }
+      />
+    </>
+  );
+}
+
+function Alerts({ servers, nodes }: { servers: ServerSummary[]; nodes: NodeSummary[] }) {
+  const { t } = useTranslation();
+  const items: { key: string; to: string; text: string }[] = [
+    ...servers
+      .filter((s) => s.runtimeState === 'crashed')
+      .map((s) => ({
+        key: `server-${s.id}`,
+        to: `/servers/${s.id}`,
+        text: t(s.lastStateReason === 'crashLoop' ? 'dashboard.alerts.crashLoop' : 'dashboard.alerts.crashed', {
+          name: s.name,
+        }),
+      })),
+    ...nodes
+      .filter((n) => nodeState(n) === 'offline')
+      .map((n) => ({
+        key: `node-${n.id}`,
+        to: `/nodes/${n.id}`,
+        text: t('dashboard.alerts.nodeOffline', { name: n.name }),
+      })),
+  ];
+  return (
+    <Card className="mt-6 p-6">
+      <h2 className="mb-3 text-lg font-semibold">{t('dashboard.alerts.title')}</h2>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted">{t('dashboard.alerts.none')}</p>
+      ) : (
+        <ul className="space-y-2 text-sm">
+          {items.map((item) => (
+            <li key={item.key}>
+              <Link to={item.to} className="text-danger hover:underline">
+                {item.text}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function RecentActivity({ entries }: { entries: AuditEntry[] }) {
+  const { t } = useTranslation();
+  const formatDate = useFormatDate();
+  return (
+    <Card className="mt-6 p-6">
+      <div className="mb-3 flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold">{t('dashboard.activity')}</h2>
+        <Link to="/admin/audit" className="text-sm text-accent hover:underline">
+          {t('dashboard.allActivity')}
+        </Link>
+      </div>
+      {entries.length === 0 ? (
+        <p className="text-sm text-muted">{t('audit.empty')}</p>
+      ) : (
+        <ul className="divide-y divide-border text-sm">
+          {entries.map((entry) => (
+            <li key={entry.id} className="flex flex-wrap justify-between gap-2 py-2">
+              <span>
+                {t(`audit.actions.${entry.action}`, { defaultValue: entry.action })}
+                <span className="text-muted">
+                  {' '}
+                  · {entry.actorType === 'user' ? entry.actorDisplay : t(`audit.actors.${entry.actorType}`)}
+                </span>
+              </span>
+              <span className="text-muted">{formatDate(entry.occurredAt)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}

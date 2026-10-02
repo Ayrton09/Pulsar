@@ -65,7 +65,26 @@
   "dashboard": {
     "title": "Inicio",
     "welcome": "Hola, {{name}}.",
-    "nextSteps": "Los servidores de juego llegan en las próximas versiones. Por ahora podés agregar nodos (las máquinas Windows que los van a correr), administrar usuarios y roles, y revisar el registro de auditoría."
+    "nothing": "Todavía no hay nada para mostrar: tus roles no incluyen servidores, nodos ni el registro de auditoría.",
+    "servers": "Servidores",
+    "runningOf": "{{running}} de {{total}} en ejecución",
+    "serversOffline": "Detenidos o caídos: {{count}}",
+    "nodes": "Nodos",
+    "onlineOf": "{{online}} de {{total}} conectados",
+    "nodesOffline": "Desconectados: {{count}}",
+    "cpu": "CPU (todos los nodos)",
+    "memory": "Memoria (todos los nodos)",
+    "acrossNodes": "Nodos reportando: {{count}}",
+    "memoryDetail": "{{used}} de {{total}}",
+    "alerts": {
+      "title": "Requiere atención",
+      "none": "Nada requiere atención.",
+      "crashLoop": "{{name}} se cae una y otra vez y no se volvió a reiniciar",
+      "crashed": "{{name}} se cayó",
+      "nodeOffline": "El nodo {{name}} está desconectado"
+    },
+    "activity": "Actividad reciente",
+    "allActivity": "Toda la actividad"
   },
   "users": {
     "title": "Usuarios",
@@ -257,7 +276,8 @@
         "update_requested": "Pidió actualizar un juego",
         "settings_changed": "Cambió la configuración de un servidor",
         "ports_changed": "Cambió los puertos de un servidor",
-        "operation_cancel_requested": "Pidió cancelar una operación"
+        "operation_cancel_requested": "Pidió cancelar una operación",
+        "console_command": "Ejecutó un comando en la consola"
       },
       "template": {
         "imported": "Importó una plantilla de juego"
@@ -560,6 +580,7 @@
     "tabs": {
       "label": "Secciones del servidor",
       "overview": "Resumen",
+      "console": "Consola",
       "settings": "Configuración",
       "network": "Red"
     },
@@ -610,6 +631,28 @@
       "hint": "Cada puerto usa una de las asignaciones del nodo.",
       "stopFirst": "Detené el servidor para cambiar sus puertos.",
       "none": "Este juego no escucha en ningún puerto."
+    },
+    "console": {
+      "title": "Consola",
+      "gap": "acá se perdió parte de la salida",
+      "reconnecting": "Se cortaron las actualizaciones en vivo; reconectando… La salida sigue donde quedó.",
+      "refused": "No tenés permiso para ver esta consola.",
+      "nodeOffline": "El nodo está desconectado: no llega salida hasta que se reconecte.",
+      "search": "Buscar en la consola",
+      "previous": "Anterior",
+      "next": "Siguiente",
+      "clear": "Limpiar",
+      "command": "Comando",
+      "commandPlaceholder": "Escribí un comando y presioná Enter",
+      "notRunning": "El servidor no está en ejecución",
+      "send": "Enviar"
+    },
+    "usage": {
+      "label": "Uso",
+      "cpu": "CPU",
+      "cpuValue": "{{value, number(maximumFractionDigits: 1)}} %",
+      "memory": "Memoria",
+      "uptime": "Tiempo encendido"
     }
   },
   "panelKeys": {
@@ -672,5 +715,8 @@
     "ports": "Puertos",
     "variables": "Configuración",
     "imported": "Plantilla importada."
+  },
+  "live": {
+    "reconnecting": "Actualizaciones en vivo en pausa, reconectando…"
   }
 }

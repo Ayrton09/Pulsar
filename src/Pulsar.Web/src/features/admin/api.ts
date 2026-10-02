@@ -45,6 +45,15 @@ export function useAuditLog(pageSize = 50) {
   });
 }
 
+/** The latest audit entries, for the dashboard (refreshed when servers or nodes change). */
+export function useRecentActivity(limit: number, enabled: boolean) {
+  return useQuery({
+    queryKey: [...adminKeys.audit, 'recent', limit],
+    queryFn: () => unwrap(api.GET('/api/v1/audit', { params: { query: { limit } } })),
+    enabled,
+  });
+}
+
 /**
  * Access changes touch several views: lists, assignment counts, the audit log, and possibly the signed-in user's
  * own permissions (a role they hold was edited).

@@ -7,6 +7,7 @@ import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
 import { can, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
+import { useWatchServers } from '../live/hooks';
 import { useServers } from './api';
 import { NodeDisconnectedBadge, ServerStateBadge, StateReason } from './components';
 import { CreateServerDialog } from './CreateServerDialog';
@@ -15,6 +16,7 @@ export function ServersPage() {
   const { t } = useTranslation();
   const me = useCurrentUser();
   const servers = useServers();
+  useWatchServers();
   const formatDate = useFormatDate();
   const [creating, setCreating] = useState(false);
   const canCreate = can(me, Permission.ServerCreate);

@@ -51,7 +51,7 @@ test('a real agent pairs, comes online, answers pings and is cut off when revoke
   await signInAsAdministrator(page);
 
   // Create the node and take the command the UI shows, exactly as an administrator would copy it.
-  await page.getByRole('link', { name: 'Nodes' }).click();
+  await page.getByRole('link', { name: 'Nodes', exact: true }).click();
   await page.getByRole('button', { name: 'Add node' }).click();
   const createDialog = page.getByRole('dialog', { name: 'Add node' });
   await createDialog.getByLabel('Name').fill(nodeName);

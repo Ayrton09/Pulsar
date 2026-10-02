@@ -33,11 +33,10 @@ export function parseTimeSpan(value: string): number {
   return Number(days) * 86_400 + Number(hours) * 3_600 + Number(minutes) * 60 + Number(seconds);
 }
 
-/** A coarse duration for uptimes: "3 d 4 h", "5 h 12 min", "7 min". */
-export function useFormatUptime(): (timeSpan: string) => string {
+/** A coarse duration in seconds, for uptimes: "3 d 4 h", "5 h 12 min", "7 min". */
+export function useFormatDuration(): (seconds: number) => string {
   const { t } = useTranslation();
-  return (timeSpan: string) => {
-    const total = parseTimeSpan(timeSpan);
+  return (total: number) => {
     const days = Math.floor(total / 86_400);
     const hours = Math.floor((total % 86_400) / 3_600);
     const minutes = Math.floor((total % 3_600) / 60);
@@ -46,4 +45,29 @@ export function useFormatUptime(): (timeSpan: string) => string {
     }
     return hours > 0 ? t('format.hours', { hours, minutes }) : t('format.minutes', { minutes });
   };
+}
+
+/** The same for a .NET TimeSpan as JSON. */
+export function useFormatUptime(): (timeSpan: string) => string {
+  const formatDuration = useFormatDuration();
+  return (timeSpan: string) => formatDuration(parseTimeSpan(timeSpan));
+}
+
+/** Byte counts in megabytes below a gigabyte, gigabytes from there ("512 MB", "1.4 GB"): a game server's memory. */
+export function useFormatBytes(): (bytes: number) => string {
+  const { i18n } = useTranslation();
+  return useMemo(() => {
+    const megabytes = new Intl.NumberFormat(i18n.language, {
+      style: 'unit',
+      unit: 'megabyte',
+      maximumFractionDigits: 0,
+    });
+    const gigabytes = new Intl.NumberFormat(i18n.language, {
+      style: 'unit',
+      unit: 'gigabyte',
+      maximumFractionDigits: 1,
+    });
+    return (bytes: number) =>
+      bytes < 1024 ** 3 ? megabytes.format(bytes / 1024 ** 2) : gigabytes.format(bytes / 1024 ** 3);
+  }, [i18n.language]);
 }

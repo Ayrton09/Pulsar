@@ -12,6 +12,7 @@ import { errorMessage, fieldErrors } from '../../lib/errors';
 import { useFormatDate, useFormatGigabytes, useFormatUptime } from '../../lib/format';
 import { can, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
+import { useWatchNodes } from '../live/hooks';
 import {
   useCreateEnrollmentToken,
   useDeleteNode,
@@ -35,6 +36,7 @@ export function NodePage() {
   const { id = '' } = useParams();
   const me = useCurrentUser();
   const details = useNode(id);
+  useWatchNodes();
   const canManage = can(me, Permission.NodeManage);
   const canManageCredentials = can(me, Permission.NodeCredentialsManage);
 

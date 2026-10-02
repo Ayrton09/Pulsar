@@ -65,7 +65,26 @@
   "dashboard": {
     "title": "Dashboard",
     "welcome": "Welcome, {{name}}.",
-    "nextSteps": "Game servers arrive in the next versions. For now you can add nodes (the Windows machines that will run them), manage users and roles, and review the audit log."
+    "nothing": "Nothing to show yet: your roles don't include servers, nodes or the audit log.",
+    "servers": "Servers",
+    "runningOf": "{{running}} of {{total}} running",
+    "serversOffline": "Stopped or crashed: {{count}}",
+    "nodes": "Nodes",
+    "onlineOf": "{{online}} of {{total}} online",
+    "nodesOffline": "Offline: {{count}}",
+    "cpu": "CPU (all nodes)",
+    "memory": "Memory (all nodes)",
+    "acrossNodes": "Nodes reporting: {{count}}",
+    "memoryDetail": "{{used}} of {{total}}",
+    "alerts": {
+      "title": "Needs attention",
+      "none": "Nothing needs attention.",
+      "crashLoop": "{{name}} keeps crashing and was not restarted again",
+      "crashed": "{{name}} crashed",
+      "nodeOffline": "Node {{name}} is offline"
+    },
+    "activity": "Recent activity",
+    "allActivity": "All activity"
   },
   "users": {
     "title": "Users",
@@ -257,7 +276,8 @@
         "update_requested": "Asked to update a game",
         "settings_changed": "Changed a server's settings",
         "ports_changed": "Changed a server's ports",
-        "operation_cancel_requested": "Asked to cancel an operation"
+        "operation_cancel_requested": "Asked to cancel an operation",
+        "console_command": "Ran a console command"
       },
       "template": {
         "imported": "Imported a game template"
@@ -560,6 +580,7 @@
     "tabs": {
       "label": "Server sections",
       "overview": "Overview",
+      "console": "Console",
       "settings": "Settings",
       "network": "Network"
     },
@@ -610,6 +631,28 @@
       "hint": "Each port uses one of the node's allocations.",
       "stopFirst": "Stop the server to change its ports.",
       "none": "This game does not listen on any port."
+    },
+    "console": {
+      "title": "Console",
+      "gap": "some output was lost here",
+      "reconnecting": "Live updates stopped; reconnecting… The output resumes where it stopped.",
+      "refused": "You can't watch this console.",
+      "nodeOffline": "The node is offline: no output until it reconnects.",
+      "search": "Search the console",
+      "previous": "Previous",
+      "next": "Next",
+      "clear": "Clear",
+      "command": "Command",
+      "commandPlaceholder": "Type a command and press Enter",
+      "notRunning": "The server is not running",
+      "send": "Send"
+    },
+    "usage": {
+      "label": "Usage",
+      "cpu": "CPU",
+      "cpuValue": "{{value, number(maximumFractionDigits: 1)}} %",
+      "memory": "Memory",
+      "uptime": "Uptime"
     }
   },
   "panelKeys": {
@@ -672,5 +715,8 @@
     "ports": "Ports",
     "variables": "Settings",
     "imported": "Template imported."
+  },
+  "live": {
+    "reconnecting": "Live updates paused, reconnecting…"
   }
 }

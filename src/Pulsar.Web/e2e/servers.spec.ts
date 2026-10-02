@@ -66,7 +66,7 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   await signInAsAdministrator(page);
 
   // A node with a development agent that has the test game server.
-  await page.getByRole('link', { name: 'Nodes' }).click();
+  await page.getByRole('link', { name: 'Nodes', exact: true }).click();
   await page.getByRole('button', { name: 'Add node' }).click();
   const createNode = page.getByRole('dialog', { name: 'Add node' });
   await createNode.getByLabel('Name').fill(nodeName);
@@ -94,7 +94,7 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   await expect(page.getByText('Online', { exact: true })).toBeVisible({ timeout: 20_000 });
 
   // Create: the panel provisions and installs it on the node.
-  await page.getByRole('link', { name: 'Servers' }).click();
+  await page.getByRole('link', { name: 'Servers', exact: true }).click();
   await page.getByRole('button', { name: 'Create server' }).click();
   const createServer = page.getByRole('dialog', { name: 'Create server' });
   await createServer.getByLabel('Name').fill(serverName);
@@ -117,6 +117,19 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   await expectStatus(page, 'Online');
   expect(testGameProcesses()).toBe(1);
   await page.screenshot({ path: 'test-results/screens/server-online.png', fullPage: true });
+
+  // Phase 5: usage pushed by the agent, and the console in a real terminal (xterm) with a command typed here.
+  await expect(page.getByLabel('Usage')).toContainText('Uptime', { timeout: 15_000 });
+  await page.getByRole('tab', { name: 'Console' }).click();
+  const output = page.getByTestId('console-output');
+  await expect(output).toContainText('Test server ready', { timeout: 15_000 });
+  const commandField = page.getByRole('textbox', { name: 'Command' });
+  await commandField.fill('say hello from the browser');
+  await commandField.press('Enter');
+  await expect(output).toContainText('Test server: hello from the browser', { timeout: 15_000 });
+  await expect(commandField).toHaveValue('');
+  await page.screenshot({ path: 'test-results/screens/server-console.png', fullPage: true });
+  await page.getByRole('tab', { name: 'Overview' }).click();
 
   // Restart: a graceful stop (quit, exit code 0) and a new start, as one unit.
   await actions.getByRole('button', { name: 'Restart' }).click();

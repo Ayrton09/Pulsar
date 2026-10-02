@@ -4,6 +4,8 @@ import { Button } from '../../components/ui/Button';
 import { can, Permission } from '../../lib/permissions';
 import { useCurrentUser, useLogout } from '../auth/api';
 import { InsecureConnectionBanner } from '../auth/InsecureConnectionBanner';
+import { useLiveStatus } from '../live/hooks';
+import { LiveProvider } from '../live/LiveProvider';
 
 interface NavItem {
   to: string;
@@ -35,8 +37,27 @@ function NavSection({ title, items }: { title?: string; items: NavItem[] }) {
   );
 }
 
-/** Sidebar layout of the signed-in panel. Entries the user cannot use are not shown. */
+/** Says when live updates stopped: what the page shows may be getting old until the channel is back. */
+function LiveStatusNote() {
+  const { t } = useTranslation();
+  const status = useLiveStatus();
+  return status === 'reconnecting' ? (
+    <p role="status" className="px-6 pb-3 text-xs text-danger">
+      {t('live.reconnecting')}
+    </p>
+  ) : null;
+}
+
+/** Sidebar layout of the signed-in panel, with its live channel. Entries the user cannot use are not shown. */
 export function AppLayout() {
+  return (
+    <LiveProvider>
+      <Shell />
+    </LiveProvider>
+  );
+}
+
+function Shell() {
   const { t } = useTranslation();
   const user = useCurrentUser();
   const logout = useLogout();
@@ -68,6 +89,7 @@ export function AppLayout() {
             <NavSection items={main} />
             <NavSection title={t('nav.administration')} items={admin} />
           </nav>
+          <LiveStatusNote />
           <div className="border-t border-border px-6 py-4 text-sm">
             <NavLink to="/account" className="block rounded-md hover:text-accent">
               <span className="block truncate font-medium">{user.displayName ?? user.userName}</span>

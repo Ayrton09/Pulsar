@@ -6,9 +6,11 @@ import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Badge, Card, PageHeader, Table, Td, Th } from '../../components/ui/Display';
 import { Checkbox } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
-import { useFormatDate } from '../../lib/format';
+import { useFormatBytes, useFormatDate, useFormatDuration } from '../../lib/format';
 import { can, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
+import { useServerMetrics, useWatchServers } from '../live/hooks';
+import type { ServerMetrics } from '../live/types';
 import {
   useDeleteServer,
   useReinstallServer,
@@ -20,18 +22,23 @@ import {
   type ServerDetails,
 } from './api';
 import { NodeDisconnectedBadge, ServerStateBadge, StateReason } from './components';
+import { ConsoleTab } from './ConsoleTab';
 import { NetworkTab, OperationProgress, SettingsTab } from './ServerTabs';
 import { serverActions } from './serverStatus';
 
-const tabs = ['overview', 'settings', 'network'] as const;
-type Tab = (typeof tabs)[number];
+const allTabs = ['overview', 'console', 'settings', 'network'] as const;
+type Tab = (typeof allTabs)[number];
 
-/** One server: its state, the lifecycle actions and its recent operations. */
+/** One server: its state and live usage, the lifecycle actions, its console and its recent operations. */
 export function ServerPage() {
   const { t } = useTranslation();
   const { id = '' } = useParams();
+  const me = useCurrentUser();
   const details = useServer(id);
+  useWatchServers();
+  const metrics = useServerMetrics(id);
   const [search, setSearch] = useSearchParams();
+  const tabs = allTabs.filter((name) => name !== 'console' || can(me, Permission.ServerConsoleView));
   const requested = search.get('tab');
   const tab: Tab = tabs.find((name) => name === requested) ?? 'overview';
 
@@ -69,6 +76,9 @@ export function ServerPage() {
           </>
         }
       />
+      {(server.runtimeState === 'starting' || server.runtimeState === 'running') && metrics && (
+        <ServerUsage metrics={metrics} />
+      )}
       <LifecycleActions details={details.data} />
       {server.activeOperation && (
         <div className="mt-4">
@@ -99,10 +109,33 @@ export function ServerPage() {
             <AdministrationSection details={details.data} />
           </>
         )}
+        {tab === 'console' && <ConsoleTab details={details.data} />}
         {tab === 'settings' && <SettingsTab details={details.data} />}
         {tab === 'network' && <NetworkTab details={details.data} />}
       </div>
     </>
+  );
+}
+
+/** CPU, memory and uptime of the running server, pushed every few seconds. */
+function ServerUsage({ metrics }: { metrics: ServerMetrics }) {
+  const { t } = useTranslation();
+  const formatBytes = useFormatBytes();
+  const formatDuration = useFormatDuration();
+  const items: [string, string][] = [
+    [t('servers.usage.cpu'), t('servers.usage.cpuValue', { value: metrics.cpuPercent })],
+    [t('servers.usage.memory'), formatBytes(metrics.memoryBytes)],
+    [t('servers.usage.uptime'), formatDuration(metrics.uptimeSeconds)],
+  ];
+  return (
+    <dl aria-label={t('servers.usage.label')} className="mb-4 flex flex-wrap gap-x-8 gap-y-2 text-sm">
+      {items.map(([label, value]) => (
+        <div key={label}>
+          <dt className="text-xs text-muted">{label}</dt>
+          <dd className="font-medium tabular-nums">{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

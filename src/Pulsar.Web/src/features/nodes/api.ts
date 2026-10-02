@@ -8,9 +8,6 @@ export type NodeCredential = Schemas['NodeCredentialView'];
 export type EnrollmentInstructions = Schemas['EnrollmentInstructions'];
 export type CreatedNode = Schemas['CreatedNode'];
 
-/** Agents report metrics every 15 s; polling a bit faster keeps the "online" state and numbers fresh. */
-const REFRESH_MS = 5_000;
-
 export const nodeKeys = {
   all: ['nodes'] as const,
   detail: (id: string) => ['nodes', id] as const,
@@ -48,19 +45,20 @@ export function useDeleteAllocation() {
   });
 }
 
-export function useNodes() {
+/** Kept fresh by the live channel (useWatchNodes): connections and usage (every 15 s) are pushed. */
+export function useNodes(enabled = true) {
   return useQuery({
     queryKey: nodeKeys.all,
     queryFn: () => unwrap(api.GET('/api/v1/nodes')),
-    refetchInterval: REFRESH_MS,
+    enabled,
   });
 }
 
+/** Kept fresh by the live channel (useWatchNodes). */
 export function useNode(id: string) {
   return useQuery({
     queryKey: nodeKeys.detail(id),
     queryFn: () => unwrap(api.GET('/api/v1/nodes/{id}', { params: { path: { id } } })),
-    refetchInterval: REFRESH_MS,
   });
 }
 

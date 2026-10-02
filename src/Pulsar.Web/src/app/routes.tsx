@@ -4,7 +4,8 @@ import { PublicOnly, RequirePermission, RequireSession } from '../features/auth/
 import { LoginPage } from '../features/auth/LoginPage';
 import { SetupPage } from '../features/auth/SetupPage';
 import { AppLayout } from '../features/shell/AppLayout';
-import { DashboardPage, NotFoundPage } from '../features/shell/pages';
+import { DashboardPage } from '../features/dashboard/DashboardPage';
+import { NotFoundPage } from '../features/shell/pages';
 import { Permission } from '../lib/permissions';
 
 /** Route table (docs/architecture/07). Pages appear here as their phase delivers them. */
