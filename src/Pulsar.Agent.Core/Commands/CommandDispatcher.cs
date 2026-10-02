@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
+using Pulsar.Agent.Core.Servers;
 using Pulsar.Contracts;
 
 namespace Pulsar.Agent.Core.Commands;
@@ -16,19 +17,16 @@ public interface IAgentControl
 
 /// <summary>
 /// Runs verified commands. The ack only says whether the command was accepted; long work reports its completion
-/// through events (later phases).
+/// through events.
 /// </summary>
-public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger)
+public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger, ServerHost? servers = null)
 {
-    /// <summary>Command types this agent handles, announced as capabilities in its Hello.</summary>
-    public IReadOnlySet<string> SupportedCommands { get; } = new HashSet<string>(StringComparer.Ordinal)
-    {
-        AgentCapabilities.Ping,
-        AgentCapabilities.RotateCredential,
-        AgentCapabilities.UpdatePanelKeys,
-    };
+    /// <summary>Command types this agent handles (and features it has), announced as capabilities in its Hello.</summary>
+    public IReadOnlySet<string> SupportedCommands { get; } = new HashSet<string>(
+        [AgentCapabilities.Ping, AgentCapabilities.RotateCredential, AgentCapabilities.UpdatePanelKeys, .. servers?.Capabilities ?? []],
+        StringComparer.Ordinal);
 
-    public CommandAck Execute(CommandVerifier verifier, SignedMessage message, IAgentControl control)
+    public async Task<CommandAck> ExecuteAsync(CommandVerifier verifier, SignedMessage message, IAgentControl control)
     {
         ArgumentNullException.ThrowIfNull(verifier);
         ArgumentNullException.ThrowIfNull(control);
@@ -60,6 +58,11 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger)
                 var keyIds = string.Join(", ", update.Keys.Select(k => k.KeyId));
                 LogPanelKeys(envelope.CommandId, keyIds, changed);
                 return Ack(envelope, changed ? AckStatus.Accepted : AckStatus.AlreadyInState);
+            case ProvisionServerCommand or InstallServerCommand or StartServerCommand or StopServerCommand or RestartServerCommand
+                or KillServerCommand or DeleteServerCommand when servers is not null:
+                var ack = await servers.ExecuteAsync(envelope);
+                LogServerCommand(envelope.CommandId, envelope.Command.GetType().Name, ack.Status, ack.ErrorCode, envelope.ActorUserId);
+                return ack;
             default:
                 // Announced as supported but not wired here: a bug, never a reason to act on the command.
                 return new CommandAck(envelope.CommandId, AckStatus.UnsupportedCommand, "command.unsupported", null);
@@ -101,6 +104,9 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger)
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Refused command {CommandId}: {Status} ({ErrorCode})")]
     private partial void LogRefused(Guid commandId, AckStatus status, string? errorCode);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{Command} {CommandId} from the panel (user {ActorUserId}): {Status} {ErrorCode}")]
+    private partial void LogServerCommand(Guid commandId, string command, AckStatus status, string? errorCode, Guid? actorUserId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Ping {CommandId} from the panel (user {ActorUserId})")]
     private partial void LogPing(Guid commandId, Guid? actorUserId);

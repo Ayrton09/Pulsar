@@ -3,8 +3,12 @@ using Microsoft.Extensions.Hosting;
 using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Commands;
 using Pulsar.Agent.Core.Panel;
+using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Security;
+using Pulsar.Agent.Core.Servers;
 using Pulsar.Agent.Windows;
+using Pulsar.Agent.Windows.Processes;
+using Pulsar.Agent.Windows.Servers;
 using Pulsar.Contracts;
 using Serilog;
 
@@ -53,7 +57,28 @@ internal static class AgentHost
             builder.Services.AddSingleton<CredentialRotationClient>();
             builder.Services.AddSingleton<CommandDispatcher>();
             builder.Services.AddSingleton(new AgentConnectionOptions());
+            builder.Services.AddSingleton<PanelChannel>();
+
+            // Game servers (docs/architecture/05 and 06).
+            builder.Services.AddSingleton<WindowsServerAccounts>();
+            builder.Services.AddSingleton<IGameProcessManager, WindowsGameProcessManager>();
+            builder.Services.AddSingleton<IServerProvisioner>(services => new WindowsServerProvisioner(
+                services.GetRequiredService<WindowsServerAccounts>(),
+                development: services.GetRequiredService<AgentConfigStore>().Load()?.Development ?? false,
+                services.GetRequiredService<ILogger<WindowsServerProvisioner>>()));
+            builder.Services.AddSingleton<ServerStore>();
+            // Development and CI only: enables the pulsar-test manifest.
+            builder.Services.AddSingleton(new InstallOptions { TestGameDirectory = builder.Configuration["Pulsar:TestGameDirectory"] });
+            builder.Services.AddSingleton<InstallSteps>();
+            builder.Services.AddSingleton(new SupervisorOptions());
+            builder.Services.AddSingleton(new ServerHostOptions());
+            builder.Services.AddSingleton<ServerHost>();
+
+            // Started in this order and stopped in reverse: the connection waits for the servers to load before its Hello,
+            // and the servers stop while the panel can still see it.
             builder.Services.AddHostedService<AgentConnection>();
+            builder.Services.AddHostedService(services => services.GetRequiredService<ServerHost>());
+            builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(30));
 
             using var host = builder.Build();
             Log.Information("Pulsar Agent {Version} starting (protocol v{ProtocolVersion}, state in {DataDirectory})",

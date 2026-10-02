@@ -408,6 +408,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     private void BeginStop(StateChangeReason reason, TimeSpan? budget)
     {
+        // The exit that follows reports the same reason (unless the stop times out or a kill overtakes it).
+        _stopReason = reason;
         Transition(RuntimeState.Stopping, reason);
         var timeout = TimeSpan.FromSeconds(_definition.Plan.Stop.TimeoutSeconds);
         if (budget is { } limit && limit < timeout)

@@ -46,6 +46,13 @@ public sealed partial class WindowsServerProvisioner(WindowsServerAccounts accou
         return new ProvisionedServer(directory, ProcessIdentity.Account(name));
     }
 
+    public ProvisionedServer Describe(string serversRoot, string shortId)
+    {
+        ServerShortId.Validate(shortId);
+        return new ProvisionedServer(Path.Combine(Root(serversRoot), shortId),
+            development ? ProcessIdentity.CurrentUser : ProcessIdentity.Account(WindowsServerAccounts.AccountName(shortId)));
+    }
+
     public void Deprovision(string serversRoot, string shortId)
     {
         ServerShortId.Validate(shortId);

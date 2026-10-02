@@ -96,7 +96,8 @@ public sealed class CommandDispatcherTests : IDisposable
         var envelope = new CommandEnvelope(AgentProtocol.CurrentVersion, Guid.CreateVersion7(), _nodeId, _sessionId, ++_sequence,
             now, now.AddSeconds(60), null, null, command);
         var message = ProtocolCrypto.SignMessage(signer, keyId, AgentProtocol.Purposes.Command, ProtocolJson.Serialize(envelope));
-        return _dispatcher.Execute(_verifier, message, _control);
+        // Every command this agent handles without servers completes synchronously.
+        return _dispatcher.ExecuteAsync(_verifier, message, _control).GetAwaiter().GetResult();
     }
 
     private static PanelKey Key(ECDsa key)

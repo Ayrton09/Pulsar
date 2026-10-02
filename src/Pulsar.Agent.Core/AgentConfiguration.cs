@@ -20,6 +20,12 @@ public sealed class AgentPaths(string root)
     public string ConfigFile => Path.Combine(ConfigDirectory, "agent.json");
 
     public string LogsDirectory => Path.Combine(Root, "logs");
+
+    /// <summary>One file per server: its runtime spec and whether it should be running.</summary>
+    public string ServersStateDirectory => Path.Combine(Root, "state", "servers");
+
+    /// <summary>Operation results the panel has not received yet.</summary>
+    public string OutboxDirectory => Path.Combine(Root, "state", "outbox");
 }
 
 /// <summary>Everything the agent needs to reach and trust its panel, written at enrollment.</summary>
@@ -38,6 +44,18 @@ public sealed record AgentConfig(
     PendingRotation? PendingRotation = null)
 {
     public DateTimeOffset CurrentKeyCreatedAt => KeyCreatedAt ?? EnrolledAt;
+
+    /// <summary>
+    /// Where server directories go: the one chosen at enrollment, otherwise <c>%SystemDrive%\PulsarServers</c> (inside the
+    /// data directory for a development agent).
+    /// </summary>
+    public string ServersRootOrDefault(AgentPaths paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        return ServersRoot ?? (Development
+            ? Path.Combine(paths.Root, "servers")
+            : Path.Combine((Environment.GetEnvironmentVariable("SystemDrive") ?? "C:") + Path.DirectorySeparatorChar, "PulsarServers"));
+    }
 }
 
 /// <summary>

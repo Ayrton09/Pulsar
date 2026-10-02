@@ -330,6 +330,17 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AServerStoppedBecauseTheAgentStopsSaysSo()
+    {
+        var supervisor = await Running();
+
+        Assert.True(await supervisor.ShutdownAsync(TimeSpan.FromSeconds(3)));
+
+        var offline = await _events.WaitForAsync(RuntimeState.Offline);
+        Assert.Equal(StateChangeReason.AgentStopping, offline.Reason);
+    }
+
+    [Fact]
     public async Task ShuttingDownTheAgentStopsTheServerWithinTheBudget()
     {
         var supervisor = await Running();
@@ -342,6 +353,7 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
 
         Assert.True(await shutdown.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
         Assert.Equal(RuntimeState.Offline, supervisor.Snapshot.State);
+        Assert.Equal(StateChangeReason.StopTimedOut, _events.Changes[^1].Reason);
         Assert.True(_events.DesiredRunning, "An agent stop does not change what the user wants.");
     }
 

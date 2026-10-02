@@ -13,6 +13,9 @@ public interface IServerProvisioner
     /// <exception cref="GameProcessException">The machine cannot host servers (e.g. a domain controller).</exception>
     ProvisionedServer Provision(string serversRoot, string shortId);
 
+    /// <summary>Where an already provisioned server lives and who it runs as, without changing anything.</summary>
+    ProvisionedServer Describe(string serversRoot, string shortId);
+
     /// <summary>Deletes the directory (never following junctions or links out of it) and the account. Idempotent.</summary>
     void Deprovision(string serversRoot, string shortId);
 }

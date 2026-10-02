@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Commands;
 using Pulsar.Agent.Core.Security;
+using Pulsar.Agent.Core.Servers;
 using Pulsar.Contracts;
 
 namespace Pulsar.Agent.Core.Panel;
@@ -49,12 +50,15 @@ public sealed partial class AgentConnection(
     AgentConnectionOptions options,
     TimeProvider clock,
     IHostApplicationLifetime lifetime,
-    ILoggerFactory loggerFactory) : BackgroundService, IAgentControl
+    ILoggerFactory loggerFactory,
+    PanelChannel? channel = null,
+    ServerHost? servers = null) : BackgroundService, IAgentControl
 {
     /// <summary>Enough failures for the backoff to sit at its maximum.</summary>
     private const int MaxFailures = 30;
 
     private readonly ILogger _logger = loggerFactory.CreateLogger<AgentConnection>();
+    private readonly PanelChannel _channel = channel ?? new PanelChannel();
     private readonly Lock _configLock = new();
     private AgentConfig _config = null!;
     private INodeKey _key = null!;
@@ -127,6 +131,12 @@ public sealed partial class AgentConnection(
         }
 
         _config = config;
+        if (servers is not null)
+        {
+            // The first Hello reports every server.
+            await servers.Loaded.WaitAsync(stoppingToken);
+        }
+
         var origin = PanelAddress.Origin(config.Panel);
         LogStarting(AgentInfo.Version, config.NodeId, origin);
         Session? current = null;
@@ -380,15 +390,16 @@ public sealed partial class AgentConnection(
         builder.Services.AddSingleton(loggerFactory);
         var connection = builder.Build();
 
-        var session = new Session(connection, token.SessionId, token.AccessToken, system, options, clock, _logger);
+        var session = new Session(connection, token.SessionId, token.AccessToken, system, options, clock, _logger, _channel);
         try
         {
-            connection.On<SignedMessage, CommandAck>(nameof(IAgentClient.Execute), message => dispatcher.Execute(verifier, message, this));
+            connection.On<SignedMessage, CommandAck>(nameof(IAgentClient.Execute), message => dispatcher.ExecuteAsync(verifier, message, this));
             await connection.StartAsync(cancellationToken);
 
             var hello = await connection.InvokeAsync<HelloAccepted>(nameof(IAgentHub.Hello),
                 new AgentHello(AgentInfo.Version, AgentProtocol.CurrentVersion, [.. dispatcher.SupportedCommands],
-                    system.GetInventory(config.ServersRoot), [.. config.PanelKeys.Select(k => k.KeyId)]),
+                    system.GetInventory(config.ServersRootOrDefault(configs.Paths)), [.. config.PanelKeys.Select(k => k.KeyId)],
+                    servers?.Snapshots() ?? [], servers?.OperationsInFlight() ?? []),
                 cancellationToken);
 
             var now = clock.GetUtcNow();
@@ -402,6 +413,7 @@ public sealed partial class AgentConnection(
             var lead = options.RenewalLead < lifetimeLeft / 2 ? options.RenewalLead : lifetimeLeft / 2;
             session.Started(now + lifetimeLeft - lead);
             LogConnected(token.SessionId, verifier.PanelClockOffset);
+            await _channel.AttachAsync(connection, cancellationToken);
             return session;
         }
         catch
@@ -467,7 +479,8 @@ public sealed partial class AgentConnection(
         INodeSystem system,
         AgentConnectionOptions options,
         TimeProvider clock,
-        ILogger logger) : IAsyncDisposable
+        ILogger logger,
+        PanelChannel channel) : IAsyncDisposable
     {
         private readonly TaskCompletionSource<Exception?> _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly CancellationTokenSource _stop = new();
@@ -518,6 +531,7 @@ public sealed partial class AgentConnection(
 
         public async ValueTask DisposeAsync()
         {
+            channel.Detach(connection);
             await _stop.CancelAsync();
             try
             {
