@@ -37,6 +37,8 @@ export default defineConfig({
       ConnectionStrings__Pulsar: connectionString,
       InitialSetup__Token: E2E_SETUP_TOKEN,
       Security__AllowInsecureHttp: 'true',
+      // Offers Pulsar's test game, which e2e/servers.spec.ts runs on a real agent.
+      Pulsar__EnableTestGame: 'true',
     },
     url: `${baseURL}/health/ready`,
     reuseExistingServer: !process.env.CI,
