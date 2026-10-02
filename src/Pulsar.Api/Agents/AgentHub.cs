@@ -152,6 +152,32 @@ internal sealed partial class AgentHub(
         Context.Items[s_lastSeenAtKey] = now;
     }
 
+    // Server events: accepted from registered connections; the panel's server model handles them (Phase 3, next steps).
+    public Task ServerStateChanged(ServerStateChanged change)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        return NotHandledYet(nameof(ServerStateChanged));
+    }
+
+    public Task OperationProgress(OperationProgress progress)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        return NotHandledYet(nameof(OperationProgress));
+    }
+
+    public Task OperationCompleted(OperationCompleted completed)
+    {
+        ArgumentNullException.ThrowIfNull(completed);
+        return NotHandledYet(nameof(OperationCompleted));
+    }
+
+    private Task NotHandledYet(string @event)
+    {
+        var nodeId = Context.User!.NodeId();
+        LogServerEvent(nodeId, @event);
+        return Task.CompletedTask;
+    }
+
     public override Task OnDisconnectedAsync(Exception? exception)
     {
         connections.Unregister(Context.User!.NodeId(), Context.ConnectionId);
@@ -164,6 +190,9 @@ internal sealed partial class AgentHub(
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Node {NodeId} rejected with protocol version {ProtocolVersion}; supported versions are {MinimumVersion} through {CurrentVersion}")]
     private partial void LogProtocolRejected(NodeId nodeId, int protocolVersion, int minimumVersion, int currentVersion);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Node {NodeId} sent {Event}; server events are not handled yet")]
+    private partial void LogServerEvent(NodeId nodeId, string @event);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not send the panel keys to node {NodeId}")]
     private partial void LogPanelKeysUpdateFailed(Exception exception, NodeId nodeId);
