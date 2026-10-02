@@ -1,13 +1,16 @@
 # Installs the agent the production way on a disposable, elevated Windows (Windows Sandbox through prepare.ps1, or a CI
 # runner): PostgreSQL + panel on 127.0.0.1, then elevated enroll, machine key, PulsarAgent service as SYSTEM, and a
-# test game server running as its own Windows account. Every check is written to report\summary.txt as PASS/FAIL; the
-# last line is "done", and the exit code is 1 on any FAIL.
+# test game server running as its own Windows account, then a real Counter-Strike: Source server installed by SteamCMD
+# from Valve (about 2.5 GB), started and stopped over RCON as its account, with managed firewall rules. Every check is
+# written to report\summary.txt as PASS/FAIL; the last line is "done", and the exit code is 1 on any FAIL.
 # When the machine has a ready TPM, the node key must be in it.
 # Never run it on a machine you use: it installs a service and creates a machine key (removed again at the end).
 param(
     [Parameter(Mandatory)] [string] $Bundle,
     # PostgreSQL binaries (initdb, pg_ctl, createdb); the sandbox maps them here.
-    [string] $PgBin = 'C:\pgsql\bin')
+    [string] $PgBin = 'C:\pgsql\bin',
+    # Skips the real game (SteamCMD download) on a machine without internet access.
+    [switch] $SkipRealGame)
 $ErrorActionPreference = 'Stop'
 $report = New-Item -ItemType Directory -Force (Join-Path $Bundle 'report')
 $summary = Join-Path $report 'summary.txt'
@@ -106,8 +109,9 @@ try {
     New-Item -ItemType Directory -Force (Split-Path $installDir) | Out-Null
     Copy-Item $agentSource $installDir -Recurse
     Copy-Item (Join-Path $Bundle 'testgame') $testGameDir -Recurse
-    # The service reads appsettings.Production.json next to its executable: this agent may install the test game.
-    @{ Pulsar = @{ TestGameDirectory = $testGameDir } } | ConvertTo-Json | Set-Content (Join-Path $installDir 'appsettings.Production.json')
+    # The service reads appsettings.Production.json next to its executable: this agent may install the test game, and
+    # it manages the firewall rules of its servers (off by default; the machine's administrator decides).
+    @{ Pulsar = @{ TestGameDirectory = $testGameDir; ManageFirewall = $true } } | ConvertTo-Json | Set-Content (Join-Path $installDir 'appsettings.Production.json')
     # The service binary check reads these ACLs; keep them in the report for diagnosis.
     foreach ($path in 'C:\', 'C:\Program Files', (Split-Path $installDir), $installDir) {
         Add-Content (Join-Path $report 'acls.txt') (Invoke-Native icacls.exe $path)
@@ -235,6 +239,62 @@ try {
     $null = Api DELETE "/api/v1/servers/$serverId"
     $gone = Wait-Until { try { $null = Server; $false } catch { $_.Exception.Response.StatusCode -eq [Net.HttpStatusCode]::NotFound } } 60
     Check 'delete removes the server, its folder and its account' ($gone -and -not (Test-Path $serverDir) -and $null -eq (Get-LocalUser $account -ErrorAction SilentlyContinue)) $account
+
+    # --- A real Source game: SteamCMD as the server's account, RCON readiness and stop, firewall (docs/architecture/04, 06) ---
+    if (-not $SkipRealGame) {
+        $null = Api POST "/api/v1/nodes/$nodeId/allocations" @{ ipAddress = '0.0.0.0'; ports = '27015-27020'; notes = 'sandbox' }
+        $css = $null
+        foreach ($candidate in (Api GET '/api/v1/templates')) { if ($candidate.key -eq 'css') { $css = $candidate } }
+        $game = (Api POST '/api/v1/servers' @{
+            nodeId = $nodeId; templateId = $css.id; name = 'sandbox-css'; description = $null
+            variables = @{ map = 'cs_office'; maxPlayers = '12'; password = 'sandbox-join' }
+        })
+        $gameId = $game.server.id
+        $gameAccount = "pulsar_$($game.server.shortId)"
+        $gameDir = Join-Path 'C:\PulsarServers' $game.server.shortId
+        function GameServer { Api GET "/api/v1/servers/$gameId" }
+        Check 'css: game port from the node allocations' (($game.ports | Where-Object name -eq 'game').port -eq 27015) "$(($game.ports | ForEach-Object { "$($_.name)=$($_.port)" }) -join ' ')"
+
+        # Progress shows while SteamCMD downloads; then the install completes.
+        $stages = New-Object System.Collections.Generic.List[string]
+        $installed = Wait-Until {
+            $g = GameServer
+            if ($g.server.activeOperation) { $stages.Add("$($g.server.activeOperation.type):$($g.server.activeOperation.stage):$($g.server.activeOperation.percent)") }
+            $g.server.installState -eq 'installed' -and $null -eq $g.server.activeOperation
+        } 1800
+        $seen = @($stages | Select-Object -Unique)
+        Check 'css: installed by SteamCMD' $installed "$((GameServer).recentOperations[0].status) $((GameServer).recentOperations[0].errorCode) $((GameServer).recentOperations[0].errorMessage)"
+        Check 'css: live install progress' (@($seen | Where-Object { $_ -match ':downloading:\d' }).Count -gt 0) (($seen | Select-Object -First 12) -join ' | ')
+        $steamOwner = (Get-Acl (Join-Path $gameDir 'srcds.exe')).Owner
+        Check 'css: game files written by the server account (SteamCMD ran as it)' ($steamOwner -like "*$gameAccount") $steamOwner
+        $signature = Get-AuthenticodeSignature (Join-Path $dataDir 'steamcmd\steamcmd.exe')
+        Check 'css: SteamCMD bootstrapper signed by Valve' ($signature.Status -eq 'Valid' -and $signature.SignerCertificate.Subject -match 'O=Valve') $signature.SignerCertificate.Subject
+
+        $null = Api POST "/api/v1/servers/$gameId/start"
+        Check 'css: ready over RCON' (Wait-Until { (GameServer).server.runtimeState -eq 'running' } 300) "reason: $((GameServer).server.lastStateReason)"
+        $srcds = @(Get-CimInstance Win32_Process -Filter "Name = 'srcds.exe'")
+        $srcdsOwner = if ($srcds.Count -eq 1) { Invoke-CimMethod -InputObject $srcds[0] -MethodName GetOwner } else { $null }
+        Check 'css: srcds runs as its account with the configured values' ($srcds.Count -eq 1 -and $srcdsOwner.User -eq $gameAccount -and $srcds[0].CommandLine -match '\+map cs_office' -and $srcds[0].CommandLine -match '\+maxplayers 12') "$($srcdsOwner.User): $($srcds[0].CommandLine -replace '\+rcon_password \S+', '+rcon_password ***')"
+        $cfg = Get-Content (Join-Path $gameDir 'cstrike\cfg\server.cfg') -Raw
+        Check 'css: server.cfg written before the start' ($cfg -match 'hostname "Pulsar CS:S"' -and $cfg -match 'sv_password "sandbox-join"') (($cfg -split "`n" | Where-Object { $_ -match '^(hostname|sv_password)' }) -join ' | ')
+        $udpRule = Get-NetFirewallRule -DisplayName "Pulsar $($game.server.shortId) game udp" -ErrorAction SilentlyContinue
+        $tcpRule = Get-NetFirewallRule -DisplayName "Pulsar $($game.server.shortId) game tcp" -ErrorAction SilentlyContinue
+        $udpPort = if ($udpRule) { ($udpRule | Get-NetFirewallPortFilter).LocalPort } else { '' }
+        $udpApp = if ($udpRule) { ($udpRule | Get-NetFirewallApplicationFilter).Program } else { '' }
+        Check 'css: firewall opens the game port over UDP only, for srcds' ($udpPort -eq '27015' -and $udpApp -like '*\srcds.exe' -and $null -eq $tcpRule) "udp $udpPort $udpApp; tcp rule: $($null -ne $tcpRule)"
+
+        $null = Api POST "/api/v1/servers/$gameId/stop"
+        $stopped = Wait-Until { (GameServer).server.runtimeState -eq 'offline' -and @(Get-CimInstance Win32_Process -Filter "Name = 'srcds.exe'").Count -eq 0 } 60
+        Check 'css: stopped over RCON (exit code 0, no process left)' ($stopped -and (GameServer).server.lastExitCode -eq 0) "reason $((GameServer).server.lastStateReason), exit $((GameServer).server.lastExitCode)"
+
+        $null = Api DELETE "/api/v1/servers/$gameId"
+        $gameGone = Wait-Until { try { $null = GameServer; $false } catch { $_.Exception.Response.StatusCode -eq [Net.HttpStatusCode]::NotFound } } 120
+        $rulesLeft = @(Get-NetFirewallRule -DisplayName "Pulsar $($game.server.shortId) *" -ErrorAction SilentlyContinue).Count
+        # Windows PowerShell hands a JSON array over as one object: foreach enumerates its elements.
+        $assigned = 0
+        foreach ($allocation in (Api GET "/api/v1/nodes/$nodeId/allocations")) { if ($allocation.serverId) { $assigned++ } }
+        Check 'css: delete removes folder, account, firewall rules and frees the ports' ($gameGone -and -not (Test-Path $gameDir) -and $null -eq (Get-LocalUser $gameAccount -ErrorAction SilentlyContinue) -and $rulesLeft -eq 0 -and $assigned -eq 0) "rules left: $rulesLeft, ports still assigned: $assigned"
+    }
 
     # --- Revocation cuts the service off ---
     $credentialId = $credential.id
