@@ -26,6 +26,13 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(PingCommand), PingCommand.Type)]
 [JsonDerivedType(typeof(RotateCredentialCommand), RotateCredentialCommand.Type)]
 [JsonDerivedType(typeof(UpdatePanelKeysCommand), UpdatePanelKeysCommand.Type)]
+[JsonDerivedType(typeof(ProvisionServerCommand), ProvisionServerCommand.Type)]
+[JsonDerivedType(typeof(InstallServerCommand), InstallServerCommand.Type)]
+[JsonDerivedType(typeof(StartServerCommand), StartServerCommand.Type)]
+[JsonDerivedType(typeof(StopServerCommand), StopServerCommand.Type)]
+[JsonDerivedType(typeof(RestartServerCommand), RestartServerCommand.Type)]
+[JsonDerivedType(typeof(KillServerCommand), KillServerCommand.Type)]
+[JsonDerivedType(typeof(DeleteServerCommand), DeleteServerCommand.Type)]
 public abstract record AgentCommand;
 
 /// <summary>Round-trip check of the signed command path (the UI's "test connection").</summary>
@@ -52,6 +59,50 @@ public sealed record UpdatePanelKeysCommand(IReadOnlyList<PanelKey> Keys) : Agen
     public const string Type = "node.update_panel_keys";
 }
 
+/// <summary>
+/// Operation (the envelope carries its id): creates or repairs the server's directory and Windows account and stores
+/// its runtime spec. Completion is reported with <see cref="OperationCompleted"/>.
+/// </summary>
+public sealed record ProvisionServerCommand(Guid ServerId, ServerRuntimeSpec Spec) : AgentCommand
+{
+    public const string Type = "server.provision";
+}
+
+/// <summary>Operation: runs the manifest's install steps.</summary>
+public sealed record InstallServerCommand(Guid ServerId) : AgentCommand
+{
+    public const string Type = "server.install";
+}
+
+public sealed record StartServerCommand(Guid ServerId) : AgentCommand
+{
+    public const string Type = "server.start";
+}
+
+/// <summary>Graceful stop: the manifest's stop steps, then the process tree is killed after their timeout.</summary>
+public sealed record StopServerCommand(Guid ServerId) : AgentCommand
+{
+    public const string Type = "server.stop";
+}
+
+/// <summary>Stop and start as one unit: nothing else runs on the server in between.</summary>
+public sealed record RestartServerCommand(Guid ServerId) : AgentCommand
+{
+    public const string Type = "server.restart";
+}
+
+/// <summary>Kills the whole process tree now.</summary>
+public sealed record KillServerCommand(Guid ServerId) : AgentCommand
+{
+    public const string Type = "server.kill";
+}
+
+/// <summary>Operation: kills the server if needed, then removes its directory, account and state from the node.</summary>
+public sealed record DeleteServerCommand(Guid ServerId) : AgentCommand
+{
+    public const string Type = "server.delete";
+}
+
 public enum AckStatus
 {
     Accepted,
@@ -71,6 +122,19 @@ public static class AgentCapabilities
     public const string Ping = PingCommand.Type;
     public const string RotateCredential = RotateCredentialCommand.Type;
     public const string UpdatePanelKeys = UpdatePanelKeysCommand.Type;
+    public const string ProvisionServer = ProvisionServerCommand.Type;
+    public const string InstallServer = InstallServerCommand.Type;
+    public const string StartServer = StartServerCommand.Type;
+    public const string StopServer = StopServerCommand.Type;
+    public const string RestartServer = RestartServerCommand.Type;
+    public const string KillServer = KillServerCommand.Type;
+    public const string DeleteServer = DeleteServerCommand.Type;
+
+    /// <summary>
+    /// Not a command: the agent can install Pulsar's test game server (the <c>pulsar-test</c> manifest). Only agents
+    /// started with a test game server directory announce it (development and CI).
+    /// </summary>
+    public const string TestGame = "server.test_game";
 
     /// <summary>The capability an agent must announce to receive <paramref name="command"/>.</summary>
     public static string Of(AgentCommand command) => command switch
@@ -78,6 +142,13 @@ public static class AgentCapabilities
         PingCommand => Ping,
         RotateCredentialCommand => RotateCredential,
         UpdatePanelKeysCommand => UpdatePanelKeys,
+        ProvisionServerCommand => ProvisionServer,
+        InstallServerCommand => InstallServer,
+        StartServerCommand => StartServer,
+        StopServerCommand => StopServer,
+        RestartServerCommand => RestartServer,
+        KillServerCommand => KillServer,
+        DeleteServerCommand => DeleteServer,
         null => throw new ArgumentNullException(nameof(command)),
         _ => throw new ArgumentOutOfRangeException(nameof(command), command.GetType().Name, "Command without a capability."),
     };

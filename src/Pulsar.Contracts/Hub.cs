@@ -8,6 +8,14 @@ public interface IAgentHub
 
     /// <summary>Node-level metrics, every 15 s.</summary>
     Task NodeMetrics(NodeMetrics metrics);
+
+    /// <summary>A server changed state. Not retried: the next Hello carries every server's state anyway.</summary>
+    Task ServerStateChanged(ServerStateChanged change);
+
+    Task OperationProgress(OperationProgress progress);
+
+    /// <summary>The end of an operation; the agent keeps it and sends it again until this call succeeds.</summary>
+    Task OperationCompleted(OperationCompleted completed);
 }
 
 /// <summary>Methods the panel calls on a connected agent (SignalR client results).</summary>
@@ -20,12 +28,16 @@ public interface IAgentClient
 /// Key ids of the panel keys the agent trusts. The panel signs this connection's commands with one of them and, when they
 /// differ from its own, sends <see cref="UpdatePanelKeysCommand"/>. Null from agents that predate panel key rotation.
 /// </param>
+/// <param name="Servers">The actual state of every server the agent knows (docs/architecture/05, "Reconciliation").</param>
+/// <param name="OperationsInFlight">Operations the agent is still running; any other one the panel thinks is running was interrupted.</param>
 public sealed record AgentHello(
     string AgentVersion,
     int ProtocolVersion,
     IReadOnlyList<string> Capabilities,
     NodeInventory Inventory,
-    IReadOnlyList<string>? PinnedPanelKeys = null);
+    IReadOnlyList<string>? PinnedPanelKeys = null,
+    IReadOnlyList<ServerSnapshot>? Servers = null,
+    IReadOnlyList<Guid>? OperationsInFlight = null);
 
 /// <summary><see cref="ServerTime"/> lets the agent detect clock skew (command expiry is a secondary defense).</summary>
 public sealed record HelloAccepted(DateTimeOffset ServerTime, IReadOnlyList<PanelKey> PanelKeys);
