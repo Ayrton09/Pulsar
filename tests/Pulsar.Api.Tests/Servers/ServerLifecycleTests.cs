@@ -71,6 +71,9 @@ public sealed class ServerLifecycleTests(PulsarApiFactory factory) : IClassFixtu
         var actions = await db.AuditLog.Where(e => e.ServerId == new ServerId(created.Server.Id)).OrderBy(e => e.OccurredAt).Select(e => e.Action)
             .ToListAsync(Ct);
         Assert.Equal(expected.Order(), actions.Distinct().Order());
+        var deleted = await db.AuditLog.SingleAsync(e => e.ServerId == new ServerId(created.Server.Id) && e.Action == "server.deleted", Ct);
+        Assert.Equal(Pulsar.Domain.Audit.AuditActorType.Node, deleted.ActorType);
+        Assert.Equal("servers-lifecycle", deleted.ActorDisplay);
     }
 
     [DatabaseFact]

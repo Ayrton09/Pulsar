@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
+using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
@@ -103,8 +104,10 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                         break;
                     case OperationType.ServerDelete when operation.Status == OperationStatus.Succeeded:
                         db.Servers.Remove(server);
-                        var actor = operation.RequestedBy is { } user ? AuditActor.ForUser(user, null) : AuditActor.System;
-                        audit.Record(AuditActions.Server.Deleted, AuditOutcome.Success, actor, new { server.Name, server.ShortId })
+                        // The node did it (the user's request has its own entry, server.delete_requested).
+                        var node = await db.Nodes.AsNoTracking().SingleAsync(n => n.Id == nodeId, cancellationToken);
+                        audit.Record(AuditActions.Server.Deleted, AuditOutcome.Success, AgentAccess.NodeActor(node),
+                                new { server.Name, server.ShortId, requestedBy = operation.RequestedBy?.Value })
                             .WithServer(server.Id, server.NodeId);
                         break;
                 }
