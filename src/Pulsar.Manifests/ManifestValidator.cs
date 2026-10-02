@@ -424,9 +424,11 @@ public static partial class ManifestValidator
             context.Error($"{path}.console", "'logFile' and 'rcon' belong to the 'logfile+rcon' mode.");
         }
 
-        if (console.Rcon is { } rcon && (!context.Ports.TryGetValue(rcon.Port, out var port) || !port.Protocols.Contains(PortProtocol.Tcp) || !port.Required))
+        // RCON listens on TCP whatever the port declares: the declared protocols are what the firewall opens, and RCON
+        // only needs to be reachable from the node itself.
+        if (console.Rcon is { } rcon && (!context.Ports.TryGetValue(rcon.Port, out var port) || !port.Required))
         {
-            context.Error($"{path}.console.rcon.port", "Must name a required TCP port of the manifest.");
+            context.Error($"{path}.console.rcon.port", "Must name a required port of the manifest.");
         }
     }
 

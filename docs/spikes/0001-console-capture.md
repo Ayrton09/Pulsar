@@ -1,6 +1,6 @@
 # Spike 0001 — Console capture: ConPTY vs pipes (and what srcds actually needs)
 
-Status: **done for SteamCMD and Counter-Strike: Source.** CS2 and Garry's Mod not tested yet (CS2 is a different engine; GMod is srcds-based and expected to behave like CS:S).
+Status: **done for SteamCMD, Counter-Strike: Source and Counter-Strike 2** (CS2 added in Phase 4, see F7). Garry's Mod not tested yet (srcds-based, expected to behave like CS:S).
 
 Environment: Windows 11 Pro 25H2 (build 26200), .NET 10.0.12, CsWin32 0.3.335, SteamCMD version 1788292693, CS:S dedicated server (app 232330, server version 11003710). Tools: [`spikes/ConsoleCapture`](../../spikes/ConsoleCapture) (capture), [`spikes/ConsoleProbe`](../../spikes/ConsoleProbe) (fake server), `rcon_probe.py` (minimal Source RCON client). Raw captures were kept locally under `artifacts/spike1` (not committed).
 
@@ -11,6 +11,7 @@ Environment: Windows 11 Pro 25H2 (build 26200), .NET 10.0.12, CsWin32 0.3.335, S
 | Fake server (stdout + `CONOUT$`) | `CONOUT$` output lost | Everything captured | **ConPTY** |
 | `steamcmd.exe` | Output block-buffered: progress arrives all at once at the end | Live output | **ConPTY** |
 | `srcds.exe -console` (CS:S) | Live stdout, then **fatal error** after ~5 s (needs console input) | **0 bytes**: srcds allocates its own console | **Neither → log file + RCON** |
+| `cs2.exe -dedicated` (CS2) | not needed (see F7) | **0 bytes**, input ignored: cs2 allocates its own console | **Log file + RCON** |
 
 ## Findings
 
@@ -58,6 +59,18 @@ A child attached to a ConPTY **inherits the caller's standard handles** if the c
   - **Caveat:** commands executed over RCON (including `say`) are answered over RCON but **not** written to `console.log`. The console UI shows RCON responses inline next to the log stream.
 - srcds still needs *a* console to avoid the fatal input error, so it is started under a ConPTY (or any console); in a service (session 0) its own console window is invisible.
 
+### F7. CS2 behaves like srcds (Phase 4)
+
+Run on the same machine with CS2 dedicated server build 1.41.8.8 (app 730, 74 GB download, about 19 minutes), `cs2.exe -dedicated -ip 127.0.0.1 -port 27215 +sv_lan 1 -maxplayers 8 +map de_dust2 -usercon +rcon_password … [-condebug]`, under ConPTY with the same capture tool:
+
+- **ConPTY: 0 bytes in 150 s**, and `status`, `echo` and `quit` written to it did nothing (the capture killed it). The Job held two processes, `cs2.exe` and a `conhost.exe` of its own: like srcds, cs2 allocates its own console.
+- **`-condebug`** writes `game/csgo/console.log`, flushed live, **UTF-8 with a byte order mark**, every line prefixed with `MM/dd HH:mm:ss `. Unlike srcds, commands received over RCON and their output (`status`, `say`) are written to the log too (`[ServerLog] rcon from "127.0.0.1:…": command "…"`).
+- **RCON** (`-usercon`, `rcon_password`) on the game port, TCP: authentication is answered with a **single** `SERVERDATA_AUTH_RESPONSE` (srcds sends an empty `RESPONSE_VALUE` first); each answer is one packet carrying the request id (`status` ≈ 1.5 KB). An empty "end marker" request, the usual trick to detect the end of multi-packet answers, gets a malformed packet back. Answers took 0.2–0.7 s. A client must accept one or two packets at authentication and should not rely on the marker trick; reading until the connection has been idle for a moment works for both engines.
+- **No RCON brute-force protection:** `sv_rcon_maxfailures`, `sv_rcon_banpenalty`, `sv_rcon_minfailures` and `sv_rcon_minfailuretime` do not exist in CS2 (empty answers). Only the password's strength protects RCON, and players never need the TCP side of the game port.
+- **Readiness:** `Server is hibernating` about 2 s after the start; the RCON port accepted connections by then.
+- **Graceful stop:** `quit` over RCON → exit code **0** in about 1 s, together with its `conhost.exe`.
+- `game/csgo/cfg/server.cfg` exists after the install (Valve's default content), so a `patch` configuration file keeps it.
+
 ## Design consequences
 
 1. **Console modes become three** (doc 04, ADR-0007):
@@ -67,10 +80,10 @@ A child attached to a ConPTY **inherits the caller's standard handles** if the c
 2. **RCON is managed by the agent.** It generates a random RCON password per server (secret, never shown by default), passes it at launch and keeps the RCON session. It is a credential exposed on the game's TCP port, so it must be long and random, and Source's RCON ban settings (`sv_rcon_maxfailures`, `sv_rcon_banpenalty`, …) should be set by the manifest. Added to the threat model.
 3. **Log tailing** must handle the file being truncated/recreated at start, partial lines, and unbounded growth (`-condebug` appends forever: the agent rotates it before each start).
 4. **Readiness for Source**: a log pattern (`Server is hibernating`, or the first successful RCON `status`).
+6. **RCON stays on the node** (F7): game ports declare UDP only, so firewall rules managed by Pulsar never open the TCP side where RCON listens; the agent reaches it locally.
 5. SteamCMD: ConPTY, bootstrap step, language-neutral parsing, retries (F5).
 
 ## Not covered
 
-- **CS2** (Source 2): not installed (≈60 GB). It may or may not behave like srcds; it needs its own run before the CS2 manifest is written.
 - **Garry's Mod**: expected to behave like CS:S (same srcds launcher); to confirm when its manifest is written.
 - Running under a dedicated per-server account in session 0: spike 0002.

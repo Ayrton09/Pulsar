@@ -25,7 +25,7 @@ public sealed class SourceManifestTests
         Assert.Equal(new RconEndpoint(RconProtocol.Source, "127.0.0.1", 27115, Rcon), plan.Rcon);
         var port = Assert.Single(plan.Ports);
         Assert.Equal(("game", "0.0.0.0", 27115), (port.Name, port.IpAddress, port.Port));
-        Assert.Equal([PortProtocol.Udp, PortProtocol.Tcp], port.Protocols);
+        Assert.Equal([PortProtocol.Udp], port.Protocols);
 
         var file = Assert.Single(plan.ConfigFiles);
         Assert.Equal("cstrike/cfg/server.cfg", file.Path);
@@ -120,7 +120,7 @@ public sealed class SourceManifestTests
     [Theory]
     [InlineData("console.logFile", null, "runtime.windows-x64.console.logFile")]
     [InlineData("console.logFile", "../outside.log", "runtime.windows-x64.console.logFile")]
-    [InlineData("console.rcon.port", "tv", "runtime.windows-x64.console.rcon.port")] // UDP only and optional
+    [InlineData("console.rcon.port", "tv", "runtime.windows-x64.console.rcon.port")] // optional
     [InlineData("console.rcon.port", "nope", "runtime.windows-x64.console.rcon.port")]
     [InlineData("console.inputNewline", "\n", "runtime.windows-x64.console.inputNewline")]
     public void LogfileRconConsolesAreComplete(string property, string? value, string path)

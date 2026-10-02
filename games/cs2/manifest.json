@@ -1,0 +1,82 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "cs2",
+  "version": "1.0.0",
+  "name": "Counter-Strike 2",
+  "description": "Counter-Strike 2 dedicated server, installed anonymously with SteamCMD (about 75 GB).",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 85, "minMemoryMb": 4096 },
+
+  "variables": [
+    { "key": "hostname", "label": "Server name", "type": "string", "default": "Pulsar CS2", "maxLength": 64, "pattern": "^[^\";]{1,64}$" },
+    { "key": "map", "label": "Starting map", "type": "string", "default": "de_dust2", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$" },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 10, "min": 2, "max": 64 },
+    { "key": "gameMode", "label": "Game mode", "type": "enum", "default": "competitive",
+      "options": [
+        { "value": "casual", "label": "Casual", "map": { "gameType": "0", "gameMode": "0" } },
+        { "value": "competitive", "label": "Competitive", "map": { "gameType": "0", "gameMode": "1" } },
+        { "value": "wingman", "label": "Wingman", "map": { "gameType": "0", "gameMode": "2" } },
+        { "value": "armsrace", "label": "Arms Race", "map": { "gameType": "1", "gameMode": "0" } },
+        { "value": "deathmatch", "label": "Deathmatch", "map": { "gameType": "1", "gameMode": "2" } }
+      ] },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "gslt", "label": "Game Server Login Token", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Fa-f0-9]{32}$",
+      "description": "Needed for players outside your network to find and join the server. Create one at https://steamcommunity.com/dev/managegameservers (app 730)." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 27015,
+      "description": "Players connect over UDP. RCON listens on TCP on the same port and is only used by Pulsar on this machine." },
+    { "name": "tv", "label": "CSTV", "protocols": ["udp"], "default": 27020, "required": false, "description": "Assign it to enable CSTV." }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 730 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 730 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "game/bin/win64/cs2.exe",
+      "workingDirectory": "game/bin/win64",
+      "arguments": [
+        "-dedicated", "-condebug", "-usercon",
+        "-ip", "{{port.game.ip}}",
+        "-port", "{{port.game}}",
+        { "if": "port.tv", "then": ["+tv_enable", "1", "+tv_port", "{{port.tv}}"] },
+        "-maxplayers", "{{var.maxPlayers}}",
+        "+game_type", "{{var.gameMode.gameType}}",
+        "+game_mode", "{{var.gameMode.gameMode}}",
+        "+map", "{{var.map}}",
+        "+rcon_password", "{{rcon.password}}",
+        { "if": "var.gslt", "then": ["+sv_setsteamaccount", "{{var.gslt}}"] }
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "game/csgo/console.log",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["rcon_password", "sv_password", "sv_setsteamaccount"]
+      }
+    }
+  },
+
+  "configFiles": [
+    { "path": "game/csgo/cfg/server.cfg", "format": "source-cfg", "mode": "patch",
+      "set": { "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}" } }
+  ],
+
+  "readiness": { "type": "rcon", "timeoutSeconds": 300 },
+
+  "stop": {
+    "steps": [ { "type": "rconCommand", "command": "quit" } ],
+    "timeoutSeconds": 30
+  },
+
+  "backup": {
+    "include": ["game/csgo/cfg/**", "game/csgo/addons/**", "game/csgo/gameinfo.gi", "game/csgo_addons/**"],
+    "exclude": ["**/*.log", "**/*.dmp"]
+  }
+}

@@ -79,6 +79,7 @@ public enum PortProtocol
 /// <summary>
 /// A port the game listens on. Each server gets one of its node's allocations (an <c>ip:port</c> pair reserved for
 /// both protocols) per port; arguments reach it through <c>{{port.&lt;name&gt;}}</c> and <c>{{port.&lt;name&gt;.ip}}</c>.
+/// <see cref="Protocols"/> are the ones opened to the outside when Pulsar manages the node's firewall.
 /// </summary>
 /// <param name="Default">The port tried first when the server is created.</param>
 /// <param name="Required">An optional port (CSTV, say) can be left without an allocation.</param>
@@ -189,7 +190,10 @@ public enum RconProtocol
 /// Remote console the agent keeps (docs/architecture/04, "Console"). The agent generates a random password per server;
 /// the manifest passes it to the game with <c>{{rcon.password}}</c>.
 /// </summary>
-/// <param name="Port">Name of the (TCP) port the game serves RCON on.</param>
+/// <param name="Port">
+/// Name of the port the game serves RCON on (over TCP). Declare only the protocols players need on it (UDP for Source
+/// games): the firewall rules Pulsar manages open just those, and RCON stays reachable from the node only.
+/// </param>
 public sealed record RconDefinition(RconProtocol Protocol, string Port);
 
 /// <summary>When a starting server counts as running (docs/architecture/04, "Readiness and stop").</summary>

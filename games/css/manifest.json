@@ -19,7 +19,8 @@
   ],
 
   "ports": [
-    { "name": "game", "label": "Game", "protocols": ["udp", "tcp"], "default": 27015, "description": "UDP for players, TCP for RCON." },
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 27015,
+      "description": "Players connect over UDP. RCON listens on TCP on the same port and is only used by Pulsar on this machine." },
     { "name": "tv", "label": "SourceTV", "protocols": ["udp"], "default": 27020, "required": false, "description": "Assign it to enable SourceTV." }
   ],
 

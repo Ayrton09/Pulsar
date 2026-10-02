@@ -190,7 +190,7 @@
       "required": ["protocol", "port"],
       "properties": {
         "protocol": { "enum": ["source"] },
-        "port": { "type": "string", "description": "Name of a required TCP port." }
+        "port": { "type": "string", "description": "Name of a required port; RCON listens on its TCP side, which only needs to be reachable from the node." }
       }
     },
     "ConfigFileDefinition": {
