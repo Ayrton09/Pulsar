@@ -100,7 +100,8 @@ jobs:
       - run: npm run build
 
   # The production install on a clean, disposable Windows: elevated enroll, machine key (in the TPM when the runner
-  # has a ready one), PulsarAgent service as SYSTEM, key rotation, revocation, unenroll. Same script as the Windows
+  # has a ready one), PulsarAgent service as SYSTEM, key rotation, a test game server running as its own Windows
+  # account, revocation, unenroll. Same script as the Windows
   # Sandbox check (scripts/sandbox/agent-install); the runner is elevated and discarded after the job.
   agent-install:
     name: Agent install (windows-latest)
@@ -119,6 +120,7 @@ jobs:
           # Self-contained: the service runs as SYSTEM, which does not see the job's DOTNET_ROOT.
           dotnet publish src/Pulsar.Api -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/panel
           dotnet publish src/Pulsar.Agent -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/agent
+          dotnet publish tests/Pulsar.TestGameServer -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/testgame
 
       - name: Install, rotate, revoke and remove the agent
         shell: powershell

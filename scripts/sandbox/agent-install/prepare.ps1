@@ -20,6 +20,9 @@ dotnet publish (Join-Path $repo 'src\Pulsar.Api') -c Release -r win-x64 --self-c
 if ($LASTEXITCODE -ne 0) { throw 'publish panel failed' }
 dotnet publish (Join-Path $repo 'src\Pulsar.Agent') -c Release -r win-x64 --self-contained -o (Join-Path $bundle 'agent')
 if ($LASTEXITCODE -ne 0) { throw 'publish agent failed' }
+# The test game server runs as a server account, which has no .NET runtime to find either.
+dotnet publish (Join-Path $repo 'tests\Pulsar.TestGameServer') -c Release -r win-x64 --self-contained -o (Join-Path $bundle 'testgame')
+if ($LASTEXITCODE -ne 0) { throw 'publish test game server failed' }
 
 # The PostgreSQL binaries zip relies on the Visual C++ runtime, which a clean sandbox may lack.
 $vcrt = New-Item -ItemType Directory -Force (Join-Path $bundle 'vcrt')

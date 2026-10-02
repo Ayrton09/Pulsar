@@ -1,6 +1,7 @@
 # Installs the agent the production way on a disposable, elevated Windows (Windows Sandbox through prepare.ps1, or a CI
-# runner): PostgreSQL + panel on 127.0.0.1, then elevated enroll, machine key, PulsarAgent service as SYSTEM. Every
-# check is written to report\summary.txt as PASS/FAIL; the last line is "done", and the exit code is 1 on any FAIL.
+# runner): PostgreSQL + panel on 127.0.0.1, then elevated enroll, machine key, PulsarAgent service as SYSTEM, and a
+# test game server running as its own Windows account. Every check is written to report\summary.txt as PASS/FAIL; the
+# last line is "done", and the exit code is 1 on any FAIL.
 # When the machine has a ready TPM, the node key must be in it.
 # Never run it on a machine you use: it installs a service and creates a machine key (removed again at the end).
 param(
@@ -39,6 +40,8 @@ $setupToken = 'sandbox-setup-token-not-a-secret-0123456789'
 $admin = @{ userName = 'sandbox-admin'; password = 'sandbox admin password' }
 $agentSource = Join-Path $Bundle 'agent'
 $installDir = 'C:\Program Files\Pulsar\Agent'
+# Pulsar's test game server, where only administrators can change it (the agent copies it into server folders).
+$testGameDir = 'C:\Program Files\Pulsar\TestGame'
 $agentExe = Join-Path $installDir 'PulsarAgent.exe'
 $dataDir = 'C:\ProgramData\Pulsar\Agent'
 
@@ -72,6 +75,7 @@ try {
     $env:InitialSetup__Token = $setupToken
     $env:Kestrel__Certificates__Default__Path = $pfx
     $env:Kestrel__Certificates__Default__Password = 'agent-install'
+    $env:Pulsar__EnableTestGame = 'true'
     $panelDir = Join-Path $Bundle 'panel'
     Start-Process (Join-Path $panelDir 'Pulsar.Api.exe') -ArgumentList '--contentRoot', "`"$panelDir`"", '--urls', $panel `
         -RedirectStandardOutput (Join-Path $report 'panel.txt') -RedirectStandardError (Join-Path $report 'panel-error.txt') -WindowStyle Hidden
@@ -101,6 +105,9 @@ try {
     # --- Production install from Program Files ---
     New-Item -ItemType Directory -Force (Split-Path $installDir) | Out-Null
     Copy-Item $agentSource $installDir -Recurse
+    Copy-Item (Join-Path $Bundle 'testgame') $testGameDir -Recurse
+    # The service reads appsettings.Production.json next to its executable: this agent may install the test game.
+    @{ Pulsar = @{ TestGameDirectory = $testGameDir } } | ConvertTo-Json | Set-Content (Join-Path $installDir 'appsettings.Production.json')
     # The service binary check reads these ACLs; keep them in the report for diagnosis.
     foreach ($path in 'C:\', 'C:\Program Files', (Split-Path $installDir), $installDir) {
         Add-Content (Join-Path $report 'acls.txt') (Invoke-Native icacls.exe $path)
@@ -179,6 +186,55 @@ try {
     $credential = $newCredential
     $config = $rotatedConfig
     $provider = $newProvider
+
+    # --- A game server runs as its own Windows account (docs/architecture/06) ---
+    # Windows PowerShell hands a JSON array over as one object: foreach enumerates its elements.
+    $template = $null
+    foreach ($candidate in (Api GET '/api/v1/templates')) { if ($candidate.isTestGame) { $template = $candidate } }
+    $server = (Api POST '/api/v1/servers' @{ nodeId = $nodeId; templateId = $template.id; name = 'sandbox-server'; description = $null }).server
+    $serverId = $server.id
+    $account = "pulsar_$($server.shortId)"
+    $serverDir = Join-Path 'C:\PulsarServers' $server.shortId
+    function Server { (Api GET "/api/v1/servers/$serverId").server }
+    Check 'server provisioned and installed' (Wait-Until { $s = Server; $s.installState -eq 'installed' -and $null -eq $s.activeOperation } 60) $server.shortId
+    $user = Get-LocalUser $account -ErrorAction SilentlyContinue
+    Check 'server account created' ($null -ne $user) $account
+    $rightsFile = Join-Path $env:TEMP 'pulsar-rights.inf'
+    $null = Invoke-Native secedit.exe /export /areas USER_RIGHTS /cfg $rightsFile
+    $sid = $user.SID.Value
+    $rightsText = Get-Content $rightsFile -Raw
+    Copy-Item $rightsFile (Join-Path $report 'user-rights.inf')
+    # secedit lists an account by SID (*S-1-5-...) or, when it can resolve it, by name.
+    $holder = "(\*$sid|$account)(,|\s*$)"
+    $batch = $rightsText -match "(?m)^SeBatchLogonRight = .*$holder"
+    $denied = @('SeDenyInteractiveLogonRight', 'SeDenyRemoteInteractiveLogonRight', 'SeDenyNetworkLogonRight') | Where-Object { $rightsText -match "(?m)^$_ = .*$holder" }
+    Check 'server account: batch logon only' ($batch -and @($denied).Count -eq 3) "batch=$batch denied=$($denied -join ',')"
+    $serverAcl = Get-Acl $serverDir
+    $serverPrincipals = @($serverAcl.Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value }) | Sort-Object -Unique
+    $expected = @('S-1-3-4', 'S-1-5-18', 'S-1-5-32-544', $sid) | Sort-Object
+    Check 'server folder: SYSTEM, Administrators and its account only' ($serverAcl.AreAccessRulesProtected -and (@($serverPrincipals) -join ',') -eq ($expected -join ',')) ($serverPrincipals -join ', ')
+
+    $null = Api POST "/api/v1/servers/$serverId/start"
+    Check 'server online' (Wait-Until { (Server).runtimeState -eq 'running' } 60)
+    $game = @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'")
+    $owner = if ($game.Count -eq 1) { Invoke-CimMethod -InputObject $game[0] -MethodName GetOwner } else { $null }
+    Check 'server process runs as its own account' ($game.Count -eq 1 -and $owner.User -eq $account) "$($owner.Domain)\$($owner.User), session $($game[0].SessionId), $($game[0].CommandLine)"
+
+    # An orderly service stop stops the server, and the server starts again with the service.
+    $before = $game[0].ProcessId
+    Restart-Service PulsarAgent
+    $resumed = Wait-Until {
+        $now = @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'")
+        (Server).runtimeState -eq 'running' -and $now.Count -eq 1 -and $now[0].ProcessId -ne $before
+    } 90
+    Check 'server resumes after a service restart' $resumed "reason: $((Server).lastStateReason)"
+
+    $null = Api POST "/api/v1/servers/$serverId/kill"
+    Check 'kill stops the server and leaves no process' (Wait-Until { (Server).runtimeState -eq 'offline' -and @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'").Count -eq 0 } 30)
+
+    $null = Api DELETE "/api/v1/servers/$serverId"
+    $gone = Wait-Until { try { $null = Server; $false } catch { $_.Exception.Response.StatusCode -eq [Net.HttpStatusCode]::NotFound } } 60
+    Check 'delete removes the server, its folder and its account' ($gone -and -not (Test-Path $serverDir) -and $null -eq (Get-LocalUser $account -ErrorAction SilentlyContinue)) $account
 
     # --- Revocation cuts the service off ---
     $credentialId = $credential.id
