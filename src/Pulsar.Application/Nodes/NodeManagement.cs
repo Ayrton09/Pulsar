@@ -288,7 +288,8 @@ public sealed class NodeManagement(
 
     private NodeSummary Summarize(Node node, string activeKeyId)
     {
-        var connection = connections.Find(node.Id);
+        // A connection whose session ended (revocation, key rotation) is about to close or be replaced: not connected.
+        var connection = connections.Find(node.Id) is { } live && sessions.IsActive(live.SessionId) ? live : null;
         var inventory = node.Inventory is { } i
             ? new NodeInventoryView(i.Hostname, i.OsDescription, i.OsBuild, i.CpuModel, i.LogicalCores, i.MemoryTotalBytes, i.ServersRoot, i.AgentVersion, i.ProtocolVersion)
             : null;
