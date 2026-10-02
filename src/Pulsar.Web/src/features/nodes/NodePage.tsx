@@ -18,6 +18,7 @@ import {
   useNode,
   usePingNode,
   useRevokeCredential,
+  useRotateNodeKey,
   useSetNodeEnabled,
   useUpdateNode,
   type EnrollmentInstructions,
@@ -65,6 +66,7 @@ export function NodePage() {
         description={node.description ?? undefined}
         actions={
           <>
+            {node.panelKeyTrust === 'outdated' && <Badge tone="danger">{t('nodes.panelKeyOutdated')}</Badge>}
             <NodeStateBadge node={node} />
             {canManage && node.connected && <PingButton nodeId={node.id} />}
           </>
@@ -265,6 +267,9 @@ function CredentialsSection({
                       {credential.revokeReason && ` · ${credential.revokeReason}`}
                     </p>
                   )}
+                  {credential.supersededAt && (
+                    <p className="mt-1 text-xs text-muted">{formatDate(credential.supersededAt)}</p>
+                  )}
                 </Td>
                 <Td>{formatDate(credential.createdAt)}</Td>
                 <Td>
@@ -354,19 +359,32 @@ function AdministrationSection({
   const setEnabled = useSetNodeEnabled();
   const remove = useDeleteNode();
   const token = useCreateEnrollmentToken();
+  const rotate = useRotateNodeKey();
   const [editing, setEditing] = useState(false);
   const [instructions, setInstructions] = useState<EnrollmentInstructions | null>(null);
-  const error = setEnabled.error ?? remove.error ?? token.error;
+  const error = setEnabled.error ?? remove.error ?? token.error ?? rotate.error;
   const disabled = node.status === 'disabled';
 
   return (
     <section className="mt-8 space-y-4">
       <h2 className="text-lg font-semibold">{t('nodes.administration')}</h2>
       {error && <Alert>{errorMessage(t, error)}</Alert>}
+      {rotate.data && (
+        <p role="status" className="text-sm text-muted">
+          {rotate.data.status === 'accepted' || rotate.data.status === 'alreadyInState'
+            ? t('nodes.rotateStarted')
+            : t('nodes.pingRefused', { status: rotate.data.status })}
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         {canManage && (
           <Button variant="secondary" onClick={() => setEditing(true)}>
             {t('actions.edit')}
+          </Button>
+        )}
+        {canManageCredentials && node.connected && (
+          <Button variant="secondary" busy={rotate.isPending} onClick={() => rotate.mutate(node.id)}>
+            {t('nodes.rotateKey')}
           </Button>
         )}
         {canManageCredentials && (

@@ -9,6 +9,7 @@ export const Permission = {
   NodeView: 'node.view',
   NodeManage: 'node.manage',
   NodeCredentialsManage: 'node.credentials.manage',
+  SettingsManage: 'settings.manage',
 } as const;
 
 /**

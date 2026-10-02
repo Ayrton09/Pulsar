@@ -232,7 +232,14 @@
         "enrolled": "Nodo enrolado",
         "enrollment_failed": "Enrolamiento fallido",
         "credential_revoked": "Revocó una credencial de nodo",
-        "authentication_failed": "Autenticación de nodo fallida"
+        "authentication_failed": "Autenticación de nodo fallida",
+        "credential_rotation_requested": "Pidió a un nodo rotar su clave",
+        "credential_rotation_started": "El nodo registró una clave nueva",
+        "credential_rotated": "Clave del nodo rotada"
+      },
+      "panel_key": {
+        "rotated": "Rotó la clave de firma del panel",
+        "retired": "Retiró una clave de firma del panel"
       }
     }
   },
@@ -290,6 +297,11 @@
       "name_taken": "Ya hay otro nodo con este nombre.",
       "not_found": "El nodo no existe.",
       "not_connected": "El agente del nodo no está conectado."
+    },
+    "panel_key": {
+      "rotation_in_progress": "La clave anterior todavía se está retirando. Retirala antes de volver a rotar.",
+      "not_retiring": "Solo se puede retirar una clave que se está retirando.",
+      "not_found": "La clave del panel no existe."
     }
   },
   "account": {
@@ -392,6 +404,26 @@
         "superseded": "Reemplazada",
         "revoked": "Revocada"
       }
-    }
+    },
+    "rotateKey": "Rotar clave",
+    "rotateStarted": "El agente está reemplazando su clave. La nueva credencial aparece abajo cuando se conecta con ella (además, las claves se reemplazan solas cada 90 días).",
+    "panelKeyOutdated": "Clave del panel vieja"
+  },
+  "panelKeys": {
+    "title": "Clave de firma del panel",
+    "description": "Los agentes solo aceptan comandos firmados con una clave en la que confían. Rotarla empieza a firmar con una clave nueva y se la envía a todos los nodos; retirá la vieja cuando todos la tengan.",
+    "created": "Creada el {{date}}",
+    "trustedBy_one": "la usa {{count}} de {{total}} nodo",
+    "trustedBy_other": "la usan {{count}} de {{total}} nodos",
+    "states": {
+      "active": "Activa",
+      "retiring": "Retirándose",
+      "retired": "Retirada"
+    },
+    "notEveryNode": "{{outdated}} nodo(s) todavía confían solo en la clave vieja y {{unknown}} no informaron sus claves. Reciben la nueva cuando se conectan.",
+    "rotate": "Rotar la clave del panel",
+    "rotateConfirm": "¿Crear una nueva clave de firma del panel? Los nodos conectados la reciben ahora y los demás cuando se conecten. La clave actual sigue valiendo hasta que la retires.",
+    "retire": "Retirar la clave vieja",
+    "retireConfirm": "¿Retirar la clave vieja? Los nodos que todavía no tienen la nueva ({{outdated}} desactualizados, {{unknown}} sin datos) van a dejar de aceptar comandos hasta que se vuelvan a enrolar."
   }
 }

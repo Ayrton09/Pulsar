@@ -105,3 +105,48 @@ export function useRevokeCredential() {
     onSuccess: changed,
   });
 }
+
+export type PanelKeysOverview = Schemas['PanelKeysOverview'];
+
+export function useRotateNodeKey() {
+  const changed = useNodesChanged();
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.POST('/api/v1/nodes/{id}/credentials/rotate', { params: { path: { id } } })),
+    onSuccess: changed,
+  });
+}
+
+export const panelKeysKey = ['panel-keys'] as const;
+
+export function usePanelKeys() {
+  return useQuery({
+    queryKey: panelKeysKey,
+    queryFn: () => unwrap(api.GET('/api/v1/panel-keys')),
+  });
+}
+
+function usePanelKeysChanged() {
+  const queryClient = useQueryClient();
+  const nodesChanged = useNodesChanged();
+  return (overview: PanelKeysOverview) => {
+    queryClient.setQueryData(panelKeysKey, overview);
+    return nodesChanged();
+  };
+}
+
+export function useRotatePanelKey() {
+  const changed = usePanelKeysChanged();
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/api/v1/panel-keys/rotate')),
+    onSuccess: changed,
+  });
+}
+
+export function useRetirePanelKey() {
+  const changed = usePanelKeysChanged();
+  return useMutation({
+    mutationFn: (keyId: string) =>
+      unwrap(api.POST('/api/v1/panel-keys/{keyId}/retire', { params: { path: { keyId } } })),
+    onSuccess: changed,
+  });
+}

@@ -14,6 +14,7 @@ import { useCurrentUser } from '../auth/api';
 import { useCreateNode, useNodes, type CreatedNode } from './api';
 import { EnrollmentCommand, NodeStateBadge } from './components';
 import { nodeSchema, type NodeFormValues } from './nodeForm';
+import { PanelKeysSection } from './PanelKeysSection';
 
 export function NodesPage() {
   const { t } = useTranslation();
@@ -98,6 +99,7 @@ export function NodesPage() {
           </tbody>
         </Table>
       )}
+      {can(me, Permission.SettingsManage) && <PanelKeysSection />}
       {creating && <CreateNodeDialog onClose={() => setCreating(false)} />}
     </>
   );

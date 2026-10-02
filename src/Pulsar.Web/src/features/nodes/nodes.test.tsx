@@ -44,6 +44,7 @@ const online: Schemas['NodeSummary'] = {
     uptime: '3.04:05:06.1230000',
   },
   createdAt: '2026-09-01T12:00:00Z',
+  panelKeyTrust: 'current',
 };
 const offline = { ...online, id: '0192f1a0-0000-7000-8000-0000000000a2', name: 'Backup', connected: false };
 const pending: Schemas['NodeSummary'] = {
@@ -65,6 +66,7 @@ const credential: Schemas['NodeCredentialView'] = {
   lastUsedAt: '2026-10-01T12:00:00Z',
   revokedAt: null,
   revokeReason: null,
+  supersededAt: null,
 };
 
 function renderAt(path: string) {
@@ -239,5 +241,83 @@ describe('node page', () => {
     expect(screen.queryByRole('button', { name: 'Test connection' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Revoke' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Administration' })).not.toBeInTheDocument();
+  });
+});
+
+describe('key rotation', () => {
+  it('asks a connected agent to rotate its key', async () => {
+    let asked = false;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/nodes/${online.id}`]: () => json({ node: online, credentials: [credential] }),
+      [`POST /api/v1/nodes/${online.id}/credentials/rotate`]: () => {
+        asked = true;
+        return json({ status: 'accepted', errorCode: null });
+      },
+    });
+    renderAt(`/nodes/${online.id}`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Rotate key' }));
+
+    expect(await screen.findByText(/The agent is replacing its key/)).toBeInTheDocument();
+    expect(asked).toBe(true);
+  });
+
+  it('flags nodes that only trust a retiring panel key', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/nodes/${online.id}`]: () =>
+        json({ node: { ...online, panelKeyTrust: 'outdated' }, credentials: [credential] }),
+    });
+
+    renderAt(`/nodes/${online.id}`);
+
+    expect(await screen.findByText('Old panel key')).toBeInTheDocument();
+  });
+
+  it('lets settings managers rotate the panel key and then retire the old one', async () => {
+    const admin = { ...operator, permissions: [...operator.permissions, 'settings.manage'] };
+    const key = (keyId: string, status: Schemas['PanelSigningKeyStatus'], nodesTrusting: number) => ({
+      keyId,
+      status,
+      createdAt: '2026-09-01T12:00:00Z',
+      retiredAt: null,
+      nodesTrusting,
+    });
+    const rotated = {
+      keys: [key('sha256:new', 'active', 1), key('sha256:old', 'retiring', 2)],
+      nodes: 2,
+      nodesOutdated: 1,
+      nodesUnknown: 0,
+    };
+    let retiredKey = '';
+    fakeApi({
+      'GET /api/v1/auth/session': session(admin),
+      'GET /api/v1/nodes': () => json([online]),
+      'GET /api/v1/panel-keys': () =>
+        json({ keys: [key('sha256:old', 'active', 2)], nodes: 2, nodesOutdated: 0, nodesUnknown: 0 }),
+      'POST /api/v1/panel-keys/rotate': () => json(rotated),
+      // openapi-fetch encodes the ':' of the key id.
+      'POST /api/v1/panel-keys/sha256%3Aold/retire': (request) => {
+        retiredKey = new URL(request.url).pathname;
+        return json({
+          ...rotated,
+          keys: [key('sha256:new', 'active', 2), { ...key('sha256:old', 'retired', 0) }],
+          nodesOutdated: 0,
+        });
+      },
+    });
+    vi.stubGlobal('confirm', () => true);
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Rotate panel key' }));
+
+    expect(await screen.findByText('Being retired')).toBeInTheDocument();
+    expect(screen.getByText(/1 node\(s\) still trust only the old key/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retire old key' }));
+    await vi.waitFor(() => expect(retiredKey).toContain('/retire'));
+    expect(await screen.findByRole('button', { name: 'Rotate panel key' })).toBeInTheDocument();
   });
 });

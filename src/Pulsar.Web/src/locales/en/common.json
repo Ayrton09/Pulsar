@@ -232,7 +232,14 @@
         "enrolled": "Node enrolled",
         "enrollment_failed": "Failed enrollment",
         "credential_revoked": "Revoked a node credential",
-        "authentication_failed": "Failed node authentication"
+        "authentication_failed": "Failed node authentication",
+        "credential_rotation_requested": "Asked a node to rotate its key",
+        "credential_rotation_started": "Node registered a new key",
+        "credential_rotated": "Node key rotated"
+      },
+      "panel_key": {
+        "rotated": "Rotated the panel signing key",
+        "retired": "Retired a panel signing key"
       }
     }
   },
@@ -290,6 +297,11 @@
       "name_taken": "Another node already has this name.",
       "not_found": "The node does not exist.",
       "not_connected": "The node's agent is not connected."
+    },
+    "panel_key": {
+      "rotation_in_progress": "The previous key is still being retired. Retire it before rotating again.",
+      "not_retiring": "Only a key that is being retired can be retired.",
+      "not_found": "The panel key does not exist."
     }
   },
   "account": {
@@ -392,6 +404,26 @@
         "superseded": "Replaced",
         "revoked": "Revoked"
       }
-    }
+    },
+    "rotateKey": "Rotate key",
+    "rotateStarted": "The agent is replacing its key. The new credential appears below once it connects with it (old keys are also replaced automatically every 90 days).",
+    "panelKeyOutdated": "Old panel key"
+  },
+  "panelKeys": {
+    "title": "Panel signing key",
+    "description": "Agents only accept commands signed with a key they trust. Rotating it starts signing with a new key and sends it to every node; retire the old one once all of them have it.",
+    "created": "Created {{date}}",
+    "trustedBy_one": "trusted by {{count}} of {{total}} node",
+    "trustedBy_other": "trusted by {{count}} of {{total}} nodes",
+    "states": {
+      "active": "Active",
+      "retiring": "Being retired",
+      "retired": "Retired"
+    },
+    "notEveryNode": "{{outdated}} node(s) still trust only the old key and {{unknown}} have not reported their keys. They receive the new key when they connect.",
+    "rotate": "Rotate panel key",
+    "rotateConfirm": "Create a new panel signing key? Connected nodes receive it now, the others when they connect. The current key keeps working until you retire it.",
+    "retire": "Retire old key",
+    "retireConfirm": "Retire the old key? Nodes that do not have the new one yet ({{outdated}} outdated, {{unknown}} unknown) will stop accepting commands until they are enrolled again."
   }
 }

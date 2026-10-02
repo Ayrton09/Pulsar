@@ -87,6 +87,16 @@ test('a real agent pairs, comes online, answers pings and is cut off when revoke
   await expect(page.getByText(/^Answered in \d+ ms$/)).toBeVisible();
   await page.screenshot({ path: 'test-results/screens/node-online.png', fullPage: true });
 
+  // Rotating the key: the agent registers a new one and switches to it; the old credential is replaced.
+  await page.getByRole('button', { name: 'Rotate key' }).click();
+  await expect(page.getByText('Replaced', { exact: true })).toBeVisible({ timeout: 20_000 });
+  const rotatedStatus = runAgent(['status']);
+  const rotatedFingerprint = /Node key:\s+(sha256:\S+)/.exec(rotatedStatus)?.[1] ?? 'missing';
+  expect(rotatedFingerprint).not.toBe(fingerprint);
+  await expect(page.getByRole('row', { name: new RegExp(rotatedFingerprint) })).toContainText('Active');
+  await expect(page.getByText('Online', { exact: true })).toBeVisible({ timeout: 20_000 });
+  await page.screenshot({ path: 'test-results/screens/node-rotated.png', fullPage: true });
+
   // Revoking the credential disconnects the agent at once, and it cannot come back.
   await page.getByRole('button', { name: 'Revoke' }).click();
   const revokeDialog = page.getByRole('dialog', { name: 'Revoke this credential?' });
