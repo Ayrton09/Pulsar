@@ -24,6 +24,9 @@ public static class DependencyInjection
         services.AddScoped<TemplateCatalog>();
         services.AddScoped<IBundledTemplates>(sp => sp.GetRequiredService<TemplateCatalog>());
         services.AddScoped<ServerManagement>();
+        services.AddScoped<ServerSpecs>();
+        services.AddScoped<NodeAllocations>();
+        services.AddSingleton<OperationProgressCache>();
         services.AddScoped<AgentServerEvents>();
         return services;
     }

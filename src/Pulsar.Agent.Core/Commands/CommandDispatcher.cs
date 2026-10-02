@@ -58,8 +58,8 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger,
                 var keyIds = string.Join(", ", update.Keys.Select(k => k.KeyId));
                 LogPanelKeys(envelope.CommandId, keyIds, changed);
                 return Ack(envelope, changed ? AckStatus.Accepted : AckStatus.AlreadyInState);
-            case ProvisionServerCommand or InstallServerCommand or StartServerCommand or StopServerCommand or RestartServerCommand
-                or KillServerCommand or DeleteServerCommand when servers is not null:
+            // Whatever the server host announces goes to it: one list of server commands, not two to keep in step.
+            case var command when servers is not null && servers.Capabilities.Contains(AgentCapabilities.Of(command), StringComparer.Ordinal):
                 var ack = await servers.ExecuteAsync(envelope);
                 LogServerCommand(envelope.CommandId, envelope.Command.GetType().Name, ack.Status, ack.ErrorCode, envelope.ActorUserId);
                 return ack;

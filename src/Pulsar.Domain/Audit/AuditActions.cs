@@ -36,6 +36,8 @@ public static class AuditActions
         public const string CredentialRotationRequested = "node.credential_rotation_requested";
         public const string CredentialRotationStarted = "node.credential_rotation_started";
         public const string CredentialRotated = "node.credential_rotated";
+        public const string AllocationsCreated = "node.allocations_created";
+        public const string AllocationDeleted = "node.allocation_deleted";
     }
 
     public static class Server
@@ -48,6 +50,15 @@ public static class AuditActions
         public const string Restarted = "server.restart";
         public const string Killed = "server.kill";
         public const string InstallRequested = "server.install_requested";
+        public const string UpdateRequested = "server.update_requested";
+        public const string SettingsChanged = "server.settings_changed";
+        public const string PortsChanged = "server.ports_changed";
+        public const string OperationCancelRequested = "server.operation_cancel_requested";
+    }
+
+    public static class Template
+    {
+        public const string Imported = "template.imported";
     }
 
     public static class PanelKey

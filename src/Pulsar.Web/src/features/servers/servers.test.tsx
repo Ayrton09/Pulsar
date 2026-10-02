@@ -75,6 +75,8 @@ const installOperation: Schemas['OperationView'] = {
   errorMessage: null,
   createdAt: '2026-10-02T12:00:00Z',
   completedAt: null,
+  cancellable: true,
+  cancelRequested: false,
 };
 const installing: Schemas['ServerSummary'] = {
   ...installedOffline,
@@ -88,7 +90,17 @@ function details(
   server: Schemas['ServerSummary'],
   operations: Schemas['OperationView'][] = [],
 ): Schemas['ServerDetails'] {
-  return { server, description: null, autoStart: false, restartOnCrash: true, recentOperations: operations };
+  return {
+    server,
+    description: null,
+    autoStart: false,
+    restartOnCrash: true,
+    templateKey: 'pulsar-test',
+    templateVersion: '1.0.0',
+    canUpdate: false,
+    ports: [],
+    recentOperations: operations,
+  };
 }
 
 function renderAt(path: string) {

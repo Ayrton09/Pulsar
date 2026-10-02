@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
+using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
@@ -21,7 +23,9 @@ public sealed record OperationView(
     string? ErrorCode,
     string? ErrorMessage,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? CompletedAt);
+    DateTimeOffset? CompletedAt,
+    bool Cancellable,
+    bool CancelRequested);
 
 public sealed record ServerSummary(
     Guid Id,
@@ -42,7 +46,30 @@ public sealed record ServerSummary(
     OperationView? ActiveOperation,
     DateTimeOffset CreatedAt);
 
-public sealed record ServerDetails(ServerSummary Server, string? Description, bool AutoStart, bool RestartOnCrash, IReadOnlyList<OperationView> RecentOperations);
+/// <summary>A manifest port of the server and the allocation it has (none for an unassigned optional port).</summary>
+public sealed record ServerPortView(string Name, string Label, bool Required, Guid? AllocationId, string? IpAddress, int? Port);
+
+public sealed record ServerDetails(
+    ServerSummary Server,
+    string? Description,
+    bool AutoStart,
+    bool RestartOnCrash,
+    string TemplateKey,
+    string TemplateVersion,
+    bool CanUpdate,
+    IReadOnlyList<ServerPortView> Ports,
+    IReadOnlyList<OperationView> RecentOperations);
+
+/// <summary>A variable of the server: its definition and value. Secret values are never returned, only whether one is set.</summary>
+public sealed record ServerVariableView(TemplateVariable Definition, string? Value, bool HasValue);
+
+/// <summary>The server's startup settings (docs/architecture/05): variables, extra arguments and restart policy.</summary>
+public sealed record ServerSettings(
+    IReadOnlyList<ServerVariableView> Variables,
+    IReadOnlyList<string> ExtraArguments,
+    bool AllowExtraArguments,
+    bool AutoStart,
+    bool RestartOnCrash);
 
 /// <summary>Servers for the REST API (docs/architecture/05): queries, lifecycle commands and their operations.</summary>
 public sealed partial class ServerManagement(
@@ -50,6 +77,9 @@ public sealed partial class ServerManagement(
     IAgentConnections connections,
     AgentSessionStore sessions,
     TemplateCatalog templates,
+    ServerSpecs specs,
+    OperationProgressCache progress,
+    IPermissionEvaluator permissions,
     IAuditLog audit,
     IRequestContext request,
     TimeProvider clock,
@@ -79,7 +109,8 @@ public sealed partial class ServerManagement(
     /// Creates the server and starts provisioning it on its node (directory, Windows account), followed by its install.
     /// The node must be connected: there is nothing useful to create on a node that cannot hear about it.
     /// </summary>
-    public async Task<Result<ServerDetails>> CreateAsync(NodeId nodeId, Guid templateId, string name, string? description, CancellationToken cancellationToken)
+    public async Task<Result<ServerDetails>> CreateAsync(NodeId nodeId, Guid templateId, string name, string? description,
+        IReadOnlyDictionary<string, string?>? variables, IReadOnlyDictionary<string, Guid?>? ports, CancellationToken cancellationToken)
     {
         if (!await db.Nodes.AnyAsync(n => n.Id == nodeId, cancellationToken))
         {
@@ -117,20 +148,49 @@ public sealed partial class ServerManagement(
         }
 
         var server = created.Value;
+        var manifest = ServerSpecs.Parse(template);
+        // Whoever can create a server sets its first values, protected variables included.
+        var configured = specs.SetVariables(server, manifest, variables ?? new Dictionary<string, string?>(), canEditProtected: true, request.UserId, now);
+        if (!configured.IsSuccess)
+        {
+            return configured.Error!;
+        }
+
         db.Servers.Add(server);
+        var assigned = await specs.AssignPortsAsync(server, manifest, ports, cancellationToken);
+        if (!assigned.IsSuccess)
+        {
+            return assigned.Error!;
+        }
+
+        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id)]);
+        if (!valid.IsSuccess)
+        {
+            return valid.Error!;
+        }
+
         audit.Record(AuditActions.Server.Created, metadata: new { server.Name, template = $"{template.Key}@{template.Version}" })
             .WithServer(server.Id, nodeId);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // An allocation was taken by another server meanwhile (version check or unique index).
+            return ServerErrors.AllocationUnavailable;
+        }
 
-        await RunOperationAsync(server, OperationType.ServerProvision, new ProvisionServerCommand(server.Id.Value, Spec(server, template)),
-            request.UserId, OperationRequester.User, cancellationToken);
+        await RunOperationAsync(server, OperationType.ServerProvision,
+            new ProvisionServerCommand(server.Id.Value, await specs.BuildAsync(server, template, cancellationToken)), request.UserId, OperationRequester.User,
+            cancellationToken);
         return await DetailsAsync(server, cancellationToken);
     }
 
     /// <summary>Provisions and installs again (repairs a failed install; Phase 4 adds game updates).</summary>
     public async Task<Result<ServerDetails>> ReinstallAsync(ServerId id, CancellationToken cancellationToken)
     {
-        var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
         {
             return ServerErrors.NotFound;
@@ -147,8 +207,9 @@ public sealed partial class ServerManagement(
         }
 
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
-        var result = await RunOperationAsync(server, OperationType.ServerProvision, new ProvisionServerCommand(server.Id.Value, Spec(server, template)),
-            request.UserId, OperationRequester.User, cancellationToken);
+        var result = await RunOperationAsync(server, OperationType.ServerProvision,
+            new ProvisionServerCommand(server.Id.Value, await specs.BuildAsync(server, template, cancellationToken)), request.UserId,
+            OperationRequester.User, cancellationToken);
         if (!result.IsSuccess)
         {
             return result.Error!;
@@ -170,11 +231,235 @@ public sealed partial class ServerManagement(
         }
     }
 
-    public Task<Result<AgentCommandResult>> StartAsync(ServerId id, CancellationToken cancellationToken) =>
-        ControlAsync(id, AuditActions.Server.Started, s => s.RequestStart(clock.GetUtcNow()), new StartServerCommand(id.Value), cancellationToken);
+    public async Task<Result<AgentCommandResult>> StartAsync(ServerId id, CancellationToken cancellationToken) =>
+        await SyncSpecAsync(id, cancellationToken) is { IsSuccess: false } sync
+            ? sync.Error!
+            : await ControlAsync(id, AuditActions.Server.Started, s => s.RequestStart(clock.GetUtcNow()), new StartServerCommand(id.Value), cancellationToken);
 
-    public Task<Result<AgentCommandResult>> RestartAsync(ServerId id, CancellationToken cancellationToken) =>
-        ControlAsync(id, AuditActions.Server.Restarted, s => s.RequestRestart(clock.GetUtcNow()), new RestartServerCommand(id.Value), cancellationToken);
+    public async Task<Result<AgentCommandResult>> RestartAsync(ServerId id, CancellationToken cancellationToken) =>
+        await SyncSpecAsync(id, cancellationToken) is { IsSuccess: false } sync
+            ? sync.Error!
+            : await ControlAsync(id, AuditActions.Server.Restarted, s => s.RequestRestart(clock.GetUtcNow()), new RestartServerCommand(id.Value),
+                cancellationToken);
+
+    /// <summary>The server's startup settings, with the manifest's definitions (secret values withheld).</summary>
+    public async Task<Result<ServerSettings>> GetSettingsAsync(ServerId id, CancellationToken cancellationToken)
+    {
+        var server = await db.Servers.AsNoTracking().Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        var manifest = ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken));
+        return Settings(server, manifest);
+    }
+
+    /// <summary>
+    /// Changes variables (only the given keys; null or empty goes back to the default), extra arguments and the restart
+    /// policy. They apply at the next start: the panel sends the spec to the agent before every start.
+    /// </summary>
+    public async Task<Result<ServerSettings>> UpdateSettingsAsync(ServerId id, IReadOnlyDictionary<string, string?> variables,
+        IReadOnlyList<string> extraArguments, bool autoStart, bool restartOnCrash, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(variables);
+        var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        var manifest = ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken));
+        var now = clock.GetUtcNow();
+        var canEditProtected = request.UserId is { } user
+            && await permissions.HasAsync(user, Permissions.Server.SettingsEdit, AccessTarget.ForServer(server.Id, server.NodeId), cancellationToken);
+        var changed = specs.SetVariables(server, manifest, variables, canEditProtected, request.UserId, now);
+        if (!changed.IsSuccess)
+        {
+            return changed.Error!;
+        }
+
+        var startup = server.SetStartup(extraArguments, autoStart, restartOnCrash, now);
+        if (!startup.IsSuccess)
+        {
+            return startup.Error!;
+        }
+
+        var valid = specs.Check(server, manifest, await specs.AllocationsOf(server.Id, cancellationToken));
+        if (!valid.IsSuccess)
+        {
+            return valid.Error!;
+        }
+
+        // Keys only: values may be secrets.
+        audit.Record(AuditActions.Server.SettingsChanged, metadata: new { variables = variables.Keys.Order(StringComparer.Ordinal).ToList(), autoStart, restartOnCrash })
+            .WithServer(server.Id, server.NodeId);
+        await db.SaveChangesAsync(cancellationToken);
+        await SyncSpecAsync(id, cancellationToken); // best effort now; it is sent again before the next start anyway
+        return Settings(server, manifest);
+    }
+
+    /// <summary>Gives the server other allocations of its node (stopped servers only: the game listens on them).</summary>
+    public async Task<Result<ServerDetails>> UpdatePortsAsync(ServerId id, IReadOnlyDictionary<string, Guid?> ports, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(ports);
+        var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        if (server.RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
+        {
+            return ServerErrors.MustBeStopped;
+        }
+
+        var manifest = ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken));
+        var assigned = await specs.AssignPortsAsync(server, manifest, ports, cancellationToken);
+        if (!assigned.IsSuccess)
+        {
+            return assigned.Error!;
+        }
+
+        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id)]);
+        if (!valid.IsSuccess)
+        {
+            return valid.Error!;
+        }
+
+        audit.Record(AuditActions.Server.PortsChanged, metadata: new
+        {
+            ports = db.NodeAllocations.Local.Where(a => a.ServerId == server.Id).ToDictionary(a => a.PortName!, a => $"{a.IpAddress}:{a.Port}"),
+        }).WithServer(server.Id, server.NodeId);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            return ServerErrors.AllocationUnavailable;
+        }
+
+        await SyncSpecAsync(id, cancellationToken);
+        return await DetailsAsync(server, cancellationToken);
+    }
+
+    /// <summary>Updates the game (the manifest's update steps: SteamCMD), optionally verifying every file.</summary>
+    public async Task<Result<ServerDetails>> UpdateGameAsync(ServerId id, bool validate, CancellationToken cancellationToken)
+    {
+        var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        if (ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken)).Update is null)
+        {
+            return ServerErrors.UpdateUnsupported;
+        }
+
+        if (Connection(server.NodeId) is null)
+        {
+            return NodeErrors.NotConnected;
+        }
+
+        var result = await RunOperationAsync(server, OperationType.ServerUpdate, new UpdateServerCommand(server.Id.Value, validate), request.UserId,
+            OperationRequester.User, cancellationToken);
+        if (!result.IsSuccess)
+        {
+            return result.Error!;
+        }
+
+        audit.Record(AuditActions.Server.UpdateRequested, metadata: new { validate }).WithServer(server.Id, server.NodeId);
+        await db.SaveChangesAsync(cancellationToken);
+        return await DetailsAsync(server, cancellationToken);
+    }
+
+    /// <summary>Asks the agent to cancel a running install or update; it completes as cancelled.</summary>
+    public async Task<Result<ServerDetails>> CancelOperationAsync(ServerId id, Guid operationId, CancellationToken cancellationToken)
+    {
+        var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        var operation = await db.Operations.SingleOrDefaultAsync(o => o.Id == new OperationId(operationId) && o.ServerId == id, cancellationToken);
+        if (server is null || operation is null)
+        {
+            return server is null ? ServerErrors.NotFound : ServerErrors.OperationNotFound;
+        }
+
+        if (!operation.IsCancellable)
+        {
+            return ServerErrors.OperationNotCancellable;
+        }
+
+        if (Connection(server.NodeId) is null)
+        {
+            return NodeErrors.NotConnected;
+        }
+
+        operation.RequestCancel(clock.GetUtcNow());
+        audit.Record(AuditActions.Server.OperationCancelRequested, metadata: new { operation = operationId, type = operation.Type.ToString() })
+            .WithServer(server.Id, server.NodeId);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // It finished meanwhile.
+            return ServerErrors.OperationNotCancellable;
+        }
+
+        var ack = await connections.SendAsync(server.NodeId, new CancelOperationCommand(operationId), request.UserId, cancellationToken);
+        if (ack is null)
+        {
+            return NodeErrors.NotConnected;
+        }
+
+        return await DetailsAsync(server, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends the server's current spec to its agent (values, ports, arguments): changes made in the panel apply at the
+    /// next start, even when they were made while the node was disconnected.
+    /// </summary>
+    private async Task<Result> SyncSpecAsync(ServerId id, CancellationToken cancellationToken)
+    {
+        var server = await db.Servers.AsNoTracking().Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null || server.InstallState == InstallState.NotInstalled || Connection(server.NodeId) is null)
+        {
+            return Result.Success(); // the command that follows reports what is wrong
+        }
+
+        var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
+        var ack = await connections.SendAsync(server.NodeId,
+            new ApplyServerSpecCommand(server.Id.Value, await specs.BuildAsync(server, template, cancellationToken)), request.UserId, cancellationToken);
+        if (ack is null)
+        {
+            return NodeErrors.NotConnected;
+        }
+
+        if (ack.Status is AckStatus.Accepted or AckStatus.AlreadyInState)
+        {
+            return Result.Success();
+        }
+
+        LogSpecRefused(server.Id, ack.ErrorCode, ack.Message);
+        return ServerErrors.CommandRejected;
+    }
+
+    private static ServerSettings Settings(Server server, GameManifest manifest)
+    {
+        var values = server.Variables.ToDictionary(v => v.Key);
+        return new ServerSettings(
+            [
+                .. manifest.VariableList.Select(definition =>
+                {
+                    var stored = values.GetValueOrDefault(definition.Key);
+                    return new ServerVariableView(TemplateCatalog.Variable(definition), definition.Secret ? null : stored?.Value, stored is not null);
+                }),
+            ],
+            server.ExtraArguments, manifest.Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.AllowExtraArguments == true, server.AutoStart,
+            server.RestartOnCrash);
+    }
 
     public Task<Result<AgentCommandResult>> StopAsync(ServerId id, CancellationToken cancellationToken) =>
         ControlAsync(id, AuditActions.Server.Stopped, s =>
@@ -310,10 +595,6 @@ public sealed partial class ServerManagement(
         return Result.Success();
     }
 
-    private static ServerRuntimeSpec Spec(Server server, GameTemplate template) =>
-        // Phase 3: every variable keeps its manifest default (per-server values arrive with the startup settings).
-        new(server.ShortId, template.Content, new Dictionary<string, string?>(), [], server.AutoStart, server.RestartOnCrash);
-
     private AgentConnectionInfo? Connection(NodeId node) =>
         connections.Find(node) is { } live && sessions.IsActive(live.SessionId) ? live : null;
 
@@ -325,7 +606,15 @@ public sealed partial class ServerManagement(
             .OrderByDescending(o => o.CreatedAt)
             .Take(RecentOperations)
             .ToListAsync(cancellationToken);
-        return new ServerDetails(summary, server.Description, server.AutoStart, server.RestartOnCrash, [.. operations.Select(View)]);
+        var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
+        var manifest = ServerSpecs.Parse(template);
+        var allocations = (await db.NodeAllocations.AsNoTracking().Where(a => a.ServerId == server.Id).ToListAsync(cancellationToken))
+            .ToDictionary(a => a.PortName!);
+        var ports = manifest.PortList.Select(p => allocations.GetValueOrDefault(p.Name) is { } a
+            ? new ServerPortView(p.Name, p.Label, p.Required, a.Id.Value, a.IpAddress, a.Port)
+            : new ServerPortView(p.Name, p.Label, p.Required, null, null, null)).ToList();
+        return new ServerDetails(summary, server.Description, server.AutoStart, server.RestartOnCrash, template.Key, template.Version,
+            manifest.Update is not null, ports, [.. operations.Select(View)]);
     }
 
     private async Task<IReadOnlyList<ServerSummary>> SummariesAsync(IReadOnlyList<Server> servers, CancellationToken cancellationToken)
@@ -343,8 +632,16 @@ public sealed partial class ServerManagement(
             s.ActiveOperationId is { } op && operations.TryGetValue(op, out var operation) ? View(operation) : null, s.CreatedAt))];
     }
 
-    internal static OperationView View(Operation o) =>
-        new(o.Id.Value, o.Type, o.Status, o.ProgressStage, o.ProgressPercent, o.ErrorCode, o.ErrorMessage, o.CreatedAt, o.CompletedAt);
+    /// <summary>The operation with its live progress (the database only gets it now and then).</summary>
+    internal OperationView View(Operation o)
+    {
+        var live = o.IsActive ? progress.Get(o.Id.Value) : null;
+        return new(o.Id.Value, o.Type, o.Status, live?.Stage ?? o.ProgressStage, live is { } l ? l.Percent : o.ProgressPercent, o.ErrorCode,
+            o.ErrorMessage, o.CreatedAt, o.CompletedAt, o.IsCancellable, o.CancelRequestedAt is not null);
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: the agent refused its spec: {Code} ({Reason})")]
+    private partial void LogSpecRefused(ServerId serverId, string? code, string? reason);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Operation {OperationId} finished before its start was saved")]
     private partial void LogOperationAlreadyReported(OperationId operationId);

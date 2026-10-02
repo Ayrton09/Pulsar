@@ -34,6 +34,8 @@ public interface IPulsarDbContext
 
     DbSet<Operation> Operations { get; }
 
+    DbSet<NodeAllocation> NodeAllocations { get; }
+
     /// <summary>Transactions and set-based updates (e.g. consuming a token atomically).</summary>
     DatabaseFacade Database { get; }
 

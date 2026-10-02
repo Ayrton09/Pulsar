@@ -25,4 +25,36 @@ public static class ServerErrors
     public static DomainError MustBeStopped { get; } = new("server.must_be_stopped", "Stop the server first.");
 
     public static DomainError CommandRejected { get; } = new("server.command_rejected", "The node's agent rejected the command.");
+
+    public static DomainError ExtraArgumentsInvalid { get; } = new("server.extra_arguments_invalid",
+        $"At most {Server.MaxExtraArguments} extra arguments, each a single line of 1 to {Server.MaxExtraArgumentLength} characters.");
+
+    public static DomainError ExtraArgumentsNotAllowed { get; } =
+        new("server.extra_arguments_not_allowed", "This game does not allow extra arguments.");
+
+    public static DomainError UpdateUnsupported { get; } = new("server.update_unsupported", "This game has no update steps.");
+
+    public static DomainError NoFreeAllocation { get; } =
+        new("server.no_free_allocation", "The node has no free allocation for one of the game's ports: add allocations to the node.");
+
+    public static DomainError AllocationUnavailable { get; } =
+        new("server.allocation_unavailable", "That allocation is not free on the server's node.");
+
+    public static DomainError OperationNotFound { get; } = new("operation.not_found", "The operation does not exist.");
+
+    public static DomainError OperationNotCancellable { get; } =
+        new("operation.not_cancellable", "Only running installs and updates can be cancelled.");
+
+    public static DomainError TemplateVersionExists { get; } =
+        new("template.version_exists", "That game key and version are already registered: templates never change, give it a new version.");
+
+    /// <summary>A manifest that does not pass validation; the message lists the problems.</summary>
+    public static DomainError InvalidManifest(string message) => new("template.invalid", message);
+
+    /// <summary>A value the manifest refuses; the message names the variable or port.</summary>
+    public static DomainError InvalidSettings(string message) => new("server.invalid_settings", message);
+
+    /// <summary>A variable only users who can edit server settings may change.</summary>
+    public static DomainError VariableProtected(string key) =>
+        new("server.variable_protected", $"Only users who can edit server settings can change '{key}'.");
 }

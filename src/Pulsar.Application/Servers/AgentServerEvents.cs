@@ -18,7 +18,8 @@ public sealed record ServerFollowUp(ServerId ServerId, UserId? RequestedBy);
 /// the full picture in every Hello (reconciliation: the agent's observation wins). Every event is checked against the
 /// reporting node: an agent can only speak about its own servers and operations.
 /// </summary>
-public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog audit, TimeProvider clock, ILogger<AgentServerEvents> logger)
+public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog audit, OperationProgressCache progressCache, TimeProvider clock,
+    ILogger<AgentServerEvents> logger)
 {
     private static readonly TimeSpan s_queuedGrace = TimeSpan.FromMinutes(1);
 
@@ -52,23 +53,30 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         }
     }
 
+    /// <summary>
+    /// Progress is kept in memory for the API (live) and written to the database only when the stage changes or every
+    /// 15 seconds (docs/architecture/02): SteamCMD reports often.
+    /// </summary>
     public async Task OperationProgressAsync(NodeId nodeId, OperationProgress progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(progress);
+        var percent = progress.Percent is { } p ? (decimal?)Math.Round((decimal)p, 2) : null;
         var operation = await db.Operations.SingleOrDefaultAsync(o => o.Id == new OperationId(progress.OperationId) && o.NodeId == nodeId,
             cancellationToken);
-        if (operation is { IsActive: true })
+        if (operation is not { IsActive: true } || !progressCache.Update(progress.OperationId, progress.Stage, percent))
         {
-            operation.Progressed(progress.Stage, progress.Percent is { } p ? (decimal)p : null);
-            try
-            {
-                await db.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                // Progress is advisory; the next report or the result supersedes it.
-                db.ChangeTracker.Clear();
-            }
+            return;
+        }
+
+        operation.Progressed(progress.Stage, percent);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Progress is advisory; the next report or the result supersedes it.
+            db.ChangeTracker.Clear();
         }
     }
 
@@ -87,6 +95,7 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
             }
 
             var now = clock.GetUtcNow();
+            progressCache.Remove(completed.OperationId);
             if (!operation.Complete(Map(completed.Outcome), completed.ErrorCode, completed.Message, now))
             {
                 return null;
@@ -103,6 +112,12 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                         followUp = new ServerFollowUp(server.Id, operation.RequestedBy);
                         break;
                     case OperationType.ServerDelete when operation.Status == OperationStatus.Succeeded:
+                        // Its allocations become free for other servers.
+                        foreach (var allocation in await db.NodeAllocations.Where(a => a.ServerId == server.Id).ToListAsync(cancellationToken))
+                        {
+                            allocation.Release();
+                        }
+
                         db.Servers.Remove(server);
                         // The node did it (the user's request has its own entry, server.delete_requested).
                         var node = await db.Nodes.AsNoTracking().SingleAsync(n => n.Id == nodeId, cancellationToken);

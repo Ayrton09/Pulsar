@@ -371,6 +371,69 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Nodes.NodeAllocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("IpAddress")
+                        .IsRequired()
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("notes");
+
+                    b.Property<int>("Port")
+                        .HasColumnType("integer")
+                        .HasColumnName("port");
+
+                    b.Property<string>("PortName")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("port_name");
+
+                    b.Property<Guid?>("ServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("server_id");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_node_allocations");
+
+                    b.HasIndex("ServerId", "PortName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_node_allocations_server_id_port_name");
+
+                    b.HasIndex("NodeId", "IpAddress", "Port")
+                        .IsUnique()
+                        .HasDatabaseName("ix_node_allocations_node_id_ip_address_port");
+
+                    b.ToTable("node_allocations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_node_allocations_assignment", "(server_id IS NULL) = (port_name IS NULL)");
+
+                            t.HasCheckConstraint("ck_node_allocations_port", "port BETWEEN 1 AND 65535");
+                        });
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Nodes.NodeCredential", b =>
                 {
                     b.Property<Guid>("Id")
@@ -641,6 +704,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTimeOffset?>("CancelRequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancel_requested_at");
+
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
@@ -725,7 +792,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_operations_status", "status IN ('cancelled', 'failed', 'interrupted', 'queued', 'running', 'succeeded')");
 
-                            t.HasCheckConstraint("ck_operations_type", "type IN ('server_delete', 'server_install', 'server_provision')");
+                            t.HasCheckConstraint("ck_operations_type", "type IN ('server_delete', 'server_install', 'server_provision', 'server_update')");
                         });
                 });
 
@@ -756,6 +823,13 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("desired_state");
+
+                    b.PrimitiveCollection<string[]>("ExtraArguments")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text[]")
+                        .HasColumnName("extra_arguments")
+                        .HasDefaultValueSql("'{}'");
 
                     b.Property<string>("InstallState")
                         .IsRequired()
@@ -850,6 +924,46 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_servers_last_state_reason", "last_state_reason IN ('agent_started', 'agent_stopping', 'auto_restart', 'crash_loop', 'crashed', 'exited_by_itself', 'killed', 'readiness_timed_out', 'ready', 'reconciled', 'requested', 'start_failed', 'stop_timed_out')");
 
                             t.HasCheckConstraint("ck_servers_runtime_state", "runtime_state IN ('crashed', 'offline', 'running', 'starting', 'stopping')");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Servers.ServerVariable", b =>
+                {
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("server_id");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key");
+
+                    b.Property<byte[]>("ProtectedValue")
+                        .HasColumnType("bytea")
+                        .HasColumnName("protected_value");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("Value")
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)")
+                        .HasColumnName("value");
+
+                    b.HasKey("ServerId", "Key")
+                        .HasName("pk_server_variables");
+
+                    b.HasIndex("UpdatedBy")
+                        .HasDatabaseName("ix_server_variables_updated_by");
+
+                    b.ToTable("server_variables", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_server_variables_one_value", "(value IS NULL) <> (protected_value IS NULL)");
                         });
                 });
 
@@ -1096,6 +1210,22 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.Navigation("Inventory");
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Nodes.NodeAllocation", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Nodes.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_allocations_nodes_node_id");
+
+                    b.HasOne("Pulsar.Domain.Servers.Server", null)
+                        .WithMany()
+                        .HasForeignKey("ServerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_node_allocations_servers_server_id");
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Nodes.NodeCredential", b =>
                 {
                     b.HasOne("Pulsar.Domain.Nodes.Node", null)
@@ -1177,6 +1307,27 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_servers_game_templates_template_id");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Servers.ServerVariable", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Servers.Server", null)
+                        .WithMany("Variables")
+                        .HasForeignKey("ServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_server_variables_servers_server_id");
+
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_server_variables_users_updated_by");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Servers.Server", b =>
+                {
+                    b.Navigation("Variables");
                 });
 #pragma warning restore 612, 618
         }

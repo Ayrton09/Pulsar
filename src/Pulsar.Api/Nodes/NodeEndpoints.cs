@@ -19,6 +19,12 @@ public sealed record UpdateNodeRequest(
     [property: StringLength(Node.MaxDescriptionLength)] string? Description,
     [property: StringLength(Node.MaxPublicHostLength)] string? PublicHost);
 
+/// <param name="Ports">"27015", "27015-27030" or "27015,27020".</param>
+public sealed record CreateAllocationsRequest(
+    [property: Required, StringLength(15)] string IpAddress,
+    [property: Required, StringLength(256)] string Ports,
+    [property: StringLength(NodeAllocation.MaxNotesLength)] string? Notes);
+
 public sealed record RevokeCredentialRequest([property: StringLength(NodeCredential.MaxRevokeReasonLength)] string? Reason);
 
 public static class NodeEndpoints
@@ -39,6 +45,15 @@ public static class NodeEndpoints
         nodes.MapPost("/{id:guid}/enrollment-tokens", CreateEnrollmentTokenAsync).RequirePermission(Permissions.Node.CredentialsManage);
         nodes.MapPost("/{id:guid}/credentials/{credentialId:guid}/revoke", RevokeCredentialAsync).RequirePermission(Permissions.Node.CredentialsManage);
         nodes.MapPost("/{id:guid}/credentials/rotate", RotateCredentialAsync).RequirePermission(Permissions.Node.CredentialsManage);
+        nodes.MapGet("/{id:guid}/allocations", async (Guid id, NodeAllocations allocations, CancellationToken ct) =>
+                (await allocations.ListAsync(new NodeId(id), ct)).ToHttp())
+            .RequirePermission(Permissions.Node.View, Permissions.Node.Manage, Permissions.Server.Create);
+        nodes.MapPost("/{id:guid}/allocations", async (Guid id, CreateAllocationsRequest request, NodeAllocations allocations, CancellationToken ct) =>
+                (await allocations.CreateAsync(new NodeId(id), request.IpAddress, request.Ports, request.Notes, ct)).ToHttp())
+            .RequirePermission(Permissions.Node.Manage);
+        nodes.MapDelete("/{id:guid}/allocations/{allocationId:guid}", async (Guid id, Guid allocationId, NodeAllocations allocations,
+                CancellationToken ct) => (await allocations.DeleteAsync(new NodeId(id), new AllocationId(allocationId), ct)).ToHttp())
+            .RequirePermission(Permissions.Node.Manage);
 
         var panelKeys = api.MapGroup("/panel-keys").WithTags("Panel keys").RequirePermission(Permissions.Settings.Manage);
         panelKeys.MapGet("/", async (PanelKeyManagement keys, CancellationToken ct) => TypedResults.Ok(await keys.GetAsync(ct)));

@@ -6,6 +6,7 @@ public enum OperationType
 {
     ServerProvision,
     ServerInstall,
+    ServerUpdate,
     ServerDelete,
 }
 
@@ -81,6 +82,11 @@ public sealed class Operation
 
     public DateTimeOffset? CompletedAt { get; private set; }
 
+    /// <summary>When a user asked to cancel it (the agent then reports it as cancelled).</summary>
+    public DateTimeOffset? CancelRequestedAt { get; private set; }
+
+    public bool IsCancellable => IsActive && Type is OperationType.ServerInstall or OperationType.ServerUpdate;
+
     public bool IsActive => Status is OperationStatus.Queued or OperationStatus.Running;
 
     public static Operation Create(OperationType type, NodeId nodeId, ServerId? serverId, UserId? requestedBy, OperationRequester requestedVia,
@@ -95,6 +101,8 @@ public sealed class Operation
             StartedAt = now;
         }
     }
+
+    public void RequestCancel(DateTimeOffset now) => CancelRequestedAt ??= now;
 
     public void Progressed(string stage, decimal? percent)
     {

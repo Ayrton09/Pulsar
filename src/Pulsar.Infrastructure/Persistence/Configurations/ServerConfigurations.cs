@@ -48,10 +48,51 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         builder.Property(s => s.LastStateReason).HasConversion<SnakeCaseEnumConverter<ServerStateReason>>();
         builder.Property<uint>("Version").IsRowVersion();
         builder.HasIndex(s => s.NodeId);
+        builder.Property(s => s.ExtraArguments).HasColumnType("text[]").HasDefaultValueSql("'{}'");
+        builder.HasMany(s => s.Variables).WithOne().HasForeignKey(v => v.ServerId).OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(s => s.Variables).HasField("_variables").UsePropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasOne<Node>().WithMany().HasForeignKey(s => s.NodeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<GameTemplate>().WithMany().HasForeignKey(s => s.TemplateId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Operation>().WithMany().HasForeignKey(s => s.ActiveOperationId).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+internal sealed class ServerVariableConfiguration : IEntityTypeConfiguration<ServerVariable>
+{
+    public void Configure(EntityTypeBuilder<ServerVariable> builder)
+    {
+        builder.ToTable("server_variables",
+            t => t.HasCheckConstraint("ck_server_variables_one_value", "(value IS NULL) <> (protected_value IS NULL)"));
+        builder.HasKey(v => new { v.ServerId, v.Key });
+        builder.Property(v => v.Key).HasMaxLength(64);
+        builder.Property(v => v.Value).HasMaxLength(ServerVariable.MaxValueLength);
+        builder.HasOne<PulsarUser>().WithMany().HasForeignKey(v => v.UpdatedBy).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+internal sealed class NodeAllocationConfiguration : IEntityTypeConfiguration<NodeAllocation>
+{
+    public void Configure(EntityTypeBuilder<NodeAllocation> builder)
+    {
+        builder.ToTable("node_allocations", t =>
+        {
+            t.HasCheckConstraint("ck_node_allocations_port", "port BETWEEN 1 AND 65535");
+            t.HasCheckConstraint("ck_node_allocations_assignment", "(server_id IS NULL) = (port_name IS NULL)");
+        });
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.Id).ValueGeneratedNever();
+        // Canonical IPv4 text ("0.0.0.0" for every interface); overlaps with 0.0.0.0 are checked by the application.
+        builder.Property(a => a.IpAddress).HasMaxLength(15);
+        builder.Property(a => a.PortName).HasMaxLength(NodeAllocation.MaxPortNameLength);
+        builder.Property(a => a.Notes).HasMaxLength(NodeAllocation.MaxNotesLength);
+        builder.HasIndex(a => new { a.NodeId, a.IpAddress, a.Port }).IsUnique();
+        builder.HasIndex(a => new { a.ServerId, a.PortName }).IsUnique();
+        builder.Property<uint>("Version").IsRowVersion();
+
+        builder.HasOne<Node>().WithMany().HasForeignKey(a => a.NodeId).OnDelete(DeleteBehavior.Cascade);
+        // Released by the application before a server row goes (the assignment check would refuse SET NULL).
+        builder.HasOne<Server>().WithMany().HasForeignKey(a => a.ServerId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 

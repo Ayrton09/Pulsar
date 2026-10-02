@@ -4,9 +4,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Nodes;
+using Pulsar.Application.Servers;
 using Pulsar.Infrastructure.Identity;
 using Pulsar.Infrastructure.Nodes;
 using Pulsar.Infrastructure.Persistence;
+using Pulsar.Infrastructure.Servers;
 
 namespace Pulsar.Infrastructure;
 
@@ -41,6 +43,7 @@ public static class DependencyInjection
 
         services.AddPulsarDataProtection(configuration);
         services.AddSingleton<IPanelKeyRing, PanelKeyRing>();
+        services.AddSingleton<IVariableProtector, DataProtectionVariableProtector>();
 
         services.AddIdentityCore<PulsarUser>(options =>
             {

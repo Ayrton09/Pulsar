@@ -57,8 +57,12 @@ public sealed class Server
     public const int MaxNameLength = 64;
     public const int MaxDescriptionLength = 512;
     public const int ShortIdLength = 8;
+    public const int MaxExtraArguments = 32;
+    public const int MaxExtraArgumentLength = 512;
 
     private const string ShortIdAlphabet = "abcdefghijklmnopqrstuvwxyz234567";
+
+    private readonly List<ServerVariable> _variables = [];
 
     private Server()
     {
@@ -115,6 +119,12 @@ public sealed class Server
 
     public bool RestartOnCrash { get; private set; }
 
+    /// <summary>Arguments users added after the manifest's (only when the manifest allows them), one argv entry each.</summary>
+    public IReadOnlyList<string> ExtraArguments { get; private set; } = [];
+
+    /// <summary>Values of the template's variables (missing ones use the manifest default).</summary>
+    public IReadOnlyCollection<ServerVariable> Variables => _variables;
+
     public int? LastExitCode { get; private set; }
 
     public DateTimeOffset? LastStartedAt { get; private set; }
@@ -158,9 +168,15 @@ public sealed class Server
             return ServerErrors.Busy;
         }
 
-        if (operation.Type == OperationType.ServerInstall && RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
+        if (operation.Type is OperationType.ServerInstall or OperationType.ServerUpdate
+            && RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
         {
             return ServerErrors.MustBeStopped;
+        }
+
+        if (operation.Type == OperationType.ServerUpdate && InstallState != InstallState.Installed)
+        {
+            return ServerErrors.NotInstalled;
         }
 
         ActiveOperationId = operation.Id;
@@ -216,6 +232,71 @@ public sealed class Server
     }
 
     public Result RequestRestart(DateTimeOffset now) => RequestStart(now);
+
+    /// <summary>Sets a plain variable value (null removes it, so the manifest default applies).</summary>
+    public void SetVariable(string key, string? value, UserId? by, DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        var existing = _variables.FirstOrDefault(v => v.Key == key);
+        if (value is null)
+        {
+            if (existing is not null)
+            {
+                _variables.Remove(existing);
+            }
+        }
+        else if (existing is null)
+        {
+            _variables.Add(ServerVariable.Plain(Id, key, value, by, now));
+        }
+        else
+        {
+            existing.SetPlain(value, by, now);
+        }
+
+        UpdatedAt = now;
+    }
+
+    /// <summary>Sets a secret variable's encrypted value (null removes it).</summary>
+    public void SetSecretVariable(string key, byte[]? protectedValue, UserId? by, DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        var existing = _variables.FirstOrDefault(v => v.Key == key);
+        if (protectedValue is null)
+        {
+            if (existing is not null)
+            {
+                _variables.Remove(existing);
+            }
+        }
+        else if (existing is null)
+        {
+            _variables.Add(ServerVariable.Secret(Id, key, protectedValue, by, now));
+        }
+        else
+        {
+            existing.SetSecret(protectedValue, by, now);
+        }
+
+        UpdatedAt = now;
+    }
+
+    /// <summary>The start options users can change (docs/architecture/05, "Startup").</summary>
+    public Result SetStartup(IReadOnlyList<string> extraArguments, bool autoStart, bool restartOnCrash, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(extraArguments);
+        if (extraArguments.Count > MaxExtraArguments
+            || extraArguments.Any(a => a.Length is 0 or > MaxExtraArgumentLength || a.Any(char.IsControl)))
+        {
+            return ServerErrors.ExtraArgumentsInvalid;
+        }
+
+        ExtraArguments = [.. extraArguments];
+        AutoStart = autoStart;
+        RestartOnCrash = restartOnCrash;
+        UpdatedAt = now;
+        return Result.Success();
+    }
 
     /// <summary>Stop and kill are always allowed: they only ever make things safer.</summary>
     public void RequestStop(DateTimeOffset now)

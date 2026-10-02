@@ -21,4 +21,21 @@ public static class NodeErrors
     public static DomainError NotConnected { get; } = new("node.not_connected", "The node's agent is not connected.");
 
     public static DomainError HasServers { get; } = new("node.has_servers", "Delete the node's servers first.");
+
+    public static DomainError AllocationAddressInvalid { get; } =
+        new("node.allocation_address_invalid", "The address must be an IPv4 address (0.0.0.0 for every interface).");
+
+    public static DomainError AllocationPortInvalid { get; } = new("node.allocation_port_invalid", "Ports go from 1 to 65535.");
+
+    public static DomainError AllocationRangeTooLarge { get; } = new("node.allocation_range_too_large", "At most 1000 ports at a time.");
+
+    public static DomainError AllocationNotesTooLong { get; } =
+        new("node.allocation_notes_too_long", $"Notes have at most {NodeAllocation.MaxNotesLength} characters.");
+
+    public static DomainError AllocationTaken { get; } =
+        new("node.allocation_taken", "The node already has an allocation on that address and port (or on every interface).");
+
+    public static DomainError AllocationNotFound { get; } = new("node.allocation_not_found", "The allocation does not exist.");
+
+    public static DomainError AllocationInUse { get; } = new("node.allocation_in_use", "The allocation is assigned to a server.");
 }
