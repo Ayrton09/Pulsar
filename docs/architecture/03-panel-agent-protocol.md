@@ -277,7 +277,7 @@ At any interruption one of the two keys works: before step 3 the current credent
 ```
 %ProgramData%\Pulsar\Agent\        ACL: SYSTEM + Administrators (inheritance disabled)
   config\agent.json                 panel URL, nodeId, credentialId, pinned panel keys
-  state\servers\{id}.json           per-server spec; secrets encrypted with DPAPI (LocalMachine)
+  state\servers\{id}.json           per-server spec and whether it should run (secret variables encrypted with DPAPI once manifests have them)
   state\outbox\                     OperationCompleted results awaiting ack
   steamcmd\                         managed SteamCMD installation
   console-logs\{shortId}\           rotated console logs (outside the server directory)
@@ -345,3 +345,11 @@ One verifier per session, in this order (the first failure answers the command):
 The verifier reads the pinned panel keys on every command, so an `UpdatePanelKeysCommand` applies to the next command. That command is also refused (`command.invalid_panel_keys`) when a key id is not its fingerprint, a key is not P-256, or the list leaves out the key that signed it.
 
 Routing checks run on the envelope without its command, so an unknown command type is reported as unsupported rather than malformed. A sequence number is consumed as soon as the command is authentic and addressed to this session, even if a later check refuses it.
+
+## Agent implementation (Phase 3): servers
+
+- **Commands:** `server.provision`, `server.install` and `server.delete` are operations: the envelope carries the operation id, the ack only says accepted, and the result follows as `OperationCompleted`, kept in `state\outbox` and delivered until the hub call succeeds. One operation runs per server; another one gets `Busy`. `server.start`, `server.stop`, `server.restart` and `server.kill` answer `Accepted` or `AlreadyInState` from the server's state machine (doc 05).
+- **Events:** `ServerStateChanged` (sequence per server, increasing while the agent runs) is sent without waiting for an answer; the panel checks that the server belongs to the reporting node and drops older changes. `OperationProgress` is advisory. `OperationCompleted` is idempotent on the panel.
+- **Hello** adds `Servers` (each server's state) and `OperationsInFlight` (running operations, plus finished ones whose result is still in the outbox) for reconciliation.
+- **Capabilities** list the server commands, plus `server.test_game` when the agent has Pulsar's test game server.
+- **Servers root:** the folder chosen at enrollment, otherwise `%SystemDrive%\PulsarServers` (`<data-dir>\servers` for a development agent). It is reported in the inventory.

@@ -1,7 +1,7 @@
 # 06 — Windows process management: Job Objects, ConPTY and isolation
 
-> Status: **proposal under review** · Decisions: ADR-0005 (accepted), ADR-0006, ADR-0007.
-> Everything marked **[spike]** is validated with a prototype in Phase 0 before building on it.
+> Status: **implemented in Phase 3** (see "Implementation (Phase 3)" at the end for what differs from the proposal) · Decisions: ADR-0005 (accepted), ADR-0006, ADR-0007.
+> Everything marked **[spike]** was validated with a prototype in Phase 0 before building on it.
 
 ## Why not `Process.Start()`
 
@@ -79,8 +79,8 @@ public interface IGameProcess : IAsyncDisposable
       PROC_THREAD_ATTRIBUTE_JOB_LIST       → the process is born inside the Job (Windows 10+)
       PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE  (Pty)  or
       PROC_THREAD_ATTRIBUTE_HANDLE_LIST    (Pipes) → inherits ONLY those handles
-      lpDesktop = dedicated agent window station/desktop with a DACL for the server SID  [spike: not needed
-         for a console process; to confirm with srcds]
+      lpDesktop = the server's own window station/desktop with a DACL for SYSTEM, Administrators and the server SID
+         (works with srcds, which creates a console window: see "Implementation (Phase 3)")
  6. CreateProcessAsUser(child token, lpApplicationName = absolute exe, lpCommandLine = quoted argv,
       flags: EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED
              (+ CREATE_NO_WINDOW in Pipes))
@@ -124,11 +124,13 @@ When the main process exits and the Job still has processes (crash handlers, hel
 
 ## Exit detection and events
 
-- **Primary signal**: a wait on the main process handle (reliable exit code).
-- **Secondary signal**: the Job's IOCP (`JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO`, `JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS`, `JOB_OBJECT_MSG_NEW_PROCESS`). Microsoft documents that delivery of these messages is **not guaranteed**, so they are never the only source of truth; they serve diagnostics and counting.
+- **Primary signal**: a wait on the main process handle (reliable exit code), registered with the thread pool (no thread blocked per server).
+- **Secondary signal**: the Job's IOCP (`JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO`, `JOB_OBJECT_MSG_ABNORMAL_EXIT_PROCESS`, `JOB_OBJECT_MSG_NEW_PROCESS`). Microsoft documents that delivery of these messages is **not guaranteed**, so they are never the only source of truth; they serve diagnostics and counting. *Not used in Phase 3: the processes still alive in a Job are counted with `JobObjectBasicAccountingInformation` when the main process exits.*
 - One dedicated thread reads the IOCP of every Job (completion key = server). No polling.
 
 ## Metrics (every 5 s, one timer for the whole node)
+
+*Phase 5 (with the live console); Phase 3 reports states only.*
 
 | Metric | Source |
 |---|---|
@@ -153,14 +155,14 @@ Cost: a few syscalls per server every 5 s. No performance counters (slow and fra
 
 **Decision: C**, implemented in Phase 3 together with process management (before the file manager, which relies on impersonation). Details:
 
-- Account `pulsar_<shortId>` (≤ 20 characters) created with `NetUserAdd`, random 64-character password (satisfies complexity policies), `UF_DONT_EXPIRE_PASSWD | UF_PASSWD_CANT_CHANGE`. Password stored encrypted with DPAPI (LocalMachine) in the agent state.
+- Account `pulsar_<shortId>` (≤ 20 characters) created with `NetUserAdd`, `UF_DONT_EXPIRE_PASSWD | UF_PASSWD_CANT_CHANGE`. **Its password is never stored:** right before every logon the agent sets a new random 64-character one (`NetUserSetInfo` level 1003; satisfies complexity policies) and uses it once. There is no secret at rest to steal, lose or get out of sync (an earlier draft kept it with DPAPI). Each logon of a server account therefore appears as a password reset in the security log when account management auditing is on.
 - The token **always contains `BUILTIN\Users`** (through `Authenticated Users`; removing group membership has no effect, spike 0002), so isolation relies on directory ACLs and never on the account being outside Users. The child runs with a restricted token without privileges (start sequence, step 3).
 - Residual risk: locations writable by Users (`C:\ProgramData`, `C:\Users\Public`) are readable by every server. `TEMP`/`TMP` point into the server directory and manifests keep game data there; system ACLs are not modified.
 - LSA rights (`LsaAddAccountRights`): `SeBatchLogonRight`; **denied** `SeDenyInteractiveLogonRight`, `SeDenyRemoteInteractiveLogonRight`, `SeDenyNetworkLogonRight` (nobody can use it for RDP or SMB).
 - ACLs: `<ServersRoot>` with inheritance disabled (SYSTEM and Administrators only). Each `<ServersRoot>\<shortId>`: SYSTEM and Administrators full control, `pulsar_<shortId>` Modify, the SteamCMD account Modify. A server cannot list or read another one.
 - Not evaluated: S4U logon (no stored password). `LogonUser` + password is kept because it is better documented and validated by spike 0002.
 - Known limitation: a **domain controller** has no local accounts; the agent refuses to install on a DC with a clear message.
-- **[spike]** Window station / desktop: a process launched with another token from a service can fail to initialize user32 (`0xC0000142`) if its SID cannot access the window station/desktop. Spike 0002 did not reproduce it with a console process; since `srcds.exe` creates a console window, a dedicated desktop with a proper DACL is still created and passed in `lpDesktop` until a real game is validated without it.
+- Window station / desktop: a process launched with another token from a service can fail to initialize user32 (`0xC0000142`) if its SID cannot access the window station/desktop. Spike 0002 did not reproduce it with a console process. Each server gets its own window station and desktop with a proper DACL; a real `srcds.exe` (which creates a console window) runs with it as its account from SYSTEM (Phase 3). Whether it would also run on the service's default desktop was not tested: the private station is kept because it also keeps one server's windows, atoms and clipboard away from the others.
 - A "current user" mode exists only for development with the agent running in a console, with explicit warnings.
 
 ### SteamCMD
@@ -202,3 +204,15 @@ The Job already exists per server, so adding limits is configuration, not redesi
 - crash detection and exit codes;
 - stop via command, Ctrl+C and timeout;
 - the process runs as the expected account and cannot read another server's directory.
+
+## Implementation (Phase 3)
+
+- **Code.** `Pulsar.Agent.Core/Processes` (`IGameProcessManager`, `IGameProcess`, `IServerProvisioner`), `Pulsar.Agent.Windows/Processes` (`WindowsGameProcessManager`, `WindowsGameProcess`, `JobObject`, `ServerPaths`, `WindowsCommandLine`) and `Pulsar.Agent.Windows/Servers` (`WindowsServerAccounts`, `WindowsServerProvisioner`, `ServerWindowStation`).
+- **Start sequence** as above: paths resolved under the server directory with no junction or link in them and the final path of the executable checked; Job (kill on close, die on unhandled exception, no breakaway, the UI restrictions listed) given through the job list attribute to a process created suspended (assigned before resuming if the attribute did not apply); pseudo console with null standard handles, or pipes with a handle list; `TEMP`/`TMP` in `<server>\.pulsar\temp`; reserved variables refused.
+- **Account launches** log on with a fresh password (see "Isolation"), load the profile, take the environment from `CreateEnvironmentBlock`, start the game with the `DISABLE_MAX_PRIVILEGE` token and give it **its own window station and desktop**, open to SYSTEM, Administrators and the server's account (`Pulsar-<serverId>\Default`). The profile stays loaded while the process runs; provisioning logs the account on once, so the profile already exists at the first start (creating it took seconds on Windows Server 2025). A development agent (`--dev`) starts servers as the current user, without accounts or window stations.
+- **Ctrl+C.** "Ignore Ctrl+C" is inherited by child processes. A parent started in a new process group (a test host, some service wrappers) passes it on, and then Ctrl+C never reaches a server; the agent clears it for itself (`SetConsoleCtrlHandler(NULL, FALSE)`) before starting servers.
+- **Server directories.** `<ServersRoot>` (default `%SystemDrive%\PulsarServers`) is protected (SYSTEM and Administrators, Administrators as owner). Each `<ServersRoot>\<shortId>` adds Modify for the server's account and limits `OWNER RIGHTS` to Modify, so a server owns the files it creates but cannot change who may read them.
+- **The agent writes into folders a server controls** (install steps, deletion) only through checks: install steps refuse paths through junctions or links and replace files instead of writing into them (an existing name could be a hard link to a system file); deletion removes links without following them. .NET's recursive delete would also not follow a junction, but it removes one through `DeleteVolumeMountPoint`, which needs elevation, so the agent walks the tree itself. Installs need the server offline, so none of its processes can swap a folder in between.
+- **Agent restarts (ADR-0006).** Killing the agent kills its servers with their Jobs (checked by hand with a development agent: no process left). An orderly stop (service stop, update, reboot) stops the servers gracefully within 20 s and starts them again with the agent; after a crash of the agent, only auto-start servers start.
+- **Verified:** `Pulsar.Agent.Windows.Tests` (pseudo console and pipes, argv round trip, Ctrl+C, exit codes, trees killed, no inherited handles, path checks, environment; accounts, rights, ACLs, profile and restricted token, and a server unable to read another one, as SYSTEM in CI), the production install check in Windows Sandbox and CI (the test game server as its own account in session 0 from the SYSTEM service), and the real-game check below.
+- **Real game (`scripts/sandbox/real-game`, `RealGameTests`).** A Counter-Strike: Source dedicated server, copied into a new server folder, started by `WindowsGameProcessManager` as its account from SYSTEM in Windows Sandbox (pseudo console, restricted token, private window station, Job with UI restrictions): it wrote its own `console.log` (`-condebug`) and reached `Server is hibernating` in about 2 s with two processes in its Job (srcds and the console host it creates), was still running 10 s later, and nothing was left after its tree was terminated. As in spike 0001, nothing reached the pseudo console: Source servers need `logfile+rcon` (Phase 4). CS2 and GMod are checked the same way when their manifests are written.

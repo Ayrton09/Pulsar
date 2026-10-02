@@ -36,14 +36,14 @@
 
 **Done when:** an agent pairs, appears online with its inventory, survives network cuts, and revoking it disconnects it immediately. Tests: invalid signature, replay, revoked node, reused/expired token. *Met in development mode: `e2e/agent.spec.ts` drives the real `PulsarAgent.exe` from the UI (Windows CI leg), `RealAgentTests` cover reconnection, renewal and revocation, and the verifier tests cover signatures and replay. The elevated install is checked on a clean Windows by `scripts/sandbox/agent-install` (Windows Sandbox, panel and PostgreSQL inside it): refusal to install the service from a user-writable folder, machine key with its DACL, LocalSystem service with restart on failure, online, signed ping, service restart, revocation and `unenroll` all pass. The panel runs over HTTPS there (a certificate trusted machine-wide on the disposable machine), and the run also rotates the machine key as SYSTEM and fails on unexpected errors in the panel or agent logs. The same script runs in CI ("Agent install" job, windows-latest). Not covered yet: a TPM-backed **machine** key, because neither Windows Sandbox nor the GitHub runner has a TPM (TPM keys are covered in the user's store by `Pulsar.Agent.Tests`); it is checked in Phase 9 on a VM with a virtual TPM.*
 
-## Phase 3 — Windows process management
+## Phase 3 — Windows process management · *done*
 
-- `IGameProcessManager` + `WindowsGameProcessManager` (Job, ConPTY/pipes, per-server accounts, ACL, desktop).
-- `ServerSupervisor` with a mailbox, state machine, stepwise stop, crash + backoff.
-- `Pulsar.TestGameServer` and the Windows integration suite.
-- `_test` manifest (no SteamCMD) to exercise the whole lifecycle.
+- `IGameProcessManager` + `WindowsGameProcessManager` (Job, ConPTY/pipes, per-server accounts, ACL, desktop). *Done (doc 06, "Implementation (Phase 3)"): account passwords are set right before each logon instead of being stored.*
+- `ServerSupervisor` with a mailbox, state machine, stepwise stop, crash + backoff. *Done, with the agent's `ServerHost` (stored specs, operations with an outbox) and the panel side: servers, templates, operations, hub events, reconciliation and the UI (doc 05, "Implementation (Phase 3)").*
+- `Pulsar.TestGameServer` and the Windows integration suite. *Done (`Pulsar.Agent.Windows.Tests`; the account tests run as SYSTEM in CI).*
+- `_test` manifest (no SteamCMD) to exercise the whole lifecycle. *Done: `games/_test` (key `pulsar-test`) with the runtime subset of `Pulsar.Manifests` (doc 04, "Implementation status").*
 
-**Done when:** with the test game, a server is created, started, stopped, restarted and killed from the panel; no orphans in any test scenario; the process runs as its own account.
+**Done when:** with the test game, a server is created, started, stopped, restarted and killed from the panel; no orphans in any test scenario; the process runs as its own account. *Met: `e2e/servers.spec.ts` drives the real `PulsarAgent.exe` and the test game server from the UI (create, start, restart, stop, kill, delete; the real processes come and go; Windows CI leg); `Pulsar.Api.Tests/Servers` covers the lifecycle, crashes, a game's own quit, resuming with the agent, reconciliation and a result that arrives before its ack, with the real agent core; the production install check (Windows Sandbox and CI) runs the test game server as its own account from the SYSTEM service (batch logon only, private folder, process owner, resume after a service restart, kill, deletion removes the account); killing the agent killed its servers (no orphan); and a real Counter-Strike: Source server ran as its account from SYSTEM (`scripts/sandbox/real-game`). Not covered yet: CS2 and GMod (with their manifests, Phase 4).*
 
 ## Phase 4 — Manifests, SteamCMD and server creation
 

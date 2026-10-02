@@ -60,6 +60,8 @@ Server a could create files in `C:\ProgramData` and `C:\Users\Public` (s1–s4).
 
 ### Not answered
 
+*Answered in Phase 3 (doc 06, "Implementation (Phase 3)"): a real `srcds.exe` runs as its dedicated account from SYSTEM with the server's own window station and desktop. Running it on the service's default desktop was not tried; the private station stays for isolation.*
+
 - `srcds.exe` (and `cs2.exe`) launched as a dedicated account: window/desktop requirements and whether `-condebug` + RCON behave the same. To be checked in Phase 3 integration tests (the CS:S install from spike 0001 can be copied into a sandbox).
 - S4U logon (no stored password) was not evaluated; `LogonUser` with a stored password is kept.
 

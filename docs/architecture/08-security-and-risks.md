@@ -80,7 +80,8 @@ Privileged import, closed steps, time-bounded regexes, typed variables, argv wit
 | Panel signing key | `panel_signing_keys` | Data Protection |
 | Data Protection key ring | Panel disk | DPAPI (LocalMachine) on Windows; certificate on Linux or for portability |
 | Node private key | CNG/TPM key store | Non-exportable |
-| Specs with secrets on the node | `state\servers\*.json` | DPAPI LocalMachine + ACL |
+| Specs with secrets on the node | `state\servers\*.json` | ACL (SYSTEM + Administrators); secret variables encrypted with DPAPI LocalMachine once manifests have them (Phase 4) |
+| Server account passwords | Nowhere | A new random one is set right before every logon and used once (doc 06) |
 | Enrollment tokens / tickets | Database | SHA-256 only |
 
 - APIs return secrets as `"***"` (write-only). Serilog filters redact known properties and never destructure whole DTOs. Neither `Authorization` nor cookies appear in request logs.
@@ -119,6 +120,7 @@ Append-only from the application, no secrets, with IP and actor. Minimum actions
 | T16 | First admin created by a third party | Locally printed setup token |
 | T17 | Repudiation | Audit with actor, IP, correlation |
 | T18 | RCON brute force on the game's TCP port (`logfile+rcon` servers) | Agent-generated random password per server (≥ 32 chars, never user-chosen by default), RCON ban settings in the manifest (`sv_rcon_maxfailures`, `sv_rcon_banpenalty`), password rotated on reinstall; firewall rules only open the ports the manifest declares |
+| T19 | A server redirects the agent's own writes (installs, deletion run as SYSTEM in its folder) with junctions, symbolic links or hard links | Install steps refuse paths through links and replace files instead of writing into them; deletion removes links without following them; installs need the server offline (doc 06) |
 
 ## Main project risks
 

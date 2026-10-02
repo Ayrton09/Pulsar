@@ -1,6 +1,6 @@
 # 05 — Game server lifecycle
 
-> Status: **proposal under review**.
+> Status: **implemented in Phase 3** for the test game (see "Implementation (Phase 3)" at the end).
 
 ## Three state dimensions (not a single enum)
 
@@ -109,3 +109,13 @@ Cases:
 ## Deletion
 
 `DeleteServerCommand` (operation): stops (kills if needed), removes firewall rules, deletes the directory **without following reparse points**, deletes backups if requested, removes the Windows account and its profile. The panel deletes the row when it receives `succeeded` (the audit trail remains) and frees the allocations.
+
+## Implementation (Phase 3)
+
+- **Agent:** `ServerSupervisor` (state machine and mailbox: readiness, stop steps, timeouts and crash backoff are timers posting messages, tagged with the process generation) and `ServerHost` (stored specs in `state\servers`, the supervisors, the commands, and operations whose results wait in `state\outbox` until the panel has them). **Panel:** `Server`, `GameTemplate` and `Operation` in the domain, `ServerManagement` (REST), `AgentServerEvents` (hub events and reconciliation).
+- **Creation** needs a connected node. The panel creates the server and a provision operation; when the agent reports it done, the panel starts the install operation itself. "Reinstall" runs both again (offline servers only). Lifecycle commands need a connected node too; a node with servers cannot be deleted.
+- **Deletion** is an operation: the agent kills the server, removes its folder and account and reports it; the panel then deletes the row (audited as done by the node; the user's request has its own entry).
+- **Reconciliation** at every Hello: the agent's snapshot of each server is taken whatever its sequence (a restarted agent counts from zero) with reason `reconciled`; running operations the agent does not report are interrupted, except those whose result waits in its outbox (they are reported as in flight) and queued ones younger than a minute. `HelloAccepted` does not carry desired states yet: the agent keeps its own (set by the commands it receives) and resumes servers only as described above.
+- **Acks.** A start (or restart) is acknowledged as soon as it is accepted, before the process exists: an account's first logon can take longer than the panel's 10 s ack timeout. A start that fails is reported as `Crashed` with reason `start_failed`.
+- **Delivery.** State changes are sent without waiting; when the agent stops, it delivers each server's last state again and waits for the panel, so the panel sees its servers stop. The hub stores agent events even if the connection closes right after them, and a result is applied once (deliveries are retried). An operation's result can arrive before the panel has recorded the agent's ack; the result wins (row versions on servers and operations).
+- **UI:** one display status per server (an operation first, then the install state, then the runtime state), the reason when it needs explaining (exit code, crash loop, refused start, readiness timeout), and "last known" while its node is disconnected. Polling every 2 s until Phase 5's live channel.

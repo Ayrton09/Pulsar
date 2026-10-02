@@ -20,6 +20,6 @@ Game servers run untrusted code (plugins, mods, Lua). The agent needs privileges
 
 ## Consequences
 - A compromised plugin stays confined to its server's directory and cannot use privileges such as `SeShutdownPrivilege`. It can still read what other servers leave in Users-writable system locations (`C:\ProgramData`, `C:\Users\Public`); accepted for v1.
-- Real complexity: LSA rights, profiles, window station/desktop, DPAPI-encrypted passwords. Validated by [spike 0002](../spikes/0002-isolated-launch.md) for console processes; a real game launched this way is checked in Phase 3.
+- Real complexity: LSA rights, profiles, window station/desktop, account passwords (a new random one is set right before every logon, so none is stored; doc 06). Validated by [spike 0002](../spikes/0002-isolated-launch.md) for console processes and, in Phase 3, by the production install check (the test game server as its own account from the SYSTEM service) and a real Counter-Strike: Source server started the same way (doc 06, "Implementation (Phase 3)").
 - Not supported on domain controllers.
 - Doing it later would be expensive (ACLs and disk layout of existing servers), which is why it is decided now.

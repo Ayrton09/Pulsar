@@ -1,6 +1,6 @@
 # 04 — Game manifests
 
-> Status: **proposal under review** · Decision: ADR-0008.
+> Status: **partly implemented** (Phase 3: the runtime subset, see "Implementation status" at the end) · Decision: ADR-0008.
 
 ## Goals
 
@@ -236,3 +236,9 @@ Result<LaunchPlan> LaunchPlanRenderer.Render(GameManifest m, Platform p,
 Semantic rules (beyond the schema): placeholders reference existing variables/ports; strings used in arguments have a `pattern` or are `enum`s; valid paths; `.exe` executable; no duplicate ports; regexes compile in NonBacktracking mode.
 
 A repository test loads **every** `games/*/manifest.json` and fails if any is invalid. Rendering tests include injection cases (`map = "de_dust2 +rcon_password x"`, values with quotes, `;`, line breaks, `-insecure`).
+
+## Implementation status
+
+Phase 3 implements what starting servers needs, in `Pulsar.Manifests`: strict parsing (unknown properties and step types are errors), the semantic rules above for identity, variables, paths, placeholders, environment, console, readiness and stop, and the renderer (one template element is one argv entry; string values placed in arguments cannot start with `-`, `+` or whitespace whatever their pattern). Not supported yet, and refused if present: ports and `{{port.*}}`, configuration files, backups, the `steamcmd` step, `logfile+rcon` (Phase 4 and later). Bundled manifests are copied next to the panel and registered at startup (key + version immutable; a changed file without a new version is logged and ignored).
+
+`games/_test/manifest.json` (key `pulsar-test`) runs Pulsar's test game server (`tests/Pulsar.TestGameServer`). Its install step `testGameServer` is accepted only in that manifest, the panel offers it only with `Pulsar:EnableTestGame` (development, CI) and only for agents that announce they have the test game (`Pulsar:TestGameDirectory`), so production panels and agents never see it.
