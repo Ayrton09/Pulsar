@@ -47,13 +47,14 @@
 
 ## Phase 4 — Manifests, SteamCMD and server creation
 
-- `Pulsar.Manifests` (parser, schema, validator, renderer, encoders), published JSON Schema.
-- Bundled templates and import; CS2 manifest.
-- Port allocations, optional firewall management.
-- `SteamCmdService` (queue, progress, retries, cancellation); install/update operations.
-- UI: creation wizard, Startup and Network tabs, live install progress.
+- `Pulsar.Manifests` (parser, schema, validator, renderer, encoders), published JSON Schema. *Done (doc 04): the v1 format, `schemas/manifest.v1.schema.json` checked against the bundled manifests and the C# model.*
+- Bundled templates and import; CS2 manifest. *Done: `games/cs2` and `games/css`, written after running both games (spike 0001, F7); import with a preview of what a manifest runs, downloads and writes.*
+- Port allocations, optional firewall management. *Done: node allocations (IPv4, ranges, no overlaps), firewall rules managed by the agent when its administrator enables it (UDP game ports only, bound to the executable).*
+- `SteamCmdService` (queue, progress, retries, cancellation); install/update operations. *Done as `SteamCmdRunner`: a SteamCMD copy per server, run as the server's account (doc 06 explains why not a shared account), Valve's signature checked, live progress, retries, stall detection, cancellation; install, update and cancel operations.*
+- UI: creation wizard, Startup and Network tabs, live install progress. *Done (Settings and Network tabs), with update, cancel, node allocations and a Games page.*
+- Also: Source games through their log file and RCON (`logfile+rcon`), configuration files written before every start, an agent-generated RCON password, agent state encrypted with DPAPI, the agent's link-safe file access, and processes escaping a server's Job killed.
 
-**Done when:** a CS2 server is created, installs through SteamCMD with live progress, and starts with the configured map/slots/port/arguments.
+**Done when:** a CS2 server is created, installs through SteamCMD with live progress, and starts with the configured map/slots/port/arguments. *Met: from the panel's UI (a developer machine, development agent), a CS2 server was created with the wizard (Deathmatch, de_inferno, 12 slots, a port from the node's allocations); its install showed SteamCMD's live progress (Valve's bootstrapper verified, "downloading 4 %"), was cancelled from the UI and, with the 74 GB already on disk, reinstalled in seconds ("already up to date"); it started with `-ip 127.0.0.1 -port 27015 -maxplayers 12 +game_type 1 +game_mode 2 +map de_inferno`, became ready over RCON, picked up new settings (`server.cfg`) at the next start, and stopped over RCON with exit code 0. The production install check (Windows Sandbox and the CI job on Windows Server 2025) does the full download with a Counter-Strike: Source server: SteamCMD as the server's account with live progress, RCON readiness and stop, `server.cfg`, a UDP-only firewall rule for srcds, and a clean deletion. CS2's 74 GB download itself runs on a developer machine only; GMod's manifest is still to be written.*
 
 ## Phase 5 — Real-time console and metrics
 
@@ -61,7 +62,7 @@
 - Job-based metrics, `PanelHub`, in-memory cache.
 - UI: xterm console, server header with CPU/RAM/uptime, dashboard v1.
 
-**Done when:** live CS2 console with colors, commands, reconnect without gaps; CPU/RAM/uptime updating without polling.
+**Done when:** live CS2 console, commands, reconnect without gaps; CPU/RAM/uptime updating without polling. (CS2's console is its log file plus RCON answers, plain text: colors come only from games on a pseudo console, spike 0001.)
 
 ## Phase 6 — File manager
 
