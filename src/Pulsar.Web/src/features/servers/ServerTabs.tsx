@@ -70,6 +70,8 @@ export function OperationProgress({ serverId, operation }: { serverId: string; o
 export function SettingsTab({ details }: { details: ServerDetails }) {
   const { t } = useTranslation();
   const settings = useServerSettings(details.server.id);
+  // Here, not in the form: a save remounts the form with what the panel stored, and the result must survive that.
+  const save = useUpdateServerSettings();
   if (settings.isPending) {
     return <Spinner label={t('common.loading')} />;
   }
@@ -77,13 +79,25 @@ export function SettingsTab({ details }: { details: ServerDetails }) {
     return <Alert>{errorMessage(t, settings.error)}</Alert>;
   }
   // Keyed on the saved settings: a save starts the form again from what the panel stored.
-  return <SettingsForm key={JSON.stringify(settings.data)} serverId={details.server.id} settings={settings.data} />;
+  return (
+    <SettingsForm
+      key={JSON.stringify(settings.data)}
+      serverId={details.server.id}
+      settings={settings.data}
+      save={save}
+    />
+  );
 }
 
-function SettingsForm({ serverId, settings }: { serverId: string; settings: ServerSettings }) {
+interface SettingsFormProps {
+  serverId: string;
+  settings: ServerSettings;
+  save: ReturnType<typeof useUpdateServerSettings>;
+}
+
+function SettingsForm({ serverId, settings, save }: SettingsFormProps) {
   const { t } = useTranslation();
   const me = useCurrentUser();
-  const save = useUpdateServerSettings();
   const canEdit = can(me, Permission.ServerStartupEdit);
   const canEditProtected = can(me, Permission.ServerSettingsEdit);
   const definitions = settings.variables.map((v) => v.definition);

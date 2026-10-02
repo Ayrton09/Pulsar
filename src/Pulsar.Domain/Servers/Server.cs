@@ -202,6 +202,10 @@ public sealed class Server
         var succeeded = operation.Status == OperationStatus.Succeeded;
         switch (operation.Type)
         {
+            case OperationType.ServerInstall when operation.Status == OperationStatus.Cancelled:
+                // Stopped on purpose: nothing failed, the game is just not (completely) installed.
+                InstallState = InstallState.NotInstalled;
+                break;
             case OperationType.ServerProvision when !succeeded:
             case OperationType.ServerInstall when !succeeded:
                 InstallState = InstallState.Failed;

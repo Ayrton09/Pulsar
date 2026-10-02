@@ -288,13 +288,25 @@ describe('a game server page', () => {
       autoStart: false,
       restartOnCrash: true,
     };
+    let stored = settings;
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
       [`GET /api/v1/servers/${serverId}`]: () => json(details()),
-      [`GET /api/v1/servers/${serverId}/settings`]: () => json(settings),
+      [`GET /api/v1/servers/${serverId}/settings`]: () => json(stored),
+      // The stored settings come back changed, as from the real API (the form starts again from them).
       [`PUT /api/v1/servers/${serverId}/settings`]: async (request) => {
         body = await request.json();
-        return json(settings);
+        stored = {
+          ...settings,
+          variables: [
+            { definition: hostname, value: 'Renamed', hasValue: true },
+            { definition: maxPlayers, value: null, hasValue: false },
+            { definition: mode, value: null, hasValue: false },
+            { definition: password, value: null, hasValue: false },
+          ],
+          autoStart: true,
+        };
+        return json(stored);
       },
     });
     renderAt(`/servers/${serverId}?tab=settings`);
@@ -309,6 +321,8 @@ describe('a game server page', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(await screen.findByText('Settings saved. They apply at the next start.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Server name')).toHaveValue('Renamed');
+    expect(screen.queryByText(/A value is set/)).not.toBeInTheDocument();
     expect(body).toEqual({
       variables: { hostname: 'Renamed', password: '' },
       extraArguments: ['-tickrate', '66'],

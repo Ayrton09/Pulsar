@@ -244,7 +244,7 @@ function OperationsCard({ operations }: { operations: OperationView[] }) {
                   <Badge tone={statusTones[operation.status]}>
                     {t(`servers.operations.statuses.${operation.status}`)}
                   </Badge>
-                  {operation.errorCode && (
+                  {operation.errorCode && (operation.status === 'failed' || operation.status === 'interrupted') && (
                     <p className="mt-1 text-xs text-danger">
                       {operation.errorMessage ?? operation.errorCode} <code>({operation.errorCode})</code>
                     </p>
