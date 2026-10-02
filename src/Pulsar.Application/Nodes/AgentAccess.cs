@@ -161,7 +161,28 @@ public sealed partial class AgentAccess(
         }
         else
         {
-            await db.SaveChangesAsync(cancellationToken);
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    await db.SaveChangesAsync(cancellationToken);
+                    break;
+                }
+                catch (DbUpdateConcurrencyException) when (attempt < 2)
+                {
+                    // The node row changed meanwhile (the panel recorded its pinned keys): mark it seen on the fresh rows,
+                    // unless the credential was revoked in between.
+                    await db.Entry(node).ReloadAsync(cancellationToken);
+                    await db.Entry(credential).ReloadAsync(cancellationToken);
+                    if (!credential.CanAuthenticate || !node.AcceptsConnections)
+                    {
+                        return AgentErrors.AuthenticationRejected;
+                    }
+
+                    credential.Used(now);
+                    node.Seen(now);
+                }
+            }
         }
 
         sessions.Prune();

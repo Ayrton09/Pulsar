@@ -78,13 +78,25 @@ internal sealed partial class AgentHub(
 
         var panelKeys = await keys.GetPublicKeysAsync(Context.ConnectionAborted);
         var now = clock.GetUtcNow();
-        node.Connected(AgentAccess.ToSnapshot(hello.Inventory, hello.AgentVersion, hello.ProtocolVersion), now);
-        if (hello.PinnedPanelKeys is { } pinned)
+        for (var attempt = 0; ; attempt++)
         {
-            node.PanelKeysPinned(pinned);
-        }
+            node.Connected(AgentAccess.ToSnapshot(hello.Inventory, hello.AgentVersion, hello.ProtocolVersion), now);
+            if (hello.PinnedPanelKeys is { } pinned)
+            {
+                node.PanelKeysPinned(pinned);
+            }
 
-        await db.SaveChangesAsync(Context.ConnectionAborted);
+            try
+            {
+                await db.SaveChangesAsync(Context.ConnectionAborted);
+                break;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < 2)
+            {
+                // Pinned keys were recorded for this node meanwhile (a panel key rotation): apply the Hello to the fresh row.
+                await db.Entry(node).ReloadAsync(Context.ConnectionAborted);
+            }
+        }
 
         // Hub instances are transient; Items keeps the throttle across this connection's invocations.
         Context.Items[s_lastSeenAtKey] = now;
@@ -154,7 +166,16 @@ internal sealed partial class AgentHub(
         }
 
         node.Seen(now);
-        await db.SaveChangesAsync(Context.ConnectionAborted);
+        try
+        {
+            await db.SaveChangesAsync(Context.ConnectionAborted);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The row changed meanwhile; "last seen" is advisory and is written again a minute from now.
+            return;
+        }
+
         Context.Items[s_lastSeenAtKey] = now;
     }
 

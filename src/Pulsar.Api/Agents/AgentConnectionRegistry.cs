@@ -139,13 +139,27 @@ internal sealed partial class AgentConnectionRegistry(
             _connections.TryUpdate(node, current with { Info = current.Info with { PinnedPanelKeys = keyIds } }, current);
         }
 
-        await using var scope = scopes.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
-        var stored = await db.Nodes.SingleOrDefaultAsync(n => n.Id == node, cancellationToken);
-        if (stored is not null)
+        // The node row also changes when its agent says Hello or reports in: on a conflict, set the keys on the fresh row.
+        for (var attempt = 0; ; attempt++)
         {
+            await using var scope = scopes.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var stored = await db.Nodes.SingleOrDefaultAsync(n => n.Id == node, cancellationToken);
+            if (stored is null)
+            {
+                return;
+            }
+
             stored.PanelKeysPinned(keyIds);
-            await db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < 2)
+            {
+                // Try again.
+            }
         }
     }
 
