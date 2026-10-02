@@ -285,7 +285,9 @@ try {
 
         $null = Api POST "/api/v1/servers/$gameId/stop"
         $stopped = Wait-Until { (GameServer).server.runtimeState -eq 'offline' -and @(Get-CimInstance Win32_Process -Filter "Name = 'srcds.exe'").Count -eq 0 } 60
-        Check 'css: stopped over RCON (exit code 0, no process left)' ($stopped -and (GameServer).server.lastExitCode -eq 0) "reason $((GameServer).server.lastStateReason), exit $((GameServer).server.lastExitCode)"
+        # "requested": it quit on the RCON command, neither timed out nor killed. srcds' own exit code on the way out is
+        # reported, not judged: on Windows Server 2025 it ends with 0xC0000409 (a fast fail while shutting down).
+        Check 'css: stopped over RCON (no timeout, no process left)' ($stopped -and (GameServer).server.lastStateReason -eq 'requested') "reason $((GameServer).server.lastStateReason), exit $((GameServer).server.lastExitCode)"
 
         $null = Api DELETE "/api/v1/servers/$gameId"
         $gameGone = Wait-Until { try { $null = GameServer; $false } catch { $_.Exception.Response.StatusCode -eq [Net.HttpStatusCode]::NotFound } } 120
