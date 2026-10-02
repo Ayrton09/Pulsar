@@ -33,7 +33,8 @@ foreach ($name in $Environment.Keys) {
 }
 $arguments = ($ArgumentList | ForEach-Object { "`"$_`"" }) -join ' '
 $lines += "`"$FilePath`" $arguments > `"$log`" 2>&1"
-$lines += "echo %ERRORLEVEL%> `"$exitFile`""
+# Redirection first: "echo 0> file" would redirect handle 0 and leave the file empty.
+$lines += "> `"$exitFile`" echo %ERRORLEVEL%"
 Set-Content -Path (Join-Path $work 'run.cmd') -Value $lines -Encoding Ascii
 
 $taskName = "PulsarAsSystem-$id"
@@ -59,6 +60,9 @@ try {
     }
 
     if ($null -eq $code) {
+        # What is still running from the command, for diagnosis.
+        Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*$(Split-Path $FilePath -Leaf)*" -or $_.CommandLine -like "*$id*" } |
+            Format-Table ProcessId, ParentProcessId, Name, CommandLine -AutoSize | Out-String -Width 400 | Write-Host
         Write-Error "Timed out after $TimeoutMinutes minutes."
         exit 1
     }
