@@ -164,6 +164,9 @@ public static class AgentCapabilities
     /// </summary>
     public const string TestGame = "server.test_game";
 
+    /// <summary>Not a command: the agent manages Windows Firewall rules for its servers (its administrator enabled it).</summary>
+    public const string Firewall = "node.firewall";
+
     /// <summary>The capability an agent must announce to receive <paramref name="command"/>.</summary>
     public static string Of(AgentCommand command) => command switch
     {

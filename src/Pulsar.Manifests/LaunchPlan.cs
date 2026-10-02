@@ -21,6 +21,9 @@ public sealed record LaunchPlan(
     /// <summary>The server's allocations, one per manifest port it was given.</summary>
     public IReadOnlyList<BoundPort> Ports { get; init; } = [];
 
+    /// <summary>Every port the manifest declares, bound or not (firewall rules of unbound ones are removed).</summary>
+    public IReadOnlyList<string> PortNames { get; init; } = [];
+
     /// <summary>Written before every start (<see cref="ConfigFileWriter"/>).</summary>
     public IReadOnlyList<RenderedConfigFile> ConfigFiles { get; init; } = [];
 
@@ -276,6 +279,7 @@ public static class LaunchPlanRenderer
         return new LaunchPlan(runtime.Executable, runtime.WorkingDirectory ?? "", arguments, environment, runtime.Console, manifest.Readiness, manifest.Stop)
         {
             Ports = [.. manifest.PortList.Where(p => ports.ContainsKey(p.Name)).Select(p => new BoundPort(p.Name, ports[p.Name].IpAddress, ports[p.Name].Port, p.Protocols))],
+            PortNames = [.. manifest.PortList.Select(p => p.Name)],
             ConfigFiles = configFiles,
             Rcon = rcon,
         };

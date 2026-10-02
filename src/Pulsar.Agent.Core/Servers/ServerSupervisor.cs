@@ -57,6 +57,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private readonly IGameProcessManager _processes;
     private readonly IServerFiles _files;
     private readonly IRconConnector _rcon;
+    private readonly IServerFirewall _firewall;
     private readonly IServerEventSink _events;
     private readonly TimeProvider _clock;
     private readonly SupervisorOptions _options;
@@ -84,12 +85,13 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private volatile ServerStateChanged? _lastChange;
 
     public ServerSupervisor(ServerDefinition definition, IGameProcessManager processes, IServerEventSink events, TimeProvider clock,
-        SupervisorOptions options, ILogger logger, IServerFiles? files = null, IRconConnector? rcon = null)
+        SupervisorOptions options, ILogger logger, IServerFiles? files = null, IRconConnector? rcon = null, IServerFirewall? firewall = null)
     {
         _definition = definition;
         _processes = processes;
         _files = files ?? new DirectServerFiles();
         _rcon = rcon ?? new SourceRconConnector();
+        _firewall = firewall ?? new UnmanagedFirewall();
         _events = events;
         _clock = clock;
         _options = options;
@@ -483,6 +485,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             {
                 _files.Delete(_definition.Directory, logFile);
             }
+
+            _firewall.Allow(_definition.ShortId, Path.Combine(_definition.Directory, plan.Executable.Replace('/', Path.DirectorySeparatorChar)), plan.Ports,
+                plan.PortNames);
         }
         catch (LaunchPlanException ex)
         {

@@ -31,6 +31,7 @@ public sealed partial class ServerHost(
     SteamCmdRunner steamCmd,
     IServerFiles files,
     IRconConnector rcon,
+    IServerFirewall firewall,
     InstallOptions installOptions,
     PanelChannel panel,
     SupervisorOptions supervisorOptions,
@@ -70,6 +71,11 @@ public sealed partial class ServerHost(
             if (installOptions.TestGameAvailable)
             {
                 yield return AgentCapabilities.TestGame;
+            }
+
+            if (firewall.Enabled)
+            {
+                yield return AgentCapabilities.Firewall;
             }
         }
     }
@@ -379,6 +385,7 @@ public sealed partial class ServerHost(
             var root = _config!.ServersRootOrDefault(configs.Paths);
             // Before the account goes: a process of a deleted account would keep running unnoticed.
             TerminateStrays(command.ServerId, provisioner.Describe(root, server.ShortId).Identity);
+            firewall.Remove(server.ShortId, [.. server.Manifest.PortList.Select(p => p.Name)]);
             await Task.Run(() => provisioner.Deprovision(root, server.ShortId), CancellationToken.None); // never left half done
             lock (_recordLock)
             {
@@ -476,7 +483,7 @@ public sealed partial class ServerHost(
     private ServerSupervisor Add(Guid serverId, ServerRuntimeSpec spec, string? rconPassword)
     {
         var supervisor = new ServerSupervisor(Definition(serverId, spec, rconPassword), processes, this, clock, supervisorOptions,
-            loggerFactory.CreateLogger<ServerSupervisor>(), files, rcon);
+            loggerFactory.CreateLogger<ServerSupervisor>(), files, rcon, firewall);
         _servers[serverId] = new Server(spec.ShortId, Parse(spec), spec, rconPassword, supervisor);
         return supervisor;
     }
