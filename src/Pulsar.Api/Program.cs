@@ -68,7 +68,9 @@ try
 
     app.UseSecurityHeaders();
     app.UseTransportSecurity(app.Services.GetRequiredService<SecurityOptions>());
-    app.UseSerilogRequestLogging();
+    // Through the host's logger: left alone, request logging writes to the static startup logger (console only),
+    // skipping the sinks and levels from configuration.
+    app.UseSerilogRequestLogging(options => options.Logger = app.Services.GetRequiredService<Serilog.ILogger>());
     app.UseExceptionHandler();
     app.UseStatusCodePages();
 
