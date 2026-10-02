@@ -6,6 +6,9 @@ export const Permission = {
   UserManage: 'user.manage',
   RoleManage: 'role.manage',
   AuditView: 'audit.view',
+  NodeView: 'node.view',
+  NodeManage: 'node.manage',
+  NodeCredentialsManage: 'node.credentials.manage',
 } as const;
 
 /**

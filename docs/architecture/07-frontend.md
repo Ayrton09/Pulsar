@@ -60,6 +60,8 @@ Each `feature` holds `api.ts` (TanStack Query hooks), its pages/components and t
 
 Server and node pages use a layout with a fixed header (name, status, power actions, live CPU/RAM) and tabs. Tabs without permission are hidden.
 
+*Phase 2:* nodes are created from a dialog on `/nodes` (no `/nodes/new` page) that ends with the one-time enrollment command, and `/nodes/:id` is a single page (machine, live usage, credentials, administration) until servers give it more to show. Node state refreshes by polling every 5 s; it moves to the browser hub with the console work.
+
 ## Real time
 
 - **One SignalR connection per tab** to `/hubs/panel`, authenticated by cookie.

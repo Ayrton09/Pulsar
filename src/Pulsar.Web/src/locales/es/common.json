@@ -23,7 +23,8 @@
     "users": "Usuarios",
     "roles": "Roles",
     "audit": "Auditoría",
-    "account": "Mi cuenta"
+    "account": "Mi cuenta",
+    "nodes": "Nodos"
   },
   "auth": {
     "userName": "Usuario",
@@ -62,7 +63,7 @@
   "dashboard": {
     "title": "Inicio",
     "welcome": "Hola, {{name}}.",
-    "nextSteps": "Los nodos y servidores de juegos llegan en las próximas versiones. Por ahora podés administrar usuarios y roles y revisar la auditoría."
+    "nextSteps": "Los servidores de juego llegan en las próximas versiones. Por ahora podés agregar nodos (las máquinas Windows que los van a correr), administrar usuarios y roles, y revisar el registro de auditoría."
   },
   "users": {
     "title": "Usuarios",
@@ -220,6 +221,18 @@
         "deleted": "Eliminó un rol",
         "assigned": "Asignó un rol",
         "revoked": "Quitó un rol"
+      },
+      "node": {
+        "created": "Creó un nodo",
+        "updated": "Editó un nodo",
+        "deleted": "Eliminó un nodo",
+        "disabled": "Deshabilitó un nodo",
+        "enabled": "Habilitó un nodo",
+        "enrollment_token_created": "Creó un comando de enrolamiento",
+        "enrolled": "Nodo enrolado",
+        "enrollment_failed": "Enrolamiento fallido",
+        "credential_revoked": "Revocó una credencial de nodo",
+        "authentication_failed": "Autenticación de nodo fallida"
       }
     }
   },
@@ -269,6 +282,14 @@
     },
     "user": {
       "not_found": "El usuario no existe."
+    },
+    "node": {
+      "name_invalid": "El nombre del nodo debe tener entre 1 y 64 caracteres.",
+      "description_too_long": "La descripción es demasiado larga.",
+      "public_host_invalid": "La dirección pública debe ser un nombre de host o una dirección IP.",
+      "name_taken": "Ya hay otro nodo con este nombre.",
+      "not_found": "El nodo no existe.",
+      "not_connected": "El agente del nodo no está conectado."
     }
   },
   "account": {
@@ -281,5 +302,96 @@
     "currentPassword": "Contraseña actual",
     "changePassword": "Cambiar contraseña",
     "passwordChanged": "Contraseña cambiada. Se cerraron tus otras sesiones."
+  },
+  "format": {
+    "days": "{{days}} d {{hours}} h",
+    "hours": "{{hours}} h {{minutes}} min",
+    "minutes": "{{minutes}} min"
+  },
+  "nodes": {
+    "title": "Nodos",
+    "description": "Máquinas Windows que corren servidores de juego. Cada una ejecuta el agente de Pulsar, que se conecta a este panel.",
+    "create": "Agregar nodo",
+    "empty": "Todavía no hay nodos.",
+    "emptyManage": "Todavía no hay nodos. Agregá uno y ejecutá en la máquina Windows el comando que te da.",
+    "node": "Nodo",
+    "status": "Estado",
+    "machine": "Máquina",
+    "usage": "Uso",
+    "lastSeen": "Última conexión",
+    "name": "Nombre",
+    "nameHint": "Cómo lo vas a reconocer, por ejemplo \"Buenos Aires 1\".",
+    "descriptionLabel": "Descripción",
+    "publicHost": "Dirección pública",
+    "publicHostHint": "Opcional. El nombre de host o la IP que usan los jugadores para llegar a los servidores de este nodo.",
+    "editTitle": "Editar {{name}}",
+    "openNode": "Abrir la página del nodo",
+    "notFound": "Este nodo no existe.",
+    "backToList": "Volver a los nodos",
+    "states": {
+      "online": "En línea",
+      "offline": "Desconectado",
+      "pending": "Esperando enrolamiento",
+      "disabled": "Deshabilitado"
+    },
+    "hostname": "Nombre de host",
+    "os": "Windows",
+    "cpu": "CPU",
+    "cores_one": "{{count}} núcleo lógico",
+    "cores_other": "{{count}} núcleos lógicos",
+    "memory": "Memoria",
+    "serversRoot": "Carpeta de servidores",
+    "agent": "Agente",
+    "agentVersion": "Versión {{version}} (protocolo v{{protocol}})",
+    "uptime": "Tiempo encendido",
+    "updated": "Actualizado",
+    "cpuValue": "{{value, number(maximumFractionDigits: 1)}} % de CPU",
+    "memoryValue": "{{used}} de {{total}}",
+    "noInventory": "El agente todavía no se conectó, así que no hay nada para mostrar.",
+    "neverConnected": "El agente nunca se conectó.",
+    "offlineSince": "El agente no está conectado. Última conexión: {{date}}.",
+    "ping": "Probar conexión",
+    "pingResult": "Respondió en {{ms}} ms",
+    "pingRefused": "El agente rechazó el comando ({{status}})",
+    "administration": "Administración",
+    "administrationHint": "Deshabilitar o eliminar un nodo, o revocar su credencial, desconecta al agente en el acto.",
+    "newToken": "Nuevo comando de enrolamiento",
+    "reenroll": "Volver a enrolar",
+    "disable": "Deshabilitar",
+    "enable": "Habilitar",
+    "disableConfirm": "¿Deshabilitar {{name}}? Su agente queda desconectado hasta que lo vuelvas a habilitar.",
+    "deleteConfirm": "¿Eliminar {{name}}? Su agente se desconecta y hay que volver a enrolarlo para que vuelva.",
+    "enroll": {
+      "title": "Enrolar {{name}}",
+      "steps": "En la máquina Windows, abrí PowerShell como administrador en la carpeta donde está PulsarAgent.exe y ejecutá:",
+      "command": "Comando de enrolamiento",
+      "copy": "Copiar",
+      "copied": "Copiado al portapapeles.",
+      "copyFailed": "El navegador no permitió copiar. Seleccioná el comando y copialo a mano.",
+      "once": "El comando sirve una sola vez, hasta el {{expires}}. No se vuelve a mostrar: si lo perdés, creá uno nuevo.",
+      "fingerprint": "El agente verifica que el panel tenga la clave {{fingerprint}}, así que una copia de este comando no sirve contra ningún otro servidor."
+    },
+    "credentials": {
+      "title": "Credenciales",
+      "description": "La clave pública del nodo. Su mitad privada nunca sale de la máquina.",
+      "empty": "El nodo todavía no fue enrolado.",
+      "fingerprint": "Huella de la clave",
+      "created": "Creada",
+      "lastUsed": "Último uso",
+      "revoke": "Revocar",
+      "revokeTitle": "¿Revocar esta credencial?",
+      "revokeDescription": "El agente se desconecta en el acto y no puede volver a conectarse hasta que el nodo se vuelva a enrolar.",
+      "reason": "Motivo (opcional)",
+      "storage": {
+        "tpm": "Guardada en la TPM",
+        "software": "Guardada por Windows (software)"
+      },
+      "states": {
+        "active": "Activa",
+        "pending": "Pendiente",
+        "superseded": "Reemplazada",
+        "revoked": "Revocada"
+      }
+    }
   }
 }

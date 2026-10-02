@@ -23,7 +23,8 @@
     "users": "Users",
     "roles": "Roles",
     "audit": "Audit log",
-    "account": "My account"
+    "account": "My account",
+    "nodes": "Nodes"
   },
   "auth": {
     "userName": "User name",
@@ -62,7 +63,7 @@
   "dashboard": {
     "title": "Dashboard",
     "welcome": "Welcome, {{name}}.",
-    "nextSteps": "Nodes and game servers arrive in the next versions. For now you can manage users, roles and review the audit log."
+    "nextSteps": "Game servers arrive in the next versions. For now you can add nodes (the Windows machines that will run them), manage users and roles, and review the audit log."
   },
   "users": {
     "title": "Users",
@@ -220,6 +221,18 @@
         "deleted": "Deleted a role",
         "assigned": "Assigned a role",
         "revoked": "Removed a role"
+      },
+      "node": {
+        "created": "Created a node",
+        "updated": "Updated a node",
+        "deleted": "Deleted a node",
+        "disabled": "Disabled a node",
+        "enabled": "Enabled a node",
+        "enrollment_token_created": "Created an enrollment command",
+        "enrolled": "Node enrolled",
+        "enrollment_failed": "Failed enrollment",
+        "credential_revoked": "Revoked a node credential",
+        "authentication_failed": "Failed node authentication"
       }
     }
   },
@@ -269,6 +282,14 @@
     },
     "user": {
       "not_found": "The user does not exist."
+    },
+    "node": {
+      "name_invalid": "The node name must have between 1 and 64 characters.",
+      "description_too_long": "The description is too long.",
+      "public_host_invalid": "The public address must be a host name or an IP address.",
+      "name_taken": "Another node already has this name.",
+      "not_found": "The node does not exist.",
+      "not_connected": "The node's agent is not connected."
     }
   },
   "account": {
@@ -281,5 +302,96 @@
     "currentPassword": "Current password",
     "changePassword": "Change password",
     "passwordChanged": "Password changed. Your other sessions have been signed out."
+  },
+  "format": {
+    "days": "{{days}} d {{hours}} h",
+    "hours": "{{hours}} h {{minutes}} min",
+    "minutes": "{{minutes}} min"
+  },
+  "nodes": {
+    "title": "Nodes",
+    "description": "Windows machines that run game servers. Each one runs the Pulsar agent, which connects to this panel.",
+    "create": "Add node",
+    "empty": "There are no nodes yet.",
+    "emptyManage": "There are no nodes yet. Add one, then run the command it gives you on the Windows machine.",
+    "node": "Node",
+    "status": "Status",
+    "machine": "Machine",
+    "usage": "Usage",
+    "lastSeen": "Last seen",
+    "name": "Name",
+    "nameHint": "How you will recognize it, e.g. \"Buenos Aires 1\".",
+    "descriptionLabel": "Description",
+    "publicHost": "Public address",
+    "publicHostHint": "Optional. The host name or IP players use to reach servers on this node.",
+    "editTitle": "Edit {{name}}",
+    "openNode": "Open the node page",
+    "notFound": "This node does not exist.",
+    "backToList": "Back to the nodes",
+    "states": {
+      "online": "Online",
+      "offline": "Offline",
+      "pending": "Awaiting enrollment",
+      "disabled": "Disabled"
+    },
+    "hostname": "Host name",
+    "os": "Windows",
+    "cpu": "CPU",
+    "cores_one": "{{count}} logical core",
+    "cores_other": "{{count}} logical cores",
+    "memory": "Memory",
+    "serversRoot": "Servers folder",
+    "agent": "Agent",
+    "agentVersion": "Version {{version}} (protocol v{{protocol}})",
+    "uptime": "Uptime",
+    "updated": "Updated",
+    "cpuValue": "{{value, number(maximumFractionDigits: 1)}} % CPU",
+    "memoryValue": "{{used}} of {{total}}",
+    "noInventory": "The agent has not connected yet, so there is nothing to show.",
+    "neverConnected": "The agent has never connected.",
+    "offlineSince": "The agent is not connected. Last seen {{date}}.",
+    "ping": "Test connection",
+    "pingResult": "Answered in {{ms}} ms",
+    "pingRefused": "The agent refused the command ({{status}})",
+    "administration": "Administration",
+    "administrationHint": "Disabling or deleting a node, or revoking its credential, disconnects its agent immediately.",
+    "newToken": "New enrollment command",
+    "reenroll": "Re-enroll",
+    "disable": "Disable",
+    "enable": "Enable",
+    "disableConfirm": "Disable {{name}}? Its agent is disconnected until you enable it again.",
+    "deleteConfirm": "Delete {{name}}? Its agent is disconnected and must be enrolled again to come back.",
+    "enroll": {
+      "title": "Enroll {{name}}",
+      "steps": "On the Windows machine, open PowerShell as administrator in the folder that contains PulsarAgent.exe and run:",
+      "command": "Enrollment command",
+      "copy": "Copy",
+      "copied": "Copied to the clipboard.",
+      "copyFailed": "The browser did not allow copying. Select the command and copy it by hand.",
+      "once": "The command works once, until {{expires}}. It is not shown again: create a new one if you lose it.",
+      "fingerprint": "The agent checks that the panel holds the key {{fingerprint}}, so a copy of this command is useless against any other server."
+    },
+    "credentials": {
+      "title": "Credentials",
+      "description": "The public key of the node. Its private half never leaves the machine.",
+      "empty": "The node has not been enrolled yet.",
+      "fingerprint": "Key fingerprint",
+      "created": "Created",
+      "lastUsed": "Last used",
+      "revoke": "Revoke",
+      "revokeTitle": "Revoke this credential?",
+      "revokeDescription": "The agent is disconnected immediately and cannot connect again until the node is re-enrolled.",
+      "reason": "Reason (optional)",
+      "storage": {
+        "tpm": "Kept in the TPM",
+        "software": "Kept by Windows (software)"
+      },
+      "states": {
+        "active": "Active",
+        "pending": "Pending",
+        "superseded": "Replaced",
+        "revoked": "Revoked"
+      }
+    }
   }
 }

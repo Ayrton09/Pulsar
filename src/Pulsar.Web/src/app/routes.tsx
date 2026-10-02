@@ -19,6 +19,32 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <DashboardPage /> },
           { path: 'account', element: <AccountPage /> },
+          {
+            path: 'nodes',
+            lazy: async () => {
+              const { NodesPage } = await import('../features/nodes/NodesPage');
+              return {
+                element: (
+                  <RequirePermission anyOf={[Permission.NodeView, Permission.NodeManage]}>
+                    <NodesPage />
+                  </RequirePermission>
+                ),
+              };
+            },
+          },
+          {
+            path: 'nodes/:id',
+            lazy: async () => {
+              const { NodePage } = await import('../features/nodes/NodePage');
+              return {
+                element: (
+                  <RequirePermission anyOf={[Permission.NodeView, Permission.NodeManage]}>
+                    <NodePage />
+                  </RequirePermission>
+                ),
+              };
+            },
+          },
           // Administration pages load on demand: most sessions never open them.
           {
             path: 'admin/users',

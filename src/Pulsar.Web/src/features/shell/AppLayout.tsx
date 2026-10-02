@@ -42,7 +42,10 @@ export function AppLayout() {
   const logout = useLogout();
 
   const visible = (items: NavItem[]) => items.filter((item) => item.anyOf.length === 0 || can(user, ...item.anyOf));
-  const main = visible([{ to: '/', label: t('nav.dashboard'), anyOf: [] }]);
+  const main = visible([
+    { to: '/', label: t('nav.dashboard'), anyOf: [] },
+    { to: '/nodes', label: t('nav.nodes'), anyOf: [Permission.NodeView, Permission.NodeManage] },
+  ]);
   const admin = visible([
     { to: '/admin/users', label: t('nav.users'), anyOf: [Permission.UserView, Permission.UserManage] },
     {

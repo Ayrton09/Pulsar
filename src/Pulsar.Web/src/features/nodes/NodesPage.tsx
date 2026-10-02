@@ -1,0 +1,171 @@
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
+import { Button, Spinner } from '../../components/ui/Button';
+import { Dialog } from '../../components/ui/Dialog';
+import { Alert, Card, PageHeader, Table, Td, Th } from '../../components/ui/Display';
+import { Field, Input } from '../../components/ui/Form';
+import { errorMessage, fieldErrors } from '../../lib/errors';
+import { useFormatDate, useFormatGigabytes } from '../../lib/format';
+import { can, Permission } from '../../lib/permissions';
+import { useCurrentUser } from '../auth/api';
+import { useCreateNode, useNodes, type CreatedNode } from './api';
+import { EnrollmentCommand, NodeStateBadge } from './components';
+import { nodeSchema, type NodeFormValues } from './nodeForm';
+
+export function NodesPage() {
+  const { t } = useTranslation();
+  const me = useCurrentUser();
+  const nodes = useNodes();
+  const formatDate = useFormatDate();
+  const formatGigabytes = useFormatGigabytes();
+  const [creating, setCreating] = useState(false);
+  const canManage = can(me, Permission.NodeManage);
+
+  return (
+    <>
+      <PageHeader
+        title={t('nodes.title')}
+        description={t('nodes.description')}
+        actions={canManage && <Button onClick={() => setCreating(true)}>{t('nodes.create')}</Button>}
+      />
+      {nodes.isPending && <Spinner label={t('common.loading')} />}
+      {nodes.isError && <Alert>{errorMessage(t, nodes.error)}</Alert>}
+      {nodes.data?.length === 0 && (
+        <Card className="p-6">
+          <p className="text-sm text-muted">{canManage ? t('nodes.emptyManage') : t('nodes.empty')}</p>
+        </Card>
+      )}
+      {nodes.data && nodes.data.length > 0 && (
+        <Table label={t('nodes.title')}>
+          <thead>
+            <tr>
+              <Th>{t('nodes.node')}</Th>
+              <Th>{t('nodes.status')}</Th>
+              <Th>{t('nodes.machine')}</Th>
+              <Th>{t('nodes.usage')}</Th>
+              <Th>{t('nodes.lastSeen')}</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {nodes.data.map((node) => (
+              <tr key={node.id}>
+                <Td>
+                  <Link to={`/nodes/${node.id}`} className="font-medium hover:text-accent hover:underline">
+                    {node.name}
+                  </Link>
+                  {node.description && <p className="text-xs text-muted">{node.description}</p>}
+                </Td>
+                <Td>
+                  <NodeStateBadge node={node} />
+                </Td>
+                <Td>
+                  {node.inventory ? (
+                    <>
+                      <p>{node.inventory.hostname}</p>
+                      <p className="text-xs text-muted">{node.inventory.osDescription}</p>
+                    </>
+                  ) : (
+                    <span className="text-muted">{t('common.none')}</span>
+                  )}
+                </Td>
+                <Td>
+                  {node.connected && node.metrics ? (
+                    <>
+                      <p>{t('nodes.cpuValue', { value: node.metrics.cpuPercent })}</p>
+                      <p className="text-xs text-muted">
+                        {t('nodes.memoryValue', {
+                          used: formatGigabytes(node.metrics.memoryUsedBytes),
+                          total: formatGigabytes(node.metrics.memoryTotalBytes),
+                        })}
+                      </p>
+                    </>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </Td>
+                <Td>
+                  {node.lastSeenAt ? (
+                    formatDate(node.lastSeenAt)
+                  ) : (
+                    <span className="text-muted">{t('common.never')}</span>
+                  )}
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+      {creating && <CreateNodeDialog onClose={() => setCreating(false)} />}
+    </>
+  );
+}
+
+/** Two steps: the node's name, then the one-time enrollment command for its machine. */
+function CreateNodeDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  const create = useCreateNode();
+  const [created, setCreated] = useState<CreatedNode | null>(null);
+  const { register, handleSubmit, formState } = useForm<NodeFormValues>({
+    resolver: zodResolver(nodeSchema),
+    defaultValues: { name: '', description: '', publicHost: '' },
+  });
+  const server = fieldErrors(create.error);
+  const message = (key: keyof NodeFormValues) => {
+    const error = formState.errors[key]?.message;
+    return error ? t(error) : server[key];
+  };
+
+  const onSubmit = handleSubmit(({ name, description, publicHost }) =>
+    create.mutate(
+      { name, description: description || null, publicHost: publicHost || null },
+      { onSuccess: setCreated },
+    ),
+  );
+
+  if (created) {
+    return (
+      <Dialog
+        open
+        onOpenChange={(open) => !open && onClose()}
+        title={t('nodes.enroll.title', { name: created.node.name })}
+        size="lg"
+      >
+        <EnrollmentCommand instructions={created.enrollment} />
+        <div className="flex justify-end gap-2 pt-6">
+          <Link to={`/nodes/${created.node.id}`} className="self-center text-sm text-accent hover:underline">
+            {t('nodes.openNode')}
+          </Link>
+          <Button onClick={onClose}>{t('actions.close')}</Button>
+        </div>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()} title={t('nodes.create')}>
+      <form onSubmit={(e) => void onSubmit(e)} className="space-y-4" noValidate>
+        {create.isError && <Alert>{errorMessage(t, create.error)}</Alert>}
+        <Field label={t('nodes.name')} hint={t('nodes.nameHint')} error={message('name')}>
+          {(ids) => <Input {...ids} {...register('name')} autoComplete="off" />}
+        </Field>
+        <Field label={t('nodes.descriptionLabel')} error={message('description')}>
+          {(ids) => <Input {...ids} {...register('description')} autoComplete="off" />}
+        </Field>
+        <Field label={t('nodes.publicHost')} hint={t('nodes.publicHostHint')} error={message('publicHost')}>
+          {(ids) => <Input {...ids} {...register('publicHost')} autoComplete="off" placeholder="play.example.com" />}
+        </Field>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>
+            {t('actions.cancel')}
+          </Button>
+          <Button type="submit" busy={create.isPending}>
+            {t('actions.create')}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
