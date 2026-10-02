@@ -59,9 +59,11 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private readonly IRconConnector _rcon;
     private readonly IServerFirewall _firewall;
     private readonly IServerEventSink _events;
+    private readonly ServerConsole _console;
     private readonly TimeProvider _clock;
     private readonly SupervisorOptions _options;
     private readonly ILogger _logger;
+    private readonly SemaphoreSlim _rconLock = new(1, 1); // console commands share one RCON session, one at a time
     private readonly Channel<Message> _mailbox = Channel.CreateUnbounded<Message>(new UnboundedChannelOptions { SingleReader = true });
     private readonly CancellationTokenSource _stopping = new();
     private readonly Queue<DateTimeOffset> _restarts = new();
@@ -83,15 +85,19 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private int _restartTimer;
     private volatile ServerSnapshot _snapshot;
     private volatile ServerStateChanged? _lastChange;
+    private (int Generation, IRconSession Session)? _consoleRcon; // guarded by _rconLock
+    private (int Generation, ProcessUsage Usage, DateTimeOffset At)? _lastUsage;
 
     public ServerSupervisor(ServerDefinition definition, IGameProcessManager processes, IServerEventSink events, TimeProvider clock,
-        SupervisorOptions options, ILogger logger, IServerFiles? files = null, IRconConnector? rcon = null, IServerFirewall? firewall = null)
+        SupervisorOptions options, ILogger logger, IServerFiles? files = null, IRconConnector? rcon = null, IServerFirewall? firewall = null,
+        ServerConsole? console = null)
     {
         _definition = definition;
         _processes = processes;
         _files = files ?? new DirectServerFiles();
         _rcon = rcon ?? new SourceRconConnector();
         _firewall = firewall ?? new UnmanagedFirewall();
+        _console = console ?? new ServerConsole(new ConsoleBuffer(clock));
         _events = events;
         _clock = clock;
         _options = options;
@@ -107,6 +113,23 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     /// <summary>The last change reported, readable from any thread (delivered again when the agent stops).</summary>
     public ServerStateChanged? LastChange => _lastChange;
+
+    /// <summary>The server's console output, across restarts of its game.</summary>
+    public ServerConsole Console => _console;
+
+    /// <summary>
+    /// Sends a command line to the running game: to its console input, or over RCON for <c>logfile+rcon</c> games (in
+    /// the background: the answer, or why there is none, shows up in the console). Rejected when it is not running.
+    /// </summary>
+    public Task<AckStatus> SendInputAsync(string line) => Ask(tcs => new Input(tcs, line));
+
+    /// <summary>Usage of the running game since the previous sample; null when it is not running.</summary>
+    public async Task<ServerMetrics?> SampleAsync()
+    {
+        var sample = new TaskCompletionSource<ServerMetrics?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await Post(new Sample(sample));
+        return await sample.Task;
+    }
 
     public Task<AckStatus> StartAsync(StateChangeReason reason = StateChangeReason.Requested) => Ask(tcs => new Start(tcs, reason));
 
@@ -162,6 +185,12 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
         _settledWaiters.ForEach(w => w.TrySetResult());
         StopWatchers();
+        // A console command still running was cancelled above; its session goes once it let go of it.
+        if (await _rconLock.WaitAsync(TimeSpan.FromSeconds(5)))
+        {
+            await CloseConsoleRconAsync();
+            _rconLock.Release();
+        }
         foreach (var process in new[] { _process, _lingering })
         {
             if (process is not null)
@@ -255,6 +284,12 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 break;
             case Flush flush:
                 flush.Done.TrySetResult();
+                break;
+            case Input input:
+                input.Answer(await HandleInputAsync(input.Line));
+                break;
+            case Sample sample:
+                sample.Result.TrySetResult(TakeSample());
                 break;
             case Exited exited when exited.Generation == _generation:
                 await HandleExitedAsync(exited.ExitCode);
@@ -430,12 +465,13 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _watchers = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
         if (plan.Console.Mode == ManifestConsoleMode.LogfileRcon)
         {
-            _ = PumpOutputAsync(process, generation, readiness: null);
+            // The game's console is its log file; whatever reaches the pseudo console is drained and dropped.
+            _ = PumpOutputAsync(process, generation, readiness: null, toConsole: false);
             _ = TailLogAsync(plan, generation, readiness, _watchers.Token);
         }
         else
         {
-            _ = PumpOutputAsync(process, generation, readiness);
+            _ = PumpOutputAsync(process, generation, readiness, toConsole: true);
         }
 
         switch (plan.Readiness)
@@ -499,33 +535,51 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
     }
 
-    /// <summary>Follows the game's log file: readiness for now (the live console arrives with Phase 5).</summary>
+    /// <summary>
+    /// Follows the game's log file (<c>logfile+rcon</c>): it is the server's console, and the readiness line may be in it.
+    /// Ends when the process exits (a last read takes what it wrote while quitting).
+    /// </summary>
     private async Task TailLogAsync(LaunchPlan plan, int generation, Regex? readiness, CancellationToken cancellationToken)
     {
-        if (readiness is null)
-        {
-            return;
-        }
-
         var tail = new LogTail(_files, _definition.Directory, plan.Console.LogFile!, TextEncoding(plan.Console.Encoding), _options.LogPollInterval);
-        var lines = new ConsoleLines();
+        var lines = readiness is null ? null : new ConsoleLines();
         try
         {
             await foreach (var text in tail.ReadAsync(cancellationToken))
             {
+                _console.Write(text, _clock.GetUtcNow());
+                if (lines is null)
+                {
+                    continue;
+                }
+
                 foreach (var line in lines.Add(text))
                 {
-                    if (Matches(readiness, line))
+                    bool ready;
+                    try
+                    {
+                        ready = Matches(readiness!, line);
+                    }
+                    catch (RegexMatchTimeoutException)
+                    {
+                        // Logged by Matches; the readiness timeout decides, and the console goes on unchecked.
+                        lines = null;
+                        break;
+                    }
+
+                    if (ready)
                     {
                         _mailbox.Writer.TryWrite(new Ready(generation));
-                        return;
+                        lines = null;
+                        break;
                     }
                 }
             }
         }
-        catch (Exception ex) when (ex is GameProcessException or IOException or RegexMatchTimeoutException)
+        catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
         {
             LogLogTailFailed(ServerId, ex.Message);
+            _console.Note($"Cannot follow the log file {plan.Console.LogFile}: {ex.Message}", _clock.GetUtcNow());
         }
     }
 
@@ -572,6 +626,153 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             // The game may close the connection as it quits; the stop timeout kills it if it did not.
             LogStopStepFailed(ServerId, index, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// A console command for the running game. Pseudo consoles echo what they receive; for pipes and RCON the console
+    /// shows the command itself, unless the game logs RCON commands on its own (CS2).
+    /// </summary>
+    private async Task<AckStatus> HandleInputAsync(string line)
+    {
+        if (_process is not { } process || _plan is not { } plan || _state is not (RuntimeState.Starting or RuntimeState.Running)
+            || !ConsoleInput.IsValid(line))
+        {
+            return AckStatus.Rejected;
+        }
+
+        var now = _clock.GetUtcNow();
+        if (plan.Console.Mode == ManifestConsoleMode.LogfileRcon)
+        {
+            if (plan.Rcon is not { } endpoint)
+            {
+                return AckStatus.Rejected;
+            }
+
+            var echo = plan.Console.Rcon?.LogsCommands != true;
+            if (echo)
+            {
+                _console.Write($"> {line}\n", now);
+            }
+
+            // In the background: an answer can take a second (CS2) and the mailbox must stay free for stop and kill.
+            _ = SendConsoleRconAsync(endpoint, line, echo, _generation, _watchers?.Token ?? _stopping.Token);
+            return AckStatus.Accepted;
+        }
+
+        if (plan.Console.Mode == ManifestConsoleMode.Pipes)
+        {
+            _console.Write($"> {line}\n", now);
+        }
+
+        try
+        {
+            var newline = plan.Console.InputNewline ?? (plan.Console.Mode == ManifestConsoleMode.Pty ? "\r\n" : "\n");
+            await process.WriteInputAsync(line + newline, _stopping.Token);
+            return AckStatus.Accepted;
+        }
+        catch (InvalidOperationException)
+        {
+            // The process stopped reading its input (it is exiting).
+            return AckStatus.Rejected;
+        }
+    }
+
+    /// <summary>One RCON session per process for console commands, opened on the first one and kept while it works.</summary>
+    private async Task SendConsoleRconAsync(RconEndpoint endpoint, string line, bool showAnswer, int generation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _rconLock.WaitAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            return;
+        }
+
+        try
+        {
+            while (true)
+            {
+                var kept = _consoleRcon is { } current && current.Generation == generation;
+                if (!kept)
+                {
+                    await CloseConsoleRconAsync();
+                    _consoleRcon = (generation, await _rcon.ConnectAsync(endpoint, cancellationToken));
+                }
+
+                try
+                {
+                    var answer = await _consoleRcon!.Value.Session.ExecuteAsync(line, cancellationToken);
+                    if (showAnswer && answer.Length > 0)
+                    {
+                        _console.Write(answer.EndsWith('\n') ? answer : answer + "\n", _clock.GetUtcNow());
+                    }
+
+                    return;
+                }
+                catch (RconException ex) when (kept && ex.ConnectionLost)
+                {
+                    // The game closed the session kept since an earlier command: once more on a fresh one. Never after
+                    // an answer that was late, since the game may have run the command.
+                    await CloseConsoleRconAsync();
+                }
+            }
+        }
+        catch (RconException ex)
+        {
+            await CloseConsoleRconAsync();
+            _console.Note($"RCON: {ex.Message}", _clock.GetUtcNow());
+        }
+        catch (OperationCanceledException)
+        {
+            // The process exited or the supervisor is going away.
+        }
+        finally
+        {
+            _rconLock.Release();
+        }
+    }
+
+    /// <summary>Call holding <see cref="_rconLock"/>.</summary>
+    private async Task CloseConsoleRconAsync()
+    {
+        if (_consoleRcon is { } current)
+        {
+            _consoleRcon = null;
+            await current.Session.DisposeAsync();
+        }
+    }
+
+    private ServerMetrics? TakeSample()
+    {
+        if (_process is not { } process || _state is RuntimeState.Offline or RuntimeState.Crashed)
+        {
+            _lastUsage = null;
+            return null;
+        }
+
+        ProcessUsage usage;
+        try
+        {
+            usage = process.SampleUsage();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            LogSampleFailed(ServerId, ex.Message);
+            return null;
+        }
+
+        var now = _clock.GetUtcNow();
+        var cpu = 0.0;
+        if (_lastUsage is { } last && last.Generation == _generation && now > last.At)
+        {
+            // Share of the whole machine, like the node's CPU and Task Manager.
+            var used = (usage.CpuTime - last.Usage.CpuTime).TotalSeconds;
+            cpu = Math.Clamp(used / (now - last.At).TotalSeconds / Environment.ProcessorCount * 100, 0, 100);
+        }
+
+        _lastUsage = (_generation, usage, now);
+        return new ServerMetrics(ServerId, Math.Round(cpu, 1), usage.MemoryBytes, usage.ProcessCount, now - process.StartedAt);
     }
 
     private void StopWatchers()
@@ -720,8 +921,11 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _mailbox.Writer.TryWrite(new Exited(generation, code));
     }
 
-    /// <summary>Drains the output (a process that cannot write blocks) and looks for the readiness line while starting.</summary>
-    private async Task PumpOutputAsync(IGameProcess process, int generation, Regex? readiness)
+    /// <summary>
+    /// Drains the output (a process that cannot write blocks), copies it to the console unless the game's console is its
+    /// log file, and looks for the readiness line while starting.
+    /// </summary>
+    private async Task PumpOutputAsync(IGameProcess process, int generation, Regex? readiness, bool toConsole)
     {
         var lines = new ConsoleLines();
         var ready = readiness is null;
@@ -729,6 +933,11 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         {
             await foreach (var chunk in process.Output.ReadAllAsync(_stopping.Token))
             {
+                if (toConsole)
+                {
+                    _console.Write(chunk.Text, chunk.At);
+                }
+
                 if (ready)
                 {
                     continue;
@@ -850,6 +1059,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: the readiness pattern took too long on a line; not checking it anymore")]
     private partial void LogReadinessPatternTooSlow(Guid serverId);
 
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Server {ServerId}: usage not sampled: {Reason}")]
+    private partial void LogSampleFailed(Guid serverId, string reason);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: cannot follow its log file: {Reason}")]
     private partial void LogLogTailFailed(Guid serverId, string reason);
 
@@ -889,6 +1101,13 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private sealed record Update(TaskCompletionSource Done, ServerDefinition Definition) : Command
     {
         public override void Fail(Exception exception) => Done.TrySetException(exception);
+    }
+
+    private sealed record Input(TaskCompletionSource<AckStatus> Result, string Line) : Request(Result);
+
+    private sealed record Sample(TaskCompletionSource<ServerMetrics?> Result) : Command
+    {
+        public override void Fail(Exception exception) => Result.TrySetException(exception);
     }
 
     private sealed record WhenSettled(TaskCompletionSource Done) : Message;

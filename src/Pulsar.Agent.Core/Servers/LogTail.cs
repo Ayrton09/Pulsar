@@ -7,7 +7,8 @@ namespace Pulsar.Agent.Core.Servers;
 /// <summary>
 /// Follows the log file a game writes its console to (<c>logfile+rcon</c>, spike 0001): the text appended since the
 /// last read, from the start of the file. The agent deletes the file before each start, so the game creates it anew;
-/// a file that shrinks (truncated) is read again from its start. A byte order mark is skipped.
+/// a file that shrinks (truncated) is read again from its start. A byte order mark is skipped. Cancelling ends the
+/// enumeration after one last read, so what the game wrote just before exiting is not lost.
 /// </summary>
 public sealed class LogTail(IServerFiles files, string serverRoot, string relativePath, Encoding encoding, TimeSpan pollInterval)
 {
@@ -20,9 +21,10 @@ public sealed class LogTail(IServerFiles files, string serverRoot, string relati
         var position = 0L;
         var bytes = new byte[BufferSize];
         var chars = new char[encoding.GetMaxCharCount(BufferSize)];
+        var lastRead = false;
         try
         {
-            while (!cancellationToken.IsCancellationRequested)
+            while (true)
             {
                 stream ??= files.OpenRead(serverRoot, relativePath);
                 if (stream is not null && stream.Length < position)
@@ -35,18 +37,24 @@ public sealed class LogTail(IServerFiles files, string serverRoot, string relati
                 if (stream is not null && stream.Length > position)
                 {
                     stream.Position = position;
-                    read = await stream.ReadAsync(bytes, cancellationToken);
+                    // Not cancellable: a local read is quick, and the last one must happen after cancellation.
+                    read = await stream.ReadAsync(bytes, CancellationToken.None);
                 }
 
                 if (read == 0)
                 {
+                    if (lastRead)
+                    {
+                        yield break;
+                    }
+
                     try
                     {
                         await Task.Delay(pollInterval, cancellationToken);
                     }
                     catch (OperationCanceledException)
                     {
-                        yield break;
+                        lastRead = true;
                     }
 
                     continue;

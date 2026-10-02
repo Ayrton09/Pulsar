@@ -121,6 +121,11 @@ internal sealed class FakeGameProcess(int processId) : IGameProcess
 
     public int CountProcesses() => Disposed || TerminatedWith is not null ? 0 : Children + (_exited.Task.IsCompleted ? 0 : 1);
 
+    /// <summary>What <see cref="SampleUsage"/> reports.</summary>
+    public ProcessUsage Usage { get; set; } = new(TimeSpan.Zero, 0, 1);
+
+    public ProcessUsage SampleUsage() => Disposed ? new ProcessUsage(TimeSpan.Zero, 0, 0) : Usage;
+
     public void TerminateTree(int exitCode)
     {
         TerminatedWith = exitCode;

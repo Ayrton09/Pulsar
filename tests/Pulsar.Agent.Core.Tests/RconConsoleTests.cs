@@ -331,12 +331,103 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         Assert.Empty(_processes.Started);
     }
 
+    [Fact]
+    public async Task TheLogFileIsTheConsoleBeforeAndAfterTheServerIsReady()
+    {
+        var supervisor = await RunningAsync();
+        await AppendLogAsync("Server is hibernating\n");
+
+        await EventuallyAsync(supervisor, "Server is hibernating\n");
+        await AppendLogAsync("Player connected\n");
+        await EventuallyAsync(supervisor, "Server is hibernating\nPlayer connected\n");
+        Assert.DoesNotContain("pseudo console", Text(supervisor), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RconCommandsAndTheirAnswersAreAddedForAGameThatDoesNotLogThem()
+    {
+        var supervisor = await RunningAsync();
+        _rcon.Answer = command => command == "status" ? "hostname: Pulsar" : "";
+
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status"));
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("say hi"));
+
+        await EventuallyAsync(supervisor, "> status\nhostname: Pulsar\n> say hi\n");
+        Assert.Equal(2, _rcon.Connections); // the readiness probe's, then one kept for both commands
+        Assert.Equal(["status", "say hi"], _rcon.Commands);
+    }
+
+    [Fact]
+    public async Task AGameThatLogsRconCommandsGetsNoSecondCopy()
+    {
+        var supervisor = await RunningAsync(logsCommands: true);
+        _rcon.Answer = _ => "hostname: Pulsar";
+
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status"));
+
+        await EventuallyAsync(() => _rcon.Commands.Contains("status"));
+        await supervisor.FlushAsync();
+        Assert.Equal("", Text(supervisor));
+    }
+
+    [Fact]
+    public async Task AnRconFailureIsNotedInTheConsole()
+    {
+        var supervisor = await RunningAsync();
+        _rcon.Listening = false;
+
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status"));
+
+        await EventuallyAsync(() => Text(supervisor).Contains("[Pulsar] RCON: Not listening.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task WhatTheGameLogsJustBeforeExitingIsKept()
+    {
+        var supervisor = await RunningAsync();
+        _rcon.OnCommand = command =>
+        {
+            if (command == "quit")
+            {
+                // Written right before the exit, with no poll in between.
+                File.AppendAllText(Path.Combine(_root, "cstrike", "console.log"), "Shutting down\n");
+                _processes.Last.Exit(0);
+            }
+        };
+
+        await supervisor.StopAsync();
+        await _events.WaitForAsync(RuntimeState.Offline);
+
+        await EventuallyAsync(supervisor, "Shutting down\n");
+    }
+
     private const string Rcon = "Rc0nPassw0rd";
 
-    private ServerSupervisor Supervisor(ReadinessDefinition readiness)
+    private async Task<ServerSupervisor> RunningAsync(bool logsCommands = false)
+    {
+        var supervisor = Supervisor(new RconReadiness(60), logsCommands);
+        _rcon.Listening = true;
+        await supervisor.StartAsync();
+        await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
+        Directory.CreateDirectory(Path.Combine(_root, "cstrike"));
+        return supervisor;
+    }
+
+    private Task AppendLogAsync(string text) =>
+        File.AppendAllTextAsync(Path.Combine(_root, "cstrike", "console.log"), text, TestContext.Current.CancellationToken);
+
+    private static string Text(ServerSupervisor supervisor) => string.Concat(supervisor.Console.Buffer.Read(null, int.MaxValue).Select(e => e.Text));
+
+    private static Task EventuallyAsync(ServerSupervisor supervisor, string text) =>
+        LogTailTests.Eventually(() => Text(supervisor) == text, () => Text(supervisor));
+
+    private static Task EventuallyAsync(Func<bool> condition) => LogTailTests.Eventually(condition, () => "condition not met");
+
+    private ServerSupervisor Supervisor(ReadinessDefinition readiness, bool logsCommands = false)
     {
         var plan = new LaunchPlan("srcds.exe", "", ["-game", "cstrike"], new Dictionary<string, string>(),
-            new ConsoleDefinition(ManifestConsoleMode.LogfileRcon, LogFile: "cstrike/console.log", Rcon: new RconDefinition(RconProtocol.Source, "game")),
+            new ConsoleDefinition(ManifestConsoleMode.LogfileRcon, LogFile: "cstrike/console.log",
+                Rcon: new RconDefinition(RconProtocol.Source, "game", logsCommands)),
             readiness, new StopDefinition([new RconCommandStop("quit")], 30))
         {
             ConfigFiles = [new RenderedConfigFile("cstrike/cfg/server.cfg", ConfigFileFormat.SourceCfg, ConfigFileMode.Patch,
@@ -359,6 +450,10 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
 
         public string? LastPassword { get; private set; }
 
+        public Func<string, string> Answer { get; set; } = _ => "";
+
+        public int Connections { get; private set; }
+
         public Task<IRconSession> ConnectAsync(RconEndpoint endpoint, CancellationToken cancellationToken)
         {
             if (!Listening)
@@ -367,6 +462,7 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
             }
 
             LastPassword = endpoint.Password;
+            Connections++;
             return Task.FromResult<IRconSession>(new Session(this));
         }
 
@@ -380,7 +476,7 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
                 }
 
                 owner.OnCommand?.Invoke(command);
-                return Task.FromResult("");
+                return Task.FromResult(owner.Answer(command));
             }
 
             public ValueTask DisposeAsync() => ValueTask.CompletedTask;

@@ -7,6 +7,7 @@ using Pulsar.Api.Access;
 using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Nodes;
+using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
 using Pulsar.Api.Servers;
 using Pulsar.Application;
@@ -73,6 +74,7 @@ try
     app.UseSerilogRequestLogging(options => options.Logger = app.Services.GetRequiredService<Serilog.ILogger>());
     app.UseExceptionHandler();
     app.UseStatusCodePages();
+    app.UsePanelHubOriginCheck();
 
     app.UseAuthentication();
     app.UseAuthorization();
@@ -113,6 +115,13 @@ try
         options.Transports = HttpTransportType.WebSockets;
         options.CloseOnAuthenticationExpiration = true;
     }).WithMetadata(AgentEndpointMetadata.Instance);
+
+    // Browsers: live changes, usage and consoles (docs/architecture/07, "Real time").
+    app.MapHub<PanelHub>(PanelHub.Path, options =>
+    {
+        options.Transports = HttpTransportType.WebSockets;
+        options.CloseOnAuthenticationExpiration = true;
+    }).RequireSignedInUser();
 
     // API, hub and agent routes must never fall through to the SPA's index.html.
     app.MapNotFoundFallback("/api");

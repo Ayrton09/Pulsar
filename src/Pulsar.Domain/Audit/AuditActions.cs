@@ -54,6 +54,7 @@ public static class AuditActions
         public const string SettingsChanged = "server.settings_changed";
         public const string PortsChanged = "server.ports_changed";
         public const string OperationCancelRequested = "server.operation_cancel_requested";
+        public const string ConsoleCommand = "server.console_command";
     }
 
     public static class Template

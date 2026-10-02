@@ -96,6 +96,8 @@ internal sealed class WindowsGameProcess : IGameProcess
 
     public int CountProcesses() => Volatile.Read(ref _disposed) == 1 ? 0 : _job.ActiveProcesses;
 
+    public ProcessUsage SampleUsage() => Volatile.Read(ref _disposed) == 1 ? new ProcessUsage(TimeSpan.Zero, 0, 0) : _job.Usage();
+
     public void TerminateTree(int exitCode)
     {
         if (Volatile.Read(ref _disposed) == 0)

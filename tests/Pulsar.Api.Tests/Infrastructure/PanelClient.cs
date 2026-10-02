@@ -25,6 +25,9 @@ public sealed class PanelClient : IDisposable
 
     public HttpClient Http { get; }
 
+    /// <summary>The cookies as a browser sends them (for the live channel's WebSocket).</summary>
+    public string CookieHeader => _cookies.GetCookieHeader(s_baseAddress);
+
     /// <summary>Creates a client and loads the session (which issues the antiforgery token).</summary>
     public static async Task<PanelClient> CreateAsync(WebApplicationFactory<Program> factory, bool sendAntiforgeryHeader = true)
     {

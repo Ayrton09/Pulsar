@@ -37,6 +37,9 @@ public sealed class RconException : Exception
 
     /// <summary>The password was refused (as opposed to a game not listening yet).</summary>
     public bool AuthenticationFailed { get; init; }
+
+    /// <summary>The connection was closed (as opposed to an answer that did not come in time).</summary>
+    public bool ConnectionLost { get; init; }
 }
 
 /// <summary>
@@ -183,7 +186,7 @@ internal sealed class SourceRconSession(TcpClient client, TimeSpan answerTimeout
         }
         catch (IOException ex)
         {
-            throw new RconException("The RCON connection was closed.", ex);
+            throw new RconException("The RCON connection was closed.", ex) { ConnectionLost = true };
         }
     }
 
@@ -218,7 +221,7 @@ internal sealed class SourceRconSession(TcpClient client, TimeSpan answerTimeout
         }
         catch (Exception ex) when (ex is IOException or EndOfStreamException)
         {
-            throw new RconException("The RCON connection was closed.", ex);
+            throw new RconException("The RCON connection was closed.", ex) { ConnectionLost = true };
         }
     }
 }

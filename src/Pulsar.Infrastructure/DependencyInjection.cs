@@ -32,9 +32,11 @@ public static class DependencyInjection
         }
 
         services.AddOptions<DatabaseOptions>().Bind(configuration.GetSection(DatabaseOptions.SectionName));
-        services.AddDbContext<PulsarDbContext>(options => options
+        services.AddSingleton<RealtimeChangesInterceptor>();
+        services.AddDbContext<PulsarDbContext>((provider, options) => options
             .UseNpgsql(connectionString)
-            .UseSnakeCaseNamingConvention());
+            .UseSnakeCaseNamingConvention()
+            .AddInterceptors(provider.GetRequiredService<RealtimeChangesInterceptor>()));
         services.AddScoped<IPulsarDbContext>(sp => sp.GetRequiredService<PulsarDbContext>());
         services.AddScoped<IDatabaseInitializer, DatabaseInitializer>();
         services.AddSingleton(TimeProvider.System);

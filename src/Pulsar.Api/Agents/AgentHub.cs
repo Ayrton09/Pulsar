@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Pulsar.Api.Realtime;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Nodes;
+using Pulsar.Application.Realtime;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 using Pulsar.Domain.Common;
@@ -18,6 +20,10 @@ internal sealed partial class AgentHub(
     AgentSessionStore sessions,
     IPanelKeyRing keys,
     AgentServerEvents servers,
+    ConsoleMirrors consoles,
+    LiveMetrics liveMetrics,
+    IRealtimeNotifier notifier,
+    IHubContext<PanelHub, IPanelClient> browsers,
     IServiceScopeFactory scopes,
     TimeProvider clock,
     ILogger<AgentHub> logger) : Hub, IAgentHub
@@ -112,6 +118,7 @@ internal sealed partial class AgentHub(
 
         // The agent's view of its servers wins (docs/architecture/05, "Reconciliation").
         await servers.ReconcileAsync(nodeId, hello.Servers ?? [], hello.OperationsInFlight ?? [], Context.ConnectionAborted);
+        notifier.NodesChanged([nodeId]);
 
         // An agent that missed a panel key rotation gets the new keys. Not awaited here: waiting for a client result
         // inside this connection's own hub method would deadlock (one invocation per client at a time).
@@ -120,7 +127,8 @@ internal sealed partial class AgentHub(
             _ = Task.Run(() => UpdatePanelKeysAsync(nodeId));
         }
 
-        return new HelloAccepted(now, panelKeys);
+        // Consoles browsers were watching (before a reconnect or a panel restart) resume where the panel's copy ends.
+        return new HelloAccepted(now, panelKeys, consoles.SubscriptionsFor(nodeId));
     }
 
     private async Task UpdatePanelKeysAsync(NodeId nodeId)
@@ -145,6 +153,8 @@ internal sealed partial class AgentHub(
         }
 
         connections.UpdateMetrics(nodeId, Context.ConnectionId, metrics);
+        await browsers.Clients.Group(PanelHub.NodesGroup).NodeMetrics(new NodeMetricsUpdate(nodeId.Value,
+            new NodeMetricsView(metrics.At, metrics.CpuPercent, metrics.MemoryUsedBytes, metrics.MemoryTotalBytes, metrics.Uptime)));
         var now = clock.GetUtcNow();
         if (Context.Items.TryGetValue(s_lastSeenAtKey, out var value)
             && value is DateTimeOffset lastSeenAt && now - lastSeenAt < s_seenInterval)
@@ -187,6 +197,40 @@ internal sealed partial class AgentHub(
         if (RegisteredNode() is { } nodeId)
         {
             await servers.StateChangedAsync(nodeId, change, CancellationToken.None);
+            if (change.State is RuntimeState.Offline or RuntimeState.Crashed)
+            {
+                liveMetrics.Remove(new ServerId(change.ServerId));
+            }
+        }
+    }
+
+    /// <summary>Output of a console browsers watch; the mirrors drop anything about servers not of this node.</summary>
+    public async Task ConsoleOutput(ServerConsoleOutput output)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+        if (RegisteredNode() is { } nodeId)
+        {
+            await consoles.ReceiveAsync(nodeId, output);
+        }
+    }
+
+    /// <summary>Usage of the node's running servers: kept for pages that open later, and pushed to the ones watching.</summary>
+    public async Task Metrics(MetricsBatch batch)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        if (RegisteredNode() is not { } nodeId || batch.Servers.Count == 0)
+        {
+            return;
+        }
+
+        var reported = batch.Servers.Select(s => new ServerId(s.ServerId)).ToList();
+        var own = (await db.Servers.Where(s => s.NodeId == nodeId && reported.Contains(s.Id)).Select(s => s.Id).ToListAsync(CancellationToken.None))
+            .ToHashSet();
+        foreach (var sample in batch.Servers.Where(s => own.Contains(new ServerId(s.ServerId))))
+        {
+            var view = new ServerMetricsView(sample.ServerId, batch.At, sample.CpuPercent, sample.MemoryBytes, sample.ProcessCount, sample.Uptime.TotalSeconds);
+            liveMetrics.Update(view);
+            await browsers.Clients.Group(PanelHub.ServerGroup(new ServerId(sample.ServerId))).ServerMetrics(view);
         }
     }
 
@@ -236,7 +280,13 @@ internal sealed partial class AgentHub(
 
     public override Task OnDisconnectedAsync(Exception? exception)
     {
-        connections.Unregister(Context.User!.NodeId(), Context.ConnectionId);
+        var nodeId = Context.User!.NodeId();
+        if (connections.Unregister(nodeId, Context.ConnectionId))
+        {
+            consoles.NodeDisconnected(nodeId);
+            notifier.NodesChanged([nodeId]);
+        }
+
         return base.OnDisconnectedAsync(exception);
     }
 

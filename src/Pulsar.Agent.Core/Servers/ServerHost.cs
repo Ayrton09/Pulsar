@@ -14,6 +14,15 @@ public sealed class ServerHostOptions
 {
     /// <summary>How long servers get to stop gracefully when the agent stops (the service control manager waits ~30 s).</summary>
     public TimeSpan ShutdownBudget { get; set; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>How often the usage of running servers is sent to the panel.</summary>
+    public TimeSpan MetricsInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Characters of console output each server keeps in memory for browsers that start watching.</summary>
+    public int ConsoleBufferCapacity { get; set; } = ConsoleBuffer.DefaultCapacity;
+
+    /// <summary>The console history on disk; null keeps none.</summary>
+    public ConsoleLogOptions? ConsoleLog { get; set; } = new();
 }
 
 /// <summary>
@@ -48,7 +57,9 @@ public sealed partial class ServerHost(
     private readonly TaskCompletionSource _loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _stopping = new();
     private readonly Lock _recordLock = new();
+    private readonly ConsoleRelay _relay = new(panel, clock);
     private AgentConfig? _config;
+    private Task _metrics = Task.CompletedTask;
 
     /// <summary>Completes once the stored servers are loaded (the Hello waits for it).</summary>
     public Task Loaded => _loaded.Task;
@@ -68,6 +79,9 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.UpdateServer;
             yield return AgentCapabilities.ApplyServerSpec;
             yield return AgentCapabilities.CancelOperation;
+            yield return AgentCapabilities.ConsoleInput;
+            yield return AgentCapabilities.ConsoleSubscribe;
+            yield return AgentCapabilities.ConsoleUnsubscribe;
             if (installOptions.TestGameAvailable)
             {
                 yield return AgentCapabilities.TestGame;
@@ -80,9 +94,26 @@ public sealed partial class ServerHost(
         }
     }
 
-    public void Dispose() => _stopping.Dispose();
+    public void Dispose()
+    {
+        _relay.Dispose();
+        _stopping.Dispose();
+    }
 
     public IReadOnlyList<ServerSnapshot> Snapshots() => [.. _servers.Values.Select(s => s.Supervisor.Snapshot)];
+
+    /// <summary>The consoles the panel wants after a Hello (browsers were watching them); unknown servers are skipped.</summary>
+    public void SubscribeConsoles(IReadOnlyList<ConsoleSubscription> subscriptions)
+    {
+        ArgumentNullException.ThrowIfNull(subscriptions);
+        foreach (var subscription in subscriptions)
+        {
+            if (_servers.TryGetValue(subscription.ServerId, out var server))
+            {
+                _relay.Subscribe(subscription.ServerId, server.Supervisor.Console.Buffer, subscription.FromSequence);
+            }
+        }
+    }
 
     /// <summary>
     /// Operations still running, and finished ones whose result waits in the outbox: the panel must not mark those as
@@ -121,6 +152,7 @@ public sealed partial class ServerHost(
         var serversRoot = _config.ServersRootOrDefault(configs.Paths);
         LogLoaded(_servers.Count, serversRoot);
         _loaded.TrySetResult();
+        _metrics = SendMetricsAsync(_stopping.Token);
         foreach (var supervisor in resume)
         {
             UpdateRecord(supervisor.ServerId, r => r with { ResumeOnStart = false });
@@ -141,6 +173,7 @@ public sealed partial class ServerHost(
             }
 
             await servers[i].Supervisor.DisposeAsync();
+            await servers[i].Supervisor.Console.DisposeAsync(); // the end of its history reaches the disk
         }
 
         // The panel should see the servers stop. State changes are sent without waiting and the connection closes right
@@ -156,6 +189,8 @@ public sealed partial class ServerHost(
         }
 
         await _stopping.CancelAsync();
+        _relay.Clear();
+        await _metrics;
     }
 
     /// <summary>Handles a verified server command; the ack says whether it was accepted, not that it finished.</summary>
@@ -179,8 +214,75 @@ public sealed partial class ServerHost(
             StopServerCommand stop => await Control(envelope, stop.ServerId, s => s.StopAsync(), allowedDuringOperation: true),
             RestartServerCommand restart => await Control(envelope, restart.ServerId, s => s.RestartAsync(), allowedDuringOperation: false),
             KillServerCommand kill => await Control(envelope, kill.ServerId, s => s.KillAsync(), allowedDuringOperation: true),
+            SendConsoleInputCommand input => await ConsoleInputAsync(envelope, input),
+            SubscribeConsoleCommand subscribe => SubscribeConsole(envelope, subscribe),
+            UnsubscribeConsoleCommand unsubscribe => new CommandAck(envelope.CommandId,
+                _relay.Unsubscribe(unsubscribe.ServerId) ? AckStatus.Accepted : AckStatus.AlreadyInState, null, null),
             _ => new CommandAck(envelope.CommandId, AckStatus.UnsupportedCommand, "command.unsupported", null),
         };
+    }
+
+    private async Task<CommandAck> ConsoleInputAsync(CommandEnvelope envelope, SendConsoleInputCommand command)
+    {
+        if (!_servers.TryGetValue(command.ServerId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        if (!ConsoleInput.IsValid(command.Line))
+        {
+            return Rejected(envelope, "console.invalid_input", $"A command is one line of up to {ConsoleInput.MaxLength} characters.");
+        }
+
+        return await server.Supervisor.SendInputAsync(command.Line) == AckStatus.Accepted
+            ? new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null)
+            : Rejected(envelope, "server.not_running", "The server is not running.");
+    }
+
+    private CommandAck SubscribeConsole(CommandEnvelope envelope, SubscribeConsoleCommand command)
+    {
+        if (!_servers.TryGetValue(command.ServerId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        _relay.Subscribe(command.ServerId, server.Supervisor.Console.Buffer, command.FromSequence);
+        return new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null);
+    }
+
+    /// <summary>The usage of every running server, every few seconds (nothing while none runs).</summary>
+    private async Task SendMetricsAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(options.MetricsInterval, clock);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                var samples = await Task.WhenAll(_servers.Values.Select(s => SampleAsync(s.Supervisor)));
+                var running = samples.OfType<ServerMetrics>().ToList();
+                if (running.Count > 0)
+                {
+                    _ = await panel.SendAsync(nameof(IAgentHub.Metrics), new MetricsBatch(clock.GetUtcNow(), running), cancellationToken);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The agent is stopping.
+        }
+    }
+
+    private static async Task<ServerMetrics?> SampleAsync(ServerSupervisor supervisor)
+    {
+        try
+        {
+            // A supervisor busy starting a process answers late: that sample is skipped, not waited for.
+            return await supervisor.SampleAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        catch (Exception ex) when (ex is TimeoutException or ObjectDisposedException)
+        {
+            return null;
+        }
     }
 
     void IServerEventSink.StateChanged(ServerStateChanged change) =>
@@ -383,6 +485,9 @@ public sealed partial class ServerHost(
             await server.Supervisor.WaitUntilSettledAsync();
             await server.Supervisor.DisposeAsync();
             _servers.TryRemove(command.ServerId, out _);
+            _relay.Unsubscribe(command.ServerId);
+            await server.Supervisor.Console.DisposeAsync();
+            DeleteConsoleLogs(server.ShortId);
             var root = _config!.ServersRootOrDefault(configs.Paths);
             // Before the account goes: a process of a deleted account would keep running unnoticed.
             TerminateStrays(command.ServerId, provisioner.Describe(root, server.ShortId).Identity);
@@ -499,10 +604,37 @@ public sealed partial class ServerHost(
 
     private ServerSupervisor Add(Guid serverId, ServerRuntimeSpec spec, string? rconPassword)
     {
-        var supervisor = new ServerSupervisor(Definition(serverId, spec, rconPassword), processes, this, clock, supervisorOptions,
-            loggerFactory.CreateLogger<ServerSupervisor>(), files, rcon, firewall);
+        var definition = Definition(serverId, spec, rconPassword);
+        var log = options.ConsoleLog is { } logOptions
+            ? new ConsoleLog(ConsoleLogDirectory(spec.ShortId), logOptions, clock, loggerFactory.CreateLogger<ConsoleLog>())
+            : null;
+        var console = new ServerConsole(new ConsoleBuffer(clock, options.ConsoleBufferCapacity), log);
+        var supervisor = new ServerSupervisor(definition, processes, this, clock, supervisorOptions,
+            loggerFactory.CreateLogger<ServerSupervisor>(), files, rcon, firewall, console);
         _servers[serverId] = new Server(spec.ShortId, Parse(spec), spec, rconPassword, supervisor);
         return supervisor;
+    }
+
+    private string ConsoleLogDirectory(string shortId)
+    {
+        ServerShortId.Validate(shortId);
+        return Path.Combine(configs.Paths.ConsoleLogsDirectory, shortId);
+    }
+
+    private void DeleteConsoleLogs(string shortId)
+    {
+        try
+        {
+            var directory = ConsoleLogDirectory(shortId);
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogConsoleLogsNotDeleted(shortId, ex.Message);
+        }
     }
 
     private ServerDefinition Definition(Guid serverId, ServerRuntimeSpec spec, string? rconPassword)
@@ -567,6 +699,9 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: killed {Count} processes its account ran outside the server's job")]
     private partial void LogStraysKilled(Guid serverId, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The console history of deleted server {ShortId} could not be removed: {Reason}")]
+    private partial void LogConsoleLogsNotDeleted(string shortId, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Operation {OperationId} on server {ServerId} cancelled")]
     private partial void LogOperationCancelled(Guid operationId, Guid serverId);

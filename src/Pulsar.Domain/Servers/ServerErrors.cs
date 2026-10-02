@@ -26,6 +26,11 @@ public static class ServerErrors
 
     public static DomainError CommandRejected { get; } = new("server.command_rejected", "The node's agent rejected the command.");
 
+    public static DomainError NotRunning { get; } = new("server.not_running", "The server is not running.");
+
+    public static DomainError ConsoleInputInvalid { get; } =
+        new("console.invalid_input", "A console command is one line of 1 to 512 characters, without control characters.");
+
     public static DomainError ExtraArgumentsInvalid { get; } = new("server.extra_arguments_invalid",
         $"At most {Server.MaxExtraArguments} extra arguments, each a single line of 1 to {Server.MaxExtraArgumentLength} characters.");
 

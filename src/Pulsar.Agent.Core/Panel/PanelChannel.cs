@@ -12,6 +12,7 @@ public sealed class PanelChannel
     private readonly Lock _lock = new();
     private HubConnection? _connection;
     private Func<CancellationToken, Task>? _connected;
+    private Action? _disconnected;
 
     public bool IsConnected
     {
@@ -30,6 +31,15 @@ public sealed class PanelChannel
         lock (_lock)
         {
             _connected += handler;
+        }
+    }
+
+    /// <summary>Runs when the current connection goes away (not when a new session takes over from it).</summary>
+    public void OnDisconnected(Action handler)
+    {
+        lock (_lock)
+        {
+            _disconnected += handler;
         }
     }
 
@@ -90,13 +100,17 @@ public sealed class PanelChannel
 
     internal void Detach(HubConnection connection)
     {
+        Action? handlers = null;
         lock (_lock)
         {
             if (ReferenceEquals(_connection, connection))
             {
                 _connection = null;
+                handlers = _disconnected;
             }
         }
+
+        handlers?.Invoke();
     }
 
     private HubConnection? Current()

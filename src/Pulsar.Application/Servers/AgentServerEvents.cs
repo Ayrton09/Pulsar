@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
 using Pulsar.Application.Nodes;
+using Pulsar.Application.Realtime;
 using Pulsar.Contracts;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
@@ -18,7 +19,7 @@ public sealed record ServerFollowUp(ServerId ServerId, UserId? RequestedBy);
 /// the full picture in every Hello (reconciliation: the agent's observation wins). Every event is checked against the
 /// reporting node: an agent can only speak about its own servers and operations.
 /// </summary>
-public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog audit, OperationProgressCache progressCache, TimeProvider clock,
+public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog audit, OperationProgressCache progressCache, IRealtimeNotifier notifier, TimeProvider clock,
     ILogger<AgentServerEvents> logger)
 {
     private static readonly TimeSpan s_queuedGrace = TimeSpan.FromMinutes(1);
@@ -63,7 +64,17 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         var percent = progress.Percent is { } p ? (decimal?)Math.Round((decimal)p, 2) : null;
         var operation = await db.Operations.SingleOrDefaultAsync(o => o.Id == new OperationId(progress.OperationId) && o.NodeId == nodeId,
             cancellationToken);
-        if (operation is not { IsActive: true } || !progressCache.Update(progress.OperationId, progress.Stage, percent))
+        if (operation is not { IsActive: true })
+        {
+            return;
+        }
+
+        if (operation.ServerId is { } serverId)
+        {
+            notifier.OperationProgress(serverId, progress.OperationId, progress.Stage, percent);
+        }
+
+        if (!progressCache.Update(progress.OperationId, progress.Stage, percent))
         {
             return;
         }

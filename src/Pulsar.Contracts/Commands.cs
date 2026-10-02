@@ -36,6 +36,9 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(UpdateServerCommand), UpdateServerCommand.Type)]
 [JsonDerivedType(typeof(ApplyServerSpecCommand), ApplyServerSpecCommand.Type)]
 [JsonDerivedType(typeof(CancelOperationCommand), CancelOperationCommand.Type)]
+[JsonDerivedType(typeof(SendConsoleInputCommand), SendConsoleInputCommand.Type)]
+[JsonDerivedType(typeof(SubscribeConsoleCommand), SubscribeConsoleCommand.Type)]
+[JsonDerivedType(typeof(UnsubscribeConsoleCommand), UnsubscribeConsoleCommand.Type)]
 public abstract record AgentCommand;
 
 /// <summary>Round-trip check of the signed command path (the UI's "test connection").</summary>
@@ -128,6 +131,31 @@ public sealed record CancelOperationCommand(Guid OperationId) : AgentCommand
     public const string Type = "operation.cancel";
 }
 
+/// <summary>
+/// A command for a running server's console: written to its input (<c>pty</c>, <c>pipes</c>) or sent over RCON
+/// (<c>logfile+rcon</c>). The output shows up in the console stream.
+/// </summary>
+public sealed record SendConsoleInputCommand(Guid ServerId, string Line) : AgentCommand
+{
+    public const string Type = "server.console_input";
+}
+
+/// <summary>
+/// Starts sending the server's console output to the panel (<see cref="IAgentHub.ConsoleOutput"/>): first what the
+/// agent still holds after <paramref name="FromSequence"/> (everything it holds when null), then new output as it comes.
+/// Repeating it moves the subscription back to <paramref name="FromSequence"/> (the panel drops what it already has).
+/// </summary>
+public sealed record SubscribeConsoleCommand(Guid ServerId, long? FromSequence) : AgentCommand
+{
+    public const string Type = "server.console_subscribe";
+}
+
+/// <summary>Nobody watches the server's console anymore: its output stays on the node.</summary>
+public sealed record UnsubscribeConsoleCommand(Guid ServerId) : AgentCommand
+{
+    public const string Type = "server.console_unsubscribe";
+}
+
 public enum AckStatus
 {
     Accepted,
@@ -157,6 +185,9 @@ public static class AgentCapabilities
     public const string UpdateServer = UpdateServerCommand.Type;
     public const string ApplyServerSpec = ApplyServerSpecCommand.Type;
     public const string CancelOperation = CancelOperationCommand.Type;
+    public const string ConsoleInput = SendConsoleInputCommand.Type;
+    public const string ConsoleSubscribe = SubscribeConsoleCommand.Type;
+    public const string ConsoleUnsubscribe = UnsubscribeConsoleCommand.Type;
 
     /// <summary>
     /// Not a command: the agent can install Pulsar's test game server (the <c>pulsar-test</c> manifest). Only agents
@@ -183,6 +214,9 @@ public static class AgentCapabilities
         UpdateServerCommand => UpdateServer,
         ApplyServerSpecCommand => ApplyServerSpec,
         CancelOperationCommand => CancelOperation,
+        SendConsoleInputCommand => ConsoleInput,
+        SubscribeConsoleCommand => ConsoleSubscribe,
+        UnsubscribeConsoleCommand => ConsoleUnsubscribe,
         null => throw new ArgumentNullException(nameof(command)),
         _ => throw new ArgumentOutOfRangeException(nameof(command), command.GetType().Name, "Command without a capability."),
     };

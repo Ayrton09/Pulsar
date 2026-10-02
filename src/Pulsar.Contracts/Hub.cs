@@ -16,6 +16,12 @@ public interface IAgentHub
 
     /// <summary>The end of an operation; the agent keeps it and sends it again until this call succeeds.</summary>
     Task OperationCompleted(OperationCompleted completed);
+
+    /// <summary>Console output of a server the panel subscribed to (<see cref="SubscribeConsoleCommand"/>).</summary>
+    Task ConsoleOutput(ServerConsoleOutput output);
+
+    /// <summary>Usage of the running servers, every 5 s.</summary>
+    Task Metrics(MetricsBatch batch);
 }
 
 /// <summary>Methods the panel calls on a connected agent (SignalR client results).</summary>
@@ -40,6 +46,11 @@ public sealed record AgentHello(
     IReadOnlyList<Guid>? OperationsInFlight = null);
 
 /// <summary><see cref="ServerTime"/> lets the agent detect clock skew (command expiry is a secondary defense).</summary>
-public sealed record HelloAccepted(DateTimeOffset ServerTime, IReadOnlyList<PanelKey> PanelKeys);
+/// <param name="ConsoleSubscriptions">
+/// Consoles browsers are watching: the agent sends their output from the given sequence on, as after a
+/// <see cref="SubscribeConsoleCommand"/>. Subscriptions end with the connection.
+/// </param>
+public sealed record HelloAccepted(DateTimeOffset ServerTime, IReadOnlyList<PanelKey> PanelKeys,
+    IReadOnlyList<ConsoleSubscription>? ConsoleSubscriptions = null);
 
 public sealed record NodeMetrics(DateTimeOffset At, double CpuPercent, long MemoryUsedBytes, long MemoryTotalBytes, TimeSpan Uptime);

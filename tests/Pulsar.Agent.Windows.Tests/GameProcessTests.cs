@@ -79,6 +79,30 @@ public sealed class GameProcessTests : IDisposable
     }
 
     [WindowsFact]
+    public async Task UsageCoversTheWholeTree()
+    {
+        await using var process = await Start(ConsoleMode.Pipes);
+        var output = new OutputCollector(process);
+        await output.WaitForAsync("Test server ready");
+
+        var alone = process.SampleUsage();
+        await process.WriteInputAsync("spawn\n", TestContext.Current.CancellationToken);
+        await output.WaitForAsync("Test server: grandchild");
+        var withChildren = process.SampleUsage();
+
+        Assert.InRange(alone.ProcessCount, 1, 2); // the game and, for a console program, its conhost.exe
+        Assert.True(alone.MemoryBytes > 10 * 1024 * 1024, $"{alone.MemoryBytes} bytes"); // a .NET process
+        Assert.True(alone.CpuTime > TimeSpan.Zero);
+        Assert.Equal(alone.ProcessCount + 2, withChildren.ProcessCount); // a child and a grandchild
+        Assert.True(withChildren.MemoryBytes > alone.MemoryBytes + (10 * 1024 * 1024), $"{withChildren.MemoryBytes} vs {alone.MemoryBytes}"); // two more .NET processes
+        Assert.True(withChildren.CpuTime >= alone.CpuTime);
+
+        process.TerminateTree(1);
+        await process.DisposeAsync();
+        Assert.Equal(new ProcessUsage(TimeSpan.Zero, 0, 0), process.SampleUsage());
+    }
+
+    [WindowsFact]
     public async Task TheExitCodeOfACrashIsReported()
     {
         await using var process = await Start(ConsoleMode.Pipes, "--exit-after", "200", "42");

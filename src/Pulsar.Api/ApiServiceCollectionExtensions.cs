@@ -5,13 +5,16 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pulsar.Api.Access;
 using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Http;
+using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Nodes;
+using Pulsar.Application.Realtime;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 
@@ -75,7 +78,12 @@ internal static class ApiServiceCollectionExtensions
     private static void AddAgentChannel(IServiceCollection services)
     {
         services.AddSignalR(options => options.MaximumReceiveMessageSize = AgentProtocol.MaximumMessageSize)
-            .AddJsonProtocol(options => ProtocolJson.Configure(options.PayloadSerializerOptions));
+            .AddJsonProtocol(options => ProtocolJson.Configure(options.PayloadSerializerOptions))
+            // Browsers only send small requests (what they watch); agents send console output in large batches.
+            .AddHubOptions<PanelHub>(options => options.MaximumReceiveMessageSize = 32 * 1024);
+        services.AddSingleton<ConsoleMirrors>();
+        services.AddSingleton<LiveMetrics>();
+        services.Replace(ServiceDescriptor.Singleton<IRealtimeNotifier, PanelNotifier>());
         services.AddSingleton<AgentConnectionRegistry>();
         services.AddSingleton<IAgentConnections>(sp => sp.GetRequiredService<AgentConnectionRegistry>());
         services.AddAuthentication()

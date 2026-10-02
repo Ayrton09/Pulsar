@@ -413,6 +413,8 @@ public sealed partial class AgentConnection(
             var lead = options.RenewalLead < lifetimeLeft / 2 ? options.RenewalLead : lifetimeLeft / 2;
             session.Started(now + lifetimeLeft - lead);
             LogConnected(token.SessionId, verifier.PanelClockOffset);
+            // Consoles browsers were already watching: their output resumes where the panel's copy ends.
+            servers?.SubscribeConsoles(hello.ConsoleSubscriptions ?? []);
             await _channel.AttachAsync(connection, cancellationToken);
             return session;
         }

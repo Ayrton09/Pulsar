@@ -194,7 +194,11 @@ public enum RconProtocol
 /// Name of the port the game serves RCON on (over TCP). Declare only the protocols players need on it (UDP for Source
 /// games): the firewall rules Pulsar manages open just those, and RCON stays reachable from the node only.
 /// </param>
-public sealed record RconDefinition(RconProtocol Protocol, string Port);
+/// <param name="LogsCommands">
+/// The game writes the commands it receives over RCON, and their answers, to its log file (CS2 does, srcds does not):
+/// the console then shows the log alone instead of adding the agent's copy of each command and answer.
+/// </param>
+public sealed record RconDefinition(RconProtocol Protocol, string Port, bool LogsCommands = false);
 
 /// <summary>When a starting server counts as running (docs/architecture/04, "Readiness and stop").</summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]

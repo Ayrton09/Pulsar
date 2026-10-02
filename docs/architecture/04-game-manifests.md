@@ -80,7 +80,7 @@ Manifests and schemas are MIT licensed so communities and hosting companies can 
       "console": {
         "mode": "logfile+rcon",
         "logFile": "game/csgo/console.log",
-        "rcon": { "protocol": "source", "port": "game" },
+        "rcon": { "protocol": "source", "port": "game", "logsCommands": true },
         "sensitiveCommandPrefixes": ["rcon_password", "sv_password", "sv_setsteamaccount"]
       }
     }

@@ -1,9 +1,12 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
+using Pulsar.Agent.Core.Processes;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.JobObjects;
+using Windows.Win32.System.ProcessStatus;
+using Windows.Win32.System.Threading;
 
 namespace Pulsar.Agent.Windows.Processes;
 
@@ -75,6 +78,70 @@ internal sealed class JobObject : IDisposable
             }
 
             return (int)info.ActiveProcesses;
+        }
+    }
+
+    /// <summary>
+    /// CPU time from the job's accounting (every process it ever held), and the working set of the processes alive in it.
+    /// A process that exits between listing and opening it simply does not count.
+    /// </summary>
+    public unsafe ProcessUsage Usage()
+    {
+        JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting;
+        if (!PInvoke.QueryInformationJobObject((HANDLE)_handle.DangerousGetHandle(), JOBOBJECTINFOCLASS.JobObjectBasicAccountingInformation,
+                &accounting, (uint)sizeof(JOBOBJECT_BASIC_ACCOUNTING_INFORMATION), null))
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "QueryInformationJobObject failed.");
+        }
+
+        var cpu = TimeSpan.FromTicks(accounting.TotalUserTime + accounting.TotalKernelTime);
+        var memory = 0L;
+        foreach (var processId in ProcessIds())
+        {
+            using var process = PInvoke.OpenProcess_SafeHandle(
+                PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_ACCESS_RIGHTS.PROCESS_VM_READ, false, processId);
+            PROCESS_MEMORY_COUNTERS counters;
+            if (!process.IsInvalid
+                && PInvoke.GetProcessMemoryInfo((HANDLE)process.DangerousGetHandle(), &counters, (uint)sizeof(PROCESS_MEMORY_COUNTERS)))
+            {
+                memory += (long)counters.WorkingSetSize;
+            }
+        }
+
+        return new ProcessUsage(cpu, memory, (int)accounting.ActiveProcesses);
+    }
+
+    private unsafe List<uint> ProcessIds()
+    {
+        // The list is a header followed by the ids; grown when the job holds more processes than fit.
+        for (var capacity = 32; ; capacity *= 4)
+        {
+            var size = sizeof(JOBOBJECT_BASIC_PROCESS_ID_LIST) + ((capacity - 1) * sizeof(nuint));
+            var buffer = new byte[size];
+            fixed (byte* pointer = buffer)
+            {
+                var list = (JOBOBJECT_BASIC_PROCESS_ID_LIST*)pointer;
+                if (!PInvoke.QueryInformationJobObject((HANDLE)_handle.DangerousGetHandle(), JOBOBJECTINFOCLASS.JobObjectBasicProcessIdList,
+                        pointer, (uint)size, null))
+                {
+                    var error = Marshal.GetLastPInvokeError();
+                    if (error == (int)WIN32_ERROR.ERROR_MORE_DATA)
+                    {
+                        continue;
+                    }
+
+                    throw new Win32Exception(error, "QueryInformationJobObject failed.");
+                }
+
+                var ids = new List<uint>((int)list->NumberOfProcessIdsInList);
+                var first = (nuint*)&list->ProcessIdList;
+                for (var i = 0; i < list->NumberOfProcessIdsInList; i++)
+                {
+                    ids.Add((uint)first[i]);
+                }
+
+                return ids;
+            }
         }
     }
 

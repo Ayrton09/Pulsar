@@ -29,6 +29,9 @@ public sealed class AgentPaths(string root)
 
     /// <summary>The verified SteamCMD bootstrapper each server gets a copy of.</summary>
     public string SteamCmdDirectory => Path.Combine(Root, "steamcmd");
+
+    /// <summary>Rotated console logs, one folder per server (outside the server directory, which its account controls).</summary>
+    public string ConsoleLogsDirectory => Path.Combine(Root, "console-logs");
 }
 
 /// <summary>Everything the agent needs to reach and trust its panel, written at enrollment.</summary>

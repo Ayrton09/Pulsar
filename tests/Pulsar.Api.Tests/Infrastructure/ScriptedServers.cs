@@ -106,11 +106,17 @@ public sealed class ScriptedProcess(int processId) : IGameProcess
         _output.Writer.TryComplete();
     }
 
+    /// <summary>Like the test game server on a pseudo console: the console echoes the line, "say" answers.</summary>
     public ValueTask WriteInputAsync(string text, CancellationToken cancellationToken)
     {
+        Print(text);
         if (text.StartsWith("quit", StringComparison.Ordinal))
         {
             Exit(0);
+        }
+        else if (text.StartsWith("say ", StringComparison.Ordinal))
+        {
+            Print($"Test server: {text[4..].TrimEnd()}\r\n");
         }
 
         return ValueTask.CompletedTask;
@@ -123,6 +129,8 @@ public sealed class ScriptedProcess(int processId) : IGameProcess
     }
 
     public int CountProcesses() => IsAlive ? 1 : 0;
+
+    public ProcessUsage SampleUsage() => IsAlive ? new ProcessUsage(TimeSpan.FromMilliseconds(250), 64 * 1024 * 1024, 1) : new ProcessUsage(TimeSpan.Zero, 0, 0);
 
     public void TerminateTree(int exitCode) => Exit(exitCode);
 
@@ -200,7 +208,7 @@ public sealed class ScriptedRcon(ScriptedProcessManager processes) : Pulsar.Agen
                 game.Exit(0);
             }
 
-            return Task.FromResult("");
+            return Task.FromResult(command == "status" ? "hostname: scripted\n" : "");
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

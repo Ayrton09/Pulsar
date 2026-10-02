@@ -73,6 +73,11 @@ public sealed record ProcessLaunchSpec(
 /// <summary>Decoded console output, in arrival order. A pseudo console delivers screen updates, not lines.</summary>
 public sealed record ConsoleChunk(DateTimeOffset At, string Text);
 
+/// <summary>Resource usage of a server's process tree at one moment.</summary>
+/// <param name="CpuTime">CPU time of every process the tree ever had (finished ones included), user and kernel.</param>
+/// <param name="MemoryBytes">Working set of the processes alive now.</param>
+public sealed record ProcessUsage(TimeSpan CpuTime, long MemoryBytes, int ProcessCount);
+
 /// <summary>A running server process and the tree it belongs to (its Job).</summary>
 public interface IGameProcess : IAsyncDisposable
 {
@@ -97,6 +102,9 @@ public interface IGameProcess : IAsyncDisposable
 
     /// <summary>Processes still alive in the tree, the main one included.</summary>
     int CountProcesses();
+
+    /// <summary>Usage of the whole tree now; all zero once disposed.</summary>
+    ProcessUsage SampleUsage();
 
     /// <summary>Kills the whole tree at once (children and grandchildren included).</summary>
     void TerminateTree(int exitCode);

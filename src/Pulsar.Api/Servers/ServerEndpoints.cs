@@ -32,6 +32,8 @@ public sealed record UpdateServerPortsRequest([property: Required] Dictionary<st
 
 public sealed record UpdateGameRequest(bool Validate);
 
+public sealed record ConsoleCommandRequest([property: Required, StringLength(Pulsar.Contracts.ConsoleInput.MaxLength, MinimumLength = 1)] string Command);
+
 public sealed record TemplateContentRequest([property: Required, StringLength(Pulsar.Manifests.ManifestParser.MaximumSize)] string Content);
 
 public static class ServerEndpoints
@@ -65,6 +67,9 @@ public static class ServerEndpoints
         servers.MapPost("/{id:guid}/update", (Guid id, UpdateGameRequest request, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.UpdateGameAsync(new ServerId(id), request.Validate, ct)))
             .RequirePermission(Permissions.Server.Install);
+        servers.MapPost("/{id:guid}/console", (Guid id, ConsoleCommandRequest request, ConsoleCommands console, CancellationToken ct) =>
+                CommandAsync(console.SendAsync(new ServerId(id), request.Command, ct)))
+            .RequirePermission(Permissions.Server.ConsoleWrite);
         servers.MapPost("/{id:guid}/operations/{operationId:guid}/cancel", (Guid id, Guid operationId, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.CancelOperationAsync(new ServerId(id), operationId, ct)))
             .RequirePermission(Permissions.Server.Install);
