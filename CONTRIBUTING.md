@@ -80,6 +80,17 @@ CI fails when either file is stale.
 
 End-to-end tests use Playwright (`npm run e2e`) against a published panel; set `PULSAR_E2E_POSTGRES` to a connection string for a disposable database (for example `pulsar_e2e`).
 
+Running an agent against a local panel (Windows): add a node in the UI, then run its enrollment command in development mode, which needs no administrator rights and installs no service:
+
+```powershell
+dotnet build src/Pulsar.Agent
+cd src/Pulsar.Agent/bin/Debug/net10.0-windows
+.\PulsarAgent.exe enroll --panel http://localhost:5173 --token <token> --panel-key <fingerprint> --dev --data-dir <folder>
+.\PulsarAgent.exe run --data-dir <folder>
+```
+
+`--dev` keeps the node key in your user's key store and lets you read the state folder; never use it on a real node. Plain HTTP is only accepted for a panel on the same machine. Delete the node in the UI and the folder when you are done.
+
 ## Code guidelines
 
 - Nullable reference types are enabled and warnings are errors: keep the build clean.

@@ -1,0 +1,24 @@
+// Memory and CPU (node inventory and metrics)
+GlobalMemoryStatusEx
+GetSystemTimes
+
+// Service control manager (install, uninstall, start, stop, status)
+OpenSCManager
+OpenService
+CreateService
+DeleteService
+StartService
+ControlService
+QueryServiceStatus
+ChangeServiceConfig2W
+SERVICE_DESCRIPTIONW
+SERVICE_FAILURE_ACTIONSW
+SERVICE_FAILURE_ACTIONS_FLAG
+SC_ACTION
+SC_MANAGER_ALL_ACCESS
+SERVICE_ALL_ACCESS
+WIN32_ERROR
+ChangeServiceConfig
+SC_MANAGER_CONNECT
+SERVICE_QUERY_STATUS
+SERVICE_CONTROL_STOP

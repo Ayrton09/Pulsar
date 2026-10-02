@@ -251,6 +251,8 @@ Agent                                         Panel
 
 ### Rotation
 
+*Not implemented yet.* Until it is, replacing a node key means re-enrolling the node (a new enrollment command from the node page), which revokes the old credential.
+
 - The agent rotates its key automatically every 90 days (configurable) or when the administrator asks (`RotateCredentialCommand`).
 - Flow: generate a new key → `POST /credentials/rotate` with the current JWT + a proof signed with the new key → the panel creates a `pending` credential → the agent re-authenticates with the new key → the panel marks it `active` and the old one `superseded`. If anything fails, the old credential stays valid (a node can never be orphaned mid-rotation).
 - Panel key rotation: the panel publishes the new key signed by the current one (`UpdatePanelKeysCommand`); agents pin both during the transition.
@@ -277,3 +279,59 @@ Agent                                         Panel
 ```
 
 The node's private key is not in this tree: it lives in the CNG/TPM key store.
+
+## Agent implementation (Phase 2)
+
+How `Pulsar.Agent.Core` (portable protocol logic), `Pulsar.Agent.Windows` (CNG, inventory, ACLs, service control) and the `PulsarAgent` executable put the design above into practice.
+
+### Command line
+
+```
+PulsarAgent enroll --panel <url> --token <token> --panel-key <fingerprint> [--servers-root <dir>] [--no-service] [--dev] [--data-dir <dir>]
+PulsarAgent status [--check] [--data-dir <dir>]
+PulsarAgent run [--data-dir <dir>]
+PulsarAgent service install|uninstall|start|stop [--data-dir <dir>]
+PulsarAgent unenroll [--data-dir <dir>]
+```
+
+- The service runs the executable it was installed from as SYSTEM, so `enroll` and `service install` refuse when anyone other than SYSTEM, Administrators or TrustedInstaller could modify it or its folder, or rename a folder above it (a download folder, or a folder created directly under `C:\`, fails; `C:\Program Files\Pulsar\Agent` passes). The check runs before enrolling, so a refusal does not consume the token.
+- `enroll` must run elevated. It pins the panel key, creates the node key, enrolls, writes `config\agent.json`, and installs and starts the `PulsarAgent` service (LocalSystem, automatic start; the service control manager restarts it after 5 s, 15 s, then every 60 s, also when it stops itself with an error). Re-running it on an enrolled node stops the service first and deletes the old key once the new enrollment is saved.
+- `status` shows the enrollment and the node key fingerprint (the one the panel shows for the credential); `--check` also authenticates against the panel.
+- `--dev` is for development only: the key goes to the current user's store, the state directory also grants the current user, and no service is installed. The service runs as SYSTEM and could not open such a key.
+- `unenroll` removes the service, the node key and the configuration (logs stay). The node must also be deleted, or re-enrolled, in the panel.
+- The value after an option is always taken as its value: enrollment tokens are base64url and can start with `-`.
+
+### Panel address
+
+The panel URL must be an origin (`https://panel.example.com[:port]`), without path, query or credentials. HTTPS is required; plain HTTP is accepted only for a loopback panel, because the session token would otherwise travel in clear. The agent compares the origin the panel binds into enrollment results and challenges with the one it was configured with, and refuses to continue on a mismatch: behind a reverse proxy, the proxy must forward the original host and scheme.
+
+### Node key
+
+ECDSA P-256 created through CNG with export policy *none*, in the TPM (Microsoft Platform Crypto Provider) when it can create the key, otherwise in the software key storage provider; the result is reported to the panel (`tpm`/`software`) and shown in the UI. Production keys are machine keys whose DACL grants only SYSTEM and Administrators. The state directory (`%ProgramData%\Pulsar\Agent` by default) gets a protected DACL with the same two principals and Administrators as owner.
+
+### Connection loop
+
+1. Challenge/response → session token; the agent checks the challenge's `panelOrigin` before signing.
+2. Hub over WebSockets only (no negotiation), `Authorization: Bearer` header, then `Hello` with the capabilities, inventory and agent version. `HelloAccepted.ServerTime` gives the panel clock offset; a difference above one minute is logged as a warning.
+3. Node metrics right after `Hello` and every 15 s.
+4. **Session hand-over:** one minute before the session expires (or at half its lifetime if it is shorter), the agent authenticates again and opens a second connection; its `Hello` makes the panel close the old one. Commands always arrive on the current connection, and the node never shows as offline because its session ended.
+5. A lost connection is retried with exponential backoff (1 s, 2 s, 4 s… up to 60 s), randomized to 50–100 % of the value so many agents do not reconnect in lockstep after a panel restart. A rejected credential (revoked, node disabled or deleted) waits the maximum between attempts.
+
+The SignalR client's automatic reconnect is not used: every connection needs a fresh challenge and a new `Hello`, which the loop already does.
+
+### Command verification
+
+One verifier per session, in this order (the first failure answers the command):
+
+| Check | Ack status | Error code |
+|---|---|---|
+| `KeyId` is a pinned panel key | `InvalidSignature` | `command.unknown_key` |
+| Signature over the payload, for the `pulsar-command-v1` purpose | `InvalidSignature` | `command.invalid_signature` |
+| Envelope readable | `Rejected` | `command.malformed` |
+| `NodeId` and `SessionId` are this node and session | `Rejected` | `command.wrong_recipient` |
+| Sequence new and inside the 1024-wide window | `Rejected` | `command.replayed` |
+| Inside `IssuedAt`–`ExpiresAt` on the panel's clock, ±30 s | `Rejected` | `command.expired` |
+| Supported `ProtocolVersion` | `Rejected` | `command.unsupported_version` |
+| Command type handled by this agent | `UnsupportedCommand` | `command.unsupported` |
+
+Routing checks run on the envelope without its command, so an unknown command type is reported as unsupported rather than malformed. A sequence number is consumed as soon as the command is authentic and addressed to this session, even if a later check refuses it.

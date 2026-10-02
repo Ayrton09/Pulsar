@@ -1,8 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Pulsar.Contracts\Pulsar.Contracts.csproj" />
     <ProjectReference Include="..\Pulsar.Manifests\Pulsar.Manifests.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pulsar.Agent.Core.Tests" />
   </ItemGroup>
 
 </Project>

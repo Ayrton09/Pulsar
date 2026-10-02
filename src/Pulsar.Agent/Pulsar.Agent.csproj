@@ -13,11 +13,16 @@
     <PackageReference Include="Serilog.Extensions.Hosting" />
     <PackageReference Include="Serilog.Settings.Configuration" />
     <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Pulsar.Agent.Core\Pulsar.Agent.Core.csproj" />
     <ProjectReference Include="..\Pulsar.Agent.Windows\Pulsar.Agent.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pulsar.Agent.Tests" />
   </ItemGroup>
 
 </Project>
