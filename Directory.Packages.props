@@ -33,6 +33,8 @@
   </ItemGroup>
 
   <ItemGroup Label="Testing">
+    <!-- JSON Schema validation of the published manifest schema (BSD-3-Clause; JsonSchema.Net moved to a commercial EULA). -->
+    <PackageVersion Include="LateApexEarlySpeed.Json.Schema" Version="4.2.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.1" />

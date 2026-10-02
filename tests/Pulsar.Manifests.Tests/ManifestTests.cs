@@ -22,7 +22,7 @@ public sealed class ManifestTests
     {
         var manifest = TestManifest();
 
-        var plan = LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, new Dictionary<string, string?>(), "abcd1234");
+        var plan = Render(manifest, new Dictionary<string, string?>());
 
         Assert.Equal("bin/Pulsar.TestGameServer.exe", plan.Executable);
         Assert.Equal("data", plan.WorkingDirectory);
@@ -37,8 +37,7 @@ public sealed class ManifestTests
     [Fact]
     public void ConditionalArgumentsFollowTheirVariable()
     {
-        var plan = LaunchPlanRenderer.Render(TestManifest(), ManifestValidator.WindowsX64,
-            new Dictionary<string, string?> { ["ignoreQuit"] = "true", ["readyAfterMs"] = "0" }, "abcd1234");
+        var plan = Render(TestManifest(), new Dictionary<string, string?> { ["ignoreQuit"] = "true", ["readyAfterMs"] = "0" });
 
         Assert.Equal(["--ready-after", "0", "--ignore-quit"], plan.Arguments);
     }
@@ -53,8 +52,7 @@ public sealed class ManifestTests
     [InlineData("unknown", "x")]
     public void ValuesThatBreakTheirDefinitionAreRefused(string key, string value)
     {
-        Assert.Throws<LaunchPlanException>(() => LaunchPlanRenderer.Render(TestManifest(), ManifestValidator.WindowsX64,
-            new Dictionary<string, string?> { [key] = value }, "abcd1234"));
+        Assert.Throws<LaunchPlanException>(() => Render(TestManifest(), new Dictionary<string, string?> { [key] = value }));
     }
 
     [Theory]
@@ -74,23 +72,21 @@ public sealed class ManifestTests
 
         if (map.Contains(' ', StringComparison.Ordinal) && !map.StartsWith(' '))
         {
-            var plan = LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, new Dictionary<string, string?> { ["map"] = map }, "abcd1234");
+            var plan = Render(manifest, new Dictionary<string, string?> { ["map"] = map });
             Assert.Equal(map, plan.Arguments[^1]);
             return;
         }
 
-        Assert.Throws<LaunchPlanException>(() => LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64,
-            new Dictionary<string, string?> { ["map"] = map }, "abcd1234"));
+        Assert.Throws<LaunchPlanException>(() => Render(manifest, new Dictionary<string, string?> { ["map"] = map }));
     }
 
     [Fact]
     public void ExtraArgumentsNeedTheManifestsPermission()
     {
-        Assert.Throws<LaunchPlanException>(() => LaunchPlanRenderer.Render(TestManifest(), ManifestValidator.WindowsX64,
-            new Dictionary<string, string?>(), "abcd1234", ["-condebug"]));
+        Assert.Throws<LaunchPlanException>(() => Render(TestManifest(), new Dictionary<string, string?>(), ["-condebug"]));
 
         var allowing = Parse(Manifest(m => m["runtime"]!["windows-x64"]!["allowExtraArguments"] = true));
-        var plan = LaunchPlanRenderer.Render(allowing, ManifestValidator.WindowsX64, new Dictionary<string, string?>(), "abcd1234", ["-condebug"]);
+        var plan = Render(allowing, new Dictionary<string, string?>(), ["-condebug"]);
         Assert.Equal("-condebug", plan.Arguments[^1]);
     }
 
@@ -150,7 +146,8 @@ public sealed class ManifestTests
 
     [Theory]
     [InlineData("{{var.nope}}", "Unknown variable")]
-    [InlineData("{{port.game}}", "Port placeholders")]
+    [InlineData("{{port.game}}", "Unknown port")]
+    [InlineData("{{rcon.password}}", "needs an RCON console")]
     [InlineData("{{env.PATH}}", "Unknown placeholder")]
     [InlineData("{{var.readyAfterMs", "Malformed")]
     [InlineData("{{ var.readyAfterMs }}", "Malformed")]
@@ -183,17 +180,19 @@ public sealed class ManifestTests
     }
 
     [Fact]
-    public void ReservedEnvironmentVariablesAndUnsupportedConsoleModesAreRefused()
+    public void ReservedEnvironmentVariablesAndIncompleteConsolesAreRefused()
     {
         var errors = Errors(m =>
         {
             m["runtime"]!["windows-x64"]!["environment"]!["PATH"] = "C:/evil";
-            m["runtime"]!["windows-x64"]!["console"] = new JsonObject { ["mode"] = "logfile+rcon" };
+            m["runtime"]!["windows-x64"]!["console"] = new JsonObject { ["mode"] = "logfile+rcon" }; // without its log file and RCON
             m["stop"]!["steps"]!.AsArray().Add(new JsonObject { ["type"] = "ctrlC" });
         });
 
         Assert.Contains(errors, e => e.Path == "runtime.windows-x64.environment.PATH");
-        Assert.Contains(errors, e => e.Path == "runtime.windows-x64.console.mode");
+        Assert.Contains(errors, e => e.Path == "runtime.windows-x64.console.logFile");
+        Assert.Contains(errors, e => e.Path == "runtime.windows-x64.console.rcon");
+        Assert.Contains(errors, e => e.Path == "stop.steps[0]"); // a console command needs a console
         Assert.Contains(errors, e => e.Path == "stop.steps[1]");
     }
 
@@ -207,39 +206,18 @@ public sealed class ManifestTests
         Assert.NotEqual(ManifestParser.Parse(bytes).Sha256, ManifestParser.Parse(withSpace).Sha256);
     }
 
-    private static GameManifest TestManifest() => Parse(File.ReadAllText(TestManifestPath()));
+    private static LaunchPlan Render(GameManifest manifest, IReadOnlyDictionary<string, string?> values, IReadOnlyList<string>? extra = null) =>
+        LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, new ServerBinding("abcd1234", values, ExtraArguments: extra));
 
-    private static GameManifest Parse(string json)
-    {
-        var result = ManifestParser.Parse(Encoding.UTF8.GetBytes(json));
-        Assert.True(result.IsValid, string.Join(Environment.NewLine, result.Errors));
-        return result.Manifest!;
-    }
+    private static GameManifest TestManifest() => TestManifests.Load("_test");
 
-    private static IReadOnlyList<ManifestError> Errors(Action<JsonObject> change)
-    {
-        var result = ManifestParser.Parse(Encoding.UTF8.GetBytes(Manifest(change)));
-        Assert.NotEmpty(result.Errors);
-        return result.Errors;
-    }
+    private static GameManifest Parse(string json) => TestManifests.Parse(json);
 
-    private static string Manifest(Action<JsonObject> change)
-    {
-        var manifest = JsonNode.Parse(File.ReadAllText(TestManifestPath()))!.AsObject();
-        change(manifest);
-        return manifest.ToJsonString();
-    }
+    private static IReadOnlyList<ManifestError> Errors(Action<JsonObject> change) => TestManifests.Errors(Manifest(change));
 
-    private static string TestManifestPath() => Path.Combine(RepositoryRoot(), "games", "_test", "manifest.json");
+    private static string Manifest(Action<JsonObject> change) => TestManifests.Change("_test", change);
 
-    private static string RepositoryRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Pulsar.slnx")))
-        {
-            directory = directory.Parent;
-        }
+    private static string TestManifestPath() => TestManifests.PathOf("_test");
 
-        return directory?.FullName ?? throw new InvalidOperationException($"Could not find Pulsar.slnx above {AppContext.BaseDirectory}.");
-    }
+    private static string RepositoryRoot() => TestManifests.RepositoryRoot();
 }

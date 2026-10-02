@@ -1,0 +1,299 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ayrton09/Pulsar/blob/main/schemas/manifest.v1.schema.json",
+  "title": "Pulsar game manifest (schema version 1)",
+  "description": "Describes how Pulsar installs, starts, watches and stops a game server. Declarative and closed: there is no shell, script or expression anywhere. Pulsar validates more than this schema can express (placeholders, regular expressions, paths); see docs/architecture/04-game-manifests.md.",
+  "$ref": "#/$defs/GameManifest",
+  "$defs": {
+    "GameManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "key", "version", "name", "platforms", "runtime", "readiness", "stop"],
+      "properties": {
+        "$schema": { "type": "string", "description": "Editor hint; ignored by Pulsar." },
+        "schemaVersion": { "const": 1, "description": "Version of this format." },
+        "key": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$", "description": "Identifies the game; with the version, a template that never changes." },
+        "version": { "type": "string", "pattern": "^\\d{1,6}\\.\\d{1,6}\\.\\d{1,6}(-[0-9A-Za-z.-]{1,32})?$", "description": "Semantic version of this manifest's content." },
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 1024 },
+        "authors": { "type": "array", "items": { "type": "string" } },
+        "platforms": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["windows-x64"] } },
+        "requirements": { "$ref": "#/$defs/RequirementsDefinition" },
+        "variables": { "type": "array", "items": { "$ref": "#/$defs/VariableDefinition" } },
+        "ports": { "type": "array", "items": { "$ref": "#/$defs/PortDefinition" } },
+        "install": { "$ref": "#/$defs/InstallDefinition", "description": "Steps run when the server is installed or reinstalled." },
+        "update": { "$ref": "#/$defs/InstallDefinition", "description": "Steps run when the game is updated. Without them, updates are not offered." },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "windows-x64": { "$ref": "#/$defs/RuntimeDefinition" } }
+        },
+        "configFiles": { "type": "array", "items": { "$ref": "#/$defs/ConfigFileDefinition" } },
+        "readiness": { "$ref": "#/$defs/ReadinessDefinition" },
+        "stop": { "$ref": "#/$defs/StopDefinition" },
+        "backup": { "$ref": "#/$defs/BackupDefinition" }
+      }
+    },
+    "RequirementsDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Shown when a server is created; not enforced.",
+      "properties": {
+        "minDiskGb": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "minMemoryMb": { "type": "integer", "minimum": 0, "maximum": 1048576 }
+      }
+    },
+    "VariableDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "label", "type"],
+      "properties": {
+        "key": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "type": { "enum": ["string", "integer", "boolean", "enum"] },
+        "default": { "type": ["string", "integer", "boolean"] },
+        "required": { "type": "boolean", "default": false },
+        "secret": { "type": "boolean", "default": false, "description": "Encrypted at rest, write-only in the API, masked in the UI and logs. String variables only, without a default." },
+        "userEditable": { "type": "boolean", "default": true },
+        "pattern": { "type": "string", "maxLength": 1024, "description": "Non-backtracking regular expression; required for strings used in arguments or configuration files." },
+        "maxLength": { "type": "integer", "minimum": 1, "maximum": 4096 },
+        "min": { "type": "integer" },
+        "max": { "type": "integer" },
+        "options": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/EnumOption" } },
+        "description": { "type": "string", "maxLength": 512 }
+      }
+    },
+    "EnumOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "label"],
+      "properties": {
+        "value": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$" },
+        "label": { "type": "string" },
+        "map": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Sub-values, used as {{var.<key>.<name>}}." }
+      }
+    },
+    "PortDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "label", "protocols", "default"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "protocols": { "type": "array", "minItems": 1, "maxItems": 2, "uniqueItems": true, "items": { "enum": ["udp", "tcp"] } },
+        "default": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "required": { "type": "boolean", "default": true, "description": "Optional ports can only be used inside { \"if\": \"port.<name>\" } arguments." },
+        "description": { "type": "string" }
+      }
+    },
+    "InstallDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps"],
+      "properties": {
+        "steps": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/InstallStep" } }
+      }
+    },
+    "InstallStep": {
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["steamcmd", "ensureDirectory", "writeFileIfMissing", "testGameServer"] } },
+      "oneOf": [
+        { "$ref": "#/$defs/SteamCmdStep" },
+        { "$ref": "#/$defs/EnsureDirectoryStep" },
+        { "$ref": "#/$defs/WriteFileIfMissingStep" },
+        { "$ref": "#/$defs/TestGameServerStep" }
+      ]
+    },
+    "SteamCmdStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "appId"],
+      "description": "Installs or updates a Steam app with SteamCMD, as the server's own account.",
+      "properties": {
+        "type": { "const": "steamcmd" },
+        "appId": { "type": "integer", "minimum": 1 },
+        "login": { "const": "anonymous", "default": "anonymous" },
+        "beta": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$" },
+        "betaPasswordVar": { "type": "string", "description": "A secret variable holding the beta branch password." },
+        "validate": { "type": "boolean", "default": false }
+      }
+    },
+    "EnsureDirectoryStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "path"],
+      "properties": { "type": { "const": "ensureDirectory" }, "path": { "$ref": "#/$defs/RelativePath" } }
+    },
+    "WriteFileIfMissingStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "path", "content"],
+      "properties": {
+        "type": { "const": "writeFileIfMissing" },
+        "path": { "$ref": "#/$defs/RelativePath" },
+        "content": { "type": "string", "maxLength": 65536, "description": "Literal text (no placeholders)." }
+      }
+    },
+    "TestGameServerStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "path"],
+      "description": "Pulsar's own test game server; only for the pulsar-test manifest.",
+      "properties": { "type": { "const": "testGameServer" }, "path": { "$ref": "#/$defs/RelativePath" } }
+    },
+    "RuntimeDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executable", "console"],
+      "properties": {
+        "executable": { "$ref": "#/$defs/RelativePath", "pattern": "\\.[eE][xX][eE]$" },
+        "workingDirectory": { "$ref": "#/$defs/RelativePath" },
+        "arguments": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/ArgumentTemplate" } },
+        "allowExtraArguments": { "type": "boolean", "default": false },
+        "environment": { "type": "object", "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$" }, "additionalProperties": { "type": "string" } },
+        "console": { "$ref": "#/$defs/ConsoleDefinition" }
+      }
+    },
+    "ArgumentTemplate": {
+      "description": "One argv element, with {{var.<key>}}, {{var.<key>.<sub>}}, {{port.<name>}}, {{port.<name>.ip}}, {{rcon.password}} or {{server.shortId}} placeholders, or a conditional group.",
+      "oneOf": [
+        { "type": "string", "maxLength": 1024 },
+        { "$ref": "#/$defs/ArgumentCondition" }
+      ]
+    },
+    "ArgumentCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["if", "then"],
+      "properties": {
+        "if": { "type": "string", "pattern": "^(var|port)\\.[A-Za-z][A-Za-z0-9_]*$", "description": "A boolean or string variable (true or non-empty), or an optional port (assigned)." },
+        "then": { "type": "array", "items": { "$ref": "#/$defs/ArgumentTemplate" } }
+      }
+    },
+    "ConsoleDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["pty", "pipes", "logfile+rcon"], "description": "pty: pseudo console; pipes: redirected stdio; logfile+rcon: output from a log file, commands through RCON (Source engine on Windows)." },
+        "encoding": { "enum": ["utf-8", "oem", "ansi"], "default": "utf-8" },
+        "inputNewline": { "enum": ["\n", "\r\n", "\r"] },
+        "sensitiveCommandPrefixes": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 64 } },
+        "logFile": { "$ref": "#/$defs/RelativePath" },
+        "rcon": { "$ref": "#/$defs/RconDefinition" }
+      }
+    },
+    "RconDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "port"],
+      "properties": {
+        "protocol": { "enum": ["source"] },
+        "port": { "type": "string", "description": "Name of a required TCP port." }
+      }
+    },
+    "ConfigFileDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "format", "mode", "set"],
+      "properties": {
+        "path": { "$ref": "#/$defs/RelativePath" },
+        "format": { "enum": ["source-cfg", "properties"] },
+        "mode": { "enum": ["patch", "managed"], "description": "patch: only the declared keys change; managed: the whole file is written by Pulsar." },
+        "set": { "type": "object", "minProperties": 1, "maxProperties": 128, "additionalProperties": { "type": "string" } }
+      }
+    },
+    "ReadinessDefinition": {
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["logPattern", "processAlive", "rcon"] } },
+      "oneOf": [
+        { "$ref": "#/$defs/LogPatternReadiness" },
+        { "$ref": "#/$defs/ProcessAliveReadiness" },
+        { "$ref": "#/$defs/RconReadiness" }
+      ]
+    },
+    "LogPatternReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "pattern", "timeoutSeconds"],
+      "properties": {
+        "type": { "const": "logPattern" },
+        "pattern": { "type": "string", "maxLength": 1024 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+      }
+    },
+    "ProcessAliveReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "graceSeconds"],
+      "properties": { "type": { "const": "processAlive" }, "graceSeconds": { "type": "integer", "minimum": 0, "maximum": 600 } }
+    },
+    "RconReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "timeoutSeconds"],
+      "properties": { "type": { "const": "rcon" }, "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 } }
+    },
+    "StopDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps", "timeoutSeconds"],
+      "properties": {
+        "steps": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/StopStep" } },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 3600, "description": "After it, the agent kills the whole process tree." }
+      }
+    },
+    "StopStep": {
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["consoleCommand", "rconCommand", "ctrlC", "wait"] } },
+      "oneOf": [
+        { "$ref": "#/$defs/ConsoleCommandStop" },
+        { "$ref": "#/$defs/RconCommandStop" },
+        { "$ref": "#/$defs/CtrlCStop" },
+        { "$ref": "#/$defs/WaitStop" }
+      ]
+    },
+    "ConsoleCommandStop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "command"],
+      "properties": { "type": { "const": "consoleCommand" }, "command": { "type": "string", "minLength": 1, "maxLength": 256 } }
+    },
+    "RconCommandStop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "command"],
+      "properties": { "type": { "const": "rconCommand" }, "command": { "type": "string", "minLength": 1, "maxLength": 256 } }
+    },
+    "CtrlCStop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": { "type": { "const": "ctrlC" } }
+    },
+    "WaitStop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "seconds"],
+      "properties": { "type": { "const": "wait" }, "seconds": { "type": "integer", "minimum": 1, "maximum": 300 } }
+    },
+    "BackupDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": { "type": "array", "items": { "type": "string" }, "description": "Globs relative to the server directory. Without them, everything is included." },
+        "exclude": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "RelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 260,
+      "pattern": "^(?![/\\\\])(?!.*:)(?!.*\\\\)(?!(.*/)?\\.\\.?(/|$))[^<>\"|?*]+$",
+      "description": "Relative to the server directory, with forward slashes; no '..', root, drive or stream."
+    }
+  }
+}

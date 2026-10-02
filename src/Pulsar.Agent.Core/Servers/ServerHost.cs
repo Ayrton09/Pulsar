@@ -378,7 +378,8 @@ public sealed partial class ServerHost(
     }
 
     private static LaunchPlan Render(GameManifest manifest, ServerRuntimeSpec spec) =>
-        LaunchPlanRenderer.Render(manifest, Platform, spec.Variables, spec.ShortId, spec.ExtraArguments);
+        LaunchPlanRenderer.Render(manifest, Platform, new ServerBinding(spec.ShortId, spec.Variables,
+            spec.Ports?.ToDictionary(p => p.Key, p => new PortAssignment(p.Value.IpAddress, p.Value.Port)), spec.ExtraArguments));
 
     private void UpdateRecord(Guid serverId, Func<ServerRecord, ServerRecord> change)
     {

@@ -15,12 +15,21 @@ public static partial class ManifestValidator
 
     private static readonly string[] s_platforms = [WindowsX64];
     private static readonly string[] s_newlines = ["\n", "\r\n", "\r"];
+    private static readonly HashSet<string> s_noPorts = [];
 
     // Set by the agent itself (docs/architecture/04, "Environment").
     private static readonly HashSet<string> s_reservedEnvironment = new(StringComparer.OrdinalIgnoreCase)
     {
         "PATH", "PATHEXT", "ComSpec", "SystemRoot", "windir", "PSModulePath", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
     };
+
+    /// <summary>Where a template is used: what it may reference depends on it.</summary>
+    private enum TemplateUse
+    {
+        Argument,
+        Environment,
+        ConfigValue,
+    }
 
     public static IReadOnlyList<ManifestError> Validate(GameManifest manifest)
     {
@@ -48,6 +57,11 @@ public static partial class ManifestValidator
             Error("name", "Required, at most 128 characters.");
         }
 
+        if (manifest.Description?.Length > 1024)
+        {
+            Error("description", "At most 1024 characters.");
+        }
+
         if (manifest.Platforms.Count == 0 || manifest.Platforms.Any(p => !s_platforms.Contains(p)) || manifest.Platforms.Distinct().Count() != manifest.Platforms.Count)
         {
             Error("platforms", $"Supported platforms: {string.Join(", ", s_platforms)}.");
@@ -58,44 +72,61 @@ public static partial class ManifestValidator
             Error($"runtime.{platform}", "Runtime for a platform the manifest does not declare.");
         }
 
-        var variables = ValidateVariables(manifest.VariableList, Error);
-        if (manifest.Install is { } install)
+        if (manifest.Requirements is { } requirements)
         {
-            for (var i = 0; i < install.Steps.Count; i++)
+            if (requirements.MinDiskGb is < 0 or > 10_000)
             {
-                var path = $"install.steps[{i}]";
-                switch (install.Steps[i])
-                {
-                    case EnsureDirectoryStep step:
-                        ValidateRelativePath($"{path}.path", step.Path, Error);
-                        break;
-                    case TestGameServerStep step:
-                        ValidateRelativePath($"{path}.path", step.Path, Error);
-                        if (manifest.Key != TestGameKey)
-                        {
-                            Error(path, $"Only the '{TestGameKey}' manifest can install the test game server.");
-                        }
+                Error("requirements.minDiskGb", "Between 0 and 10000.");
+            }
 
-                        break;
-                }
+            if (requirements.MinMemoryMb is < 0 or > 1_048_576)
+            {
+                Error("requirements.minMemoryMb", "Between 0 and 1048576.");
             }
         }
 
-        ManifestConsoleMode? mode = null;
+        var variables = ValidateVariables(manifest.VariableList, Error);
+        var ports = ValidatePorts(manifest.PortList, Error);
+        var context = new Context(variables, ports, Error);
+
+        if (manifest.Install is { } install)
+        {
+            ValidateSteps("install", manifest, install, context);
+        }
+
+        if (manifest.Update is { } update)
+        {
+            ValidateSteps("update", manifest, update, context);
+        }
+
+        RuntimeDefinition? runtime = null;
         foreach (var platform in manifest.Platforms)
         {
-            if (!manifest.Runtime.TryGetValue(platform, out var runtime))
+            if (!manifest.Runtime.TryGetValue(platform, out var platformRuntime))
             {
                 Error("runtime", $"Missing the runtime for {platform}.");
                 continue;
             }
 
-            mode = runtime.Console.Mode;
-            ValidateRuntime($"runtime.{platform}", runtime, variables, Error);
+            runtime = platformRuntime;
+            ValidateRuntime($"runtime.{platform}", platformRuntime, context);
         }
 
-        ValidateReadiness(manifest.Readiness, Error);
-        ValidateStop(manifest.Stop, mode, Error);
+        context.HasRcon = runtime?.Console.Rcon is not null;
+        ValidateConfigFiles(manifest.ConfigFileList, context);
+        if (context.HasRcon && !context.UsesRconPassword)
+        {
+            Error("runtime", "The game must receive the RCON password: use {{rcon.password}} in its arguments or a configuration file.");
+        }
+
+        ValidateReadiness(manifest.Readiness, runtime?.Console, Error);
+        ValidateStop(manifest.Stop, runtime?.Console, Error);
+        if (manifest.Backup is { } backup)
+        {
+            ValidateGlobs("backup.include", backup.Include ?? [], Error);
+            ValidateGlobs("backup.exclude", backup.Exclude ?? [], Error);
+        }
+
         return errors;
     }
 
@@ -114,7 +145,7 @@ public static partial class ManifestValidator
         }
     }
 
-    internal static string? RelativePathError(string path)
+    internal static string? RelativePathError(string path, bool allowWildcards = false)
     {
         if (path.Contains('\\', StringComparison.Ordinal))
         {
@@ -138,7 +169,7 @@ public static partial class ManifestValidator
                 return "Segments cannot start with a space or end with a dot or a space.";
             }
 
-            if (segment.Any(c => char.IsControl(c) || c is '<' or '>' or '"' or '|' or '?' or '*'))
+            if (segment.Any(c => char.IsControl(c) || c is '<' or '>' or '"' or '|' || (!allowWildcards && c is '?' or '*')))
             {
                 return "Contains characters Windows does not allow in names.";
             }
@@ -164,14 +195,24 @@ public static partial class ManifestValidator
                 error($"{path}.key", "Unique, a letter followed by up to 63 letters, digits or underscores.");
             }
 
-            if (string.IsNullOrWhiteSpace(variable.Label))
+            if (string.IsNullOrWhiteSpace(variable.Label) || variable.Label.Length > 64)
             {
-                error($"{path}.label", "Required.");
+                error($"{path}.label", "Required, at most 64 characters.");
+            }
+
+            if (variable.Description?.Length > 512)
+            {
+                error($"{path}.description", "At most 512 characters.");
             }
 
             if (variable.Secret && variable.Default is not null)
             {
                 error($"{path}.default", "Secret variables cannot have a default value.");
+            }
+
+            if (variable.Secret && variable.Type != VariableType.String)
+            {
+                error($"{path}.secret", "Only string variables can be secret.");
             }
 
             switch (variable.Type)
@@ -200,8 +241,17 @@ public static partial class ManifestValidator
                     {
                         error($"{path}.options", "Enum variables need options with unique values.");
                     }
+                    else if (options.Any(o => !OptionValuePattern().IsMatch(o.Value) || o.Map?.Values.Any(v => v.Any(char.IsControl)) == true))
+                    {
+                        error($"{path}.options", "Option values are 1–64 letters, digits, '_', '-' or '.'; mapped values are single lines.");
+                    }
 
                     break;
+            }
+
+            if (variable.Type != VariableType.String && (variable.Pattern is not null || variable.MaxLength is not null))
+            {
+                error(path, "'pattern' and 'maxLength' apply to string variables only.");
             }
 
             if (variable.Default is { } value && VariableValues.Check(variable, VariableValues.FromJson(value)) is { } defaultError)
@@ -213,73 +263,214 @@ public static partial class ManifestValidator
         return byKey;
     }
 
-    private static void ValidateRuntime(string path, RuntimeDefinition runtime, Dictionary<string, VariableDefinition> variables, Action<string, string> error)
+    private static Dictionary<string, PortDefinition> ValidatePorts(IReadOnlyList<PortDefinition> ports, Action<string, string> error)
     {
-        ValidateRelativePath($"{path}.executable", runtime.Executable, error);
+        var byName = new Dictionary<string, PortDefinition>(StringComparer.Ordinal);
+        for (var i = 0; i < ports.Count; i++)
+        {
+            var port = ports[i];
+            var path = $"ports[{i}]";
+            if (!PortNamePattern().IsMatch(port.Name) || !byName.TryAdd(port.Name, port))
+            {
+                error($"{path}.name", "Unique, a lowercase letter followed by up to 31 lowercase letters, digits or underscores.");
+            }
+
+            if (string.IsNullOrWhiteSpace(port.Label) || port.Label.Length > 64)
+            {
+                error($"{path}.label", "Required, at most 64 characters.");
+            }
+
+            if (port.Protocols.Count == 0 || port.Protocols.Distinct().Count() != port.Protocols.Count)
+            {
+                error($"{path}.protocols", "One or both of 'udp' and 'tcp', once each.");
+            }
+
+            if (port.Default is < 1 or > 65535)
+            {
+                error($"{path}.default", "Between 1 and 65535.");
+            }
+        }
+
+        if (ports.Select(p => p.Default).Distinct().Count() != ports.Count)
+        {
+            error("ports", "Two ports have the same default.");
+        }
+
+        return byName;
+    }
+
+    private static void ValidateSteps(string section, GameManifest manifest, InstallDefinition definition, Context context)
+    {
+        if (definition.Steps.Count is 0 or > 32)
+        {
+            context.Error($"{section}.steps", "Between 1 and 32 steps.");
+        }
+
+        for (var i = 0; i < definition.Steps.Count; i++)
+        {
+            var path = $"{section}.steps[{i}]";
+            switch (definition.Steps[i])
+            {
+                case SteamCmdStep steam:
+                    if (steam.AppId <= 0)
+                    {
+                        context.Error($"{path}.appId", "A Steam app id.");
+                    }
+
+                    if (steam.Login != SteamCmdStep.AnonymousLogin)
+                    {
+                        context.Error($"{path}.login", "Only 'anonymous' is supported.");
+                    }
+
+                    if (steam.Beta is { } beta && !BranchPattern().IsMatch(beta))
+                    {
+                        context.Error($"{path}.beta", "1–64 letters, digits, '_', '-' or '.'.");
+                    }
+
+                    if (steam.BetaPasswordVar is { } passwordVar
+                        && (steam.Beta is null || !context.Variables.TryGetValue(passwordVar, out var password) || !password.Secret))
+                    {
+                        context.Error($"{path}.betaPasswordVar", "Must name a secret variable, together with 'beta'.");
+                    }
+
+                    break;
+                case EnsureDirectoryStep step:
+                    ValidateRelativePath($"{path}.path", step.Path, context.Error);
+                    break;
+                case WriteFileIfMissingStep step:
+                    ValidateRelativePath($"{path}.path", step.Path, context.Error);
+                    if (step.Content.Length > 64 * 1024)
+                    {
+                        context.Error($"{path}.content", "At most 64 KiB.");
+                    }
+
+                    break;
+                case TestGameServerStep step:
+                    ValidateRelativePath($"{path}.path", step.Path, context.Error);
+                    if (manifest.Key != TestGameKey)
+                    {
+                        context.Error(path, $"Only the '{TestGameKey}' manifest can install the test game server.");
+                    }
+
+                    break;
+            }
+        }
+    }
+
+    private static void ValidateRuntime(string path, RuntimeDefinition runtime, Context context)
+    {
+        ValidateRelativePath($"{path}.executable", runtime.Executable, context.Error);
         if (IsValidRelativePath(runtime.Executable) && !runtime.Executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
-            error($"{path}.executable", "Only .exe files can be started (no scripts, installers or interpreters).");
+            context.Error($"{path}.executable", "Only .exe files can be started (no scripts, installers or interpreters).");
         }
 
         if (runtime.WorkingDirectory is { } workingDirectory)
         {
-            ValidateRelativePath($"{path}.workingDirectory", workingDirectory, error);
+            ValidateRelativePath($"{path}.workingDirectory", workingDirectory, context.Error);
         }
 
-        ValidateArguments($"{path}.arguments", runtime.ArgumentList, variables, error);
+        var console = runtime.Console;
+        context.HasRcon = console.Rcon is not null;
+        ValidateArguments($"{path}.arguments", runtime.ArgumentList, context, guardedPorts: s_noPorts);
         foreach (var (name, value) in runtime.Environment ?? new Dictionary<string, string>())
         {
             if (s_reservedEnvironment.Contains(name) || !EnvironmentNamePattern().IsMatch(name))
             {
-                error($"{path}.environment.{name}", "Reserved or invalid environment variable name.");
+                context.Error($"{path}.environment.{name}", "Reserved or invalid environment variable name.");
             }
 
-            ValidateTemplate($"{path}.environment.{name}", value, variables, error);
-        }
-
-        var console = runtime.Console;
-        if (console.Mode == ManifestConsoleMode.LogfileRcon)
-        {
-            error($"{path}.console.mode", "'logfile+rcon' is not supported by this version of Pulsar yet.");
+            ValidateTemplate($"{path}.environment.{name}", value, context, TemplateUse.Environment, guardedPorts: s_noPorts);
         }
 
         if (console.InputNewline is { } newline && !s_newlines.Contains(newline))
         {
-            error($"{path}.console.inputNewline", "Use \"\\n\", \"\\r\\n\" or \"\\r\".");
+            context.Error($"{path}.console.inputNewline", "Use \"\\n\", \"\\r\\n\" or \"\\r\".");
         }
 
         if (console.Mode == ManifestConsoleMode.Pty && console.Encoding != ManifestConsoleEncoding.Utf8)
         {
-            error($"{path}.console.encoding", "A pseudo console always produces UTF-8.");
+            context.Error($"{path}.console.encoding", "A pseudo console always produces UTF-8.");
+        }
+
+        if (console.SensitiveCommandPrefixes is { } prefixes && prefixes.Any(p => p.Length is 0 or > 64 || p.Any(char.IsControl)))
+        {
+            context.Error($"{path}.console.sensitiveCommandPrefixes", "Single words of up to 64 characters.");
+        }
+
+        if (console.Mode == ManifestConsoleMode.LogfileRcon)
+        {
+            if (console.LogFile is not { } logFile)
+            {
+                context.Error($"{path}.console.logFile", "Required in 'logfile+rcon' mode.");
+            }
+            else
+            {
+                ValidateRelativePath($"{path}.console.logFile", logFile, context.Error);
+            }
+
+            if (console.Rcon is null)
+            {
+                context.Error($"{path}.console.rcon", "Required in 'logfile+rcon' mode.");
+            }
+
+            if (console.InputNewline is not null)
+            {
+                context.Error($"{path}.console.inputNewline", "Commands go through RCON in 'logfile+rcon' mode.");
+            }
+        }
+        else if (console.LogFile is not null || console.Rcon is not null)
+        {
+            context.Error($"{path}.console", "'logFile' and 'rcon' belong to the 'logfile+rcon' mode.");
+        }
+
+        if (console.Rcon is { } rcon && (!context.Ports.TryGetValue(rcon.Port, out var port) || !port.Protocols.Contains(PortProtocol.Tcp) || !port.Required))
+        {
+            context.Error($"{path}.console.rcon.port", "Must name a required TCP port of the manifest.");
         }
     }
 
-    private static void ValidateArguments(string path, IReadOnlyList<ArgumentTemplate> arguments, Dictionary<string, VariableDefinition> variables,
-        Action<string, string> error)
+    private static void ValidateArguments(string path, IReadOnlyList<ArgumentTemplate> arguments, Context context, IReadOnlySet<string> guardedPorts)
     {
+        if (arguments.Count > 256)
+        {
+            context.Error(path, "At most 256 arguments.");
+        }
+
         for (var i = 0; i < arguments.Count; i++)
         {
             switch (arguments[i])
             {
                 case ArgumentText text:
-                    ValidateTemplate($"{path}[{i}]", text.Text, variables, error, argument: true);
+                    ValidateTemplate($"{path}[{i}]", text.Text, context, TemplateUse.Argument, guardedPorts);
                     break;
                 case ArgumentCondition condition:
-                    var key = condition.If.StartsWith("var.", StringComparison.Ordinal) ? condition.If[4..] : null;
-                    if (key is null || !variables.TryGetValue(key, out var variable) || variable.Type is not (VariableType.Boolean or VariableType.String))
+                    var guarded = guardedPorts;
+                    switch (condition.If.Split('.'))
                     {
-                        error($"{path}[{i}].if", "Must be 'var.<key>' of a boolean or string variable.");
+                        case ["var", var key] when context.Variables.TryGetValue(key, out var variable) && variable.Type is VariableType.Boolean or VariableType.String:
+                            break;
+                        case ["port", var name] when context.Ports.ContainsKey(name):
+                            guarded = new HashSet<string>(guardedPorts, StringComparer.Ordinal) { name };
+                            break;
+                        default:
+                            context.Error($"{path}[{i}].if", "Must be 'var.<key>' of a boolean or string variable, or 'port.<name>'.");
+                            break;
                     }
 
-                    ValidateArguments($"{path}[{i}].then", condition.Then, variables, error);
+                    ValidateArguments($"{path}[{i}].then", condition.Then, context, guarded);
                     break;
             }
         }
     }
 
-    private static void ValidateTemplate(string path, string template, Dictionary<string, VariableDefinition> variables, Action<string, string> error,
-        bool argument = false)
+    private static void ValidateTemplate(string path, string template, Context context, TemplateUse use, IReadOnlySet<string> guardedPorts)
     {
+        if (template.Length > 1024)
+        {
+            context.Error(path, "At most 1024 characters.");
+        }
+
         var placeholders = Placeholders.Parse(template, out var malformed);
         foreach (var placeholder in placeholders)
         {
@@ -288,36 +479,117 @@ public static partial class ManifestValidator
                 case ["server", "shortId"]:
                     break;
                 case ["var", var key, .. var rest] when rest.Length <= 1:
-                    if (!variables.TryGetValue(key, out var variable))
+                    if (!context.Variables.TryGetValue(key, out var variable))
                     {
-                        error(path, $"Unknown variable '{key}'.");
+                        context.Error(path, $"Unknown variable '{key}'.");
                     }
                     else if (rest is [var sub] && (variable.Type != VariableType.Enum || variable.Options!.Any(o => o.Map?.ContainsKey(sub) != true)))
                     {
-                        error(path, $"'{key}.{sub}' is not a sub-value every option of the enum maps.");
+                        context.Error(path, $"'{key}.{sub}' is not a sub-value every option of the enum maps.");
                     }
-                    else if (argument && variable.Type == VariableType.String && variable.Pattern is null)
+                    else if (use != TemplateUse.Environment && variable.Type == VariableType.String && variable.Pattern is null)
                     {
-                        error(path, $"String variable '{key}' is used in arguments, so it needs a 'pattern'.");
+                        context.Error(path, $"String variable '{key}' is used in arguments or configuration files, so it needs a 'pattern'.");
+                    }
+                    else if (use == TemplateUse.Environment && variable.Secret)
+                    {
+                        context.Error(path, $"Secret variable '{key}' cannot go into the environment (child processes inherit it).");
                     }
 
                     break;
-                case ["port", ..]:
-                    error(path, "Port placeholders are not supported by this version of Pulsar yet.");
+                case ["port", var name, .. var rest] when rest is [] or ["ip"]:
+                    if (!context.Ports.TryGetValue(name, out var port))
+                    {
+                        context.Error(path, $"Unknown port '{name}'.");
+                    }
+                    else if (!port.Required && !guardedPorts.Contains(name))
+                    {
+                        context.Error(path, $"Port '{name}' is optional: use it inside {{ \"if\": \"port.{name}\" }} arguments only.");
+                    }
+
+                    break;
+                case ["rcon", "password"]:
+                    if (use == TemplateUse.Environment)
+                    {
+                        context.Error(path, "The RCON password cannot go into the environment.");
+                    }
+                    else if (!context.HasRcon)
+                    {
+                        context.Error(path, "{{rcon.password}} needs an RCON console ('logfile+rcon').");
+                    }
+
+                    context.UsesRconPassword = true;
                     break;
                 default:
-                    error(path, $"Unknown placeholder '{{{{{string.Join('.', placeholder)}}}}}'.");
+                    context.Error(path, $"Unknown placeholder '{{{{{string.Join('.', placeholder)}}}}}'.");
                     break;
             }
         }
 
         if (malformed)
         {
-            error(path, "Malformed placeholder: use {{var.<key>}}, {{var.<key>.<sub>}} or {{server.shortId}}.");
+            context.Error(path, "Malformed placeholder: use {{var.<key>}}, {{var.<key>.<sub>}}, {{port.<name>}}, {{port.<name>.ip}}, {{rcon.password}} or {{server.shortId}}.");
         }
     }
 
-    private static void ValidateReadiness(ReadinessDefinition readiness, Action<string, string> error)
+    private static void ValidateConfigFiles(IReadOnlyList<ConfigFileDefinition> files, Context context)
+    {
+        if (files.Count > 16)
+        {
+            context.Error("configFiles", "At most 16 files.");
+        }
+
+        if (files.Select(f => f.Path.ToUpperInvariant()).Distinct().Count() != files.Count)
+        {
+            context.Error("configFiles", "Each file can be declared once.");
+        }
+
+        for (var i = 0; i < files.Count; i++)
+        {
+            var file = files[i];
+            var path = $"configFiles[{i}]";
+            ValidateRelativePath($"{path}.path", file.Path, context.Error);
+            if (file.Set.Count is 0 or > 128)
+            {
+                context.Error($"{path}.set", "Between 1 and 128 keys.");
+            }
+
+            if (file.Set.Keys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != file.Set.Count)
+            {
+                context.Error($"{path}.set", "Keys differ only by case.");
+            }
+
+            foreach (var (key, value) in file.Set)
+            {
+                var keyPattern = file.Format == ConfigFileFormat.SourceCfg ? SourceCfgKeyPattern() : PropertiesKeyPattern();
+                if (!keyPattern.IsMatch(key))
+                {
+                    context.Error($"{path}.set.{key}", "Invalid key for this format.");
+                }
+
+                // Literal text must already be safe; values are checked again once rendered.
+                if (ConfigFileWriter.ValueError(file.Format, Placeholders.Strip(value)) is { } error)
+                {
+                    context.Error($"{path}.set.{key}", error);
+                }
+
+                ValidateTemplate($"{path}.set.{key}", value, context, TemplateUse.ConfigValue, guardedPorts: s_noPorts);
+            }
+        }
+    }
+
+    private static void ValidateGlobs(string path, IReadOnlyList<string> globs, Action<string, string> error)
+    {
+        for (var i = 0; i < globs.Count; i++)
+        {
+            if (globs[i].Length is 0 or > 260 || RelativePathError(globs[i], allowWildcards: true) is not null)
+            {
+                error($"{path}[{i}]", "A relative glob ('cfg/**', '**/*.log').");
+            }
+        }
+    }
+
+    private static void ValidateReadiness(ReadinessDefinition readiness, ConsoleDefinition? console, Action<string, string> error)
     {
         switch (readiness)
         {
@@ -336,24 +608,62 @@ public static partial class ManifestValidator
             case ProcessAliveReadiness alive when alive.GraceSeconds is < 0 or > 600:
                 error("readiness.graceSeconds", "Between 0 and 600.");
                 break;
+            case RconReadiness rcon:
+                if (console?.Rcon is null)
+                {
+                    error("readiness", "RCON readiness needs an RCON console.");
+                }
+
+                if (rcon.TimeoutSeconds is < 1 or > 3600)
+                {
+                    error("readiness.timeoutSeconds", "Between 1 and 3600.");
+                }
+
+                break;
         }
     }
 
-    private static void ValidateStop(StopDefinition stop, ManifestConsoleMode? mode, Action<string, string> error)
+    private static void ValidateStop(StopDefinition stop, ConsoleDefinition? console, Action<string, string> error)
     {
         if (stop.TimeoutSeconds is < 1 or > 3600)
         {
             error("stop.timeoutSeconds", "Between 1 and 3600.");
         }
 
+        if (stop.Steps.Count > 16)
+        {
+            error("stop.steps", "At most 16 steps.");
+        }
+
+        var mode = console?.Mode;
         for (var i = 0; i < stop.Steps.Count; i++)
         {
             var path = $"stop.steps[{i}]";
             switch (stop.Steps[i])
             {
-                case ConsoleCommandStop command when string.IsNullOrWhiteSpace(command.Command) || command.Command.Length > 256
-                    || command.Command.Any(char.IsControl):
-                    error($"{path}.command", "A single line of up to 256 characters.");
+                case ConsoleCommandStop command:
+                    if (!IsCommand(command.Command))
+                    {
+                        error($"{path}.command", "A single line of up to 256 characters.");
+                    }
+
+                    if (mode == ManifestConsoleMode.LogfileRcon)
+                    {
+                        error(path, "Console commands need console mode 'pty' or 'pipes'; use 'rconCommand'.");
+                    }
+
+                    break;
+                case RconCommandStop command:
+                    if (!IsCommand(command.Command))
+                    {
+                        error($"{path}.command", "A single line of up to 256 characters.");
+                    }
+
+                    if (console?.Rcon is null)
+                    {
+                        error(path, "RCON commands need an RCON console.");
+                    }
+
                     break;
                 case CtrlCStop when mode != ManifestConsoleMode.Pty:
                     error(path, "Ctrl+C needs console mode 'pty'.");
@@ -363,10 +673,17 @@ public static partial class ManifestValidator
                     break;
             }
         }
+
+        static bool IsCommand(string command) => !string.IsNullOrWhiteSpace(command) && command.Length <= 256 && !command.Any(char.IsControl);
     }
 
     internal static string? CompileError(string pattern)
     {
+        if (pattern.Length > 1024)
+        {
+            return "At most 1024 characters.";
+        }
+
         try
         {
             _ = new Regex(pattern, RegexOptions.NonBacktracking | RegexOptions.CultureInvariant, RegexTimeout);
@@ -382,6 +699,20 @@ public static partial class ManifestValidator
         }
     }
 
+    /// <summary>What templates can reference, and what they were seen referencing.</summary>
+    private sealed class Context(Dictionary<string, VariableDefinition> variables, Dictionary<string, PortDefinition> ports, Action<string, string> error)
+    {
+        public Dictionary<string, VariableDefinition> Variables { get; } = variables;
+
+        public Dictionary<string, PortDefinition> Ports { get; } = ports;
+
+        public Action<string, string> Error { get; } = error;
+
+        public bool HasRcon { get; set; }
+
+        public bool UsesRconPassword { get; set; }
+    }
+
     [GeneratedRegex("^[a-z0-9][a-z0-9-]{1,63}$", RegexOptions.CultureInvariant)]
     private static partial Regex KeyPattern();
 
@@ -390,6 +721,21 @@ public static partial class ManifestValidator
 
     [GeneratedRegex("^[A-Za-z][A-Za-z0-9_]{0,63}$", RegexOptions.CultureInvariant)]
     private static partial Regex VariableKeyPattern();
+
+    [GeneratedRegex("^[A-Za-z0-9_.-]{1,64}$", RegexOptions.CultureInvariant)]
+    private static partial Regex OptionValuePattern();
+
+    [GeneratedRegex("^[a-z][a-z0-9_]{0,31}$", RegexOptions.CultureInvariant)]
+    private static partial Regex PortNamePattern();
+
+    [GeneratedRegex("^[A-Za-z0-9_.-]{1,64}$", RegexOptions.CultureInvariant)]
+    private static partial Regex BranchPattern();
+
+    [GeneratedRegex("^[A-Za-z0-9_.]{1,64}$", RegexOptions.CultureInvariant)]
+    private static partial Regex SourceCfgKeyPattern();
+
+    [GeneratedRegex("^[A-Za-z0-9_.-]{1,128}$", RegexOptions.CultureInvariant)]
+    private static partial Regex PropertiesKeyPattern();
 
     [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.CultureInvariant)]
     private static partial Regex EnvironmentNamePattern();
@@ -405,11 +751,15 @@ internal static partial class Placeholders
     {
         var found = Pattern().Matches(template).Select(m => m.Groups[1].Value.Split('.')).ToList();
         // Any brace pair the pattern did not consume is a typo, not literal text.
-        malformed = Pattern().Replace(template, "").Contains("{{", StringComparison.Ordinal) || Pattern().Replace(template, "").Contains("}}", StringComparison.Ordinal);
+        var rest = Strip(template);
+        malformed = rest.Contains("{{", StringComparison.Ordinal) || rest.Contains("}}", StringComparison.Ordinal);
         return found;
     }
 
     public static string Replace(string template, Func<string[], string> value) => Pattern().Replace(template, m => value(m.Groups[1].Value.Split('.')));
+
+    /// <summary>The literal text of a template.</summary>
+    public static string Strip(string template) => Pattern().Replace(template, "");
 
     [GeneratedRegex(@"\{\{([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*){1,2})\}\}", RegexOptions.CultureInvariant)]
     private static partial Regex Pattern();

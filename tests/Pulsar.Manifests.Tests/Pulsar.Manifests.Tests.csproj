@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="LateApexEarlySpeed.Json.Schema" />
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
 

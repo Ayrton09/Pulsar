@@ -54,13 +54,23 @@ public enum StateChangeReason
 /// How a server runs, sent by the panel at provisioning (docs/architecture/03): the exact manifest text and the values
 /// to render it with. The agent renders and validates the command line itself; it never receives one.
 /// </summary>
+/// <param name="Variables">Values of the manifest's variables, secret ones included (the agent keeps them encrypted).</param>
+/// <param name="Ports">The node allocation given to each manifest port.</param>
 public sealed record ServerRuntimeSpec(
     string ShortId,
     string Manifest,
     IReadOnlyDictionary<string, string?> Variables,
     IReadOnlyList<string> ExtraArguments,
     bool AutoStart,
-    bool RestartOnCrash);
+    bool RestartOnCrash,
+    IReadOnlyDictionary<string, ServerPort>? Ports = null)
+{
+    // Variables may hold secrets: never print them.
+    public override string ToString() => $"ServerRuntimeSpec {{ ShortId = {ShortId} }}";
+}
+
+/// <summary>An <c>ip:port</c> pair of the node (both protocols); <c>0.0.0.0</c> means every interface.</summary>
+public sealed record ServerPort(string IpAddress, int Port);
 
 /// <summary>A server's state at the time of an agent's Hello: the panel takes it as the truth (reconciliation).</summary>
 public sealed record ServerSnapshot(Guid ServerId, RuntimeState State, long StateSequence, int? ExitCode, DateTimeOffset? StartedAt);
