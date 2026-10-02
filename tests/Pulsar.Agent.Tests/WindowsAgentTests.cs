@@ -163,3 +163,61 @@ public sealed class ServiceBinarySecurityTests
         Assert.Empty(Windows.ServiceBinarySecurity.FindUntrustedWriters(executable));
     }
 }
+
+public sealed class ServiceBinaryAclRulesTests
+{
+    private static readonly SecurityIdentifier s_authenticatedUsers = new(WellKnownSidType.AuthenticatedUserSid, null);
+    private static readonly SecurityIdentifier s_administrators = new(WellKnownSidType.BuiltinAdministratorsSid, null);
+
+    [WindowsFact]
+    public void ModifyOnADriveRootDoesNotLetAnyoneReplaceFoldersBelowIt()
+    {
+        // As in Windows Sandbox: Authenticated Users have "Modify" on C:\ itself.
+        var root = Acl(new FileSystemAccessRule(s_authenticatedUsers, FileSystemRights.Modify, AccessControlType.Allow));
+
+        Assert.Empty(Inspect(root, Windows.ServiceBinarySecurity.AncestorRights(isRoot: true)));
+        Assert.NotEmpty(Inspect(root, Windows.ServiceBinarySecurity.AncestorRights(isRoot: false)));
+    }
+
+    [WindowsFact]
+    public void DeleteChildOnAnyAncestorIsUnsafe()
+    {
+        var folder = Acl(new FileSystemAccessRule(s_authenticatedUsers, FileSystemRights.DeleteSubdirectoriesAndFiles, AccessControlType.Allow));
+
+        Assert.NotEmpty(Inspect(folder, Windows.ServiceBinarySecurity.AncestorRights(isRoot: true)));
+    }
+
+    [WindowsFact]
+    public void InheritOnlyEntriesDoNotApplyToTheFolderItself()
+    {
+        var folder = Acl(new FileSystemAccessRule(s_authenticatedUsers, FileSystemRights.Modify,
+            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.InheritOnly, AccessControlType.Allow));
+
+        Assert.Empty(Inspect(folder, Windows.ServiceBinarySecurity.ExecutableRights));
+    }
+
+    [WindowsFact]
+    public void WriteOnTheExecutableFolderIsUnsafeButReadIsNot()
+    {
+        var readable = Acl(new FileSystemAccessRule(s_authenticatedUsers, FileSystemRights.ReadAndExecute, AccessControlType.Allow));
+        var writable = Acl(new FileSystemAccessRule(s_authenticatedUsers, FileSystemRights.Write, AccessControlType.Allow));
+
+        Assert.Empty(Inspect(readable, Windows.ServiceBinarySecurity.ExecutableRights));
+        Assert.Single(Inspect(writable, Windows.ServiceBinarySecurity.ExecutableRights));
+    }
+
+    private static DirectorySecurity Acl(FileSystemAccessRule rule)
+    {
+        var security = new DirectorySecurity();
+        security.SetOwner(s_administrators);
+        security.AddAccessRule(rule);
+        return security;
+    }
+
+    private static List<string> Inspect(DirectorySecurity security, FileSystemRights dangerous)
+    {
+        var findings = new List<string>();
+        Windows.ServiceBinarySecurity.Inspect(@"C:\Example", security, dangerous, findings);
+        return findings;
+    }
+}

@@ -39,14 +39,24 @@ public static class ServiceBinarySecurity
             Inspect(directory.FullName, directory.GetAccessControl(), ModifyRights, findings);
             for (var ancestor = directory.Parent; ancestor is not null; ancestor = ancestor.Parent)
             {
-                Inspect(ancestor.FullName, ancestor.GetAccessControl(), ReplaceRights, findings);
+                Inspect(ancestor.FullName, ancestor.GetAccessControl(), AncestorRights(isRoot: ancestor.Parent is null), findings);
             }
         }
 
         return findings;
     }
 
-    private static void Inspect(string path, FileSystemSecurity security, FileSystemRights dangerous, List<string> findings)
+    /// <summary>
+    /// Rights on a folder above the executable that would let someone put another folder in its place. A drive root
+    /// cannot be renamed or deleted, so "delete" there is harmless; some images (Windows Sandbox) grant
+    /// Authenticated Users "Modify" on C:\ itself, which includes it but not delete-child.
+    /// </summary>
+    internal static FileSystemRights AncestorRights(bool isRoot) =>
+        isRoot ? ReplaceRights & ~FileSystemRights.Delete : ReplaceRights;
+
+    internal static FileSystemRights ExecutableRights => ModifyRights;
+
+    internal static void Inspect(string path, FileSystemSecurity security, FileSystemRights dangerous, List<string> findings)
     {
         // The owner can always rewrite the DACL.
         if (security.GetOwner(typeof(SecurityIdentifier)) is SecurityIdentifier owner && !IsTrusted(owner))
