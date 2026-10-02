@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Processes;
+using Pulsar.Agent.Core.Steam;
 using Pulsar.Contracts;
 using Pulsar.Manifests;
 
@@ -27,6 +28,7 @@ public sealed partial class ServerHost(
     IServerProvisioner provisioner,
     IGameProcessManager processes,
     InstallSteps installSteps,
+    SteamCmdRunner steamCmd,
     InstallOptions installOptions,
     PanelChannel panel,
     SupervisorOptions supervisorOptions,
@@ -39,6 +41,7 @@ public sealed partial class ServerHost(
     private readonly ILogger _logger = loggerFactory.CreateLogger<ServerHost>();
     private readonly ConcurrentDictionary<Guid, Server> _servers = new();
     private readonly ConcurrentDictionary<Guid, Guid> _operations = new(); // server → operation in flight
+    private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _cancellations = new(); // operation → its cancellation
     private readonly TaskCompletionSource _loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _stopping = new();
     private readonly Lock _recordLock = new();
@@ -59,6 +62,9 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.RestartServer;
             yield return AgentCapabilities.KillServer;
             yield return AgentCapabilities.DeleteServer;
+            yield return AgentCapabilities.UpdateServer;
+            yield return AgentCapabilities.ApplyServerSpec;
+            yield return AgentCapabilities.CancelOperation;
             if (installOptions.TestGameAvailable)
             {
                 yield return AgentCapabilities.TestGame;
@@ -157,6 +163,9 @@ public sealed partial class ServerHost(
             ProvisionServerCommand provision => Provision(envelope, provision),
             InstallServerCommand install => Install(envelope, install),
             DeleteServerCommand delete => Delete(envelope, delete),
+            UpdateServerCommand update => Update(envelope, update),
+            ApplyServerSpecCommand apply => await ApplySpecAsync(envelope, apply),
+            CancelOperationCommand cancel => Cancel(envelope, cancel),
             StartServerCommand start => await Control(envelope, start.ServerId, s => s.StartAsync(), allowedDuringOperation: false),
             StopServerCommand stop => await Control(envelope, stop.ServerId, s => s.StopAsync(), allowedDuringOperation: true),
             RestartServerCommand restart => await Control(envelope, restart.ServerId, s => s.RestartAsync(), allowedDuringOperation: false),
@@ -199,7 +208,7 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.invalid_spec", ex.Message);
         }
 
-        return RunOperation(envelope, command.ServerId, operationId, async () =>
+        return RunOperation(envelope, command.ServerId, operationId, async _ignored =>
         {
             var root = _config!.ServersRootOrDefault(configs.Paths);
             await Task.Run(() => provisioner.Provision(root, spec.ShortId));
@@ -213,7 +222,7 @@ public sealed partial class ServerHost(
             if (_servers.TryGetValue(command.ServerId, out var server))
             {
                 await server.Supervisor.UpdateAsync(Definition(command.ServerId, spec));
-                _servers[command.ServerId] = server with { Manifest = Parse(spec) };
+                _servers[command.ServerId] = server with { Manifest = Parse(spec), Spec = spec };
             }
             else
             {
@@ -224,14 +233,23 @@ public sealed partial class ServerHost(
         });
     }
 
-    private CommandAck Install(CommandEnvelope envelope, InstallServerCommand command)
+    private CommandAck Install(CommandEnvelope envelope, InstallServerCommand command) =>
+        RunSteps(envelope, command.ServerId, s => s.Manifest.Install?.Steps ?? [], validate: null);
+
+    private CommandAck Update(CommandEnvelope envelope, UpdateServerCommand command) =>
+        _servers.TryGetValue(command.ServerId, out var server) && server.Manifest.Update is null
+            ? Rejected(envelope, "server.update_unsupported", "This game has no update steps.")
+            : RunSteps(envelope, command.ServerId, s => s.Manifest.Update!.Steps, command.Validate ? true : null);
+
+    /// <summary>Install or update: the manifest's steps, SteamCMD ones as the server's account, the others by the agent.</summary>
+    private CommandAck RunSteps(CommandEnvelope envelope, Guid serverId, Func<Server, IReadOnlyList<InstallStep>> steps, bool? validate)
     {
         if (envelope.OperationId is not { } operationId)
         {
             return Rejected(envelope, "command.operation_required", "Installing is an operation.");
         }
 
-        if (!_servers.TryGetValue(command.ServerId, out var server))
+        if (!_servers.TryGetValue(serverId, out var server))
         {
             return Rejected(envelope, "server.unknown", "This node does not have that server.");
         }
@@ -241,13 +259,91 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.running", "Stop the server before installing it.");
         }
 
-        return RunOperation(envelope, command.ServerId, operationId, async () =>
+        return RunOperation(envelope, serverId, operationId, async cancellationToken =>
         {
-            var directory = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId).Directory;
-            await SendProgressAsync(operationId, "installing", null);
-            await Task.Run(() => installSteps.Run(server.Manifest, directory));
-            LogInstalled(command.ServerId);
+            var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+            TerminateStrays(serverId, provisioned.Identity);
+            foreach (var step in steps(server))
+            {
+                if (step is SteamCmdStep steam)
+                {
+                    var betaPassword = steam.BetaPasswordVar is { } key ? server.Spec.Variables.GetValueOrDefault(key) : null;
+                    var job = new SteamCmdJob(serverId, provisioned.Directory, provisioned.Identity, steam.AppId, steam.Beta, betaPassword,
+                        validate ?? steam.Validate);
+                    await steamCmd.RunAsync(job, (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
+                }
+                else
+                {
+                    await SendProgressAsync(operationId, InstallStages.Installing, null);
+                    await Task.Run(() => installSteps.Run(step, provisioned.Directory), cancellationToken);
+                }
+            }
+
+            LogInstalled(serverId);
         });
+    }
+
+    /// <summary>New variables, ports, arguments or restart policy for the next start; never a different manifest.</summary>
+    private async Task<CommandAck> ApplySpecAsync(CommandEnvelope envelope, ApplyServerSpecCommand command)
+    {
+        if (!_servers.TryGetValue(command.ServerId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        var spec = command.Spec;
+        if (spec.ShortId != server.ShortId || spec.Manifest != server.Spec.Manifest)
+        {
+            return Rejected(envelope, "server.spec_mismatch", "A spec can change values, not the server's short id or manifest.");
+        }
+
+        ServerDefinition definition;
+        try
+        {
+            definition = Definition(command.ServerId, spec);
+        }
+        catch (LaunchPlanException ex)
+        {
+            return Rejected(envelope, "server.invalid_spec", ex.Message);
+        }
+
+        lock (_recordLock)
+        {
+            var record = store.Load(command.ServerId);
+            store.Save(new ServerRecord(command.ServerId, spec, record?.DesiredRunning ?? false, record?.ResumeOnStart ?? false));
+        }
+
+        await server.Supervisor.UpdateAsync(definition);
+        _servers[command.ServerId] = server with { Spec = spec };
+        LogSpecApplied(command.ServerId);
+        return new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null);
+    }
+
+    private CommandAck Cancel(CommandEnvelope envelope, CancelOperationCommand command)
+    {
+        if (!_cancellations.TryGetValue(command.OperationId, out var cancellation))
+        {
+            return new CommandAck(envelope.CommandId, AckStatus.AlreadyInState, null, null);
+        }
+
+        try
+        {
+            cancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Finished meanwhile.
+        }
+
+        return new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null);
+    }
+
+    private void TerminateStrays(Guid serverId, ProcessIdentity identity)
+    {
+        if (processes.TerminateStrayProcesses(identity) is > 0 and var killed)
+        {
+            LogStraysKilled(serverId, killed);
+        }
     }
 
     private CommandAck Delete(CommandEnvelope envelope, DeleteServerCommand command)
@@ -264,13 +360,16 @@ public sealed partial class ServerHost(
             return new CommandAck(envelope.CommandId, AckStatus.AlreadyInState, null, null);
         }
 
-        return RunOperation(envelope, command.ServerId, operationId, async () =>
+        return RunOperation(envelope, command.ServerId, operationId, async _ignored =>
         {
             await server.Supervisor.KillAsync();
             await server.Supervisor.WaitUntilSettledAsync();
             await server.Supervisor.DisposeAsync();
             _servers.TryRemove(command.ServerId, out _);
-            await Task.Run(() => provisioner.Deprovision(_config!.ServersRootOrDefault(configs.Paths), server.ShortId));
+            var root = _config!.ServersRootOrDefault(configs.Paths);
+            // Before the account goes: a process of a deleted account would keep running unnoticed.
+            TerminateStrays(command.ServerId, provisioner.Describe(root, server.ShortId).Identity);
+            await Task.Run(() => provisioner.Deprovision(root, server.ShortId), CancellationToken.None); // never left half done
             lock (_recordLock)
             {
                 store.Delete(command.ServerId);
@@ -297,20 +396,28 @@ public sealed partial class ServerHost(
         return new CommandAck(envelope.CommandId, status, null, null);
     }
 
-    private CommandAck RunOperation(CommandEnvelope envelope, Guid serverId, Guid operationId, Func<Task> work)
+    private CommandAck RunOperation(CommandEnvelope envelope, Guid serverId, Guid operationId, Func<CancellationToken, Task> work)
     {
         if (!_operations.TryAdd(serverId, operationId))
         {
             return new CommandAck(envelope.CommandId, AckStatus.Busy, "server.busy", "Another operation is running on this server.");
         }
 
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
+        _cancellations[operationId] = cancellation;
         _ = Task.Run(async () =>
         {
             OperationCompleted result;
             try
             {
-                await work();
+                await work(cancellation.Token);
                 result = new OperationCompleted(operationId, serverId, OperationOutcome.Succeeded, null, null);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                LogOperationCancelled(operationId, serverId);
+                result = new OperationCompleted(operationId, serverId, OperationOutcome.Cancelled, "operation.cancelled",
+                    _stopping.IsCancellationRequested ? "The agent stopped." : "Cancelled.");
             }
             catch (Exception ex)
             {
@@ -321,6 +428,8 @@ public sealed partial class ServerHost(
             }
             finally
             {
+                _cancellations.TryRemove(operationId, out _);
+                cancellation.Dispose();
                 _operations.TryRemove(new KeyValuePair<Guid, Guid>(serverId, operationId));
             }
 
@@ -351,14 +460,14 @@ public sealed partial class ServerHost(
         }
     }
 
-    private Task<bool> SendProgressAsync(Guid operationId, string stage, double? percent) =>
-        panel.SendAsync(nameof(IAgentHub.OperationProgress), new OperationProgress(operationId, stage, percent, null), _stopping.Token);
+    private async Task SendProgressAsync(Guid operationId, string stage, double? percent) =>
+        _ = await panel.SendAsync(nameof(IAgentHub.OperationProgress), new OperationProgress(operationId, stage, percent, null), _stopping.Token);
 
     private ServerSupervisor Add(Guid serverId, ServerRuntimeSpec spec)
     {
         var supervisor = new ServerSupervisor(Definition(serverId, spec), processes, this, clock, supervisorOptions,
             loggerFactory.CreateLogger<ServerSupervisor>());
-        _servers[serverId] = new Server(spec.ShortId, Parse(spec), supervisor);
+        _servers[serverId] = new Server(spec.ShortId, Parse(spec), spec, supervisor);
         return supervisor;
     }
 
@@ -395,7 +504,7 @@ public sealed partial class ServerHost(
     private static CommandAck Rejected(CommandEnvelope envelope, string code, string message) =>
         new(envelope.CommandId, AckStatus.Rejected, code, message);
 
-    private sealed record Server(string ShortId, GameManifest Manifest, ServerSupervisor Supervisor);
+    private sealed record Server(string ShortId, GameManifest Manifest, ServerRuntimeSpec Spec, ServerSupervisor Supervisor);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Servers loaded: {Count} (servers root {ServersRoot})")]
     private partial void LogLoaded(int count, string serversRoot);
@@ -411,6 +520,15 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId} ({ShortId}) deleted from this node")]
     private partial void LogDeleted(Guid serverId, string shortId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: new runtime spec applied")]
+    private partial void LogSpecApplied(Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: killed {Count} processes its account ran outside the server's job")]
+    private partial void LogStraysKilled(Guid serverId, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Operation {OperationId} on server {ServerId} cancelled")]
+    private partial void LogOperationCancelled(Guid operationId, Guid serverId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Operation {OperationId} on server {ServerId} failed")]
     private partial void LogOperationFailed(Exception exception, Guid operationId, Guid serverId);

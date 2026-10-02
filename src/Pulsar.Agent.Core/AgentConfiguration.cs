@@ -26,6 +26,9 @@ public sealed class AgentPaths(string root)
 
     /// <summary>Operation results the panel has not received yet.</summary>
     public string OutboxDirectory => Path.Combine(Root, "state", "outbox");
+
+    /// <summary>The verified SteamCMD bootstrapper each server gets a copy of.</summary>
+    public string SteamCmdDirectory => Path.Combine(Root, "steamcmd");
 }
 
 /// <summary>Everything the agent needs to reach and trust its panel, written at enrollment.</summary>

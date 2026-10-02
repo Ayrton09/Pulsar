@@ -77,3 +77,17 @@ CloseWindowStation
 CloseDesktop
 ConvertStringSecurityDescriptorToSecurityDescriptor
 LocalFree
+
+// Agent file access inside server directories (handle checks)
+GetFileInformationByHandleEx
+SetFileInformationByHandle
+FILE_ATTRIBUTE_TAG_INFO
+FILE_DISPOSITION_INFO
+OpenProcess
+OpenProcessToken
+
+// SteamCMD bootstrapper signature (Authenticode)
+WinVerifyTrust
+WINTRUST_DATA
+WINTRUST_FILE_INFO
+WINTRUST_ACTION_GENERIC_VERIFY_V2

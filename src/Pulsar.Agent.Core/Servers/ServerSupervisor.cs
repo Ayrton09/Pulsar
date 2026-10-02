@@ -266,6 +266,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             case Grace grace when grace.Process == _lingering:
                 _lingering = null;
                 await grace.Process.DisposeAsync();
+                SweepStrays();
                 break;
         }
     }
@@ -377,6 +378,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             await previous.DisposeAsync();
         }
 
+        SweepStrays();
         _exitCode = null;
         _stopReason = null;
         Transition(RuntimeState.Starting, reason);
@@ -476,6 +478,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         else
         {
             await process.DisposeAsync();
+            SweepStrays();
         }
 
         if (_state == RuntimeState.Stopping)
@@ -523,6 +526,22 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         var delay = _options.CrashBackoff[Math.Min(_restarts.Count, _options.CrashBackoff.Count - 1)];
         Transition(RuntimeState.Crashed, StateChangeReason.Crashed, exitCode, $"restart in {delay.TotalSeconds:0} s");
         PostLater(delay, new AutoRestart(++_restartTimer));
+    }
+
+    /// <summary>Kills what the server's account still runs outside the Job (see <see cref="IGameProcessManager.TerminateStrayProcesses"/>).</summary>
+    private void SweepStrays()
+    {
+        try
+        {
+            if (_processes.TerminateStrayProcesses(_definition.Identity) is > 0 and var killed)
+            {
+                LogStraysKilled(ServerId, killed);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            LogStraySweepFailed(ex, ServerId);
+        }
     }
 
     private async Task WatchExitAsync(IGameProcess process, int generation)
@@ -606,6 +625,12 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         ManifestConsoleEncoding.Ansi => ConsoleEncoding.Ansi,
         _ => ConsoleEncoding.Utf8,
     };
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: killed {Count} processes its account ran outside the server's job")]
+    private partial void LogStraysKilled(Guid serverId, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: could not look for processes of its account outside its job")]
+    private partial void LogStraySweepFailed(Exception exception, Guid serverId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: {Previous} → {State} ({Reason})")]
     private partial void LogTransition(Guid serverId, RuntimeState previous, RuntimeState state, StateChangeReason reason);

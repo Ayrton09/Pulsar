@@ -33,6 +33,9 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(RestartServerCommand), RestartServerCommand.Type)]
 [JsonDerivedType(typeof(KillServerCommand), KillServerCommand.Type)]
 [JsonDerivedType(typeof(DeleteServerCommand), DeleteServerCommand.Type)]
+[JsonDerivedType(typeof(UpdateServerCommand), UpdateServerCommand.Type)]
+[JsonDerivedType(typeof(ApplyServerSpecCommand), ApplyServerSpecCommand.Type)]
+[JsonDerivedType(typeof(CancelOperationCommand), CancelOperationCommand.Type)]
 public abstract record AgentCommand;
 
 /// <summary>Round-trip check of the signed command path (the UI's "test connection").</summary>
@@ -103,6 +106,28 @@ public sealed record DeleteServerCommand(Guid ServerId) : AgentCommand
     public const string Type = "server.delete";
 }
 
+/// <summary>Operation: runs the manifest's update steps (a game update through SteamCMD).</summary>
+/// <param name="Validate">Also verify every installed file against Steam (slow; repairs a damaged install).</param>
+public sealed record UpdateServerCommand(Guid ServerId, bool Validate) : AgentCommand
+{
+    public const string Type = "server.update";
+}
+
+/// <summary>
+/// A new runtime spec for a provisioned server (variables, ports, arguments, restart policy). Takes effect at the next
+/// start; the manifest must be the one the server was provisioned with.
+/// </summary>
+public sealed record ApplyServerSpecCommand(Guid ServerId, ServerRuntimeSpec Spec) : AgentCommand
+{
+    public const string Type = "server.apply_spec";
+}
+
+/// <summary>Cancels a running operation (an install or update kills SteamCMD); it then completes as cancelled.</summary>
+public sealed record CancelOperationCommand(Guid OperationId) : AgentCommand
+{
+    public const string Type = "operation.cancel";
+}
+
 public enum AckStatus
 {
     Accepted,
@@ -129,6 +154,9 @@ public static class AgentCapabilities
     public const string RestartServer = RestartServerCommand.Type;
     public const string KillServer = KillServerCommand.Type;
     public const string DeleteServer = DeleteServerCommand.Type;
+    public const string UpdateServer = UpdateServerCommand.Type;
+    public const string ApplyServerSpec = ApplyServerSpecCommand.Type;
+    public const string CancelOperation = CancelOperationCommand.Type;
 
     /// <summary>
     /// Not a command: the agent can install Pulsar's test game server (the <c>pulsar-test</c> manifest). Only agents
@@ -149,6 +177,9 @@ public static class AgentCapabilities
         RestartServerCommand => RestartServer,
         KillServerCommand => KillServer,
         DeleteServerCommand => DeleteServer,
+        UpdateServerCommand => UpdateServer,
+        ApplyServerSpecCommand => ApplyServerSpec,
+        CancelOperationCommand => CancelOperation,
         null => throw new ArgumentNullException(nameof(command)),
         _ => throw new ArgumentOutOfRangeException(nameof(command), command.GetType().Name, "Command without a capability."),
     };

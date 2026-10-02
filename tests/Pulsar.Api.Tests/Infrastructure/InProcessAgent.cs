@@ -8,8 +8,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Commands;
 using Pulsar.Agent.Core.Panel;
+using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Agent.Core.Servers;
+using Pulsar.Agent.Core.Steam;
 using Pulsar.Contracts;
 
 namespace Pulsar.Api.Tests.Infrastructure;
@@ -26,6 +28,7 @@ public sealed class InProcessAgent : IAsyncDisposable
     private readonly TimeProvider _clock;
     private AgentConnection? _connection;
     private ServerHost? _servers;
+    private SteamCmdRunner? _steamCmd;
 
     public InProcessAgent(WebApplicationFactory<Program> factory, TimeProvider? clock = null)
     {
@@ -76,8 +79,11 @@ public sealed class InProcessAgent : IAsyncDisposable
 
         var channel = new PanelChannel();
         var install = new InstallOptions { TestGameDirectory = testGame };
-        _servers = new ServerHost(Configs, new ServerStore(Configs.Paths), Provisioner, Processes, new InstallSteps(install), install, channel,
-            new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5) }, _clock, NullLoggerFactory.Instance);
+        var files = new DirectServerFiles();
+        _steamCmd = new SteamCmdRunner(Processes, new ScriptedSteamCmdSource(Path.Combine(_root, "steamcmd.exe")), files,
+            new SteamCmdOptions { RetryDelays = [TimeSpan.Zero] }, _clock, NullLogger<SteamCmdRunner>.Instance);
+        _servers = new ServerHost(Configs, new ServerStore(Configs.Paths), Provisioner, Processes, new InstallSteps(install, files), _steamCmd, install,
+            channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5) }, _clock, NullLoggerFactory.Instance);
         _connection = new AgentConnection(Configs, Keys, new FixedNodeSystem(), _transport, new PanelAuthenticator(_transport),
             new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance, _servers), Options,
             _clock, new StubLifetime(), NullLoggerFactory.Instance, channel, _servers);
@@ -134,6 +140,7 @@ public sealed class InProcessAgent : IAsyncDisposable
         {
             await _servers.StopAsync(CancellationToken.None);
             _servers.Dispose();
+            _steamCmd?.Dispose();
             _servers = null;
         }
     }

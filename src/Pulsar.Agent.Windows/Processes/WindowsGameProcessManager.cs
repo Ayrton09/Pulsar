@@ -1,6 +1,8 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
@@ -327,6 +329,57 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
             throw new Win32Exception(Marshal.GetLastPInvokeError(), $"{call} failed.");
         }
     }
+
+    public int TerminateStrayProcesses(ProcessIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        if (identity is not ProcessIdentity.AccountIdentity account || !WindowsServerAccounts.Exists(account.Name))
+        {
+            return 0;
+        }
+
+        var sid = (SecurityIdentifier)new NTAccount(account.Name).Translate(typeof(SecurityIdentifier));
+        var killed = 0;
+        foreach (var process in Process.GetProcesses())
+        {
+            using (process)
+            {
+                try
+                {
+                    if (ProcessUser(process.Id) == sid)
+                    {
+                        process.Kill(entireProcessTree: false);
+                        killed++;
+                        LogStrayKilled(account.Name, process.Id, process.ProcessName);
+                    }
+                }
+                catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or NotSupportedException)
+                {
+                    // Gone already, or a protected process (never a server account's).
+                }
+            }
+        }
+
+        return killed;
+    }
+
+    private static unsafe SecurityIdentifier? ProcessUser(int processId)
+    {
+        using var process = PInvoke.OpenProcess_SafeHandle(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+        if (process.IsInvalid || !PInvoke.OpenProcessToken(process, TOKEN_ACCESS_MASK.TOKEN_QUERY, out var token))
+        {
+            return null;
+        }
+
+        using (token)
+        {
+            using var identity = new WindowsIdentity(token.DangerousGetHandle());
+            return identity.User;
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Killed process {ProcessId} ({ProcessName}) running as {Account} outside its server's job")]
+    private partial void LogStrayKilled(string account, int processId, string processName);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: started process {ProcessId} ({ConsoleMode}) as {Account}")]
     private partial void LogStarted(Guid serverId, int processId, ConsoleMode consoleMode, string account);

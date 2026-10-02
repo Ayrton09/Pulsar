@@ -19,9 +19,21 @@ internal sealed class FakeProcessManager : IGameProcessManager
     /// <summary>When set, starts wait for it (a slow first logon, say).</summary>
     public TaskCompletionSource? Gate { get; set; }
 
+    /// <summary>Scripts each started process (its output, its exit).</summary>
+    public Action<FakeGameProcess, ProcessLaunchSpec>? OnStarted { get; set; }
+
     public IReadOnlyList<FakeGameProcess> Started => [.. _started];
 
     public FakeGameProcess Last => _started.Last();
+
+    /// <summary>How many times stray processes of the server's account were swept.</summary>
+    public int StraySweeps { get; private set; }
+
+    public int TerminateStrayProcesses(ProcessIdentity identity)
+    {
+        StraySweeps++;
+        return 0;
+    }
 
     public async Task<IGameProcess> StartAsync(ProcessLaunchSpec spec, CancellationToken cancellationToken)
     {
@@ -43,6 +55,7 @@ internal sealed class FakeProcessManager : IGameProcessManager
 
         var process = new FakeGameProcess(_started.Count + 1000);
         _started.Enqueue(process);
+        OnStarted?.Invoke(process, spec);
         return process;
     }
 }

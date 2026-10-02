@@ -15,29 +15,38 @@ public sealed class InstallOptions
 }
 
 /// <summary>
-/// Runs a manifest's install steps in a server directory. The agent writes there with its own rights (SYSTEM), and the
-/// server's account controls the directory, so every path is checked for junctions and links first: a server that
-/// planted one could otherwise make the agent write anywhere on the machine. The server is offline meanwhile, so
-/// nothing of it runs to swap a folder in between.
+/// Runs the install steps the agent itself performs in a server directory (SteamCMD steps run as the server's account,
+/// see <see cref="Steam.SteamCmdRunner"/>). The agent writes there with its own rights, and the server's account controls
+/// the directory, so every write goes through <see cref="IServerFiles"/>: never through a junction or link, never into
+/// an existing file.
 /// </summary>
-public sealed class InstallSteps(InstallOptions options)
+public sealed class InstallSteps(InstallOptions options, IServerFiles files)
 {
-    public void Run(GameManifest manifest, string serverDirectory)
+    /// <summary>Runs one step that is not a SteamCMD step.</summary>
+    public void Run(InstallStep step, string serverDirectory)
     {
-        ArgumentNullException.ThrowIfNull(manifest);
-        foreach (var step in manifest.Install?.Steps ?? [])
+        ArgumentNullException.ThrowIfNull(step);
+        switch (step)
         {
-            switch (step)
-            {
-                case EnsureDirectoryStep ensure:
-                    Directory.CreateDirectory(Resolve(serverDirectory, ensure.Path));
-                    break;
-                case TestGameServerStep test:
-                    CopyTestGame(Resolve(serverDirectory, test.Path));
-                    break;
-                default:
-                    throw new GameProcessException("install.unsupported_step", $"This agent cannot run the install step {step.GetType().Name}.");
-            }
+            case EnsureDirectoryStep ensure:
+                files.CreateDirectory(serverDirectory, ensure.Path);
+                break;
+            case WriteFileIfMissingStep write:
+                using (var existing = files.OpenRead(serverDirectory, write.Path))
+                {
+                    if (existing is null)
+                    {
+                        using var content = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(write.Content));
+                        files.Write(serverDirectory, write.Path, content);
+                    }
+                }
+
+                break;
+            case TestGameServerStep test:
+                CopyTestGame(serverDirectory, test.Path);
+                break;
+            default:
+                throw new GameProcessException("install.unsupported_step", $"This agent cannot run the install step {step.GetType().Name}.");
         }
     }
 
@@ -64,7 +73,7 @@ public sealed class InstallSteps(InstallOptions options)
         return current;
     }
 
-    private void CopyTestGame(string destination)
+    private void CopyTestGame(string serverDirectory, string destination)
     {
         if (!options.TestGameAvailable)
         {
@@ -75,11 +84,8 @@ public sealed class InstallSteps(InstallOptions options)
         foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
         {
             var relative = Path.GetRelativePath(source, file).Replace(Path.DirectorySeparatorChar, '/');
-            var target = Resolve(destination, relative);
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            // Never write into an existing file: it could be a hard link to a system file. Deleting removes only this name.
-            File.Delete(target);
-            File.Copy(file, target);
+            using var content = File.OpenRead(file);
+            files.Write(serverDirectory, $"{destination}/{relative}", content);
         }
     }
 }

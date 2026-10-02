@@ -24,8 +24,37 @@ public sealed class ScriptedProcessManager : IGameProcessManager
 
         var process = new ScriptedProcess(_started.Count + 100);
         _started.Enqueue(process);
+        if (spec.Executable == Pulsar.Agent.Core.Steam.SteamCmdRunner.Executable)
+        {
+            _ = PlaySteamCmdAsync(process);
+            return Task.FromResult<IGameProcess>(process);
+        }
+
         process.Print("Test server ready\r\n");
         return Task.FromResult<IGameProcess>(process);
+    }
+
+    public int TerminateStrayProcesses(ProcessIdentity identity) => 0;
+
+    /// <summary>When set, SteamCMD runs stop half way until it completes (to see progress, or cancel).</summary>
+    public TaskCompletionSource? SteamCmdGate { get; set; }
+
+    /// <summary>Started SteamCMD runs.</summary>
+    public int SteamCmdRuns => _started.Count(p => p.IsSteamCmd);
+
+    private async Task PlaySteamCmdAsync(ScriptedProcess process)
+    {
+        process.IsSteamCmd = true;
+        process.Print("Connecting anonymously to Steam Public...OK\r\n");
+        process.Print(" Update state (0x61) downloading, progress: 45.00 (450 / 1000)\r\n");
+        if (SteamCmdGate is { } gate)
+        {
+            await Task.WhenAny(gate.Task, process.Exited);
+        }
+
+        process.Print(" Update state (0x81) verifying update, progress: 100.00 (1000 / 1000)\r\n");
+        process.Print("Success! App '232330' fully installed.\r\n");
+        process.Exit(0);
     }
 }
 
@@ -45,6 +74,8 @@ public sealed class ScriptedProcess(int processId) : IGameProcess
     public bool SupportsInterrupt => true;
 
     public bool IsAlive => !_exited.Task.IsCompleted;
+
+    public bool IsSteamCmd { get; internal set; }
 
     public void Print(string text) => _output.Writer.TryWrite(new ConsoleChunk(DateTimeOffset.UtcNow, text));
 
@@ -110,5 +141,15 @@ public sealed class FolderProvisioner : IServerProvisioner
         }
 
         Provisioned.TryRemove(shortId, out _);
+    }
+}
+
+/// <summary>A SteamCMD "bootstrapper" for the scripted processes: they play SteamCMD when started from a server's copy.</summary>
+public sealed class ScriptedSteamCmdSource(string path) : Pulsar.Agent.Core.Steam.ISteamCmdSource
+{
+    public Task<string> GetAsync(CancellationToken cancellationToken)
+    {
+        File.WriteAllText(path, "steamcmd");
+        return Task.FromResult(path);
     }
 }

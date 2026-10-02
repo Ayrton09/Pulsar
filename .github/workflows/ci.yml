@@ -61,6 +61,8 @@ jobs:
         env:
           PULSAR_TEST_POSTGRES: Host=localhost;Port=5432;Username=pulsar_ci;Password=pulsar_ci
           PULSAR_REQUIRE_DATABASE: 'true'
+          # Downloads SteamCMD from Valve and checks its signature (Windows only).
+          PULSAR_NETWORK_TESTS: '1'
 
       # Local accounts, user rights and servers started as their own account: CreateProcessAsUser needs SYSTEM, as
       # the agent service runs. Only here, on the disposable runner (the tests skip themselves anywhere else).

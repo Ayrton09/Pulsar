@@ -10,6 +10,13 @@ public interface IGameProcessManager
 {
     /// <exception cref="GameProcessException">The process could not be started (invalid path, account, OS error).</exception>
     Task<IGameProcess> StartAsync(ProcessLaunchSpec spec, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Kills every process running as <paramref name="identity"/>, for a server that is not running. A server's account
+    /// can start processes outside its Job through Windows services (a scheduled task, WMI); they would survive the stop
+    /// of the server, and even its deletion. Returns how many were killed; nothing for <see cref="ProcessIdentity.CurrentUser"/>.
+    /// </summary>
+    int TerminateStrayProcesses(ProcessIdentity identity);
 }
 
 /// <summary>How the process's console is attached (docs/architecture/04, "Console").</summary>

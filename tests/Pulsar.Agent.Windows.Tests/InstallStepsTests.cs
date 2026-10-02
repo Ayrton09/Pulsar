@@ -32,7 +32,7 @@ public sealed class InstallStepsTests : IDisposable
     [WindowsFact]
     public void TheStepsInstallTheTestGameAndCreateDirectories()
     {
-        Steps().Run(Manifest(), _server);
+        Run(Steps(), _server);
 
         Assert.Equal("new build", File.ReadAllText(Path.Combine(_server, "bin", "Pulsar.TestGameServer.exe")));
         Assert.True(Directory.Exists(Path.Combine(_server, "data")));
@@ -43,9 +43,9 @@ public sealed class InstallStepsTests : IDisposable
     {
         Run("cmd.exe", "/c", "mklink", "/J", Path.Combine(_server, "bin"), _outside);
 
-        var error = Assert.Throws<GameProcessException>(() => Steps().Run(Manifest(), _server));
+        var error = Assert.Throws<GameProcessException>(() => Run(Steps(), _server));
 
-        Assert.Equal("install.reparse_point", error.Code);
+        Assert.Equal("files.reparse_point", error.Code);
         Assert.Empty(Directory.EnumerateFileSystemEntries(_outside));
     }
 
@@ -57,7 +57,7 @@ public sealed class InstallStepsTests : IDisposable
         Directory.CreateDirectory(Path.Combine(_server, "bin"));
         Run("cmd.exe", "/c", "mklink", "/H", Path.Combine(_server, "bin", "Pulsar.TestGameServer.exe"), precious);
 
-        Steps().Run(Manifest(), _server);
+        Run(Steps(), _server);
 
         Assert.Equal("keep me", File.ReadAllText(precious));
         Assert.Equal("new build", File.ReadAllText(Path.Combine(_server, "bin", "Pulsar.TestGameServer.exe")));
@@ -66,12 +66,20 @@ public sealed class InstallStepsTests : IDisposable
     [WindowsFact]
     public void WithoutTheTestGameTheStepIsRefused()
     {
-        var error = Assert.Throws<GameProcessException>(() => new InstallSteps(new InstallOptions()).Run(Manifest(), _server));
+        var error = Assert.Throws<GameProcessException>(() => Run(new InstallSteps(new InstallOptions(), new WindowsServerFiles()), _server));
 
         Assert.Equal("install.test_game_unavailable", error.Code);
     }
 
-    private InstallSteps Steps() => new(new InstallOptions { TestGameDirectory = _testGame });
+    private InstallSteps Steps() => new(new InstallOptions { TestGameDirectory = _testGame }, new WindowsServerFiles());
+
+    private static void Run(InstallSteps steps, string server)
+    {
+        foreach (var step in Manifest().Install!.Steps)
+        {
+            steps.Run(step, server);
+        }
+    }
 
     private static GameManifest Manifest()
     {
