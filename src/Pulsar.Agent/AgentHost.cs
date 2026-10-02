@@ -11,6 +11,7 @@ using Pulsar.Agent.Windows.Processes;
 using Pulsar.Agent.Windows.Servers;
 using Pulsar.Contracts;
 using Serilog;
+using Serilog.Events;
 
 namespace Pulsar.Agent;
 
@@ -38,6 +39,10 @@ internal static class AgentHost
             var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { ContentRootPath = AppContext.BaseDirectory });
             builder.Services.AddWindowsService(options => options.ServiceName = AgentService.Name);
             builder.Services.AddSerilog((services, configuration) => configuration
+                // A lost panel connection is routine (panel restart, network cut) and the agent logs it in one line; the
+                // SignalR client would add errors with full stack traces for the same event.
+                .MinimumLevel.Override("Microsoft.AspNetCore.SignalR.Client", LogEventLevel.Fatal)
+                .MinimumLevel.Override("Microsoft.AspNetCore.Http.Connections.Client", LogEventLevel.Fatal)
                 .ReadFrom.Configuration(builder.Configuration)
                 .ReadFrom.Services(services)
                 .WriteTo.File(Path.Combine(paths.LogsDirectory, "agent-.log"),

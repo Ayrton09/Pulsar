@@ -391,7 +391,7 @@ public sealed partial class ServerHost(
 
     private sealed record Server(string ShortId, GameManifest Manifest, ServerSupervisor Supervisor);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "{Count} servers loaded (servers root {ServersRoot})")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Servers loaded: {Count} (servers root {ServersRoot})")]
     private partial void LogLoaded(int count, string serversRoot);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Server {ServerId} could not be loaded from its stored spec")]

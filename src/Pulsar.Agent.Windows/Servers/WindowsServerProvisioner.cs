@@ -154,6 +154,6 @@ public sealed partial class WindowsServerProvisioner(WindowsServerAccounts accou
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ShortId}: directory {Directory} ready for account {Account}")]
     private partial void LogProvisioned(string shortId, string directory, string account);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ShortId}: directory and account removed")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ShortId}: removed from this machine")]
     private partial void LogDeprovisioned(string shortId);
 }
