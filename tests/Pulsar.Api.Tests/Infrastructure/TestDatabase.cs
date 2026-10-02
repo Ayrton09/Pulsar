@@ -54,7 +54,20 @@ public sealed class TestDatabase : IAsyncDisposable
         await using var connection = new NpgsqlConnection(WithDatabase(server, "postgres"));
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{Name}\" WITH (FORCE)", connection);
-        await command.ExecuteNonQueryAsync();
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await command.ExecuteNonQueryAsync();
+                return;
+            }
+            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.InsufficientPrivilege && attempt < 10)
+            {
+                // FORCE also tries to terminate an autovacuum worker busy with the database, which a role without
+                // pg_signal_backend may not do ("permission denied to terminate process"); the worker finishes soon.
+                await Task.Delay(TimeSpan.FromMilliseconds(500));
+            }
+        }
     }
 
     private static string WithDatabase(string connectionString, string database) =>
