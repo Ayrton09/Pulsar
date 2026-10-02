@@ -24,7 +24,8 @@
     "roles": "Roles",
     "audit": "Auditoría",
     "account": "Mi cuenta",
-    "nodes": "Nodos"
+    "nodes": "Nodos",
+    "servers": "Servidores"
   },
   "auth": {
     "userName": "Usuario",
@@ -240,6 +241,16 @@
       "panel_key": {
         "rotated": "Rotó la clave de firma del panel",
         "retired": "Retiró una clave de firma del panel"
+      },
+      "server": {
+        "created": "Creó un servidor",
+        "deleted": "Servidor eliminado",
+        "delete_requested": "Pidió eliminar un servidor",
+        "start": "Inició un servidor",
+        "stop": "Detuvo un servidor",
+        "restart": "Reinició un servidor",
+        "kill": "Forzó el cierre de un servidor",
+        "install_requested": "Pidió reinstalar un servidor"
       }
     }
   },
@@ -296,12 +307,24 @@
       "public_host_invalid": "La dirección pública debe ser un nombre de host o una dirección IP.",
       "name_taken": "Ya hay otro nodo con este nombre.",
       "not_found": "El nodo no existe.",
-      "not_connected": "El agente del nodo no está conectado."
+      "not_connected": "El agente del nodo no está conectado.",
+      "has_servers": "Primero eliminá los servidores del nodo."
     },
     "panel_key": {
       "rotation_in_progress": "La clave anterior todavía se está retirando. Retirala antes de volver a rotar.",
       "not_retiring": "Solo se puede retirar una clave que se está retirando.",
       "not_found": "La clave del panel no existe."
+    },
+    "server": {
+      "name_invalid": "El nombre del servidor debe tener entre 1 y 64 caracteres.",
+      "description_too_long": "La descripción es demasiado larga.",
+      "not_found": "El servidor no existe.",
+      "template_not_found": "Ese juego no está disponible.",
+      "template_unsupported": "El agente de ese nodo no puede correr este juego.",
+      "busy": "Hay otra operación en curso en este servidor. Esperá a que termine.",
+      "not_installed": "El servidor todavía no está instalado.",
+      "must_be_stopped": "Primero detené el servidor.",
+      "command_rejected": "El agente del nodo rechazó el comando."
     }
   },
   "account": {
@@ -408,6 +431,96 @@
     "rotateKey": "Rotar clave",
     "rotateStarted": "El agente está reemplazando su clave. La nueva credencial aparece abajo cuando se conecta con ella (además, las claves se reemplazan solas cada 90 días).",
     "panelKeyOutdated": "Clave del panel vieja"
+  },
+  "servers": {
+    "title": "Servidores",
+    "description": "Los servidores de juego de tus nodos: en qué estado están y qué podés hacer con ellos.",
+    "create": "Crear servidor",
+    "empty": "Todavía no hay servidores que puedas ver.",
+    "emptyCreate": "Todavía no hay servidores. Creá uno en un nodo conectado.",
+    "server": "Servidor",
+    "status": "Estado",
+    "node": "Nodo",
+    "nodeHint": "Solo aparecen los nodos conectados: el servidor se prepara en su máquina en el momento.",
+    "chooseNode": "Elegí un nodo…",
+    "game": "Juego",
+    "chooseGame": "Elegí un juego…",
+    "name": "Nombre",
+    "descriptionLabel": "Descripción (opcional)",
+    "lastStarted": "Último inicio",
+    "lastStopped": "Última detención",
+    "lastExitCode": "Último código de salida",
+    "desired": "Debería estar",
+    "desiredStates": {
+      "running": "En marcha",
+      "stopped": "Detenido"
+    },
+    "restartOnCrash": "Reiniciar si se cae",
+    "shortId": "Id corto",
+    "yes": "Sí",
+    "no": "No",
+    "overview": "Resumen",
+    "actions": "Acciones del servidor",
+    "notFound": "Este servidor no existe.",
+    "backToList": "Volver a los servidores",
+    "nodeDisconnected": "Nodo desconectado",
+    "lastKnown": "Último estado: {{state}}",
+    "states": {
+      "installing": "Instalando",
+      "deleting": "Eliminando",
+      "installFailed": "Falló la instalación",
+      "notInstalled": "Sin instalar",
+      "starting": "Iniciando",
+      "online": "En línea",
+      "stopping": "Deteniendo",
+      "offline": "Apagado",
+      "crashed": "Caído"
+    },
+    "reasons": {
+      "readinessTimedOut": "Está en marcha, pero nunca avisó que estaba listo.",
+      "exitedByItself": "Se detuvo solo (código de salida {{code}}).",
+      "crashed": "Se cayó con el código de salida {{code}}.",
+      "crashLoop": "Se cayó demasiadas veces seguidas; inicialo de nuevo cuando esté arreglado.",
+      "stopTimedOut": "No se detuvo a tiempo y se lo forzó a terminar.",
+      "killed": "Se lo forzó a terminar.",
+      "startFailed": "No pudo iniciar. Mirá las operaciones y el log del agente.",
+      "agentStopping": "Se detuvo porque se detuvo el agente de su nodo.",
+      "agentStarted": "Lo volvió a iniciar el agente de su nodo.",
+      "autoRestart": "Reiniciando después de una caída."
+    },
+    "commands": {
+      "start": "Iniciar",
+      "stop": "Detener",
+      "restart": "Reiniciar",
+      "kill": "Forzar cierre"
+    },
+    "killConfirm": "¿Forzar el cierre de {{name}} ahora? Sus procesos terminan sin guardar.",
+    "commandRefused": "El nodo no aceptó el comando ({{status}} {{code}}).",
+    "operations": {
+      "title": "Operaciones recientes",
+      "empty": "Todavía no hay operaciones.",
+      "type": "Operación",
+      "status": "Resultado",
+      "when": "Cuándo",
+      "types": {
+        "serverProvision": "Preparar en el nodo",
+        "serverInstall": "Instalar",
+        "serverDelete": "Eliminar"
+      },
+      "statuses": {
+        "queued": "En cola",
+        "running": "En curso",
+        "succeeded": "Hecha",
+        "failed": "Falló",
+        "cancelled": "Cancelada",
+        "interrupted": "Interrumpida"
+      }
+    },
+    "administration": "Administración",
+    "administrationHint": "Reinstalar vuelve a preparar la carpeta y la cuenta del servidor y corre su instalación. Eliminar borra sus archivos y su cuenta de Windows del nodo.",
+    "reinstall": "Reinstalar",
+    "reinstallConfirm": "¿Reinstalar {{name}}? Se vuelven a instalar los archivos del juego.",
+    "deleteConfirm": "¿Eliminar {{name}}? Se borran sus archivos y su cuenta de Windows del nodo. No se puede deshacer."
   },
   "panelKeys": {
     "title": "Clave de firma del panel",

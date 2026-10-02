@@ -24,7 +24,8 @@
     "roles": "Roles",
     "audit": "Audit log",
     "account": "My account",
-    "nodes": "Nodes"
+    "nodes": "Nodes",
+    "servers": "Servers"
   },
   "auth": {
     "userName": "User name",
@@ -240,6 +241,16 @@
       "panel_key": {
         "rotated": "Rotated the panel signing key",
         "retired": "Retired a panel signing key"
+      },
+      "server": {
+        "created": "Created a server",
+        "deleted": "Server deleted",
+        "delete_requested": "Asked to delete a server",
+        "start": "Started a server",
+        "stop": "Stopped a server",
+        "restart": "Restarted a server",
+        "kill": "Killed a server",
+        "install_requested": "Asked to reinstall a server"
       }
     }
   },
@@ -296,12 +307,24 @@
       "public_host_invalid": "The public address must be a host name or an IP address.",
       "name_taken": "Another node already has this name.",
       "not_found": "The node does not exist.",
-      "not_connected": "The node's agent is not connected."
+      "not_connected": "The node's agent is not connected.",
+      "has_servers": "Delete the node's servers first."
     },
     "panel_key": {
       "rotation_in_progress": "The previous key is still being retired. Retire it before rotating again.",
       "not_retiring": "Only a key that is being retired can be retired.",
       "not_found": "The panel key does not exist."
+    },
+    "server": {
+      "name_invalid": "The server name must have between 1 and 64 characters.",
+      "description_too_long": "The description is too long.",
+      "not_found": "The server does not exist.",
+      "template_not_found": "That game is not available.",
+      "template_unsupported": "That node's agent cannot run this game.",
+      "busy": "Another operation is running on this server. Wait for it to finish.",
+      "not_installed": "The server is not installed yet.",
+      "must_be_stopped": "Stop the server first.",
+      "command_rejected": "The node's agent rejected the command."
     }
   },
   "account": {
@@ -408,6 +431,96 @@
     "rotateKey": "Rotate key",
     "rotateStarted": "The agent is replacing its key. The new credential appears below once it connects with it (old keys are also replaced automatically every 90 days).",
     "panelKeyOutdated": "Old panel key"
+  },
+  "servers": {
+    "title": "Servers",
+    "description": "Game servers on your nodes: their state and what you can do with them.",
+    "create": "Create server",
+    "empty": "There are no servers you can see yet.",
+    "emptyCreate": "No servers yet. Create one on a connected node.",
+    "server": "Server",
+    "status": "Status",
+    "node": "Node",
+    "nodeHint": "Only connected nodes are listed: the server is set up on its machine right away.",
+    "chooseNode": "Choose a node…",
+    "game": "Game",
+    "chooseGame": "Choose a game…",
+    "name": "Name",
+    "descriptionLabel": "Description (optional)",
+    "lastStarted": "Last started",
+    "lastStopped": "Last stopped",
+    "lastExitCode": "Last exit code",
+    "desired": "Should be",
+    "desiredStates": {
+      "running": "Running",
+      "stopped": "Stopped"
+    },
+    "restartOnCrash": "Restart after a crash",
+    "shortId": "Short id",
+    "yes": "Yes",
+    "no": "No",
+    "overview": "Overview",
+    "actions": "Server actions",
+    "notFound": "This server does not exist.",
+    "backToList": "Back to the servers",
+    "nodeDisconnected": "Node disconnected",
+    "lastKnown": "Last known: {{state}}",
+    "states": {
+      "installing": "Installing",
+      "deleting": "Deleting",
+      "installFailed": "Install failed",
+      "notInstalled": "Not installed",
+      "starting": "Starting",
+      "online": "Online",
+      "stopping": "Stopping",
+      "offline": "Offline",
+      "crashed": "Crashed"
+    },
+    "reasons": {
+      "readinessTimedOut": "Running, but it never reported it was ready.",
+      "exitedByItself": "Stopped by itself (exit code {{code}}).",
+      "crashed": "Crashed with exit code {{code}}.",
+      "crashLoop": "Crashed too many times in a row; start it again once it is fixed.",
+      "stopTimedOut": "Did not stop in time and was killed.",
+      "killed": "Killed.",
+      "startFailed": "Could not start. Check the operations and the agent log.",
+      "agentStopping": "Stopped because its node's agent stopped.",
+      "agentStarted": "Started again by its node's agent.",
+      "autoRestart": "Restarting after a crash."
+    },
+    "commands": {
+      "start": "Start",
+      "stop": "Stop",
+      "restart": "Restart",
+      "kill": "Kill"
+    },
+    "killConfirm": "Kill {{name}} now? Its processes end without saving.",
+    "commandRefused": "The node did not accept the command ({{status}} {{code}}).",
+    "operations": {
+      "title": "Recent operations",
+      "empty": "No operations yet.",
+      "type": "Operation",
+      "status": "Result",
+      "when": "When",
+      "types": {
+        "serverProvision": "Prepare on the node",
+        "serverInstall": "Install",
+        "serverDelete": "Delete"
+      },
+      "statuses": {
+        "queued": "Queued",
+        "running": "In progress",
+        "succeeded": "Done",
+        "failed": "Failed",
+        "cancelled": "Cancelled",
+        "interrupted": "Interrupted"
+      }
+    },
+    "administration": "Administration",
+    "administrationHint": "Reinstalling prepares the server's folder and account again and runs its install. Deleting removes its files and its Windows account from the node.",
+    "reinstall": "Reinstall",
+    "reinstallConfirm": "Reinstall {{name}}? Its game files are installed again.",
+    "deleteConfirm": "Delete {{name}}? Its files and its Windows account are removed from the node. This cannot be undone."
   },
   "panelKeys": {
     "title": "Panel signing key",

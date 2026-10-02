@@ -44,6 +44,7 @@ export function AppLayout() {
   const visible = (items: NavItem[]) => items.filter((item) => item.anyOf.length === 0 || can(user, ...item.anyOf));
   const main = visible([
     { to: '/', label: t('nav.dashboard'), anyOf: [] },
+    { to: '/servers', label: t('nav.servers'), anyOf: [Permission.ServerView] },
     { to: '/nodes', label: t('nav.nodes'), anyOf: [Permission.NodeView, Permission.NodeManage] },
   ]);
   const admin = visible([

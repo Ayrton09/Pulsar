@@ -20,6 +20,32 @@ export const routes: RouteObject[] = [
           { index: true, element: <DashboardPage /> },
           { path: 'account', element: <AccountPage /> },
           {
+            path: 'servers',
+            lazy: async () => {
+              const { ServersPage } = await import('../features/servers/ServersPage');
+              return {
+                element: (
+                  <RequirePermission anyOf={[Permission.ServerView]}>
+                    <ServersPage />
+                  </RequirePermission>
+                ),
+              };
+            },
+          },
+          {
+            path: 'servers/:id',
+            lazy: async () => {
+              const { ServerPage } = await import('../features/servers/ServerPage');
+              return {
+                element: (
+                  <RequirePermission anyOf={[Permission.ServerView]}>
+                    <ServerPage />
+                  </RequirePermission>
+                ),
+              };
+            },
+          },
+          {
             path: 'nodes',
             lazy: async () => {
               const { NodesPage } = await import('../features/nodes/NodesPage');
