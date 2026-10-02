@@ -9,13 +9,15 @@ using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Commands;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Security;
+using Pulsar.Agent.Core.Servers;
 using Pulsar.Contracts;
 
 namespace Pulsar.Api.Tests.Infrastructure;
 
 /// <summary>
-/// The real agent core (enrollment, authentication, hub connection, command verification, reconnects) running against
-/// the panel under test. Only the machine-specific parts are replaced: keys live in memory and the inventory is fixed.
+/// The real agent core (enrollment, authentication, hub connection, command verification, reconnects, server
+/// supervision and operations) running against the panel under test. Only the machine-specific parts are replaced: keys
+/// live in memory, the inventory is fixed, server processes are scripted and servers get plain folders.
 /// </summary>
 public sealed class InProcessAgent : IAsyncDisposable
 {
@@ -23,6 +25,7 @@ public sealed class InProcessAgent : IAsyncDisposable
     private readonly TestServerTransport _transport;
     private readonly TimeProvider _clock;
     private AgentConnection? _connection;
+    private ServerHost? _servers;
 
     public InProcessAgent(WebApplicationFactory<Program> factory, TimeProvider? clock = null)
     {
@@ -47,25 +50,47 @@ public sealed class InProcessAgent : IAsyncDisposable
 
     public AgentConnectionOptions Options { get; } = new() { MetricsInterval = TimeSpan.FromMilliseconds(200), MaxBackoff = TimeSpan.FromSeconds(2) };
 
+    public string ServersRoot => Path.Combine(_root, "servers");
+
+    public ScriptedProcessManager Processes { get; } = new();
+
+    public FolderProvisioner Provisioner { get; } = new();
+
+    /// <summary>The agent's servers while it runs.</summary>
+    public ServerHost? Servers => _servers;
+
     public async Task<AgentConfig> EnrollAsync(string token, string panelKeyFingerprint, string panel = "https://localhost")
     {
         var enrollment = new AgentEnrollment(Configs, Keys, new FixedNodeSystem(), new NoDirectorySecurity(), _transport, _clock);
-        Config = await enrollment.EnrollAsync(new EnrollmentRequest(panel, token, panelKeyFingerprint, @"D:\PulsarServers", Development: true),
+        Config = await enrollment.EnrollAsync(new EnrollmentRequest(panel, token, panelKeyFingerprint, ServersRoot, Development: true),
             TestContext.Current.CancellationToken);
         return Config;
     }
 
-    public Task StartAsync()
+    public async Task StartAsync()
     {
+        // The test game server "files": the install step copies them, the scripted processes check they are there.
+        var testGame = Path.Combine(_root, "testgame");
+        Directory.CreateDirectory(testGame);
+        await File.WriteAllTextAsync(Path.Combine(testGame, "Pulsar.TestGameServer.exe"), "not a real executable", TestContext.Current.CancellationToken);
+
+        var channel = new PanelChannel();
+        var install = new InstallOptions { TestGameDirectory = testGame };
+        _servers = new ServerHost(Configs, new ServerStore(Configs.Paths), Provisioner, Processes, new InstallSteps(install), install, channel,
+            new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5) }, _clock, NullLoggerFactory.Instance);
         _connection = new AgentConnection(Configs, Keys, new FixedNodeSystem(), _transport, new PanelAuthenticator(_transport),
-            new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance), Options,
-            _clock, new StubLifetime(), NullLoggerFactory.Instance);
-        return _connection.StartAsync(TestContext.Current.CancellationToken);
+            new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance, _servers), Options,
+            _clock, new StubLifetime(), NullLoggerFactory.Instance, channel, _servers);
+
+        // As the agent host orders them: the connection waits for the servers to load; the servers stop first.
+        await _connection.StartAsync(TestContext.Current.CancellationToken);
+        await _servers.StartAsync(TestContext.Current.CancellationToken);
     }
 
     /// <summary>Stops the agent as a service stop would (the configuration and keys stay).</summary>
     public async Task StopAsync()
     {
+        await StopServersAsync();
         if (_connection is not null)
         {
             await _connection.StopAsync(CancellationToken.None);
@@ -87,6 +112,7 @@ public sealed class InProcessAgent : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await StopServersAsync();
         if (_connection is not null)
         {
             await _connection.StopAsync(CancellationToken.None);
@@ -96,6 +122,16 @@ public sealed class InProcessAgent : IAsyncDisposable
         if (Directory.Exists(_root))
         {
             Directory.Delete(_root, recursive: true);
+        }
+    }
+
+    private async Task StopServersAsync()
+    {
+        if (_servers is not null)
+        {
+            await _servers.StopAsync(CancellationToken.None);
+            _servers.Dispose();
+            _servers = null;
         }
     }
 

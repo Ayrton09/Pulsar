@@ -6,6 +6,7 @@ using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Servers;
 using Pulsar.Infrastructure.Identity;
 
 namespace Pulsar.Infrastructure.Persistence;
@@ -28,12 +29,20 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<PanelSigningKey> PanelSigningKeys => Set<PanelSigningKey>();
 
+    public DbSet<GameTemplate> GameTemplates => Set<GameTemplate>();
+
+    public DbSet<Server> Servers => Set<Server>();
+
+    public DbSet<Operation> Operations => Set<Operation>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         configurationBuilder.Properties<UserId>().HaveConversion<UserIdConverter>();
         configurationBuilder.Properties<RoleId>().HaveConversion<RoleIdConverter>();
         configurationBuilder.Properties<NodeId>().HaveConversion<NodeIdConverter>();
         configurationBuilder.Properties<ServerId>().HaveConversion<ServerIdConverter>();
+        configurationBuilder.Properties<TemplateId>().HaveConversion<TemplateIdConverter>();
+        configurationBuilder.Properties<OperationId>().HaveConversion<OperationIdConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder builder)

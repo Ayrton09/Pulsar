@@ -50,7 +50,8 @@ public interface IAgentConnections
     /// Signs and sends a command to a connected agent and waits for its ack. Returns null when the node is not
     /// connected or does not announce the command's capability.
     /// </summary>
-    Task<CommandAck?> SendAsync(NodeId node, AgentCommand command, UserId? actor, CancellationToken cancellationToken);
+    /// <param name="operationId">For commands that start an operation; the agent reports its end with this id.</param>
+    Task<CommandAck?> SendAsync(NodeId node, AgentCommand command, UserId? actor, CancellationToken cancellationToken, Guid? operationId = null);
 
     /// <summary>
     /// Sends the current panel keys to connected agents that pin a different set (one node, or all when

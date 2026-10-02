@@ -194,6 +194,12 @@ public sealed class NodeManagement(
             return NodeErrors.NotFound;
         }
 
+        // Servers keep their files and accounts on the machine: they are deleted through their agent first.
+        if (await db.Servers.AnyAsync(s => s.NodeId == id, cancellationToken))
+        {
+            return NodeErrors.HasServers;
+        }
+
         db.Nodes.Remove(node);
         audit.Record(AuditActions.Node.Deleted, metadata: new { name = node.Name }).WithNode(id).WithTarget("node", id.ToString());
         await db.SaveChangesAsync(cancellationToken);

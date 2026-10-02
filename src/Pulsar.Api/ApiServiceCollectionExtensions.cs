@@ -12,6 +12,7 @@ using Pulsar.Api.Http;
 using Pulsar.Api.Security;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Nodes;
+using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 
 namespace Pulsar.Api;
@@ -65,6 +66,9 @@ internal static class ApiServiceCollectionExtensions
         AddAuthentication(services, cookies);
         AddRateLimiting(services, configuration);
         AddAgentChannel(services);
+
+        // Development and CI turn on Pulsar's test game; a production panel never offers it.
+        services.AddSingleton(new TemplateOptions { EnableTestGame = configuration.GetValue<bool>("Pulsar:EnableTestGame") });
         return services;
     }
 

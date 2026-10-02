@@ -24,6 +24,11 @@
     as regular static web assets (fingerprinting and compression via MapStaticAssets).
     Node.js is only needed when this target runs; the published panel never needs it.
   -->
+  <!-- Bundled game manifests (docs/architecture/04), registered as templates at startup. -->
+  <ItemGroup>
+    <None Include="..\..\games\**\manifest.json" Link="games\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Target Name="BuildWebClient" BeforeTargets="BeforeBuild" Condition="'$(BuildWebClient)' == 'true'">
     <Exec Command="npm ci" WorkingDirectory="$(WebClientRoot)" />
     <Exec Command="npm run build" WorkingDirectory="$(WebClientRoot)" />

@@ -27,7 +27,8 @@ public static class ApiProblems
         _ when code.EndsWith(".not_found", StringComparison.Ordinal) => StatusCodes.Status404NotFound,
         "access.escalation" or "access.self_change" => StatusCodes.Status403Forbidden,
         "role.name_taken" or "role.in_use" or "access.last_administrator" or "role.system_immutable"
-            or "node.name_taken" or "node.not_connected" or "panel_key.rotation_in_progress" or "panel_key.not_retiring"
+            or "node.name_taken" or "node.not_connected" or "node.has_servers" or "panel_key.rotation_in_progress" or "panel_key.not_retiring"
+            or "server.busy" or "server.must_be_stopped" or "server.not_installed" or "server.template_unsupported" or "server.command_rejected"
             => StatusCodes.Status409Conflict,
         _ => StatusCodes.Status400BadRequest,
     };

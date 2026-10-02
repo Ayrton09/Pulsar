@@ -19,4 +19,6 @@ public static class NodeErrors
     public static DomainError NotFound { get; } = new("node.not_found", "The node does not exist.");
 
     public static DomainError NotConnected { get; } = new("node.not_connected", "The node's agent is not connected.");
+
+    public static DomainError HasServers { get; } = new("node.has_servers", "Delete the node's servers first.");
 }

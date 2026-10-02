@@ -37,7 +37,7 @@ public sealed class RealAgentTests(PulsarApiFactory factory) : IClassFixture<Pul
         var node = (await GetNodeAsync(admin, config.NodeId)).Node;
         Assert.True(node.Connected);
         Assert.Equal("TEST-NODE", node.Inventory!.Hostname);
-        Assert.Equal(@"D:\PulsarServers", node.Inventory.ServersRoot);
+        Assert.Equal(agent.ServersRoot, node.Inventory.ServersRoot);
         Assert.Equal(12.5, node.Metrics!.CpuPercent);
         Assert.Equal(AckStatus.Accepted, (await PingAsync(admin, config.NodeId)).Status);
     }

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Auth;
+using Pulsar.Application.Servers;
 using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Tests.Infrastructure;
@@ -93,6 +94,7 @@ public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:Pulsar", _database?.ConnectionString ?? "Host=database-tests-disabled");
         builder.UseSetting("RateLimiting:Auth:PermitLimit", "1000");
         builder.UseSetting("DataProtection:KeysPath", KeysDirectory);
+        builder.UseSetting("Pulsar:EnableTestGame", "true");
     }
 }
 
@@ -112,7 +114,16 @@ public sealed class NoDatabaseApiFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:Pulsar", "Host=no-database-in-these-tests");
         builder.UseSetting("DataProtection:KeysPath", _keys);
-        builder.ConfigureTestServices(services => services.AddScoped<IDatabaseInitializer, NoOpDatabaseInitializer>());
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddScoped<IDatabaseInitializer, NoOpDatabaseInitializer>();
+            services.AddScoped<IBundledTemplates, NoBundledTemplates>();
+        });
+    }
+
+    private sealed class NoBundledTemplates : IBundledTemplates
+    {
+        public Task RegisterBundledAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class NoOpDatabaseInitializer : IDatabaseInitializer

@@ -38,6 +38,18 @@ public static class AuditActions
         public const string CredentialRotated = "node.credential_rotated";
     }
 
+    public static class Server
+    {
+        public const string Created = "server.created";
+        public const string Deleted = "server.deleted";
+        public const string DeleteRequested = "server.delete_requested";
+        public const string Started = "server.start";
+        public const string Stopped = "server.stop";
+        public const string Restarted = "server.restart";
+        public const string Killed = "server.kill";
+        public const string InstallRequested = "server.install_requested";
+    }
+
     public static class PanelKey
     {
         public const string Rotated = "panel_key.rotated";

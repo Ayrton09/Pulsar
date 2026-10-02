@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Nodes;
+using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
@@ -16,6 +17,8 @@ internal sealed partial class AgentHub(
     AgentConnectionRegistry connections,
     AgentSessionStore sessions,
     IPanelKeyRing keys,
+    AgentServerEvents servers,
+    IServiceScopeFactory scopes,
     TimeProvider clock,
     ILogger<AgentHub> logger) : Hub, IAgentHub
 {
@@ -95,6 +98,9 @@ internal sealed partial class AgentHub(
             throw new HubException("Agent session is no longer active; authenticate again.");
         }
 
+        // The agent's view of its servers wins (docs/architecture/05, "Reconciliation").
+        await servers.ReconcileAsync(nodeId, hello.Servers ?? [], hello.OperationsInFlight ?? [], Context.ConnectionAborted);
+
         // An agent that missed a panel key rotation gets the new keys. Not awaited here: waiting for a client result
         // inside this connection's own hub method would deadlock (one invocation per client at a time).
         if (hello.PinnedPanelKeys is not null)
@@ -152,30 +158,59 @@ internal sealed partial class AgentHub(
         Context.Items[s_lastSeenAtKey] = now;
     }
 
-    // Server events: accepted from registered connections; the panel's server model handles them (Phase 3, next steps).
-    public Task ServerStateChanged(ServerStateChanged change)
+    // Events are stored even when the connection closes right after them (an agent stopping sends its servers' last
+    // states and leaves): they are not tied to the connection's lifetime.
+    public async Task ServerStateChanged(ServerStateChanged change)
     {
         ArgumentNullException.ThrowIfNull(change);
-        return NotHandledYet(nameof(ServerStateChanged));
+        if (RegisteredNode() is { } nodeId)
+        {
+            await servers.StateChangedAsync(nodeId, change, CancellationToken.None);
+        }
     }
 
-    public Task OperationProgress(OperationProgress progress)
+    public async Task OperationProgress(OperationProgress progress)
     {
         ArgumentNullException.ThrowIfNull(progress);
-        return NotHandledYet(nameof(OperationProgress));
+        if (RegisteredNode() is { } nodeId)
+        {
+            await servers.OperationProgressAsync(nodeId, progress, CancellationToken.None);
+        }
     }
 
-    public Task OperationCompleted(OperationCompleted completed)
+    /// <summary>Completes only once the result is stored: the agent deletes it from its outbox when this call returns.</summary>
+    public async Task OperationCompleted(OperationCompleted completed)
     {
         ArgumentNullException.ThrowIfNull(completed);
-        return NotHandledYet(nameof(OperationCompleted));
+        if (RegisteredNode() is not { } nodeId)
+        {
+            throw new HubException("Say Hello first.");
+        }
+
+        if (await servers.OperationCompletedAsync(nodeId, completed, CancellationToken.None) is { } followUp)
+        {
+            // The install that follows provisioning sends a command to this same agent: not awaited inside its own call.
+            _ = Task.Run(() => ContinueInstallAsync(followUp));
+        }
     }
 
-    private Task NotHandledYet(string @event)
+    private NodeId? RegisteredNode()
     {
         var nodeId = Context.User!.NodeId();
-        LogServerEvent(nodeId, @event);
-        return Task.CompletedTask;
+        return connections.IsRegistered(nodeId, Context.ConnectionId) ? nodeId : null;
+    }
+
+    private async Task ContinueInstallAsync(ServerFollowUp followUp)
+    {
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<ServerManagement>().ContinueInstallAsync(followUp.ServerId, followUp.RequestedBy, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is DbUpdateException or InvalidOperationException or OperationCanceledException)
+        {
+            LogInstallNotStarted(ex, followUp.ServerId);
+        }
     }
 
     public override Task OnDisconnectedAsync(Exception? exception)
@@ -191,8 +226,8 @@ internal sealed partial class AgentHub(
         Message = "Node {NodeId} rejected with protocol version {ProtocolVersion}; supported versions are {MinimumVersion} through {CurrentVersion}")]
     private partial void LogProtocolRejected(NodeId nodeId, int protocolVersion, int minimumVersion, int currentVersion);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Node {NodeId} sent {Event}; server events are not handled yet")]
-    private partial void LogServerEvent(NodeId nodeId, string @event);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Server {ServerId} was provisioned but its install could not be started")]
+    private partial void LogInstallNotStarted(Exception exception, ServerId serverId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not send the panel keys to node {NodeId}")]
     private partial void LogPanelKeysUpdateFailed(Exception exception, NodeId nodeId);

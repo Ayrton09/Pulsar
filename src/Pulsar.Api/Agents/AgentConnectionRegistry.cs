@@ -72,7 +72,8 @@ internal sealed partial class AgentConnectionRegistry(
         }
     }
 
-    public async Task<CommandAck?> SendAsync(NodeId node, AgentCommand command, UserId? actor, CancellationToken cancellationToken)
+    public async Task<CommandAck?> SendAsync(NodeId node, AgentCommand command, UserId? actor, CancellationToken cancellationToken,
+        Guid? operationId = null)
     {
         ArgumentNullException.ThrowIfNull(command);
         if (!_connections.TryGetValue(node, out var connection)
@@ -84,14 +85,13 @@ internal sealed partial class AgentConnectionRegistry(
 
         var now = clock.GetUtcNow();
         var envelope = new CommandEnvelope(AgentProtocol.CurrentVersion, Guid.CreateVersion7(now), node.Value, connection.Session.SessionId,
-            connection.Session.NextSequence(), now, now + CommandLifetime, null, actor?.Value, command);
+            connection.Session.NextSequence(), now, now + CommandLifetime, operationId, actor?.Value, command);
         var signed = await keys.SignForAsync(AgentProtocol.Purposes.Command, ProtocolJson.Serialize(envelope), connection.Info.PinnedPanelKeys, cancellationToken);
         if (signed is null)
         {
             LogNoTrustedKey(node);
             return null;
         }
-
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(AckTimeout);

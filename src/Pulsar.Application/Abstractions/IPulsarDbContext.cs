@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Servers;
 
 namespace Pulsar.Application.Abstractions;
 
@@ -26,8 +28,20 @@ public interface IPulsarDbContext
 
     DbSet<PanelSigningKey> PanelSigningKeys { get; }
 
+    DbSet<GameTemplate> GameTemplates { get; }
+
+    DbSet<Server> Servers { get; }
+
+    DbSet<Operation> Operations { get; }
+
     /// <summary>Transactions and set-based updates (e.g. consuming a token atomically).</summary>
     DatabaseFacade Database { get; }
+
+    /// <summary>Reloading entities after an optimistic concurrency conflict.</summary>
+    ChangeTracker ChangeTracker { get; }
+
+    EntityEntry<TEntity> Entry<TEntity>(TEntity entity)
+        where TEntity : class;
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

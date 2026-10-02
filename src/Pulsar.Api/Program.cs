@@ -8,7 +8,9 @@ using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Nodes;
 using Pulsar.Api.Security;
+using Pulsar.Api.Servers;
 using Pulsar.Application;
+using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 using Pulsar.Infrastructure;
 using Pulsar.Infrastructure.Persistence;
@@ -50,6 +52,11 @@ try
         if (!migrateOnly && !status.HasUsers)
         {
             app.Services.GetRequiredService<InitialSetup>().IssueToken();
+        }
+
+        if (!migrateOnly)
+        {
+            await scope.ServiceProvider.GetRequiredService<IBundledTemplates>().RegisterBundledAsync(app.Lifetime.ApplicationStopping);
         }
     }
 
@@ -95,6 +102,7 @@ try
     api.MapRoleEndpoints();
     api.MapAuditEndpoints();
     api.MapNodeEndpoints();
+    api.MapServerEndpoints();
 
     // Agent protocol: its own authentication, never the browser's (docs/architecture/03).
     app.MapAgentEndpoints();
