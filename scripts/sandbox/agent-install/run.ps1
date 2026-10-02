@@ -33,7 +33,8 @@ function Wait-Until([scriptblock] $condition, [int] $seconds) {
     return $false
 }
 
-$panel = 'http://127.0.0.1:5290'
+# HTTPS, as in production: a certificate made here and trusted machine-wide (the machine is disposable).
+$panel = 'https://localhost:5291'
 $setupToken = 'sandbox-setup-token-not-a-secret-0123456789'
 $admin = @{ userName = 'sandbox-admin'; password = 'sandbox admin password' }
 $agentSource = Join-Path $Bundle 'agent'
@@ -56,10 +57,21 @@ try {
     & createdb.exe -h 127.0.0.1 -U postgres pulsar
     Check 'postgresql' ($LASTEXITCODE -eq 0)
 
+    # --- TLS certificate for localhost, trusted by the whole machine (the agent service runs as SYSTEM) ---
+    $certificate = New-SelfSignedCertificate -DnsName 'localhost' -CertStoreLocation 'Cert:\LocalMachine\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddDays(2)
+    $pfx = Join-Path $env:TEMP 'pulsar-panel.pfx'
+    $null = Export-PfxCertificate -Cert $certificate -FilePath $pfx -Password (ConvertTo-SecureString 'agent-install' -AsPlainText -Force)
+    $cer = Join-Path $env:TEMP 'pulsar-panel.cer'
+    $null = Export-Certificate -Cert $certificate -FilePath $cer
+    $null = Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\LocalMachine\Root'
+    # Windows PowerShell may default to TLS 1.0, which the panel refuses.
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
     # --- Panel ---
     $env:ConnectionStrings__Pulsar = 'Host=127.0.0.1;Port=5432;Database=pulsar;Username=postgres'
     $env:InitialSetup__Token = $setupToken
-    $env:Security__AllowInsecureHttp = 'true'
+    $env:Kestrel__Certificates__Default__Path = $pfx
+    $env:Kestrel__Certificates__Default__Password = 'agent-install'
     $panelDir = Join-Path $Bundle 'panel'
     Start-Process (Join-Path $panelDir 'Pulsar.Api.exe') -ArgumentList '--contentRoot', "`"$panelDir`"", '--urls', $panel `
         -RedirectStandardOutput (Join-Path $report 'panel.txt') -RedirectStandardError (Join-Path $report 'panel-error.txt') -WindowStyle Hidden
@@ -67,7 +79,8 @@ try {
 
     $null = Invoke-WebRequest "$panel/api/v1/auth/session" -SessionVariable web -UseBasicParsing
     function Api([string] $method, [string] $path, $body = $null) {
-        $xsrf = ($web.Cookies.GetCookies($panel) | Where-Object Name -eq 'pulsar-xsrf').Value
+        # Over HTTPS the panel uses __Host- cookie names.
+        $xsrf = ($web.Cookies.GetCookies($panel) | Where-Object Name -in '__Host-pulsar-xsrf', 'pulsar-xsrf').Value
         $json = if ($null -ne $body) { $body | ConvertTo-Json -Compress } else { $null }
         Invoke-RestMethod "$panel$path" -Method $method -WebSession $web -Headers @{ 'X-XSRF-TOKEN' = $xsrf } -ContentType 'application/json' -Body $json
     }
@@ -126,6 +139,7 @@ try {
 
     $config = Get-Content (Join-Path $dataDir 'config\agent.json') -Raw | ConvertFrom-Json
     Check 'machine key in config' ($config.key.scope -eq 'machine' -and -not $config.development) "$($config.key.name) $($config.key.storage)"
+    Check 'agent talks to the panel over HTTPS' ($config.panel -eq "$panel/") $config.panel
     $provider = if ($config.key.storage -eq 'tpm') { [Security.Cryptography.CngProvider]::new('Microsoft Platform Crypto Provider') } else { [Security.Cryptography.CngProvider]::MicrosoftSoftwareKeyStorageProvider }
     $key = [Security.Cryptography.CngKey]::Open($config.key.name, $provider, [Security.Cryptography.CngKeyOpenOptions]::MachineKey)
     $descriptor = New-Object Security.AccessControl.RawSecurityDescriptor -ArgumentList ($key.GetProperty('Security Descr', [Security.Cryptography.CngPropertyOptions]4).GetValue()), 0
@@ -173,6 +187,12 @@ try {
     $log = Get-ChildItem (Join-Path $dataDir 'logs') -Filter 'agent-*.log' | Sort-Object LastWriteTime | Select-Object -Last 1
     Check 'the service logs the refusal' (Wait-Until { (Get-Content $log.FullName -Raw) -match 'The panel refused this node' } 20)
     Copy-Item $log.FullName (Join-Path $report 'agent.log')
+
+    # --- Nothing unexpected in the logs (the refusal after revocation is the one expected error) ---
+    $agentErrors = @(Select-String -Path $log.FullName -Pattern '\[(ERR|FTL)\]' | Where-Object { $_.Line -notmatch 'The panel refused this node' })
+    Check 'agent log: no unexpected errors' ($agentErrors.Count -eq 0) (($agentErrors | ForEach-Object Line) -join ' | ')
+    $panelErrors = @(Select-String -Path (Join-Path $report 'panel.txt') -Pattern ' (ERR|FTL)\]')
+    Check 'panel log: no errors' ($panelErrors.Count -eq 0) (($panelErrors | ForEach-Object Line) -join ' | ')
 
     # --- Unenroll removes the service, the key and the configuration ---
     $removed = Invoke-Native $agentExe unenroll

@@ -41,6 +41,32 @@ public sealed class AgentConfigurationTests : IDisposable
         Assert.False(File.Exists(store.Paths.ConfigFile + ".tmp"));
     }
 
+    [Fact]
+    public void AConfigurationWrittenBeforeKeyRotationStillLoads()
+    {
+        // As written by the first Phase 2 agents: no keyCreatedAt, no pendingRotation.
+        var store = new AgentConfigStore(new AgentPaths(_root));
+        Directory.CreateDirectory(store.Paths.ConfigDirectory);
+        File.WriteAllText(store.Paths.ConfigFile, """
+            {
+              "panel": "https://panel.example.com/",
+              "nodeId": "01a0f9d9-0c2c-7e69-9a34-f215e254f039",
+              "credentialId": "01a0f9d9-2630-7913-9eec-dbea1640659d",
+              "key": { "name": "PulsarAgent-1", "scope": "machine", "storage": "tpm" },
+              "panelKeys": [ { "keyId": "sha256:abc", "publicKey": "AQID" } ],
+              "serversRoot": null,
+              "enrolledAt": "2026-10-01T23:42:33+00:00",
+              "development": false
+            }
+            """);
+
+        var config = store.Load()!;
+
+        Assert.Null(config.KeyCreatedAt);
+        Assert.Null(config.PendingRotation);
+        Assert.Equal(config.EnrolledAt, config.CurrentKeyCreatedAt);
+    }
+
     [Theory]
     [InlineData("https://panel.example.com", "https://panel.example.com")]
     [InlineData("HTTPS://Panel.Example.com:8443/", "https://panel.example.com:8443")]
