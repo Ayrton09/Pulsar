@@ -4,8 +4,8 @@ namespace Pulsar.Agent.Core.Panel;
 
 /// <summary>
 /// The current hub connection to the panel, for code that reports to it (servers, operations) without owning the
-/// connection. Messages are dropped while disconnected: server states travel again in the next Hello and operation
-/// results are kept in the outbox until delivered.
+/// connection. Messages are dropped while disconnected: server states travel again in the next Hello (and their latest
+/// change right after it), and operation results are kept in the outbox until delivered.
 /// </summary>
 public sealed class PanelChannel
 {

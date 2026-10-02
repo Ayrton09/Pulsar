@@ -93,6 +93,7 @@ public sealed partial class ServerHost(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         panel.OnConnected(DeliverPendingResultsAsync);
+        panel.OnConnected(DeliverLatestStatesAsync);
         _config = configs.Load();
         if (_config is null)
         {
@@ -474,6 +475,22 @@ public sealed partial class ServerHost(
             }
 
             store.DeleteResult(result.OperationId);
+        }
+    }
+
+    /// <summary>
+    /// The Hello carries a snapshot of every server, but the channel opens only once the panel accepted it: a server
+    /// that changed state in between (one the agent resumed as it started, say) would stay wrong in the panel. Each
+    /// server's latest change is delivered again; the panel ignores the ones it already has (same sequence).
+    /// </summary>
+    private async Task DeliverLatestStatesAsync(CancellationToken cancellationToken)
+    {
+        foreach (var change in _servers.Values.Select(s => s.Supervisor.LastChange).OfType<ServerStateChanged>())
+        {
+            if (!await panel.DeliverAsync(nameof(IAgentHub.ServerStateChanged), change, cancellationToken))
+            {
+                return;
+            }
         }
     }
 
