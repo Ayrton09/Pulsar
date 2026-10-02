@@ -13,9 +13,11 @@
   <Folder Name="/tests/">
     <Project Path="tests/Pulsar.Agent.Core.Tests/Pulsar.Agent.Core.Tests.csproj" />
     <Project Path="tests/Pulsar.Agent.Tests/Pulsar.Agent.Tests.csproj" />
+    <Project Path="tests/Pulsar.Agent.Windows.Tests/Pulsar.Agent.Windows.Tests.csproj" />
     <Project Path="tests/Pulsar.Api.Tests/Pulsar.Api.Tests.csproj" />
     <Project Path="tests/Pulsar.Architecture.Tests/Pulsar.Architecture.Tests.csproj" />
     <Project Path="tests/Pulsar.Contracts.Tests/Pulsar.Contracts.Tests.csproj" />
     <Project Path="tests/Pulsar.Domain.Tests/Pulsar.Domain.Tests.csproj" />
+    <Project Path="tests/Pulsar.TestGameServer/Pulsar.TestGameServer.csproj" />
   </Folder>
 </Solution>

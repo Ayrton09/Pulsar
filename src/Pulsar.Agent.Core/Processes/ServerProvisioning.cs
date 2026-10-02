@@ -1,0 +1,39 @@
+using System.Text.RegularExpressions;
+
+namespace Pulsar.Agent.Core.Processes;
+
+/// <summary>
+/// Prepares what a server needs on this machine before it can run (docs/architecture/05, "Full creation flow"): its
+/// directory under the servers root and, outside development, its dedicated Windows account with access to that
+/// directory only.
+/// </summary>
+public interface IServerProvisioner
+{
+    /// <summary>Creates or repairs the server's directory and account. Idempotent.</summary>
+    /// <exception cref="GameProcessException">The machine cannot host servers (e.g. a domain controller).</exception>
+    ProvisionedServer Provision(string serversRoot, string shortId);
+
+    /// <summary>Deletes the directory (never following junctions or links out of it) and the account. Idempotent.</summary>
+    void Deprovision(string serversRoot, string shortId);
+}
+
+/// <param name="Directory">Absolute path of the server directory.</param>
+/// <param name="Identity">Who the server's processes run as.</param>
+public sealed record ProvisionedServer(string Directory, ProcessIdentity Identity);
+
+public static partial class ServerShortId
+{
+    /// <summary>Short ids name folders and Windows accounts (<c>pulsar_&lt;shortId&gt;</c>, at most 20 characters).</summary>
+    public static bool IsValid(string? shortId) => shortId is not null && Pattern().IsMatch(shortId);
+
+    public static void Validate(string shortId)
+    {
+        if (!IsValid(shortId))
+        {
+            throw new ArgumentException($"'{shortId}' is not a valid server short id.", nameof(shortId));
+        }
+    }
+
+    [GeneratedRegex("^[a-z0-9]{4,12}$", RegexOptions.CultureInvariant)]
+    private static partial Regex Pattern();
+}

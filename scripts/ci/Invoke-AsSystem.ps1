@@ -1,0 +1,67 @@
+<#
+.SYNOPSIS
+Runs a command as SYSTEM in session 0 (what the agent service looks like) through a temporary scheduled task, prints
+its output and exits with its exit code.
+
+.DESCRIPTION
+Used by CI for the tests that need SYSTEM: starting a process as another account (CreateProcessAsUser) needs
+privileges an elevated administrator does not have. Run it only on a disposable, elevated machine (a CI runner,
+Windows Sandbox).
+
+.EXAMPLE
+.\scripts\ci\Invoke-AsSystem.ps1 -FilePath tests\...\Pulsar.Agent.Windows.Tests.exe -Environment @{ PULSAR_ACCOUNT_TESTS = '1' }
+#>
+param(
+    [Parameter(Mandatory)][string]$FilePath,
+    [string[]]$ArgumentList = @(),
+    [hashtable]$Environment = @{},
+    [int]$TimeoutMinutes = 20
+)
+
+$ErrorActionPreference = 'Stop'
+$FilePath = (Resolve-Path $FilePath).Path
+$id = [guid]::NewGuid().ToString('N')
+# A folder both this user and SYSTEM can write to (SYSTEM's own temp is not readable here).
+$work = Join-Path $env:SystemDrive "PulsarAsSystem\$id"
+New-Item -ItemType Directory -Force $work | Out-Null
+$log = Join-Path $work 'output.log'
+$exitFile = Join-Path $work 'exit.txt'
+
+$lines = @('@echo off', "cd /d `"$(Split-Path $FilePath)`"")
+foreach ($name in $Environment.Keys) {
+    $lines += "set `"$name=$($Environment[$name])`""
+}
+$arguments = ($ArgumentList | ForEach-Object { "`"$_`"" }) -join ' '
+$lines += "`"$FilePath`" $arguments > `"$log`" 2>&1"
+$lines += "echo %ERRORLEVEL%> `"$exitFile`""
+Set-Content -Path (Join-Path $work 'run.cmd') -Value $lines -Encoding Ascii
+
+$taskName = "PulsarAsSystem-$id"
+$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$(Join-Path $work 'run.cmd')`""
+$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes $TimeoutMinutes)
+Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal -Settings $settings -Force | Out-Null
+try {
+    Start-ScheduledTask -TaskName $taskName
+    $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+    while (-not (Test-Path $exitFile) -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 2
+    }
+
+    if (Test-Path $log) {
+        Get-Content $log
+    }
+
+    if (-not (Test-Path $exitFile)) {
+        Write-Error "Timed out after $TimeoutMinutes minutes."
+        exit 1
+    }
+
+    $code = [int](Get-Content $exitFile -Raw).Trim()
+    Write-Host "Exit code (as SYSTEM): $code"
+    exit $code
+}
+finally {
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
+}

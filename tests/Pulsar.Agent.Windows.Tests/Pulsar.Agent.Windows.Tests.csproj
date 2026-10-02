@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Pulsar.Agent.Windows\Pulsar.Agent.Windows.csproj" />
+    <!-- Built first and copied next to the tests (see below); not referenced as an assembly. -->
+    <ProjectReference Include="..\Pulsar.TestGameServer\Pulsar.TestGameServer.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <Target Name="CopyTestGameServer" AfterTargets="Build">
+    <ItemGroup>
+      <TestGameServerFiles Include="..\Pulsar.TestGameServer\bin\$(Configuration)\net10.0-windows\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(TestGameServerFiles)" DestinationFolder="$(OutDir)testgame\%(RecursiveDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

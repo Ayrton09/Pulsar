@@ -62,6 +62,15 @@ jobs:
           PULSAR_TEST_POSTGRES: Host=localhost;Port=5432;Username=pulsar_ci;Password=pulsar_ci
           PULSAR_REQUIRE_DATABASE: 'true'
 
+      # Local accounts, user rights and servers started as their own account: CreateProcessAsUser needs SYSTEM, as
+      # the agent service runs. Only here, on the disposable runner (the tests skip themselves anywhere else).
+      - name: Test server isolation as SYSTEM (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/ci/Invoke-AsSystem.ps1 -FilePath tests/Pulsar.Agent.Windows.Tests/bin/Release/net10.0-windows/Pulsar.Agent.Windows.Tests.exe `
+            -Environment @{ PULSAR_ACCOUNT_TESTS = '1'; DOTNET_ROOT = $env:DOTNET_ROOT }
+
   web:
     name: Web
     runs-on: ubuntu-latest

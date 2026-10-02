@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Pulsar.Agent.Tests" />
+    <InternalsVisibleTo Include="Pulsar.Agent.Windows.Tests" />
   </ItemGroup>
 
 </Project>
