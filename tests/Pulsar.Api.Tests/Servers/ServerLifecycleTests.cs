@@ -28,8 +28,9 @@ public sealed class ServerLifecycleTests(PulsarApiFactory factory) : IClassFixtu
         await using var agent = await ConnectedAgentAsync(admin, "lifecycle");
 
         var created = await ServerApi.CreateAsync(admin, agent.Config!.NodeId, "Test server");
-        Assert.Equal(InstallState.Installing, created.Server.InstallState);
-        Assert.Equal(OperationType.ServerProvision, created.Server.ActiveOperation?.Type);
+        // Provisioning starts at once; a fast agent may already be installing (or done) when the answer arrives.
+        Assert.Contains(created.RecentOperations, o => o.Type == OperationType.ServerProvision);
+        Assert.NotEqual(InstallState.NotInstalled, created.Server.InstallState);
 
         var installed = await ServerApi.WaitForAsync(admin, created.Server.Id,
             s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null, "provisioned and installed");
