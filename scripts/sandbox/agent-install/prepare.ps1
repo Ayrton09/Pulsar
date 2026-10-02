@@ -3,8 +3,9 @@
 # Run on the host, no elevation needed:
 #   .\scripts\sandbox\agent-install\prepare.ps1 -PgHome <extracted PostgreSQL binaries>\pgsql
 # Then open artifacts\agent-install-sandbox\agent-install.wsb and wait for report\summary.txt to end with "done".
-# The sandbox has no network and is discarded when closed; nothing is installed on the host.
-param([Parameter(Mandatory)] [string] $PgHome)
+# The sandbox has no network and is discarded when closed; nothing is installed on the host. With -RealGame it has
+# network access, to install a real Counter-Strike: Source server with SteamCMD from Valve (about 2.5 GB).
+param([Parameter(Mandatory)] [string] $PgHome, [switch] $RealGame)
 $ErrorActionPreference = 'Stop'
 
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..\..\..')
@@ -35,7 +36,7 @@ Copy-Item (Join-Path $PSScriptRoot 'run.ps1') $bundle
 $sandboxBundle = 'C:\Users\WDAGUtilityAccount\Desktop\agent-install'
 @"
 <Configuration>
-  <Networking>Disable</Networking>
+  <Networking>$(if ($RealGame) { 'Enable' } else { 'Disable' })</Networking>
   <MappedFolders>
     <MappedFolder>
       <HostFolder>$bundle</HostFolder>
@@ -49,7 +50,7 @@ $sandboxBundle = 'C:\Users\WDAGUtilityAccount\Desktop\agent-install'
     </MappedFolder>
   </MappedFolders>
   <LogonCommand>
-    <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sandboxBundle\run.ps1 -Bundle $sandboxBundle</Command>
+    <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sandboxBundle\run.ps1 -Bundle $sandboxBundle$(if (-not $RealGame) { ' -SkipRealGame' })</Command>
   </LogonCommand>
 </Configuration>
 "@ | Set-Content -Encoding utf8 (Join-Path $bundle 'agent-install.wsb')
