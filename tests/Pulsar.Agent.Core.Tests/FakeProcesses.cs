@@ -16,12 +16,20 @@ internal sealed class FakeProcessManager : IGameProcessManager
     /// <summary>When set, the next start fails with this error.</summary>
     public GameProcessException? FailNext { get; set; }
 
+    /// <summary>When set, starts wait for it (a slow first logon, say).</summary>
+    public TaskCompletionSource? Gate { get; set; }
+
     public IReadOnlyList<FakeGameProcess> Started => [.. _started];
 
     public FakeGameProcess Last => _started.Last();
 
-    public Task<IGameProcess> StartAsync(ProcessLaunchSpec spec, CancellationToken cancellationToken)
+    public async Task<IGameProcess> StartAsync(ProcessLaunchSpec spec, CancellationToken cancellationToken)
     {
+        if (Gate is { } gate)
+        {
+            await gate.Task.WaitAsync(cancellationToken);
+        }
+
         lock (Specs)
         {
             Specs.Add(spec);
@@ -35,7 +43,7 @@ internal sealed class FakeProcessManager : IGameProcessManager
 
         var process = new FakeGameProcess(_started.Count + 1000);
         _started.Enqueue(process);
-        return Task.FromResult<IGameProcess>(process);
+        return process;
     }
 }
 

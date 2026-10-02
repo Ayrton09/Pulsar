@@ -217,13 +217,13 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         switch (message)
         {
             case Start start:
-                start.Answer(await HandleStartAsync(start.Reason));
+                await HandleStartAsync(start, start.Reason);
                 break;
             case Stop stop:
                 stop.Answer(HandleStop());
                 break;
             case Restart restart:
-                restart.Answer(await HandleRestartAsync());
+                await HandleRestartAsync(restart);
                 break;
             case Kill kill:
                 kill.Answer(HandleKill());
@@ -270,23 +270,30 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
     }
 
-    private async Task<AckStatus> HandleStartAsync(StateChangeReason reason)
+    /// <summary>
+    /// The ack is answered before the process exists: starting it can take seconds (an account's first logon creates its
+    /// profile) and the ack only says the start was accepted. A start that fails is reported as a state.
+    /// </summary>
+    private async Task HandleStartAsync(Request request, StateChangeReason reason)
     {
         SetDesired(true);
         switch (_state)
         {
             case RuntimeState.Starting or RuntimeState.Running:
-                return AckStatus.AlreadyInState;
+                request.Answer(AckStatus.AlreadyInState);
+                break;
             case RuntimeState.Stopping:
                 // Started again as soon as the stop completes.
                 _restartAfterStop = true;
-                return AckStatus.Accepted;
+                request.Answer(AckStatus.Accepted);
+                break;
             default:
                 // A manual start leaves the crash history behind.
                 _restartTimer++;
                 _restarts.Clear();
+                request.Answer(AckStatus.Accepted);
                 await LaunchAsync(reason);
-                return AckStatus.Accepted;
+                break;
         }
     }
 
@@ -304,23 +311,24 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         return AckStatus.Accepted;
     }
 
-    private async Task<AckStatus> HandleRestartAsync()
+    private async Task HandleRestartAsync(Request request)
     {
         SetDesired(true);
+        request.Answer(AckStatus.Accepted);
         switch (_state)
         {
             case RuntimeState.Starting or RuntimeState.Running:
                 _restartAfterStop = true;
                 BeginStop(StateChangeReason.Requested, null);
-                return AckStatus.Accepted;
+                break;
             case RuntimeState.Stopping:
                 _restartAfterStop = true;
-                return AckStatus.Accepted;
+                break;
             default:
                 _restartTimer++;
                 _restarts.Clear();
                 await LaunchAsync(StateChangeReason.Requested);
-                return AckStatus.Accepted;
+                break;
         }
     }
 

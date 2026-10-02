@@ -28,7 +28,7 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     {
         var supervisor = Supervisor();
 
-        Assert.Equal(AckStatus.Accepted, await supervisor.StartAsync());
+        Assert.Equal(AckStatus.Accepted, await Started(supervisor));
         await _events.WaitForAsync(RuntimeState.Starting, StateChangeReason.Requested);
         _processes.Last.Print("\u001b[32mloading...\u001b[m\r\nTest server rea");
         _processes.Last.Print("dy\r\n");
@@ -42,10 +42,27 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AStartIsAcknowledgedBeforeTheProcessExists()
+    {
+        var supervisor = Supervisor();
+        _processes.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // The panel waits 10 s for an ack; an account's first logon alone can take longer than that.
+        Assert.Equal(AckStatus.Accepted, await supervisor.StartAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Empty(_processes.Started);
+        await _events.WaitForAsync(RuntimeState.Starting);
+
+        _processes.Gate.SetResult();
+        await supervisor.FlushAsync();
+        _processes.Last.Print("Test server ready\r\n");
+        await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
+    }
+
+    [Fact]
     public async Task AServerThatNeverReportsReadyIsConsideredRunningAfterTheTimeout()
     {
         var supervisor = Supervisor();
-        await supervisor.StartAsync();
+        await Started(supervisor);
 
         _clock.Advance(TimeSpan.FromSeconds(60));
 
@@ -57,7 +74,7 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     public async Task ProcessAliveReadinessWaitsForItsGracePeriod()
     {
         var supervisor = Supervisor(plan => plan with { Readiness = new ProcessAliveReadiness(5) });
-        await supervisor.StartAsync();
+        await Started(supervisor);
         _clock.Advance(TimeSpan.FromSeconds(4));
         await supervisor.FlushAsync();
         Assert.Equal(RuntimeState.Starting, supervisor.Snapshot.State);
@@ -72,7 +89,7 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     {
         var supervisor = await Running();
 
-        Assert.Equal(AckStatus.AlreadyInState, await supervisor.StartAsync());
+        Assert.Equal(AckStatus.AlreadyInState, await Started(supervisor));
         Assert.Single(_processes.Started);
 
         Assert.Equal(AckStatus.Accepted, await supervisor.StopAsync());
@@ -273,7 +290,7 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
         var supervisor = Supervisor();
         _processes.FailNext = new GameProcessException("process.executable_missing", "missing");
 
-        Assert.Equal(AckStatus.Accepted, await supervisor.StartAsync());
+        Assert.Equal(AckStatus.Accepted, await Started(supervisor));
 
         var crashed = await _events.WaitForAsync(RuntimeState.Crashed, StateChangeReason.StartFailed);
         Assert.Equal("process.executable_missing", crashed.Detail);
@@ -307,7 +324,7 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
         await supervisor.StopAsync();
         await _events.WaitForAsync(RuntimeState.Offline);
 
-        await supervisor.StartAsync();
+        await Started(supervisor);
 
         Assert.True(first.Disposed);
         Assert.Equal(2, _processes.Started.Count);
@@ -317,11 +334,11 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     public async Task ATimerFromAPreviousRunDoesNotAffectTheNextOne()
     {
         var supervisor = Supervisor();
-        await supervisor.StartAsync();
+        await Started(supervisor);
         _processes.Last.Exit(0);
         await _events.WaitForAsync(RuntimeState.Offline);
 
-        await supervisor.StartAsync();
+        await Started(supervisor);
         _clock.Advance(TimeSpan.FromSeconds(30));
         await supervisor.FlushAsync();
         _clock.Advance(TimeSpan.FromSeconds(29));
@@ -359,10 +376,18 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
         Assert.True(_events.DesiredRunning, "An agent stop does not change what the user wants.");
     }
 
+    /// <summary>Starts and waits until the supervisor has handled it (the ack comes before the process exists).</summary>
+    private static async Task<AckStatus> Started(ServerSupervisor supervisor)
+    {
+        var ack = await supervisor.StartAsync();
+        await supervisor.FlushAsync();
+        return ack;
+    }
+
     private async Task<ServerSupervisor> Running(Func<LaunchPlan, LaunchPlan>? change = null, bool restartOnCrash = true)
     {
         var supervisor = Supervisor(change, restartOnCrash);
-        await supervisor.StartAsync();
+        await Started(supervisor);
         _processes.Last.Print("Test server ready\r\n");
         await _events.WaitForAsync(RuntimeState.Running);
         return supervisor;

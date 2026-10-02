@@ -42,6 +42,13 @@ public sealed partial class WindowsServerProvisioner(WindowsServerAccounts accou
         var name = WindowsServerAccounts.AccountName(shortId);
         var sid = accounts.Ensure(name, $"Pulsar game server {shortId} (managed by the Pulsar agent)");
         Protect(directory, sid);
+
+        // The first logon creates the account's profile, which can take seconds: done here (an operation) rather than at
+        // the first start, and a machine policy that stops the account from logging on shows up now.
+        using (accounts.LogOn(name))
+        {
+        }
+
         LogProvisioned(shortId, directory, name);
         return new ProvisionedServer(directory, ProcessIdentity.Account(name));
     }
