@@ -278,7 +278,7 @@ CREATE TABLE server_variables (
 CREATE TABLE node_allocations (
     id          uuid PRIMARY KEY,
     node_id     uuid NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
-    ip_address  inet NOT NULL,                 -- 0.0.0.0 = all interfaces
+    ip_address  varchar(15) NOT NULL,          -- canonical IPv4, 0.0.0.0 = all interfaces (Phase 4: text, not inet)
     port        integer NOT NULL CHECK (port BETWEEN 1 AND 65535),
     server_id   uuid REFERENCES servers(id) ON DELETE SET NULL,
     port_name   varchar(32),                   -- manifest port name ('game', 'tv'…)

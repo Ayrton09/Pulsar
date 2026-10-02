@@ -47,6 +47,8 @@ Explicit assumptions:
 - Jobs with UI restrictions and no breakaway.
 - Explicit inherited handles (`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`).
 - RCON (Source servers in `logfile+rcon` mode) is a credential exposed on the game's TCP port: the agent generates and keeps a long random password per server (T18).
+- SteamCMD runs as the server's own account, from the server's own copy (doc 06): it can write only where its server can.
+- Processes a server's account starts outside its Job (scheduled tasks, WMI) are killed at every start, stop, install and deletion (T20).
 
 ### File manager (critical)
 
@@ -80,7 +82,7 @@ Privileged import, closed steps, time-bounded regexes, typed variables, argv wit
 | Panel signing key | `panel_signing_keys` | Data Protection |
 | Data Protection key ring | Panel disk | DPAPI (LocalMachine) on Windows; certificate on Linux or for portability |
 | Node private key | CNG/TPM key store | Non-exportable |
-| Specs with secrets on the node | `state\servers\*.json` | ACL (SYSTEM + Administrators); secret variables encrypted with DPAPI LocalMachine once manifests have them (Phase 4) |
+| Specs with secrets on the node (secret variables, RCON password) | `state\servers\*.json` | ACL (SYSTEM + Administrators) and the whole record encrypted with DPAPI (machine scope) |
 | Server account passwords | Nowhere | A new random one is set right before every logon and used once (doc 06) |
 | Enrollment tokens / tickets | Database | SHA-256 only |
 
@@ -119,8 +121,9 @@ Append-only from the application, no secrets, with IP and actor. Minimum actions
 | T15 | Secret leakage in logs/audit | Redaction, write-only secrets, sensitive console prefixes |
 | T16 | First admin created by a third party | Locally printed setup token |
 | T17 | Repudiation | Audit with actor, IP, correlation |
-| T18 | RCON brute force on the game's TCP port (`logfile+rcon` servers) | Agent-generated random password per server (≥ 32 chars, never user-chosen by default), RCON ban settings in the manifest (`sv_rcon_maxfailures`, `sv_rcon_banpenalty`), password rotated on reinstall; firewall rules only open the ports the manifest declares |
-| T19 | A server redirects the agent's own writes (installs, deletion run as SYSTEM in its folder) with junctions, symbolic links or hard links | Install steps refuse paths through links and replace files instead of writing into them; deletion removes links without following them; installs need the server offline (doc 06) |
+| T18 | RCON brute force on the game's TCP port (`logfile+rcon` servers) | Agent-generated random password per server (32 letters and digits, never user-chosen), RCON ban settings where the game has them (srcds; CS2 has none, spike 0001), password rotated on reinstall; game ports declare UDP only, so firewall rules managed by Pulsar never open RCON's TCP side |
+| T19 | A server redirects the agent's own writes and reads (installs, configuration files, its log, deletion, run as SYSTEM in its folder) with junctions, symbolic links or hard links | Files opened without following a final link and checked by the final path of the handle; writes replace files instead of writing into them; deletion removes links without following them; SteamCMD runs as the server's account (doc 06) |
+| T20 | A server escapes its Job (a scheduled task or WMI starts a process as its account) to keep running after a stop or a deletion | Processes of the account are killed before every start, after its processes end, before installs and before deletion; logged as warnings. Residual: such a process runs, without Job limits, while its server runs |
 
 ## Main project risks
 

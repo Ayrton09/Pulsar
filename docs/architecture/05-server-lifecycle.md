@@ -74,17 +74,19 @@ Compatibility matrix (active operation vs requested action):
 ## Full creation flow (v1)
 
 ```
-1. POST /api/v1/servers {nodeId, templateId, name, variables, ports?}
-   - authorizes server.create on the node; validates variables against the manifest
-   - assigns allocations (the requested ones or the first free ones of the node)
+1. POST /api/v1/servers {nodeId, templateId, name, variables?, ports?}
+   - authorizes server.create; validates variables against the manifest (secrets encrypted)
+   - assigns allocations (the requested ones, or the free one on each required port's default, else the lowest free)
+   - renders the whole manifest once (values, ports) before anything reaches the node
    - generates short_id; creates Server(NotInstalled, Offline, Stopped); audits server.created
 2. Operation server_provision → ProvisionServerCommand
-   Agent: creates <ServersRoot>\<shortId>, a dedicated Windows account, ACLs, firewall rules (if enabled)
+   Agent: creates <ServersRoot>\<shortId>, a dedicated Windows account, ACLs; a new RCON password
 3. Operation server_install → InstallServerCommand
-   Agent: SteamCMD queue → progress via OperationProgress → OperationCompleted
+   Agent: the server's own SteamCMD, as its account → progress via OperationProgress → OperationCompleted
    Panel: install_state = Installed | Failed
-4. The user adjusts map/slots/ports/arguments → ApplyServerSpecCommand
-5. Start → … → Running
+4. The user adjusts map/slots/ports/arguments (Settings and Network tabs); stored by the panel
+5. Start → ApplyServerSpecCommand, then StartServerCommand → configuration files written, firewall rules
+   (if managed) → … → Running
 ```
 
 ## Reconciliation (the key to stability)
@@ -108,7 +110,7 @@ Cases:
 
 ## Deletion
 
-`DeleteServerCommand` (operation): stops (kills if needed), removes firewall rules, deletes the directory **without following reparse points**, deletes backups if requested, removes the Windows account and its profile. The panel deletes the row when it receives `succeeded` (the audit trail remains) and frees the allocations.
+`DeleteServerCommand` (operation): stops (kills if needed), kills processes of its account outside the Job, removes firewall rules, deletes the directory **without following reparse points**, deletes backups if requested (Phase 7), removes the Windows account and its profile. The panel deletes the row when it receives `succeeded` (the audit trail remains) and frees the allocations.
 
 ## Implementation (Phase 3)
 
@@ -118,4 +120,12 @@ Cases:
 - **Reconciliation** at every Hello: the agent's snapshot of each server is taken whatever its sequence (a restarted agent counts from zero) with reason `reconciled`; running operations the agent does not report are interrupted, except those whose result waits in its outbox (they are reported as in flight) and queued ones younger than a minute. `HelloAccepted` does not carry desired states yet: the agent keeps its own (set by the commands it receives) and resumes servers only as described above.
 - **Acks.** A start (or restart) is acknowledged as soon as it is accepted, before the process exists: an account's first logon can take longer than the panel's 10 s ack timeout. A start that fails is reported as `Crashed` with reason `start_failed`.
 - **Delivery.** State changes are sent without waiting; when the agent stops, it delivers each server's last state again and waits for the panel, so the panel sees its servers stop. The hub stores agent events even if the connection closes right after them, and a result is applied once (deliveries are retried). An operation's result can arrive before the panel has recorded the agent's ack; the result wins (row versions on servers and operations).
-- **UI:** one display status per server (an operation first, then the install state, then the runtime state), the reason when it needs explaining (exit code, crash loop, refused start, readiness timeout), and "last known" while its node is disconnected. Polling every 2 s until Phase 5's live channel.
+- **UI (Phase 3):** one display status per server (an operation first, then the install state, then the runtime state), the reason when it needs explaining (exit code, crash loop, refused start, readiness timeout), and "last known" while its node is disconnected. Polling every 2 s until Phase 5's live channel.
+
+## Implementation (Phase 4)
+
+- **Allocations.** A node's `ip:port` pairs (IPv4; `0.0.0.0` is every interface and cannot coexist with the same port on a specific address), added by ranges on the node page (`node.manage`). A server holds one per manifest port; they are freed when it is deleted, and changed only while it is stopped (`server.settings.edit`).
+- **Settings.** Variables, extra arguments (when the manifest allows them) and the restart policy (`server.startup.edit`; variables a manifest marks not user-editable need `server.settings.edit`). Secret values are encrypted with Data Protection and never returned. Changes are stored by the panel and reach the agent before the next start, even if its node was disconnected when they were made: `ApplyServerSpecCommand` precedes every start and restart. A running process keeps the spec it started with.
+- **Update and cancel.** The update operation runs the manifest's `update` steps (optionally validating every file); installs and updates can be cancelled (the agent kills SteamCMD's Job and reports `cancelled`). Progress is shown live (the panel's memory) and written to the database on stage changes or every 15 seconds.
+- **Templates.** Bundled ones register at startup; administrators (`template.manage`) import others after a preview of what they would run, download and write, and of the sections that differ from the previous version. Versions never change.
+- **UI:** a creation wizard (game and node; the game's settings; its ports), Settings and Network tabs, a progress bar with Cancel, Update game, node allocations and a Games page with the import preview.

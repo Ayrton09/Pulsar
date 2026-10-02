@@ -9,10 +9,10 @@
 
 **Spikes** (throwaway code in `spikes/`, findings in `docs/spikes/`):
 
-1. ConPTY vs pipes with `cs2.exe`, `srcds.exe` (CS:S, GMod) and `steamcmd.exe`: capture, colors, input, Ctrl+C, stop. *Done for SteamCMD and CS:S ([spike 0001](../spikes/0001-console-capture.md)); CS2 before its manifest (Phase 4), GMod pending.*
+1. ConPTY vs pipes with `cs2.exe`, `srcds.exe` (CS:S, GMod) and `steamcmd.exe`: capture, colors, input, Ctrl+C, stop. *Done for SteamCMD, CS:S and CS2 ([spike 0001](../spikes/0001-console-capture.md)); GMod pending.*
 2. `CreateProcessAsUser` + dedicated account + ConPTY + `JOB_LIST` from a service in session 0 (window station/desktop, `LoadUserProfile`). Run in Windows Sandbox or a VM, never on a developer's main machine. *Done for a console process ([spike 0002](../spikes/0002-isolated-launch.md)); a real game as a dedicated account is checked in Phase 3.*
 3. SteamCMD: bootstrap, progress format, exit codes, executable signature. *Done (spike 0001).*
-4. Real readiness patterns for CS2/CS:S/GMod. *CS:S done (spike 0001).*
+4. Real readiness patterns for CS2/CS:S/GMod. *CS:S and CS2 done (spike 0001); the bundled manifests use RCON readiness.*
 
 **Done when:** CI is green on both OSes; spike reports confirm or correct docs 04 and 06 and ADR-0006/0007.
 
