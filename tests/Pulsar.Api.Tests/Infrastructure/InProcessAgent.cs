@@ -100,12 +100,15 @@ public sealed class InProcessAgent : IAsyncDisposable
     }
 
     /// <summary>Polls until <paramref name="condition"/> holds (the agent works in the background).</summary>
-    public static async Task EventuallyAsync(Func<Task<bool>> condition, string what)
+    public static Task EventuallyAsync(Func<Task<bool>> condition, string what) => EventuallyAsync(condition, () => what);
+
+    /// <param name="what">Described when the wait times out (it can report what was last seen).</param>
+    public static async Task EventuallyAsync(Func<Task<bool>> condition, Func<string> what)
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
         while (!await condition())
         {
-            Assert.True(DateTime.UtcNow < deadline, $"Timed out waiting for: {what}");
+            Assert.True(DateTime.UtcNow < deadline, $"Timed out waiting for: {what()}");
             await Task.Delay(50, TestContext.Current.CancellationToken);
         }
     }

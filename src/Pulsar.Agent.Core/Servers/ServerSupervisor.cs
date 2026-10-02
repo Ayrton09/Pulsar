@@ -71,6 +71,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private StateChangeReason? _stopReason;
     private int _restartTimer;
     private volatile ServerSnapshot _snapshot;
+    private volatile ServerStateChanged? _lastChange;
 
     public ServerSupervisor(ServerDefinition definition, IGameProcessManager processes, IServerEventSink events, TimeProvider clock,
         SupervisorOptions options, ILogger logger)
@@ -89,6 +90,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     /// <summary>The latest state, readable from any thread (for the Hello).</summary>
     public ServerSnapshot Snapshot => _snapshot;
+
+    /// <summary>The last change reported, readable from any thread (delivered again when the agent stops).</summary>
+    public ServerStateChanged? LastChange => _lastChange;
 
     public Task<AckStatus> StartAsync(StateChangeReason reason = StateChangeReason.Requested) => Ask(tcs => new Start(tcs, reason));
 
@@ -561,6 +565,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         var now = _clock.GetUtcNow();
         var change = new ServerStateChanged(ServerId, state, previous, now, ++_sequence, exitCode ?? _exitCode, reason, detail);
         _snapshot = new ServerSnapshot(ServerId, state, _sequence, change.ExitCode, _process?.StartedAt);
+        _lastChange = change;
         LogTransition(ServerId, previous, state, reason);
         _events.StateChanged(change);
     }

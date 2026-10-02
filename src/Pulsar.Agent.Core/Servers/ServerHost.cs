@@ -42,7 +42,6 @@ public sealed partial class ServerHost(
     private readonly TaskCompletionSource _loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _stopping = new();
     private readonly Lock _recordLock = new();
-    private readonly ConcurrentDictionary<Task, bool> _sending = new();
     private AgentConfig? _config;
 
     /// <summary>Completes once the stored servers are loaded (the Hello waits for it).</summary>
@@ -129,8 +128,18 @@ public sealed partial class ServerHost(
             await servers[i].Supervisor.DisposeAsync();
         }
 
-        // The panel should see the servers stop: let the last state changes go out before the connection closes.
-        await Task.WhenAll(_sending.Keys).WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None).ContinueWith(_ => { }, TaskScheduler.Default);
+        // The panel should see the servers stop. State changes are sent without waiting and the connection closes right
+        // after this, so the last state of each server is delivered again, waiting until the panel has processed it (an
+        // already received change carries the same sequence and changes nothing).
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        foreach (var change in servers.Select(s => s.Supervisor.LastChange).OfType<ServerStateChanged>())
+        {
+            if (!await panel.DeliverAsync(nameof(IAgentHub.ServerStateChanged), change, deadline.Token))
+            {
+                break;
+            }
+        }
+
         await _stopping.CancelAsync();
     }
 
@@ -156,12 +165,8 @@ public sealed partial class ServerHost(
         };
     }
 
-    void IServerEventSink.StateChanged(ServerStateChanged change)
-    {
-        var sending = panel.SendAsync(nameof(IAgentHub.ServerStateChanged), change, _stopping.Token);
-        _sending.TryAdd(sending, true);
-        _ = sending.ContinueWith(t => _sending.TryRemove(t, out _), TaskScheduler.Default);
-    }
+    void IServerEventSink.StateChanged(ServerStateChanged change) =>
+        _ = panel.SendAsync(nameof(IAgentHub.ServerStateChanged), change, _stopping.Token);
 
     void IServerEventSink.DesiredChanged(Guid serverId, bool running) => UpdateRecord(serverId, r => r with { DesiredRunning = running });
 

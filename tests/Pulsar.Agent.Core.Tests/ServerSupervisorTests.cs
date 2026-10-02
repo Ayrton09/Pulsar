@@ -164,6 +164,8 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
 
         await _events.WaitForAsync(RuntimeState.Offline, StateChangeReason.Requested);
         var starting = await _events.WaitForAsync(RuntimeState.Starting, afterIndex: 2);
+        // "Starting" is reported before the process is created: let the supervisor finish handling the restart.
+        await supervisor.FlushAsync();
         Assert.Equal(2, _processes.Started.Count);
         Assert.Equal([RuntimeState.Starting, RuntimeState.Running, RuntimeState.Stopping, RuntimeState.Offline, RuntimeState.Starting],
             _events.Changes.Select(c => c.State));

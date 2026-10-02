@@ -53,7 +53,7 @@ public static class ServerApi
         {
             last = await GetAsync(client, id);
             return last is not null && condition(last);
-        }, $"{what} (last: {last?.Server.InstallState}/{last?.Server.RuntimeState}/{last?.Server.ActiveOperation?.Type})");
+        }, () => $"{what} (last: {last?.Server.InstallState}/{last?.Server.RuntimeState}/{last?.Server.LastStateReason}/{last?.Server.ActiveOperation?.Type})");
         return last!;
     }
 }

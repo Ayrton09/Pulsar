@@ -33,7 +33,8 @@ public sealed class OperationRaceTests(OperationRaceTests.ResultFirstFactory fac
         var installed = await ServerApi.WaitForAsync(admin, created.Server.Id,
             s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null, "installed");
         Assert.All(installed.RecentOperations, o => Assert.Equal(OperationStatus.Succeeded, o.Status));
-        Assert.True(factory.Raced >= 2, $"The ack was held back {factory.Raced} times.");
+        // The install's result makes the server installed while its ack is still held back: wait for both to be counted.
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(factory.Raced >= 2), () => $"both acks held back (so far {factory.Raced})");
     }
 
     /// <summary>The panel, with commands whose ack is held back until the operation's result has been stored.</summary>
