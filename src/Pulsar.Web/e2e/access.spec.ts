@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { E2E_ADMIN, E2E_SETUP_TOKEN } from './constants';
+import { expect, test } from '@playwright/test';
+import { signIn, signInAsAdministrator, watchCspViolations } from './session';
 
 // The Phase 1 "done" scenario (docs/architecture/09): an administrator sets the panel up, creates a user with a
 // limited role, that user only sees what the role allows, and everything is audited.
@@ -15,40 +15,8 @@ const auditor = {
   newPassword: 'auditor changed password',
 };
 
-async function signInAsAdministrator(page: Page) {
-  await page.goto('/');
-  const heading = page.getByRole('heading', { level: 1 });
-  await expect(heading).toHaveText(/Create the administrator|Sign in/);
-
-  if ((await heading.textContent()) === 'Create the administrator') {
-    await page.getByLabel('Setup token').fill(E2E_SETUP_TOKEN);
-    await page.getByLabel('User name').fill(E2E_ADMIN.userName);
-    await page.getByLabel('Display name').fill('E2E Admin');
-    await page.getByLabel('Password', { exact: true }).fill(E2E_ADMIN.password);
-    await page.getByLabel('Confirm password').fill(E2E_ADMIN.password);
-    await page.screenshot({ path: 'test-results/screens/setup.png', fullPage: true });
-    await page.getByRole('button', { name: 'Create administrator' }).click();
-  } else {
-    await signIn(page, E2E_ADMIN.userName, E2E_ADMIN.password);
-  }
-
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
-}
-
-async function signIn(page: Page, userName: string, password: string) {
-  await page.getByLabel('User name').fill(userName);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-}
-
 test('administrator delegates audit access to a limited user', async ({ page }) => {
-  // The panel serves a strict CSP; any violation means the UI relies on something it blocks.
-  const cspViolations: string[] = [];
-  page.on('console', (message) => {
-    if (message.type() === 'error' && /Content Security Policy/i.test(message.text())) {
-      cspViolations.push(message.text());
-    }
-  });
+  const cspViolations = watchCspViolations(page);
   await signInAsAdministrator(page);
   await page.screenshot({ path: 'test-results/screens/dashboard.png', fullPage: true });
 

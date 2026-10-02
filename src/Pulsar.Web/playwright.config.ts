@@ -19,6 +19,8 @@ if (!connectionString) {
 export default defineConfig({
   testDir: './e2e',
   forbidOnly: !!process.env.CI,
+  // Specs share one database and the first to run may perform the initial setup: one worker, in file order.
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
