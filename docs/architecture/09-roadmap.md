@@ -28,13 +28,13 @@
 
 **Done when:** an admin installs the panel, connects PostgreSQL, creates their user, creates another user with a limited role, and the actions are audited. Authorization matrix tests.
 
-## Phase 2 — Nodes and protocol
+## Phase 2 — Nodes and protocol · *in progress*
 
-- `Pulsar.Contracts` v1, `AgentHub`, enrollment, challenge/token, signed commands, anti-replay, revocation, rotation.
-- Agent: Windows service host, `enroll`/`status`/`run` CLI, connection with reconnect, `Hello`/inventory, node metrics, file logging.
-- UI: node creation with the enrollment command, node list and node page (overview/system).
+- `Pulsar.Contracts` v1, `AgentHub`, enrollment, challenge/token, signed commands, anti-replay, revocation, rotation. *Done except key rotation (node credential and panel key).*
+- Agent: Windows service host, `enroll`/`status`/`run` CLI, connection with reconnect, `Hello`/inventory, node metrics, file logging. *Done, plus `unenroll`, `service` and session hand-over before expiry (doc 03, "Agent implementation").*
+- UI: node creation with the enrollment command, node list and node page (overview/system). *Done.*
 
-**Done when:** an agent pairs, appears online with its inventory, survives network cuts, and revoking it disconnects it immediately. Tests: invalid signature, replay, revoked node, reused/expired token.
+**Done when:** an agent pairs, appears online with its inventory, survives network cuts, and revoking it disconnects it immediately. Tests: invalid signature, replay, revoked node, reused/expired token. *Met in development mode: `e2e/agent.spec.ts` drives the real `PulsarAgent.exe` from the UI (Windows CI leg), `RealAgentTests` cover reconnection, renewal and revocation, and the verifier tests cover signatures and replay. Still to check: an elevated install (machine key, service as SYSTEM) on a clean Windows.*
 
 ## Phase 3 — Windows process management
 
