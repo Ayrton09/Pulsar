@@ -1,6 +1,12 @@
-# Runs inside Windows Sandbox (LogonCommand, elevated): PostgreSQL + panel on 127.0.0.1, then the agent installed the
-# production way. Every check is written to report\summary.txt as PASS/FAIL; the last line is "done".
-param([Parameter(Mandatory)] [string] $Bundle)
+# Installs the agent the production way on a disposable, elevated Windows (Windows Sandbox through prepare.ps1, or a CI
+# runner): PostgreSQL + panel on 127.0.0.1, then elevated enroll, machine key, PulsarAgent service as SYSTEM. Every
+# check is written to report\summary.txt as PASS/FAIL; the last line is "done", and the exit code is 1 on any FAIL.
+# When the machine has a ready TPM, the node key must be in it.
+# Never run it on a machine you use: it installs a service and creates a machine key (removed again at the end).
+param(
+    [Parameter(Mandatory)] [string] $Bundle,
+    # PostgreSQL binaries (initdb, pg_ctl, createdb); the sandbox maps them here.
+    [string] $PgBin = 'C:\pgsql\bin')
 $ErrorActionPreference = 'Stop'
 $report = New-Item -ItemType Directory -Force (Join-Path $Bundle 'report')
 $summary = Join-Path $report 'summary.txt'
@@ -36,8 +42,12 @@ $agentExe = Join-Path $installDir 'PulsarAgent.exe'
 $dataDir = 'C:\ProgramData\Pulsar\Agent'
 
 try {
-    # --- PostgreSQL (trust authentication on loopback: the sandbox is disposable and has no network) ---
-    $env:PATH = "$(Join-Path $Bundle 'vcrt');C:\pgsql\bin;$env:PATH"
+    # --- Machine facts that decide what to expect ---
+    $tpm = Get-Tpm
+    Add-Content $summary "INFO TPM present: $($tpm.TpmPresent), ready: $($tpm.TpmReady)"
+
+    # --- PostgreSQL (trust authentication on loopback: the machine is disposable) ---
+    $env:PATH = "$(Join-Path $Bundle 'vcrt');$PgBin;$env:PATH"
     & initdb.exe -D C:\pgdata -U postgres -A trust -E UTF8 --no-locale *> (Join-Path $report 'initdb.txt')
     if ($LASTEXITCODE -ne 0) { throw 'initdb failed' }
     # pg_ctl's server inherits handles; through cmd with output to NUL the call returns. Not -Wait: in Windows
@@ -69,7 +79,8 @@ try {
     $panelKey = $created.enrollment.panelKeyFingerprint
 
     # --- The service must not be installed from a folder other accounts can write (here: Downloads) ---
-    $unsafeDir = 'C:\Users\WDAGUtilityAccount\Downloads\PulsarAgent'
+    $unsafeDir = Join-Path $env:USERPROFILE 'Downloads\PulsarAgent'
+    New-Item -ItemType Directory -Force (Split-Path $unsafeDir) | Out-Null
     Copy-Item $agentSource $unsafeDir -Recurse
     $refused = Invoke-Native (Join-Path $unsafeDir 'PulsarAgent.exe') enroll --panel $panel --token $token --panel-key $panelKey
     Check 'enroll refuses a user-writable folder' ($LASTEXITCODE -eq 1 -and $refused -match 'other accounts could replace it') ($refused.Trim() -replace '\s+', ' ')
@@ -97,7 +108,12 @@ try {
     $details = Api GET "/api/v1/nodes/$nodeId"
     Check 'inventory reported' ($details.node.inventory.hostname -eq $env:COMPUTERNAME -and $details.node.inventory.serversRoot -eq 'C:\PulsarServers') "$($details.node.inventory.osDescription) $($details.node.inventory.osBuild)"
     $credential = $details.credentials | Select-Object -First 1
-    Add-Content $summary "INFO key storage: $($credential.keyStorage)"
+    if ($tpm.TpmPresent -and $tpm.TpmReady) {
+        Check 'machine key in the TPM' ($credential.keyStorage -eq 'tpm') "key storage: $($credential.keyStorage)"
+    }
+    else {
+        Add-Content $summary "INFO key storage: $($credential.keyStorage) (no ready TPM on this machine)"
+    }
 
     $ping = Api POST "/api/v1/nodes/$nodeId/ping"
     Check 'signed ping accepted by the service' ($ping.status -eq 'accepted') "$([math]::Round($ping.roundTripMilliseconds, 1)) ms"
@@ -128,6 +144,28 @@ try {
     Restart-Service PulsarAgent
     Check 'online again after a service restart' (Wait-Until { (Api GET "/api/v1/nodes/$nodeId").node.connected } 60)
 
+    # --- Key rotation, as SYSTEM with machine keys: a new key replaces the old one, which is deleted ---
+    $rotate = Api POST "/api/v1/nodes/$nodeId/credentials/rotate"
+    Check 'rotation accepted by the service' ($rotate.status -eq 'accepted') "$($rotate.status)"
+    $rotated = Wait-Until {
+        $credentials = (Api GET "/api/v1/nodes/$nodeId").credentials
+        ($credentials | Where-Object id -eq $credential.id).status -eq 'superseded' -and @($credentials | Where-Object status -eq 'active').Count -eq 1
+    } 60
+    Check 'old credential superseded, new one active' $rotated
+    $newCredential = (Api GET "/api/v1/nodes/$nodeId").credentials | Where-Object status -eq 'active'
+    Check 'online with the new key' (Wait-Until { (Api GET "/api/v1/nodes/$nodeId").node.connected -and (Api POST "/api/v1/nodes/$nodeId/ping").status -eq 'accepted' } 60)
+    $rotatedConfig = Get-Content (Join-Path $dataDir 'config\agent.json') -Raw | ConvertFrom-Json
+    $oldKeyGone = -not [Security.Cryptography.CngKey]::Exists($config.key.name, $provider, [Security.Cryptography.CngKeyOpenOptions]::MachineKey)
+    $newProvider = if ($rotatedConfig.key.storage -eq 'tpm') { [Security.Cryptography.CngProvider]::new('Microsoft Platform Crypto Provider') } else { [Security.Cryptography.CngProvider]::MicrosoftSoftwareKeyStorageProvider }
+    $newKeyThere = [Security.Cryptography.CngKey]::Exists($rotatedConfig.key.name, $newProvider, [Security.Cryptography.CngKeyOpenOptions]::MachineKey)
+    Check 'machine key replaced and the old one deleted' ($rotatedConfig.credentialId -eq $newCredential.id -and $rotatedConfig.key.scope -eq 'machine' -and $oldKeyGone -and $newKeyThere -and $null -eq $rotatedConfig.pendingRotation) "$($rotatedConfig.key.name) $($rotatedConfig.key.storage)"
+    if ($tpm.TpmPresent -and $tpm.TpmReady) {
+        Check 'rotated key in the TPM' ($newCredential.keyStorage -eq 'tpm') "key storage: $($newCredential.keyStorage)"
+    }
+    $credential = $newCredential
+    $config = $rotatedConfig
+    $provider = $newProvider
+
     # --- Revocation cuts the service off ---
     $credentialId = $credential.id
     $null = Api POST "/api/v1/nodes/$nodeId/credentials/$credentialId/revoke" @{ reason = 'sandbox' }
@@ -149,3 +187,5 @@ finally {
     Stop-Transcript | Out-Null
     Add-Content $summary 'done'
 }
+
+exit $(if (Select-String -Path $summary -Pattern '^FAIL ' -Quiet) { 1 } else { 0 })

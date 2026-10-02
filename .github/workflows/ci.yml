@@ -90,6 +90,45 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # The production install on a clean, disposable Windows: elevated enroll, machine key (in the TPM when the runner
+  # has a ready one), PulsarAgent service as SYSTEM, key rotation, revocation, unenroll. Same script as the Windows
+  # Sandbox check (scripts/sandbox/agent-install); the runner is elevated and discarded after the job.
+  agent-install:
+    name: Agent install (windows-latest)
+    runs-on: windows-latest
+    needs: [dotnet]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Publish panel and agent
+        shell: pwsh
+        run: |
+          # Self-contained: the service runs as SYSTEM, which does not see the job's DOTNET_ROOT.
+          dotnet publish src/Pulsar.Api -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/panel
+          dotnet publish src/Pulsar.Agent -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/agent
+
+      - name: Install, rotate, revoke and remove the agent
+        shell: powershell
+        run: .\scripts\sandbox\agent-install\run.ps1 -Bundle "$PWD\artifacts\agent-install-ci" -PgBin $env:PGBIN
+
+      - name: Report
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Content artifacts/agent-install-ci/report/summary.txt -ErrorAction SilentlyContinue
+          Get-Content artifacts/agent-install-ci/report/summary.txt -ErrorAction SilentlyContinue | Out-File -Append $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: agent-install-report
+          path: artifacts/agent-install-ci/report
+          retention-days: 7
+
   e2e:
     name: End-to-end (${{ matrix.os }})
     needs: [dotnet, web]
