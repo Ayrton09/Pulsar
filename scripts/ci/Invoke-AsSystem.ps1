@@ -44,20 +44,25 @@ Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal
 try {
     Start-ScheduledTask -TaskName $taskName
     $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
-    while (-not (Test-Path $exitFile) -and (Get-Date) -lt $deadline) {
+    # The file can exist a moment before cmd.exe has written the code into it.
+    $code = $null
+    while ($null -eq $code -and (Get-Date) -lt $deadline) {
         Start-Sleep -Seconds 2
+        $text = Get-Content $exitFile -Raw -ErrorAction SilentlyContinue
+        if ($text -and $text.Trim() -match '^-?\d+$') {
+            $code = [int]$text.Trim()
+        }
     }
 
     if (Test-Path $log) {
         Get-Content $log
     }
 
-    if (-not (Test-Path $exitFile)) {
+    if ($null -eq $code) {
         Write-Error "Timed out after $TimeoutMinutes minutes."
         exit 1
     }
 
-    $code = [int](Get-Content $exitFile -Raw).Trim()
     Write-Host "Exit code (as SYSTEM): $code"
     exit $code
 }
