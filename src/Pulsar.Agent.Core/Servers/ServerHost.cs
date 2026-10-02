@@ -29,6 +29,8 @@ public sealed partial class ServerHost(
     IGameProcessManager processes,
     InstallSteps installSteps,
     SteamCmdRunner steamCmd,
+    IServerFiles files,
+    IRconConnector rcon,
     InstallOptions installOptions,
     PanelChannel panel,
     SupervisorOptions supervisorOptions,
@@ -97,7 +99,7 @@ public sealed partial class ServerHost(
         {
             try
             {
-                var supervisor = Add(record.ServerId, record.Spec);
+                var supervisor = Add(record.ServerId, record.Spec, record.RconPassword);
                 if (record.Spec.AutoStart || record.ResumeOnStart)
                 {
                     resume.Add(supervisor);
@@ -194,10 +196,15 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.invalid_short_id", "The short id is invalid or belongs to another server.");
         }
 
+        GameManifest manifest;
         try
         {
-            var manifest = Parse(spec);
-            _ = Render(manifest, spec);
+            manifest = Parse(spec);
+            if (LaunchPlanRenderer.Check(manifest, Platform, Binding(spec, rconPassword: null)) is { } error)
+            {
+                return Rejected(envelope, "server.invalid_spec", error);
+            }
+
             if (manifest.Install?.Steps.OfType<TestGameServerStep>().Any() == true && !installOptions.TestGameAvailable)
             {
                 return Rejected(envelope, "install.test_game_unavailable", "This agent was not started with the test game server.");
@@ -208,6 +215,9 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.invalid_spec", ex.Message);
         }
 
+        // A new RCON password at every provisioning (a reinstall rotates it): generated here, never chosen by anyone.
+        var rconPassword = manifest.Runtime.GetValueOrDefault(Platform)?.Console.Rcon is null ? null : NewRconPassword();
+
         return RunOperation(envelope, command.ServerId, operationId, async _ignored =>
         {
             var root = _config!.ServersRootOrDefault(configs.Paths);
@@ -216,17 +226,17 @@ public sealed partial class ServerHost(
             lock (_recordLock)
             {
                 desired = store.Load(command.ServerId)?.DesiredRunning ?? false;
-                store.Save(new ServerRecord(command.ServerId, spec, desired, ResumeOnStart: false));
+                store.Save(new ServerRecord(command.ServerId, spec, desired, ResumeOnStart: false, rconPassword));
             }
 
             if (_servers.TryGetValue(command.ServerId, out var server))
             {
-                await server.Supervisor.UpdateAsync(Definition(command.ServerId, spec));
-                _servers[command.ServerId] = server with { Manifest = Parse(spec), Spec = spec };
+                await server.Supervisor.UpdateAsync(Definition(command.ServerId, spec, rconPassword));
+                _servers[command.ServerId] = server with { Manifest = manifest, Spec = spec, RconPassword = rconPassword };
             }
             else
             {
-                Add(command.ServerId, spec);
+                Add(command.ServerId, spec, rconPassword);
             }
 
             LogProvisioned(command.ServerId, spec.ShortId);
@@ -300,7 +310,7 @@ public sealed partial class ServerHost(
         ServerDefinition definition;
         try
         {
-            definition = Definition(command.ServerId, spec);
+            definition = Definition(command.ServerId, spec, server.RconPassword);
         }
         catch (LaunchPlanException ex)
         {
@@ -310,7 +320,7 @@ public sealed partial class ServerHost(
         lock (_recordLock)
         {
             var record = store.Load(command.ServerId);
-            store.Save(new ServerRecord(command.ServerId, spec, record?.DesiredRunning ?? false, record?.ResumeOnStart ?? false));
+            store.Save(new ServerRecord(command.ServerId, spec, record?.DesiredRunning ?? false, record?.ResumeOnStart ?? false, server.RconPassword));
         }
 
         await server.Supervisor.UpdateAsync(definition);
@@ -463,20 +473,27 @@ public sealed partial class ServerHost(
     private async Task SendProgressAsync(Guid operationId, string stage, double? percent) =>
         _ = await panel.SendAsync(nameof(IAgentHub.OperationProgress), new OperationProgress(operationId, stage, percent, null), _stopping.Token);
 
-    private ServerSupervisor Add(Guid serverId, ServerRuntimeSpec spec)
+    private ServerSupervisor Add(Guid serverId, ServerRuntimeSpec spec, string? rconPassword)
     {
-        var supervisor = new ServerSupervisor(Definition(serverId, spec), processes, this, clock, supervisorOptions,
-            loggerFactory.CreateLogger<ServerSupervisor>());
-        _servers[serverId] = new Server(spec.ShortId, Parse(spec), spec, supervisor);
+        var supervisor = new ServerSupervisor(Definition(serverId, spec, rconPassword), processes, this, clock, supervisorOptions,
+            loggerFactory.CreateLogger<ServerSupervisor>(), files, rcon);
+        _servers[serverId] = new Server(spec.ShortId, Parse(spec), spec, rconPassword, supervisor);
         return supervisor;
     }
 
-    private ServerDefinition Definition(Guid serverId, ServerRuntimeSpec spec)
+    private ServerDefinition Definition(Guid serverId, ServerRuntimeSpec spec, string? rconPassword)
     {
         var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), spec.ShortId);
-        return new ServerDefinition(serverId, spec.ShortId, provisioned.Directory, provisioned.Identity, Render(Parse(spec), spec),
-            spec.AutoStart, spec.RestartOnCrash);
+        var plan = LaunchPlanRenderer.Render(Parse(spec), Platform, Binding(spec, rconPassword));
+        return new ServerDefinition(serverId, spec.ShortId, provisioned.Directory, provisioned.Identity, plan, spec.AutoStart, spec.RestartOnCrash);
     }
+
+    private static ServerBinding Binding(ServerRuntimeSpec spec, string? rconPassword) => new(spec.ShortId, spec.Variables,
+        spec.Ports?.ToDictionary(p => p.Key, p => new PortAssignment(p.Value.IpAddress, p.Value.Port)), spec.ExtraArguments, rconPassword);
+
+    /// <summary>32 random letters and digits (about 190 bits): RCON is exposed on the game's TCP port (docs/architecture/08, T18).</summary>
+    private static string NewRconPassword() =>
+        System.Security.Cryptography.RandomNumberGenerator.GetString("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", 32);
 
     private static GameManifest Parse(ServerRuntimeSpec spec)
     {
@@ -485,10 +502,6 @@ public sealed partial class ServerHost(
             ? result.Manifest!
             : throw new LaunchPlanException("Invalid manifest: " + string.Join("; ", result.Errors));
     }
-
-    private static LaunchPlan Render(GameManifest manifest, ServerRuntimeSpec spec) =>
-        LaunchPlanRenderer.Render(manifest, Platform, new ServerBinding(spec.ShortId, spec.Variables,
-            spec.Ports?.ToDictionary(p => p.Key, p => new PortAssignment(p.Value.IpAddress, p.Value.Port)), spec.ExtraArguments));
 
     private void UpdateRecord(Guid serverId, Func<ServerRecord, ServerRecord> change)
     {
@@ -504,7 +517,11 @@ public sealed partial class ServerHost(
     private static CommandAck Rejected(CommandEnvelope envelope, string code, string message) =>
         new(envelope.CommandId, AckStatus.Rejected, code, message);
 
-    private sealed record Server(string ShortId, GameManifest Manifest, ServerRuntimeSpec Spec, ServerSupervisor Supervisor);
+    private sealed record Server(string ShortId, GameManifest Manifest, ServerRuntimeSpec Spec, string? RconPassword, ServerSupervisor Supervisor)
+    {
+        // Holds secrets: never print them.
+        public override string ToString() => $"Server {{ ShortId = {ShortId} }}";
+    }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Servers loaded: {Count} (servers root {ServersRoot})")]
     private partial void LogLoaded(int count, string serversRoot);

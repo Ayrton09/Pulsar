@@ -38,6 +38,12 @@ public sealed class SupervisorOptions
 
     /// <summary>How long children may outlive the main process before the tree is killed.</summary>
     public TimeSpan TreeGrace { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>How often a game's log file is checked for new text (<c>logfile+rcon</c>).</summary>
+    public TimeSpan LogPollInterval { get; set; } = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>Wait between attempts to reach a starting game over RCON (<c>rcon</c> readiness).</summary>
+    public TimeSpan RconRetryInterval { get; set; } = TimeSpan.FromSeconds(2);
 }
 
 /// <summary>
@@ -49,6 +55,8 @@ public sealed class SupervisorOptions
 public sealed partial class ServerSupervisor : IAsyncDisposable
 {
     private readonly IGameProcessManager _processes;
+    private readonly IServerFiles _files;
+    private readonly IRconConnector _rcon;
     private readonly IServerEventSink _events;
     private readonly TimeProvider _clock;
     private readonly SupervisorOptions _options;
@@ -63,6 +71,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private RuntimeState _state = RuntimeState.Offline;
     private IGameProcess? _process;
     private IGameProcess? _lingering;
+    private LaunchPlan? _plan; // what the running process was started with
+    private CancellationTokenSource? _watchers; // log tail and RCON probe of the running process
     private int _generation;
     private long _sequence;
     private int? _exitCode;
@@ -74,10 +84,12 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private volatile ServerStateChanged? _lastChange;
 
     public ServerSupervisor(ServerDefinition definition, IGameProcessManager processes, IServerEventSink events, TimeProvider clock,
-        SupervisorOptions options, ILogger logger)
+        SupervisorOptions options, ILogger logger, IServerFiles? files = null, IRconConnector? rcon = null)
     {
         _definition = definition;
         _processes = processes;
+        _files = files ?? new DirectServerFiles();
+        _rcon = rcon ?? new SourceRconConnector();
         _events = events;
         _clock = clock;
         _options = options;
@@ -147,6 +159,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
 
         _settledWaiters.ForEach(w => w.TrySetResult());
+        StopWatchers();
         foreach (var process in new[] { _process, _lingering })
         {
             if (process is not null)
@@ -383,11 +396,13 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _stopReason = null;
         Transition(RuntimeState.Starting, reason);
         var plan = _definition.Plan;
+        // logfile+rcon games still get a console: srcds dies without one (spike 0001), even though it writes nothing to it.
         var spec = new ProcessLaunchSpec(ServerId, _definition.Directory, plan.Executable, plan.Arguments, plan.WorkingDirectory, plan.Environment,
             plan.Console.Mode == ManifestConsoleMode.Pipes ? ConsoleMode.Pipes : ConsoleMode.Pty, Encoding(plan.Console.Encoding), _definition.Identity);
         IGameProcess process;
         try
         {
+            PrepareFiles(plan);
             process = await _processes.StartAsync(spec, _stopping.Token);
         }
         catch (GameProcessException ex)
@@ -400,6 +415,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
         var generation = ++_generation;
         _process = process;
+        _plan = plan;
         _snapshot = _snapshot with { StartedAt = process.StartedAt };
         _ = WatchExitAsync(process, generation);
         var readiness = plan.Readiness switch
@@ -408,7 +424,18 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 TimeSpan.FromMilliseconds(100)),
             _ => null,
         };
-        _ = PumpOutputAsync(process, generation, readiness);
+        StopWatchers();
+        _watchers = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
+        if (plan.Console.Mode == ManifestConsoleMode.LogfileRcon)
+        {
+            _ = PumpOutputAsync(process, generation, readiness: null);
+            _ = TailLogAsync(plan, generation, readiness, _watchers.Token);
+        }
+        else
+        {
+            _ = PumpOutputAsync(process, generation, readiness);
+        }
+
         switch (plan.Readiness)
         {
             case LogPatternReadiness log:
@@ -417,6 +444,138 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             case ProcessAliveReadiness alive:
                 PostLater(TimeSpan.FromSeconds(alive.GraceSeconds), new Ready(generation));
                 break;
+            case RconReadiness rcon:
+                PostLater(TimeSpan.FromSeconds(rcon.TimeoutSeconds), new ReadinessTimeout(generation));
+                _ = ProbeRconAsync(plan.Rcon!, generation, _watchers.Token);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Writes the configuration files and removes the previous run's log, through <see cref="IServerFiles"/>: the
+    /// server's account controls these paths.
+    /// </summary>
+    private void PrepareFiles(LaunchPlan plan)
+    {
+        try
+        {
+            foreach (var file in plan.ConfigFiles)
+            {
+                string? existing = null;
+                using (var stream = _files.OpenRead(_definition.Directory, file.Path))
+                {
+                    if (stream is not null)
+                    {
+                        if (stream.Length > ConfigFileWriter.MaximumSize)
+                        {
+                            throw new GameProcessException("config.too_large", $"{file.Path} is larger than {ConfigFileWriter.MaximumSize / 1024} KiB.");
+                        }
+
+                        existing = new StreamReader(stream, System.Text.Encoding.UTF8).ReadToEnd();
+                    }
+                }
+
+                using var content = new MemoryStream(new System.Text.UTF8Encoding(false).GetBytes(ConfigFileWriter.Apply(file, existing)));
+                _files.Write(_definition.Directory, file.Path, content);
+            }
+
+            if (plan.Console.LogFile is { } logFile)
+            {
+                _files.Delete(_definition.Directory, logFile);
+            }
+        }
+        catch (LaunchPlanException ex)
+        {
+            throw new GameProcessException("config.invalid", ex.Message, ex);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new GameProcessException("config.write_failed", ex.Message, ex);
+        }
+    }
+
+    /// <summary>Follows the game's log file: readiness for now (the live console arrives with Phase 5).</summary>
+    private async Task TailLogAsync(LaunchPlan plan, int generation, Regex? readiness, CancellationToken cancellationToken)
+    {
+        if (readiness is null)
+        {
+            return;
+        }
+
+        var tail = new LogTail(_files, _definition.Directory, plan.Console.LogFile!, TextEncoding(plan.Console.Encoding), _options.LogPollInterval);
+        var lines = new ConsoleLines();
+        try
+        {
+            await foreach (var text in tail.ReadAsync(cancellationToken))
+            {
+                foreach (var line in lines.Add(text))
+                {
+                    if (Matches(readiness, line))
+                    {
+                        _mailbox.Writer.TryWrite(new Ready(generation));
+                        return;
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (ex is GameProcessException or IOException or RegexMatchTimeoutException)
+        {
+            LogLogTailFailed(ServerId, ex.Message);
+        }
+    }
+
+    /// <summary>The game counts as ready once it answers over RCON.</summary>
+    private async Task ProbeRconAsync(RconEndpoint endpoint, int generation, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await using var session = await _rcon.ConnectAsync(endpoint, cancellationToken);
+                _mailbox.Writer.TryWrite(new Ready(generation));
+                return;
+            }
+            catch (RconException)
+            {
+                // Not listening yet.
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            try
+            {
+                await Task.Delay(_options.RconRetryInterval, _clock, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+    }
+
+    private async Task SendRconAsync(RconEndpoint endpoint, string command, int index)
+    {
+        try
+        {
+            await using var session = await _rcon.ConnectAsync(endpoint, _stopping.Token);
+            await session.ExecuteAsync(command, _stopping.Token);
+        }
+        catch (Exception ex) when (ex is RconException or OperationCanceledException)
+        {
+            // The game may close the connection as it quits; the stop timeout kills it if it did not.
+            LogStopStepFailed(ServerId, index, ex.Message);
+        }
+    }
+
+    private void StopWatchers()
+    {
+        if (_watchers is { } watchers)
+        {
+            _watchers = null;
+            watchers.Cancel();
+            watchers.Dispose();
         }
     }
 
@@ -425,7 +584,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         // The exit that follows reports the same reason (unless the stop times out or a kill overtakes it).
         _stopReason = reason;
         Transition(RuntimeState.Stopping, reason);
-        var timeout = TimeSpan.FromSeconds(_definition.Plan.Stop.TimeoutSeconds);
+        var timeout = TimeSpan.FromSeconds((_plan ?? _definition.Plan).Stop.TimeoutSeconds);
         if (budget is { } limit && limit < timeout)
         {
             timeout = limit;
@@ -437,8 +596,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     private async Task RunStopStepsAsync(int index)
     {
-        var steps = _definition.Plan.Stop.Steps;
-        var newline = _definition.Plan.Console.InputNewline ?? (_definition.Plan.Console.Mode == ManifestConsoleMode.Pty ? "\r\n" : "\n");
+        var plan = _plan ?? _definition.Plan;
+        var steps = plan.Stop.Steps;
+        var newline = plan.Console.InputNewline ?? (plan.Console.Mode == ManifestConsoleMode.Pty ? "\r\n" : "\n");
         for (var i = index; i < steps.Count && _process is { } process; i++)
         {
             try
@@ -447,6 +607,10 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 {
                     case ConsoleCommandStop command:
                         await process.WriteInputAsync(command.Command + newline, _stopping.Token);
+                        break;
+                    case RconCommandStop command when plan.Rcon is { } endpoint:
+                        // In the background: connecting can take seconds, and a kill must never wait for it.
+                        _ = SendRconAsync(endpoint, command.Command, i);
                         break;
                     case CtrlCStop when process.SupportsInterrupt:
                         await process.SendInterruptAsync(_stopping.Token);
@@ -468,6 +632,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     {
         var process = _process!;
         _process = null;
+        StopWatchers();
         _exitCode = exitCode;
         if (process.CountProcesses() > 0)
         {
@@ -566,12 +731,23 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
                 foreach (var line in lines.Add(chunk.Text))
                 {
-                    if (readiness!.IsMatch(line))
+                    try
                     {
-                        ready = true;
+                        if (!readiness!.IsMatch(line))
+                        {
+                            continue;
+                        }
+
                         _mailbox.Writer.TryWrite(new Ready(generation));
-                        break;
                     }
+                    catch (RegexMatchTimeoutException)
+                    {
+                        // Keep draining (a process whose output is not read blocks); the readiness timeout decides.
+                        LogReadinessPatternTooSlow(ServerId);
+                    }
+
+                    ready = true;
+                    break;
                 }
             }
         }
@@ -579,9 +755,18 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         {
             // Supervisor disposed.
         }
+    }
+
+    private bool Matches(Regex readiness, string line)
+    {
+        try
+        {
+            return readiness.IsMatch(line);
+        }
         catch (RegexMatchTimeoutException)
         {
             LogReadinessPatternTooSlow(ServerId);
+            throw;
         }
     }
 
@@ -619,6 +804,13 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
     }
 
+    private static System.Text.Encoding TextEncoding(ManifestConsoleEncoding encoding) => encoding switch
+    {
+        ManifestConsoleEncoding.Oem => System.Text.Encoding.GetEncoding(System.Globalization.CultureInfo.CurrentCulture.TextInfo.OEMCodePage),
+        ManifestConsoleEncoding.Ansi => System.Text.Encoding.GetEncoding(System.Globalization.CultureInfo.CurrentCulture.TextInfo.ANSICodePage),
+        _ => System.Text.Encoding.UTF8,
+    };
+
     private static ConsoleEncoding Encoding(ManifestConsoleEncoding encoding) => encoding switch
     {
         ManifestConsoleEncoding.Oem => ConsoleEncoding.Oem,
@@ -652,6 +844,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: the readiness pattern took too long on a line; not checking it anymore")]
     private partial void LogReadinessPatternTooSlow(Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: cannot follow its log file: {Reason}")]
+    private partial void LogLogTailFailed(Guid serverId, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId} did not stop in time; killing its processes")]
     private partial void LogStopTimedOut(Guid serverId);

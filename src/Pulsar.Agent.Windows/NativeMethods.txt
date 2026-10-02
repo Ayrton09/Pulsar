@@ -91,3 +91,7 @@ WinVerifyTrust
 WINTRUST_DATA
 WINTRUST_FILE_INFO
 WINTRUST_ACTION_GENERIC_VERIFY_V2
+
+// Agent state encryption (DPAPI, machine scope)
+CryptProtectData
+CryptUnprotectData

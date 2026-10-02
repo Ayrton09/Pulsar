@@ -22,11 +22,11 @@ public sealed class ScriptedProcessManager : IGameProcessManager
             throw new GameProcessException("process.executable_missing", $"{spec.Executable} does not exist in the server directory.");
         }
 
-        var process = new ScriptedProcess(_started.Count + 100);
+        var process = new ScriptedProcess(_started.Count + 100) { Arguments = spec.Arguments };
         _started.Enqueue(process);
         if (spec.Executable == Pulsar.Agent.Core.Steam.SteamCmdRunner.Executable)
         {
-            _ = PlaySteamCmdAsync(process);
+            _ = PlaySteamCmdAsync(process, spec);
             return Task.FromResult<IGameProcess>(process);
         }
 
@@ -42,9 +42,24 @@ public sealed class ScriptedProcessManager : IGameProcessManager
     /// <summary>Started SteamCMD runs.</summary>
     public int SteamCmdRuns => _started.Count(p => p.IsSteamCmd);
 
-    private async Task PlaySteamCmdAsync(ScriptedProcess process)
+    /// <summary>The executables a scripted SteamCMD "installs" per Steam app.</summary>
+    public static IReadOnlyDictionary<string, string> AppExecutables { get; } = new Dictionary<string, string>
+    {
+        ["232330"] = "srcds.exe",
+        ["730"] = "game/bin/win64/cs2.exe",
+    };
+
+    private async Task PlaySteamCmdAsync(ScriptedProcess process, ProcessLaunchSpec spec)
     {
         process.IsSteamCmd = true;
+        var app = spec.Arguments[spec.Arguments.ToList().IndexOf("+app_update") + 1];
+        if (AppExecutables.TryGetValue(app, out var executable))
+        {
+            var path = Path.Combine(spec.ServerRoot, executable);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await File.WriteAllTextAsync(path, $"app {app}");
+        }
+
         process.Print("Connecting anonymously to Steam Public...OK\r\n");
         process.Print(" Update state (0x61) downloading, progress: 45.00 (450 / 1000)\r\n");
         if (SteamCmdGate is { } gate)
@@ -76,6 +91,11 @@ public sealed class ScriptedProcess(int processId) : IGameProcess
     public bool IsAlive => !_exited.Task.IsCompleted;
 
     public bool IsSteamCmd { get; internal set; }
+
+    public IReadOnlyList<string> Arguments { get; init; } = [];
+
+    /// <summary>The game port a Source game was started with (<c>-port</c>).</summary>
+    public int? GamePort => Arguments.ToList().IndexOf("-port") is >= 0 and var i && int.TryParse(Arguments[i + 1], out var port) ? port : null;
 
     public void Print(string text) => _output.Writer.TryWrite(new ConsoleChunk(DateTimeOffset.UtcNow, text));
 
@@ -151,5 +171,38 @@ public sealed class ScriptedSteamCmdSource(string path) : Pulsar.Agent.Core.Stea
     {
         File.WriteAllText(path, "steamcmd");
         return Task.FromResult(path);
+    }
+}
+
+/// <summary>RCON to the scripted Source games: reachable while the game started on that port runs; "quit" stops it.</summary>
+public sealed class ScriptedRcon(ScriptedProcessManager processes) : Pulsar.Agent.Core.Servers.IRconConnector
+{
+    public List<string> Commands { get; } = [];
+
+    public Task<Pulsar.Agent.Core.Servers.IRconSession> ConnectAsync(Pulsar.Manifests.RconEndpoint endpoint, CancellationToken cancellationToken)
+    {
+        var game = processes.Started.LastOrDefault(p => p.IsAlive && !p.IsSteamCmd && p.GamePort == endpoint.Port)
+            ?? throw new Pulsar.Agent.Core.Servers.RconException("Not listening.");
+        return Task.FromResult<Pulsar.Agent.Core.Servers.IRconSession>(new Session(game, this));
+    }
+
+    private sealed class Session(ScriptedProcess game, ScriptedRcon owner) : Pulsar.Agent.Core.Servers.IRconSession
+    {
+        public Task<string> ExecuteAsync(string command, CancellationToken cancellationToken)
+        {
+            lock (owner.Commands)
+            {
+                owner.Commands.Add(command);
+            }
+
+            if (command == "quit")
+            {
+                game.Exit(0);
+            }
+
+            return Task.FromResult("");
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

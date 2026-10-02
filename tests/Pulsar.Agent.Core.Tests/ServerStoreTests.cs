@@ -1,3 +1,4 @@
+using Pulsar.Agent.Core.Security;
 using Pulsar.Agent.Core.Servers;
 using Pulsar.Contracts;
 
@@ -18,7 +19,7 @@ public sealed class ServerStoreTests : IDisposable
     [Fact]
     public void ServerRecordsAndPendingResultsSurviveARestartOfTheAgent()
     {
-        var store = new ServerStore(new AgentPaths(_root));
+        var store = new ServerStore(new AgentPaths(_root), new PlainStateProtector());
         var spec = new ServerRuntimeSpec("abcd2345", "{}", new Dictionary<string, string?> { ["map"] = "de_dust2" }, ["-condebug"], AutoStart: true,
             RestartOnCrash: false);
         var record = new ServerRecord(Guid.NewGuid(), spec, DesiredRunning: true, ResumeOnStart: false);
@@ -27,7 +28,7 @@ public sealed class ServerStoreTests : IDisposable
         store.Save(record);
         store.Save(record with { ResumeOnStart = true });
         store.SaveResult(result);
-        var reopened = new ServerStore(new AgentPaths(_root));
+        var reopened = new ServerStore(new AgentPaths(_root), new PlainStateProtector());
 
         var loaded = Assert.Single(reopened.LoadAll());
         Assert.True(loaded.ResumeOnStart);

@@ -62,6 +62,9 @@ public sealed class InProcessAgent : IAsyncDisposable
     /// <summary>The agent's servers while it runs.</summary>
     public ServerHost? Servers => _servers;
 
+    /// <summary>RCON sessions to the scripted game servers (logfile+rcon manifests).</summary>
+    public ScriptedRcon Rcon => field ??= new ScriptedRcon(Processes);
+
     public async Task<AgentConfig> EnrollAsync(string token, string panelKeyFingerprint, string panel = "https://localhost")
     {
         var enrollment = new AgentEnrollment(Configs, Keys, new FixedNodeSystem(), new NoDirectorySecurity(), _transport, _clock);
@@ -82,8 +85,8 @@ public sealed class InProcessAgent : IAsyncDisposable
         var files = new DirectServerFiles();
         _steamCmd = new SteamCmdRunner(Processes, new ScriptedSteamCmdSource(Path.Combine(_root, "steamcmd.exe")), files,
             new SteamCmdOptions { RetryDelays = [TimeSpan.Zero] }, _clock, NullLogger<SteamCmdRunner>.Instance);
-        _servers = new ServerHost(Configs, new ServerStore(Configs.Paths), Provisioner, Processes, new InstallSteps(install, files), _steamCmd, install,
-            channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5) }, _clock, NullLoggerFactory.Instance);
+        _servers = new ServerHost(Configs, new ServerStore(Configs.Paths, new PlainStateProtector()), Provisioner, Processes,
+            new InstallSteps(install, files), _steamCmd, files, Rcon, install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5) }, _clock, NullLoggerFactory.Instance);
         _connection = new AgentConnection(Configs, Keys, new FixedNodeSystem(), _transport, new PanelAuthenticator(_transport),
             new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance, _servers), Options,
             _clock, new StubLifetime(), NullLoggerFactory.Instance, channel, _servers);

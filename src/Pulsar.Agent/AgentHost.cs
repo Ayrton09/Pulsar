@@ -72,7 +72,9 @@ internal static class AgentHost
                 services.GetRequiredService<WindowsServerAccounts>(),
                 development: services.GetRequiredService<AgentConfigStore>().Load()?.Development ?? false,
                 services.GetRequiredService<ILogger<WindowsServerProvisioner>>()));
+            builder.Services.AddSingleton<IStateProtector, DpapiStateProtector>();
             builder.Services.AddSingleton<ServerStore>();
+            builder.Services.AddSingleton<IRconConnector>(new SourceRconConnector());
             // Development and CI only: enables the pulsar-test manifest.
             builder.Services.AddSingleton(new InstallOptions { TestGameDirectory = builder.Configuration["Pulsar:TestGameDirectory"] });
             builder.Services.AddSingleton<IServerFiles, WindowsServerFiles>();
