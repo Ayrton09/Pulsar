@@ -60,7 +60,7 @@ Each `feature` holds `api.ts` (TanStack Query hooks), its pages/components and t
 
 Server and node pages use a layout with a fixed header (name, status, power actions, live CPU/RAM) and tabs. Tabs without permission are hidden.
 
-*Phase 2:* nodes are created from a dialog on `/nodes` (no `/nodes/new` page) that ends with the one-time enrollment command, and `/nodes/:id` is a single page (machine, live usage, credentials, administration) until servers give it more to show. Node state refreshes by polling every 5 s; it moves to the browser hub with the console work.
+*Phase 2:* nodes are created from a dialog on `/nodes` (no `/nodes/new` page) that ends with the one-time enrollment command, and `/nodes/:id` is a single page (machine, live usage, credentials, administration) until servers give it more to show. Node state refreshed by polling every 5 s until Phase 5 moved it to the live channel.
 
 ## Real time
 
@@ -70,15 +70,18 @@ Server and node pages use a layout with a fixed header (name, status, power acti
 - On reconnect: re-join active groups and invalidate visible queries (a single refetch to resync).
 - Dashboard: a `dashboard` group with aggregates the panel emits at low frequency (≈5–10 s).
 
+*Implementation (Phase 5):* `LiveProvider` opens the connection in the signed-in layout and reconnects forever (0.5 s doubling up to 30 s). Pages watch through hooks: `useWatchServers` and `useWatchNodes` (notices about every server and node: global permissions only, so these groups must become per user when scoped grants arrive), `useServerMetrics(id)` and `useServerConsole(id, write)`. Watches are shared, reference counted and sent again after every reconnect (groups belong to a connection). Server and node notices refetch what changed (a server's settings excepted: only a save changes them); operation progress, server usage and node usage are written into the cache; after a reconnect every visible query is fetched again. The panel pushes these notices after every save that touches servers, operations, variables, allocations, nodes or credentials (an EF Core interceptor), so no code path forgets one. A refused watch answers `false` or `null` rather than throwing: SignalR logs every hub exception as an error. The dashboard composes the server and node lists on the client instead of a `dashboard` group, and has no low-disk alert yet (the agent does not report disks).
+
 ## Console
 
 - The `Terminal` component creates the xterm instance **once** and writes with `terminal.write()` from the event handler, **without going through React state** (a re-render per line would destroy performance).
-- `JoinConsole(serverId, fromSequence)` (requires `server.console.view`) delivers backlog + stream.
+- `WatchConsole(serverId, fromSequence)` (requires `server.console.view`) delivers backlog + stream. Output pushed before the answer arrives is held and written after it; each sequence is written once, in order. After a reconnect the browser asks for what came after the last entry it wrote.
 - 5,000 lines of scrollback (configurable). Search (addon-search). "Clear" = local `terminal.clear()`, it does not affect the server.
-- Optional timestamps: prefix generated client-side from each chunk's timestamp (exact in `pipes` mode, approximate in `pty`; documented).
+- Optional timestamps: prefix generated client-side from each chunk's timestamp (exact in `pipes` mode, approximate in `pty`; documented). Not in v1 yet: CS2 and srcds already stamp their log lines.
 - Input: a separate command field under the terminal, with history (↑/↓). Only visible with `server.console.write`. Clearer for game consoles than typing into xterm, and it allows read-only consoles.
 - Reconnect banner and a visible marker when the agent reports a gap (`IsGapMarker`).
-- Links: `http/https` only, `rel="noopener noreferrer"`.
+- Links: `http/https` only (written URLs and OSC 8 hyperlinks), opened in a new tab without access to the panel (`noopener,noreferrer`).
+- Commands go through `POST /api/v1/servers/{id}/console` (`server.console.write`, antiforgery, audited; commands starting with a sensitive prefix of the game are audited as `prefix ***`).
 
 ## Client-side security
 

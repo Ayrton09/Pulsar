@@ -96,7 +96,7 @@ public enum AckStatus { Accepted, AlreadyInState, Rejected, Busy, UnsupportedCom
 | `InstallServerCommand` / `UpdateServerCommand` | ServerId (+ `Validate` for updates); the envelope carries the `OperationId`. |
 | `StartServerCommand` / `StopServerCommand` / `RestartServerCommand` / `KillServerCommand` | ServerId (+ optional stop timeout). |
 | `SendConsoleInputCommand` | ServerId, `Line` (≤ 512 characters, no control characters). |
-| `SubscribeConsoleCommand` / `UnsubscribeConsoleCommand` | ServerId, `FromSequence?` (backlog). |
+| `SubscribeConsoleCommand` / `UnsubscribeConsoleCommand` | ServerId, `FromSequence?`: output after it (everything the agent holds when null), then new output. Repeating it moves the subscription back; the panel drops what it already has. |
 | `DeleteServerCommand` | ServerId, `DeleteBackups` (bool). |
 | `ListDirectoryCommand`, `ReadFileCommand`, `WriteFileCommand`, `CreateDirectoryCommand`, `RenamePathCommand`, `DeletePathsCommand` | ServerId + **relative path** + size limits (text ≤ 1 MiB inline). |
 | `PrepareTransferCommand` | Ticket, direction (upload/download), relative path, maximum size. |
@@ -112,8 +112,8 @@ public enum AckStatus { Accepted, AlreadyInState, Rejected, Busy, UnsupportedCom
 ```csharp
 Task<HelloAccepted> Hello(AgentHello hello);          // first message after connecting
 Task ServerStateChanged(ServerStateChanged e);
-Task ConsoleOutput(ServerConsoleOutput e);             // only for subscribed servers
-Task Metrics(MetricsBatch e);                          // every 5 s, one message per node
+Task ConsoleOutput(ServerConsoleOutput e);             // only for subscribed servers, batched
+Task Metrics(MetricsBatch e);                          // every 5 s, one message per node (running servers only)
 Task NodeMetrics(NodeMetrics e);                       // every 15 s
 Task OperationProgress(OperationProgress e);
 Task OperationCompleted(OperationCompleted e);         // retried from an outbox until acked
@@ -128,19 +128,19 @@ public sealed record ServerStateChanged(
     Guid ServerId, RuntimeState State, RuntimeState Previous,
     DateTime AtUtc, long StateSequence, int? ExitCode, StateChangeReason Reason);
 
-public sealed record ServerConsoleOutput(
-    Guid ServerId, long Sequence, DateTime AtUtc, string Text, bool IsGapMarker);
+public sealed record ServerConsoleOutput(Guid ServerId, IReadOnlyList<ConsoleEntry> Entries);
+public sealed record ConsoleEntry(long Sequence, DateTimeOffset At, string Text, bool IsGap);
 
+public sealed record MetricsBatch(DateTimeOffset At, IReadOnlyList<ServerMetrics> Servers);
 public sealed record ServerMetrics(
-    Guid ServerId, double CpuPercent, long MemoryBytes, int ProcessCount,
-    int? MainProcessId, TimeSpan Uptime);
+    Guid ServerId, double CpuPercent, long MemoryBytes, int ProcessCount, TimeSpan Uptime);
 
 public sealed record OperationProgress(Guid OperationId, string Stage, double? Percent, string? Message);
 public sealed record OperationCompleted(Guid OperationId, OperationOutcome Outcome,
     string? ErrorCode, string? Message, JsonElement? Result);
 ```
 
-`HelloAccepted` returns the server time (to detect clock skew), the desired state of every server, active console subscriptions and the current panel keys. This drives **reconciliation** after every reconnect or panel restart (see doc 05).
+`HelloAccepted` returns the server time (to detect clock skew), the desired state of every server, the console subscriptions browsers are watching (`ConsoleSubscriptions`, with the panel's last sequence of each) and the current panel keys. This drives **reconciliation** after every reconnect or panel restart (see doc 05).
 
 Disk usage is not part of the periodic metrics: walking 60 GB of CS2 every 5 s would be absurd. It is computed on demand and cached (≥ 10 min).
 
@@ -151,6 +151,15 @@ Disk usage is not part of the periodic metrics: walking 60 GB of CS2 every 5 s w
 - The agent coalesces output (≤ 50 ms or 16 KiB per message). If the link backs up, the oldest output is dropped and an `IsGapMarker` is emitted.
 - Browser reconnect: it sends its last `Sequence`; the panel asks the agent for the backlog from there. No silent gaps.
 - UTF-8 decoding is *stateful* in the agent (chunks can split a multi-byte character); in `pipes` mode the encoding is declared by the manifest.
+
+**Implementation (Phase 5).**
+
+- *Agent buffer* (`ConsoleBuffer`, one per server, across restarts of its game): about one million characters, oldest out first. Small pieces of output join the last entry while it is younger than 50 ms, shorter than 16 KiB and nobody has read it; once read, an entry never changes ("seal on read"), so a sequence always means the same text. Sequences start at the buffer's creation time in microseconds since 1970 (below 2^53, safe in JavaScript): a restarted agent continues above every sequence the previous run used, so the panel and browsers can tell new output from output they have. This relies on the node's clock not going back between two runs.
+- *Sources:* pseudo console and pipe output as is (VT sequences included, xterm renders them); for `logfile+rcon` the log file, followed for the whole run with a last read after the exit (what the game writes while quitting is kept). Console input: written to the console (`pty` echoes it; for `pipes` the agent adds `> command`), or sent over an RCON session kept per process. For RCON the agent adds `> command` and the answer, unless the manifest says the game logs both itself (`rcon.logsCommands`, CS2). A session found closed is replaced once; a late answer is never retried (the game may have run the command). Failures appear in the console as a dimmed `[Pulsar]` note.
+- *Relay:* one sender per subscription: up to 64 KiB of entries per message, at most one message per 50 ms, entries kept until sent while the link is down. A subscription that falls behind what the buffer still holds gets a gap entry (`IsGap`, the last missing sequence). Subscriptions end when the connection ends; the panel subscribes again in `HelloAccepted`.
+- *History on disk:* `console-logs\{shortId}\console.log`, one line per console line prefixed with its UTC time, escape sequences removed, written in batches (at most once a second) by a background writer that drops output rather than slow the game; rotated at 10 MiB, four older files kept, deleted with the server.
+- *Panel copy* (`ConsoleMirrors`): per watched server, the last 256 K characters, deduplicated by sequence. The first browser to watch subscribes the panel; later browsers and reconnects get what the copy holds after their last sequence, then the stream. Nobody watching for 30 s: the agent is unsubscribed; the copy goes after 10 minutes. After an agent reconnect or a panel restart the subscription starts again from the panel's last sequence (or from nothing: the agent then sends its whole buffer and browsers drop what they have), so neither loses output. Output from an agent about a server that is not one of its node's watched servers is dropped.
+- *Metrics:* the agent samples each running server's Job every 5 s: CPU time of every process it ever held (as a share of the whole machine since the previous sample, like the node's CPU and Task Manager), working set of the processes alive in it (`conhost.exe` included), process count and uptime. The panel keeps the last sample per server in memory (`LiveMetrics`, older than 15 s counts as none) and pushes it to the pages watching that server.
 
 ### Large transfers
 

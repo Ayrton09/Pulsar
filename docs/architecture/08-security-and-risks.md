@@ -29,7 +29,8 @@ Explicit assumptions:
 - Headers on every response: strict CSP (`default-src 'self'`, no inline scripts; inline `<style>` elements only, because the dialogs' scroll lock injects one at runtime — style attributes stay blocked, `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, a restrictive `Permissions-Policy` and `Cross-Origin-Opener-Policy: same-origin`. The end-to-end suite fails on any CSP violation.
 - Users change their own profile and password (`/account`); a password change ends the user's other sessions.
 - Built-in rate limiting (`Microsoft.AspNetCore.RateLimiting`) on login, setup, enrollment and the agent challenge.
-- Resource authorization on **every** endpoint and hub method (enforced by a test); IDs of other users' resources → 404.
+- Resource authorization on **every** endpoint (enforced by a test) and hub method; IDs of other users' resources → 404 (in the browser hub: `null`).
+- The browser hub (`/hubs/panel`) requires a signed-in user, WebSockets only, and refuses an `Origin` other than the panel's own host (cross-site WebSocket hijacking; SameSite cookies are per site, not per origin). Permissions are checked when a page starts watching; a revoked permission takes effect at the next reconnect or page load.
 - RBAC anti-escalation (doc 02).
 
 ### Panel ↔ Agent
@@ -116,8 +117,8 @@ Append-only from the application, no secrets, with IP and actor. Minimum actions
 | T10 | RBAC privilege escalation / IDOR | Single per-resource evaluator, anti-escalation, authorization matrix tests |
 | T11 | XSS / CSRF / clickjacking | Escaped React, CSP, SameSite + antiforgery, frame-ancestors |
 | T12 | Login brute force | Lockout, rate limiting, 2FA |
-| T13 | Malicious escape sequences in the console | xterm without the clipboard addon, http/https links only |
-| T14 | DoS via console flood/uploads | Coalescing, bounded ring buffers, message and size limits |
+| T13 | Malicious escape sequences in the console | xterm without the clipboard addon (no OSC 52), http/https links only (OSC 8 too) opened with `noopener`, terminal input not wired to the game (title and query answers go nowhere) |
+| T14 | DoS via console flood/uploads | Coalescing (≤ 64 KiB and ≤ 20 messages/s per server), bounded buffers (agent ~1 M characters, panel 256 K, browser 5,000 lines), output sent only while someone watches, 32 KiB limit on browser messages |
 | T15 | Secret leakage in logs/audit | Redaction, write-only secrets, sensitive console prefixes |
 | T16 | First admin created by a third party | Locally printed setup token |
 | T17 | Repudiation | Audit with actor, IP, correlation |

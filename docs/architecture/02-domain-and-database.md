@@ -24,7 +24,7 @@
 ### Volatile (panel memory, never in PostgreSQL)
 
 - `NodeConnection`: connected node, connection id, session, protocol version.
-- `LiveServerMetrics` / `LiveNodeMetrics`: last sample + a short window (~1 h at one sample per minute) for sparklines.
+- `LiveServerMetrics` / `LiveNodeMetrics`: last sample + a short window (~1 h at one sample per minute) for sparklines. (Phase 5 keeps the last sample only; the window arrives with sparklines.)
 - `ConsoleSubscription`: how many browsers watch each server's console.
 
 When the panel restarts, all of this is rebuilt within seconds from each node's `AgentHello`.

@@ -58,11 +58,11 @@
 
 ## Phase 5 — Real-time console and metrics
 
-- Ring buffer, rotated logs, subscriptions, backlog by sequence, audited command input.
-- Job-based metrics, `PanelHub`, in-memory cache.
-- UI: xterm console, server header with CPU/RAM/uptime, dashboard v1.
+- Ring buffer, rotated logs, subscriptions, backlog by sequence, audited command input. *Done (doc 03, "Implementation (Phase 5)"): sequences that survive agent restarts, the panel's deduplicated copy resubscribed at every Hello, RCON answers added unless the game logs them (`rcon.logsCommands`), sensitive commands audited without their arguments.*
+- Job-based metrics, `PanelHub`, in-memory cache. *Done: usage from each server's Job every 5 s; the browser hub pushes server and node changes (an EF Core interceptor after every save), progress and usage; polling is gone.*
+- UI: xterm console, server header with CPU/RAM/uptime, dashboard v1. *Done; the dashboard has no low-disk alert until the agent reports disks.*
 
-**Done when:** live CS2 console, commands, reconnect without gaps; CPU/RAM/uptime updating without polling. (CS2's console is its log file plus RCON answers, plain text: colors come only from games on a pseudo console, spike 0001.)
+**Done when:** live CS2 console, commands, reconnect without gaps; CPU/RAM/uptime updating without polling. (CS2's console is its log file plus RCON answers, plain text: colors come only from games on a pseudo console, spike 0001.) *Met on a developer machine through the real UI (Spanish), with a CS2 server created by the wizard: its console streamed live while it booted; `status` typed in the console ran over RCON and its answer appeared once (CS2 logs it; the agent added nothing); the panel was killed during a restart of the game and started again 11 s later: the browser asked for what followed its last entry and got exactly the next 179 lines, the same characters as the game's own log for that span, with no gap and nothing twice; CPU, memory (the Job's working set: `cs2.exe` and its `conhost.exe`, matching Windows) and uptime updated every 5 s with no API request from the page; stopping it showed the game's last lines; no error in the panel or agent logs. The end-to-end suite runs the console in a real browser with the test game server (CI, Windows). Found on the way: SteamCMD cannot update an install whose depot manifests it does not have (anonymous logins only get the current build's), so files copied from another install need the old manifests in the server's SteamCMD depot cache; recovery from the resulting "state 0x6" is a follow-up.*
 
 ## Phase 6 — File manager
 

@@ -127,8 +127,8 @@ Test projects are created in the phase that gives them content, so the solution 
                                     │  ├─ ServerSupervisor (one mailbox per server)             │
                                     │  ├─ IGameProcessManager → WindowsGameProcessManager       │
                                     │  ├─ SteamCmdService (queue) · FileService · BackupService │
-                                    │  ├─ ConsoleBroker (ring buffers + logs on disk)           │
-                                    │  ├─ MetricsSampler (every 5 s, via Job accounting)        │
+                                    │  ├─ ConsoleBuffer + ConsoleRelay + ConsoleLog             │
+                                    │  ├─ Usage sampling (every 5 s, Job accounting)            │
                                     │  └─ LocalStateStore (%ProgramData%\Pulsar\Agent)          │
                                     │            │ CreateProcessAsUser (per-server account)     │
                                     │   ┌────────▼───────┐  ┌────────────────┐                  │
