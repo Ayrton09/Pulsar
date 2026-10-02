@@ -24,7 +24,7 @@ Hub protocol: JSON (System.Text.Json with source generators). MessagePack only i
 | `POST /agent/v1/enroll` | Enrollment with a single-use token. | Enrollment token |
 | `POST /agent/v1/auth/challenge` | Requests a nonce. | None (rate limited) |
 | `POST /agent/v1/auth/token` | Returns a session JWT (15 min) after verifying the signature. | Node signature |
-| `POST /agent/v1/credentials/rotate` | Node key rotation. | JWT + proof with the new key |
+| `POST /agent/v1/credentials/rotate` | Node key rotation. | Session token + proof with the new key |
 | `WSS  /agent/v1/hub` | Persistent channel. | JWT (`aud=pulsar-agent`) |
 | `GET/PUT /agent/v1/transfers/{ticket}` | Large transfers (uploads/downloads/backups). | JWT + single-use ticket |
 
@@ -251,11 +251,19 @@ Agent                                         Panel
 
 ### Rotation
 
-*Not implemented yet.* Until it is, replacing a node key means re-enrolling the node (a new enrollment command from the node page), which revokes the old credential.
+**Node key** — automatically once the key is 90 days old (checked at every connection), or when an administrator asks from the node page (`RotateCredentialCommand`, permission `node.credentials.manage`):
 
-- The agent rotates its key automatically every 90 days (configurable) or when the administrator asks (`RotateCredentialCommand`).
-- Flow: generate a new key → `POST /credentials/rotate` with the current JWT + a proof signed with the new key → the panel creates a `pending` credential → the agent re-authenticates with the new key → the panel marks it `active` and the old one `superseded`. If anything fails, the old credential stays valid (a node can never be orphaned mid-rotation).
-- Panel key rotation: the panel publishes the new key signed by the current one (`UpdatePanelKeysCommand`); agents pin both during the transition.
+1. The agent creates a new key in the same scope and provider preference (TPM first) and calls `POST /agent/v1/credentials/rotate` within its current session, with `proof = Sign_new("pulsar-rotate-credential-v1" ‖ nodeId ‖ currentCredentialId ‖ sessionId ‖ newPublicKey)`: the session proves the old key, the proof the new one, both bound to this node and session.
+2. The panel registers a `pending` credential (an earlier pending one is superseded) and answers with `CredentialRotation(nodeId, credentialId)` signed by a pinned panel key (`pulsar-rotation-result-v1`). The agent verifies it and saves the new key as `pendingRotation` in its configuration before using it.
+3. The agent authenticates with the pending credential (challenge and token accept `pending` credentials). That first authentication makes the panel activate it and supersede the previous one in one transaction, and end the sessions of the old key; the agent's new connection replaces the old one at `Hello`. The agent then switches its configuration to the new key and deletes the old one.
+
+At any interruption one of the two keys works: before step 3 the current credential is still active; after it, `pendingRotation` is still in the configuration, so the next start authenticates with it first. If the panel refuses a pending key (a later rotation superseded it, or it was revoked) the agent deletes it and keeps the current one. A failed rotation is retried after an hour.
+
+**Panel key** — from the Nodes page (permission `settings.manage`): rotating creates a new active key and turns the previous one into `retiring`; the panel accepts both and signs with the active key.
+
+- Every `Hello` carries `pinnedPanelKeys`. The panel stores them on the node and signs that connection's commands with the active key if the agent pins it, otherwise with the newest retiring key it pins.
+- When the pins differ from the panel's keys, the panel sends `UpdatePanelKeysCommand` (to connected agents right after the rotation, to the others when they connect), signed with a key the agent already trusts. The agent requires every key id to be its fingerprint and the list to include the key that signed it, so an update can never lock it out.
+- Retiring the old key (only one key can be retiring at a time) sends the shortened list to connected agents. A node that never connected during the rotation pins only a retired key: the panel can no longer sign anything it accepts, the UI flags it as "old panel key", and it has to be enrolled again. The Nodes page shows how many nodes trust each key before retiring.
 
 ### Revocation and expiry
 
@@ -333,5 +341,7 @@ One verifier per session, in this order (the first failure answers the command):
 | Inside `IssuedAt`–`ExpiresAt` on the panel's clock, ±30 s | `Rejected` | `command.expired` |
 | Supported `ProtocolVersion` | `Rejected` | `command.unsupported_version` |
 | Command type handled by this agent | `UnsupportedCommand` | `command.unsupported` |
+
+The verifier reads the pinned panel keys on every command, so an `UpdatePanelKeysCommand` applies to the next command. That command is also refused (`command.invalid_panel_keys`) when a key id is not its fingerprint, a key is not P-256, or the list leaves out the key that signed it.
 
 Routing checks run on the envelope without its command, so an unknown command type is reported as unsupported rather than malformed. A sequence number is consumed as soon as the command is authentic and addressed to this session, even if a later check refuses it.

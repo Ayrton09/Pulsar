@@ -60,3 +60,16 @@ public sealed record TokenResponse(string AccessToken, Guid SessionId, DateTimeO
 
 /// <summary>Error body of the agent endpoints.</summary>
 public sealed record AgentError(string Code, string Message);
+
+/// <summary>
+/// <c>POST /agent/v1/credentials/rotate</c>, authenticated with the current session. <see cref="Proof"/> signs
+/// <c>SignedData(Purposes.RotateCredential, nodeId, currentCredentialId, sessionId, publicKey)</c> with the NEW private
+/// key: the session proves the old key, the proof proves the new one, and both are bound to this node and session.
+/// </summary>
+public sealed record RotateCredentialRequest(byte[] PublicKey, string KeyStorage, byte[] Proof);
+
+/// <summary>
+/// Payload of the panel's answer to a rotation, delivered as a <see cref="SignedMessage"/>. The new credential is
+/// pending: it becomes active (and the current one is superseded) the first time the agent authenticates with it.
+/// </summary>
+public sealed record CredentialRotation(Guid NodeId, Guid CredentialId);

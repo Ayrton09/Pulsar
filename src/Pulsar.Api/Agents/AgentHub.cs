@@ -76,12 +76,17 @@ internal sealed partial class AgentHub(
         var panelKeys = await keys.GetPublicKeysAsync(Context.ConnectionAborted);
         var now = clock.GetUtcNow();
         node.Connected(AgentAccess.ToSnapshot(hello.Inventory, hello.AgentVersion, hello.ProtocolVersion), now);
+        if (hello.PinnedPanelKeys is { } pinned)
+        {
+            node.PanelKeysPinned(pinned);
+        }
+
         await db.SaveChangesAsync(Context.ConnectionAborted);
 
         // Hub instances are transient; Items keeps the throttle across this connection's invocations.
         Context.Items[s_lastSeenAtKey] = now;
         connections.Register(Context, session, new AgentConnectionInfo(nodeId, session.SessionId, now,
-            hello.AgentVersion, hello.ProtocolVersion, hello.Capabilities, null));
+            hello.AgentVersion, hello.ProtocolVersion, hello.Capabilities, null, node.PinnedPanelKeys));
 
         // A revocation between the checks above and the registration ended the session but found nothing to close.
         if (!sessions.IsActive(session.SessionId))
@@ -90,7 +95,26 @@ internal sealed partial class AgentHub(
             throw new HubException("Agent session is no longer active; authenticate again.");
         }
 
+        // An agent that missed a panel key rotation gets the new keys. Not awaited here: waiting for a client result
+        // inside this connection's own hub method would deadlock (one invocation per client at a time).
+        if (hello.PinnedPanelKeys is not null)
+        {
+            _ = Task.Run(() => UpdatePanelKeysAsync(nodeId));
+        }
+
         return new HelloAccepted(now, panelKeys);
+    }
+
+    private async Task UpdatePanelKeysAsync(NodeId nodeId)
+    {
+        try
+        {
+            await connections.UpdatePanelKeysAsync(nodeId, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is DbUpdateException or InvalidOperationException or OperationCanceledException)
+        {
+            LogPanelKeysUpdateFailed(ex, nodeId);
+        }
     }
 
     public async Task NodeMetrics(NodeMetrics metrics)
@@ -140,4 +164,7 @@ internal sealed partial class AgentHub(
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Node {NodeId} rejected with protocol version {ProtocolVersion}; supported versions are {MinimumVersion} through {CurrentVersion}")]
     private partial void LogProtocolRejected(NodeId nodeId, int protocolVersion, int minimumVersion, int currentVersion);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not send the panel keys to node {NodeId}")]
+    private partial void LogPanelKeysUpdateFailed(Exception exception, NodeId nodeId);
 }

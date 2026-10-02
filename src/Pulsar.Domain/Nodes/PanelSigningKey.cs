@@ -50,4 +50,27 @@ public sealed class PanelSigningKey
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset? RetiredAt { get; private set; }
+
+    /// <summary>A newer key signs from now on; agents keep accepting this one until it is retired.</summary>
+    public void StartRetiring()
+    {
+        if (Status != PanelSigningKeyStatus.Active)
+        {
+            throw new InvalidOperationException($"Only the active key can start retiring (this one is {Status}).");
+        }
+
+        Status = PanelSigningKeyStatus.Retiring;
+    }
+
+    /// <summary>The end of a rotation: agents are told to drop the key, and the panel never signs with it again.</summary>
+    public void Retire(DateTimeOffset now)
+    {
+        if (Status != PanelSigningKeyStatus.Retiring)
+        {
+            throw new InvalidOperationException($"Only a retiring key can be retired (this one is {Status}).");
+        }
+
+        Status = PanelSigningKeyStatus.Retired;
+        RetiredAt = now;
+    }
 }

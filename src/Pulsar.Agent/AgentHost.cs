@@ -50,6 +50,7 @@ internal static class AgentHost
             builder.Services.AddSingleton<INodeSystem, WindowsNodeSystem>();
             builder.Services.AddSingleton<PanelTransport>();
             builder.Services.AddSingleton<PanelAuthenticator>();
+            builder.Services.AddSingleton<CredentialRotationClient>();
             builder.Services.AddSingleton<CommandDispatcher>();
             builder.Services.AddSingleton(new AgentConnectionOptions());
             builder.Services.AddHostedService<AgentConnection>();

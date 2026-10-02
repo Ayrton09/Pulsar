@@ -25,7 +25,29 @@ internal static class AgentEndpoints
         agent.MapPost("/enroll", EnrollAsync).RequireRateLimiting(EnrollRateLimit);
         agent.MapPost("/auth/challenge", ChallengeAsync).RequireRateLimiting(AuthRateLimit);
         agent.MapPost("/auth/token", TokenAsync).RequireRateLimiting(AuthRateLimit);
+
+        // Calls made within an agent session (the hub's scheme, never a browser cookie).
+        var session = app.MapGroup(AgentProtocol.BasePath)
+            .WithMetadata(AgentEndpointMetadata.Instance)
+            .RequireAuthorization(policy => policy.AddAuthenticationSchemes(AgentAuthenticationHandler.Scheme).RequireAuthenticatedUser())
+            .ExcludeFromDescription();
+        session.MapPost("/credentials/rotate", RotateCredentialAsync).RequireRateLimiting(AuthRateLimit);
         return app;
+    }
+
+    private static async Task<Results<Ok<SignedMessage>, BadRequest<AgentError>, UnauthorizedHttpResult>> RotateCredentialAsync(
+        RotateCredentialRequest request, HttpContext http, AgentAccess access, CancellationToken ct)
+    {
+        var principal = http.User;
+        var result = await access.RotateCredentialAsync(principal.NodeId(), principal.CredentialId(), principal.SessionId(), request, ct);
+        if (result.IsSuccess)
+        {
+            return TypedResults.Ok(result.Value);
+        }
+
+        return result.Error == AgentErrors.AuthenticationRejected
+            ? TypedResults.Unauthorized()
+            : TypedResults.BadRequest(new AgentError(result.Error!.Code, result.Error.Message));
     }
 
     /// <summary>The origin the agent reached ("https://panel.example.com"), bound into its signatures.</summary>

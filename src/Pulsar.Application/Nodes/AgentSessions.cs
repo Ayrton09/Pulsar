@@ -70,6 +70,18 @@ public sealed class AgentSessionStore(TimeProvider clock)
     /// <summary>True while the session exists and has not expired or been ended.</summary>
     public bool IsActive(Guid sessionId) => Find(sessionId) is not null;
 
+    /// <summary>Ends the sessions opened with one credential (it was superseded by a rotation).</summary>
+    public void EndCredential(Guid credentialId)
+    {
+        foreach (var (hash, session) in _byTokenHash)
+        {
+            if (session.CredentialId == credentialId)
+            {
+                _byTokenHash.TryRemove(hash, out _);
+            }
+        }
+    }
+
     /// <summary>Ends every session of a node (revocation, disabling, re-enrollment, deletion).</summary>
     public void EndAll(NodeId node)
     {

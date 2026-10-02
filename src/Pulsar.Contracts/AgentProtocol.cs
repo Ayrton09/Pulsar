@@ -17,6 +17,7 @@ public static class AgentProtocol
     public const string ChallengePath = BasePath + "/auth/challenge";
     public const string TokenPath = BasePath + "/auth/token";
     public const string HubPath = BasePath + "/hub";
+    public const string RotateCredentialPath = BasePath + "/credentials/rotate";
 
     /// <summary>Largest hub message either side accepts.</summary>
     public const long MaximumMessageSize = 1024 * 1024;
@@ -28,5 +29,7 @@ public static class AgentProtocol
         public const string Authenticate = "pulsar-agent-auth-v1";
         public const string EnrollmentResult = "pulsar-enrollment-result-v1";
         public const string Command = "pulsar-command-v1";
+        public const string RotateCredential = "pulsar-rotate-credential-v1";
+        public const string RotationResult = "pulsar-rotation-result-v1";
     }
 }

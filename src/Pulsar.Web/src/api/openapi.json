@@ -2449,6 +2449,303 @@
           }
         }
       }
+    },
+    "/api/v1/nodes/{id}/credentials/rotate": {
+      "post": {
+        "tags": [
+          "Nodes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCommandResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/panel-keys": {
+      "get": {
+        "tags": [
+          "Panel keys"
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelKeysOverview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/panel-keys/rotate": {
+      "post": {
+        "tags": [
+          "Panel keys"
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelKeysOverview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/panel-keys/{keyId}/retire": {
+      "post": {
+        "tags": [
+          "Panel keys"
+        ],
+        "parameters": [
+          {
+            "name": "keyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelKeysOverview"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2462,6 +2759,24 @@
           "unsupportedCommand",
           "invalidSignature"
         ]
+      },
+      "AgentCommandResult": {
+        "required": [
+          "status",
+          "errorCode"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/AckStatus"
+          },
+          "errorCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
       },
       "AuditActorType": {
         "enum": [
@@ -2855,7 +3170,8 @@
           "createdAt",
           "lastUsedAt",
           "revokedAt",
-          "revokeReason"
+          "revokeReason",
+          "supersededAt"
         ],
         "type": "object",
         "properties": {
@@ -2895,6 +3211,13 @@
               "null",
               "string"
             ]
+          },
+          "supersededAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -3024,7 +3347,8 @@
           "lastSeenAt",
           "inventory",
           "metrics",
-          "createdAt"
+          "createdAt",
+          "panelKeyTrust"
         ],
         "type": "object",
         "properties": {
@@ -3083,8 +3407,87 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "panelKeyTrust": {
+            "$ref": "#/components/schemas/PanelKeyTrust"
           }
         }
+      },
+      "PanelKeysOverview": {
+        "required": [
+          "keys",
+          "nodes",
+          "nodesOutdated",
+          "nodesUnknown"
+        ],
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PanelKeyView"
+            }
+          },
+          "nodes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "nodesOutdated": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "nodesUnknown": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PanelKeyTrust": {
+        "enum": [
+          "unknown",
+          "current",
+          "outdated"
+        ]
+      },
+      "PanelKeyView": {
+        "required": [
+          "keyId",
+          "status",
+          "createdAt",
+          "retiredAt",
+          "nodesTrusting"
+        ],
+        "type": "object",
+        "properties": {
+          "keyId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PanelSigningKeyStatus"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "retiredAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "nodesTrusting": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PanelSigningKeyStatus": {
+        "enum": [
+          "active",
+          "retiring",
+          "retired"
+        ]
       },
       "PermissionResponse": {
         "required": [
@@ -3530,6 +3933,9 @@
     },
     {
       "name": "Nodes"
+    },
+    {
+      "name": "Panel keys"
     }
   ]
 }

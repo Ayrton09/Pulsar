@@ -32,7 +32,18 @@ public sealed record NodeSummary(
     DateTimeOffset? LastSeenAt,
     NodeInventoryView? Inventory,
     NodeMetricsView? Metrics,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    PanelKeyTrust PanelKeyTrust);
+
+/// <summary>Whether the node's agent trusts the panel's active signing key (it may still pin only a retiring one).</summary>
+public enum PanelKeyTrust
+{
+    /// <summary>The agent has not reported its pinned keys (never connected, or an agent without key rotation).</summary>
+    Unknown,
+    Current,
+    /// <summary>It pins only retiring keys: retiring them would cut it off until it connects and takes the new key.</summary>
+    Outdated,
+}
 
 public sealed record NodeCredentialView(
     Guid Id,
@@ -42,7 +53,8 @@ public sealed record NodeCredentialView(
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastUsedAt,
     DateTimeOffset? RevokedAt,
-    string? RevokeReason);
+    string? RevokeReason,
+    DateTimeOffset? SupersededAt);
 
 public sealed record NodeDetails(NodeSummary Node, IReadOnlyList<NodeCredentialView> Credentials);
 
@@ -55,6 +67,9 @@ public sealed record EnrollmentInstructions(string Token, DateTimeOffset Expires
 public sealed record CreatedNode(NodeSummary Node, EnrollmentInstructions Enrollment);
 
 public sealed record PingResult(AckStatus Status, double RoundTripMilliseconds);
+
+/// <summary>The agent's answer to a command that starts work on the node (accepted means started, not finished).</summary>
+public sealed record AgentCommandResult(AckStatus Status, string? ErrorCode);
 
 /// <summary>Node administration from the UI (docs/architecture/03). Requires a signed-in actor.</summary>
 public sealed class NodeManagement(
@@ -69,7 +84,8 @@ public sealed class NodeManagement(
     public async Task<IReadOnlyList<NodeSummary>> ListAsync(CancellationToken cancellationToken)
     {
         var nodes = await db.Nodes.AsNoTracking().OrderBy(n => n.NormalizedName).ToListAsync(cancellationToken);
-        return [.. nodes.Select(Summarize)];
+        var activeKeyId = await ActiveKeyIdAsync(cancellationToken);
+        return [.. nodes.Select(n => Summarize(n, activeKeyId))];
     }
 
     public async Task<Result<NodeDetails>> GetAsync(NodeId id, CancellationToken cancellationToken)
@@ -83,9 +99,9 @@ public sealed class NodeManagement(
         var credentials = await db.NodeCredentials.AsNoTracking()
             .Where(c => c.NodeId == id)
             .OrderByDescending(c => c.CreatedAt)
-            .Select(c => new NodeCredentialView(c.Id, c.Fingerprint, c.KeyStorage, c.Status, c.CreatedAt, c.LastUsedAt, c.RevokedAt, c.RevokeReason))
+            .Select(c => new NodeCredentialView(c.Id, c.Fingerprint, c.KeyStorage, c.Status, c.CreatedAt, c.LastUsedAt, c.RevokedAt, c.RevokeReason, c.SupersededAt))
             .ToListAsync(cancellationToken);
-        return new NodeDetails(Summarize(node), credentials);
+        return new NodeDetails(Summarize(node, await ActiveKeyIdAsync(cancellationToken)), credentials);
     }
 
     public async Task<Result<CreatedNode>> CreateAsync(string name, string? description, string? publicHost, CancellationToken cancellationToken)
@@ -107,7 +123,7 @@ public sealed class NodeManagement(
         var instructions = await IssueTokenAsync(node, now, cancellationToken);
         audit.Record(AuditActions.Node.Created, metadata: new { name = node.Name }).WithNode(node.Id).WithTarget("node", node.Id.ToString());
         await db.SaveChangesAsync(cancellationToken);
-        return new CreatedNode(Summarize(node), instructions);
+        return new CreatedNode(Summarize(node, await ActiveKeyIdAsync(cancellationToken)), instructions);
     }
 
     public async Task<Result<NodeSummary>> UpdateAsync(NodeId id, string name, string? description, string? publicHost, CancellationToken cancellationToken)
@@ -131,7 +147,7 @@ public sealed class NodeManagement(
 
         audit.Record(AuditActions.Node.Updated, metadata: new { name = node.Name }).WithNode(node.Id).WithTarget("node", node.Id.ToString());
         await db.SaveChangesAsync(cancellationToken);
-        return Summarize(node);
+        return Summarize(node, await ActiveKeyIdAsync(cancellationToken));
     }
 
     /// <summary>A new single-use token, for the first enrollment or to re-enroll a reinstalled machine.</summary>
@@ -203,6 +219,27 @@ public sealed class NodeManagement(
         return new PingResult(ack.Status, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
     }
 
+    /// <summary>Asks the node's agent to replace its key now (it also does so on its own every 90 days).</summary>
+    public async Task<Result<AgentCommandResult>> RotateCredentialAsync(NodeId id, CancellationToken cancellationToken)
+    {
+        if (!await db.Nodes.AnyAsync(n => n.Id == id, cancellationToken))
+        {
+            return NodeErrors.NotFound;
+        }
+
+        var ack = await connections.SendAsync(id, new RotateCredentialCommand(), request.UserId, cancellationToken);
+        if (ack is null)
+        {
+            return NodeErrors.NotConnected;
+        }
+
+        audit.Record(AuditActions.Node.CredentialRotationRequested, ack.Status == AckStatus.Accepted ? AuditOutcome.Success : AuditOutcome.Failure,
+                metadata: new { status = ack.Status.ToString(), ack.ErrorCode })
+            .WithNode(id).WithTarget("node", id.ToString());
+        await db.SaveChangesAsync(cancellationToken);
+        return new AgentCommandResult(ack.Status, ack.ErrorCode);
+    }
+
     private async Task<Result<NodeSummary>> ChangeStatusAsync(NodeId id, bool disable, CancellationToken cancellationToken)
     {
         var node = await db.Nodes.SingleOrDefaultAsync(n => n.Id == id, cancellationToken);
@@ -226,7 +263,7 @@ public sealed class NodeManagement(
             CutOff(id);
         }
 
-        return Summarize(node);
+        return Summarize(node, await ActiveKeyIdAsync(cancellationToken));
     }
 
     private async Task<EnrollmentInstructions> IssueTokenAsync(Node node, DateTimeOffset now, CancellationToken cancellationToken)
@@ -246,7 +283,10 @@ public sealed class NodeManagement(
         connections.Disconnect(id);
     }
 
-    private NodeSummary Summarize(Node node)
+    private async Task<string> ActiveKeyIdAsync(CancellationToken cancellationToken) =>
+        (await keys.GetPublicKeysAsync(cancellationToken))[0].KeyId;
+
+    private NodeSummary Summarize(Node node, string activeKeyId)
     {
         var connection = connections.Find(node.Id);
         var inventory = node.Inventory is { } i
@@ -256,6 +296,13 @@ public sealed class NodeManagement(
             ? new NodeMetricsView(m.At, m.CpuPercent, m.MemoryUsedBytes, m.MemoryTotalBytes, m.Uptime)
             : null;
         return new NodeSummary(node.Id.Value, node.Name, node.Description, node.PublicHost, node.Status, connection is not null,
-            node.LastSeenAt, inventory, metrics, node.CreatedAt);
+            node.LastSeenAt, inventory, metrics, node.CreatedAt, Trust(connection?.PinnedPanelKeys ?? node.PinnedPanelKeys, activeKeyId));
     }
+
+    private static PanelKeyTrust Trust(IReadOnlyList<string>? pinned, string activeKeyId) => pinned switch
+    {
+        null => PanelKeyTrust.Unknown,
+        _ when pinned.Contains(activeKeyId, StringComparer.Ordinal) => PanelKeyTrust.Current,
+        _ => PanelKeyTrust.Outdated,
+    };
 }

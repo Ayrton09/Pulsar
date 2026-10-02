@@ -33,6 +33,15 @@ public static class AuditActions
         public const string EnrollmentFailed = "node.enrollment_failed";
         public const string CredentialRevoked = "node.credential_revoked";
         public const string AuthenticationFailed = "node.authentication_failed";
+        public const string CredentialRotationRequested = "node.credential_rotation_requested";
+        public const string CredentialRotationStarted = "node.credential_rotation_started";
+        public const string CredentialRotated = "node.credential_rotated";
+    }
+
+    public static class PanelKey
+    {
+        public const string Rotated = "panel_key.rotated";
+        public const string Retired = "panel_key.retired";
     }
 
     public static class Role

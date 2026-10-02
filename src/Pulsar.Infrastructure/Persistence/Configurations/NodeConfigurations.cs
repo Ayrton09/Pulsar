@@ -19,6 +19,7 @@ internal sealed class NodeConfiguration : IEntityTypeConfiguration<Node>
         builder.Property(n => n.Description).HasMaxLength(Node.MaxDescriptionLength);
         builder.Property(n => n.PublicHost).HasMaxLength(Node.MaxPublicHostLength);
         builder.Property(n => n.Status).HasConversion<SnakeCaseEnumConverter<NodeStatus>>();
+        builder.PrimitiveCollection(n => n.PinnedPanelKeys);
         builder.Property<uint>("Version").IsRowVersion();
 
         // Last inventory reported by the agent, as plain columns of the node (docs/architecture/02).

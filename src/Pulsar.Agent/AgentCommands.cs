@@ -151,6 +151,7 @@ internal static class AgentCommands
               Panel:      {PanelAddress.Origin(config.Panel)}
               Node:       {config.NodeId} (credential {config.CredentialId}, enrolled {config.EnrolledAt:u})
               Node key:   {fingerprint} ({Storage(config.Key.Storage)}{(config.Development ? ", development" : string.Empty)})
+              Key age:    {(DateTimeOffset.UtcNow - config.CurrentKeyCreatedAt).Days} days (replaced automatically after {new AgentConnectionOptions().KeyRotationInterval.Days}){(config.PendingRotation is null ? string.Empty : "; a rotation is pending: the agent completes it when it next connects")}
               Panel keys: {string.Join(", ", config.PanelKeys.Select(k => k.KeyId))}
               Servers:    {config.ServersRoot ?? "(not set)"}
               State:      {paths.Root}

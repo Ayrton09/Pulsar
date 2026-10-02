@@ -16,7 +16,16 @@ public interface IAgentClient
     Task<CommandAck> Execute(SignedMessage command);
 }
 
-public sealed record AgentHello(string AgentVersion, int ProtocolVersion, IReadOnlyList<string> Capabilities, NodeInventory Inventory);
+/// <param name="PinnedPanelKeys">
+/// Key ids of the panel keys the agent trusts. The panel signs this connection's commands with one of them and, when they
+/// differ from its own, sends <see cref="UpdatePanelKeysCommand"/>. Null from agents that predate panel key rotation.
+/// </param>
+public sealed record AgentHello(
+    string AgentVersion,
+    int ProtocolVersion,
+    IReadOnlyList<string> Capabilities,
+    NodeInventory Inventory,
+    IReadOnlyList<string>? PinnedPanelKeys = null);
 
 /// <summary><see cref="ServerTime"/> lets the agent detect clock skew (command expiry is a secondary defense).</summary>
 public sealed record HelloAccepted(DateTimeOffset ServerTime, IReadOnlyList<PanelKey> PanelKeys);

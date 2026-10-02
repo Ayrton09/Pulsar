@@ -33,11 +33,19 @@ public sealed class InProcessAgent : IAsyncDisposable
 
     public AgentConfigStore Configs { get; }
 
+    /// <summary>HTTP and WebSockets into the panel under test (for steps a test performs by hand).</summary>
+    public PanelTransport Transport => _transport;
+
     public MemoryNodeKeyStore Keys { get; } = new();
 
     public AgentConfig? Config { get; private set; }
 
     public Guid? CurrentSessionId => _connection?.CurrentSessionId;
+
+    /// <summary>The configuration the running agent uses (key rotations and panel key updates change it).</summary>
+    public AgentConfig? LiveConfig => _connection?.Config;
+
+    public AgentConnectionOptions Options { get; } = new() { MetricsInterval = TimeSpan.FromMilliseconds(200), MaxBackoff = TimeSpan.FromSeconds(2) };
 
     public async Task<AgentConfig> EnrollAsync(string token, string panelKeyFingerprint, string panel = "https://localhost")
     {
@@ -50,10 +58,20 @@ public sealed class InProcessAgent : IAsyncDisposable
     public Task StartAsync()
     {
         _connection = new AgentConnection(Configs, Keys, new FixedNodeSystem(), _transport, new PanelAuthenticator(_transport),
-            new CommandDispatcher(NullLogger<CommandDispatcher>.Instance),
-            new AgentConnectionOptions { MetricsInterval = TimeSpan.FromMilliseconds(200), MaxBackoff = TimeSpan.FromSeconds(2) },
+            new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance), Options,
             _clock, new StubLifetime(), NullLoggerFactory.Instance);
         return _connection.StartAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Stops the agent as a service stop would (the configuration and keys stay).</summary>
+    public async Task StopAsync()
+    {
+        if (_connection is not null)
+        {
+            await _connection.StopAsync(CancellationToken.None);
+            _connection.Dispose();
+            _connection = null;
+        }
     }
 
     /// <summary>Polls until <paramref name="condition"/> holds (the agent works in the background).</summary>

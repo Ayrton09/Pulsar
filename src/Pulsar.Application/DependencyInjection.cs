@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddSingleton<AgentChallengeStore>();
         services.AddScoped<AgentAccess>();
         services.AddScoped<NodeManagement>();
+        services.AddScoped<PanelKeyManagement>();
         return services;
     }
 }

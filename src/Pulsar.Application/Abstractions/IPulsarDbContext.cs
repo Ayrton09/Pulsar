@@ -24,6 +24,8 @@ public interface IPulsarDbContext
 
     DbSet<NodeEnrollmentToken> NodeEnrollmentTokens { get; }
 
+    DbSet<PanelSigningKey> PanelSigningKeys { get; }
+
     /// <summary>Transactions and set-based updates (e.g. consuming a token atomically).</summary>
     DatabaseFacade Database { get; }
 

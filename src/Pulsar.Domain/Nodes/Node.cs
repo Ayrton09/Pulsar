@@ -66,6 +66,12 @@ public sealed class Node
 
     public DateTimeOffset? LastSeenAt { get; private set; }
 
+    /// <summary>
+    /// Key ids of the panel keys the agent trusts, as it last reported them (null until it has). Retiring a panel key
+    /// is safe once every node pins its successor.
+    /// </summary>
+    public IReadOnlyList<string>? PinnedPanelKeys { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -118,6 +124,8 @@ public sealed class Node
     }
 
     public void Seen(DateTimeOffset now) => LastSeenAt = now;
+
+    public void PanelKeysPinned(IEnumerable<string> keyIds) => PinnedPanelKeys = [.. keyIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
 
     public Result Disable(DateTimeOffset now)
     {

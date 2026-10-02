@@ -82,7 +82,45 @@ public sealed class NodeCredential
         return new NodeCredential(Guid.CreateVersion7(now), node, publicKey, fingerprint, keyStorage, NodeCredentialStatus.Active, now);
     }
 
+    /// <summary>
+    /// A key registered by a rotation (docs/architecture/03): pending until the agent authenticates with it, so a
+    /// rotation that fails halfway never leaves the node without a working credential.
+    /// </summary>
+    public static NodeCredential Pending(NodeId node, byte[] publicKey, string fingerprint, NodeKeyStorage keyStorage, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(publicKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fingerprint);
+        return new NodeCredential(Guid.CreateVersion7(now), node, publicKey, fingerprint, keyStorage, NodeCredentialStatus.Pending, now);
+    }
+
     public bool IsActive => Status == NodeCredentialStatus.Active;
+
+    /// <summary>Active credentials, and pending ones (whose first authentication completes a rotation).</summary>
+    public bool CanAuthenticate => Status is NodeCredentialStatus.Active or NodeCredentialStatus.Pending;
+
+    public DateTimeOffset? SupersededAt { get; private set; }
+
+    /// <summary>A pending credential becomes the node's active one.</summary>
+    public void Activate(DateTimeOffset now)
+    {
+        if (Status != NodeCredentialStatus.Pending)
+        {
+            throw new InvalidOperationException($"Only a pending credential can be activated (this one is {Status}).");
+        }
+
+        Status = NodeCredentialStatus.Active;
+        ActivatedAt = now;
+    }
+
+    /// <summary>Replaced by a newer key: it can no longer authenticate. A pending credential can be superseded too.</summary>
+    public void Supersede(DateTimeOffset now)
+    {
+        if (Status is NodeCredentialStatus.Active or NodeCredentialStatus.Pending)
+        {
+            Status = NodeCredentialStatus.Superseded;
+            SupersededAt = now;
+        }
+    }
 
     public void Used(DateTimeOffset now) => LastUsedAt = now;
 

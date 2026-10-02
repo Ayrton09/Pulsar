@@ -334,6 +334,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("normalized_name");
 
+                    b.PrimitiveCollection<string[]>("PinnedPanelKeys")
+                        .HasColumnType("text[]")
+                        .HasColumnName("pinned_panel_keys");
+
                     b.Property<string>("PublicHost")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
@@ -429,6 +433,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("SupersededAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("superseded_at");
 
                     b.HasKey("Id")
                         .HasName("pk_node_credentials");

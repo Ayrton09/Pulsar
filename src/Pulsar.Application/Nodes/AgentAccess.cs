@@ -18,6 +18,9 @@ public static class AgentErrors
 
     public static DomainError AuthenticationRejected { get; } =
         new("agent.authentication_rejected", "The node cannot authenticate: unknown or revoked credential, disabled node, or invalid proof.");
+
+    public static DomainError RotationRejected { get; } =
+        new("agent.rotation_rejected", "The new key was not accepted: malformed, already registered, or its proof does not verify.");
 }
 
 /// <summary>
@@ -104,8 +107,9 @@ public sealed partial class AgentAccess(
     {
         ArgumentNullException.ThrowIfNull(request);
         var nodeId = new NodeId(request.NodeId);
+        // Pending credentials too: authenticating with one completes a rotation.
         var allowed = await db.NodeCredentials.AnyAsync(c => c.Id == request.CredentialId && c.NodeId == nodeId
-            && c.Status == NodeCredentialStatus.Active
+            && (c.Status == NodeCredentialStatus.Active || c.Status == NodeCredentialStatus.Pending)
             && db.Nodes.Any(n => n.Id == nodeId && n.Status == NodeStatus.Active), cancellationToken);
         if (!allowed)
         {
@@ -130,7 +134,7 @@ public sealed partial class AgentAccess(
         // Re-checked: the credential may have been revoked or the node disabled since the challenge.
         var credential = await db.NodeCredentials.SingleOrDefaultAsync(c => c.Id == challenge.CredentialId && c.NodeId == challenge.NodeId, cancellationToken);
         var node = await db.Nodes.SingleOrDefaultAsync(n => n.Id == challenge.NodeId, cancellationToken);
-        if (credential is not { IsActive: true } || node is not { AcceptsConnections: true })
+        if (credential is not { CanAuthenticate: true } || node is not { AcceptsConnections: true })
         {
             LogAuthenticationRejected(challenge.NodeId, "credential revoked or node inactive after the challenge");
             return AgentErrors.AuthenticationRejected;
@@ -151,12 +155,117 @@ public sealed partial class AgentAccess(
         var now = clock.GetUtcNow();
         credential.Used(now);
         node.Seen(now);
-        await db.SaveChangesAsync(cancellationToken);
+        if (credential.Status == NodeCredentialStatus.Pending)
+        {
+            await CompleteRotationAsync(node, credential, now, cancellationToken);
+        }
+        else
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
 
         sessions.Prune();
         var (token, session) = sessions.Create(node.Id, credential.Id);
         return new TokenResponse(token, session.SessionId, session.ExpiresAt);
     }
+
+    /// <summary>
+    /// Registers the node's next key as a pending credential (docs/architecture/03, "Rotation"). The caller is the
+    /// agent's current session, which proves the current key; the proof proves the new one. The node keeps using its
+    /// current credential until it authenticates with the new one.
+    /// </summary>
+    public async Task<Result<SignedMessage>> RotateCredentialAsync(
+        NodeId nodeId, Guid credentialId, Guid sessionId, RotateCredentialRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var session = sessions.Find(sessionId);
+        var node = await db.Nodes.SingleOrDefaultAsync(n => n.Id == nodeId, cancellationToken);
+        var current = await db.NodeCredentials.SingleOrDefaultAsync(c => c.Id == credentialId && c.NodeId == nodeId, cancellationToken);
+        if (session is null || session.NodeId != nodeId || session.CredentialId != credentialId
+            || node is not { AcceptsConnections: true } || current is not { IsActive: true })
+        {
+            LogAuthenticationRejected(nodeId, "rotation from an ended session, inactive node or inactive credential");
+            return AgentErrors.AuthenticationRejected;
+        }
+
+        if (!TryParseKeyStorage(request.KeyStorage, out var keyStorage) || request.PublicKey is null || request.Proof is null
+            || !VerifyRotationProof(nodeId, credentialId, sessionId, request))
+        {
+            LogRotationRejected(nodeId, "malformed request or invalid proof of the new key");
+            return AgentErrors.RotationRejected;
+        }
+
+        var fingerprint = ProtocolCrypto.Fingerprint(request.PublicKey);
+        if (await db.NodeCredentials.AnyAsync(c => c.Fingerprint == fingerprint, cancellationToken))
+        {
+            LogRotationRejected(nodeId, "the new key is already registered");
+            return AgentErrors.RotationRejected;
+        }
+
+        // Only the latest rotation can complete: an earlier pending key (the agent lost it) is dropped.
+        var now = clock.GetUtcNow();
+        var stale = await db.NodeCredentials.Where(c => c.NodeId == nodeId && c.Status == NodeCredentialStatus.Pending).ToListAsync(cancellationToken);
+        foreach (var pending in stale)
+        {
+            pending.Supersede(now);
+        }
+
+        var credential = NodeCredential.Pending(nodeId, request.PublicKey, fingerprint, keyStorage, now);
+        db.NodeCredentials.Add(credential);
+        audit.Record(AuditActions.Node.CredentialRotationStarted, AuditOutcome.Success, NodeActor(node),
+                new { fingerprint, keyStorage = keyStorage.ToString().ToLowerInvariant(), replaces = current.Fingerprint })
+            .WithNode(nodeId).WithTarget("node", nodeId.ToString());
+        await db.SaveChangesAsync(cancellationToken);
+
+        var result = new CredentialRotation(nodeId.Value, credential.Id);
+        return await keys.SignAsync(AgentProtocol.Purposes.RotationResult, ProtocolJson.Serialize(result), cancellationToken);
+    }
+
+    /// <summary>The first authentication with a pending credential: it becomes active and the previous one is superseded.</summary>
+    private async Task CompleteRotationAsync(Node node, NodeCredential credential, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var previous = await db.NodeCredentials.Where(c => c.NodeId == node.Id && c.Status == NodeCredentialStatus.Active).ToListAsync(cancellationToken);
+        foreach (var old in previous)
+        {
+            old.Supersede(now);
+        }
+
+        // Two saves: "at most one active credential" is a unique index, checked per statement.
+        await db.SaveChangesAsync(cancellationToken);
+        credential.Activate(now);
+        audit.Record(AuditActions.Node.CredentialRotated, AuditOutcome.Success, NodeActor(node),
+                new { fingerprint = credential.Fingerprint, replaced = previous.Select(p => p.Fingerprint).ToList() })
+            .WithNode(node.Id).WithTarget("node", node.Id.ToString());
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        // Sessions of the old key end now; the agent's new connection replaces its old one at Hello.
+        foreach (var old in previous)
+        {
+            sessions.EndCredential(old.Id);
+        }
+
+        LogRotated(node.Id, credential.Fingerprint);
+    }
+
+    private static bool VerifyRotationProof(NodeId nodeId, Guid credentialId, Guid sessionId, RotateCredentialRequest request)
+    {
+        try
+        {
+            using var key = ProtocolCrypto.ImportPublicKey(request.PublicKey);
+            var signed = ProtocolCrypto.SignedData(AgentProtocol.Purposes.RotateCredential, ProtocolCrypto.GuidBytes(nodeId.Value),
+                ProtocolCrypto.GuidBytes(credentialId), ProtocolCrypto.GuidBytes(sessionId), request.PublicKey);
+            return ProtocolCrypto.Verify(key, signed, request.Proof);
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryParseKeyStorage(string? value, out NodeKeyStorage keyStorage) =>
+        Enum.TryParse(value, ignoreCase: true, out keyStorage) && Enum.IsDefined(keyStorage);
 
     public static NodeInventorySnapshot ToSnapshot(NodeInventory inventory, string agentVersion, int protocolVersion) => new(
         Truncate(inventory.Hostname, 255),
@@ -186,7 +295,7 @@ public sealed partial class AgentAccess(
             return false;
         }
 
-        if (!Enum.TryParse(request.KeyStorage, ignoreCase: true, out keyStorage) || !Enum.IsDefined(keyStorage))
+        if (!TryParseKeyStorage(request.KeyStorage, out keyStorage))
         {
             reason = "unknown_key_storage";
             return false;
@@ -241,4 +350,10 @@ public sealed partial class AgentAccess(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Agent authentication rejected for node {NodeId}: {Reason}")]
     private partial void LogAuthenticationRejected(NodeId? nodeId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Credential rotation rejected for node {NodeId}: {Reason}")]
+    private partial void LogRotationRejected(NodeId nodeId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} rotated its key; now using {Fingerprint}")]
+    private partial void LogRotated(NodeId nodeId, string fingerprint);
 }

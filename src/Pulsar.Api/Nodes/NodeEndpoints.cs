@@ -38,8 +38,25 @@ public static class NodeEndpoints
         nodes.MapDelete("/{id:guid}", DeleteAsync).RequirePermission(Permissions.Node.Manage);
         nodes.MapPost("/{id:guid}/enrollment-tokens", CreateEnrollmentTokenAsync).RequirePermission(Permissions.Node.CredentialsManage);
         nodes.MapPost("/{id:guid}/credentials/{credentialId:guid}/revoke", RevokeCredentialAsync).RequirePermission(Permissions.Node.CredentialsManage);
+        nodes.MapPost("/{id:guid}/credentials/rotate", RotateCredentialAsync).RequirePermission(Permissions.Node.CredentialsManage);
+
+        var panelKeys = api.MapGroup("/panel-keys").WithTags("Panel keys").RequirePermission(Permissions.Settings.Manage);
+        panelKeys.MapGet("/", async (PanelKeyManagement keys, CancellationToken ct) => TypedResults.Ok(await keys.GetAsync(ct)));
+        panelKeys.MapPost("/rotate", RotatePanelKeyAsync);
+        panelKeys.MapPost("/{keyId}/retire", RetirePanelKeyAsync);
         return api;
     }
+
+    private static async Task<Results<Ok<AgentCommandResult>, ProblemHttpResult>> RotateCredentialAsync(
+        Guid id, NodeManagement nodes, CancellationToken ct) =>
+        (await nodes.RotateCredentialAsync(new NodeId(id), ct)).ToHttp();
+
+    private static async Task<Results<Ok<PanelKeysOverview>, ProblemHttpResult>> RotatePanelKeyAsync(PanelKeyManagement keys, CancellationToken ct) =>
+        (await keys.RotateAsync(ct)).ToHttp();
+
+    private static async Task<Results<Ok<PanelKeysOverview>, ProblemHttpResult>> RetirePanelKeyAsync(
+        string keyId, PanelKeyManagement keys, CancellationToken ct) =>
+        (await keys.RetireAsync(keyId, ct)).ToHttp();
 
     private static async Task<Ok<IReadOnlyList<NodeSummary>>> ListAsync(NodeManagement nodes, CancellationToken ct) =>
         TypedResults.Ok(await nodes.ListAsync(ct));

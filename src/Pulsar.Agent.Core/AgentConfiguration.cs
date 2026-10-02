@@ -23,6 +23,8 @@ public sealed class AgentPaths(string root)
 }
 
 /// <summary>Everything the agent needs to reach and trust its panel, written at enrollment.</summary>
+/// <param name="KeyCreatedAt">When the current node key was registered (null: at enrollment). Drives automatic rotation.</param>
+/// <param name="PendingRotation">A new key the panel registered but the agent has not authenticated with yet.</param>
 public sealed record AgentConfig(
     Uri Panel,
     Guid NodeId,
@@ -31,7 +33,18 @@ public sealed record AgentConfig(
     IReadOnlyList<PanelKey> PanelKeys,
     string? ServersRoot,
     DateTimeOffset EnrolledAt,
-    bool Development);
+    bool Development,
+    DateTimeOffset? KeyCreatedAt = null,
+    PendingRotation? PendingRotation = null)
+{
+    public DateTimeOffset CurrentKeyCreatedAt => KeyCreatedAt ?? EnrolledAt;
+}
+
+/// <summary>
+/// The middle of a node key rotation: written before the agent first authenticates with the new key, so a crash at any
+/// point leaves either the old credential or the new one usable (docs/architecture/03, "Rotation").
+/// </summary>
+public sealed record PendingRotation(NodeKeyReference Key, Guid CredentialId, DateTimeOffset CreatedAt);
 
 /// <summary>Restricts the state directory to the accounts that run or administer the agent.</summary>
 public interface IAgentDirectorySecurity

@@ -4,9 +4,10 @@ using Pulsar.Contracts;
 namespace Pulsar.Agent.Core.Commands;
 
 /// <summary>Outcome of <see cref="CommandVerifier.Verify"/>: a trusted envelope, or the ack that refuses it.</summary>
-public sealed record CommandVerification(CommandEnvelope? Envelope, CommandAck? Rejection)
+/// <param name="SignedBy">Key id of the panel key that signed an accepted command.</param>
+public sealed record CommandVerification(CommandEnvelope? Envelope, CommandAck? Rejection, string? SignedBy = null)
 {
-    public static CommandVerification Accepted(CommandEnvelope envelope) => new(envelope, null);
+    public static CommandVerification Accepted(CommandEnvelope envelope, string signedBy) => new(envelope, null, signedBy);
 
     public static CommandVerification Refused(Guid commandId, AckStatus status, string code, string message) =>
         new(null, new CommandAck(commandId, status, code, message));
@@ -18,13 +19,19 @@ public sealed record CommandVerification(CommandEnvelope? Envelope, CommandAck? 
 /// validity period, protocol version and command type. One verifier per hub session: a new session restarts the
 /// sequence.
 /// </summary>
+/// <param name="pinnedKeys">Read on every command: a panel key update applies to the next command.</param>
 public sealed class CommandVerifier(
     Guid nodeId,
     Guid sessionId,
-    IReadOnlyList<PanelKey> pinnedKeys,
+    Func<IReadOnlyList<PanelKey>> pinnedKeys,
     IReadOnlySet<string> supportedCommands,
     TimeProvider clock)
 {
+    public CommandVerifier(Guid nodeId, Guid sessionId, IReadOnlyList<PanelKey> pinnedKeys, IReadOnlySet<string> supportedCommands, TimeProvider clock)
+        : this(nodeId, sessionId, () => pinnedKeys, supportedCommands, clock)
+    {
+    }
+
     /// <summary>Accepted difference between the panel's clock and ours, on top of the measured offset.</summary>
     public static readonly TimeSpan ClockTolerance = TimeSpan.FromSeconds(30);
 
@@ -36,7 +43,7 @@ public sealed class CommandVerifier(
     public CommandVerification Verify(SignedMessage message)
     {
         ArgumentNullException.ThrowIfNull(message);
-        var key = pinnedKeys.FirstOrDefault(k => k.KeyId == message.KeyId);
+        var key = pinnedKeys().FirstOrDefault(k => k.KeyId == message.KeyId);
         if (key is null)
         {
             return CommandVerification.Refused(Guid.Empty, AckStatus.InvalidSignature, "command.unknown_key", "Signed with a key this node has not pinned.");
@@ -89,7 +96,7 @@ public sealed class CommandVerifier(
 
         try
         {
-            return CommandVerification.Accepted(ProtocolJson.Deserialize<CommandEnvelope>(message.Payload));
+            return CommandVerification.Accepted(ProtocolJson.Deserialize<CommandEnvelope>(message.Payload), key.KeyId);
         }
         catch (JsonException)
         {
