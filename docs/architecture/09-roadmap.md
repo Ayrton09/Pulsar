@@ -28,13 +28,13 @@
 
 **Done when:** an admin installs the panel, connects PostgreSQL, creates their user, creates another user with a limited role, and the actions are audited. Authorization matrix tests.
 
-## Phase 2 — Nodes and protocol · *in progress*
+## Phase 2 — Nodes and protocol · *done*
 
-- `Pulsar.Contracts` v1, `AgentHub`, enrollment, challenge/token, signed commands, anti-replay, revocation, rotation. *Done except key rotation (node credential and panel key).*
+- `Pulsar.Contracts` v1, `AgentHub`, enrollment, challenge/token, signed commands, anti-replay, revocation, rotation. *Done, including node key rotation (every 90 days or on request) and panel key rotation (doc 03, "Rotation").*
 - Agent: Windows service host, `enroll`/`status`/`run` CLI, connection with reconnect, `Hello`/inventory, node metrics, file logging. *Done, plus `unenroll`, `service` and session hand-over before expiry (doc 03, "Agent implementation").*
 - UI: node creation with the enrollment command, node list and node page (overview/system). *Done.*
 
-**Done when:** an agent pairs, appears online with its inventory, survives network cuts, and revoking it disconnects it immediately. Tests: invalid signature, replay, revoked node, reused/expired token. *Met in development mode: `e2e/agent.spec.ts` drives the real `PulsarAgent.exe` from the UI (Windows CI leg), `RealAgentTests` cover reconnection, renewal and revocation, and the verifier tests cover signatures and replay. The elevated install is checked on a clean Windows by `scripts/sandbox/agent-install` (Windows Sandbox, panel and PostgreSQL inside it): refusal to install the service from a user-writable folder, machine key with its DACL, LocalSystem service with restart on failure, online, signed ping, service restart, revocation and `unenroll` all pass. Not covered there: a TPM-backed machine key (the sandbox has no TPM; TPM keys are covered in the user's store by `Pulsar.Agent.Tests`).*
+**Done when:** an agent pairs, appears online with its inventory, survives network cuts, and revoking it disconnects it immediately. Tests: invalid signature, replay, revoked node, reused/expired token. *Met in development mode: `e2e/agent.spec.ts` drives the real `PulsarAgent.exe` from the UI (Windows CI leg), `RealAgentTests` cover reconnection, renewal and revocation, and the verifier tests cover signatures and replay. The elevated install is checked on a clean Windows by `scripts/sandbox/agent-install` (Windows Sandbox, panel and PostgreSQL inside it): refusal to install the service from a user-writable folder, machine key with its DACL, LocalSystem service with restart on failure, online, signed ping, service restart, revocation and `unenroll` all pass. The same script runs in CI ("Agent install" job, windows-latest) and also rotates the machine key as SYSTEM. Not covered yet: a TPM-backed **machine** key, because neither Windows Sandbox nor the GitHub runner has a TPM (TPM keys are covered in the user's store by `Pulsar.Agent.Tests`); it is checked in Phase 9 on a VM with a virtual TPM.*
 
 ## Phase 3 — Windows process management
 
@@ -86,6 +86,7 @@
 ## Phase 9 — Hardening and v1.0 release
 
 - Full security review against doc 08, enforceable 2FA, headers, limits.
+- Agent install check (`scripts/sandbox/agent-install`) on a Hyper-V VM with a virtual TPM: the node key must be a TPM machine key, and it must survive a rotation.
 - Playwright E2E of the complete v1 flow (with the `_test` game in CI; real CS2 in a manual/nightly job because of its size).
 - CS:S and GMod manifests.
 - Packaging: panel and agent as Windows services (`install-service`), installation/update/backup guides; an "all-in-one" installer for a single PC (panel + agent paired automatically).
