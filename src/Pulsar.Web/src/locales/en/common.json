@@ -25,7 +25,8 @@
     "audit": "Audit log",
     "account": "My account",
     "nodes": "Nodes",
-    "servers": "Servers"
+    "servers": "Servers",
+    "templates": "Games"
   },
   "auth": {
     "userName": "User name",
@@ -236,7 +237,9 @@
         "authentication_failed": "Failed node authentication",
         "credential_rotation_requested": "Asked a node to rotate its key",
         "credential_rotation_started": "Node registered a new key",
-        "credential_rotated": "Node key rotated"
+        "credential_rotated": "Node key rotated",
+        "allocations_created": "Added allocations",
+        "allocation_deleted": "Removed an allocation"
       },
       "panel_key": {
         "rotated": "Rotated the panel signing key",
@@ -250,7 +253,14 @@
         "stop": "Stopped a server",
         "restart": "Restarted a server",
         "kill": "Killed a server",
-        "install_requested": "Asked to reinstall a server"
+        "install_requested": "Asked to reinstall a server",
+        "update_requested": "Asked to update a game",
+        "settings_changed": "Changed a server's settings",
+        "ports_changed": "Changed a server's ports",
+        "operation_cancel_requested": "Asked to cancel an operation"
+      },
+      "template": {
+        "imported": "Imported a game template"
       }
     }
   },
@@ -308,7 +318,14 @@
       "name_taken": "Another node already has this name.",
       "not_found": "The node does not exist.",
       "not_connected": "The node's agent is not connected.",
-      "has_servers": "Delete the node's servers first."
+      "has_servers": "Delete the node's servers first.",
+      "allocation_address_invalid": "Use an IPv4 address (0.0.0.0 for every interface).",
+      "allocation_port_invalid": "Ports go from 1 to 65535: a port, a range (27015-27030) or a list.",
+      "allocation_range_too_large": "Add at most 1000 ports at a time.",
+      "allocation_notes_too_long": "Notes are too long.",
+      "allocation_taken": "The node already has an allocation on that port (on that address or on every interface).",
+      "allocation_not_found": "That allocation does not exist.",
+      "allocation_in_use": "A server uses that allocation."
     },
     "panel_key": {
       "rotation_in_progress": "The previous key is still being retired. Retire it before rotating again.",
@@ -324,7 +341,22 @@
       "busy": "Another operation is running on this server. Wait for it to finish.",
       "not_installed": "The server is not installed yet.",
       "must_be_stopped": "Stop the server first.",
-      "command_rejected": "The node's agent rejected the command."
+      "command_rejected": "The node's agent rejected the command.",
+      "extra_arguments_invalid": "Extra arguments are single lines of up to 512 characters (32 at most).",
+      "extra_arguments_not_allowed": "This game does not allow extra arguments.",
+      "update_unsupported": "This game cannot be updated.",
+      "no_free_allocation": "The node has no free allocation for one of the game's ports. Add allocations to the node.",
+      "allocation_unavailable": "That allocation is not free on the server's node.",
+      "invalid_settings": "Check the settings: {{detail}}",
+      "variable_protected": "You cannot change that setting: {{detail}}"
+    },
+    "template": {
+      "version_exists": "That game version is already registered. Templates never change: give it a new version.",
+      "invalid": "The manifest is not valid: {{detail}}"
+    },
+    "operation": {
+      "not_found": "That operation does not exist.",
+      "not_cancellable": "Only running installs and updates can be cancelled."
     }
   },
   "account": {
@@ -505,7 +537,8 @@
       "types": {
         "serverProvision": "Prepare on the node",
         "serverInstall": "Install",
-        "serverDelete": "Delete"
+        "serverDelete": "Delete",
+        "serverUpdate": "Update"
       },
       "statuses": {
         "queued": "Queued",
@@ -514,13 +547,70 @@
         "failed": "Failed",
         "cancelled": "Cancelled",
         "interrupted": "Interrupted"
-      }
+      },
+      "cancelling": "Cancelling…"
     },
     "administration": "Administration",
     "administrationHint": "Reinstalling prepares the server's folder and account again and runs its install. Deleting removes its files and its Windows account from the node.",
     "reinstall": "Reinstall",
     "reinstallConfirm": "Reinstall {{name}}? Its game files are installed again.",
-    "deleteConfirm": "Delete {{name}}? Its files and its Windows account are removed from the node. This cannot be undone."
+    "deleteConfirm": "Delete {{name}}? Its files and its Windows account are removed from the node. This cannot be undone.",
+    "updateGame": "Update game",
+    "validateFiles": "Also verify every installed file (slow; repairs a damaged install)",
+    "tabs": {
+      "label": "Server sections",
+      "overview": "Overview",
+      "settings": "Settings",
+      "network": "Network"
+    },
+    "wizard": {
+      "steps": "Steps",
+      "basics": "Game and node",
+      "settings": "Game settings",
+      "ports": "Ports",
+      "next": "Next",
+      "back": "Back",
+      "requirements": "This game needs about {{disk}} GB of disk and {{memory}} GB of memory on the node.",
+      "noPorts": "This game does not listen on any port.",
+      "noAllocations": "The node has no free allocations for the game's ports.",
+      "addAllocations": "Add allocations to the node",
+      "portDefault": "Usually {{port}} ({{protocols}}).",
+      "automatic": "Automatic (a free one, the usual port first)",
+      "noPort": "None"
+    },
+    "variables": {
+      "none": "This game has no settings.",
+      "range": "From {{min}} to {{max}}.",
+      "secretSet": "A value is set; type a new one to replace it.",
+      "protected": "Only users who can edit server settings can change it.",
+      "unset": "Not set",
+      "outOfRange": "Out of the allowed range.",
+      "badFormat": "The format is not valid for this setting."
+    },
+    "stages": {
+      "queued": "waiting for its turn",
+      "preparing": "preparing SteamCMD",
+      "downloading": "downloading",
+      "verifying": "verifying",
+      "committing": "finishing",
+      "installing": "installing",
+      "retrying": "retrying after an error"
+    },
+    "settings": {
+      "title": "Settings",
+      "hint": "Changes apply the next time the server starts.",
+      "saved": "Settings saved. They apply at the next start.",
+      "clearSecret": "Clear the value of {{label}}",
+      "extraArguments": "Extra arguments",
+      "extraArgumentsHint": "One per line; each line is one argument, added after the game's own.",
+      "autoStart": "Start when the node's agent starts"
+    },
+    "network": {
+      "title": "Ports",
+      "hint": "Each port uses one of the node's allocations.",
+      "stopFirst": "Stop the server to change its ports.",
+      "none": "This game does not listen on any port."
+    }
   },
   "panelKeys": {
     "title": "Panel signing key",
@@ -538,5 +628,49 @@
     "rotateConfirm": "Create a new panel signing key? Connected nodes receive it now, the others when they connect. The current key keeps working until you retire it.",
     "retire": "Retire old key",
     "retireConfirm": "Retire the old key? Nodes that do not have the new one yet ({{outdated}} outdated, {{unknown}} unknown) will stop accepting commands until they are enrolled again."
+  },
+  "allocations": {
+    "title": "Allocations",
+    "description": "Addresses and ports servers on this node can use (UDP and TCP). 0.0.0.0 means every interface of the node.",
+    "empty": "No allocations yet: servers need one for each of their ports.",
+    "address": "Address",
+    "usedBy": "Used by",
+    "notes": "Notes",
+    "free": "Free",
+    "add": "Add allocations",
+    "addressLabel": "IPv4 address",
+    "addressHint": "0.0.0.0 for every interface.",
+    "portsLabel": "Ports",
+    "portsHint": "A port, a range (27015-27030) or a list (27015, 27020).",
+    "notesLabel": "Notes (optional)",
+    "addButton": "Add"
+  },
+  "templates": {
+    "title": "Games",
+    "description": "The game templates servers are created from: the ones shipped with Pulsar and the ones administrators imported.",
+    "import": "Import a template",
+    "importHint": "A template decides what every node runs and downloads. Check what it does before importing it.",
+    "game": "Game",
+    "key": "Key",
+    "version": "Version",
+    "source": "Source",
+    "sources": {
+      "bundled": "Pulsar",
+      "imported": "Imported"
+    },
+    "manifest": "Manifest (JSON)",
+    "check": "Check",
+    "confirmImport": "Import",
+    "invalid": "The manifest is not valid:",
+    "alreadyImported": "This version is already registered. Templates never change: give it a new version.",
+    "previousVersion": "It replaces version {{version}} for new servers.",
+    "changed": "Changed: {{sections}}.",
+    "unchanged": "Nothing changed besides the version.",
+    "executable": "Runs",
+    "steamApps": "Steam apps",
+    "configFiles": "Writes",
+    "ports": "Ports",
+    "variables": "Settings",
+    "imported": "Template imported."
   }
 }

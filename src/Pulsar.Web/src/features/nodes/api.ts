@@ -14,7 +14,39 @@ const REFRESH_MS = 5_000;
 export const nodeKeys = {
   all: ['nodes'] as const,
   detail: (id: string) => ['nodes', id] as const,
+  allocations: (id: string) => ['nodes', id, 'allocations'] as const,
 };
+
+export type AllocationView = Schemas['AllocationView'];
+
+/** The node's ip:port pairs that servers can be given. */
+export function useAllocations(nodeId: string | undefined) {
+  return useQuery({
+    queryKey: nodeKeys.allocations(nodeId ?? ''),
+    queryFn: () => unwrap(api.GET('/api/v1/nodes/{id}/allocations', { params: { path: { id: nodeId ?? '' } } })),
+    enabled: !!nodeId,
+  });
+}
+
+export function useCreateAllocations() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ nodeId, body }: { nodeId: string; body: Schemas['CreateAllocationsRequest'] }) =>
+      unwrap(api.POST('/api/v1/nodes/{id}/allocations', { params: { path: { id: nodeId } }, body })),
+    onSuccess: (_, { nodeId }) => queryClient.invalidateQueries({ queryKey: nodeKeys.allocations(nodeId) }),
+  });
+}
+
+export function useDeleteAllocation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ nodeId, allocationId }: { nodeId: string; allocationId: string }) =>
+      unwrap(
+        api.DELETE('/api/v1/nodes/{id}/allocations/{allocationId}', { params: { path: { id: nodeId, allocationId } } }),
+      ),
+    onSuccess: (_, { nodeId }) => queryClient.invalidateQueries({ queryKey: nodeKeys.allocations(nodeId) }),
+  });
+}
 
 export function useNodes() {
   return useQuery({

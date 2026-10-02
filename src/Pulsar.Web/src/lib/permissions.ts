@@ -11,6 +11,7 @@ export const Permission = {
   NodeCredentialsManage: 'node.credentials.manage',
   SettingsManage: 'settings.manage',
   TemplateView: 'template.view',
+  TemplateManage: 'template.manage',
   ServerView: 'server.view',
   ServerCreate: 'server.create',
   ServerStart: 'server.start',
@@ -18,6 +19,8 @@ export const Permission = {
   ServerRestart: 'server.restart',
   ServerKill: 'server.kill',
   ServerInstall: 'server.install',
+  ServerStartupEdit: 'server.startup.edit',
+  ServerSettingsEdit: 'server.settings.edit',
   ServerDelete: 'server.delete',
 } as const;
 

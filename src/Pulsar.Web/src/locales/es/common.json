@@ -25,7 +25,8 @@
     "audit": "Auditoría",
     "account": "Mi cuenta",
     "nodes": "Nodos",
-    "servers": "Servidores"
+    "servers": "Servidores",
+    "templates": "Juegos"
   },
   "auth": {
     "userName": "Usuario",
@@ -236,7 +237,9 @@
         "authentication_failed": "Autenticación de nodo fallida",
         "credential_rotation_requested": "Pidió a un nodo rotar su clave",
         "credential_rotation_started": "El nodo registró una clave nueva",
-        "credential_rotated": "Clave del nodo rotada"
+        "credential_rotated": "Clave del nodo rotada",
+        "allocations_created": "Agregó asignaciones",
+        "allocation_deleted": "Quitó una asignación"
       },
       "panel_key": {
         "rotated": "Rotó la clave de firma del panel",
@@ -250,7 +253,14 @@
         "stop": "Detuvo un servidor",
         "restart": "Reinició un servidor",
         "kill": "Forzó el cierre de un servidor",
-        "install_requested": "Pidió reinstalar un servidor"
+        "install_requested": "Pidió reinstalar un servidor",
+        "update_requested": "Pidió actualizar un juego",
+        "settings_changed": "Cambió la configuración de un servidor",
+        "ports_changed": "Cambió los puertos de un servidor",
+        "operation_cancel_requested": "Pidió cancelar una operación"
+      },
+      "template": {
+        "imported": "Importó una plantilla de juego"
       }
     }
   },
@@ -308,7 +318,14 @@
       "name_taken": "Ya hay otro nodo con este nombre.",
       "not_found": "El nodo no existe.",
       "not_connected": "El agente del nodo no está conectado.",
-      "has_servers": "Primero eliminá los servidores del nodo."
+      "has_servers": "Primero eliminá los servidores del nodo.",
+      "allocation_address_invalid": "Usá una dirección IPv4 (0.0.0.0 para todas las interfaces).",
+      "allocation_port_invalid": "Los puertos van de 1 a 65535: un puerto, un rango (27015-27030) o una lista.",
+      "allocation_range_too_large": "Agregá como máximo 1000 puertos por vez.",
+      "allocation_notes_too_long": "Las notas son demasiado largas.",
+      "allocation_taken": "El nodo ya tiene una asignación en ese puerto (en esa dirección o en todas las interfaces).",
+      "allocation_not_found": "Esa asignación no existe.",
+      "allocation_in_use": "Un servidor usa esa asignación."
     },
     "panel_key": {
       "rotation_in_progress": "La clave anterior todavía se está retirando. Retirala antes de volver a rotar.",
@@ -324,7 +341,22 @@
       "busy": "Hay otra operación en curso en este servidor. Esperá a que termine.",
       "not_installed": "El servidor todavía no está instalado.",
       "must_be_stopped": "Primero detené el servidor.",
-      "command_rejected": "El agente del nodo rechazó el comando."
+      "command_rejected": "El agente del nodo rechazó el comando.",
+      "extra_arguments_invalid": "Los argumentos extra son líneas de hasta 512 caracteres (32 como máximo).",
+      "extra_arguments_not_allowed": "Este juego no permite argumentos extra.",
+      "update_unsupported": "Este juego no se puede actualizar.",
+      "no_free_allocation": "El nodo no tiene una asignación libre para alguno de los puertos del juego. Agregá asignaciones al nodo.",
+      "allocation_unavailable": "Esa asignación no está libre en el nodo del servidor.",
+      "invalid_settings": "Revisá la configuración: {{detail}}",
+      "variable_protected": "No podés cambiar esa opción: {{detail}}"
+    },
+    "template": {
+      "version_exists": "Esa versión del juego ya está registrada. Las plantillas no cambian nunca: dale una versión nueva.",
+      "invalid": "El manifiesto no es válido: {{detail}}"
+    },
+    "operation": {
+      "not_found": "Esa operación no existe.",
+      "not_cancellable": "Solo se pueden cancelar instalaciones y actualizaciones en curso."
     }
   },
   "account": {
@@ -505,7 +537,8 @@
       "types": {
         "serverProvision": "Preparar en el nodo",
         "serverInstall": "Instalar",
-        "serverDelete": "Eliminar"
+        "serverDelete": "Eliminar",
+        "serverUpdate": "Actualizar"
       },
       "statuses": {
         "queued": "En cola",
@@ -514,13 +547,70 @@
         "failed": "Falló",
         "cancelled": "Cancelada",
         "interrupted": "Interrumpida"
-      }
+      },
+      "cancelling": "Cancelando…"
     },
     "administration": "Administración",
     "administrationHint": "Reinstalar vuelve a preparar la carpeta y la cuenta del servidor y corre su instalación. Eliminar borra sus archivos y su cuenta de Windows del nodo.",
     "reinstall": "Reinstalar",
     "reinstallConfirm": "¿Reinstalar {{name}}? Se vuelven a instalar los archivos del juego.",
-    "deleteConfirm": "¿Eliminar {{name}}? Se borran sus archivos y su cuenta de Windows del nodo. No se puede deshacer."
+    "deleteConfirm": "¿Eliminar {{name}}? Se borran sus archivos y su cuenta de Windows del nodo. No se puede deshacer.",
+    "updateGame": "Actualizar juego",
+    "validateFiles": "Verificar también cada archivo instalado (lento; repara una instalación dañada)",
+    "tabs": {
+      "label": "Secciones del servidor",
+      "overview": "Resumen",
+      "settings": "Configuración",
+      "network": "Red"
+    },
+    "wizard": {
+      "steps": "Pasos",
+      "basics": "Juego y nodo",
+      "settings": "Configuración del juego",
+      "ports": "Puertos",
+      "next": "Siguiente",
+      "back": "Atrás",
+      "requirements": "Este juego necesita unos {{disk}} GB de disco y {{memory}} GB de memoria en el nodo.",
+      "noPorts": "Este juego no escucha en ningún puerto.",
+      "noAllocations": "El nodo no tiene asignaciones libres para los puertos del juego.",
+      "addAllocations": "Agregá asignaciones al nodo",
+      "portDefault": "Normalmente {{port}} ({{protocols}}).",
+      "automatic": "Automático (una libre, primero el puerto habitual)",
+      "noPort": "Ninguno"
+    },
+    "variables": {
+      "none": "Este juego no tiene configuración.",
+      "range": "De {{min}} a {{max}}.",
+      "secretSet": "Ya tiene un valor; escribí uno nuevo para reemplazarlo.",
+      "protected": "Solo quienes pueden editar la configuración del servidor pueden cambiarlo.",
+      "unset": "Sin definir",
+      "outOfRange": "Fuera del rango permitido.",
+      "badFormat": "El formato no es válido para esta opción."
+    },
+    "stages": {
+      "queued": "esperando su turno",
+      "preparing": "preparando SteamCMD",
+      "downloading": "descargando",
+      "verifying": "verificando",
+      "committing": "terminando",
+      "installing": "instalando",
+      "retrying": "reintentando después de un error"
+    },
+    "settings": {
+      "title": "Configuración",
+      "hint": "Los cambios se aplican la próxima vez que arranque el servidor.",
+      "saved": "Configuración guardada. Se aplica en el próximo arranque.",
+      "clearSecret": "Borrar el valor de {{label}}",
+      "extraArguments": "Argumentos extra",
+      "extraArgumentsHint": "Uno por línea; cada línea es un argumento y va después de los del juego.",
+      "autoStart": "Arrancar cuando arranca el agente del nodo"
+    },
+    "network": {
+      "title": "Puertos",
+      "hint": "Cada puerto usa una de las asignaciones del nodo.",
+      "stopFirst": "Detené el servidor para cambiar sus puertos.",
+      "none": "Este juego no escucha en ningún puerto."
+    }
   },
   "panelKeys": {
     "title": "Clave de firma del panel",
@@ -538,5 +628,49 @@
     "rotateConfirm": "¿Crear una nueva clave de firma del panel? Los nodos conectados la reciben ahora y los demás cuando se conecten. La clave actual sigue valiendo hasta que la retires.",
     "retire": "Retirar la clave vieja",
     "retireConfirm": "¿Retirar la clave vieja? Los nodos que todavía no tienen la nueva ({{outdated}} desactualizados, {{unknown}} sin datos) van a dejar de aceptar comandos hasta que se vuelvan a enrolar."
+  },
+  "allocations": {
+    "title": "Asignaciones",
+    "description": "Direcciones y puertos que pueden usar los servidores de este nodo (UDP y TCP). 0.0.0.0 son todas las interfaces del nodo.",
+    "empty": "Todavía no hay asignaciones: los servidores necesitan una por cada uno de sus puertos.",
+    "address": "Dirección",
+    "usedBy": "Usada por",
+    "notes": "Notas",
+    "free": "Libre",
+    "add": "Agregar asignaciones",
+    "addressLabel": "Dirección IPv4",
+    "addressHint": "0.0.0.0 para todas las interfaces.",
+    "portsLabel": "Puertos",
+    "portsHint": "Un puerto, un rango (27015-27030) o una lista (27015, 27020).",
+    "notesLabel": "Notas (opcional)",
+    "addButton": "Agregar"
+  },
+  "templates": {
+    "title": "Juegos",
+    "description": "Las plantillas de juego desde las que se crean los servidores: las que trae Pulsar y las que importaron los administradores.",
+    "import": "Importar una plantilla",
+    "importHint": "Una plantilla decide qué ejecuta y qué descarga cada nodo. Revisá qué hace antes de importarla.",
+    "game": "Juego",
+    "key": "Clave",
+    "version": "Versión",
+    "source": "Origen",
+    "sources": {
+      "bundled": "Pulsar",
+      "imported": "Importada"
+    },
+    "manifest": "Manifiesto (JSON)",
+    "check": "Revisar",
+    "confirmImport": "Importar",
+    "invalid": "El manifiesto no es válido:",
+    "alreadyImported": "Esta versión ya está registrada. Las plantillas no cambian nunca: dale una versión nueva.",
+    "previousVersion": "Reemplaza a la versión {{version}} para los servidores nuevos.",
+    "changed": "Cambió: {{sections}}.",
+    "unchanged": "No cambió nada además de la versión.",
+    "executable": "Ejecuta",
+    "steamApps": "Apps de Steam",
+    "configFiles": "Escribe",
+    "ports": "Puertos",
+    "variables": "Configuración",
+    "imported": "Plantilla importada."
   }
 }

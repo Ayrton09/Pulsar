@@ -100,6 +100,10 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   await createServer.getByLabel('Name').fill(serverName);
   await createServer.getByLabel('Node').selectOption({ label: nodeName });
   await createServer.getByLabel('Game').selectOption({ label: 'Pulsar test server 1.0.0' });
+  // The wizard: the test game's settings keep their defaults; it listens on no port.
+  await createServer.getByRole('button', { name: 'Next' }).click();
+  await expect(createServer.getByLabel('Startup time (ms)')).toHaveValue('1000');
+  await createServer.getByRole('button', { name: 'Next' }).click();
   await createServer.getByRole('button', { name: 'Create' }).click();
   await expect(page.getByRole('heading', { name: serverName })).toBeVisible();
   await expectStatus(page, 'Offline');

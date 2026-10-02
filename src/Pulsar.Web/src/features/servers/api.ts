@@ -6,6 +6,9 @@ export type ServerSummary = Schemas['ServerSummary'];
 export type ServerDetails = Schemas['ServerDetails'];
 export type OperationView = Schemas['OperationView'];
 export type TemplateView = Schemas['TemplateView'];
+export type TemplateDetails = Schemas['TemplateDetails'];
+export type TemplateVariable = Schemas['TemplateVariable'];
+export type ServerSettings = Schemas['ServerSettings'];
 
 /**
  * Server states change in seconds (starting, stopping, an install finishing): poll faster than nodes. Phase 5 replaces
@@ -16,7 +19,9 @@ const REFRESH_MS = 2_000;
 export const serverKeys = {
   all: ['servers'] as const,
   detail: (id: string) => ['servers', id] as const,
+  settings: (id: string) => ['servers', id, 'settings'] as const,
   templates: ['templates'] as const,
+  template: (id: string) => ['templates', id] as const,
 };
 
 export function useServers() {
@@ -40,6 +45,22 @@ export function useTemplates(enabled = true) {
     queryKey: serverKeys.templates,
     queryFn: () => unwrap(api.GET('/api/v1/templates')),
     enabled,
+  });
+}
+
+/** Variables, ports and requirements of a game: what the creation form asks for. */
+export function useTemplate(id: string | undefined) {
+  return useQuery({
+    queryKey: serverKeys.template(id ?? ''),
+    queryFn: () => unwrap(api.GET('/api/v1/templates/{id}', { params: { path: { id: id ?? '' } } })),
+    enabled: !!id,
+  });
+}
+
+export function useServerSettings(id: string) {
+  return useQuery({
+    queryKey: serverKeys.settings(id),
+    queryFn: () => unwrap(api.GET('/api/v1/servers/{id}/settings', { params: { path: { id } } })),
   });
 }
 
@@ -88,6 +109,66 @@ export function useReinstallServer() {
   return useMutation({
     mutationFn: (id: string) => unwrap(api.POST('/api/v1/servers/{id}/install', { params: { path: { id } } })),
     onSuccess: changed,
+  });
+}
+
+export function useUpdateServerSettings() {
+  const changed = useServersChanged();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Schemas['UpdateServerSettingsRequest'] }) =>
+      unwrap(api.PUT('/api/v1/servers/{id}/settings', { params: { path: { id } }, body })),
+    onSuccess: (settings, { id }) => {
+      queryClient.setQueryData(serverKeys.settings(id), settings);
+      return changed();
+    },
+  });
+}
+
+export function useUpdateServerPorts() {
+  const changed = useServersChanged();
+  return useMutation({
+    mutationFn: ({ id, ports }: { id: string; ports: Record<string, string | null> }) =>
+      unwrap(api.PUT('/api/v1/servers/{id}/ports', { params: { path: { id } }, body: { ports } })),
+    onSuccess: changed,
+  });
+}
+
+export function useUpdateGame() {
+  const changed = useServersChanged();
+  return useMutation({
+    mutationFn: ({ id, validate }: { id: string; validate: boolean }) =>
+      unwrap(api.POST('/api/v1/servers/{id}/update', { params: { path: { id } }, body: { validate } })),
+    onSuccess: changed,
+  });
+}
+
+export function useCancelOperation() {
+  const changed = useServersChanged();
+  return useMutation({
+    mutationFn: ({ id, operationId }: { id: string; operationId: string }) =>
+      unwrap(
+        api.POST('/api/v1/servers/{id}/operations/{operationId}/cancel', { params: { path: { id, operationId } } }),
+      ),
+    onSuccess: changed,
+  });
+}
+
+export function useTemplatePreview() {
+  return useMutation({
+    mutationFn: (content: string) => unwrap(api.POST('/api/v1/templates/preview', { body: { content } })),
+  });
+}
+
+export function useImportTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (content: string) => unwrap(api.POST('/api/v1/templates', { body: { content } })),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: serverKeys.templates }),
+        queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
+      ]),
   });
 }
 

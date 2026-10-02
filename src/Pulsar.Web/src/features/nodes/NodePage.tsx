@@ -27,6 +27,7 @@ import {
 } from './api';
 import { EnrollmentCommand, NodeStateBadge } from './components';
 import { nodeSchema, type NodeFormValues } from './nodeForm';
+import { AllocationsSection } from './AllocationsSection';
 
 /** One node: what the agent reports (inventory, live usage), its credentials, and the administration actions. */
 export function NodePage() {
@@ -76,6 +77,7 @@ export function NodePage() {
         <MachineCard node={node} />
         <UsageCard node={node} />
       </div>
+      <AllocationsSection nodeId={node.id} canManage={canManage} />
       <CredentialsSection nodeId={node.id} credentials={credentials} canManage={canManageCredentials} />
       {(canManage || canManageCredentials) && (
         <AdministrationSection node={node} canManage={canManage} canManageCredentials={canManageCredentials} />

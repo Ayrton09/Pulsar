@@ -195,8 +195,34 @@ describe('servers page', () => {
             name: 'Pulsar test server',
             description: null,
             isTestGame: true,
+            source: 'bundled',
           },
         ]),
+      [`GET /api/v1/templates/${installedOffline.templateId}`]: () =>
+        json({
+          template: {
+            id: installedOffline.templateId,
+            key: 'pulsar-test',
+            version: '1.0.0',
+            name: 'Pulsar test server',
+            description: null,
+            isTestGame: true,
+            source: 'bundled',
+          },
+          minDiskGb: null,
+          minMemoryMb: null,
+          variables: [],
+          ports: [],
+          allowExtraArguments: false,
+          canUpdate: false,
+          capabilities: {
+            executable: 'bin/Pulsar.TestGameServer.exe',
+            steamAppIds: [],
+            configFiles: [],
+            consoleMode: 'pty',
+          },
+        }),
+      [`GET /api/v1/nodes/${installedOffline.nodeId}/allocations`]: () => json([]),
       'POST /api/v1/servers': async (request) => {
         body = await request.json();
         return json(details(installing, [installOperation]), 201);
@@ -212,6 +238,10 @@ describe('servers page', () => {
     expect(within(nodes).queryByRole('option', { name: 'Offline box' })).not.toBeInTheDocument();
     await user.selectOptions(nodes, 'Buenos Aires 1');
     await user.selectOptions(await screen.findByLabelText('Game'), 'Pulsar test server 1.0.0');
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('This game has no settings.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('This game does not listen on any port.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(await screen.findByRole('heading', { name: 'Fresh' })).toBeInTheDocument();
@@ -221,6 +251,8 @@ describe('servers page', () => {
       description: null,
       nodeId: installedOffline.nodeId,
       templateId: installedOffline.templateId,
+      variables: {},
+      ports: {},
     });
   });
 

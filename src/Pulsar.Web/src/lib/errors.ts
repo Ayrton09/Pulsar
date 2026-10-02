@@ -4,7 +4,8 @@ import { ApiError } from '../api/client';
 /** User-facing message for an error: the translation of the API's stable code, or a generic message. */
 export function errorMessage(t: TFunction, error: unknown): string {
   if (error instanceof ApiError) {
-    return t(`errors.${error.code}`, { defaultValue: error.message });
+    // Some messages carry the specifics (which variable, which manifest error): translations can show them as {{detail}}.
+    return t(`errors.${error.code}`, { defaultValue: error.message, detail: error.message });
   }
   return t('errors.unexpected');
 }

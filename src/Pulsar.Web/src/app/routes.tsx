@@ -46,6 +46,19 @@ export const routes: RouteObject[] = [
             },
           },
           {
+            path: 'templates',
+            lazy: async () => {
+              const { TemplatesPage } = await import('../features/servers/TemplatesPage');
+              return {
+                element: (
+                  <RequirePermission anyOf={[Permission.TemplateView, Permission.TemplateManage]}>
+                    <TemplatesPage />
+                  </RequirePermission>
+                ),
+              };
+            },
+          },
+          {
             path: 'nodes',
             lazy: async () => {
               const { NodesPage } = await import('../features/nodes/NodesPage');

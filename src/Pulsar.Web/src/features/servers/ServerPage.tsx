@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ApiError } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Badge, Card, PageHeader, Table, Td, Th } from '../../components/ui/Display';
+import { Checkbox } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
 import { can, Permission } from '../../lib/permissions';
@@ -13,18 +14,26 @@ import {
   useReinstallServer,
   useServer,
   useServerCommand,
+  useUpdateGame,
   type OperationView,
   type ServerCommand,
   type ServerDetails,
 } from './api';
 import { NodeDisconnectedBadge, ServerStateBadge, StateReason } from './components';
+import { NetworkTab, OperationProgress, SettingsTab } from './ServerTabs';
 import { serverActions } from './serverStatus';
+
+const tabs = ['overview', 'settings', 'network'] as const;
+type Tab = (typeof tabs)[number];
 
 /** One server: its state, the lifecycle actions and its recent operations. */
 export function ServerPage() {
   const { t } = useTranslation();
   const { id = '' } = useParams();
   const details = useServer(id);
+  const [search, setSearch] = useSearchParams();
+  const requested = search.get('tab');
+  const tab: Tab = tabs.find((name) => name === requested) ?? 'overview';
 
   if (details.isPending) {
     return <Spinner label={t('common.loading')} />;
@@ -61,11 +70,38 @@ export function ServerPage() {
         }
       />
       <LifecycleActions details={details.data} />
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <OverviewCard details={details.data} />
-        <OperationsCard operations={details.data.recentOperations} />
+      {server.activeOperation && (
+        <div className="mt-4">
+          <OperationProgress serverId={server.id} operation={server.activeOperation} />
+        </div>
+      )}
+      <div role="tablist" aria-label={t('servers.tabs.label')} className="mt-6 flex gap-1 border-b border-border">
+        {tabs.map((name) => (
+          <button
+            key={name}
+            type="button"
+            role="tab"
+            aria-selected={tab === name}
+            onClick={() => setSearch(name === 'overview' ? {} : { tab: name }, { replace: true })}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm ${tab === name ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-text'}`}
+          >
+            {t(`servers.tabs.${name}`)}
+          </button>
+        ))}
       </div>
-      <AdministrationSection details={details.data} />
+      <div role="tabpanel" className="mt-6">
+        {tab === 'overview' && (
+          <>
+            <div className="grid gap-6 xl:grid-cols-2">
+              <OverviewCard details={details.data} />
+              <OperationsCard operations={details.data.recentOperations} />
+            </div>
+            <AdministrationSection details={details.data} />
+          </>
+        )}
+        {tab === 'settings' && <SettingsTab details={details.data} />}
+        {tab === 'network' && <NetworkTab details={details.data} />}
+      </div>
     </>
   );
 }
@@ -140,7 +176,15 @@ function OverviewCard({ details }: { details: ServerDetails }) {
       <h2 className="mb-4 text-lg font-semibold">{t('servers.overview')}</h2>
       <Facts
         items={[
-          [t('servers.game'), server.templateName],
+          [t('servers.game'), `${server.templateName} (${details.templateVersion})`],
+          ...details.ports
+            .filter((port) => port.port !== null)
+            .map((port): [string, ReactNode] => [
+              port.label,
+              <code key={port.name}>
+                {port.ipAddress}:{port.port}
+              </code>,
+            ]),
           [
             t('servers.node'),
             <Link key="node" to={`/nodes/${server.nodeId}`} className="hover:text-accent hover:underline">
@@ -222,6 +266,8 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
   const navigate = useNavigate();
   const reinstall = useReinstallServer();
   const remove = useDeleteServer();
+  const update = useUpdateGame();
+  const [validate, setValidate] = useState(false);
   const { server } = details;
   const available = serverActions(server);
   const canInstall = can(me, Permission.ServerInstall);
@@ -230,12 +276,22 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
     return null;
   }
 
-  const error = reinstall.error ?? remove.error;
+  const error = reinstall.error ?? remove.error ?? update.error;
   return (
     <section className="mt-8 space-y-4">
       <h2 className="text-lg font-semibold">{t('servers.administration')}</h2>
       {error && <Alert>{errorMessage(t, error)}</Alert>}
       <div className="flex flex-wrap gap-2">
+        {canInstall && details.canUpdate && (
+          <Button
+            variant="secondary"
+            disabled={!available.reinstall || server.installState !== 'installed'}
+            busy={update.isPending}
+            onClick={() => update.mutate({ id: server.id, validate })}
+          >
+            {t('servers.updateGame')}
+          </Button>
+        )}
         {canInstall && (
           <Button
             variant="secondary"
@@ -262,6 +318,13 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
           </Button>
         )}
       </div>
+      {canInstall && details.canUpdate && (
+        <Checkbox
+          label={t('servers.validateFiles')}
+          checked={validate}
+          onChange={(e) => setValidate(e.target.checked)}
+        />
+      )}
       <p className="text-xs text-muted">{t('servers.administrationHint')}</p>
     </section>
   );

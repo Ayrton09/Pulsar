@@ -46,6 +46,7 @@ export function AppLayout() {
     { to: '/', label: t('nav.dashboard'), anyOf: [] },
     { to: '/servers', label: t('nav.servers'), anyOf: [Permission.ServerView] },
     { to: '/nodes', label: t('nav.nodes'), anyOf: [Permission.NodeView, Permission.NodeManage] },
+    { to: '/templates', label: t('nav.templates'), anyOf: [Permission.TemplateView, Permission.TemplateManage] },
   ]);
   const admin = visible([
     { to: '/admin/users', label: t('nav.users'), anyOf: [Permission.UserView, Permission.UserManage] },
