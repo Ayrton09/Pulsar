@@ -97,6 +97,13 @@ Server and node pages use a layout with a fixed header (name, status, power acti
 - While a backup runs, the server can still be started and restarted and its files edited; a restore shows the server as *Restoring* and blocks both.
 - API: `GET /api/v1/servers/{id}/backups` (the list and the limit), `POST …/backups` (201), `GET …/backups/{backupId}/download` (`application/zip`, named after the server and the backup's time), `POST …/backups/{backupId}/restore`, `PUT …/backups/{backupId}/lock`, `DELETE …/backups/{backupId}`, `PUT …/backups/settings`; a backup is cancelled with `POST /api/v1/servers/{id}/operations/{operationId}/cancel`. Requests, downloads, restores, locks, deletions and limit changes are audited.
 
+## Schedules
+
+- `/servers/:id?tab=schedules` (`server.schedules.view`): the server's tasks with what each does, when (in words: "Every day at 04:00", with its time zone when it is not the browser's), its next run (in the browser's time) and how its last run went (done, failed and why, skipped and why: "3 runs missed: the panel was not running"). History shows the last 50 runs. The list follows the live channel: a run ending refreshes it.
+- Editor (`server.schedules.edit`): name, action (only the actions the user may do themselves: restart, start, stop, back up, update, console command), the command or "verify every file" when the action needs one, "only while the server is running" for restarts and backups, and when: every day at a time, every week on a day at a time, every 1–12 hours, or a cron expression (five fields). The time zone defaults to the browser's; the list is the browser's IANA zones plus UTC (browsers name some zones by their older names, such as `America/Buenos_Aires`, and the panel accepts them). The next five runs are previewed by the panel as the user edits, shown in the task's time zone, so daylight saving time is visible before saving.
+- Run now runs a task at once, outside its schedule, and shows the outcome; deleting asks first.
+- API: `GET /api/v1/servers/{id}/schedules`, `GET …/schedules/preview?cron=&timeZone=`, `POST …/schedules` (201), `PUT …/schedules/{taskId}`, `DELETE …/schedules/{taskId}`, `POST …/schedules/{taskId}/run`, `GET …/schedules/{taskId}/runs?limit=`. Creating, changing, deleting and running a task now are audited; what a task does is audited as the schedule's.
+
 ## Client-side security
 
 - Cookie authentication `HttpOnly; Secure; SameSite=Strict`. **No tokens in localStorage.**

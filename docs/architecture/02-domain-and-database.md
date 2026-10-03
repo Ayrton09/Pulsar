@@ -326,7 +326,7 @@ CREATE TABLE operations (
     server_id            uuid REFERENCES servers(id) ON DELETE SET NULL,
     requested_by         uuid REFERENCES users(id) ON DELETE SET NULL,
     requested_via        text NOT NULL CHECK (requested_via IN ('user','schedule','system')),
-    scheduled_task_id    uuid,
+                         -- a scheduled run points to the operation it started (scheduled_task_runs.operation_id)
     progress_percent     numeric(5,2),
     progress_stage       varchar(64),
     cancel_requested_at  timestamptz,
@@ -375,8 +375,8 @@ CREATE TABLE scheduled_tasks (
     cron_expression  varchar(128) NOT NULL,          -- 5 fields, parsed with Cronos
     time_zone        varchar(64)  NOT NULL,          -- IANA, e.g. 'America/Argentina/Buenos_Aires'
     action_type      text NOT NULL CHECK (action_type IN ('start','stop','restart','backup','update','console_command')),
-    action_payload   jsonb NOT NULL DEFAULT '{}',    -- typed per action and validated by the application
-    only_if_running  boolean NOT NULL DEFAULT false,
+    action_payload   jsonb NOT NULL DEFAULT '{}',    -- {"command": "say …"} for console_command, {"validate": true} for update
+    only_if_running  boolean NOT NULL DEFAULT false, -- restarts and backups only (console commands always need it)
     is_enabled       boolean NOT NULL DEFAULT true,
     next_run_at      timestamptz,                    -- UTC
     last_run_at      timestamptz,
@@ -385,18 +385,25 @@ CREATE TABLE scheduled_tasks (
     updated_at       timestamptz NOT NULL
 );
 CREATE INDEX ix_scheduled_tasks_due ON scheduled_tasks (next_run_at) WHERE is_enabled;
+-- next_run_at is NULL while disabled; enabling or changing a task computes it again from now (no burst).
+-- At most 50 tasks per server.
 
 CREATE TABLE scheduled_task_runs (
     id            uuid PRIMARY KEY,
     task_id       uuid NOT NULL REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
-    scheduled_for timestamptz NOT NULL,
+    server_id     uuid NOT NULL,                    -- the task's (the live channel refreshes the server's watchers)
+    scheduled_for timestamptz NOT NULL,             -- the first one, for missed runs
     started_at    timestamptz NOT NULL,
     finished_at   timestamptz,
     status        text NOT NULL CHECK (status IN ('running','succeeded','failed','skipped')),
-    operation_id  uuid REFERENCES operations(id) ON DELETE SET NULL,
+    operation_id  uuid REFERENCES operations(id) ON DELETE SET NULL, -- a backup or update: it has the outcome
+    occurrences   integer NOT NULL CHECK (occurrences >= 1), -- runs missed while the panel was down share one row
+    error_code    varchar(64),                      -- schedules.missed, schedules.not_running, server.busy…
     message       varchar(1024)
 );
 CREATE INDEX ix_task_runs_task ON scheduled_task_runs (task_id, started_at DESC);
+CREATE INDEX ix_task_runs_running ON scheduled_task_runs (started_at) WHERE status = 'running';
+-- The last 100 runs of each task are kept.
 
 -- ===================== Audit =====================
 CREATE TABLE audit_logs (

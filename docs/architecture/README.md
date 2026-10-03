@@ -42,7 +42,7 @@
 | [0007](../adr/0007-console-conpty-or-pipes.md) | Console modes per manifest (ConPTY, pipes, log file + RCON); not stored in PostgreSQL | **Accepted** | Stream format and console UX. |
 | [0008](../adr/0008-declarative-manifests.md) | Declarative manifests, closed steps, version pinning | Proposed | The community writes manifests against this format. |
 | [0009](../adr/0009-identity-cookies-and-scoped-rbac.md) | Identity + cookies; own scoped RBAC | Accepted | User tables and permission model. |
-| [0010](../adr/0010-panel-side-scheduler.md) | Panel-side scheduler on PostgreSQL | Proposed | Task semantics when the panel is down. |
+| [0010](../adr/0010-panel-side-scheduler.md) | Panel-side scheduler on PostgreSQL | Accepted | Task semantics when the panel is down. |
 | [0011](../adr/0011-secrets-with-data-protection.md) | Secrets with Data Protection | Proposed | The key ring is required to restore the panel. |
 | [0012](../adr/0012-node-local-zip-backups.md) | Node-local zip backups (v1) | Accepted | Backup format users accumulate. |
 | [0013](../adr/0013-licensing.md) | AGPL-3.0 core, MIT manifests and schemas, DCO | **Accepted** | Relicensing needs every contributor's consent. |

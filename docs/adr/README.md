@@ -17,7 +17,7 @@ To add an ADR, copy an existing one and use the next number.
 | [0007](0007-console-conpty-or-pipes.md) | Console modes per manifest (ConPTY, pipes, log file + RCON) | Accepted |
 | [0008](0008-declarative-manifests.md) | Declarative manifests with closed steps and version pinning | Proposed |
 | [0009](0009-identity-cookies-and-scoped-rbac.md) | ASP.NET Core Identity with cookies and scoped RBAC | Accepted |
-| [0010](0010-panel-side-scheduler.md) | Panel-side scheduler on PostgreSQL | Proposed |
+| [0010](0010-panel-side-scheduler.md) | Panel-side scheduler on PostgreSQL | Accepted |
 | [0011](0011-secrets-with-data-protection.md) | Secrets encrypted with ASP.NET Core Data Protection | Proposed |
 | [0012](0012-node-local-zip-backups.md) | Node-local zip backups (v1) | Accepted |
 | [0013](0013-licensing.md) | AGPL-3.0 core, MIT manifests and schemas, DCO | Accepted |
