@@ -35,6 +35,7 @@ try
         (services, configuration) => configuration
             .ReadFrom.Configuration(builder.Configuration)
             .ReadFrom.Services(services)
+            .Filter.ByExcluding(LogFilters.IsStaleAntiforgeryCookie)
             .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture),
         preserveStaticLogger: true);
 

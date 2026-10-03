@@ -31,6 +31,29 @@ public sealed class ReadinessTests
         Assert.Empty(factory.Logs.Errors);
     }
 
+    [DatabaseFact]
+    public async Task AnAntiforgeryCookieFromAnOldKeyRingIsReplacedWithoutLoggingAnError()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var factory = new RecordingApiFactory();
+        await factory.InitializeAsync();
+        using var client = factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = false,
+        });
+        // A browser that kept the cookie across a key ring change (keys restored from an old backup, a reinstall…).
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri("/api/v1/auth/session", UriKind.Relative));
+        request.Headers.Add("Cookie", "__Host-pulsar-af=CfDJ8NotDecryptableWithThisKeyRing");
+
+        using var response = await client.SendAsync(request, ct);
+
+        response.EnsureSuccessStatusCode();
+        Assert.Contains(response.Headers.GetValues("Set-Cookie"), c => c.StartsWith("__Host-pulsar-af=", StringComparison.Ordinal));
+        await factory.Logs.WaitForRequestAsync("/api/v1/auth/session", ct);
+        Assert.Empty(factory.Logs.Errors);
+    }
+
     [Fact]
     public async Task AnUnreachableDatabaseMakesThePanelUnready()
     {
