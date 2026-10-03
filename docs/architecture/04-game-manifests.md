@@ -233,6 +233,6 @@ Repository tests load **every** `games/*/manifest.json` and fail if any is inval
 
 The v1 format is implemented in `Pulsar.Manifests`: strict parsing (unknown properties and step types are errors), the semantic rules above, the renderer and the configuration file encoders, checked against the published schema. Bundled manifests (`games/`) are copied next to the panel and registered at startup (key + version immutable; a changed file without a new version is logged and ignored); administrators with `template.manage` import others after a preview (doc 05). The `backup` section is validated now and used by backups (Phase 7).
 
-Bundled games: `cs2` (Counter-Strike 2) and `css` (Counter-Strike: Source), both checked on real servers (spike 0001); Garry's Mod and others follow the same pattern once run.
+Bundled games: `cs2` (Counter-Strike 2) and `css` (Counter-Strike: Source), both checked on real servers (spike 0001). Garry's Mod was dropped from v1; it and other games follow the same pattern once run ([docs/guides/manifests.md](../guides/manifests.md)).
 
 `games/_test/manifest.json` (key `pulsar-test`) runs Pulsar's test game server (`tests/Pulsar.TestGameServer`). Its install step `testGameServer` is accepted only in that manifest, the panel offers it only with `Pulsar:EnableTestGame` (development, CI) and only for agents that announce they have the test game (`Pulsar:TestGameDirectory`), so production panels and agents never see it; it cannot be imported.
