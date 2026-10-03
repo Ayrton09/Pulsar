@@ -71,8 +71,12 @@ function RecoveryCodes({ codes, onDone }: { codes: readonly string[]; onDone: ()
   );
 }
 
-/** From a new key to two-factor authentication on: QR code, the key as text, a code from the app, recovery codes. */
-export function TwoFactorSetup({ onDone }: { onDone: () => void }) {
+/**
+ * From a new key to two-factor authentication on: QR code, the key as text, a code from the app, recovery codes.
+ * `onStarted` tells the parent a setup is under way, so a refetched status saying "on" does not hide
+ * the recovery codes before the user saved them.
+ */
+export function TwoFactorSetup({ onStarted, onDone }: { onStarted?: () => void; onDone: () => void }) {
   const { t } = useTranslation();
   const setup = useTwoFactorSetup();
   const enable = useEnableTwoFactor();
@@ -87,7 +91,13 @@ export function TwoFactorSetup({ onDone }: { onDone: () => void }) {
       <div className="space-y-4">
         {setup.isError && <Alert>{errorMessage(t, setup.error)}</Alert>}
         <p className="text-sm text-muted">{t('twoFactor.intro')}</p>
-        <Button onClick={() => setup.mutate()} busy={setup.isPending}>
+        <Button
+          onClick={() => {
+            onStarted?.();
+            setup.mutate();
+          }}
+          busy={setup.isPending}
+        >
           {t('twoFactor.setUp')}
         </Button>
       </div>
@@ -153,24 +163,17 @@ export function TwoFactorSection() {
         )}
       </div>
       {status.isError && <Alert>{errorMessage(t, status.error)}</Alert>}
-      {status.data && !status.data.enabled && (
-        <>
-          {settingUp ? (
-            <TwoFactorSetup
-              onDone={() => {
-                setSettingUp(false);
-                void refresh();
-              }}
-            />
-          ) : (
-            <div className="space-y-4">
-              <p className="text-sm text-muted">{t('twoFactor.intro')}</p>
-              <Button onClick={() => setSettingUp(true)}>{t('twoFactor.setUp')}</Button>
-            </div>
-          )}
-        </>
+      {status.data && (settingUp || !status.data.enabled) && (
+        <TwoFactorSetup
+          onStarted={() => setSettingUp(true)}
+          onDone={() => {
+            setSettingUp(false);
+            void refresh();
+          }}
+        />
       )}
       {status.data?.enabled &&
+        !settingUp &&
         (newCodes ? (
           <RecoveryCodes codes={newCodes} onDone={() => setNewCodes(null)} />
         ) : (

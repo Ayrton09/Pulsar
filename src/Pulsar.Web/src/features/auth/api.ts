@@ -66,15 +66,13 @@ export function useTwoFactorSetup() {
 }
 
 /**
- * Turns two-factor authentication on and returns the recovery codes. The session is reloaded only when the user has
- * saved them (a required setup would otherwise leave the screen that shows them).
+ * Turns two-factor authentication on and returns the recovery codes. Nothing is reloaded until the user has saved
+ * them (`useSessionRefresh`): the screen showing them would otherwise give way to the new state.
  */
 export function useEnableTwoFactor() {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: Schemas['EnableTwoFactorRequest']) =>
       unwrap(api.POST('/api/v1/auth/two-factor/enable', { body })),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: twoFactorKey }),
   });
 }
 
@@ -100,10 +98,14 @@ export function useRenewRecoveryCodes() {
   });
 }
 
-/** After the recovery codes were saved: the session now says two-factor authentication is on. */
+/** After the recovery codes were saved: the session and the status now say two-factor authentication is on. */
 export function useSessionRefresh() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: sessionKey });
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: sessionKey }),
+      queryClient.invalidateQueries({ queryKey: twoFactorKey }),
+    ]);
 }
 
 export function useSetup() {

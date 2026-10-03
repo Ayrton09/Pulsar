@@ -12,7 +12,7 @@ function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<App router={router} queryClient={queryClient} />);
-  return router;
+  return { router, queryClient };
 }
 
 async function body(request: Request): Promise<Record<string, unknown>> {
@@ -137,6 +137,39 @@ describe('two-factor setup', () => {
     await user.click(screen.getByRole('button', { name: 'I saved them' }));
 
     expect(await screen.findByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument();
+  });
+
+  it('shows the recovery codes when it is turned on from the account page', async () => {
+    let enabled = false;
+    fakeApi({
+      'GET /api/v1/auth/session': () =>
+        json({ setupRequired: false, user: { ...adminUser, twoFactorEnabled: enabled }, insecureConnection: false }),
+      'GET /api/v1/auth/two-factor': () => json({ enabled, required: false, recoveryCodesLeft: enabled ? 5 : 0 }),
+      'POST /api/v1/auth/two-factor/setup': () =>
+        json({
+          sharedKey: 'JBSW Y3DP EHPK 3PXP',
+          authenticatorUri: 'otpauth://totp/Pulsar:admin?secret=JBSWY3DPEHPK3PXP&issuer=Pulsar&digits=6',
+        }),
+      'POST /api/v1/auth/two-factor/enable': () => {
+        enabled = true;
+        return json({ recoveryCodes: codes });
+      },
+    });
+    const { queryClient } = renderAt('/account');
+    const user = userEvent.setup();
+
+    // One click asks for a key.
+    await user.click(await screen.findByRole('button', { name: 'Set up' }));
+    await user.type(await screen.findByLabelText('Code from the app'), '123456');
+    await user.click(screen.getByRole('button', { name: 'Turn on' }));
+
+    expect(await screen.findByText('ABCDE-FGHIJ')).toBeInTheDocument();
+    // Turning it on closes the user's live channels; the reconnection fetches every visible query again.
+    await queryClient.invalidateQueries();
+    expect(await screen.findByText('5 recovery codes left.', {}, { timeout: 200 }).catch(() => null)).toBeNull();
+    expect(screen.getByText('ABCDE-FGHIJ')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'I saved them' }));
+    expect(await screen.findByText('5 recovery codes left.')).toBeInTheDocument();
   });
 
   it('turns it off from the account page with the password', async () => {
