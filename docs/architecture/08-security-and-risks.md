@@ -72,6 +72,8 @@ Path traversal tests: an extensive table of malicious inputs (more than 50 Windo
 - Restore: every archive entry goes through the same validator (anti zip-slip), no reparse points are created, writes are impersonated, only while the server is `Offline`.
 - Backup downloads require `server.backups.view` and go through a transfer ticket.
 
+*Implemented in Phase 7.* Creation walks the server directory through the file manager (links are listed, never entered) and reads every file through it, so on Windows the server's own account opens them: a hard link to another server's file is left out (counted as skipped), a junction to `C:\Users` adds nothing. The archives are written by the agent into its own directory (SYSTEM and Administrators only), out of every server's reach; each one's SHA-256 is kept by the panel. A restore first checks that SHA-256, then checks every entry before writing anything: each name must be a plain `ServerFilePath` (no `..`, roots, drives, `\`, `:` streams, device names…), outside Pulsar's own `.pulsar` folder and not repeated (ignoring case); any other archive is refused whole (`backups.corrupt`). Entries are written through the file manager as the server's account, one temporary file and one rename each, never through a link (a junction planted where a folder of the backup goes stops the restore), and only with the server stopped. `BackupStoreTests` (ten hostile entry names and more), `WindowsServerFileManagerTests` (junctions to the outside, as the developer and as a server's account in CI) and `ServerBackupTests` (the panel and the agent core end to end) cover it.
+
 ### Manifests
 
 Privileged import, closed steps, time-bounded regexes, typed variables, argv without a shell, per-format configuration encoders (doc 04).

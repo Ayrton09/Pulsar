@@ -205,6 +205,8 @@ Fragment for Counter-Strike: Source (validated by spike 0001):
 
 Globs (`Microsoft.Extensions.FileSystemGlobbing`) relative to the server directory. **Content reinstallable through SteamCMD is excluded by default**: a CS2 backup should weigh megabytes of configuration, not 60 GB of binaries. Without a `backup` section the whole directory is backed up.
 
+As implemented (Phase 7): the globs match files only and ignore case (as Windows does); `dir/**` takes everything below `dir`. Pulsar's own files are never backed up, whatever the globs say: the server's SteamCMD (`.pulsar/**`) and transfers in progress (`.pulsar-upload-*`). Links are never followed, so nothing outside the server directory gets in.
+
 ### Reserved for later versions
 
 `query` (query protocol), additional `healthChecks`, `databases` (request a MySQL/MariaDB database from the game databases module), managed `runtime`s, `linux-x64`.

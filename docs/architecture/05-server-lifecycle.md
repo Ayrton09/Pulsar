@@ -110,7 +110,7 @@ Cases:
 
 ## Deletion
 
-`DeleteServerCommand` (operation): stops (kills if needed), kills processes of its account outside the Job, removes firewall rules, deletes the directory **without following reparse points**, deletes backups if requested (Phase 7), removes the Windows account and its profile. The panel deletes the row when it receives `succeeded` (the audit trail remains) and frees the allocations.
+`DeleteServerCommand` (operation): stops (kills if needed), kills processes of its account outside the Job, removes firewall rules, deletes the directory **without following reparse points**, deletes its backups (Phase 7: always; the panel drops their rows with the server), removes the Windows account and its profile. The panel deletes the row when it receives `succeeded` (the audit trail remains) and frees the allocations.
 
 ## Implementation (Phase 3)
 
@@ -129,3 +129,10 @@ Cases:
 - **Update and cancel.** The update operation runs the manifest's `update` steps (optionally validating every file); installs and updates can be cancelled (the agent kills SteamCMD's Job and reports `cancelled`). Progress is shown live (the panel's memory) and written to the database on stage changes or every 15 seconds.
 - **Templates.** Bundled ones register at startup; administrators (`template.manage`) import others after a preview of what they would run, download and write, and of the sections that differ from the previous version. Versions never change.
 - **UI:** a creation wizard (game and node; the game's settings; its ports), Settings and Network tabs, a progress bar with Cancel, Update game, node allocations and a Games page with the import preview.
+
+## Implementation (Phase 7)
+
+- **Backups and the matrix.** The panel records the type of the active operation (`servers.active_operation_type`): during a backup a start or restart is accepted and files can be edited, as the matrix says; any other operation keeps the server from starting. On the node, every operation but a backup is exclusive (start, restart and file changes get `Busy`). A backup needs an installed server and may run while it does (the UI warns that files written meanwhile can be captured half written; files the game holds open are left out and counted). A restore needs it installed and stopped, and nothing else happens to the server until it ends.
+- **Restore** writes the backup's files over the server's (each one atomically, as the file manager does) and leaves files the backup does not have as they are. Stray processes of the server's account are killed first, like before an install.
+- **Retention.** Each server may keep a number of backups (`backup_limit`, none by default): after every new backup, and when the limit goes down, the oldest complete, unlocked backups beyond it are deleted (audited as done by the system). Locked backups are never deleted by retention, do not count, and must be unlocked before deleting them by hand. What cannot be deleted while the node is disconnected goes at the next run.
+- **Interrupted** backups (the agent restarted or lost the operation) fail at the next Hello; the partial archive was already removed by the agent when it started.

@@ -251,6 +251,8 @@ CREATE TABLE servers (
     runtime_state        text NOT NULL CHECK (runtime_state IN ('offline','starting','running','stopping','crashed')),
     desired_state        text NOT NULL CHECK (desired_state IN ('stopped','running')),
     active_operation_id  uuid,                 -- FK added after operations is created
+    active_operation_type text,                -- its type: a backup leaves the server free to start (doc 05)
+    backup_limit         integer CHECK (backup_limit BETWEEN 1 AND 1000),  -- retention; NULL keeps every backup
     is_suspended         boolean NOT NULL DEFAULT false,
     auto_start           boolean NOT NULL DEFAULT false,  -- start when the agent starts
     restart_on_crash     boolean NOT NULL DEFAULT true,
@@ -315,8 +317,9 @@ CREATE TABLE server_access (
 CREATE TABLE operations (
     id                   uuid PRIMARY KEY,
     type                 text NOT NULL CHECK (type IN (
-                             'server_provision','server_install','server_update','server_reinstall',
-                             'server_delete','backup_create','backup_restore','backup_delete')),
+                             'server_provision','server_install','server_update',
+                             'server_delete','backup_create','backup_restore')),
+                             -- a reinstall is provision + install; deleting a backup is a plain command
     status               text NOT NULL CHECK (status IN (
                              'queued','running','succeeded','failed','cancelled','interrupted')),
     node_id              uuid NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
@@ -345,11 +348,12 @@ CREATE TABLE backups (
     server_id      uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     node_id        uuid NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
     name           varchar(128) NOT NULL,
-    status         text NOT NULL CHECK (status IN ('pending','creating','completed','failed','cancelled','deleting')),
-    storage        text NOT NULL DEFAULT 'node_local' CHECK (storage IN ('node_local')),
+    status         text NOT NULL CHECK (status IN ('creating','completed','failed','cancelled')),
+    -- storage (node_local | remote) arrives with remote storage (post-v1)
     size_bytes     bigint,
     file_count     integer,
-    sha256         bytea,
+    skipped_files  integer,                          -- files the game held open while it ran
+    sha256         bytea,                            -- of the archive: a restore checks it first
     is_locked      boolean NOT NULL DEFAULT false,   -- excluded from automatic rotation
     created_by     uuid REFERENCES users(id) ON DELETE SET NULL,
     created_via    text NOT NULL CHECK (created_via IN ('user','schedule','system')),
@@ -360,6 +364,8 @@ CREATE TABLE backups (
     created_at     timestamptz NOT NULL
 );
 CREATE INDEX ix_backups_server ON backups (server_id, created_at DESC);
+-- A backup row is written with its operation; the operation's result completes it (an interrupted one fails it).
+-- Deleting a server deletes its rows (and the node its archives).
 
 -- ===================== Scheduling =====================
 CREATE TABLE scheduled_tasks (

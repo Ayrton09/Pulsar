@@ -19,5 +19,5 @@ To add an ADR, copy an existing one and use the next number.
 | [0009](0009-identity-cookies-and-scoped-rbac.md) | ASP.NET Core Identity with cookies and scoped RBAC | Accepted |
 | [0010](0010-panel-side-scheduler.md) | Panel-side scheduler on PostgreSQL | Proposed |
 | [0011](0011-secrets-with-data-protection.md) | Secrets encrypted with ASP.NET Core Data Protection | Proposed |
-| [0012](0012-node-local-zip-backups.md) | Node-local zip backups (v1) | Proposed |
+| [0012](0012-node-local-zip-backups.md) | Node-local zip backups (v1) | Accepted |
 | [0013](0013-licensing.md) | AGPL-3.0 core, MIT manifests and schemas, DCO | Accepted |

@@ -73,9 +73,9 @@
 
 ## Phase 7 — Backups
 
-- Creation with manifest globs, streaming zip, progress, cancellation, anti zip-slip restore, deletion, download, per-server retention.
+- Creation with manifest globs, streaming zip, progress, cancellation, anti zip-slip restore, deletion, download, per-server retention. *Done (docs 03, 05, 07 and 08; ADR-0012 accepted): backups and restores are operations on the node, made through the file manager (never through a link, as the server's account), kept out of the servers' reach and checked by SHA-256 before a restore; a backup does not block the server; downloads stream through transfer tickets; retention per server, with locks; everything audited.*
 
-**Done when:** creating, downloading and restoring a CS2 backup works, with duration/size recorded and without blocking the agent.
+**Done when:** creating, downloading and restoring a CS2 backup works, with duration/size recorded and without blocking the agent. *Met on a developer machine through the real UI in Spanish, with a development agent and a CS2 server created by the panel: a backup made while the game ran held its configuration (32 files, 48.5 KB: `cfg/**` and `gameinfo.gi`, none of its 60 GB of binaries), with its size, file count, hash and duration (0.6 s) recorded; downloaded through the panel with the SHA-256 the node and the panel had; after `server.cfg` was overwritten, a configuration file deleted and another added, Restore was disabled until the server stopped, then put all 32 files back byte for byte and left the added one. With 1.5 GB of add-ons the backup took 3 s while the game ran: the panel answered in 7 ms or less throughout, a `status` sent to the console halfway was answered by CS2, and progress showed live. Cancelling a backup halfway left nothing on the node; retention with one backup to keep deleted the oldest unlocked one and kept the locked one (audited as the system's); deleting the server deleted its backups from the node; no error or warning in the panel or agent logs. The end-to-end suite makes, downloads and restores a backup on the real agent (CI, Windows). Found on the way: deflating incompressible files made them 5.5% larger and six times slower; such files are now stored (ADR-0012).*
 
 ## Phase 8 — Scheduler
 

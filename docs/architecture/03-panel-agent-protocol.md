@@ -97,10 +97,11 @@ public enum AckStatus { Accepted, AlreadyInState, Rejected, Busy, UnsupportedCom
 | `StartServerCommand` / `StopServerCommand` / `RestartServerCommand` / `KillServerCommand` | ServerId (+ optional stop timeout). |
 | `SendConsoleInputCommand` | ServerId, `Line` (≤ 512 characters, no control characters). |
 | `SubscribeConsoleCommand` / `UnsubscribeConsoleCommand` | ServerId, `FromSequence?`: output after it (everything the agent holds when null), then new output. Repeating it moves the subscription back; the panel drops what it already has. |
-| `DeleteServerCommand` | ServerId, `DeleteBackups` (bool). |
+| `DeleteServerCommand` | ServerId. Its backups go with it (Phase 7: the panel drops their rows too, so archives kept on the node would be orphans). |
 | `ListDirectoryCommand`, `ReadFileCommand`, `WriteFileCommand`, `CreateDirectoryCommand`, `RenamePathCommand`, `DeletePathsCommand` | ServerId + **relative path** + size limits (text ≤ 1 MiB inline). |
 | `PrepareTransferCommand` | Ticket, direction (upload/download), relative path, maximum size. |
-| `CreateBackupCommand` / `RestoreBackupCommand` / `DeleteBackupCommand` | BackupId, ServerId, OperationId. |
+| `CreateBackupCommand` / `RestoreBackupCommand` | BackupId, ServerId (+ the archive's SHA-256 for a restore); operations: the envelope carries the OperationId. |
+| `DeleteBackupCommand` / `SendBackupCommand` | BackupId, ServerId (+ a transfer ticket to send it); answered in the ack. |
 | `CancelOperationCommand` | OperationId. |
 | `RotateCredentialCommand` | — (the agent starts the rotation). |
 | `UpdatePanelKeysCommand` | List of panel keys signed by the currently pinned key. |
@@ -136,8 +137,8 @@ public sealed record ServerMetrics(
     Guid ServerId, double CpuPercent, long MemoryBytes, int ProcessCount, TimeSpan Uptime);
 
 public sealed record OperationProgress(Guid OperationId, string Stage, double? Percent, string? Message);
-public sealed record OperationCompleted(Guid OperationId, OperationOutcome Outcome,
-    string? ErrorCode, string? Message, JsonElement? Result);
+public sealed record OperationCompleted(Guid OperationId, Guid? ServerId, OperationOutcome Outcome,
+    string? ErrorCode, string? Message, CommandResult? Result);   // Result: a BackupResult for a backup
 ```
 
 `HelloAccepted` returns the server time (to detect clock skew), the desired state of every server, the console subscriptions browsers are watching (`ConsoleSubscriptions`, with the panel's last sequence of each) and the current panel keys. This drives **reconciliation** after every reconnect or panel restart (see doc 05).
@@ -178,6 +179,14 @@ Size limits are configurable; the agent writes to a temporary file inside the se
 - *Commands:* `server.files_list`, `server.files_create_directory`, `server.files_move` (never replaces), `server.files_delete` (a folder with everything in it; links removed, never followed), `server.files_send` (the agent checks it can read the file, answers its size and version, then `PUT`s it) and `server.files_receive` (the agent checks the target and creates the temporary file, acks, `GET`s exactly the announced size and reports with `IAgentHub.TransferCompleted`). Changes are refused with `Busy` while an operation (provision, install, update, delete) runs on the server; reading is not.
 - *Tickets* (`TransferTicket`): 256 random bits, at `/agent/v1/transfers/{ticket}` with the agent's session token. A ticket works once and only for the node it was issued to: one presented by another node is burnt; one nobody claims within 60 s expires. The panel's `FileTransfers` holds the browser's request until the agent's request arrives, then copies one into the other as data arrives: nothing is staged on the panel's disk or held in memory (moving an 841 MB map each way, the panel peaked at 235 MB of working set and the agent at 160 MB). A transfer whose other end sends or takes nothing for two minutes is abandoned by the agent.
 - *Writes* go to `.pulsar-upload-<random>.tmp` next to the target, with the space reserved up front (a full disk fails before the transfer), then replace the target in one rename. A short transfer, a target changed meanwhile or any failure removes the temporary file and leaves the target as it was. Versions (`FileVersion`: size and last write time) let the editor save only over what it opened (`files.changed`).
+
+### Backups (Phase 7)
+
+- *Operations:* `server.backup_create` and `server.backup_restore`. Their progress stages are `scanning`, `archiving` (percent of the bytes to read), `checking` (the SHA-256 pass) and `restoring` (percent of the bytes to write). A successful backup's `OperationCompleted` carries `Result` (additive, a `CommandResult`): `BackupResult(Size, FileCount, SkippedFiles, Sha256)`; the panel completes the backup's row with it.
+- *Not exclusive:* while a backup runs the server can start, stop and restart, and its files can be edited (doc 05's matrix); another backup, an install, an update, a restore or a deletion gets `Busy`. A backup can be cancelled like an install (`CancelOperationCommand`): the partial archive is removed. A restore is exclusive, needs the server stopped (`server.running` otherwise) and cannot be cancelled from the panel: half a restore is worse than either side of it.
+- *Plain commands:* `server.backup_delete` (`AlreadyInState` when the archive is already gone) and `server.backup_send`, which sends the archive like a file (`SendFileCommand`'s transfer ticket and `PUT`). An archive being read (a download, a restore) cannot be deleted (`backups.in_use`).
+- *Storage:* `<backups root>\<shortId>\<backupId>.zip`, by default the agent's `backups` folder (SYSTEM and Administrators only: a game server can neither read nor change its backups), or the folder given at enrollment (`--backups-root`, restricted the same way). Written as `<backupId>.zip.partial` and renamed when complete; an agent that stopped halfway deletes the partial archives when it starts. Deleting a server deletes its backups.
+- *Errors:* `backups.not_found` (the archive is not on the node), `backups.corrupt` (its SHA-256 changed, or an entry a restore may not write), `backups.in_use`; reading and writing server files fail with the file manager's codes (`files.*`).
 
 ### Protocol versioning
 
@@ -297,7 +306,7 @@ At any interruption one of the two keys works: before step 3 the current credent
   state\outbox\                     OperationCompleted results awaiting ack
   steamcmd\steamcmd.exe             the verified SteamCMD bootstrapper (each server runs its own copy, doc 06)
   console-logs\{shortId}\           rotated console logs (outside the server directory)
-  backups\{shortId}\                local backups
+  backups\{shortId}\{backupId}.zip  backups (another folder with enroll --backups-root)
   logs\                             agent logs (Serilog, rolling)
 <ServersRoot>\{shortId}\            server directory (configurable, e.g. D:\PulsarServers)
 ```
