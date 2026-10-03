@@ -243,6 +243,7 @@ public static class LaunchPlanRenderer
         }
 
         Add(runtime.ArgumentList);
+        var reserved = ReservedArgumentNames(runtime.ArgumentList);
         foreach (var extra in binding.ExtraArguments ?? [])
         {
             if (!runtime.AllowExtraArguments)
@@ -255,6 +256,7 @@ public static class LaunchPlanRenderer
                 throw new LaunchPlanException("Extra arguments are single lines of 1 to 512 characters.");
             }
 
+            CheckExtraArgument(extra, runtime, reserved);
             arguments.Add(extra);
         }
 
@@ -340,6 +342,53 @@ public static class LaunchPlanRenderer
 
         var address = port.IpAddress == PortAssignment.AnyAddress ? IPAddress.Loopback.ToString() : port.IpAddress;
         return new RconEndpoint(definition.Protocol, address, port.Port, password);
+    }
+
+    // The manifest's own switches and commands ("-port", "+rcon_password"…): extra arguments come after them and would win.
+    private static HashSet<string> ReservedArgumentNames(IReadOnlyList<ArgumentTemplate> templates)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var template in templates)
+        {
+            switch (template)
+            {
+                case ArgumentText { Text: ['-' or '+', ..] text } when !text.Contains("{{", StringComparison.Ordinal):
+                    names.Add(text);
+                    break;
+                case ArgumentCondition condition:
+                    names.UnionWith(ReservedArgumentNames(condition.Then));
+                    break;
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>
+    /// An extra argument may not set what the manifest sets, nor a sensitive setting (it would be kept in clear in the
+    /// server's settings). On RCON consoles (Source), Pulsar's RCON is off limits too, and ';' would start another command.
+    /// </summary>
+    private static void CheckExtraArgument(string extra, RuntimeDefinition runtime, HashSet<string> reserved)
+    {
+        var rcon = runtime.Console.Mode == ManifestConsoleMode.LogfileRcon;
+        if (rcon && extra.Contains(';', StringComparison.Ordinal))
+        {
+            throw new LaunchPlanException($"The extra argument '{extra}' has a ';', which starts another command.");
+        }
+
+        if (extra is not ['-' or '+', ..])
+        {
+            return;
+        }
+
+        var name = extra.Split(' ')[0];
+        var setting = name.TrimStart('-', '+');
+        if (reserved.Contains(name)
+            || (runtime.Console.SensitiveCommandPrefixes ?? []).Any(p => setting.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+            || (rcon && setting.Contains("rcon", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new LaunchPlanException($"The extra argument '{name}' is set by Pulsar or by the game's settings.");
+        }
     }
 
     private static LaunchPlanException NoAllocation(string port) => new($"Port '{port}' has no allocation.");

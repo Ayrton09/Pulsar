@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Security;
@@ -6,6 +7,7 @@ using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Common;
+using Pulsar.Infrastructure.Identity;
 
 namespace Pulsar.Api.Realtime;
 
@@ -13,14 +15,17 @@ namespace Pulsar.Api.Realtime;
 /// The browsers' live channel (docs/architecture/07, "Real time"): one connection per tab, signed in by cookie. A page
 /// says what it watches and gets pushed changes, usage and console output instead of polling. Every watch checks the
 /// user's permission when it starts; a refused watch answers false or null (an exception would be logged as an error
-/// for every user without the permission).
+/// for every user without the permission). A connection opens only for a session that is still valid (checked now,
+/// not at the cookie's next minute check), and <see cref="BrowserConnections"/> closes it when access changes.
 /// </summary>
 [Authorize(AuthenticationSchemes = "Identity.Application")]
 internal sealed class PanelHub(
     IPermissionEvaluator permissions,
     IPulsarDbContext db,
     ConsoleMirrors consoles,
-    LiveMetrics metrics) : Hub<IPanelClient>
+    LiveMetrics metrics,
+    SignInManager<PulsarUser> signIn,
+    BrowserConnections connections) : Hub<IPanelClient>
 {
     public const string Path = "/hubs/panel";
 
@@ -84,8 +89,23 @@ internal sealed class PanelHub(
 
     public Task UnwatchConsole(Guid serverId) => consoles.UnwatchAsync(Context.ConnectionId, new ServerId(serverId));
 
+    public override async Task OnConnectedAsync()
+    {
+        // A disabled user, or a session older than a password change, is refused even if its cookie has not been
+        // checked again yet.
+        if (await signIn.ValidateSecurityStampAsync(Context.User) is not { } user)
+        {
+            Context.Abort();
+            return;
+        }
+
+        connections.Add(user.Id, Context);
+        await base.OnConnectedAsync();
+    }
+
     public override Task OnDisconnectedAsync(Exception? exception)
     {
+        connections.Remove(Context.ConnectionId);
         consoles.Disconnected(Context.ConnectionId);
         return base.OnDisconnectedAsync(exception);
     }

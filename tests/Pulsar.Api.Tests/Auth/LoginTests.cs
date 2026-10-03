@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Domain.Audit;
@@ -120,6 +123,41 @@ public sealed class LoginTests(PulsarApiFactory factory) : IClassFixture<PulsarA
 
         using var rejected = await client.LoginAsync("someone", "whatever password");
         await SetupTests.AssertProblemAsync(rejected, HttpStatusCode.TooManyRequests, "rate_limit.exceeded");
+    }
+
+    [DatabaseFact]
+    public async Task FailedSignInsBeyondTheMinutesBudgetAreCountedNotEachRecorded()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var app = factory.WithWebHostBuilder(b => b
+            .UseSetting("Audit:FailedLoginsPerMinute", "2")
+            .ConfigureTestServices(services => services.AddSingleton<TimeProvider>(clock)));
+        using var admin = await factory.CreateAdminClientAsync();
+        using var client = await PanelClient.CreateAsync(app);
+
+        for (var i = 0; i < 5; i++)
+        {
+            using var failure = await client.LoginAsync($"flood-{i}", "whatever password");
+            await SetupTests.AssertProblemAsync(failure, HttpStatusCode.Unauthorized, "auth.invalid_credentials");
+        }
+
+        clock.Advance(TimeSpan.FromMinutes(1));
+        using (var later = await client.LoginAsync("flood-later", "whatever password"))
+        {
+            await SetupTests.AssertProblemAsync(later, HttpStatusCode.Unauthorized, "auth.invalid_credentials");
+        }
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
+        var failures = await db.AuditLog.Where(e => e.Action == AuditActions.Auth.LoginFailed)
+            .Select(e => e.Metadata).ToListAsync(TestContext.Current.CancellationToken);
+        var recorded = failures.Where(m => m.Contains("flood-", StringComparison.Ordinal)).ToList();
+        // The first two of the minute, then the next minute's first, which says how many were left out.
+        Assert.Equal(3, recorded.Count);
+        Assert.Single(recorded, m => m.Contains("\"flood-0\"", StringComparison.Ordinal));
+        Assert.Single(recorded, m => m.Contains("\"flood-1\"", StringComparison.Ordinal));
+        var nextMinute = Assert.Single(recorded, m => m.Contains("\"flood-later\"", StringComparison.Ordinal));
+        Assert.Contains("\"notRecordedBefore\": 3", nextMinute, StringComparison.Ordinal);
     }
 
     private async Task CreateUserAsync(string userName, Action<PulsarUser>? configure = null)

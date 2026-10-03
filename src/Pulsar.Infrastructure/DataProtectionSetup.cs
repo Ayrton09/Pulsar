@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
+using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
@@ -12,10 +13,15 @@ namespace Pulsar.Infrastructure;
 /// The key ring lives in <c>DataProtection:KeysPath</c> (default: %ProgramData%\Pulsar\Panel\keys on Windows) and must
 /// be backed up with the database. On Windows the keys are encrypted with machine DPAPI, which any process on the
 /// machine can decrypt: the directory ACL (SYSTEM, Administrators and the account that created it) is what protects it.
+/// Elsewhere (or to move the key ring between machines) <c>DataProtection:CertificatePath</c> names a PFX file whose
+/// certificate encrypts the keys (its password in <c>DataProtection:CertificatePassword</c>); without one, the keys are
+/// protected only by the directory's permissions (owner only).
 /// </summary>
 internal static class DataProtectionSetup
 {
     public const string KeysPathKey = "DataProtection:KeysPath";
+    public const string CertificatePathKey = "DataProtection:CertificatePath";
+    public const string CertificatePasswordKey = "DataProtection:CertificatePassword";
 
     public static void AddPulsarDataProtection(this IServiceCollection services, IConfiguration configuration)
     {
@@ -30,15 +36,25 @@ internal static class DataProtectionSetup
         var directory = new DirectoryInfo(Path.GetFullPath(path));
         if (!directory.Exists)
         {
-            directory.Create();
             if (OperatingSystem.IsWindows())
             {
+                directory.Create();
                 Restrict(directory);
+            }
+            else
+            {
+                Directory.CreateDirectory(directory.FullName, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             }
         }
 
         var builder = services.AddDataProtection().SetApplicationName("Pulsar").PersistKeysToFileSystem(directory);
-        if (OperatingSystem.IsWindows())
+        var certificatePath = configuration[CertificatePathKey];
+        if (!string.IsNullOrWhiteSpace(certificatePath))
+        {
+            var certificate = X509CertificateLoader.LoadPkcs12FromFile(certificatePath, configuration[CertificatePasswordKey]);
+            builder.ProtectKeysWithCertificate(certificate);
+        }
+        else if (OperatingSystem.IsWindows())
         {
             builder.ProtectKeysWithDpapi(protectToLocalMachine: true);
         }

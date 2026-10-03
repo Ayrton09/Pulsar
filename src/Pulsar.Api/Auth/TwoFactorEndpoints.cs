@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Pulsar.Api.Http;
+using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
 using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
@@ -197,7 +198,7 @@ public static class TwoFactorEndpoints
             return TypedResults.Unauthorized();
         }
 
-        if (await WrongPasswordAsync(user, request.Password, users, db, audit, AuditActions.Auth.TwoFactorDisabled, ct) is { } wrong)
+        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, audit, AuditActions.Auth.TwoFactorDisabled, ct) is { } wrong)
         {
             return wrong;
         }
@@ -228,7 +229,7 @@ public static class TwoFactorEndpoints
             return TypedResults.Unauthorized();
         }
 
-        if (await WrongPasswordAsync(user, request.Password, users, db, audit, AuditActions.Auth.RecoveryCodesRenewed, ct) is { } wrong)
+        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, audit, AuditActions.Auth.RecoveryCodesRenewed, ct) is { } wrong)
         {
             return wrong;
         }
@@ -243,21 +244,10 @@ public static class TwoFactorEndpoints
         return TypedResults.Ok(new RecoveryCodesResponse([.. codes ?? []]));
     }
 
-    private static async Task<ProblemHttpResult?> WrongPasswordAsync(
-        PulsarUser user, string password, UserManager<PulsarUser> users, PulsarDbContext db, IAuditLog audit, string action, CancellationToken ct)
-    {
-        if (await users.CheckPasswordAsync(user, password))
-        {
-            return null;
-        }
-
-        audit.Record(action, AuditOutcome.Failure, new { reason = "wrong_current_password" }).WithTarget("user", user.Id.ToString());
-        await db.SaveChangesAsync(ct);
-        return ApiProblems.Create(StatusCodes.Status400BadRequest, "auth.wrong_current_password", "The current password is not correct.");
-    }
-
+    // The security stamp changed: other sessions end, live channels too (this browser's reconnects with the new cookie).
     private static async Task RenewSessionAsync(HttpContext http, SignInManager<PulsarUser> signIn, PulsarUser user)
     {
+        http.RequestServices.GetRequiredService<BrowserConnections>().EndUser(user.Id);
         await signIn.RefreshSignInAsync(user);
         http.User = await signIn.CreateUserPrincipalAsync(user);
         AntiforgeryProtection.IssueToken(http);

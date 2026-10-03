@@ -90,6 +90,35 @@ public sealed class ManifestTests
         Assert.Equal("-condebug", plan.Arguments[^1]);
     }
 
+    // An extra argument comes after the manifest's own, so it would win: it may not set what the game's manifest sets
+    // (ports, the RCON password Pulsar generates…), a sensitive setting (kept in clear in the server's settings) or,
+    // on RCON consoles, anything about RCON; and Source command lines run ';'-separated commands.
+    [Theory]
+    [InlineData("+rcon_password")]
+    [InlineData("+RCON_PASSWORD")]
+    [InlineData("-port")]
+    [InlineData("-IP")]
+    [InlineData("+tv_port")]
+    [InlineData("+map")]
+    [InlineData("+sv_setsteamaccount")]
+    [InlineData("+sv_password")]
+    [InlineData("+sv_rcon_maxfailures")]
+    [InlineData("-usercon")]
+    [InlineData("+game_type 0;rcon_password x")]
+    public void ExtraArgumentsCannotOverrideWhatTheGameOrPulsarSets(string extra)
+    {
+        var error = Assert.Throws<LaunchPlanException>(() => RenderCs2(["-tickrate", "128", extra, "value"]));
+        Assert.Contains(extra.Split(' ', ';')[0], error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void OtherExtraArgumentsFollowTheGamesOwn()
+    {
+        var plan = RenderCs2(["-tickrate", "128", "+exec", "practice.cfg", "+sv_cheats", "1"]);
+
+        Assert.Equal(["-tickrate", "128", "+exec", "practice.cfg", "+sv_cheats", "1"], plan.Arguments.TakeLast(6));
+    }
+
     [Theory]
     [InlineData("""{"surprise": true}""", "$")]
     [InlineData("""{"install": {"steps": [{"type": "run", "command": "cmd"}]}}""", "install")]
@@ -208,6 +237,10 @@ public sealed class ManifestTests
 
     private static LaunchPlan Render(GameManifest manifest, IReadOnlyDictionary<string, string?> values, IReadOnlyList<string>? extra = null) =>
         LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, new ServerBinding("abcd1234", values, ExtraArguments: extra));
+
+    private static LaunchPlan RenderCs2(IReadOnlyList<string> extra) => LaunchPlanRenderer.Render(TestManifests.Load("cs2"),
+        ManifestValidator.WindowsX64, new ServerBinding("abcd1234", new Dictionary<string, string?>(),
+            new Dictionary<string, PortAssignment> { ["game"] = new(PortAssignment.AnyAddress, 27015) }, extra, RconPassword: "generated"));
 
     private static GameManifest TestManifest() => TestManifests.Load("_test");
 

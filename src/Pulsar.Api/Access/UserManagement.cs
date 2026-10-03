@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Http;
+using Pulsar.Api.Realtime;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
@@ -24,6 +25,7 @@ public sealed class UserManagement(
     IPermissionEvaluator evaluator,
     IRequestContext request,
     IAuditLog audit,
+    BrowserConnections connections,
     TimeProvider clock)
 {
     public async Task<IReadOnlyList<UserResponse>> ListAsync(CancellationToken ct)
@@ -137,8 +139,9 @@ public sealed class UserManagement(
 
             if (disabledChanged)
             {
-                // A new security stamp ends the user's existing sessions at the next validation.
+                // A new security stamp ends the user's existing sessions at the next validation; live channels now.
                 await users.UpdateSecurityStampAsync(user);
+                connections.EndUser(user.Id);
             }
         }
 
@@ -163,6 +166,7 @@ public sealed class UserManagement(
 
         await users.ResetAccessFailedCountAsync(user);
         await users.SetLockoutEndDateAsync(user, null);
+        connections.EndUser(user.Id);
         return TypedResults.NoContent();
     }
 
@@ -180,6 +184,7 @@ public sealed class UserManagement(
 
         audit.Record(AuditActions.User.TwoFactorReset, metadata: new { userName = user!.UserName }).WithTarget("user", user.Id.ToString());
         await TwoFactorEndpoints.TurnOffAsync(users, user); // also renews the security stamp and saves the audit entry
+        connections.EndUser(user.Id);
         return TypedResults.NoContent();
     }
 
@@ -206,6 +211,7 @@ public sealed class UserManagement(
 
         await transaction.CommitAsync(ct);
         evaluator.Invalidate(id);
+        connections.EndUser(id);
         return TypedResults.NoContent();
     }
 
@@ -264,6 +270,7 @@ public sealed class UserManagement(
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         evaluator.Invalidate(id);
+        connections.EndUser(id);
         return TypedResults.Ok(Describe(user, await RoleReferencesAsync(id, ct)));
     }
 

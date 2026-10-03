@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Pulsar.Api.Http;
+using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
 using Pulsar.Application.Access;
 using Pulsar.Domain.Access;
@@ -65,14 +66,25 @@ public static class RoleEndpoints
         return TypedResults.Created($"/api/v1/roles/{result.Value.Id}", result.Value);
     }
 
+    // A changed role may change what any of its users sees: their live channels reconnect and watch again.
     private static async Task<Results<Ok<RoleSummary>, ProblemHttpResult>> UpdateAsync(
-        Guid id, UpdateRoleRequest request, RoleManagement roles, CancellationToken ct) =>
-        (await roles.UpdateAsync(new RoleId(id), request.Name, request.Description, request.Permissions, ct)).ToHttp();
+        Guid id, UpdateRoleRequest request, RoleManagement roles, BrowserConnections connections, CancellationToken ct) =>
+        Ended(await roles.UpdateAsync(new RoleId(id), request.Name, request.Description, request.Permissions, ct), connections).ToHttp();
 
     private static async Task<Results<Ok<RoleSummary>, ProblemHttpResult>> RequireTwoFactorAsync(
-        Guid id, SetRoleTwoFactorRequest request, RoleManagement roles, CancellationToken ct) =>
-        (await roles.RequireTwoFactorAsync(new RoleId(id), request.Required, ct)).ToHttp();
+        Guid id, SetRoleTwoFactorRequest request, RoleManagement roles, BrowserConnections connections, CancellationToken ct) =>
+        Ended(await roles.RequireTwoFactorAsync(new RoleId(id), request.Required, ct), connections).ToHttp();
 
     private static async Task<Results<NoContent, ProblemHttpResult>> DeleteAsync(Guid id, RoleManagement roles, CancellationToken ct) =>
-        (await roles.DeleteAsync(new RoleId(id), ct)).ToHttp();
+        (await roles.DeleteAsync(new RoleId(id), ct)).ToHttp(); // only roles nobody holds can be deleted
+
+    private static Result<RoleSummary> Ended(Result<RoleSummary> result, BrowserConnections connections)
+    {
+        if (result.IsSuccess)
+        {
+            connections.EndAll();
+        }
+
+        return result;
+    }
 }

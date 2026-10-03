@@ -181,6 +181,8 @@ public sealed class LiveConsoleTests(PulsarApiFactory factory) : IClassFixture<P
     [InlineData("\"sv_password\" secret", "sv_password ***")]
     [InlineData("say rcon_password is not typed here", "say rcon_password is not typed here")]
     [InlineData("status", "status")]
+    [InlineData("say hi; rcon_password hunter2", "say hi; rcon_password ***")]
+    [InlineData("say hi;SV_PASSWORD x;status", "say hi;sv_password ***;status")]
     public void SensitiveCommandsAreAuditedWithoutTheirArguments(string line, string audited) =>
         Assert.Equal(audited, ConsoleCommands.Redact(line, ["rcon_password", "sv_password"]));
 

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Http;
+using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
 using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
@@ -57,7 +58,7 @@ public static class AuthEndpoints
     /// </summary>
     private static async Task<Results<NoContent, ProblemHttpResult, ValidationProblem, UnauthorizedHttpResult>> ChangePasswordAsync(
         ChangePasswordRequest request, HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn,
-        IAuditLog audit, CancellationToken ct)
+        IAuditLog audit, BrowserConnections connections, CancellationToken ct)
     {
         var user = await users.FindByIdAsync(http.User.GetRequiredUserId().ToString());
         if (user is null)
@@ -65,22 +66,20 @@ public static class AuthEndpoints
             return TypedResults.Unauthorized();
         }
 
+        if (await WrongPasswordAsync(user, request.CurrentPassword, users, db, audit, AuditActions.Auth.PasswordChanged, ct) is { } wrong)
+        {
+            return wrong;
+        }
+
         var changed = await users.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
         if (!changed.Succeeded)
         {
-            if (changed.Errors.Any(e => e.Code == nameof(IdentityErrorDescriber.PasswordMismatch)))
-            {
-                audit.Record(AuditActions.Auth.PasswordChanged, AuditOutcome.Failure, new { reason = "wrong_current_password" })
-                    .WithTarget("user", user.Id.ToString());
-                await db.SaveChangesAsync(ct);
-                return ApiProblems.Create(StatusCodes.Status400BadRequest, "auth.wrong_current_password", "The current password is not correct.");
-            }
-
             return IdentityProblems.Validation(changed);
         }
 
         audit.Record(AuditActions.Auth.PasswordChanged).WithTarget("user", user.Id.ToString());
         await db.SaveChangesAsync(ct);
+        connections.EndUser(user.Id); // this browser's own channel reconnects with the renewed cookie
         await signIn.RefreshSignInAsync(user);
         http.User = await signIn.CreateUserPrincipalAsync(user);
         AntiforgeryProtection.IssueToken(http);
@@ -174,6 +173,7 @@ public static class AuthEndpoints
         SignInManager<PulsarUser> signIn,
         IPermissionEvaluator evaluator,
         IAuditLog audit,
+        FailedLoginBudget failures,
         TimeProvider clock,
         CancellationToken ct)
     {
@@ -193,7 +193,13 @@ public static class AuthEndpoints
 
         if (!result.Succeeded)
         {
-            // Locked-out, disabled and wrong-password attempts get the same answer, so the response says nothing about the account.
+            // Locked-out, disabled and wrong-password attempts get the same answer, so the response says nothing about the
+            // account. Identity answers the first two before hashing the password: hash anyway, so the time says nothing either.
+            if (result.IsLockedOut || result.IsNotAllowed)
+            {
+                users.PasswordHasher.VerifyHashedPassword(user, s_dummyPasswordHash, request.Password);
+            }
+
             var reason = result.IsLockedOut ? "locked_out" : result.IsNotAllowed ? "not_allowed" : "invalid_credentials";
             return await FailAsync(user, reason);
         }
@@ -208,14 +214,19 @@ public static class AuthEndpoints
 
         async Task<ProblemHttpResult> FailAsync(PulsarUser? known, string reason)
         {
-            var entry = audit.Record(AuditActions.Auth.LoginFailed, AuditOutcome.Failure,
-                new { userName = Truncate(request.UserName, 64), reason });
-            if (known is not null)
+            if (failures.TryRecord(out var leftOut))
             {
-                entry.WithTarget("user", known.Id.ToString());
+                var userName = Truncate(request.UserName, 64);
+                var entry = audit.Record(AuditActions.Auth.LoginFailed, AuditOutcome.Failure,
+                    leftOut == 0 ? new { userName, reason } : new { userName, reason, notRecordedBefore = leftOut });
+                if (known is not null)
+                {
+                    entry.WithTarget("user", known.Id.ToString());
+                }
+
+                await db.SaveChangesAsync(ct);
             }
 
-            await db.SaveChangesAsync(ct);
             return ApiProblems.Create(StatusCodes.Status401Unauthorized, "auth.invalid_credentials", "Invalid user name or password.");
         }
     }
@@ -237,6 +248,31 @@ public static class AuthEndpoints
     {
         var user = await users.FindByIdAsync(http.User.GetRequiredUserId().ToString());
         return user is null ? TypedResults.Unauthorized() : TypedResults.Ok(await DescribeAsync(user, evaluator, ct));
+    }
+
+    /// <summary>
+    /// Confirms the current password of a signed-in user (changing it, turning two-factor authentication off…). Wrong
+    /// guesses count towards the lockout like failed sign-ins, so a stolen session cannot be used to guess the password;
+    /// while locked out, every answer is "wrong".
+    /// </summary>
+    internal static async Task<ProblemHttpResult?> WrongPasswordAsync(
+        PulsarUser user, string password, UserManager<PulsarUser> users, PulsarDbContext db, IAuditLog audit, string action, CancellationToken ct)
+    {
+        var lockedOut = await users.IsLockedOutAsync(user);
+        if (!lockedOut && await users.CheckPasswordAsync(user, password))
+        {
+            return null;
+        }
+
+        if (!lockedOut)
+        {
+            await users.AccessFailedAsync(user);
+        }
+
+        audit.Record(action, AuditOutcome.Failure, new { reason = lockedOut ? "locked_out" : "wrong_current_password" })
+            .WithTarget("user", user.Id.ToString());
+        await db.SaveChangesAsync(ct);
+        return ApiProblems.Create(StatusCodes.Status400BadRequest, "auth.wrong_current_password", "The current password is not correct.");
     }
 
     internal static async Task<CurrentUserResponse> DescribeAsync(PulsarUser user, IPermissionEvaluator evaluator, CancellationToken ct)

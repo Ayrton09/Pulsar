@@ -74,6 +74,31 @@ public sealed class AccountTests(PulsarApiFactory factory) : IClassFixture<Pulsa
         await SetupTests.AssertProblemAsync(response, HttpStatusCode.BadRequest, "validation.failed");
     }
 
+    [DatabaseFact]
+    public async Task GuessingTheCurrentPasswordLocksTheAccount()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        await scenario.CreateUserAsync("guessed-password-user");
+        using var stolen = await scenario.SignInAsync("guessed-password-user");
+
+        for (var i = 0; i < 5; i++)
+        {
+            using var guess = await stolen.PostAsync("/api/v1/auth/password", new ChangePasswordRequest("guess number " + i, "the thief's password"));
+            await SetupTests.AssertProblemAsync(guess, HttpStatusCode.BadRequest, "auth.wrong_current_password");
+        }
+
+        // Locked out: even the right password is "wrong" now, here and at sign-in.
+        using (var right = await stolen.PostAsync("/api/v1/auth/password", new ChangePasswordRequest(AccessScenario.Password, "the thief's password")))
+        {
+            await SetupTests.AssertProblemAsync(right, HttpStatusCode.BadRequest, "auth.wrong_current_password");
+        }
+
+        using var client = await PanelClient.CreateAsync(factory);
+        using var login = await client.LoginAsync("guessed-password-user", AccessScenario.Password);
+        await SetupTests.AssertProblemAsync(login, HttpStatusCode.Unauthorized, "auth.invalid_credentials");
+    }
+
     private static async Task<PanelClient> SignInAsync(WebApplicationFactory<Program> app, string userName, string password)
     {
         var client = await PanelClient.CreateAsync(app);

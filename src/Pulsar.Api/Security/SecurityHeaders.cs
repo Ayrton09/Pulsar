@@ -13,15 +13,21 @@ internal static class SecurityHeaders
         "default-src 'self'; script-src 'self'; style-src 'self'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' data:; " +
         "font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
+    // Set when the response starts, not before the rest of the pipeline runs: the exception handler clears the headers
+    // of a response it replaces with an error, and errors need them too.
     public static IApplicationBuilder UseSecurityHeaders(this IApplicationBuilder app) => app.Use(async (context, next) =>
     {
-        var headers = context.Response.Headers;
-        headers.ContentSecurityPolicy = ContentSecurityPolicy;
-        headers.XContentTypeOptions = "nosniff";
-        headers.XFrameOptions = "DENY";
-        headers["Referrer-Policy"] = "no-referrer";
-        headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()";
-        headers["Cross-Origin-Opener-Policy"] = "same-origin";
+        context.Response.OnStarting(() =>
+        {
+            var headers = context.Response.Headers;
+            headers.ContentSecurityPolicy = ContentSecurityPolicy;
+            headers.XContentTypeOptions = "nosniff";
+            headers.XFrameOptions = "DENY";
+            headers["Referrer-Policy"] = "no-referrer";
+            headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()";
+            headers["Cross-Origin-Opener-Policy"] = "same-origin";
+            return Task.CompletedTask;
+        });
         await next(context);
     });
 }

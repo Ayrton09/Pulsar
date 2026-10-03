@@ -33,15 +33,25 @@ public sealed class AuthRateLimitOptions
 
 internal static class ApiServiceCollectionExtensions
 {
+    /// <summary>2 MiB: a 256 KiB manifest with every character JSON-escaped still fits.</summary>
+    public const long MaxRequestBodyBytes = 2 * 1024 * 1024;
+
     public static IServiceCollection AddPulsarApi(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddProblemDetails();
+
+        // Requests are small JSON documents; the endpoints that take files (uploads, the agent's transfers) raise the
+        // limit for themselves. Kestrel's default (30 MB) would let anonymous requests (login, setup, enrollment) send
+        // that much before any check.
+        services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(options =>
+            options.Limits.MaxRequestBodySize = MaxRequestBodyBytes);
         services.AddValidation();
         services.AddHttpContextAccessor();
         services.AddScoped<HttpRequestContext>();
         // Background work (the scheduler) sets who it acts as before resolving anything that audits.
         services.AddScoped<IRequestContext>(sp => sp.GetRequiredService<RequestContextOverride>().Context ?? sp.GetRequiredService<HttpRequestContext>());
         services.AddSingleton<InitialSetup>();
+        services.AddSingleton<FailedLoginBudget>();
         services.AddScoped<UserManagement>();
 
         services.ConfigureHttpJsonOptions(options =>
@@ -86,6 +96,7 @@ internal static class ApiServiceCollectionExtensions
             // Browsers only send small requests (what they watch); agents send console output in large batches.
             .AddHubOptions<PanelHub>(options => options.MaximumReceiveMessageSize = 32 * 1024);
         services.AddSingleton<ConsoleMirrors>();
+        services.AddSingleton<BrowserConnections>();
         services.AddSingleton<LiveMetrics>();
         services.Replace(ServiceDescriptor.Singleton<IRealtimeNotifier, PanelNotifier>());
         services.AddSingleton<AgentConnectionRegistry>();
