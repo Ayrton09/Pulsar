@@ -108,7 +108,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         ServerFileRules.Validate(path);
         Run(server, root =>
         {
-            using var entry = root.TryOpen(path, DeleteAccess | ListDirectory | ReadAttributes | Synchronize) ?? throw NotFound(path);
+            using var entry = root.TryOpen(path, DeleteAccess | ReadAttributes | Synchronize) ?? throw NotFound(path);
             DeleteTree(root, entry.Handle, path, 0);
             return 0;
         });
@@ -201,10 +201,17 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
 
         if (Describe(handle).Kind == FileEntryKind.Directory)
         {
-            foreach (var child in Enumerate(handle, path))
+            // Deleting needs only the right to delete each entry; listing a folder also needs the right to read it.
+            List<FileEntry> children;
+            using (var listing = root.TryOpen(path, ListDirectory | Synchronize) ?? throw NotFound(path))
+            {
+                children = Enumerate(listing.Handle, path);
+            }
+
+            foreach (var child in children)
             {
                 var childPath = ServerFilePath.Join(path, child.Name);
-                using var entry = root.TryOpen(childPath, DeleteAccess | ListDirectory | ReadAttributes | Synchronize);
+                using var entry = root.TryOpen(childPath, DeleteAccess | ReadAttributes | Synchronize);
                 if (entry is not null)
                 {
                     DeleteTree(root, entry.Handle, childPath, depth + 1);

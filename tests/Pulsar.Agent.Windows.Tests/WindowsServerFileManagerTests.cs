@@ -210,8 +210,12 @@ public sealed class WindowsServerFileManagerTests : ServerFileManagerContract
             }
 
             Assert.Equal("mine", Text(files.OpenRead(a, "cfg/server.cfg", 100)));
+            files.Delete(a, "cfg");
+            Assert.False(Directory.Exists(Path.Combine(a.Directory, "cfg")));
+
+            // The link is listed, but the file behind it is server B's: its rights decide, and A has none on it.
             Assert.Contains(files.List(a, ServerFilePath.Root).Entries, e => e.Name == "stolen.cfg");
-            files.Delete(a, "stolen.cfg");
+            Assert.Equal(FileErrors.AccessDenied, Code(() => files.Delete(a, "stolen.cfg")));
             Assert.Equal("server b", File.ReadAllText(Path.Combine(b.Directory, "secret.cfg")));
         }
         finally
