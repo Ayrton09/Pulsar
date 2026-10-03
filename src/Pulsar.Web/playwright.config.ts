@@ -39,6 +39,9 @@ export default defineConfig({
       Security__AllowInsecureHttp: 'true',
       // Offers Pulsar's test game, which e2e/servers.spec.ts runs on a real agent.
       Pulsar__EnableTestGame: 'true',
+      // Every spec signs in from the same address, and the two-factor one alone needs a dozen sign-in steps a minute
+      // (the limit itself is covered by the API tests).
+      RateLimiting__Auth__PermitLimit: '100',
     },
     url: `${baseURL}/health/ready`,
     reuseExistingServer: !process.env.CI,

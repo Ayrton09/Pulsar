@@ -147,10 +147,15 @@ export function useResetTwoFactor() {
 }
 
 export function useRequireTwoFactor() {
+  const queryClient = useQueryClient();
   const changed = useAccessChanged();
   return useMutation({
     mutationFn: ({ id, required }: { id: string; required: boolean }) =>
       unwrap(api.PUT('/api/v1/roles/{id}/two-factor', { params: { path: { id } }, body: { required } })),
-    onSuccess: changed,
+    // The saved role right away, so its switch does not flip back while the list is fetched again.
+    onSuccess: (saved) => {
+      queryClient.setQueryData<Role[]>(adminKeys.roles, (roles) => roles?.map((r) => (r.id === saved.id ? saved : r)));
+      return changed();
+    },
   });
 }

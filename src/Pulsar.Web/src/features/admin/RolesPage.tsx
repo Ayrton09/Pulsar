@@ -31,6 +31,9 @@ export function RolesPage() {
   const [editing, setEditing] = useState<Role | 'new' | null>(null);
   const canManage = can(user, Permission.RoleManage);
   const requireTwoFactor = useRequireTwoFactor();
+  // Set in the change handler itself: the mutation's own pending state arrives a render later, and a controlled
+  // checkbox would flip back meanwhile.
+  const [saving, setSaving] = useState<{ id: string; required: boolean } | null>(null);
 
   return (
     <>
@@ -83,9 +86,14 @@ export function RolesPage() {
                   {canManage ? (
                     <Checkbox
                       label={<span className="sr-only">{t('roles.requireTwoFactorFor', { name: role.name })}</span>}
-                      checked={role.requiresTwoFactor}
-                      disabled={requireTwoFactor.isPending}
-                      onChange={(e) => requireTwoFactor.mutate({ id: role.id, required: e.target.checked })}
+                      // The new value while it is saved; the saved one afterwards (or again, if saving failed).
+                      checked={saving?.id === role.id ? saving.required : role.requiresTwoFactor}
+                      disabled={saving !== null}
+                      onChange={(e) => {
+                        const change = { id: role.id, required: e.target.checked };
+                        setSaving(change);
+                        requireTwoFactor.mutate(change, { onSettled: () => setSaving(null) });
+                      }}
                     />
                   ) : role.requiresTwoFactor ? (
                     <Badge tone="accent">{t('roles.required')}</Badge>
