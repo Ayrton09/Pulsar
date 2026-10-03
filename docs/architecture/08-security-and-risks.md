@@ -22,21 +22,24 @@ Explicit assumptions:
 
 ### Users and web
 
-- ASP.NET Core Identity: password hashing (Identity's default PBKDF2), lockout, security stamp, TOTP 2FA (enforceable per role in settings). Recovery codes.
+- ASP.NET Core Identity: password hashing (Identity's default PBKDF2), lockout (5 failures, 15 minutes), security stamp, TOTP 2FA (enforceable per role in settings). Recovery codes.
+- *Implemented in Phase 9:* two-factor authentication with any authenticator app (RFC 6238: HMAC-SHA1, 30-second steps, six digits, one step of drift either way). A code works once: the last accepted step is kept, so a code seen over someone's shoulder cannot be reused within its window. The authenticator key is encrypted with Data Protection and the ten recovery codes (about 47 random bits each) are kept as SHA-256 hashes; a recovery code works once. Wrong codes count towards the lockout like wrong passwords. A role can require it (the Administrator role too): until such a user sets it up, every endpoint but the session, logout and the setup itself answers `403 auth.two_factor_required`, and so does the live channel. Turning it on renews the security stamp (other sessions end); turning it off needs the password and is refused while a role requires it; an administrator who may manage the user can turn it off for them (a lost phone), which ends their sessions. All of it is audited.
+- Confirming the current password (changing it, turning two-factor authentication off, new recovery codes) counts wrong guesses towards the lockout, so a stolen session cannot be used to guess the password. Locked-out and disabled accounts take as long to answer as wrong passwords (Identity answers them before hashing; the panel hashes anyway). Residual risk: anyone can lock an account for 15 minutes with five wrong passwords (the rate limit slows it down; locking out the only administrator is possible).
 - Protected initial setup: when no users exist, `/setup` requires a **single-use token printed in the panel log/console** at startup (prevents someone else on the network from creating the first admin before you). Automated installations can provide it instead with `InitialSetup:Token` (at least 32 characters; then it is never printed).
 - **HTTPS by default.** Cookies are `__Host-` prefixed, `HttpOnly; Secure; SameSite=Strict`; HSTS and HTTP→HTTPS redirection are on, and API calls over plain HTTP get `400 transport.https_required`. TLS can terminate at Kestrel or at a reverse proxy: `X-Forwarded-For/Proto` are trusted from loopback and from `Security:TrustedProxies`. Plain HTTP is only possible with the explicit opt-in `Security:AllowInsecureHttp=true` (development, trusted networks): cookies lose `Secure` and the prefix, the panel logs a warning at startup and the UI shows a permanent banner.
 - Antiforgery token (readable `__Host-pulsar-xsrf` cookie, `X-XSRF-TOKEN` header) on every state-changing API call.
-- Headers on every response: strict CSP (`default-src 'self'`, no inline scripts; inline `<style>` elements only, because the dialogs' scroll lock injects one at runtime — style attributes stay blocked, `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, a restrictive `Permissions-Policy` and `Cross-Origin-Opener-Policy: same-origin`. The end-to-end suite fails on any CSP violation.
+- Headers on every response, errors included (set when the response starts, after the exception handler has replaced it): strict CSP (`default-src 'self'`, no inline scripts; inline `<style>` elements only, because the dialogs' scroll lock injects one at runtime — style attributes stay blocked, `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, a restrictive `Permissions-Policy` and `Cross-Origin-Opener-Policy: same-origin`. The end-to-end suite fails on any CSP violation.
 - Users change their own profile and password (`/account`); a password change ends the user's other sessions.
-- Built-in rate limiting (`Microsoft.AspNetCore.RateLimiting`) on login, setup, enrollment and the agent challenge.
+- Built-in rate limiting (`Microsoft.AspNetCore.RateLimiting`) on login and its second step, setup, password confirmations, enrollment and the agent challenge.
+- Request bodies are limited to 2 MiB (Kestrel's default is 30 MB): the endpoints that take files (uploads, the agent's transfers) raise it for themselves.
 - Resource authorization on **every** endpoint (enforced by a test) and hub method; IDs of other users' resources → 404 (in the browser hub: `null`).
-- The browser hub (`/hubs/panel`) requires a signed-in user, WebSockets only, and refuses an `Origin` other than the panel's own host (cross-site WebSocket hijacking; SameSite cookies are per site, not per origin). Permissions are checked when a page starts watching; a revoked permission takes effect at the next reconnect or page load.
+- The browser hub (`/hubs/panel`) requires a signed-in user, WebSockets only, and refuses an `Origin` other than the panel's own host (cross-site WebSocket hijacking; SameSite cookies are per site, not per origin). Permissions are checked when a page starts watching. A WebSocket outlives the cookie checks of ordinary requests, so (*Phase 9*) the panel closes a user's live connections when they are disabled or deleted, their password or two-factor setup changes or their roles change, and closes every connection when a role changes; connections reopen on their own and are checked again, and a connection only opens for a session whose security stamp is still current (checked at once, not at the cookie's next one-minute check).
 - RBAC anti-escalation (doc 02).
 
 ### Panel ↔ Agent
 
-- Mandatory TLS (the agent rejects `http://` except `localhost` in development mode).
-- Per-node identity with a non-exportable key (TPM when available), proof of possession through a challenge, 15-minute JWT, immediate revocation, rotation.
+- Mandatory TLS: the agent rejects `http://` panel addresses other than loopback ones (a panel on the same machine; that traffic never leaves it).
+- Per-node identity with a non-exportable key (TPM when available), proof of possession through a challenge, an opaque 15-minute session token (the panel keeps only its hash), immediate revocation, rotation.
 - Commands signed by the panel, pinned panel key, anti-replay (session + sequence + expiry), strong validation before execution.
 - There is no shell command. The executable always comes from the manifest and the server directory.
 
@@ -89,19 +92,21 @@ Privileged import, closed steps, time-bounded regexes, typed variables, argv wit
 | User passwords | `users.password_hash` | Identity hash |
 | Secret variables (GSLT, RCON) | `server_variables.protected_value` | ASP.NET Core Data Protection |
 | Panel signing key | `panel_signing_keys` | Data Protection |
-| Data Protection key ring | Panel disk | DPAPI (LocalMachine) on Windows; certificate on Linux or for portability |
+| Data Protection key ring | Panel disk | DPAPI (LocalMachine) on Windows; a certificate (`DataProtection:CertificatePath`, a PFX) on Linux or for portability; otherwise only the directory's permissions (owner only) |
+| Authenticator keys / recovery codes | `user_tokens` | Data Protection / SHA-256 hashes |
 | Node private key | CNG/TPM key store | Non-exportable |
 | Specs with secrets on the node (secret variables, RCON password) | `state\servers\*.json` | ACL (SYSTEM + Administrators) and the whole record encrypted with DPAPI (machine scope) |
 | Server account passwords | Nowhere | A new random one is set right before every logon and used once (doc 06) |
 | Enrollment tokens / tickets | Database | SHA-256 only |
 
-- APIs return secrets as `"***"` (write-only). Serilog filters redact known properties and never destructure whole DTOs. Neither `Authorization` nor cookies appear in request logs.
+- APIs return secrets as `"***"` (write-only). Log messages never destructure objects (no `{@…}`) and never include secrets, command lines or request bodies; request logs have the method, path, status and time, never query strings, headers or cookies. Console commands are audited with sensitive commands redacted (each `;`-separated command of a line is checked).
+- Accepted limitation: a secret variable a manifest writes into a configuration file (the join password into CS2's `server.cfg`) can be read by whoever may read the server's files (`server.files.view`) or download its backups. The API keeps it write-only; the game needs it in the file.
 - **Important operational consequence:** a PostgreSQL backup without the Data Protection key ring cannot decrypt secrets. The panel backup guide will say so.
 - Accepted limitation: a secret passed on the command line (e.g. GSLT with `+sv_setsteamaccount`) is visible to the node's local administrators. If a game accepts it from a file, the manifest should prefer that.
 
 ### Audit
 
-Append-only from the application, no secrets, with IP and actor. Minimum actions: successful/failed login (aggregated per window to avoid flooding), logout, 2FA changes, user/role/access created-changed-deleted, node created/enrolled/revoked/rotated, server created/deleted, start/stop/restart/kill, console command (redacted), file edited/uploaded/deleted/renamed, backup created/restored/deleted/downloaded, scheduled task created/changed and its runs, template imported, settings changed.
+Append-only from the application, no secrets, with IP and actor. Failed sign-ins are recorded one by one up to `Audit:FailedLoginsPerMinute` (60) a minute; beyond that they are counted and the next recorded one says how many were left out (*Phase 9*). Minimum actions: successful/failed login, logout, 2FA changes, user/role/access created-changed-deleted, node created/enrolled/revoked/rotated, server created/deleted, start/stop/restart/kill, console command (redacted), file edited/uploaded/deleted/renamed, backup created/restored/deleted/downloaded, scheduled task created/changed and its runs, template imported, settings changed.
 
 ### Supply chain and releases
 
@@ -117,7 +122,7 @@ Append-only from the application, no secrets, with IP and actor. Minimum actions
 | T2 | Leaked enrollment token | Single use, 30 min, hashed in the database, node visible with hostname/fingerprint |
 | T3 | MITM or compromised proxy injects commands | Signed commands + pinned panel key |
 | T4 | Command replay | Session + sequence window + expiry + idempotency by CommandId |
-| T5 | Argument/console command injection through variables | Typing, mandatory regex, no leading `-`/`+`, argv without a shell, encoders |
+| T5 | Argument/console command injection through variables or extra arguments | Typing, mandatory regex, no leading `-`/`+`, argv without a shell, encoders; extra start arguments may not repeat a switch or command the manifest sets (`-port`, `+rcon_password`…), set a sensitive setting or, on RCON consoles, anything about RCON or a `;` (*Phase 9*) |
 | T6 | Path traversal / junctions / ADS / devices | Lexical validation + handle final path + impersonation + ACL |
 | T7 | Zip slip on restore | Per-entry validator |
 | T8 | Malicious plugin escalates to SYSTEM, reaches other servers or shuts the node down | Per-server account, ACL, Job, restricted token without privileges |

@@ -104,6 +104,14 @@ Server and node pages use a layout with a fixed header (name, status, power acti
 - Run now runs a task at once, outside its schedule, and shows the outcome; deleting asks first.
 - API: `GET /api/v1/servers/{id}/schedules`, `GET …/schedules/preview?cron=&timeZone=`, `POST …/schedules` (201), `PUT …/schedules/{taskId}`, `DELETE …/schedules/{taskId}`, `POST …/schedules/{taskId}/run`, `GET …/schedules/{taskId}/runs?limit=`. Creating, changing, deleting and running a task now are audited; what a task does is audited as the schedule's.
 
+## Two-factor authentication
+
+- Sign-in: after a correct password, a user with two-factor authentication gives a code from their authenticator app or one of their recovery codes (`POST /api/v1/auth/login` answers `twoFactorRequired`; `POST /api/v1/auth/login/two-factor` signs in).
+- `/account`: setting it up shows a QR code (drawn as SVG by `uqr`, so the CSP needs nothing new) and the key as text; a code from the app turns it on and shows ten recovery codes once, with Copy and "I saved them". With it on, the page shows how many codes are left and offers new codes and turning it off (both with the password).
+- A user whose role requires it (`/admin/roles`: a switch per role, the Administrator role included) sees only the setup screen and Sign out until it is on; the API agrees (`403 auth.two_factor_required` anywhere else).
+- `/admin/users`: a badge for users with it on, and turning it off for a user who lost their phone (asked first; their sessions end).
+- API: `GET /api/v1/auth/two-factor`, `POST …/two-factor/setup`, `POST …/two-factor/enable`, `POST …/two-factor/disable`, `POST …/two-factor/recovery-codes`, `PUT /api/v1/roles/{id}/two-factor`, `POST /api/v1/users/{id}/two-factor/reset`.
+
 ## Client-side security
 
 - Cookie authentication `HttpOnly; Secure; SameSite=Strict`. **No tokens in localStorage.**

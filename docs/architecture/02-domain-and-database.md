@@ -138,7 +138,9 @@ CREATE TABLE users (
     last_login_at         timestamptz
 );
 -- + user_tokens, user_logins, user_claims: standard IdentityUserContext tables
---   (TOTP tokens / recovery codes; external logins unused in v1).
+--   (external logins unused in v1). Two-factor rows in user_tokens (login_provider '[Pulsar]'): the authenticator key
+--   encrypted with Data Protection, the recovery codes as SHA-256 hashes, and the last accepted TOTP step (a code
+--   works once).
 
 CREATE TABLE roles (
     id               uuid PRIMARY KEY,
@@ -147,6 +149,7 @@ CREATE TABLE roles (
     description      varchar(512),
     scope            text NOT NULL CHECK (scope IN ('global','node','server')),
     is_system        boolean NOT NULL DEFAULT false,
+    requires_two_factor boolean NOT NULL DEFAULT false, -- its users must sign in with 2FA (the system role too)
     created_at       timestamptz NOT NULL,
     updated_at       timestamptz NOT NULL,
     UNIQUE (id, scope)                       -- enables composite FKs that pin the role scope
