@@ -174,7 +174,6 @@ jobs:
       - name: Install, back up, restore, update and remove
         shell: powershell
         run: .\scripts\sandbox\install\run.ps1 -Bundle "$PWD\artifacts\install-ci" -PostgresPassword root
-un.ps1 -Bundle "$PWDrtifactsinstall-ci" -PostgresPassword root
 
       - name: Report
         if: always()
