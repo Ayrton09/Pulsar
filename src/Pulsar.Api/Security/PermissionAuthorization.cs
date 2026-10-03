@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Identity;
+using Pulsar.Api.Http;
 using Pulsar.Application.Access;
 using Pulsar.Domain.Access;
+using Pulsar.Infrastructure.Identity;
 
 namespace Pulsar.Api.Security;
 
@@ -14,7 +17,65 @@ public sealed class SignedInUserMetadata
     public static SignedInUserMetadata Instance { get; } = new();
 }
 
+/// <summary>
+/// Endpoint metadata: open to a signed-in user who still has to set up the two-factor authentication a role requires
+/// (the session, logout and setting it up).
+/// </summary>
+public sealed class AllowWithoutTwoFactorMetadata
+{
+    public static AllowWithoutTwoFactorMetadata Instance { get; } = new();
+}
+
 internal sealed record PermissionRequirement(IReadOnlyList<string> AnyOf) : IAuthorizationRequirement;
+
+/// <summary>Part of every signed-in policy: a user whose role requires two-factor authentication must have it.</summary>
+internal sealed class TwoFactorRequirement : IAuthorizationRequirement
+{
+    public const string FailureReason = "auth.two_factor_required";
+
+    public static TwoFactorRequirement Instance { get; } = new();
+}
+
+internal sealed class TwoFactorAuthorizationHandler(IPermissionEvaluator evaluator) : AuthorizationHandler<TwoFactorRequirement>
+{
+    protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, TwoFactorRequirement requirement)
+    {
+        if (context.User.GetUserId() is not { } user)
+        {
+            return;
+        }
+
+        var http = context.Resource as HttpContext;
+        if (context.User.HasClaim(PulsarClaimsPrincipalFactory.TwoFactorClaim, "true")
+            || http?.GetEndpoint()?.Metadata.GetMetadata<AllowWithoutTwoFactorMetadata>() is not null
+            || !(await evaluator.GetAsync(user, http?.RequestAborted ?? CancellationToken.None)).RequiresTwoFactor)
+        {
+            context.Succeed(requirement);
+            return;
+        }
+
+        context.Fail(new AuthorizationFailureReason(this, TwoFactorRequirement.FailureReason));
+    }
+}
+
+/// <summary>Answers a missing two-factor setup with its own code, so the SPA can send the user to set it up.</summary>
+internal sealed class PulsarAuthorizationResultHandler : IAuthorizationMiddlewareResultHandler
+{
+    private readonly AuthorizationMiddlewareResultHandler _default = new();
+
+    public Task HandleAsync(RequestDelegate next, HttpContext context, AuthorizationPolicy policy, PolicyAuthorizationResult authorizeResult)
+    {
+        if (authorizeResult.Forbidden
+            && authorizeResult.AuthorizationFailure?.FailureReasons.Any(r => r.Message == TwoFactorRequirement.FailureReason) == true)
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return ApiProblems.Create(StatusCodes.Status403Forbidden, TwoFactorRequirement.FailureReason,
+                "Set up two-factor authentication to continue.").ExecuteAsync(context);
+        }
+
+        return _default.HandleAsync(next, context, policy, authorizeResult);
+    }
+}
 
 internal sealed class PermissionAuthorizationHandler(IPermissionEvaluator evaluator) : AuthorizationHandler<PermissionRequirement>
 {
@@ -51,7 +112,7 @@ public static class PermissionEndpointExtensions
 
         var policy = new AuthorizationPolicyBuilder(IdentityConstants.ApplicationScheme)
             .RequireAuthenticatedUser()
-            .AddRequirements(new PermissionRequirement(anyOf))
+            .AddRequirements(TwoFactorRequirement.Instance, new PermissionRequirement(anyOf))
             .Build();
         return builder.RequireAuthorization(policy).WithMetadata(new RequiredPermissionMetadata(anyOf));
     }
@@ -60,7 +121,14 @@ public static class PermissionEndpointExtensions
     public static TBuilder RequireSignedInUser<TBuilder>(this TBuilder builder)
         where TBuilder : IEndpointConventionBuilder
     {
-        var policy = new AuthorizationPolicyBuilder(IdentityConstants.ApplicationScheme).RequireAuthenticatedUser().Build();
+        var policy = new AuthorizationPolicyBuilder(IdentityConstants.ApplicationScheme)
+            .RequireAuthenticatedUser()
+            .AddRequirements(TwoFactorRequirement.Instance)
+            .Build();
         return builder.RequireAuthorization(policy).WithMetadata(SignedInUserMetadata.Instance);
     }
+
+    /// <summary>Keeps the endpoint open to a user who still has to set up two-factor authentication.</summary>
+    public static TBuilder AllowWithoutTwoFactor<TBuilder>(this TBuilder builder)
+        where TBuilder : IEndpointConventionBuilder => builder.WithMetadata(AllowWithoutTwoFactorMetadata.Instance);
 }

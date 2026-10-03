@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
@@ -112,11 +113,22 @@ internal static class ApiServiceCollectionExtensions
                 "auth.forbidden", "You do not have permission to do this.");
         });
 
+        // Between the password and the second factor (five minutes, Identity's default).
+        services.Configure<CookieAuthenticationOptions>(IdentityConstants.TwoFactorUserIdScheme, options =>
+        {
+            options.Cookie.Name = cookies.TwoFactor;
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SecurePolicy = cookies.SecurePolicy;
+            options.Cookie.SameSite = SameSiteMode.Strict;
+        });
+
         // Disabled users and changed passwords end existing sessions within a minute.
         services.Configure<SecurityStampValidatorOptions>(options => options.ValidationInterval = TimeSpan.FromMinutes(1));
 
         services.AddAuthorization();
         services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, TwoFactorAuthorizationHandler>();
+        services.AddSingleton<IAuthorizationMiddlewareResultHandler, PulsarAuthorizationResultHandler>();
 
         services.AddAntiforgery(options =>
         {

@@ -27,6 +27,9 @@ public sealed class PanelCookies(bool secure)
 {
     public string Session { get; } = secure ? "__Host-pulsar-session" : "pulsar-session";
 
+    /// <summary>Who gave the right password and still has to give the second factor.</summary>
+    public string TwoFactor { get; } = secure ? "__Host-pulsar-2fa" : "pulsar-2fa";
+
     public string AntiforgeryCookieToken { get; } = secure ? "__Host-pulsar-af" : "pulsar-af";
 
     /// <summary>Readable by JavaScript on purpose (it only holds the antiforgery request token).</summary>

@@ -46,6 +46,9 @@ public sealed class Role
 
     public bool IsSystem { get; private set; }
 
+    /// <summary>Users holding this role must sign in with two-factor authentication (the system role too).</summary>
+    public bool RequiresTwoFactor { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -99,6 +102,22 @@ public sealed class Role
         ReplaceGrants(normalizedPermissions);
         UpdatedAt = now;
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Requires (or stops requiring) two-factor authentication from the role's users. Allowed on the system role,
+    /// whose permissions stay fixed. Returns whether anything changed.
+    /// </summary>
+    public bool RequireTwoFactor(bool required, DateTimeOffset now)
+    {
+        if (RequiresTwoFactor == required)
+        {
+            return false;
+        }
+
+        RequiresTwoFactor = required;
+        UpdatedAt = now;
+        return true;
     }
 
     public Result EnsureDeletable() => IsSystem ? AccessErrors.SystemRoleImmutable : Result.Success();

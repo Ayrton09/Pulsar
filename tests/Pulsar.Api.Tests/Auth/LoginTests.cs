@@ -100,8 +100,9 @@ public sealed class LoginTests(PulsarApiFactory factory) : IClassFixture<PulsarA
         using var response = await client.LoginAsync("plain-user", Password);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var user = await response.Content.ReadFromJsonAsync<CurrentUserResponse>(TestContext.Current.CancellationToken);
-        Assert.Empty(user!.Permissions);
+        var login = await response.Content.ReadFromJsonAsync<LoginResponse>(TestContext.Current.CancellationToken);
+        Assert.False(login!.TwoFactorRequired);
+        Assert.Empty(login.User!.Permissions);
     }
 
     [DatabaseFact]

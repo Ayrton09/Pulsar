@@ -11,6 +11,11 @@ public static class AuditActions
         public const string Setup = "auth.setup";
         public const string PasswordChanged = "auth.password_changed";
         public const string ProfileUpdated = "auth.profile_updated";
+        public const string TwoFactorEnabled = "auth.two_factor_enabled";
+        public const string TwoFactorDisabled = "auth.two_factor_disabled";
+        public const string TwoFactorFailed = "auth.two_factor_failed";
+        public const string RecoveryCodeUsed = "auth.recovery_code_used";
+        public const string RecoveryCodesRenewed = "auth.recovery_codes_renewed";
     }
 
     public static class User
@@ -19,6 +24,7 @@ public static class AuditActions
         public const string Updated = "user.updated";
         public const string Deleted = "user.deleted";
         public const string PasswordReset = "user.password_reset";
+        public const string TwoFactorReset = "user.two_factor_reset";
     }
 
     public static class Node

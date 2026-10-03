@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Pulsar.Api.Auth;
 using Pulsar.Api.Http;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
@@ -165,6 +166,23 @@ public sealed class UserManagement(
         return TypedResults.NoContent();
     }
 
+    /// <summary>
+    /// Turns off a user's two-factor authentication (a lost phone and no recovery codes left): the key and the codes
+    /// are forgotten and the user's sessions end. A role that requires it makes them set it up again at sign-in.
+    /// </summary>
+    public async Task<Results<NoContent, ProblemHttpResult>> ResetTwoFactorAsync(UserId id, CancellationToken ct)
+    {
+        var (user, problem) = await FindManageableAsync(id, ct);
+        if (problem is not null)
+        {
+            return problem;
+        }
+
+        audit.Record(AuditActions.User.TwoFactorReset, metadata: new { userName = user!.UserName }).WithTarget("user", user.Id.ToString());
+        await TwoFactorEndpoints.TurnOffAsync(users, user); // also renews the security stamp and saves the audit entry
+        return TypedResults.NoContent();
+    }
+
     public async Task<Results<NoContent, ProblemHttpResult, ValidationProblem>> DeleteAsync(UserId id, CancellationToken ct)
     {
         var (user, problem) = await FindManageableAsync(id, ct);
@@ -300,6 +318,7 @@ public sealed class UserManagement(
         user.DisplayName,
         user.Email,
         user.IsDisabled,
+        user.TwoFactorEnabled,
         user.CreatedAt,
         user.LastLoginAt,
         [.. roles.Where(r => r.UserId == user.Id).Select(r => r.Role)]);

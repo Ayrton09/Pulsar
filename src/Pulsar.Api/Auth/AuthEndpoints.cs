@@ -26,10 +26,11 @@ public static class AuthEndpoints
         group.MapGet("/session", GetSessionAsync).AllowAnonymous();
         group.MapPost("/setup", SetupAsync).AllowAnonymous().RequireRateLimiting(RateLimitPolicy);
         group.MapPost("/login", LoginAsync).AllowAnonymous().RequireRateLimiting(RateLimitPolicy);
-        group.MapPost("/logout", LogoutAsync).RequireSignedInUser();
-        group.MapGet("/me", GetMeAsync).RequireSignedInUser();
+        group.MapPost("/logout", LogoutAsync).RequireSignedInUser().AllowWithoutTwoFactor();
+        group.MapGet("/me", GetMeAsync).RequireSignedInUser().AllowWithoutTwoFactor();
         group.MapPut("/profile", UpdateProfileAsync).RequireSignedInUser();
         group.MapPost("/password", ChangePasswordAsync).RequireSignedInUser().RequireRateLimiting(RateLimitPolicy);
+        group.MapTwoFactorEndpoints();
         return group;
     }
 
@@ -165,7 +166,7 @@ public static class AuthEndpoints
         }
     }
 
-    private static async Task<Results<Ok<CurrentUserResponse>, ProblemHttpResult>> LoginAsync(
+    private static async Task<Results<Ok<LoginResponse>, ProblemHttpResult>> LoginAsync(
         LoginRequest request,
         HttpContext http,
         PulsarDbContext db,
@@ -184,6 +185,12 @@ public static class AuthEndpoints
         }
 
         var result = await signIn.PasswordSignInAsync(user, request.Password, isPersistent: false, lockoutOnFailure: true);
+        if (result.RequiresTwoFactor)
+        {
+            // The password was right; the sign-in (and its audit entry) waits for the second factor.
+            return TypedResults.Ok(new LoginResponse(TwoFactorRequired: true, User: null));
+        }
+
         if (!result.Succeeded)
         {
             // Locked-out, disabled and wrong-password attempts get the same answer, so the response says nothing about the account.
@@ -197,7 +204,7 @@ public static class AuthEndpoints
 
         http.User = await signIn.CreateUserPrincipalAsync(user);
         AntiforgeryProtection.IssueToken(http);
-        return TypedResults.Ok(await DescribeAsync(user, evaluator, ct));
+        return TypedResults.Ok(new LoginResponse(TwoFactorRequired: false, await DescribeAsync(user, evaluator, ct)));
 
         async Task<ProblemHttpResult> FailAsync(PulsarUser? known, string reason)
         {
@@ -232,11 +239,11 @@ public static class AuthEndpoints
         return user is null ? TypedResults.Unauthorized() : TypedResults.Ok(await DescribeAsync(user, evaluator, ct));
     }
 
-    private static async Task<CurrentUserResponse> DescribeAsync(PulsarUser user, IPermissionEvaluator evaluator, CancellationToken ct)
+    internal static async Task<CurrentUserResponse> DescribeAsync(PulsarUser user, IPermissionEvaluator evaluator, CancellationToken ct)
     {
         var permissions = await evaluator.GetAsync(user.Id, ct);
         return new CurrentUserResponse(user.Id.Value, user.UserName!, user.DisplayName, user.Email,
-            [.. permissions.Global.Order(StringComparer.Ordinal)]);
+            [.. permissions.Global.Order(StringComparer.Ordinal)], user.TwoFactorEnabled, permissions.RequiresTwoFactor && !user.TwoFactorEnabled);
     }
 
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];

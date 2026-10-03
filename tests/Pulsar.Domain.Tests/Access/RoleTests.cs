@@ -100,4 +100,21 @@ public sealed class RoleTests
         Assert.Equal([Permissions.Server.View], role.Permissions);
         Assert.Equal(s_now, role.UpdatedAt);
     }
+
+    [Fact]
+    public void AnyRoleCanRequireTwoFactorAuthenticationAndItReachesItsUsers()
+    {
+        var admin = Role.CreateAdministrator(s_now);
+        var viewer = Role.Create("Viewer", null, PermissionScope.Global, [Permissions.Server.View], s_now).Value;
+        var later = s_now.AddHours(1);
+
+        Assert.True(admin.RequireTwoFactor(true, later));
+        Assert.False(admin.RequireTwoFactor(true, later.AddHours(1)));
+        Assert.True(admin.RequiresTwoFactor);
+        Assert.Equal(later, admin.UpdatedAt);
+
+        Assert.False(new EffectivePermissions.Builder().Add(viewer, AccessTarget.Global).Build().RequiresTwoFactor);
+        Assert.True(new EffectivePermissions.Builder().Add(viewer, AccessTarget.Global).Add(admin, AccessTarget.Global).Build().RequiresTwoFactor);
+        Assert.False(EffectivePermissions.None.RequiresTwoFactor);
+    }
 }

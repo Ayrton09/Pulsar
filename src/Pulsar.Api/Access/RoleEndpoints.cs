@@ -21,6 +21,8 @@ public sealed record UpdateRoleRequest(
     [property: StringLength(Role.MaxDescriptionLength)] string? Description,
     [property: Required] IReadOnlyList<string> Permissions);
 
+public sealed record SetRoleTwoFactorRequest(bool Required);
+
 public static class RoleEndpoints
 {
     public static RouteGroupBuilder MapRoleEndpoints(this RouteGroupBuilder api)
@@ -35,6 +37,7 @@ public static class RoleEndpoints
             .RequirePermission(Permissions.Role.Manage, Permissions.User.Manage, Permissions.User.View);
         roles.MapPost("/", CreateAsync).RequirePermission(Permissions.Role.Manage);
         roles.MapPut("/{id:guid}", UpdateAsync).RequirePermission(Permissions.Role.Manage);
+        roles.MapPut("/{id:guid}/two-factor", RequireTwoFactorAsync).RequirePermission(Permissions.Role.Manage);
         roles.MapDelete("/{id:guid}", DeleteAsync).RequirePermission(Permissions.Role.Manage);
         return api;
     }
@@ -65,6 +68,10 @@ public static class RoleEndpoints
     private static async Task<Results<Ok<RoleSummary>, ProblemHttpResult>> UpdateAsync(
         Guid id, UpdateRoleRequest request, RoleManagement roles, CancellationToken ct) =>
         (await roles.UpdateAsync(new RoleId(id), request.Name, request.Description, request.Permissions, ct)).ToHttp();
+
+    private static async Task<Results<Ok<RoleSummary>, ProblemHttpResult>> RequireTwoFactorAsync(
+        Guid id, SetRoleTwoFactorRequest request, RoleManagement roles, CancellationToken ct) =>
+        (await roles.RequireTwoFactorAsync(new RoleId(id), request.Required, ct)).ToHttp();
 
     private static async Task<Results<NoContent, ProblemHttpResult>> DeleteAsync(Guid id, RoleManagement roles, CancellationToken ct) =>
         (await roles.DeleteAsync(new RoleId(id), ct)).ToHttp();

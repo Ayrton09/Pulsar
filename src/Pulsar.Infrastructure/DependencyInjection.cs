@@ -67,10 +67,14 @@ public static class DependencyInjection
 
                 options.User.RequireUniqueEmail = false;
                 options.SignIn.RequireConfirmedAccount = false;
+                options.Tokens.AuthenticatorTokenProvider = PulsarAuthenticatorTokenProvider.ProviderName;
             })
-            .AddEntityFrameworkStores<PulsarDbContext>()
+            .AddUserStore<PulsarUserStore>()
             .AddSignInManager<PulsarSignInManager>()
-            .AddDefaultTokenProviders();
+            .AddClaimsPrincipalFactory<PulsarClaimsPrincipalFactory>()
+            // Password resets by administrators (Default) and authenticator apps; no email or SMS codes.
+            .AddTokenProvider<DataProtectorTokenProvider<PulsarUser>>(TokenOptions.DefaultProvider)
+            .AddTokenProvider<PulsarAuthenticatorTokenProvider>(PulsarAuthenticatorTokenProvider.ProviderName);
 
         return services;
     }

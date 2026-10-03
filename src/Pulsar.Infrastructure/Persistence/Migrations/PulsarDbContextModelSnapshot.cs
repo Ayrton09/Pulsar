@@ -135,6 +135,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("normalized_name");
 
+                    b.Property<bool>("RequiresTwoFactor")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requires_two_factor");
+
                     b.Property<string>("Scope")
                         .IsRequired()
                         .HasColumnType("text")

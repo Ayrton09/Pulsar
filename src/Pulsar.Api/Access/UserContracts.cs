@@ -11,6 +11,7 @@ public sealed record UserResponse(
     string? DisplayName,
     string? Email,
     bool IsDisabled,
+    bool TwoFactorEnabled,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastLoginAt,
     IReadOnlyList<RoleReference> Roles);

@@ -50,16 +50,23 @@ public sealed class EffectivePermissions
     private readonly FrozenDictionary<ServerId, FrozenSet<string>> _servers;
 
     private EffectivePermissions(
-        FrozenSet<string> global, FrozenDictionary<NodeId, FrozenSet<string>> nodes, FrozenDictionary<ServerId, FrozenSet<string>> servers)
+        FrozenSet<string> global,
+        FrozenDictionary<NodeId, FrozenSet<string>> nodes,
+        FrozenDictionary<ServerId, FrozenSet<string>> servers,
+        bool requiresTwoFactor)
     {
         _global = global;
         _nodes = nodes;
         _servers = servers;
+        RequiresTwoFactor = requiresTwoFactor;
     }
 
     public static EffectivePermissions None { get; } = new Builder().Build();
 
     public IReadOnlySet<string> Global => _global;
+
+    /// <summary>One of the user's roles requires two-factor authentication.</summary>
+    public bool RequiresTwoFactor { get; }
 
     public bool IsEmpty => _global.Count == 0 && _nodes.Count == 0 && _servers.Count == 0;
 
@@ -85,6 +92,7 @@ public sealed class EffectivePermissions
         private readonly HashSet<string> _global = new(StringComparer.Ordinal);
         private readonly Dictionary<NodeId, HashSet<string>> _nodes = [];
         private readonly Dictionary<ServerId, HashSet<string>> _servers = [];
+        private bool _requiresTwoFactor;
 
         /// <summary>Adds a role granted at <paramref name="target"/>. The role must be of the target's scope.</summary>
         public Builder Add(Role role, AccessTarget target)
@@ -104,13 +112,15 @@ public sealed class EffectivePermissions
                 _ => throw new ArgumentOutOfRangeException(nameof(target)),
             };
             set.UnionWith(role.Permissions);
+            _requiresTwoFactor |= role.RequiresTwoFactor;
             return this;
         }
 
         public EffectivePermissions Build() => new(
             _global.ToFrozenSet(StringComparer.Ordinal),
             _nodes.ToFrozenDictionary(p => p.Key, p => p.Value.ToFrozenSet(StringComparer.Ordinal)),
-            _servers.ToFrozenDictionary(p => p.Key, p => p.Value.ToFrozenSet(StringComparer.Ordinal)));
+            _servers.ToFrozenDictionary(p => p.Key, p => p.Value.ToFrozenSet(StringComparer.Ordinal)),
+            _requiresTwoFactor);
 
         private static HashSet<string> GetOrAdd<TKey>(Dictionary<TKey, HashSet<string>> map, TKey key)
             where TKey : notnull

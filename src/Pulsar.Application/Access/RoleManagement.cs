@@ -13,6 +13,7 @@ public sealed record RoleSummary(
     string? Description,
     PermissionScope Scope,
     bool IsSystem,
+    bool RequiresTwoFactor,
     IReadOnlyList<string> Permissions,
     int AssignedUsers,
     DateTimeOffset CreatedAt,
@@ -123,6 +124,36 @@ public sealed class RoleManagement(
         return Summarize(role, count);
     }
 
+    /// <summary>
+    /// Requires two-factor authentication from the role's users, or stops requiring it. Only someone who may define
+    /// the role (holds all its permissions) may change it; the system role included.
+    /// </summary>
+    public async Task<Result<RoleSummary>> RequireTwoFactorAsync(RoleId id, bool required, CancellationToken cancellationToken)
+    {
+        var role = await db.Roles.SingleOrDefaultAsync(r => r.Id == id, cancellationToken);
+        if (role is null)
+        {
+            return AccessErrors.RoleNotFound;
+        }
+
+        var allowed = AccessRules.CanDefineRole(await ActorPermissionsAsync(cancellationToken), role.Permissions);
+        if (!allowed.IsSuccess)
+        {
+            return allowed.Error!;
+        }
+
+        if (role.RequireTwoFactor(required, clock.GetUtcNow()))
+        {
+            audit.Record(AuditActions.Role.Updated, metadata: new { name = role.Name, requiresTwoFactor = required })
+                .WithTarget("role", role.Id.ToString());
+            await db.SaveChangesAsync(cancellationToken);
+            evaluator.InvalidateAll();
+        }
+
+        var count = await db.UserRoles.CountAsync(a => a.RoleId == id, cancellationToken);
+        return Summarize(role, count);
+    }
+
     public async Task<Result> DeleteAsync(RoleId id, CancellationToken cancellationToken)
     {
         var role = await db.Roles.SingleOrDefaultAsync(r => r.Id == id, cancellationToken);
@@ -168,7 +199,8 @@ public sealed class RoleManagement(
             .ToDictionaryAsync(x => x.RoleId, x => x.Count, cancellationToken);
 
     private static RoleSummary Summarize(Role role, int assignedUsers) => new(
-        role.Id.Value, role.Name, role.Description, role.Scope, role.IsSystem, Sorted(role.Permissions), assignedUsers, role.CreatedAt, role.UpdatedAt);
+        role.Id.Value, role.Name, role.Description, role.Scope, role.IsSystem, role.RequiresTwoFactor, Sorted(role.Permissions), assignedUsers,
+        role.CreatedAt, role.UpdatedAt);
 
     private static string[] Sorted(IEnumerable<string> permissions) => [.. permissions.Order(StringComparer.Ordinal)];
 }
