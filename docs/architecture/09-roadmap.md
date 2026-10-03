@@ -66,10 +66,10 @@
 
 ## Phase 6 — File manager
 
-- Agent file operations with the four layers of defense; transfers through tickets.
-- UI: file browser, text editor, upload/download.
+- Agent file operations with the four layers of defense; transfers through tickets. *Done (docs 03, 06 and 08): one set of path rules on both sides; handle-based operations as the server's account on Windows; small operations answered in the command's ack (additive `CommandAck.Result`), content piped between the browser's request and the agent's with single-use tickets, atomic writes, versions for the editor, audited changes and downloads.*
+- UI: file browser, text editor, upload/download. *Done (doc 07): CodeMirror, loaded on demand, with Source configuration highlighting; saves against the version opened.*
 
-**Done when:** the path traversal suite (lexical + real junctions/symlinks/hard links) is green and editing `server.cfg` works.
+**Done when:** the path traversal suite (lexical + real junctions/symlinks/hard links) is green and editing `server.cfg` works. *Met: the suite is green locally and as SYSTEM in CI (where it also runs as a server's account: another server's file stays unreadable through a planted hard link, and deleting that link is refused). On a developer machine, through the real UI in Spanish with a development agent and a CS2 server: `game/csgo/cfg/server.cfg` opened in the editor, two lines added and saved with Ctrl+S (the bytes on disk as typed, no temporary file left); the server started and the agent's patch of `hostname` kept the added lines; the editor, with an unsaved change, refused to overwrite that newer version and offered to reload; `hostname` edited while the game ran, then `exec server.cfg` over RCON, and `status` answered the new name. An 841 MB map downloaded and uploaded back through the panel with identical SHA-256 (2.3 s and 4.7 s locally); everything audited; no error in the panel or agent logs. The end-to-end suite edits a file in the real editor, uploads, downloads, renames and deletes (CI, Windows). Found on the way: CS2 logs the RCON command but not the answer to a cvar query (`sv_tags`), so with `rcon.logsCommands` the console shows nothing for it (follow-up).*
 
 ## Phase 7 — Backups
 

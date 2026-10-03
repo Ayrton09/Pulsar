@@ -83,6 +83,13 @@ Server and node pages use a layout with a fixed header (name, status, power acti
 - Links: `http/https` only (written URLs and OSC 8 hyperlinks), opened in a new tab without access to the panel (`noopener,noreferrer`).
 - Commands go through `POST /api/v1/servers/{id}/console` (`server.console.write`, antiforgery, audited; commands starting with a sensitive prefix of the game are audited as `prefix ***`).
 
+## Files
+
+- `/servers/:id?tab=files&path=…&file=…` (`server.files.view`; changes need `server.files.edit`): one folder at a time with breadcrumbs, folders first; the folder and the open file are in the address. Links are shown as such and never opened. The listing is not live: it refreshes after changes made in the page, on demand, and after a reconnect.
+- Actions: new folder, new file (opens it in the editor), rename, delete (asked first; a folder with everything in it), upload (several files, one after another, with progress through `XMLHttpRequest`; an existing name asks before replacing), download (a plain link: the panel streams the file). While an operation runs on the server, changes are disabled and a note says why.
+- Editor: CodeMirror 6, loaded only when a file is opened (its own chunk), files up to 1 MiB that are UTF-8 text (others are offered as downloads). Highlighting for Source configuration and KeyValues files (`.cfg`, `.vdf`…), JSON, INI/properties, TOML, YAML, XML, Lua, shell and PowerShell, in the panel's colors. Ctrl+S saves with `If-Match` on the version it opened: when the file changed meanwhile (the agent patches `server.cfg` at every start) it offers Reload or Overwrite. Line endings and a byte order mark are kept as the file had them. The content is read once and only reloaded when the user asks (a cached query would be refreshed by the live channel under the user's edits).
+- API: `GET /api/v1/servers/{id}/files?path=`, `GET …/files/content?path=` (editor, raw bytes, the version as a strong ETag, `no-store`), `GET …/files/download?path=` (attachment), `PUT …/files/content?path=` (raw bytes; `If-Match` / `If-None-Match: *` / neither = replace), `POST …/files/directories`, `POST …/files/move`, `DELETE …/files?path=`. Writes, moves, deletions, new folders and downloads are audited.
+
 ## Client-side security
 
 - Cookie authentication `HttpOnly; Secure; SameSite=Strict`. **No tokens in localStorage.**

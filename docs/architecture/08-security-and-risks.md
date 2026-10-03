@@ -64,6 +64,8 @@ The agent's file manager runs in a SYSTEM process operating on directories **wri
 
 Path traversal tests: an extensive table of malicious inputs (more than 50 Windows-specific cases) + integration tests with real junctions, symlinks and hard links.
 
+*Implemented in Phase 6.* Layer 1 is `ServerFilePath` (Pulsar.Contracts), checked by the panel and again by the agent: forward slashes only, no roots, drives, UNC or device paths, no `..`/`.`/empty segments, no `:`, no reserved device names (with or without an extension, `COM0-9`, `LPT0-9` and their superscript forms included), no trailing dots or spaces, no leading spaces, no control characters, wildcards or broken UTF-16, segments up to 255 characters, paths up to 1,024 (`ServerFilePathTests`: 79 refused inputs and 33 plain ones). Layers 2–4 are described in doc 06 ("File manager"); the inline limit is 1 MiB, uploads are limited by `Files:MaxUploadBytes` (1 GiB by default), writes are atomic and changes and downloads are audited. `WindowsServerFileManagerTests` plant real junctions (at the top and deeper in a path, to the outside and inside), symbolic links to files and folders, and hard links to a file outside, and check that nothing outside is ever read, written, renamed or deleted; as SYSTEM in CI, the same checks run as a server's account, where another server's file stays unreadable even through a hard link. A shared contract (`ServerFileManagerContract`) runs the same behavior tests on the Windows implementation and on the portable one the in-process tests use.
+
 ### Backups and restore
 
 - Creation: does not follow reparse points (otherwise a junction to `C:\Users` would exfiltrate data into the archive); reads impersonating the server account.

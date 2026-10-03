@@ -172,6 +172,13 @@ The panel cannot connect to the agent (no inbound port), so:
 
 Size limits are configurable; the agent writes to a temporary file inside the server directory and renames it when done (atomic).
 
+**Implementation (Phase 6).**
+
+- *What travels where:* listings, new folders, renames and deletions are signed commands that answer in their ack (`CommandAck.Result`, an additive field: `FileListResult`, `FileEntryResult`). File content never goes through the hub: editor reads and saves, uploads and downloads are all transfers. A listing is cut where its message could outgrow the hub's limit (2,000 entries at most, `Truncated`).
+- *Commands:* `server.files_list`, `server.files_create_directory`, `server.files_move` (never replaces), `server.files_delete` (a folder with everything in it; links removed, never followed), `server.files_send` (the agent checks it can read the file, answers its size and version, then `PUT`s it) and `server.files_receive` (the agent checks the target and creates the temporary file, acks, `GET`s exactly the announced size and reports with `IAgentHub.TransferCompleted`). Changes are refused with `Busy` while an operation (provision, install, update, delete) runs on the server; reading is not.
+- *Tickets* (`TransferTicket`): 256 random bits, at `/agent/v1/transfers/{ticket}` with the agent's session token. A ticket works once and only for the node it was issued to: one presented by another node is burnt; one nobody claims within 60 s expires. The panel's `FileTransfers` holds the browser's request until the agent's request arrives, then copies one into the other as data arrives: nothing is staged on the panel's disk or held in memory (moving an 841 MB map each way, the panel peaked at 235 MB of working set and the agent at 160 MB). A transfer whose other end sends or takes nothing for two minutes is abandoned by the agent.
+- *Writes* go to `.pulsar-upload-<random>.tmp` next to the target, with the space reserved up front (a full disk fails before the transfer), then replace the target in one rename. A short transfer, a target changed meanwhile or any failure removes the temporary file and leaves the target as it was. Versions (`FileVersion`: size and last write time) let the editor save only over what it opened (`files.changed`).
+
 ### Protocol versioning
 
 - Major version in the path (`/agent/v1/…`) and in `ProtocolVersion`.
