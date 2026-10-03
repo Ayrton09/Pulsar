@@ -5,6 +5,7 @@ import { serverDisplayState, type ServerDisplayState } from './serverStatus';
 
 const tones: Record<ServerDisplayState, 'neutral' | 'accent' | 'success' | 'danger'> = {
   installing: 'accent',
+  restoring: 'accent',
   deleting: 'accent',
   installFailed: 'danger',
   notInstalled: 'neutral',

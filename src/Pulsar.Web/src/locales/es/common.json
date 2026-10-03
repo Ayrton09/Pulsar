@@ -282,7 +282,14 @@
         "file_downloaded": "Descargó un archivo",
         "file_moved": "Movió o renombró un archivo",
         "file_deleted": "Eliminó un archivo",
-        "directory_created": "Creó una carpeta"
+        "directory_created": "Creó una carpeta",
+        "backup_requested": "Pidió un backup",
+        "backup_restore_requested": "Pidió restaurar un backup",
+        "backup_deleted": "Eliminó un backup",
+        "backup_downloaded": "Descargó un backup",
+        "backup_locked": "Bloqueó un backup",
+        "backup_unlocked": "Desbloqueó un backup",
+        "backup_limit_changed": "Cambió cuántos backups guardar"
       },
       "template": {
         "imported": "Importó una plantilla de juego"
@@ -381,7 +388,8 @@
     },
     "operation": {
       "not_found": "Esa operación no existe.",
-      "not_cancellable": "Solo se pueden cancelar instalaciones y actualizaciones en curso."
+      "not_cancellable": "Solo se pueden cancelar instalaciones, actualizaciones y backups en curso.",
+      "forbidden": "No podés cancelar este tipo de operación en este servidor."
     },
     "files": {
       "invalid_path": "La ruta no es válida: {{detail}}",
@@ -401,6 +409,16 @@
       "unsupported": "El agente del nodo no tiene gestor de archivos. Actualizá el agente.",
       "length_required": "La subida no indicó su tamaño.",
       "invalid_version": "La versión del archivo no es válida. Recargá el archivo."
+    },
+    "backups": {
+      "not_found": "Ese backup no existe.",
+      "name_invalid": "El nombre de un backup es una línea de hasta 128 caracteres.",
+      "limit_invalid": "Guardá entre 1 y 1000 backups, o dejalo vacío para guardarlos todos.",
+      "not_completed": "El backup no está completo.",
+      "locked": "El backup está bloqueado: desbloquealo antes de eliminarlo.",
+      "unsupported": "El agente del nodo no puede hacer backups. Actualizá el agente.",
+      "in_use": "El backup se está descargando o restaurando. Probá de nuevo cuando termine.",
+      "corrupt": "El backup no se puede restaurar: {{detail}}"
     },
     "http": {
       "network": "No se pudo contactar al panel. Revisá tu conexión."
@@ -546,6 +564,7 @@
     "lastKnown": "Último estado: {{state}}",
     "states": {
       "installing": "Instalando",
+      "restoring": "Restaurando",
       "deleting": "Eliminando",
       "installFailed": "Falló la instalación",
       "notInstalled": "Sin instalar",
@@ -585,7 +604,9 @@
         "serverProvision": "Preparar en el nodo",
         "serverInstall": "Instalar",
         "serverDelete": "Eliminar",
-        "serverUpdate": "Actualizar"
+        "serverUpdate": "Actualizar",
+        "backupCreate": "Backup",
+        "backupRestore": "Restauración"
       },
       "statuses": {
         "queued": "En cola",
@@ -598,10 +619,10 @@
       "cancelling": "Cancelando…"
     },
     "administration": "Administración",
-    "administrationHint": "Reinstalar vuelve a preparar la carpeta y la cuenta del servidor y corre su instalación. Eliminar borra sus archivos y su cuenta de Windows del nodo.",
+    "administrationHint": "Reinstalar vuelve a preparar la carpeta y la cuenta del servidor y corre su instalación. Eliminar borra sus archivos, sus backups y su cuenta de Windows del nodo.",
     "reinstall": "Reinstalar",
     "reinstallConfirm": "¿Reinstalar {{name}}? Se vuelven a instalar los archivos del juego.",
-    "deleteConfirm": "¿Eliminar {{name}}? Se borran sus archivos y su cuenta de Windows del nodo. No se puede deshacer.",
+    "deleteConfirm": "¿Eliminar {{name}}? Se borran sus archivos, sus backups y su cuenta de Windows del nodo. No se puede deshacer.",
     "updateGame": "Actualizar juego",
     "validateFiles": "Verificar también cada archivo instalado (lento; repara una instalación dañada)",
     "tabs": {
@@ -610,7 +631,8 @@
       "console": "Consola",
       "settings": "Configuración",
       "network": "Red",
-      "files": "Archivos"
+      "files": "Archivos",
+      "backups": "Backups"
     },
     "wizard": {
       "steps": "Pasos",
@@ -643,7 +665,11 @@
       "verifying": "verificando",
       "committing": "terminando",
       "installing": "instalando",
-      "retrying": "reintentando después de un error"
+      "retrying": "reintentando después de un error",
+      "scanning": "buscando los archivos",
+      "archiving": "comprimiendo",
+      "checking": "verificando el archivo",
+      "restoring": "restaurando archivos"
     },
     "settings": {
       "title": "Configuración",
@@ -799,5 +825,57 @@
       "binary": "Este archivo no es de texto: descargalo."
     },
     "refresh": "Actualizar"
+  },
+  "backups": {
+    "title": "Backups",
+    "hint": "Los backups son archivos zip que se guardan en el nodo del servidor. Tienen los archivos que elige la plantilla del juego (su configuración, sus complementos), no lo que se puede volver a descargar.",
+    "create": "Crear backup",
+    "createTitle": "Crear un backup",
+    "name": "Nombre",
+    "nameHint": "Opcional. Sin nombre, el backup lleva la hora en que se hizo.",
+    "nameTooLong": "Como máximo {{max}} caracteres.",
+    "runningWarning": "El servidor está en marcha: los archivos que escriba durante el backup pueden quedar guardados a medias. Detenelo antes para una copia coherente.",
+    "empty": "Todavía no hay backups.",
+    "created": "Creado",
+    "size": "Tamaño",
+    "status": "Estado",
+    "actions": "Acciones",
+    "statuses": {
+      "creating": "Creando",
+      "completed": "Listo",
+      "failed": "Falló",
+      "cancelled": "Cancelado"
+    },
+    "via": {
+      "schedule": "programado",
+      "system": "automático"
+    },
+    "facts_one": "{{count}} archivo · {{seconds}} s",
+    "facts_other": "{{count}} archivos · {{seconds}} s",
+    "skipped_one": "{{count}} archivo quedó afuera (en uso)",
+    "skipped_other": "{{count}} archivos quedaron afuera (en uso)",
+    "locked": "Bloqueado",
+    "download": "Descargar",
+    "downloadNamed": "Descargar {{name}}",
+    "restore": "Restaurar",
+    "restoreNamed": "Restaurar {{name}}",
+    "restoreConfirm": "¿Restaurar {{name}} en {{server}}? Los archivos del backup reemplazan a los actuales del servidor; los que el backup no tiene quedan como están.",
+    "stopToRestore": "Detené el servidor para restaurar un backup.",
+    "lock": "Bloquear",
+    "unlock": "Desbloquear",
+    "lockNamed": "Bloquear {{name}}",
+    "unlockNamed": "Desbloquear {{name}}",
+    "deleteNamed": "Eliminar {{name}}",
+    "deleteConfirm": "¿Eliminar el backup {{name}}? Su archivo se borra del nodo. No se puede deshacer.",
+    "retention": {
+      "title": "Retención",
+      "hint": "Después de cada backup nuevo, se eliminan los más viejos que pasen de este número. Los bloqueados se guardan siempre y no cuentan.",
+      "keep": "Backups a guardar",
+      "all": "Todos",
+      "invalid": "Un número entero de 1 a {{max}}, o vacío para guardarlos todos.",
+      "confirm_one": "¿Guardar solo el backup más nuevo? Los anteriores sin bloquear se eliminan ahora.",
+      "confirm_other": "¿Guardar solo los {{count}} backups más nuevos? Los anteriores sin bloquear se eliminan ahora.",
+      "saved": "Guardado."
+    }
   }
 }

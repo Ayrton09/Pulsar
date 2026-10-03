@@ -74,8 +74,9 @@ export function FilesTab({ details }: { details: ServerDetails }) {
       serverId={server.id}
       path={path}
       canEdit={canEdit}
-      // Every operation (provision, install, update, delete) rewrites files: the node refuses changes meanwhile.
-      busy={server.activeOperation !== null}
+      // Operations that rewrite files (provision, install, update, restore, delete): the node refuses changes meanwhile.
+      // A backup only reads them.
+      busy={server.activeOperation !== null && server.activeOperation.type !== 'backupCreate'}
       onOpenFolder={(folder) => go({ path: folder })}
       onOpenFile={(target) => go({ file: target })}
     />

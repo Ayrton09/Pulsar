@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -191,13 +191,43 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   await expect(files.getByText('welcome.txt')).toHaveCount(0);
   await expect(files.getByRole('button', { name: 'server.cfg', exact: true })).toBeVisible();
   await page.screenshot({ path: 'test-results/screens/server-files.png', fullPage: true });
-  await page.getByRole('tab', { name: 'Overview' }).click();
 
-  // Delete: its folder goes with it.
+  // Phase 7: a backup made on the node (the list updates live when it completes), downloaded, then restored over a
+  // changed file.
+  await page.getByRole('tab', { name: 'Backups' }).click();
+  await page.getByRole('button', { name: 'Create backup' }).click();
+  const createBackup = page.getByRole('dialog', { name: 'Create a backup' });
+  await createBackup.getByLabel('Name').fill('Before the edit');
+  await createBackup.getByRole('button', { name: 'Create backup' }).click();
+  const backups = page.getByRole('table', { name: 'Backups' });
+  const backupRow = backups.getByRole('row', { name: /Before the edit/ });
+  await expect(backupRow).toContainText('Ready', { timeout: 30_000 });
+  await expect(backupRow).toContainText(/\d+ files · \d+ s/);
+  const savingBackup = page.waitForEvent('download');
+  await backups.getByRole('link', { name: 'Download Before the edit' }).click();
+  const backupFile = await savingBackup;
+  expect(backupFile.suggestedFilename()).toMatch(/^E2E server .+-\d{8}-\d{6}\.zip$/);
+  expect(
+    readFileSync(await backupFile.path())
+      .subarray(0, 2)
+      .toString(),
+  ).toBe('PK');
+  writeFileSync(join(serverDir, 'cfg', 'server.cfg'), 'hostname "changed after the backup"');
+  await backups.getByRole('button', { name: 'Restore Before the edit' }).click();
+  await expect
+    .poll(() => readFileSync(join(serverDir, 'cfg', 'server.cfg'), 'utf8'), { timeout: 30_000 })
+    .toBe('hostname "E2E" // edited in the browser');
+  await page.screenshot({ path: 'test-results/screens/server-backups.png', fullPage: true });
+  await page.getByRole('tab', { name: 'Overview' }).click();
+  await expect(operations.getByRole('row', { name: /Restore/ })).toContainText('Done');
+  await expect(operations.getByRole('row', { name: /Backup/ })).toContainText('Done');
+
+  // Delete: its folder and its backups go with it.
   await page.getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByRole('heading', { name: 'Servers' })).toBeVisible();
   await expect(page.getByRole('link', { name: serverName })).toHaveCount(0, { timeout: 30_000 });
   await expect.poll(() => agentOutput, { timeout: 15_000 }).toContain('deleted from this node');
+  expect(readdirSync(join(dataDir, 'backups'))).toEqual([]);
 
   expect(testGameProcesses()).toBe(0);
   expect(agentOutput).not.toMatch(/\] (ERR|FTL)/);

@@ -2,6 +2,7 @@ import type { ServerSummary } from './api';
 
 export type ServerDisplayState =
   | 'installing'
+  | 'restoring'
   | 'deleting'
   | 'installFailed'
   | 'notInstalled'
@@ -24,6 +25,8 @@ export function serverDisplayState(server: StatusFields): ServerDisplayState {
     case 'serverProvision':
     case 'serverInstall':
       return 'installing';
+    case 'backupRestore':
+      return 'restoring';
   }
 
   if (server.installState === 'failed') {
@@ -56,13 +59,15 @@ export interface ServerActions {
 /** Which actions make sense now (permissions are checked separately; the API decides in the end). */
 export function serverActions(server: StatusFields & Pick<ServerSummary, 'nodeConnected'>): ServerActions {
   const idle = server.activeOperation === null;
+  // A backup reads the files while the game runs: starting and restarting stay possible (docs/architecture/05).
+  const free = idle || server.activeOperation?.type === 'backupCreate';
   const connected = server.nodeConnected;
   const stopped = server.runtimeState === 'offline' || server.runtimeState === 'crashed';
   const alive = server.runtimeState === 'starting' || server.runtimeState === 'running';
   return {
-    start: connected && idle && server.installState === 'installed' && stopped,
+    start: connected && free && server.installState === 'installed' && stopped,
     stop: connected && alive,
-    restart: connected && idle && server.installState === 'installed' && alive,
+    restart: connected && free && server.installState === 'installed' && alive,
     kill: connected && (alive || server.runtimeState === 'stopping'),
     reinstall: connected && idle && stopped,
     delete: connected && idle,

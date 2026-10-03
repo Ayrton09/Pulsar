@@ -282,7 +282,14 @@
         "file_downloaded": "Downloaded a file",
         "file_moved": "Moved or renamed a file",
         "file_deleted": "Deleted a file",
-        "directory_created": "Created a folder"
+        "directory_created": "Created a folder",
+        "backup_requested": "Asked for a backup",
+        "backup_restore_requested": "Asked to restore a backup",
+        "backup_deleted": "Deleted a backup",
+        "backup_downloaded": "Downloaded a backup",
+        "backup_locked": "Locked a backup",
+        "backup_unlocked": "Unlocked a backup",
+        "backup_limit_changed": "Changed how many backups to keep"
       },
       "template": {
         "imported": "Imported a game template"
@@ -381,7 +388,8 @@
     },
     "operation": {
       "not_found": "That operation does not exist.",
-      "not_cancellable": "Only running installs and updates can be cancelled."
+      "not_cancellable": "Only running installs, updates and backups can be cancelled.",
+      "forbidden": "You may not cancel this kind of operation on this server."
     },
     "files": {
       "invalid_path": "That path is not valid: {{detail}}",
@@ -401,6 +409,16 @@
       "unsupported": "The node's agent has no file manager. Update the agent.",
       "length_required": "The upload did not say its size.",
       "invalid_version": "The file version is not valid. Reload the file."
+    },
+    "backups": {
+      "not_found": "That backup does not exist.",
+      "name_invalid": "A backup name is one line of up to 128 characters.",
+      "limit_invalid": "Keep between 1 and 1000 backups, or leave it empty to keep them all.",
+      "not_completed": "The backup is not complete.",
+      "locked": "The backup is locked: unlock it before deleting it.",
+      "unsupported": "The node's agent cannot make backups. Update the agent.",
+      "in_use": "The backup is being downloaded or restored. Try again when that ends.",
+      "corrupt": "The backup cannot be restored: {{detail}}"
     },
     "http": {
       "network": "Could not reach the panel. Check your connection."
@@ -546,6 +564,7 @@
     "lastKnown": "Last known: {{state}}",
     "states": {
       "installing": "Installing",
+      "restoring": "Restoring",
       "deleting": "Deleting",
       "installFailed": "Install failed",
       "notInstalled": "Not installed",
@@ -585,7 +604,9 @@
         "serverProvision": "Prepare on the node",
         "serverInstall": "Install",
         "serverDelete": "Delete",
-        "serverUpdate": "Update"
+        "serverUpdate": "Update",
+        "backupCreate": "Backup",
+        "backupRestore": "Restore"
       },
       "statuses": {
         "queued": "Queued",
@@ -598,10 +619,10 @@
       "cancelling": "Cancelling…"
     },
     "administration": "Administration",
-    "administrationHint": "Reinstalling prepares the server's folder and account again and runs its install. Deleting removes its files and its Windows account from the node.",
+    "administrationHint": "Reinstalling prepares the server's folder and account again and runs its install. Deleting removes its files, its backups and its Windows account from the node.",
     "reinstall": "Reinstall",
     "reinstallConfirm": "Reinstall {{name}}? Its game files are installed again.",
-    "deleteConfirm": "Delete {{name}}? Its files and its Windows account are removed from the node. This cannot be undone.",
+    "deleteConfirm": "Delete {{name}}? Its files, its backups and its Windows account are removed from the node. This cannot be undone.",
     "updateGame": "Update game",
     "validateFiles": "Also verify every installed file (slow; repairs a damaged install)",
     "tabs": {
@@ -610,7 +631,8 @@
       "console": "Console",
       "settings": "Settings",
       "network": "Network",
-      "files": "Files"
+      "files": "Files",
+      "backups": "Backups"
     },
     "wizard": {
       "steps": "Steps",
@@ -643,7 +665,11 @@
       "verifying": "verifying",
       "committing": "finishing",
       "installing": "installing",
-      "retrying": "retrying after an error"
+      "retrying": "retrying after an error",
+      "scanning": "finding the files",
+      "archiving": "compressing",
+      "checking": "checking the archive",
+      "restoring": "restoring files"
     },
     "settings": {
       "title": "Settings",
@@ -799,5 +825,57 @@
       "binary": "This file is not text: download it instead."
     },
     "refresh": "Refresh"
+  },
+  "backups": {
+    "title": "Backups",
+    "hint": "Backups are zip files kept on the server's node. They hold the files the game's template chooses (its configuration, its add-ons), not what can be downloaded again.",
+    "create": "Create backup",
+    "createTitle": "Create a backup",
+    "name": "Name",
+    "nameHint": "Optional. Without one, the backup is named after the time it was made.",
+    "nameTooLong": "At most {{max}} characters.",
+    "runningWarning": "The server is running: files it writes during the backup may be saved half written. Stop it first for a consistent copy.",
+    "empty": "No backups yet.",
+    "created": "Created",
+    "size": "Size",
+    "status": "Status",
+    "actions": "Actions",
+    "statuses": {
+      "creating": "Creating",
+      "completed": "Ready",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "via": {
+      "schedule": "scheduled",
+      "system": "automatic"
+    },
+    "facts_one": "{{count}} file · {{seconds}} s",
+    "facts_other": "{{count}} files · {{seconds}} s",
+    "skipped_one": "{{count}} file left out (in use)",
+    "skipped_other": "{{count}} files left out (in use)",
+    "locked": "Locked",
+    "download": "Download",
+    "downloadNamed": "Download {{name}}",
+    "restore": "Restore",
+    "restoreNamed": "Restore {{name}}",
+    "restoreConfirm": "Restore {{name}} into {{server}}? The backup's files replace the server's current ones; files the backup does not have stay as they are.",
+    "stopToRestore": "Stop the server to restore a backup.",
+    "lock": "Lock",
+    "unlock": "Unlock",
+    "lockNamed": "Lock {{name}}",
+    "unlockNamed": "Unlock {{name}}",
+    "deleteNamed": "Delete {{name}}",
+    "deleteConfirm": "Delete the backup {{name}}? Its file is removed from the node. This cannot be undone.",
+    "retention": {
+      "title": "Retention",
+      "hint": "After each new backup, the oldest ones beyond this number are deleted. Locked backups are always kept and do not count.",
+      "keep": "Backups to keep",
+      "all": "All",
+      "invalid": "A whole number from 1 to {{max}}, or empty to keep them all.",
+      "confirm_one": "Keep only the newest backup? Older unlocked ones are deleted now.",
+      "confirm_other": "Keep only the {{count}} newest backups? Older unlocked ones are deleted now.",
+      "saved": "Saved."
+    }
   }
 }

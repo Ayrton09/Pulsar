@@ -25,6 +25,9 @@ export function OperationProgress({ serverId, operation }: { serverId: string; o
   const me = useCurrentUser();
   const cancel = useCancelOperation();
   const percent = operation.percent == null ? null : Math.round(operation.percent);
+  // Backups are cancelled by whoever may make them; installs and updates by whoever may install.
+  const cancelPermission =
+    operation.type === 'backupCreate' ? Permission.ServerBackupsCreate : Permission.ServerInstall;
   return (
     <Card className="p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -37,7 +40,7 @@ export function OperationProgress({ serverId, operation }: { serverId: string; o
           )}
           {percent !== null && <span className="ml-2 tabular-nums">{percent}%</span>}
         </p>
-        {operation.cancellable && can(me, Permission.ServerInstall) && (
+        {operation.cancellable && can(me, cancelPermission) && (
           <Button
             variant="secondary"
             disabled={operation.cancelRequested}
