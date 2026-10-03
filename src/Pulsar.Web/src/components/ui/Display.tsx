@@ -52,7 +52,7 @@ export function Alert({ children }: { children: ReactNode }) {
 
 export function Table({ children, label }: { children: ReactNode; label: string }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+    <div className="relative overflow-x-auto rounded-xl border border-border bg-surface">
       <table aria-label={label} className="w-full text-left text-sm">
         {children}
       </table>

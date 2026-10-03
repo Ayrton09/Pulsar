@@ -9,6 +9,7 @@ import { errorMessage } from '../../lib/errors';
 import { useFormatBytes, useFormatDate, useFormatDuration } from '../../lib/format';
 import { can, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
+import { FilesTab } from '../files/FilesTab';
 import { useServerMetrics, useWatchServers } from '../live/hooks';
 import type { ServerMetrics } from '../live/types';
 import {
@@ -26,7 +27,7 @@ import { ConsoleTab } from './ConsoleTab';
 import { NetworkTab, OperationProgress, SettingsTab } from './ServerTabs';
 import { serverActions } from './serverStatus';
 
-const allTabs = ['overview', 'console', 'settings', 'network'] as const;
+const allTabs = ['overview', 'console', 'files', 'settings', 'network'] as const;
 type Tab = (typeof allTabs)[number];
 
 /** One server: its state and live usage, the lifecycle actions, its console and its recent operations. */
@@ -38,7 +39,11 @@ export function ServerPage() {
   useWatchServers();
   const metrics = useServerMetrics(id);
   const [search, setSearch] = useSearchParams();
-  const tabs = allTabs.filter((name) => name !== 'console' || can(me, Permission.ServerConsoleView));
+  const tabs = allTabs.filter(
+    (name) =>
+      (name !== 'console' || can(me, Permission.ServerConsoleView)) &&
+      (name !== 'files' || can(me, Permission.ServerFilesView)),
+  );
   const requested = search.get('tab');
   const tab: Tab = tabs.find((name) => name === requested) ?? 'overview';
 
@@ -110,6 +115,7 @@ export function ServerPage() {
           </>
         )}
         {tab === 'console' && <ConsoleTab details={details.data} />}
+        {tab === 'files' && <FilesTab details={details.data} />}
         {tab === 'settings' && <SettingsTab details={details.data} />}
         {tab === 'network' && <NetworkTab details={details.data} />}
       </div>

@@ -277,7 +277,12 @@
         "settings_changed": "Cambió la configuración de un servidor",
         "ports_changed": "Cambió los puertos de un servidor",
         "operation_cancel_requested": "Pidió cancelar una operación",
-        "console_command": "Ejecutó un comando en la consola"
+        "console_command": "Ejecutó un comando en la consola",
+        "file_written": "Escribió un archivo",
+        "file_downloaded": "Descargó un archivo",
+        "file_moved": "Movió o renombró un archivo",
+        "file_deleted": "Eliminó un archivo",
+        "directory_created": "Creó una carpeta"
       },
       "template": {
         "imported": "Importó una plantilla de juego"
@@ -377,6 +382,28 @@
     "operation": {
       "not_found": "Esa operación no existe.",
       "not_cancellable": "Solo se pueden cancelar instalaciones y actualizaciones en curso."
+    },
+    "files": {
+      "invalid_path": "La ruta no es válida: {{detail}}",
+      "not_found": "Ese archivo o carpeta no existe.",
+      "exists": "Ya existe un archivo o carpeta con ese nombre.",
+      "not_a_directory": "No es una carpeta.",
+      "is_a_directory": "Es una carpeta.",
+      "reparse_point": "Es un enlace (junction o enlace simbólico): Pulsar no sigue enlaces.",
+      "outside_server": "Esa ruta sale de la carpeta del servidor.",
+      "access_denied": "La cuenta del servidor no tiene acceso a ese archivo.",
+      "in_use": "El archivo está en uso (puede que el juego lo tenga abierto). Probá de nuevo con el servidor detenido.",
+      "too_large": "El archivo es demasiado grande.",
+      "changed": "El archivo cambió en el servidor mientras tanto.",
+      "disk_full": "El disco del nodo está lleno.",
+      "transfer_failed": "La transferencia entre el panel y el nodo no terminó. Probá de nuevo.",
+      "failed": "El nodo no pudo hacerlo: {{detail}}",
+      "unsupported": "El agente del nodo no tiene gestor de archivos. Actualizá el agente.",
+      "length_required": "La subida no indicó su tamaño.",
+      "invalid_version": "La versión del archivo no es válida. Recargá el archivo."
+    },
+    "http": {
+      "network": "No se pudo contactar al panel. Revisá tu conexión."
     }
   },
   "account": {
@@ -582,7 +609,8 @@
       "overview": "Resumen",
       "console": "Consola",
       "settings": "Configuración",
-      "network": "Red"
+      "network": "Red",
+      "files": "Archivos"
     },
     "wizard": {
       "steps": "Pasos",
@@ -718,5 +746,58 @@
   },
   "live": {
     "reconnecting": "Actualizaciones en vivo en pausa, reconectando…"
+  },
+  "files": {
+    "title": "Archivos",
+    "location": "Ubicación",
+    "root": "servidor",
+    "name": "Nombre",
+    "size": "Tamaño",
+    "modified": "Modificado",
+    "actions": "Acciones",
+    "empty": "Esta carpeta está vacía.",
+    "truncated": "Se muestran solo las primeras {{count}} entradas.",
+    "link": "enlace",
+    "newFolder": "Nueva carpeta",
+    "newFile": "Nuevo archivo",
+    "upload": "Subir",
+    "download": "Descargar",
+    "downloadNamed": "Descargar {{name}}",
+    "rename": "Renombrar",
+    "renameNamed": "Renombrar {{name}}",
+    "renameTitle": "Renombrar {{name}}",
+    "deleteNamed": "Eliminar {{name}}",
+    "deleteConfirm": "¿Eliminar {{name}}? No se puede deshacer.",
+    "deleteFolderConfirm": "¿Eliminar la carpeta {{name}} y todo su contenido? No se puede deshacer.",
+    "busy": "Una operación está modificando los archivos de este servidor: los cambios quedan bloqueados hasta que termine.",
+    "nameProblems": {
+      "empty": "Escribí un nombre.",
+      "characters": "Los nombres no pueden tener \\ / : * ? \" < > | ni caracteres de control.",
+      "dots": "Los nombres no pueden ser . ni .., empezar con un espacio ni terminar en punto o espacio.",
+      "reserved": "Windows reserva ese nombre (CON, NUL, COM1…).",
+      "length": "Como máximo 255 caracteres."
+    },
+    "uploads": {
+      "label": "Subiendo {{name}}",
+      "progress": "{{percent}} %",
+      "done": "Subido",
+      "exists": "Ya existe un archivo con ese nombre.",
+      "replace": "Reemplazar",
+      "skip": "Omitir"
+    },
+    "editor": {
+      "label": "Contenido de {{name}}",
+      "saved": "Todos los cambios guardados",
+      "unsaved": "Cambios sin guardar",
+      "readOnly": "Solo lectura",
+      "back": "Volver a la carpeta",
+      "discard": "¿Descartar los cambios sin guardar?",
+      "conflict": "El archivo cambió en el servidor desde que lo abriste. Recargalo (perdés tus cambios) o sobrescribilo con los tuyos.",
+      "reload": "Recargar",
+      "overwrite": "Sobrescribir",
+      "tooLarge": "Este archivo pesa más de 1 MB: descargalo.",
+      "binary": "Este archivo no es de texto: descargalo."
+    },
+    "refresh": "Actualizar"
   }
 }

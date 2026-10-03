@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -151,6 +151,47 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   await expect(page.getByText('Killed.', { exact: true }).first()).toBeVisible();
   await expect.poll(testGameProcesses, { timeout: 10_000 }).toBe(0);
   await page.screenshot({ path: 'test-results/screens/server-killed.png', fullPage: true });
+
+  // Phase 6: the file manager. A folder and a file created here, edited in the real editor (CodeMirror) and saved to
+  // the node; an upload, a download, a rename and a deletion.
+  await page.getByRole('tab', { name: 'Files' }).click();
+  const files = page.getByRole('table', { name: 'Files' });
+  await expect(files.getByRole('button', { name: 'bin/' })).toBeVisible();
+  await page.getByRole('button', { name: 'New folder' }).click();
+  await page.getByRole('dialog', { name: 'New folder' }).getByLabel('Name').fill('cfg');
+  await page.getByRole('dialog', { name: 'New folder' }).getByRole('button', { name: 'Create' }).click();
+  await files.getByRole('button', { name: 'cfg/' }).click();
+  await page.getByRole('button', { name: 'New file' }).click();
+  await page.getByRole('dialog', { name: 'New file' }).getByLabel('Name').fill('server.cfg');
+  await page.getByRole('dialog', { name: 'New file' }).getByRole('button', { name: 'Create' }).click();
+  const editor = page.getByRole('textbox', { name: 'Contents of server.cfg' });
+  await editor.click();
+  await page.keyboard.type('hostname "E2E" // edited in the browser');
+  await expect(page.getByText('Unsaved changes')).toBeVisible();
+  await page.keyboard.press('Control+s');
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  await page.screenshot({ path: 'test-results/screens/server-file-editor.png', fullPage: true });
+  const serverDir = join(dataDir, 'servers', readdirSync(join(dataDir, 'servers'))[0] ?? '');
+  expect(readFileSync(join(serverDir, 'cfg', 'server.cfg'), 'utf8')).toBe('hostname "E2E" // edited in the browser');
+  await page.getByRole('button', { name: 'Close' }).click();
+
+  await page
+    .getByLabel('Upload')
+    .setInputFiles({ name: 'motd.txt', mimeType: 'text/plain', buffer: Buffer.from('Welcome') });
+  await expect(page.getByText('Uploaded')).toBeVisible();
+  const downloading = page.waitForEvent('download');
+  await files.getByRole('link', { name: 'Download motd.txt' }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe('motd.txt');
+  expect(readFileSync(await download.path(), 'utf8')).toBe('Welcome');
+  await files.getByRole('button', { name: 'Rename motd.txt' }).click();
+  await page.getByRole('dialog', { name: 'Rename motd.txt' }).getByLabel('Name').fill('welcome.txt');
+  await page.getByRole('dialog', { name: 'Rename motd.txt' }).getByRole('button', { name: 'Rename' }).click();
+  await files.getByRole('button', { name: 'Delete welcome.txt' }).click();
+  await expect(files.getByText('welcome.txt')).toHaveCount(0);
+  await expect(files.getByRole('button', { name: 'server.cfg', exact: true })).toBeVisible();
+  await page.screenshot({ path: 'test-results/screens/server-files.png', fullPage: true });
+  await page.getByRole('tab', { name: 'Overview' }).click();
 
   // Delete: its folder goes with it.
   await page.getByRole('button', { name: 'Delete' }).click();

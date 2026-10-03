@@ -277,7 +277,12 @@
         "settings_changed": "Changed a server's settings",
         "ports_changed": "Changed a server's ports",
         "operation_cancel_requested": "Asked to cancel an operation",
-        "console_command": "Ran a console command"
+        "console_command": "Ran a console command",
+        "file_written": "Wrote a file",
+        "file_downloaded": "Downloaded a file",
+        "file_moved": "Moved or renamed a file",
+        "file_deleted": "Deleted a file",
+        "directory_created": "Created a folder"
       },
       "template": {
         "imported": "Imported a game template"
@@ -377,6 +382,28 @@
     "operation": {
       "not_found": "That operation does not exist.",
       "not_cancellable": "Only running installs and updates can be cancelled."
+    },
+    "files": {
+      "invalid_path": "That path is not valid: {{detail}}",
+      "not_found": "That file or folder does not exist.",
+      "exists": "A file or folder with that name already exists.",
+      "not_a_directory": "That is not a folder.",
+      "is_a_directory": "That is a folder.",
+      "reparse_point": "That is a link (a junction or symbolic link): Pulsar does not follow links.",
+      "outside_server": "That path leads outside the server's folder.",
+      "access_denied": "The server's account cannot access that file.",
+      "in_use": "The file is in use (the game may hold it open). Try again with the server stopped.",
+      "too_large": "The file is too large.",
+      "changed": "The file changed on the server meanwhile.",
+      "disk_full": "The node's disk is full.",
+      "transfer_failed": "The transfer between the panel and the node did not complete. Try again.",
+      "failed": "The node could not do it: {{detail}}",
+      "unsupported": "The node's agent has no file manager. Update the agent.",
+      "length_required": "The upload did not say its size.",
+      "invalid_version": "The file version is not valid. Reload the file."
+    },
+    "http": {
+      "network": "Could not reach the panel. Check your connection."
     }
   },
   "account": {
@@ -582,7 +609,8 @@
       "overview": "Overview",
       "console": "Console",
       "settings": "Settings",
-      "network": "Network"
+      "network": "Network",
+      "files": "Files"
     },
     "wizard": {
       "steps": "Steps",
@@ -718,5 +746,58 @@
   },
   "live": {
     "reconnecting": "Live updates paused, reconnecting…"
+  },
+  "files": {
+    "title": "Files",
+    "location": "Location",
+    "root": "server",
+    "name": "Name",
+    "size": "Size",
+    "modified": "Modified",
+    "actions": "Actions",
+    "empty": "This folder is empty.",
+    "truncated": "Only the first {{count}} entries are shown.",
+    "link": "link",
+    "newFolder": "New folder",
+    "newFile": "New file",
+    "upload": "Upload",
+    "download": "Download",
+    "downloadNamed": "Download {{name}}",
+    "rename": "Rename",
+    "renameNamed": "Rename {{name}}",
+    "renameTitle": "Rename {{name}}",
+    "deleteNamed": "Delete {{name}}",
+    "deleteConfirm": "Delete {{name}}? This cannot be undone.",
+    "deleteFolderConfirm": "Delete the folder {{name}} and everything in it? This cannot be undone.",
+    "busy": "An operation is changing this server's files: changes are blocked until it ends.",
+    "nameProblems": {
+      "empty": "Enter a name.",
+      "characters": "Names cannot contain \\ / : * ? \" < > | or control characters.",
+      "dots": "Names cannot be . or .., start with a space or end with a dot or a space.",
+      "reserved": "Windows reserves that name (CON, NUL, COM1…).",
+      "length": "At most 255 characters."
+    },
+    "uploads": {
+      "label": "Uploading {{name}}",
+      "progress": "{{percent}}%",
+      "done": "Uploaded",
+      "exists": "A file with that name already exists.",
+      "replace": "Replace",
+      "skip": "Skip"
+    },
+    "editor": {
+      "label": "Contents of {{name}}",
+      "saved": "All changes saved",
+      "unsaved": "Unsaved changes",
+      "readOnly": "Read only",
+      "back": "Back to the folder",
+      "discard": "Discard your unsaved changes?",
+      "conflict": "The file changed on the server since you opened it. Reload it (your changes are lost) or overwrite it with yours.",
+      "reload": "Reload",
+      "overwrite": "Overwrite",
+      "tooLarge": "This file is larger than 1 MB: download it instead.",
+      "binary": "This file is not text: download it instead."
+    },
+    "refresh": "Refresh"
   }
 }

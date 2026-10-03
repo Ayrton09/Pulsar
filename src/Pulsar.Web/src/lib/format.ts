@@ -71,3 +71,21 @@ export function useFormatBytes(): (bytes: number) => string {
       bytes < 1024 ** 3 ? megabytes.format(bytes / 1024 ** 2) : gigabytes.format(bytes / 1024 ** 3);
   }, [i18n.language]);
 }
+
+/** File sizes: bytes below a kilobyte, then the largest unit that keeps the number above one ("812 B", "4.2 MB"). */
+export function useFormatFileSize(): (bytes: number) => string {
+  const { i18n } = useTranslation();
+  return useMemo(() => {
+    const number = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 });
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    return (bytes: number) => {
+      let index = 0;
+      let value = bytes;
+      while (value >= 1024 && index < units.length - 1) {
+        value /= 1024;
+        index++;
+      }
+      return `${number.format(index === 0 ? value : Math.round(value * 10) / 10)} ${units[index]}`;
+    };
+  }, [i18n.language]);
+}
