@@ -265,17 +265,27 @@ function Wait-PanelReady($client) {
 
 # --- Database ---------------------------------------------------------------------------------------------------
 
+# The newest PostgreSQL service on this machine (there may be several versions), started if it is not running.
 function Find-PostgresBin {
-    foreach ($service in Get-CimInstance Win32_Service -Filter "Name LIKE 'postgresql%'") {
+    $found = foreach ($service in Get-CimInstance Win32_Service -Filter "Name LIKE 'postgresql%'") {
         if ($service.PathName -match '^"?([^"]+\\bin)\\pg_ctl\.exe') {
-            if ($service.State -ne 'Running') {
-                Write-Step "Starting PostgreSQL ($($service.Name))"
-                Start-Service $service.Name
-            }
-            return $Matches[1]
+            $bin = $Matches[1]
+            $version = (Invoke-Native (Join-Path $bin 'psql.exe') --version).Output
+            if ($version -match '(\d+)\.\d+') { [pscustomobject]@{ Service = $service; Bin = $bin; Major = [int]$Matches[1] } }
         }
     }
-    throw 'No local PostgreSQL service was found. Install PostgreSQL (docs/guides/install.md, "PostgreSQL") or pass -ConnectionString.'
+    $newest = $found | Sort-Object Major -Descending | Select-Object -First 1
+    if (-not $newest) {
+        throw 'No local PostgreSQL service was found. Install PostgreSQL (docs/guides/install.md, step 1) or pass -ConnectionString.'
+    }
+    if ($newest.Major -lt 15) {
+        throw "Pulsar needs PostgreSQL 15 or later; this machine has PostgreSQL $($newest.Major). Install a newer one (docs/guides/install.md, step 1) or pass -ConnectionString."
+    }
+    if ($newest.Service.State -ne 'Running') {
+        Write-Step "Starting PostgreSQL $($newest.Major) ($($newest.Service.Name))"
+        Start-Service $newest.Service.Name
+    }
+    return $newest.Bin
 }
 
 function New-PanelDatabase {

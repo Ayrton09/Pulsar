@@ -12,7 +12,7 @@ others. Pulsar's installer does either; this guide covers both.
 
 - Windows 11 or Windows Server 2022/2025, 64-bit, with an administrator account. (Windows 10 22H2 works on a
   best-effort basis.)
-- For the panel: PostgreSQL 16 or later (step 1), about 500 MB of disk and 1 GB of RAM.
+- For the panel: PostgreSQL 15 or later (step 1), about 500 MB of disk and 1 GB of RAM.
 - For each node: the disk space of its games (Counter-Strike 2 needs about 85 GB) and their memory. Nodes connect to
   the panel; they open no port of their own besides their game servers' ports.
 - Internet access on the nodes (games are downloaded from Steam with SteamCMD).
@@ -20,10 +20,11 @@ others. Pulsar's installer does either; this guide covers both.
 ## 1. PostgreSQL (panel machine)
 
 1. Download the PostgreSQL installer for Windows from <https://www.postgresql.org/download/windows/> (the
-   "Download the installer" link, by EDB). Any version from 16 on.
+   "Download the installer" link, by EDB). Any version from 15 on; the newest is best.
 2. Run it and keep the defaults: install directory, data directory, **port 5432**. Stack Builder is not needed.
 3. When it asks for the password of the database superuser (`postgres`), choose one and keep it: Pulsar's installer
-   asks for it once, to create Pulsar's own database and user. Pulsar never stores it.
+   asks for it once, to create Pulsar's own database and user. Pulsar never stores it. With several PostgreSQL versions
+   installed, Pulsar's installer uses the newest.
 
 Already have a PostgreSQL elsewhere? Create an empty database and a user that owns it, and give the installer its
 connection string with `-ConnectionString "Host=…;Port=5432;Database=…;Username=…;Password=…"` instead.

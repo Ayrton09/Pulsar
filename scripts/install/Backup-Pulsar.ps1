@@ -39,9 +39,18 @@ $config = Join-Path $InstallRoot 'Panel\appsettings.Production.json'
 $panelData = Join-Path $DataRoot 'Panel'
 if (-not (Test-Path $config)) { throw "The panel is not installed here ($config not found)." }
 
+# pg_dump must be as new as the server: the newest PostgreSQL installed here.
 if (-not $PostgresBin) {
+    $newest = 0
     foreach ($service in Get-CimInstance Win32_Service -Filter "Name LIKE 'postgresql%'") {
-        if ($service.PathName -match '^"?([^"]+\\bin)\\pg_ctl\.exe') { $PostgresBin = $Matches[1] }
+        if ($service.PathName -match '^"?([^"]+\\bin)\\pg_ctl\.exe') {
+            $bin = $Matches[1]
+            $version = (& (Join-Path $bin 'pg_dump.exe') --version) -join ' '
+            if ($version -match '(\d+)\.\d+' -and [int]$Matches[1] -gt $newest) {
+                $newest = [int]$Matches[1]
+                $PostgresBin = $bin
+            }
+        }
     }
     if (-not $PostgresBin) { throw 'pg_dump.exe was not found: pass the folder of PostgreSQL''s programs with -PostgresBin.' }
 }

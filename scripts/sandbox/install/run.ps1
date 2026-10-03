@@ -50,13 +50,7 @@ try {
         & (Join-Path $pgHome 'bin\pg_ctl.exe') register -N postgresql-x64-sandbox -U 'NT AUTHORITY\NetworkService' -D C:\pgdata -S auto *> (Join-Path $report 'pg-register.txt')
         Start-Service postgresql-x64-sandbox
     }
-    else {
-        # CI runners ship PostgreSQL as a disabled service.
-        $existing = Get-Service 'postgresql*' | Select-Object -First 1
-        Set-Service -Name $existing.Name -StartupType Manual
-        Start-Service -Name $existing.Name
-    }
-    Check 'postgresql service running' ((Get-Service 'postgresql*' | Where-Object Status -eq 'Running') -ne $null)
+    Check 'postgresql service installed' ($null -ne (Get-Service 'postgresql*' -ErrorAction SilentlyContinue))
 
     # --- Install, as the guide says (here with the passwords given instead of typed) ---
     $installed = $true
@@ -115,7 +109,12 @@ try {
     Start-Sleep -Seconds 2
     Remove-Item 'C:\Program Files\Pulsar\Panel', $panelData -Recurse -Force
     $env:PGPASSWORD = $PostgresPassword
-    $pgBinDir = if ($PgBin) { 'C:\pgsql-local\bin' } else { $env:PGBIN }
+    # The newest PostgreSQL service's programs, as the installer chose.
+    $pgBinDir = 'C:\pgsql-local\bin'
+    if (-not $PgBin) {
+        $pgBinDir = (Get-CimInstance Win32_Service -Filter "Name LIKE 'postgresql%' AND State = 'Running'" |
+            ForEach-Object { if ($_.PathName -match '^"?([^"]+\\bin)\\pg_ctl\.exe') { $Matches[1] } } | Select-Object -First 1)
+    }
     & (Join-Path $pgBinDir 'psql.exe') -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'DROP DATABASE pulsar WITH (FORCE)' -c 'DROP ROLE pulsar' *> (Join-Path $report 'drop.txt')
     Remove-Item Env:PGPASSWORD
     Check 'panel lost (database dropped)' ($LASTEXITCODE -eq 0)

@@ -170,10 +170,15 @@ jobs:
           ./scripts/release/Build-Release.ps1 -Version 0.0.0-ci -Output artifacts/install-ci/zip
           Expand-Archive artifacts/install-ci/zip/pulsar-0.0.0-ci-windows-x64.zip artifacts/install-ci/release
 
-      # The runner's PostgreSQL superuser password is "root".
+      # As the install guide's step 1: PostgreSQL's own installer (through Chocolatey). The runner's PostgreSQL 14 stays
+      # installed (and too old for Pulsar), so the installer must pick the newest one.
+      - name: Install PostgreSQL 17
+        shell: pwsh
+        run: choco install postgresql17 --params "/Password:pulsar-ci-superuser" -y --no-progress
+
       - name: Install, back up, restore, update and remove
         shell: powershell
-        run: .\scripts\sandbox\install\run.ps1 -Bundle "$PWD\artifacts\install-ci" -PostgresPassword root
+        run: .\scripts\sandbox\install\run.ps1 -Bundle "$PWD\artifacts\install-ci" -PostgresPassword pulsar-ci-superuser
 
       - name: Report
         if: always()
