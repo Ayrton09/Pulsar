@@ -45,7 +45,7 @@ try
             configuration
                 .ReadFrom.Configuration(builder.Configuration)
                 .ReadFrom.Services(services)
-                .Filter.ByExcluding(LogFilters.IsStaleAntiforgeryCookie)
+                .Filter.ByExcluding(LogFilters.IsNoise)
                 .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
             if (!string.IsNullOrWhiteSpace(logsDirectory))
             {
