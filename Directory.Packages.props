@@ -3,6 +3,11 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 
+  <ItemGroup Label="Domain">
+    <!-- Cron occurrences with time zones and DST (MIT; ADR-0010). -->
+    <PackageVersion Include="Cronos" Version="0.13.0" />
+  </ItemGroup>
+
   <ItemGroup Label="Hosting and logging">
     <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />

@@ -231,10 +231,19 @@
         "type": "Project"
       },
       "pulsar.domain": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Cronos": "[0.13.0, )"
+        }
       },
       "pulsar.manifests": {
         "type": "Project"
+      },
+      "Cronos": {
+        "type": "CentralTransitive",
+        "requested": "[0.13.0, )",
+        "resolved": "0.13.0",
+        "contentHash": "Nkve+Yi0+ol3ntSBRHeW0ka9cJQ8vndSUvvkXqF9LVqwpoqWueyxu/HS275r98RDOmF7/mzRnZW5XXUBXob+TA=="
       },
       "Microsoft.EntityFrameworkCore": {
         "type": "CentralTransitive",

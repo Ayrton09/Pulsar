@@ -1,9 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Realtime;
+using Pulsar.Application.Scheduling;
 using Pulsar.Application.Servers;
 
 namespace Pulsar.Application;
@@ -36,6 +38,10 @@ public static class DependencyInjection
         services.AddScoped<NodeAllocations>();
         services.AddSingleton<OperationProgressCache>();
         services.AddScoped<AgentServerEvents>();
+        services.AddScoped<RequestContextOverride>();
+        services.AddSingleton<ScheduleSignal>();
+        services.AddSingleton<Scheduler>();
+        services.AddScoped<ServerSchedules>();
         services.TryAddSingleton<IRealtimeNotifier, NoRealtimeNotifier>();
         return services;
     }

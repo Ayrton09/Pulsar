@@ -37,7 +37,9 @@ internal static class ApiServiceCollectionExtensions
         services.AddProblemDetails();
         services.AddValidation();
         services.AddHttpContextAccessor();
-        services.AddScoped<IRequestContext, HttpRequestContext>();
+        services.AddScoped<HttpRequestContext>();
+        // Background work (the scheduler) sets who it acts as before resolving anything that audits.
+        services.AddScoped<IRequestContext>(sp => sp.GetRequiredService<RequestContextOverride>().Context ?? sp.GetRequiredService<HttpRequestContext>());
         services.AddSingleton<InitialSetup>();
         services.AddScoped<UserManagement>();
 

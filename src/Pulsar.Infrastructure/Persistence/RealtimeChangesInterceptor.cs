@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Pulsar.Application.Realtime;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
 
 namespace Pulsar.Infrastructure.Persistence;
@@ -77,6 +78,12 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
                     break;
                 case Backup backup:
                     changes.Servers.Add(backup.ServerId);
+                    break;
+                case ScheduledTask task:
+                    changes.Servers.Add(task.ServerId);
+                    break;
+                case ScheduledTaskRun run:
+                    changes.Servers.Add(run.ServerId);
                     break;
                 case NodeAllocation allocation:
                     changes.Nodes.Add(allocation.NodeId);

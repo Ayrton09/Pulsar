@@ -633,6 +633,167 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Scheduling.ScheduledTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("action_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("CronExpression")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("cron_expression");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
+
+                    b.Property<DateTimeOffset?>("LastRunAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_run_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("NextRunAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_run_at");
+
+                    b.Property<bool>("OnlyIfRunning")
+                        .HasColumnType("boolean")
+                        .HasColumnName("only_if_running");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("action_payload");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("server_id");
+
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("time_zone");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_scheduled_tasks");
+
+                    b.HasIndex("CreatedBy")
+                        .HasDatabaseName("ix_scheduled_tasks_created_by");
+
+                    b.HasIndex("NextRunAt")
+                        .HasDatabaseName("ix_scheduled_tasks_due")
+                        .HasFilter("is_enabled");
+
+                    b.HasIndex("ServerId")
+                        .HasDatabaseName("ix_scheduled_tasks_server_id");
+
+                    b.ToTable("scheduled_tasks", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_scheduled_tasks_action_type", "action_type IN ('backup', 'console_command', 'restart', 'start', 'stop', 'update')");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Scheduling.ScheduledTaskRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("error_code");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("message");
+
+                    b.Property<int>("Occurrences")
+                        .HasColumnType("integer")
+                        .HasColumnName("occurrences");
+
+                    b.Property<Guid?>("OperationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("operation_id");
+
+                    b.Property<DateTimeOffset>("ScheduledFor")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scheduled_for");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("server_id");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("task_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_scheduled_task_runs");
+
+                    b.HasIndex("OperationId")
+                        .HasDatabaseName("ix_scheduled_task_runs_operation_id");
+
+                    b.HasIndex("StartedAt")
+                        .HasDatabaseName("ix_task_runs_running")
+                        .HasFilter("status = 'running'");
+
+                    b.HasIndex("TaskId", "StartedAt")
+                        .HasDatabaseName("ix_task_runs_task");
+
+                    b.ToTable("scheduled_task_runs", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_scheduled_task_runs_occurrences", "occurrences >= 1");
+
+                            t.HasCheckConstraint("ck_scheduled_task_runs_status", "status IN ('failed', 'running', 'skipped', 'succeeded')");
+                        });
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Servers.Backup", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1378,6 +1539,38 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_node_enrollment_tokens_nodes_node_id");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Scheduling.ScheduledTask", b =>
+                {
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_scheduled_tasks_users_created_by");
+
+                    b.HasOne("Pulsar.Domain.Servers.Server", null)
+                        .WithMany()
+                        .HasForeignKey("ServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_scheduled_tasks_servers_server_id");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Scheduling.ScheduledTaskRun", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Servers.Operation", null)
+                        .WithMany()
+                        .HasForeignKey("OperationId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_scheduled_task_runs_operations_operation_id");
+
+                    b.HasOne("Pulsar.Domain.Scheduling.ScheduledTask", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_scheduled_task_runs_scheduled_tasks_task_id");
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Servers.Backup", b =>

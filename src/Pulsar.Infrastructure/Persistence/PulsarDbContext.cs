@@ -6,6 +6,7 @@ using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
 using Pulsar.Infrastructure.Identity;
 
@@ -39,6 +40,10 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<Backup> Backups => Set<Backup>();
 
+    public DbSet<ScheduledTask> ScheduledTasks => Set<ScheduledTask>();
+
+    public DbSet<ScheduledTaskRun> ScheduledTaskRuns => Set<ScheduledTaskRun>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         configurationBuilder.Properties<UserId>().HaveConversion<UserIdConverter>();
@@ -49,6 +54,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
         configurationBuilder.Properties<OperationId>().HaveConversion<OperationIdConverter>();
         configurationBuilder.Properties<AllocationId>().HaveConversion<AllocationIdConverter>();
         configurationBuilder.Properties<BackupId>().HaveConversion<BackupIdConverter>();
+        configurationBuilder.Properties<ScheduledTaskId>().HaveConversion<ScheduledTaskIdConverter>();
+        configurationBuilder.Properties<ScheduledRunId>().HaveConversion<ScheduledRunIdConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder builder)

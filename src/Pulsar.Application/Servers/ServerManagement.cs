@@ -348,6 +348,14 @@ public sealed partial class ServerManagement(
     /// <summary>Updates the game (the manifest's update steps: SteamCMD), optionally verifying every file.</summary>
     public async Task<Result<ServerDetails>> UpdateGameAsync(ServerId id, bool validate, CancellationToken cancellationToken)
     {
+        var requested = await RequestUpdateAsync(id, validate, OperationRequester.User, cancellationToken);
+        return requested.IsSuccess ? await DetailsAsync(requested.Value.Server, cancellationToken) : requested.Error!;
+    }
+
+    /// <summary>Starts the update operation; the scheduler follows the operation it returns (failed already when the node refused it).</summary>
+    public async Task<Result<(Server Server, Operation Operation)>> RequestUpdateAsync(ServerId id, bool validate, OperationRequester via,
+        CancellationToken cancellationToken)
+    {
         var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
         {
@@ -364,16 +372,17 @@ public sealed partial class ServerManagement(
             return NodeErrors.NotConnected;
         }
 
-        var result = await RunOperationAsync(server, OperationType.ServerUpdate, new UpdateServerCommand(server.Id.Value, validate), request.UserId,
-            OperationRequester.User, cancellationToken);
-        if (!result.IsSuccess)
+        var operation = Operation.Create(OperationType.ServerUpdate, server.NodeId, server.Id, via == OperationRequester.User ? request.UserId : null,
+            via, clock.GetUtcNow());
+        var run = await operations.RunAsync(server, operation, new UpdateServerCommand(server.Id.Value, validate), beforeSave: null, cancellationToken);
+        if (!run.IsSuccess)
         {
-            return result.Error!;
+            return run.Error!;
         }
 
         audit.Record(AuditActions.Server.UpdateRequested, metadata: new { validate }).WithServer(server.Id, server.NodeId);
         await db.SaveChangesAsync(cancellationToken);
-        return await DetailsAsync(server, cancellationToken);
+        return (server, run.Value);
     }
 
     /// <summary>

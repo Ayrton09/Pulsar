@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
 
 namespace Pulsar.Application.Abstractions;
@@ -37,6 +38,10 @@ public interface IPulsarDbContext
     DbSet<NodeAllocation> NodeAllocations { get; }
 
     DbSet<Backup> Backups { get; }
+
+    DbSet<ScheduledTask> ScheduledTasks { get; }
+
+    DbSet<ScheduledTaskRun> ScheduledTaskRuns { get; }
 
     /// <summary>Transactions and set-based updates (e.g. consuming a token atomically).</summary>
     DatabaseFacade Database { get; }
