@@ -1,0 +1,53 @@
+name: Release
+
+# A tag v<version> (for example v1.0.0) builds the Windows release ZIP in CI, attests its provenance and creates a
+# draft GitHub release with the ZIP and its SHA-256 (docs/architecture/08, "Supply chain and releases"). A maintainer
+# reviews the draft, adds the notes and publishes it.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  release:
+    name: Windows release
+    runs-on: windows-2022
+    permissions:
+      contents: write      # the draft release
+      id-token: write      # provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/Pulsar.Web/package-lock.json
+
+      - name: Build the release ZIP
+        shell: pwsh
+        run: ./scripts/release/Build-Release.ps1 -Version $env:GITHUB_REF_NAME.Substring(1)
+
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: artifacts/release/*.zip
+
+      - name: Create the draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          gh release create $env:GITHUB_REF_NAME artifacts/release/pulsar-$version-windows-x64.zip artifacts/release/pulsar-$version-windows-x64.zip.sha256 `
+            --draft --title "Pulsar $version" --generate-notes

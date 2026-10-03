@@ -143,6 +143,53 @@ jobs:
           path: artifacts/agent-install-ci/report
           retention-days: 7
 
+  # The release ZIP installed with Install-Pulsar.ps1 as docs/guides/install.md describes (panel and agent on one
+  # machine, database created in the machine's PostgreSQL service), then backed up with Backup-Pulsar.ps1, lost,
+  # restored on the same machine, updated and removed. Windows Server 2022; the same script runs in Windows Sandbox
+  # (scripts/sandbox/install) for Windows 11.
+  install:
+    name: Install from the release ZIP (windows-2022)
+    runs-on: windows-2022
+    needs: [dotnet, web]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/Pulsar.Web/package-lock.json
+
+      - name: Build and extract the release ZIP
+        shell: pwsh
+        run: |
+          ./scripts/release/Build-Release.ps1 -Version 0.0.0-ci -Output artifacts/install-ci/zip
+          Expand-Archive artifacts/install-ci/zip/pulsar-0.0.0-ci-windows-x64.zip artifacts/install-ci/release
+
+      # The runner's PostgreSQL superuser password is "root".
+      - name: Install, back up, restore, update and remove
+        shell: powershell
+        run: .\scripts\sandbox\install\run.ps1 -Bundle "$PWD\artifacts\install-ci" -PostgresPassword root
+un.ps1 -Bundle "$PWDrtifactsinstall-ci" -PostgresPassword root
+
+      - name: Report
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Content artifacts/install-ci/report/summary.txt -ErrorAction SilentlyContinue
+          Get-Content artifacts/install-ci/report/summary.txt -ErrorAction SilentlyContinue | Out-File -Append $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: install-report
+          path: artifacts/install-ci/report
+          retention-days: 7
+
   e2e:
     name: End-to-end (${{ matrix.os }})
     needs: [dotnet, web]
