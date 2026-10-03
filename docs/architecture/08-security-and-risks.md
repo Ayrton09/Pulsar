@@ -92,7 +92,7 @@ Privileged import, closed steps, time-bounded regexes, typed variables, argv wit
 | User passwords | `users.password_hash` | Identity hash |
 | Secret variables (GSLT, RCON) | `server_variables.protected_value` | ASP.NET Core Data Protection |
 | Panel signing key | `panel_signing_keys` | Data Protection |
-| Data Protection key ring | Panel disk | DPAPI (LocalMachine) on Windows; a certificate (`DataProtection:CertificatePath`, a PFX) on Linux or for portability; otherwise only the directory's permissions (owner only) |
+| Data Protection key ring | Panel disk | A certificate (`DataProtection:CertificatePath`, a PFX): what the installer sets up (`keyring\keyring.pfx`, its password in the panel's settings, both readable only by SYSTEM, Administrators and the panel's service account), so a backup restores on another machine. Without one: DPAPI (LocalMachine) on Windows, only the directory's permissions elsewhere |
 | Authenticator keys / recovery codes | `user_tokens` | Data Protection / SHA-256 hashes |
 | Node private key | CNG/TPM key store | Non-exportable |
 | Specs with secrets on the node (secret variables, RCON password) | `state\servers\*.json` | ACL (SYSTEM + Administrators) and the whole record encrypted with DPAPI (machine scope) |
@@ -101,7 +101,8 @@ Privileged import, closed steps, time-bounded regexes, typed variables, argv wit
 
 - APIs return secrets as `"***"` (write-only). Log messages never destructure objects (no `{@…}`) and never include secrets, command lines or request bodies; request logs have the method, path, status and time, never query strings, headers or cookies. Console commands are audited with sensitive commands redacted (each `;`-separated command of a line is checked).
 - Accepted limitation: a secret variable a manifest writes into a configuration file (the join password into CS2's `server.cfg`) can be read by whoever may read the server's files (`server.files.view`) or download its backups. The API keeps it write-only; the game needs it in the file.
-- **Important operational consequence:** a PostgreSQL backup without the Data Protection key ring cannot decrypt secrets. The panel backup guide will say so.
+- **Important operational consequence:** a PostgreSQL backup without the Data Protection key ring cannot decrypt secrets. `Backup-Pulsar.ps1` keeps the database dump, the key ring, its certificate, the HTTPS certificate and the settings together, and `Install-Pulsar.ps1 -RestoreFrom` restores them together ([backup guide](../guides/backup.md)).
+- *Packaging (Phase 9):* the panel runs as the `PulsarPanel` service under its own virtual account (`NT SERVICE\PulsarPanel`), not as SYSTEM: it can write only its data folder (`%ProgramData%\Pulsar\Panel`: keys, key ring, logs, certificate) and read its settings, which hold the database and certificate passwords and are readable only by SYSTEM, Administrators and that account. The installer creates the panel's PostgreSQL role with a random password and never stores the superuser's. Releases are built in CI from a tag, with a provenance attestation and a SHA-256 checksum; the install guide tells users to check it.
 - Accepted limitation: a secret passed on the command line (e.g. GSLT with `+sv_setsteamaccount`) is visible to the node's local administrators. If a game accepts it from a file, the manifest should prefer that.
 
 ### Audit
@@ -149,7 +150,7 @@ Append-only from the application, no secrets, with IP and actor. Failed sign-ins
 | R4. SteamCMD fragility (output format, transient errors, bootstrap) | High | Medium | Tolerant parser, bounded retries, full logs visible. |
 | R5. Friction installing PostgreSQL on Windows for home users | High | Medium | Step-by-step guide, connection check with clear messages, installer that detects a local PostgreSQL. No SQLite fallback (explicit decision). |
 | R6. Single panel instance (no HA) | Certain | Medium | Accepted for v1; scheduler already multi-instance safe (`FOR UPDATE SKIP LOCKED`); a SignalR backplane would be the required change. |
-| R7. Loss of the Data Protection key ring or the panel key | Low | High | Document backups; losing the panel key forces re-enrolling nodes. |
+| R7. Loss of the Data Protection key ring or the panel key | Low | High | `Backup-Pulsar.ps1` backs them up with the database; the key ring is encrypted with a certificate, not machine DPAPI, so the backup restores on another machine (checked in Windows Sandbox and CI: backup, panel lost, restore, nodes reconnect). Losing the panel key still forces re-enrolling nodes. |
 | R8. Panel/agent version drift | Medium | Medium | Protocol versioning, capabilities, N-1 support. |
 | R9. Windows Defender slows 60 GB installs | High | Low | Document exclusions; **do not** add them automatically (the administrator's security decision). |
 | R10. Scope creep | High | High | Phased roadmap with a "definition of done"; nothing outside the v1 flow until it is solid. |

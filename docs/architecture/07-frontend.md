@@ -60,7 +60,7 @@ Each `feature` holds `api.ts` (TanStack Query hooks), its pages/components and t
 
 Server and node pages use a layout with a fixed header (name, status, power actions, live CPU/RAM) and tabs. Tabs without permission are hidden.
 
-*Phase 2:* nodes are created from a dialog on `/nodes` (no `/nodes/new` page) that ends with the one-time enrollment command, and `/nodes/:id` is a single page (machine, live usage, credentials, administration) until servers give it more to show. Node state refreshed by polling every 5 s until Phase 5 moved it to the live channel.
+*Phase 2:* nodes are created from a dialog on `/nodes` (no `/nodes/new` page) that ends with the one-time enrollment command (since Phase 9 the installer's: `Install-Pulsar.ps1 -Mode Agent -PanelUrl … -Token … -PanelKey …`, run in the release ZIP's folder), and `/nodes/:id` is a single page (machine, live usage, credentials, administration) until servers give it more to show. Node state refreshed by polling every 5 s until Phase 5 moved it to the live channel.
 
 ## Real time
 

@@ -2,7 +2,7 @@
 
 Pulsar is an open source web panel for managing game servers, designed with **Windows as a first-class platform** (Windows 10/11 and Windows Server).
 
-> **Status: pre-alpha, in design.** Nothing is usable yet. The architecture is being reviewed in [`docs/architecture`](docs/architecture/README.md) and the key decisions are recorded as [ADRs](docs/adr/README.md).
+> **Status: approaching 1.0.** The architecture is in [`docs/architecture`](docs/architecture/README.md) and the key decisions are recorded as [ADRs](docs/adr/README.md).
 
 ## What Pulsar aims to do
 
@@ -12,7 +12,13 @@ Pulsar is an open source web panel for managing game servers, designed with **Wi
 - Fine-grained role-based access control and audit logs.
 - Game support defined by declarative **manifests**, so new games can be added without changing the core.
 
-Initial games: Counter-Strike 2, Counter-Strike: Source and Garry's Mod.
+Games in 1.0: Counter-Strike 2 and Counter-Strike: Source. More can be added with a manifest ([guide](docs/guides/manifests.md)).
+
+## Installing
+
+Download the release ZIP, install PostgreSQL, and run `Install-Pulsar.ps1` as administrator: it installs the panel and
+an agent on one PC, or each on its own machines. Step by step: [docs/guides/install.md](docs/guides/install.md).
+Updating and backups: [update.md](docs/guides/update.md), [backup.md](docs/guides/backup.md).
 
 ## Architecture in short
 
@@ -26,7 +32,7 @@ Initial games: Counter-Strike 2, Counter-Strike: Source and Garry's Mod.
 ## Repository layout
 
 ```
-docs/      architecture, ADRs and guides
+docs/      architecture, ADRs, spikes and user guides (docs/guides)
 games/     official game manifests (MIT licensed)
 schemas/   public JSON schemas (MIT licensed)
 src/       panel, agent and frontend source
@@ -46,7 +52,7 @@ The frontend lives in `src/Pulsar.Web`; see [CONTRIBUTING.md](CONTRIBUTING.md) f
 
 ## Contributing
 
-Contributions are welcome once the architecture settles. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Report security issues privately as described in [SECURITY.md](SECURITY.md).
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
