@@ -12,7 +12,10 @@ function Actor({ entry }: { entry: AuditEntry }) {
   if (entry.actorType === 'user') {
     return <>{entry.actorDisplay ?? entry.actorUserId}</>;
   }
-  return <span className="text-muted">{t(`audit.actors.${entry.actorType}`)}</span>;
+  const kind = t(`audit.actors.${entry.actorType}`);
+  // Nodes and scheduled tasks are named too: which node reported it, which task ran.
+  const named = (entry.actorType === 'node' || entry.actorType === 'schedule') && entry.actorDisplay;
+  return <span className="text-muted">{named ? `${kind}: ${entry.actorDisplay}` : kind}</span>;
 }
 
 export function AuditPage() {

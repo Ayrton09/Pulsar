@@ -60,7 +60,8 @@ async function expectStatus(page: Page, status: string) {
 }
 
 test('a server is created, started, restarted, stopped, killed and deleted from the panel', async ({ page }) => {
-  test.setTimeout(180_000);
+  // Phase 8 waits for the scheduler's next minute.
+  test.setTimeout(270_000);
   const cspViolations = watchCspViolations(page);
   page.on('dialog', (dialog) => void dialog.accept());
   await signInAsAdministrator(page);
@@ -221,6 +222,32 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   await page.getByRole('tab', { name: 'Overview' }).click();
   await expect(operations.getByRole('row', { name: /Restore/ })).toContainText('Done');
   await expect(operations.getByRole('row', { name: /Backup/ })).toContainText('Done');
+
+  // Phase 8: a task every minute, run by the panel's scheduler on its own (it wakes up when the task is saved, then at
+  // the minute), sends a command the game answers in its console.
+  await actions.getByRole('button', { name: 'Start', exact: true }).click();
+  await expectStatus(page, 'Online');
+  await page.getByRole('tab', { name: 'Schedules' }).click();
+  await page.getByRole('button', { name: 'New task' }).click();
+  const newTask = page.getByRole('dialog', { name: 'New scheduled task' });
+  await newTask.getByLabel('Name').fill('Every minute');
+  await newTask.getByLabel('Action').selectOption({ label: 'Console command' });
+  await newTask.getByLabel('Command').fill('say from the schedule');
+  await newTask.getByLabel('Repeat').selectOption({ label: 'Custom (cron)' });
+  await newTask.getByLabel('Cron expression').fill('* * * * *');
+  await expect(newTask.getByRole('listitem')).toHaveCount(5);
+  await newTask.getByRole('button', { name: 'Save' }).click();
+  const taskRow = page.getByRole('table', { name: 'Scheduled tasks' }).getByRole('row', { name: /Every minute/ });
+  await expect(taskRow).toContainText('Never');
+  // The run shows up live (the live channel refreshes the list when it ends).
+  await expect(taskRow).toContainText('Done', { timeout: 75_000 });
+  await page.screenshot({ path: 'test-results/screens/server-schedules.png', fullPage: true });
+  await page.getByRole('button', { name: 'History of Every minute' }).click();
+  await expect(page.getByRole('dialog', { name: 'Runs of Every minute' }).getByText('Done').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('tab', { name: 'Console' }).click();
+  await expect(page.getByTestId('console-output')).toContainText('Test server: from the schedule', { timeout: 15_000 });
+  await page.getByRole('tab', { name: 'Overview' }).click();
 
   // Delete: its folder and its backups go with it.
   await page.getByRole('button', { name: 'Delete' }).click();

@@ -289,7 +289,11 @@
         "backup_downloaded": "Descargó un backup",
         "backup_locked": "Bloqueó un backup",
         "backup_unlocked": "Desbloqueó un backup",
-        "backup_limit_changed": "Cambió cuántos backups guardar"
+        "backup_limit_changed": "Cambió cuántos backups guardar",
+        "schedule_created": "Creó una tarea programada",
+        "schedule_changed": "Cambió una tarea programada",
+        "schedule_deleted": "Eliminó una tarea programada",
+        "schedule_run_requested": "Ejecutó una tarea programada en el momento"
       },
       "template": {
         "imported": "Importó una plantilla de juego"
@@ -389,7 +393,9 @@
     "operation": {
       "not_found": "Esa operación no existe.",
       "not_cancellable": "Solo se pueden cancelar instalaciones, actualizaciones y backups en curso.",
-      "forbidden": "No podés cancelar este tipo de operación en este servidor."
+      "forbidden": "No podés cancelar este tipo de operación en este servidor.",
+      "cancelled": "La operación se canceló.",
+      "failed": "La operación falló."
     },
     "files": {
       "invalid_path": "La ruta no es válida: {{detail}}",
@@ -422,6 +428,22 @@
     },
     "http": {
       "network": "No se pudo contactar al panel. Revisá tu conexión."
+    },
+    "schedules": {
+      "not_found": "Esa tarea programada no existe.",
+      "name_invalid": "El nombre de una tarea es una línea de hasta 128 caracteres.",
+      "cron_invalid": "No es una expresión cron de cinco campos: minuto, hora, día del mes, mes y día de la semana.",
+      "never_runs": "Esa programación nunca llega.",
+      "time_zone_invalid": "Elegí una zona horaria de la lista.",
+      "only_if_running_unsupported": "Solo los reinicios y los backups pueden esperar a que el servidor esté en marcha.",
+      "command_required": "Escribí el comando de consola a enviar (una línea, hasta 512 caracteres).",
+      "command_sensitive": "Un comando programado no puede establecer una contraseña ni otro secreto: quedaría guardado y visible en claro.",
+      "too_many": "Un servidor puede tener hasta 50 tareas programadas.",
+      "forbidden": "Solo podés programar lo que vos mismo podés hacer en este servidor.",
+      "missed": "El panel no estaba en marcha a esa hora.",
+      "interrupted": "El panel se detuvo antes de que terminara la ejecución.",
+      "not_running": "El servidor no estaba en marcha.",
+      "error": "El panel no pudo ejecutar la tarea; su log tiene los detalles."
     }
   },
   "account": {
@@ -632,7 +654,8 @@
       "settings": "Configuración",
       "network": "Red",
       "files": "Archivos",
-      "backups": "Backups"
+      "backups": "Backups",
+      "schedules": "Programación"
     },
     "wizard": {
       "steps": "Pasos",
@@ -877,5 +900,79 @@
       "confirm_other": "¿Guardar solo los {{count}} backups más nuevos? Los anteriores sin bloquear se eliminan ahora.",
       "saved": "Guardado."
     }
+  },
+  "schedules": {
+    "title": "Tareas programadas",
+    "hint": "Las tareas se ejecutan a su hora en la zona horaria que elijas, siguiendo su horario de verano. Las ejecuta el panel: mientras no está en marcha no se ejecuta nada, y las ejecuciones perdidas se registran en vez de hacerse tarde.",
+    "create": "Nueva tarea",
+    "createTitle": "Nueva tarea programada",
+    "editTitle": "Editar {{name}}",
+    "empty": "Todavía no hay tareas programadas.",
+    "task": "Tarea",
+    "when": "Cuándo",
+    "nextRun": "Próxima ejecución",
+    "lastRun": "Última ejecución",
+    "disabled": "Desactivada",
+    "name": "Nombre",
+    "nameInvalid": "Un nombre de 1 a {{max}} caracteres.",
+    "action": "Acción",
+    "actions": {
+      "restart": "Reiniciar",
+      "start": "Iniciar",
+      "stop": "Detener",
+      "backup": "Hacer un backup",
+      "update": "Actualizar el juego",
+      "consoleCommand": "Comando de consola"
+    },
+    "commandSummary": "Consola: {{command}}",
+    "command": "Comando",
+    "commandHint": "Se envía como si lo escribieras en la consola; se omite mientras el servidor no está en marcha.",
+    "commandInvalid": "Una línea de 1 a {{max}} caracteres.",
+    "validate": "verificando cada archivo",
+    "updateHint": "Una actualización necesita el servidor detenido: programá una detención antes y un inicio después.",
+    "onlyIfRunning": "Solo si el servidor está en marcha",
+    "onlyIfRunningShort": "solo si está en marcha",
+    "repeat": "Repetir",
+    "kinds": {
+      "daily": "Todos los días",
+      "weekly": "Todas las semanas",
+      "hours": "Cada algunas horas",
+      "custom": "Personalizado (cron)"
+    },
+    "day": "Día",
+    "time": "Hora",
+    "everyHours": "Intervalo",
+    "every": {
+      "daily": "Todos los días a las {{time}}",
+      "weekly": "Todos los {{day}} a las {{time}}",
+      "hours_one": "Cada hora",
+      "hours_other": "Cada {{count}} horas",
+      "custom": "Cron {{cron}}"
+    },
+    "cron": "Expresión cron",
+    "cronHint": "Cinco campos: minuto, hora, día del mes, mes, día de la semana. Por ejemplo, 30 5 * * 1-5 son las 05:30 de lunes a viernes.",
+    "timeZone": "Zona horaria",
+    "timeZoneHint": "La tarea se ejecuta a esa hora allí, siguiendo su horario de verano.",
+    "nextRuns": "Próximas ejecuciones",
+    "enabled": "Activada",
+    "runNow": "Ejecutar ahora",
+    "runNowNamed": "Ejecutar {{name}} ahora",
+    "history": "Historial",
+    "historyNamed": "Historial de {{name}}",
+    "historyTitle": "Ejecuciones de {{name}}",
+    "noRuns": "Todavía no se ejecutó.",
+    "scheduledFor": "Programada para",
+    "result": "Resultado",
+    "editNamed": "Editar {{name}}",
+    "deleteNamed": "Eliminar {{name}}",
+    "deleteConfirm": "¿Eliminar la tarea {{name}} y su historial?",
+    "runStatuses": {
+      "running": "En curso",
+      "succeeded": "Hecha",
+      "failed": "Falló",
+      "skipped": "Omitida"
+    },
+    "missed_one": "Perdida: el panel no estaba en marcha.",
+    "missed_other": "{{count}} ejecuciones perdidas: el panel no estaba en marcha."
   }
 }

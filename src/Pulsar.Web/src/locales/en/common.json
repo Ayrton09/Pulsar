@@ -289,7 +289,11 @@
         "backup_downloaded": "Downloaded a backup",
         "backup_locked": "Locked a backup",
         "backup_unlocked": "Unlocked a backup",
-        "backup_limit_changed": "Changed how many backups to keep"
+        "backup_limit_changed": "Changed how many backups to keep",
+        "schedule_created": "Created a scheduled task",
+        "schedule_changed": "Changed a scheduled task",
+        "schedule_deleted": "Deleted a scheduled task",
+        "schedule_run_requested": "Ran a scheduled task now"
       },
       "template": {
         "imported": "Imported a game template"
@@ -389,7 +393,9 @@
     "operation": {
       "not_found": "That operation does not exist.",
       "not_cancellable": "Only running installs, updates and backups can be cancelled.",
-      "forbidden": "You may not cancel this kind of operation on this server."
+      "forbidden": "You may not cancel this kind of operation on this server.",
+      "cancelled": "The operation was cancelled.",
+      "failed": "The operation failed."
     },
     "files": {
       "invalid_path": "That path is not valid: {{detail}}",
@@ -422,6 +428,22 @@
     },
     "http": {
       "network": "Could not reach the panel. Check your connection."
+    },
+    "schedules": {
+      "not_found": "That scheduled task does not exist.",
+      "name_invalid": "A task name is one line of up to 128 characters.",
+      "cron_invalid": "That is not a cron expression of five fields: minute, hour, day of month, month and day of week.",
+      "never_runs": "That schedule never comes.",
+      "time_zone_invalid": "Choose a time zone from the list.",
+      "only_if_running_unsupported": "Only restarts and backups can wait for the server to run.",
+      "command_required": "Write the console command to send (one line, up to 512 characters).",
+      "command_sensitive": "A scheduled command cannot set a password or another secret: it would be kept and shown in clear.",
+      "too_many": "A server can have up to 50 scheduled tasks.",
+      "forbidden": "You may schedule only what you may do yourself on this server.",
+      "missed": "The panel was not running at that time.",
+      "interrupted": "The panel stopped before the run ended.",
+      "not_running": "The server was not running.",
+      "error": "The panel could not run the task; its log has the details."
     }
   },
   "account": {
@@ -632,7 +654,8 @@
       "settings": "Settings",
       "network": "Network",
       "files": "Files",
-      "backups": "Backups"
+      "backups": "Backups",
+      "schedules": "Schedules"
     },
     "wizard": {
       "steps": "Steps",
@@ -877,5 +900,79 @@
       "confirm_other": "Keep only the {{count}} newest backups? Older unlocked ones are deleted now.",
       "saved": "Saved."
     }
+  },
+  "schedules": {
+    "title": "Scheduled tasks",
+    "hint": "Tasks run at their time in the time zone you choose, following its daylight saving time. The panel runs them: while it is not running, nothing runs, and missed runs are recorded rather than done late.",
+    "create": "New task",
+    "createTitle": "New scheduled task",
+    "editTitle": "Edit {{name}}",
+    "empty": "No scheduled tasks yet.",
+    "task": "Task",
+    "when": "When",
+    "nextRun": "Next run",
+    "lastRun": "Last run",
+    "disabled": "Disabled",
+    "name": "Name",
+    "nameInvalid": "A name of 1 to {{max}} characters.",
+    "action": "Action",
+    "actions": {
+      "restart": "Restart",
+      "start": "Start",
+      "stop": "Stop",
+      "backup": "Back up",
+      "update": "Update the game",
+      "consoleCommand": "Console command"
+    },
+    "commandSummary": "Console: {{command}}",
+    "command": "Command",
+    "commandHint": "Sent as if typed in the console; skipped while the server is not running.",
+    "commandInvalid": "One line of 1 to {{max}} characters.",
+    "validate": "verifying every file",
+    "updateHint": "An update needs the server stopped: schedule a stop before it and a start after it.",
+    "onlyIfRunning": "Only while the server is running",
+    "onlyIfRunningShort": "only while running",
+    "repeat": "Repeat",
+    "kinds": {
+      "daily": "Every day",
+      "weekly": "Every week",
+      "hours": "Every few hours",
+      "custom": "Custom (cron)"
+    },
+    "day": "Day",
+    "time": "Time",
+    "everyHours": "Interval",
+    "every": {
+      "daily": "Every day at {{time}}",
+      "weekly": "Every {{day}} at {{time}}",
+      "hours_one": "Every hour",
+      "hours_other": "Every {{count}} hours",
+      "custom": "Cron {{cron}}"
+    },
+    "cron": "Cron expression",
+    "cronHint": "Five fields: minute, hour, day of month, month, day of week. For example, 30 5 * * 1-5 is 05:30 on weekdays.",
+    "timeZone": "Time zone",
+    "timeZoneHint": "The task runs at that time there, following its daylight saving time.",
+    "nextRuns": "Next runs",
+    "enabled": "Enabled",
+    "runNow": "Run now",
+    "runNowNamed": "Run {{name}} now",
+    "history": "History",
+    "historyNamed": "History of {{name}}",
+    "historyTitle": "Runs of {{name}}",
+    "noRuns": "It has not run yet.",
+    "scheduledFor": "Scheduled for",
+    "result": "Result",
+    "editNamed": "Edit {{name}}",
+    "deleteNamed": "Delete {{name}}",
+    "deleteConfirm": "Delete the task {{name}} and its history?",
+    "runStatuses": {
+      "running": "Running",
+      "succeeded": "Done",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "missed_one": "Missed: the panel was not running.",
+    "missed_other": "{{count}} runs missed: the panel was not running."
   }
 }

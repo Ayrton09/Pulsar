@@ -11,6 +11,7 @@ import { can, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { BackupsTab } from '../backups/BackupsTab';
 import { FilesTab } from '../files/FilesTab';
+import { SchedulesTab } from '../schedules/SchedulesTab';
 import { useServerMetrics, useWatchServers } from '../live/hooks';
 import type { ServerMetrics } from '../live/types';
 import {
@@ -28,7 +29,7 @@ import { ConsoleTab } from './ConsoleTab';
 import { NetworkTab, OperationProgress, SettingsTab } from './ServerTabs';
 import { serverActions } from './serverStatus';
 
-const allTabs = ['overview', 'console', 'files', 'backups', 'settings', 'network'] as const;
+const allTabs = ['overview', 'console', 'files', 'backups', 'schedules', 'settings', 'network'] as const;
 type Tab = (typeof allTabs)[number];
 
 /** One server: its state and live usage, the lifecycle actions, its console and its recent operations. */
@@ -44,7 +45,8 @@ export function ServerPage() {
     (name) =>
       (name !== 'console' || can(me, Permission.ServerConsoleView)) &&
       (name !== 'files' || can(me, Permission.ServerFilesView)) &&
-      (name !== 'backups' || can(me, Permission.ServerBackupsView)),
+      (name !== 'backups' || can(me, Permission.ServerBackupsView)) &&
+      (name !== 'schedules' || can(me, Permission.ServerSchedulesView)),
   );
   const requested = search.get('tab');
   const tab: Tab = tabs.find((name) => name === requested) ?? 'overview';
@@ -119,6 +121,7 @@ export function ServerPage() {
         {tab === 'console' && <ConsoleTab details={details.data} />}
         {tab === 'files' && <FilesTab details={details.data} />}
         {tab === 'backups' && <BackupsTab details={details.data} />}
+        {tab === 'schedules' && <SchedulesTab details={details.data} />}
         {tab === 'settings' && <SettingsTab details={details.data} />}
         {tab === 'network' && <NetworkTab details={details.data} />}
       </div>
