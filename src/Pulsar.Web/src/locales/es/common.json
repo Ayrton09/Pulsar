@@ -536,13 +536,14 @@
     "deleteConfirm": "¿Eliminar {{name}}? Su agente se desconecta y hay que volver a enrolarlo para que vuelva.",
     "enroll": {
       "title": "Enrolar {{name}}",
-      "steps": "En la máquina Windows, abrí PowerShell como administrador en la carpeta donde está PulsarAgent.exe y ejecutá:",
+      "steps": "En la máquina Windows, descomprimí el ZIP de Pulsar, abrí PowerShell como administrador en esa carpeta y ejecutá:",
       "command": "Comando de enrolamiento",
       "copy": "Copiar",
       "copied": "Copiado al portapapeles.",
       "copyFailed": "El navegador no permitió copiar. Seleccioná el comando y copialo a mano.",
       "once": "El comando sirve una sola vez, hasta el {{expires}}. No se vuelve a mostrar: si lo perdés, creá uno nuevo.",
-      "fingerprint": "El agente verifica que el panel tenga la clave {{fingerprint}}, así que una copia de este comando no sirve contra ningún otro servidor."
+      "fingerprint": "El agente verifica que el panel tenga la clave {{fingerprint}}, así que una copia de este comando no sirve contra ningún otro servidor.",
+      "trust": "Si el certificado del panel es autofirmado, copiá panel.cer desde la máquina del panel (C:\\ProgramData\\Pulsar\\Panel\\tls) junto al script y agregá -TrustCertificate .\\panel.cer."
     },
     "credentials": {
       "title": "Credenciales",

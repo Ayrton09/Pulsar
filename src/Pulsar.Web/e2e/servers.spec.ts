@@ -73,7 +73,7 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   await createNode.getByLabel('Name').fill(nodeName);
   await createNode.getByRole('button', { name: 'Create' }).click();
   const command = (await page.getByLabel('Enrollment command').textContent()) ?? '';
-  const [, panel = '', token = '', panelKey = ''] = /--panel (\S+) --token (\S+) --panel-key (\S+)/.exec(command) ?? [];
+  const [, panel = '', token = '', panelKey = ''] = /-PanelUrl (\S+) -Token (\S+) -PanelKey (\S+)/.exec(command) ?? [];
   execFileSync(agentExe, [
     'enroll',
     '--panel',

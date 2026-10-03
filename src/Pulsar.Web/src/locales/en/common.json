@@ -536,13 +536,14 @@
     "deleteConfirm": "Delete {{name}}? Its agent is disconnected and must be enrolled again to come back.",
     "enroll": {
       "title": "Enroll {{name}}",
-      "steps": "On the Windows machine, open PowerShell as administrator in the folder that contains PulsarAgent.exe and run:",
+      "steps": "On the Windows machine, extract the Pulsar release ZIP, open PowerShell as administrator in its folder and run:",
       "command": "Enrollment command",
       "copy": "Copy",
       "copied": "Copied to the clipboard.",
       "copyFailed": "The browser did not allow copying. Select the command and copy it by hand.",
       "once": "The command works once, until {{expires}}. It is not shown again: create a new one if you lose it.",
-      "fingerprint": "The agent checks that the panel holds the key {{fingerprint}}, so a copy of this command is useless against any other server."
+      "fingerprint": "The agent checks that the panel holds the key {{fingerprint}}, so a copy of this command is useless against any other server.",
+      "trust": "If the panel's certificate is self-signed, copy panel.cer from the panel's machine (C:\\ProgramData\\Pulsar\\Panel\\tls) next to the script and add -TrustCertificate .\\panel.cer."
     },
     "credentials": {
       "title": "Credentials",

@@ -49,6 +49,7 @@ export function EnrollmentCommand({ instructions }: { instructions: EnrollmentIn
       <ul className="list-disc space-y-1 pl-5 text-xs text-muted">
         <li>{t('nodes.enroll.once', { expires: formatDate(instructions.expiresAt) })}</li>
         <li>{t('nodes.enroll.fingerprint', { fingerprint: instructions.panelKeyFingerprint })}</li>
+        <li>{t('nodes.enroll.trust')}</li>
       </ul>
     </div>
   );

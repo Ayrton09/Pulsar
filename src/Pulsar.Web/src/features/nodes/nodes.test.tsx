@@ -94,9 +94,9 @@ describe('node helpers', () => {
     expect(nodeState(node)).toBe(state);
   });
 
-  it('builds a PowerShell command that runs the agent from the current folder', () => {
+  it('builds the installer command for the release folder', () => {
     expect(enrollCommand('https://panel.example.com', 'tok', 'sha256:abc')).toBe(
-      '.\\PulsarAgent.exe enroll --panel https://panel.example.com --token tok --panel-key sha256:abc',
+      'powershell -ExecutionPolicy Bypass -File .\\Install-Pulsar.ps1 -Mode Agent -PanelUrl https://panel.example.com -Token tok -PanelKey sha256:abc',
     );
   });
 
@@ -157,7 +157,7 @@ describe('nodes page', () => {
 
     const command = await screen.findByLabelText('Enrollment command');
     expect(command).toHaveTextContent(
-      `.\\PulsarAgent.exe enroll --panel ${window.location.origin} --token one-time-token --panel-key sha256:panel-key`,
+      `powershell -ExecutionPolicy Bypass -File .\\Install-Pulsar.ps1 -Mode Agent -PanelUrl ${window.location.origin} -Token one-time-token -PanelKey sha256:panel-key`,
     );
     expect(screen.getByRole('heading', { name: 'Enroll Córdoba 1' })).toBeInTheDocument();
     expect(body).toEqual({ name: 'Córdoba 1', description: null, publicHost: null });

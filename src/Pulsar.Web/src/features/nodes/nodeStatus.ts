@@ -17,6 +17,10 @@ export function nodeState(node: Pick<NodeSummary, 'status' | 'connected'>): Node
  * The command an administrator runs on the Windows machine. The panel URL is the one this browser uses, which is what
  * agents should use too (the panel binds signatures to it).
  */
+/**
+ * What installs the agent on a node, run in the release ZIP's folder: it copies the agent to Program Files (a service
+ * must not run from a folder other accounts can write) and enrolls it.
+ */
 export function enrollCommand(origin: string, token: string, panelKeyFingerprint: string): string {
-  return `.\\PulsarAgent.exe enroll --panel ${origin} --token ${token} --panel-key ${panelKeyFingerprint}`;
+  return `powershell -ExecutionPolicy Bypass -File .\\Install-Pulsar.ps1 -Mode Agent -PanelUrl ${origin} -Token ${token} -PanelKey ${panelKeyFingerprint}`;
 }

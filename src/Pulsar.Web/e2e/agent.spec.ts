@@ -59,7 +59,11 @@ test('a real agent pairs, comes online, answers pings and is cut off when revoke
   const enrollDialog = page.getByRole('dialog', { name: `Enroll ${nodeName}` });
   const command = (await enrollDialog.getByLabel('Enrollment command').textContent()) ?? '';
   await page.screenshot({ path: 'test-results/screens/node-enroll.png', fullPage: true });
-  const match = /^\.\\PulsarAgent\.exe enroll --panel (\S+) --token (\S+) --panel-key (\S+)$/.exec(command.trim());
+  // The installer's command; the test runs the development agent with the same values.
+  const match =
+    /^powershell -ExecutionPolicy Bypass -File \.\\Install-Pulsar\.ps1 -Mode Agent -PanelUrl (\S+) -Token (\S+) -PanelKey (\S+)$/.exec(
+      command.trim(),
+    );
   expect(match, `enrollment command: ${command}`).not.toBeNull();
   const [, panel = '', token = '', panelKey = ''] = match ?? [];
 
