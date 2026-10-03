@@ -53,7 +53,8 @@ public sealed class TestDatabase : IAsyncDisposable
         var server = Environment.GetEnvironmentVariable(ConnectionVariable)!;
         await using var connection = new NpgsqlConnection(WithDatabase(server, "postgres"));
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{Name}\" WITH (FORCE)", connection);
+        // On Windows a drop waits for a checkpoint, which takes more than the default 30 s on a busy disk.
+        await using var command = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{Name}\" WITH (FORCE)", connection) { CommandTimeout = 120 };
         for (var attempt = 1; ; attempt++)
         {
             try
