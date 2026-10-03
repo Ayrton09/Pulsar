@@ -60,6 +60,13 @@ public static class AuditActions
         public const string FileMoved = "server.file_moved";
         public const string FileDeleted = "server.file_deleted";
         public const string DirectoryCreated = "server.directory_created";
+        public const string BackupRequested = "server.backup_requested";
+        public const string BackupRestoreRequested = "server.backup_restore_requested";
+        public const string BackupDeleted = "server.backup_deleted";
+        public const string BackupDownloaded = "server.backup_downloaded";
+        public const string BackupLocked = "server.backup_locked";
+        public const string BackupUnlocked = "server.backup_unlocked";
+        public const string BackupLimitChanged = "server.backup_limit_changed";
     }
 
     public static class Template

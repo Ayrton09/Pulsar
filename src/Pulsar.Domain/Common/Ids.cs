@@ -60,6 +60,13 @@ public readonly record struct AllocationId(Guid Value)
     public override string ToString() => Value.ToString();
 }
 
+public readonly record struct BackupId(Guid Value)
+{
+    public static BackupId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString();
+}
+
 /// <summary>Converts <see cref="UserId"/> to and from its GUID string form.</summary>
 public sealed class UserIdTypeConverter : TypeConverter
 {

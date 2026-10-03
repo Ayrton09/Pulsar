@@ -187,6 +187,18 @@ public static class FileErrors
     public const string Failed = "files.failed";
 }
 
+/// <summary>Error codes of backup commands and operations (besides <see cref="FileErrors"/> from reading and writing server files).</summary>
+public static class BackupErrors
+{
+    public const string NotFound = "backups.not_found";
+
+    /// <summary>The archive is not what the node made: its SHA-256 changed, or an entry is one a restore may not write.</summary>
+    public const string Corrupt = "backups.corrupt";
+
+    /// <summary>The archive is open (a download or a restore is reading it).</summary>
+    public const string InUse = "backups.in_use";
+}
+
 /// <summary>A directory's entries: directories first, then files and links, each by name.</summary>
 public sealed record FileListResult(IReadOnlyList<FileEntry> Entries, bool Truncated) : CommandResult;
 

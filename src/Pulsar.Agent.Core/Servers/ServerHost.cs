@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Pulsar.Agent.Core.Backups;
 using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Processes;
@@ -28,8 +29,9 @@ public sealed class ServerHostOptions
 
 /// <summary>
 /// The servers of this node: their stored specs, their supervisors, and the commands and operations the panel sends
-/// for them (docs/architecture/05). Operations (provision, install, delete) run in the background, one at a time per
-/// server, and their results are kept until the panel has received them. Started before the panel connection, so the
+/// for them (docs/architecture/05). Operations (provision, install, update, delete, backups) run in the background, one
+/// at a time per server, and their results are kept until the panel has received them. All but a backup are exclusive:
+/// while one runs, the server cannot start and its files cannot change. Started before the panel connection, so the
 /// first Hello already reports every server; stopped before it, so the panel sees the servers stop.
 /// </summary>
 public sealed partial class ServerHost(
@@ -43,6 +45,7 @@ public sealed partial class ServerHost(
     IRconConnector rcon,
     IServerFirewall firewall,
     FileCommands fileCommands,
+    BackupStore backups,
     InstallOptions installOptions,
     PanelChannel panel,
     SupervisorOptions supervisorOptions,
@@ -54,7 +57,7 @@ public sealed partial class ServerHost(
 
     private readonly ILogger _logger = loggerFactory.CreateLogger<ServerHost>();
     private readonly ConcurrentDictionary<Guid, Server> _servers = new();
-    private readonly ConcurrentDictionary<Guid, Guid> _operations = new(); // server → operation in flight
+    private readonly ConcurrentDictionary<Guid, RunningOperation> _operations = new(); // server → operation in flight
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _cancellations = new(); // operation → its cancellation
     private readonly TaskCompletionSource _loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _stopping = new();
@@ -88,6 +91,11 @@ public sealed partial class ServerHost(
             {
                 yield return capability;
             }
+
+            yield return AgentCapabilities.CreateBackup;
+            yield return AgentCapabilities.RestoreBackup;
+            yield return AgentCapabilities.DeleteBackup;
+            yield return AgentCapabilities.SendBackup;
             if (installOptions.TestGameAvailable)
             {
                 yield return AgentCapabilities.TestGame;
@@ -125,7 +133,7 @@ public sealed partial class ServerHost(
     /// Operations still running, and finished ones whose result waits in the outbox: the panel must not mark those as
     /// interrupted, since the result follows right after the Hello.
     /// </summary>
-    public IReadOnlyList<Guid> OperationsInFlight() => [.. _operations.Values, .. store.PendingResults().Select(r => r.OperationId)];
+    public IReadOnlyList<Guid> OperationsInFlight() => [.. _operations.Values.Select(o => o.Id), .. store.PendingResults().Select(r => r.OperationId)];
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -157,6 +165,15 @@ public sealed partial class ServerHost(
 
         var serversRoot = _config.ServersRootOrDefault(configs.Paths);
         LogLoaded(_servers.Count, serversRoot);
+        try
+        {
+            backups.CleanUp(BackupsRoot);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogBackupsNotCleaned(ex.Message);
+        }
+
         _loaded.TrySetResult();
         _metrics = SendMetricsAsync(_stopping.Token);
         foreach (var supervisor in resume)
@@ -217,6 +234,10 @@ public sealed partial class ServerHost(
             UpdateServerCommand update => Update(envelope, update),
             ApplyServerSpecCommand apply => await ApplySpecAsync(envelope, apply),
             CancelOperationCommand cancel => Cancel(envelope, cancel),
+            CreateBackupCommand create => CreateBackup(envelope, create),
+            RestoreBackupCommand restore => RestoreBackup(envelope, restore),
+            DeleteBackupCommand delete => await Task.Run(() => DeleteBackup(envelope, delete)),
+            SendBackupCommand send => await Task.Run(() => SendBackup(envelope, send)),
             StartServerCommand start => await Control(envelope, start.ServerId, s => s.StartAsync(), allowedDuringOperation: false),
             StopServerCommand stop => await Control(envelope, stop.ServerId, s => s.StopAsync(), allowedDuringOperation: true),
             RestartServerCommand restart => await Control(envelope, restart.ServerId, s => s.RestartAsync(), allowedDuringOperation: false),
@@ -239,7 +260,7 @@ public sealed partial class ServerHost(
         }
 
         var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
-        var busy = _operations.ContainsKey(serverId);
+        var busy = Exclusive(serverId);
         return await Task.Run(() => fileCommands.Execute(envelope, provisioned, busy));
     }
 
@@ -514,6 +535,7 @@ public sealed partial class ServerHost(
             TerminateStrays(command.ServerId, provisioner.Describe(root, server.ShortId).Identity);
             firewall.Remove(server.ShortId, [.. server.Manifest.PortList.Select(p => p.Name)]);
             await Task.Run(() => provisioner.Deprovision(root, server.ShortId), CancellationToken.None); // never left half done
+            DeleteBackups(server.ShortId);
             lock (_recordLock)
             {
                 store.Delete(command.ServerId);
@@ -523,6 +545,112 @@ public sealed partial class ServerHost(
         });
     }
 
+    /// <summary>A backup while the server keeps running (docs/architecture/05: starting, stopping and editing files stay allowed).</summary>
+    private CommandAck CreateBackup(CommandEnvelope envelope, CreateBackupCommand command)
+    {
+        if (envelope.OperationId is not { } operationId)
+        {
+            return Rejected(envelope, "command.operation_required", "A backup is an operation.");
+        }
+
+        if (!_servers.TryGetValue(command.ServerId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        var location = Backup(server, command.BackupId);
+        return RunOperation(envelope, command.ServerId, operationId, exclusive: false, async cancellationToken =>
+        {
+            var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+            return await backups.CreateAsync(location, provisioned, server.Manifest.Backup,
+                (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
+        });
+    }
+
+    /// <summary>A restore needs the server stopped, and nothing else happens to it until the restore ends.</summary>
+    private CommandAck RestoreBackup(CommandEnvelope envelope, RestoreBackupCommand command)
+    {
+        if (envelope.OperationId is not { } operationId)
+        {
+            return Rejected(envelope, "command.operation_required", "A restore is an operation.");
+        }
+
+        if (!_servers.TryGetValue(command.ServerId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        if (server.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
+        {
+            return Rejected(envelope, "server.running", "Stop the server before restoring a backup.");
+        }
+
+        var location = Backup(server, command.BackupId);
+        return RunOperation(envelope, command.ServerId, operationId, async cancellationToken =>
+        {
+            var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+            TerminateStrays(command.ServerId, provisioned.Identity);
+            await backups.RestoreAsync(location, provisioned, command.Sha256, (stage, percent) => SendProgressAsync(operationId, stage, percent),
+                cancellationToken);
+        });
+    }
+
+    private CommandAck DeleteBackup(CommandEnvelope envelope, DeleteBackupCommand command)
+    {
+        if (!_servers.TryGetValue(command.ServerId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        try
+        {
+            var deleted = backups.Delete(Backup(server, command.BackupId));
+            return new CommandAck(envelope.CommandId, deleted ? AckStatus.Accepted : AckStatus.AlreadyInState, null, null);
+        }
+        catch (BackupException ex)
+        {
+            return Rejected(envelope, ex.Code, ex.Message);
+        }
+    }
+
+    private CommandAck SendBackup(CommandEnvelope envelope, SendBackupCommand command)
+    {
+        if (!_servers.TryGetValue(command.ServerId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        var location = Backup(server, command.BackupId);
+        try
+        {
+            return fileCommands.Send(envelope, command.Ticket, $"backup {command.BackupId}", () => backups.Open(location));
+        }
+        catch (BackupException ex)
+        {
+            return Rejected(envelope, ex.Code, ex.Message);
+        }
+    }
+
+    private string BackupsRoot => _config!.BackupsRootOrDefault(configs.Paths);
+
+    private BackupLocation Backup(Server server, Guid backupId) => new(BackupsRoot, server.ShortId, backupId);
+
+    /// <summary>A deleted server's backups go with it (the panel forgets them too).</summary>
+    private void DeleteBackups(string shortId)
+    {
+        try
+        {
+            backups.DeleteAll(BackupsRoot, shortId);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogBackupsNotDeleted(shortId, ex.Message);
+        }
+    }
+
+    /// <summary>An operation that keeps the server from starting and its files from changing is running.</summary>
+    private bool Exclusive(Guid serverId) => _operations.TryGetValue(serverId, out var operation) && operation.Exclusive;
+
     private async Task<CommandAck> Control(CommandEnvelope envelope, Guid serverId, Func<ServerSupervisor, Task<AckStatus>> action,
         bool allowedDuringOperation)
     {
@@ -531,7 +659,7 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.unknown", "This node does not have that server.");
         }
 
-        if (!allowedDuringOperation && _operations.ContainsKey(serverId))
+        if (!allowedDuringOperation && Exclusive(serverId))
         {
             return new CommandAck(envelope.CommandId, AckStatus.Busy, "server.busy", "An operation is running on this server.");
         }
@@ -540,9 +668,20 @@ public sealed partial class ServerHost(
         return new CommandAck(envelope.CommandId, status, null, null);
     }
 
-    private CommandAck RunOperation(CommandEnvelope envelope, Guid serverId, Guid operationId, Func<CancellationToken, Task> work)
+    private CommandAck RunOperation(CommandEnvelope envelope, Guid serverId, Guid operationId, Func<CancellationToken, Task> work) =>
+        RunOperation(envelope, serverId, operationId, exclusive: true, async cancellationToken =>
+        {
+            await work(cancellationToken);
+            return null;
+        });
+
+    /// <param name="exclusive">Nothing else may happen to the server meanwhile (everything but a backup).</param>
+    /// <param name="work">Returns what the operation produced, for its result.</param>
+    private CommandAck RunOperation(CommandEnvelope envelope, Guid serverId, Guid operationId, bool exclusive,
+        Func<CancellationToken, Task<CommandResult?>> work)
     {
-        if (!_operations.TryAdd(serverId, operationId))
+        var running = new RunningOperation(operationId, exclusive);
+        if (!_operations.TryAdd(serverId, running))
         {
             return new CommandAck(envelope.CommandId, AckStatus.Busy, "server.busy", "Another operation is running on this server.");
         }
@@ -554,8 +693,8 @@ public sealed partial class ServerHost(
             OperationCompleted result;
             try
             {
-                await work(cancellation.Token);
-                result = new OperationCompleted(operationId, serverId, OperationOutcome.Succeeded, null, null);
+                var produced = await work(cancellation.Token);
+                result = new OperationCompleted(operationId, serverId, OperationOutcome.Succeeded, null, null, produced);
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
             {
@@ -567,14 +706,20 @@ public sealed partial class ServerHost(
             {
                 // Whatever went wrong, the panel must learn that the operation ended.
                 LogOperationFailed(ex, operationId, serverId);
-                var code = ex is GameProcessException process ? process.Code : "operation.failed";
+                var code = ex switch
+                {
+                    GameProcessException process => process.Code,
+                    FileManagerException file => file.Code,
+                    BackupException backup => backup.Code,
+                    _ => "operation.failed",
+                };
                 result = new OperationCompleted(operationId, serverId, OperationOutcome.Failed, code, ex.Message);
             }
             finally
             {
                 _cancellations.TryRemove(operationId, out _);
                 cancellation.Dispose();
-                _operations.TryRemove(new KeyValuePair<Guid, Guid>(serverId, operationId));
+                _operations.TryRemove(new KeyValuePair<Guid, RunningOperation>(serverId, running));
             }
 
             await CompleteAsync(result);
@@ -694,6 +839,8 @@ public sealed partial class ServerHost(
     private static CommandAck Rejected(CommandEnvelope envelope, string code, string message) =>
         new(envelope.CommandId, AckStatus.Rejected, code, message);
 
+    private sealed record RunningOperation(Guid Id, bool Exclusive);
+
     private sealed record Server(string ShortId, GameManifest Manifest, ServerRuntimeSpec Spec, string? RconPassword, ServerSupervisor Supervisor)
     {
         // Holds secrets: never print them.
@@ -723,6 +870,12 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The console history of deleted server {ShortId} could not be removed: {Reason}")]
     private partial void LogConsoleLogsNotDeleted(string shortId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The backups of deleted server {ShortId} could not be removed: {Reason}")]
+    private partial void LogBackupsNotDeleted(string shortId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Unfinished backups could not be cleaned up: {Reason}")]
+    private partial void LogBackupsNotCleaned(string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Operation {OperationId} on server {ServerId} cancelled")]
     private partial void LogOperationCancelled(Guid operationId, Guid serverId);

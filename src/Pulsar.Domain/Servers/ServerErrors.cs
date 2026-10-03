@@ -48,7 +48,28 @@ public static class ServerErrors
     public static DomainError OperationNotFound { get; } = new("operation.not_found", "The operation does not exist.");
 
     public static DomainError OperationNotCancellable { get; } =
-        new("operation.not_cancellable", "Only running installs and updates can be cancelled.");
+        new("operation.not_cancellable", "Only running installs, updates and backups can be cancelled.");
+
+    public static DomainError OperationForbidden { get; } =
+        new("operation.forbidden", "You may not cancel this kind of operation on this server.");
+
+    public static DomainError BackupNotFound { get; } = new("backups.not_found", "The backup does not exist.");
+
+    public static DomainError BackupNameInvalid { get; } =
+        new("backups.name_invalid", $"A backup name is one line of 1 to {Backup.MaxNameLength} characters.");
+
+    public static DomainError BackupLimitInvalid { get; } =
+        new("backups.limit_invalid", $"Keep between 1 and {Server.MaxBackupLimit} backups, or set no limit.");
+
+    public static DomainError BackupNotCompleted { get; } = new("backups.not_completed", "The backup is not complete.");
+
+    public static DomainError BackupLocked { get; } = new("backups.locked", "The backup is locked: unlock it before deleting it.");
+
+    public static DomainError BackupsUnsupported { get; } =
+        new("backups.unsupported", "The node's agent cannot make backups (update the agent).");
+
+    /// <summary>The agent refused a backup command; its code (<c>backups.*</c>) and message are passed on.</summary>
+    public static DomainError BackupRejected(string code, string message) => new(code, message);
 
     public static DomainError TemplateVersionExists { get; } =
         new("template.version_exists", "That game key and version are already registered: templates never change, give it a new version.");

@@ -19,6 +19,8 @@ internal sealed class OperationIdConverter() : ValueConverter<OperationId, Guid>
 
 internal sealed class AllocationIdConverter() : ValueConverter<AllocationId, Guid>(id => id.Value, value => new AllocationId(value));
 
+internal sealed class BackupIdConverter() : ValueConverter<BackupId, Guid>(id => id.Value, value => new BackupId(value));
+
 /// <summary>Stores enums as snake_case text (<c>PendingEnrollment</c> → <c>pending_enrollment</c>), matched by a CHECK constraint.</summary>
 internal sealed class SnakeCaseEnumConverter<TEnum>() : ValueConverter<TEnum, string>(
     value => SnakeCaseEnum<TEnum>.ToText(value),

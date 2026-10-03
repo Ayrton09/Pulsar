@@ -36,6 +36,8 @@ public interface IPulsarDbContext
 
     DbSet<NodeAllocation> NodeAllocations { get; }
 
+    DbSet<Backup> Backups { get; }
+
     /// <summary>Transactions and set-based updates (e.g. consuming a token atomically).</summary>
     DatabaseFacade Database { get; }
 

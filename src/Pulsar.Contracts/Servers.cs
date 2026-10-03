@@ -98,4 +98,6 @@ public enum OperationOutcome
 public sealed record OperationProgress(Guid OperationId, string Stage, double? Percent, string? Message);
 
 /// <summary>The end of an operation. Kept by the agent and sent again until the panel has received it.</summary>
-public sealed record OperationCompleted(Guid OperationId, Guid? ServerId, OperationOutcome Outcome, string? ErrorCode, string? Message);
+/// <param name="Result">What a successful operation produced (a <see cref="BackupResult"/>); null for most operations and older agents.</param>
+public sealed record OperationCompleted(Guid OperationId, Guid? ServerId, OperationOutcome Outcome, string? ErrorCode, string? Message,
+    CommandResult? Result = null);

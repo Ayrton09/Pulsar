@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
+using Pulsar.Agent.Core.Backups;
 using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Tests;
@@ -62,6 +63,65 @@ public sealed class WindowsServerFileManagerTests : ServerFileManagerContract
         Assert.Equal(FileErrors.OutsideServer, Code(() => Files.Move(Server, "game/csgo/cfg/sub", "sub")));
         Assert.Equal(FileErrors.OutsideServer, Code(() => Files.Delete(Server, "game/csgo/cfg/secret.cfg")));
         Assert.Equal(FileErrors.OutsideServer, Code(() => Files.Delete(Server, "game/csgo/cfg/sub")));
+        OutsideIsUntouched();
+    }
+
+    [WindowsFact]
+    public void AWalkReportsJunctionsButNeverEntersThem()
+    {
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "game", "csgo"));
+        File.WriteAllText(Path.Combine(ServerDirectory, "game", "csgo", "server.cfg"), "mine");
+        Link("/J", "game/csgo/cfg", _outside);
+        Link("/J", "everything", Root);
+
+        var entries = Files.Walk(Server);
+
+        Assert.Equal(["everything", "game", "game/csgo", "game/csgo/cfg", "game/csgo/server.cfg"], entries.Select(e => e.Path).Order(StringComparer.Ordinal));
+        Assert.Equal(FileEntryKind.Link, entries.Single(e => e.Path == "game/csgo/cfg").Kind);
+        Assert.Equal(FileEntryKind.Link, entries.Single(e => e.Path == "everything").Kind);
+        Assert.Equal(FileErrors.Link, Code(() => Files.EnsureDirectory(Server, "game/csgo/cfg")));
+        Assert.Equal(FileErrors.Link, Code(() => Files.EnsureDirectory(Server, "game/csgo/cfg/sub/x")));
+        Assert.False(Directory.Exists(Path.Combine(_outside, "sub", "x")));
+        OutsideIsUntouched();
+    }
+
+    [WindowsFact]
+    public async Task ABackupNeverFollowsAJunction()
+    {
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg"));
+        File.WriteAllText(Path.Combine(ServerDirectory, "cfg", "server.cfg"), "mine");
+        Link("/J", "cfg/stolen", _outside);
+        Link("/J", "everything", Root);
+        var store = new BackupStore(Files, NullLogger<BackupStore>.Instance);
+        var location = new BackupLocation(Path.Combine(Root, "backups"), "abcd1234", Guid.NewGuid());
+
+        var result = await store.CreateAsync(location, Server, rules: null, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+
+        using (var archive = System.IO.Compression.ZipFile.OpenRead(location.Archive))
+        {
+            Assert.Equal(["cfg/server.cfg"], archive.Entries.Select(e => e.FullName));
+        }
+
+        Assert.Equal(1, result.FileCount);
+        OutsideIsUntouched();
+    }
+
+    [WindowsFact]
+    public async Task ARestoreNeverWritesThroughAJunction()
+    {
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg", "sub"));
+        File.WriteAllText(Path.Combine(ServerDirectory, "cfg", "secret.cfg"), "from the backup");
+        File.WriteAllText(Path.Combine(ServerDirectory, "cfg", "sub", "x.cfg"), "from the backup");
+        var store = new BackupStore(Files, NullLogger<BackupStore>.Instance);
+        var location = new BackupLocation(Path.Combine(Root, "backups"), "abcd1234", Guid.NewGuid());
+        var backup = await store.CreateAsync(location, Server, rules: null, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+        Files.Delete(Server, "cfg");
+        Link("/J", "cfg", _outside);
+
+        var error = await Assert.ThrowsAsync<FileManagerException>(() =>
+            store.RestoreAsync(location, Server, backup.Sha256, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken));
+
+        Assert.Equal(FileErrors.Link, error.Code);
         OutsideIsUntouched();
     }
 
@@ -184,7 +244,7 @@ public sealed class WindowsServerFileManagerTests : ServerFileManagerContract
     /// link planted in its own directory (the agent itself, as SYSTEM, could).
     /// </summary>
     [AccountFact]
-    public void AsTheServersAccountAnotherServersFileStaysUnreadable()
+    public async Task AsTheServersAccountAnotherServersFileStaysUnreadable()
     {
         var provisioner = new WindowsServerProvisioner(new WindowsServerAccounts(NullLogger<WindowsServerAccounts>.Instance),
             development: false, NullLogger<WindowsServerProvisioner>.Instance);
@@ -217,6 +277,21 @@ public sealed class WindowsServerFileManagerTests : ServerFileManagerContract
             Assert.Contains(files.List(a, ServerFilePath.Root).Entries, e => e.Name == "stolen.cfg");
             Assert.Equal(FileErrors.AccessDenied, Code(() => files.Delete(a, "stolen.cfg")));
             Assert.Equal("server b", File.ReadAllText(Path.Combine(b.Directory, "secret.cfg")));
+
+            // A backup of A reads as A: the link is left out (counted), and a restore writes as A too.
+            File.WriteAllText(Path.Combine(a.Directory, "server.cfg"), "server a");
+            var store = new BackupStore(files, NullLogger<BackupStore>.Instance);
+            var location = new BackupLocation(Path.Combine(Root, "backups"), shortIds[0], Guid.NewGuid());
+            var backup = await store.CreateAsync(location, a, rules: null, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+            using (var archive = System.IO.Compression.ZipFile.OpenRead(location.Archive))
+            {
+                Assert.Equal(["server.cfg"], archive.Entries.Select(e => e.FullName));
+            }
+
+            Assert.Equal(1, backup.SkippedFiles);
+            File.WriteAllText(Path.Combine(a.Directory, "server.cfg"), "changed");
+            await store.RestoreAsync(location, a, backup.Sha256, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+            Assert.Equal("server a", File.ReadAllText(Path.Combine(a.Directory, "server.cfg")));
         }
         finally
         {

@@ -43,6 +43,54 @@ public sealed class DirectServerFileManager : IServerFileManager
         Guard(path, () => Directory.CreateDirectory(full));
     }
 
+    public void EnsureDirectory(ProvisionedServer server, string path)
+    {
+        var full = Resolve(server, path);
+        for (var current = path; current.Length > 0; current = ServerFilePath.Parent(current))
+        {
+            var existing = Resolve(server, current);
+            if (IsLink(existing))
+            {
+                throw new FileManagerException(FileErrors.Link, $"'{current}' is a junction or link.");
+            }
+
+            if (File.Exists(existing))
+            {
+                throw new FileManagerException(FileErrors.NotADirectory, $"'{current}' is not a directory.");
+            }
+        }
+
+        Guard(path, () => Directory.CreateDirectory(full));
+    }
+
+    public IReadOnlyList<TreeEntry> Walk(ProvisionedServer server)
+    {
+        var root = Resolve(server, ServerFilePath.Root, allowRoot: true);
+        var entries = new List<TreeEntry>();
+        Guard(ServerFilePath.Root, () => WalkInto(root, ServerFilePath.Root, entries, 0));
+        return entries;
+    }
+
+    private static void WalkInto(string directory, string path, List<TreeEntry> entries, int depth)
+    {
+        foreach (var info in new DirectoryInfo(directory).EnumerateFileSystemInfos())
+        {
+            if (!ServerFilePath.IsValid(ServerFilePath.Join(path, info.Name)))
+            {
+                continue;
+            }
+
+            var entry = Entry(info);
+            var entryPath = ServerFilePath.Join(path, entry.Name);
+            entries.Add(new TreeEntry(entryPath, entry.Kind, entry.Size, entry.ModifiedAt));
+            ServerFileRules.CheckWalk(entries.Count, depth);
+            if (entry.Kind == FileEntryKind.Directory)
+            {
+                WalkInto(info.FullName, entryPath, entries, depth + 1);
+            }
+        }
+    }
+
     public void Move(ProvisionedServer server, string path, string destination)
     {
         ServerFileRules.CheckMove(path, destination);

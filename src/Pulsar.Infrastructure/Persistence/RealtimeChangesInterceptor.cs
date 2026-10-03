@@ -75,6 +75,9 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
                 case ServerVariable variable:
                     changes.Servers.Add(variable.ServerId);
                     break;
+                case Backup backup:
+                    changes.Servers.Add(backup.ServerId);
+                    break;
                 case NodeAllocation allocation:
                     changes.Nodes.Add(allocation.NodeId);
                     if (allocation.ServerId is { } holder)

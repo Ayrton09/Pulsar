@@ -58,8 +58,8 @@ public static class ServerFileEndpoints
         return api;
     }
 
-    /// <summary>Streams a file from the node to the browser, never holding it on the panel.</summary>
-    private static async Task<IResult> SendAsync(HttpContext http, Task<Result<FileContent>> opening, bool attachment)
+    /// <summary>Streams a file (or a backup) from the node to the browser, never holding it on the panel.</summary>
+    internal static async Task<IResult> SendAsync(HttpContext http, Task<Result<FileContent>> opening, bool attachment, string contentType = Binary)
     {
         var opened = await opening;
         if (!opened.IsSuccess)
@@ -69,7 +69,7 @@ public static class ServerFileEndpoints
 
         using var content = opened.Value;
         var response = http.Response;
-        response.ContentType = Binary;
+        response.ContentType = contentType;
         response.ContentLength = content.Length;
         response.Headers.CacheControl = "no-store";
         response.Headers.ETag = Quote(content.File.Version);

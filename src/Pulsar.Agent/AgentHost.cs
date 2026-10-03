@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.Hosting;
 using Pulsar.Agent.Core;
+using Pulsar.Agent.Core.Backups;
 using Pulsar.Agent.Core.Commands;
 using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Panel;
@@ -86,6 +87,7 @@ internal static class AgentHost
             builder.Services.AddSingleton<IServerFileManager, WindowsServerFileManager>();
             builder.Services.AddSingleton(new FileCommandOptions());
             builder.Services.AddSingleton<FileCommands>();
+            builder.Services.AddSingleton<BackupStore>();
             builder.Services.AddSingleton<InstallSteps>();
             builder.Services.AddSingleton<ISteamCmdSource, SteamCmdBootstrapper>();
             builder.Services.AddSingleton(new SteamCmdOptions());

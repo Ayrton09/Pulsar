@@ -263,8 +263,9 @@ internal sealed partial class AgentHub(
 
         if (await servers.OperationCompletedAsync(nodeId, completed, CancellationToken.None) is { } followUp)
         {
-            // The install that follows provisioning sends a command to this same agent: not awaited inside its own call.
-            _ = Task.Run(() => ContinueInstallAsync(followUp));
+            // The install that follows provisioning, and retention after a backup, send commands to this same agent: not
+            // awaited inside its own call.
+            _ = Task.Run(() => FollowUpAsync(followUp));
         }
     }
 
@@ -274,16 +275,24 @@ internal sealed partial class AgentHub(
         return connections.IsRegistered(nodeId, Context.ConnectionId) ? nodeId : null;
     }
 
-    private async Task ContinueInstallAsync(ServerFollowUp followUp)
+    private async Task FollowUpAsync(ServerFollowUp followUp)
     {
         try
         {
             await using var scope = scopes.CreateAsyncScope();
-            await scope.ServiceProvider.GetRequiredService<ServerManagement>().ContinueInstallAsync(followUp.ServerId, followUp.RequestedBy, CancellationToken.None);
+            if (followUp.Kind == ServerFollowUpKind.PruneBackups)
+            {
+                await scope.ServiceProvider.GetRequiredService<ServerBackups>().PruneAsync(followUp.ServerId, CancellationToken.None);
+            }
+            else
+            {
+                await scope.ServiceProvider.GetRequiredService<ServerManagement>().ContinueInstallAsync(followUp.ServerId, followUp.RequestedBy,
+                    CancellationToken.None);
+            }
         }
         catch (Exception ex) when (ex is DbUpdateException or InvalidOperationException or OperationCanceledException)
         {
-            LogInstallNotStarted(ex, followUp.ServerId);
+            LogFollowUpFailed(ex, followUp.Kind, followUp.ServerId);
         }
     }
 
@@ -306,8 +315,8 @@ internal sealed partial class AgentHub(
         Message = "Node {NodeId} rejected with protocol version {ProtocolVersion}; supported versions are {MinimumVersion} through {CurrentVersion}")]
     private partial void LogProtocolRejected(NodeId nodeId, int protocolVersion, int minimumVersion, int currentVersion);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Server {ServerId} was provisioned but its install could not be started")]
-    private partial void LogInstallNotStarted(Exception exception, ServerId serverId);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Follow-up {Kind} of server {ServerId} could not be done (after provisioning: its install did not start)")]
+    private partial void LogFollowUpFailed(Exception exception, ServerFollowUpKind kind, ServerId serverId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not send the panel keys to node {NodeId}")]
     private partial void LogPanelKeysUpdateFailed(Exception exception, NodeId nodeId);

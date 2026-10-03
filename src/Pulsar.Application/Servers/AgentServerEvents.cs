@@ -11,8 +11,17 @@ using Pulsar.Domain.Servers;
 
 namespace Pulsar.Application.Servers;
 
+public enum ServerFollowUpKind
+{
+    /// <summary>The install that follows a successful provisioning.</summary>
+    ContinueInstall,
+
+    /// <summary>Retention, after a new backup.</summary>
+    PruneBackups,
+}
+
 /// <summary>Work the hub must start after it returns (it cannot wait for an agent's answer inside its own call).</summary>
-public sealed record ServerFollowUp(ServerId ServerId, UserId? RequestedBy);
+public sealed record ServerFollowUp(ServerId ServerId, UserId? RequestedBy, ServerFollowUpKind Kind = ServerFollowUpKind.ContinueInstall);
 
 /// <summary>
 /// What agents report about their servers (docs/architecture/05): state changes, operation progress and results, and
@@ -122,6 +131,13 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                     case OperationType.ServerProvision when operation.Status == OperationStatus.Succeeded:
                         followUp = new ServerFollowUp(server.Id, operation.RequestedBy);
                         break;
+                    case OperationType.BackupCreate:
+                        if (await BackupEndedAsync(operation, completed.Result, now, cancellationToken) && server.BackupLimit is not null)
+                        {
+                            followUp = new ServerFollowUp(server.Id, operation.RequestedBy, ServerFollowUpKind.PruneBackups);
+                        }
+
+                        break;
                     case OperationType.ServerDelete when operation.Status == OperationStatus.Succeeded:
                         // Its allocations become free for other servers.
                         foreach (var allocation in await db.NodeAllocations.Where(a => a.ServerId == server.Id).ToListAsync(cancellationToken))
@@ -189,6 +205,11 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         {
             operation.Complete(OperationStatus.Interrupted, "operation.interrupted", "The agent restarted or lost the operation.", now);
             servers.FirstOrDefault(s => s.Id == operation.ServerId)?.OperationCompleted(operation, now);
+            if (operation.Type == OperationType.BackupCreate)
+            {
+                await BackupEndedAsync(operation, null, now, cancellationToken);
+            }
+
             LogInterrupted(operation.Id, nodeId);
         }
 
@@ -201,6 +222,44 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
             // An event or a user request changed a server meanwhile; the next Hello reconciles again.
             db.ChangeTracker.Clear();
             LogReconciliationConflict(nodeId);
+        }
+    }
+
+    /// <summary>The backup its operation was making ends with it; true when it is complete.</summary>
+    private async Task<bool> BackupEndedAsync(Operation operation, CommandResult? result, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var backup = await db.Backups.SingleOrDefaultAsync(b => b.OperationId == operation.Id, cancellationToken);
+        if (backup is null)
+        {
+            return false;
+        }
+
+        switch (operation.Status)
+        {
+            case OperationStatus.Succeeded when result is BackupResult made && Sha256(made.Sha256) is { } hash:
+                backup.Completed(made.Size, made.FileCount, made.SkippedFiles, hash, now);
+                return true;
+            case OperationStatus.Succeeded:
+                backup.Ended(BackupStatus.Failed, "The node reported no archive.", now);
+                return false;
+            case OperationStatus.Cancelled:
+                backup.Ended(BackupStatus.Cancelled, null, now);
+                return false;
+            default:
+                backup.Ended(BackupStatus.Failed, operation.ErrorMessage ?? operation.ErrorCode, now);
+                return false;
+        }
+    }
+
+    private static byte[]? Sha256(string hex)
+    {
+        try
+        {
+            return hex.Length == 64 ? Convert.FromHexString(hex) : null;
+        }
+        catch (FormatException)
+        {
+            return null;
         }
     }
 

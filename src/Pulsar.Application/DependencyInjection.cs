@@ -25,7 +25,9 @@ public static class DependencyInjection
         services.AddScoped<PanelKeyManagement>();
         services.AddScoped<TemplateCatalog>();
         services.AddScoped<IBundledTemplates>(sp => sp.GetRequiredService<TemplateCatalog>());
+        services.AddScoped<ServerOperations>();
         services.AddScoped<ServerManagement>();
+        services.AddScoped<ServerBackups>();
         services.AddScoped<ConsoleCommands>();
         services.AddScoped<ServerFiles>();
         services.AddSingleton<FileTransfers>();

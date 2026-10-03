@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core;
+using Pulsar.Agent.Core.Backups;
 using Pulsar.Agent.Core.Commands;
 using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Panel;
@@ -91,7 +92,8 @@ public sealed class InProcessAgent : IAsyncDisposable
             new SteamCmdOptions { RetryDelays = [TimeSpan.Zero] }, _clock, NullLogger<SteamCmdRunner>.Instance);
         _servers = new ServerHost(Configs, new ServerStore(Configs.Paths, new PlainStateProtector()), Provisioner, Processes,
             new InstallSteps(install, files), _steamCmd, files, Rcon, new UnmanagedFirewall(),
-            new FileCommands(new DirectServerFileManager(), channel, FileOptions, NullLogger<FileCommands>.Instance), install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance);
+            new FileCommands(new DirectServerFileManager(), channel, FileOptions, NullLogger<FileCommands>.Instance),
+            new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance), install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance);
         _connection = new AgentConnection(Configs, Keys, new FixedNodeSystem(), _transport, new PanelAuthenticator(_transport),
             new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance, _servers), Options,
             _clock, new StubLifetime(), NullLoggerFactory.Instance, channel, _servers);

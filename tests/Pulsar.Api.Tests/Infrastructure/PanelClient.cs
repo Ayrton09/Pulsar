@@ -52,6 +52,12 @@ public sealed class PanelClient : IDisposable
     public Task<HttpResponseMessage> GetAsync(string path) =>
         Http.GetAsync(new Uri(path, UriKind.Relative), TestContext.Current.CancellationToken);
 
+    public Task<HttpResponseMessage> PutAsync<T>(string path, T body) =>
+        Http.PutAsJsonAsync(new Uri(path, UriKind.Relative), body, TestContext.Current.CancellationToken);
+
+    public Task<HttpResponseMessage> DeleteAsync(string path) =>
+        Http.DeleteAsync(new Uri(path, UriKind.Relative), TestContext.Current.CancellationToken);
+
     public async Task<HttpResponseMessage> LoginAsync(string userName, string password) =>
         await PostAsync("/api/v1/auth/login", new LoginRequest(userName, password));
 

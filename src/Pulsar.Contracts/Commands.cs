@@ -45,6 +45,10 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(DeleteFileCommand), DeleteFileCommand.Type)]
 [JsonDerivedType(typeof(SendFileCommand), SendFileCommand.Type)]
 [JsonDerivedType(typeof(ReceiveFileCommand), ReceiveFileCommand.Type)]
+[JsonDerivedType(typeof(CreateBackupCommand), CreateBackupCommand.Type)]
+[JsonDerivedType(typeof(RestoreBackupCommand), RestoreBackupCommand.Type)]
+[JsonDerivedType(typeof(DeleteBackupCommand), DeleteBackupCommand.Type)]
+[JsonDerivedType(typeof(SendBackupCommand), SendBackupCommand.Type)]
 public abstract record AgentCommand;
 
 /// <summary>Round-trip check of the signed command path (the UI's "test connection").</summary>
@@ -212,11 +216,52 @@ public sealed record ReceiveFileCommand(Guid ServerId, string Path, string Ticke
     public const string Type = "server.files_receive";
 }
 
-/// <summary>What a command answers besides being accepted (a directory listing, say).</summary>
+/// <summary>
+/// Operation: archives the server's files (the manifest's <c>backup</c> globs) into a zip kept on the node
+/// (docs/architecture/03, "Backups"). The server may keep running. The result carries a <see cref="BackupResult"/>.
+/// </summary>
+public sealed record CreateBackupCommand(Guid ServerId, Guid BackupId) : AgentCommand
+{
+    public const string Type = "server.backup_create";
+}
+
+/// <summary>
+/// Operation: puts the backup's files back in the server directory (files it does not have stay as they are). The
+/// server must be stopped; the archive must still have <paramref name="Sha256"/> (lowercase hex).
+/// </summary>
+public sealed record RestoreBackupCommand(Guid ServerId, Guid BackupId, string Sha256) : AgentCommand
+{
+    public const string Type = "server.backup_restore";
+}
+
+/// <summary>Deletes a backup's archive from the node; one that is already gone is <see cref="AckStatus.AlreadyInState"/>.</summary>
+public sealed record DeleteBackupCommand(Guid ServerId, Guid BackupId) : AgentCommand
+{
+    public const string Type = "server.backup_delete";
+}
+
+/// <summary>
+/// Sends a backup's archive to the panel like <see cref="SendFileCommand"/> (the ack carries a <see cref="FileEntryResult"/>),
+/// with <c>PUT</c> to <see cref="AgentProtocol.TransferPath"/>.
+/// </summary>
+public sealed record SendBackupCommand(Guid ServerId, Guid BackupId, string Ticket) : AgentCommand
+{
+    public const string Type = "server.backup_send";
+}
+
+/// <summary>What a command (or an operation, in <see cref="OperationCompleted"/>) answers besides being accepted.</summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "$type")]
 [JsonDerivedType(typeof(FileListResult), "files.list")]
 [JsonDerivedType(typeof(FileEntryResult), "files.entry")]
+[JsonDerivedType(typeof(BackupResult), "backups.created")]
 public abstract record CommandResult;
+
+/// <summary>A backup the node made.</summary>
+/// <param name="Size">Bytes of the archive.</param>
+/// <param name="FileCount">Files in it.</param>
+/// <param name="SkippedFiles">Files left out because the game held them open (a backup of a running server).</param>
+/// <param name="Sha256">The archive's SHA-256, lowercase hex: a restore checks it first.</param>
+public sealed record BackupResult(long Size, int FileCount, int SkippedFiles, string Sha256) : CommandResult;
 
 public enum AckStatus
 {
@@ -257,6 +302,10 @@ public static class AgentCapabilities
     public const string DeleteFile = DeleteFileCommand.Type;
     public const string SendFile = SendFileCommand.Type;
     public const string ReceiveFile = ReceiveFileCommand.Type;
+    public const string CreateBackup = CreateBackupCommand.Type;
+    public const string RestoreBackup = RestoreBackupCommand.Type;
+    public const string DeleteBackup = DeleteBackupCommand.Type;
+    public const string SendBackup = SendBackupCommand.Type;
 
     /// <summary>
     /// Not a command: the agent can install Pulsar's test game server (the <c>pulsar-test</c> manifest). Only agents
@@ -292,6 +341,10 @@ public static class AgentCapabilities
         DeleteFileCommand => DeleteFile,
         SendFileCommand => SendFile,
         ReceiveFileCommand => ReceiveFile,
+        CreateBackupCommand => CreateBackup,
+        RestoreBackupCommand => RestoreBackup,
+        DeleteBackupCommand => DeleteBackup,
+        SendBackupCommand => SendBackup,
         null => throw new ArgumentNullException(nameof(command)),
         _ => throw new ArgumentOutOfRangeException(nameof(command), command.GetType().Name, "Command without a capability."),
     };

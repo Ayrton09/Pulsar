@@ -34,6 +34,8 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
             t.HasCheckConstraint("ck_servers_runtime_state", SnakeCaseEnum<ServerRuntimeState>.CheckConstraint("runtime_state"));
             t.HasCheckConstraint("ck_servers_desired_state", SnakeCaseEnum<DesiredState>.CheckConstraint("desired_state"));
             t.HasCheckConstraint("ck_servers_last_state_reason", SnakeCaseEnum<ServerStateReason>.CheckConstraint("last_state_reason"));
+            t.HasCheckConstraint("ck_servers_active_operation_type", SnakeCaseEnum<OperationType>.CheckConstraint("active_operation_type"));
+            t.HasCheckConstraint("ck_servers_backup_limit", $"backup_limit BETWEEN 1 AND {Server.MaxBackupLimit}");
         });
 
         builder.HasKey(s => s.Id);
@@ -46,6 +48,7 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         builder.Property(s => s.RuntimeState).HasConversion<SnakeCaseEnumConverter<ServerRuntimeState>>();
         builder.Property(s => s.DesiredState).HasConversion<SnakeCaseEnumConverter<DesiredState>>();
         builder.Property(s => s.LastStateReason).HasConversion<SnakeCaseEnumConverter<ServerStateReason>>();
+        builder.Property(s => s.ActiveOperationType).HasConversion<SnakeCaseEnumConverter<OperationType>>();
         builder.Property<uint>("Version").IsRowVersion();
         builder.HasIndex(s => s.NodeId);
         builder.Property(s => s.ExtraArguments).HasColumnType("text[]").HasDefaultValueSql("'{}'");
@@ -124,5 +127,34 @@ internal sealed class OperationConfiguration : IEntityTypeConfiguration<Operatio
         builder.HasOne<Node>().WithMany().HasForeignKey(o => o.NodeId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne<Server>().WithMany().HasForeignKey(o => o.ServerId).OnDelete(DeleteBehavior.SetNull);
         builder.HasOne<PulsarUser>().WithMany().HasForeignKey(o => o.RequestedBy).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+internal sealed class BackupConfiguration : IEntityTypeConfiguration<Backup>
+{
+    public void Configure(EntityTypeBuilder<Backup> builder)
+    {
+        builder.ToTable("backups", t =>
+        {
+            t.HasCheckConstraint("ck_backups_status", SnakeCaseEnum<BackupStatus>.CheckConstraint("status"));
+            t.HasCheckConstraint("ck_backups_created_via", SnakeCaseEnum<OperationRequester>.CheckConstraint("created_via"));
+        });
+
+        builder.HasKey(b => b.Id);
+        builder.Property(b => b.Id).ValueGeneratedNever();
+        builder.Property(b => b.Name).HasMaxLength(Backup.MaxNameLength);
+        builder.Property(b => b.Status).HasConversion<SnakeCaseEnumConverter<BackupStatus>>();
+        builder.Property(b => b.CreatedVia).HasConversion<SnakeCaseEnumConverter<OperationRequester>>();
+        builder.Property(b => b.ErrorMessage).HasMaxLength(Backup.MaxErrorMessageLength);
+        builder.Ignore(b => b.Duration);
+        // The agent's result, retention and users (locking, deleting) can race: the loser retries or gives way.
+        builder.Property<uint>("Version").IsRowVersion();
+        builder.HasIndex(b => new { b.ServerId, b.CreatedAt });
+        builder.HasIndex(b => b.OperationId);
+
+        builder.HasOne<Server>().WithMany().HasForeignKey(b => b.ServerId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Node>().WithMany().HasForeignKey(b => b.NodeId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Operation>().WithMany().HasForeignKey(b => b.OperationId).OnDelete(DeleteBehavior.SetNull);
+        builder.HasOne<PulsarUser>().WithMany().HasForeignKey(b => b.CreatedBy).OnDelete(DeleteBehavior.SetNull);
     }
 }

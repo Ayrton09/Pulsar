@@ -59,6 +59,7 @@ public sealed class Server
     public const int ShortIdLength = 8;
     public const int MaxExtraArguments = 32;
     public const int MaxExtraArgumentLength = 512;
+    public const int MaxBackupLimit = 1000;
 
     private const string ShortIdAlphabet = "abcdefghijklmnopqrstuvwxyz234567";
 
@@ -115,6 +116,12 @@ public sealed class Server
 
     public OperationId? ActiveOperationId { get; private set; }
 
+    /// <summary>What the active operation is: a backup leaves the server free to start and stop.</summary>
+    public OperationType? ActiveOperationType { get; private set; }
+
+    /// <summary>How many backups to keep (locked ones aside); null keeps them all.</summary>
+    public int? BackupLimit { get; private set; }
+
     public bool AutoStart { get; private set; }
 
     public bool RestartOnCrash { get; private set; }
@@ -168,18 +175,20 @@ public sealed class Server
             return ServerErrors.Busy;
         }
 
-        if (operation.Type is OperationType.ServerInstall or OperationType.ServerUpdate
+        if (operation.Type is OperationType.ServerUpdate or OperationType.BackupCreate or OperationType.BackupRestore
+            && InstallState != InstallState.Installed)
+        {
+            return ServerErrors.NotInstalled;
+        }
+
+        if (operation.Type is OperationType.ServerInstall or OperationType.ServerUpdate or OperationType.BackupRestore
             && RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
         {
             return ServerErrors.MustBeStopped;
         }
 
-        if (operation.Type == OperationType.ServerUpdate && InstallState != InstallState.Installed)
-        {
-            return ServerErrors.NotInstalled;
-        }
-
         ActiveOperationId = operation.Id;
+        ActiveOperationType = operation.Type;
         if (operation.Type is OperationType.ServerProvision or OperationType.ServerInstall)
         {
             InstallState = InstallState.Installing;
@@ -199,6 +208,7 @@ public sealed class Server
         }
 
         ActiveOperationId = null;
+        ActiveOperationType = null;
         var succeeded = operation.Status == OperationStatus.Succeeded;
         switch (operation.Type)
         {
@@ -225,7 +235,8 @@ public sealed class Server
             return ServerErrors.NotInstalled;
         }
 
-        if (ActiveOperationId is not null)
+        // A backup reads the files while the game runs (doc 05); every other operation keeps the server stopped.
+        if (ActiveOperationId is not null && ActiveOperationType != OperationType.BackupCreate)
         {
             return ServerErrors.Busy;
         }
@@ -298,6 +309,19 @@ public sealed class Server
         ExtraArguments = [.. extraArguments];
         AutoStart = autoStart;
         RestartOnCrash = restartOnCrash;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
+    /// <summary>How many backups retention keeps (locked ones are kept besides); null keeps them all.</summary>
+    public Result SetBackupLimit(int? limit, DateTimeOffset now)
+    {
+        if (limit is < 1 or > MaxBackupLimit)
+        {
+            return ServerErrors.BackupLimitInvalid;
+        }
+
+        BackupLimit = limit;
         UpdatedAt = now;
         return Result.Success();
     }

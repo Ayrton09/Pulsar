@@ -43,7 +43,44 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         });
     }
 
-    public void CreateDirectory(ProvisionedServer server, string path)
+    public void CreateDirectory(ProvisionedServer server, string path) => MakeDirectories(server, path, mustBeNew: true);
+
+    public void EnsureDirectory(ProvisionedServer server, string path) => MakeDirectories(server, path, mustBeNew: false);
+
+    public IReadOnlyList<TreeEntry> Walk(ProvisionedServer server) => Run(server, root =>
+    {
+        var entries = new List<TreeEntry>();
+        WalkInto(root, ServerFilePath.Root, entries, 0);
+        return entries;
+    });
+
+    /// <summary>Lists each directory from its own checked handle; links are recorded, never opened as directories.</summary>
+    private static void WalkInto(ServerRoot root, string path, List<TreeEntry> entries, int depth)
+    {
+        List<FileEntry> children;
+        using (var directory = root.OpenDirectory(path, ListDirectory | ReadAttributes | Synchronize))
+        {
+            children = Enumerate(directory, path);
+        }
+
+        foreach (var child in children)
+        {
+            var childPath = ServerFilePath.Join(path, child.Name);
+            if (!ServerFilePath.IsValid(childPath))
+            {
+                continue;
+            }
+
+            entries.Add(new TreeEntry(childPath, child.Kind, child.Size, child.ModifiedAt));
+            ServerFileRules.CheckWalk(entries.Count, depth);
+            if (child.Kind == FileEntryKind.Directory)
+            {
+                WalkInto(root, childPath, entries, depth + 1);
+            }
+        }
+    }
+
+    private void MakeDirectories(ProvisionedServer server, string path, bool mustBeNew)
     {
         ServerFileRules.Validate(path);
         Run(server, root =>
@@ -58,7 +95,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
                 if (existing is not null)
                 {
                     var kind = Describe(existing.Handle).Kind;
-                    if (last)
+                    if (last && mustBeNew)
                     {
                         throw new FileManagerException(FileErrors.Exists, $"'{path}' already exists.");
                     }

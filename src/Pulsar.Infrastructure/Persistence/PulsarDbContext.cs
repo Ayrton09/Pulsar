@@ -37,6 +37,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<NodeAllocation> NodeAllocations => Set<NodeAllocation>();
 
+    public DbSet<Backup> Backups => Set<Backup>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         configurationBuilder.Properties<UserId>().HaveConversion<UserIdConverter>();
@@ -46,6 +48,7 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
         configurationBuilder.Properties<TemplateId>().HaveConversion<TemplateIdConverter>();
         configurationBuilder.Properties<OperationId>().HaveConversion<OperationIdConverter>();
         configurationBuilder.Properties<AllocationId>().HaveConversion<AllocationIdConverter>();
+        configurationBuilder.Properties<BackupId>().HaveConversion<BackupIdConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder builder)

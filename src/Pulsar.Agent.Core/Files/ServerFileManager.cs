@@ -18,6 +18,15 @@ public interface IServerFileManager
     /// <summary>Creates a directory and its missing parents; fails when the directory exists.</summary>
     void CreateDirectory(ProvisionedServer server, string path);
 
+    /// <summary>Creates a directory and its missing parents; one that exists is kept as it is.</summary>
+    void EnsureDirectory(ProvisionedServer server, string path);
+
+    /// <summary>
+    /// Every entry below the server directory, each directory before what it holds. Links are reported and never
+    /// entered; entries whose names no <see cref="ServerFilePath"/> can name (a device name a game created) are left out.
+    /// </summary>
+    IReadOnlyList<TreeEntry> Walk(ProvisionedServer server);
+
     /// <summary>Renames or moves an entry; fails when <paramref name="destination"/> exists.</summary>
     void Move(ProvisionedServer server, string path, string destination);
 
@@ -34,6 +43,10 @@ public interface IServerFileManager
     /// </summary>
     PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion);
 }
+
+/// <summary>An entry found by <see cref="IServerFileManager.Walk"/>.</summary>
+/// <param name="Path">From the server directory (a <see cref="ServerFilePath"/>).</param>
+public sealed record TreeEntry(string Path, FileEntryKind Kind, long Size, DateTimeOffset ModifiedAt);
 
 public sealed class FileManagerException(string code, string message, Exception? inner = null) : Exception(message, inner)
 {
@@ -79,6 +92,11 @@ public static class ServerFileRules
 {
     /// <summary>Temporary files of transfers in progress (left behind only if the agent stops in the middle of one).</summary>
     public const string TemporaryPrefix = ".pulsar-upload-";
+
+    /// <summary>The most entries a walk returns (and the deepest it goes): a tree beyond either is refused.</summary>
+    public const int MaxWalkEntries = 1_000_000;
+
+    public const int MaxWalkDepth = 256;
 
     // A listing travels in one hub message: names are counted as if every character were escaped.
     private const int ListingBudget = (int)(AgentProtocol.MaximumMessageSize * 3 / 4);
@@ -158,6 +176,16 @@ public static class ServerFileRules
         IOException => new FileManagerException(FileErrors.Failed, $"'{path}': {ex.Message}", ex),
         _ => null,
     };
+
+    /// <summary>Counts one more entry of a walk at <paramref name="depth"/>.</summary>
+    public static void CheckWalk(int entries, int depth)
+    {
+        if (entries > MaxWalkEntries || depth > MaxWalkDepth)
+        {
+            throw new FileManagerException(FileErrors.TooLarge,
+                $"The server directory has more than {MaxWalkEntries} entries or is nested more than {MaxWalkDepth} levels deep.");
+        }
+    }
 
     public static void CheckMove(string path, string destination)
     {

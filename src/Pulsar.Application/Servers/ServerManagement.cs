@@ -78,6 +78,7 @@ public sealed partial class ServerManagement(
     AgentSessionStore sessions,
     TemplateCatalog templates,
     ServerSpecs specs,
+    ServerOperations operations,
     OperationProgressCache progress,
     IPermissionEvaluator permissions,
     IAuditLog audit,
@@ -375,7 +376,10 @@ public sealed partial class ServerManagement(
         return await DetailsAsync(server, cancellationToken);
     }
 
-    /// <summary>Asks the agent to cancel a running install or update; it completes as cancelled.</summary>
+    /// <summary>
+    /// Asks the agent to cancel a running install, update or backup; it completes as cancelled. Installs and updates
+    /// need <c>server.install</c>, backups <c>server.backups.create</c>.
+    /// </summary>
     public async Task<Result<ServerDetails>> CancelOperationAsync(ServerId id, Guid operationId, CancellationToken cancellationToken)
     {
         var server = await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
@@ -388,6 +392,13 @@ public sealed partial class ServerManagement(
         if (!operation.IsCancellable)
         {
             return ServerErrors.OperationNotCancellable;
+        }
+
+        var needed = operation.Type == OperationType.BackupCreate ? Permissions.Server.BackupsCreate : Permissions.Server.Install;
+        if (request.UserId is not { } user
+            || !await permissions.HasAsync(user, needed, AccessTarget.ForServer(server.Id, server.NodeId), cancellationToken))
+        {
+            return ServerErrors.OperationForbidden;
         }
 
         if (Connection(server.NodeId) is null)
@@ -547,52 +558,13 @@ public sealed partial class ServerManagement(
         return new AgentCommandResult(ack.Status, ack.ErrorCode);
     }
 
-    /// <summary>
-    /// Creates the operation, takes the server for it and sends its command. A refused or unanswered command fails the
-    /// operation at once (and releases the server), so nothing waits for a result that will never come.
-    /// </summary>
+    /// <summary>Creates the operation and runs it (<see cref="ServerOperations"/>).</summary>
     private async Task<Result> RunOperationAsync(Server server, OperationType type, AgentCommand command, UserId? requestedBy,
         OperationRequester requestedVia, CancellationToken cancellationToken)
     {
-        var now = clock.GetUtcNow();
-        var operation = Operation.Create(type, server.NodeId, server.Id, requestedBy, requestedVia, now);
-        var taken = server.BeginOperation(operation, now);
-        if (!taken.IsSuccess)
-        {
-            return taken;
-        }
-
-        db.Operations.Add(operation);
-        await db.SaveChangesAsync(cancellationToken);
-
-        var ack = await connections.SendAsync(server.NodeId, command, requestedBy, cancellationToken, operation.Id.Value);
-        now = clock.GetUtcNow();
-        if (ack?.Status is AckStatus.Accepted or AckStatus.AlreadyInState)
-        {
-            operation.Started(now);
-        }
-        else
-        {
-            var code = ack?.ErrorCode ?? (ack is null ? NodeErrors.NotConnected.Code : ServerErrors.CommandRejected.Code);
-            operation.Complete(OperationStatus.Failed, code, ack?.Message, now);
-            server.OperationCompleted(operation, now);
-            LogOperationRefused(operation.Id, type, server.Id, code);
-        }
-
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            // The agent already reported the result (a quick operation): it wins over "started". Both rows are read
-            // again (a deleted server becomes detached).
-            LogOperationAlreadyReported(operation.Id);
-            await db.Entry(operation).ReloadAsync(cancellationToken);
-            await db.Entry(server).ReloadAsync(cancellationToken);
-        }
-
-        return Result.Success();
+        var operation = Operation.Create(type, server.NodeId, server.Id, requestedBy, requestedVia, clock.GetUtcNow());
+        var run = await operations.RunAsync(server, operation, command, beforeSave: null, cancellationToken);
+        return run.IsSuccess ? Result.Success() : run.Error!;
     }
 
     private AgentConnectionInfo? Connection(NodeId node) =>
@@ -642,10 +614,4 @@ public sealed partial class ServerManagement(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: the agent refused its spec: {Code} ({Reason})")]
     private partial void LogSpecRefused(ServerId serverId, string? code, string? reason);
-
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Operation {OperationId} finished before its start was saved")]
-    private partial void LogOperationAlreadyReported(OperationId operationId);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Operation {OperationId} ({Type}) on server {ServerId} not accepted by the node: {Code}")]
-    private partial void LogOperationRefused(OperationId operationId, OperationType type, ServerId serverId, string code);
 }

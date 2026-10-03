@@ -19,7 +19,7 @@ internal static class AgentCommands
 
             Usage:
               PulsarAgent enroll --panel <url> --token <token> --panel-key <fingerprint>
-                                 [--servers-root <dir>] [--no-service] [--dev] [--data-dir <dir>]
+                                 [--servers-root <dir>] [--backups-root <dir>] [--no-service] [--dev] [--data-dir <dir>]
                   Pairs this machine with a panel (copy the command the panel shows), then installs and
                   starts the PulsarAgent service. Run it from an elevated prompt.
               PulsarAgent status [--check] [--data-dir <dir>]
@@ -35,17 +35,21 @@ internal static class AgentCommands
               --dev        Development install: key in the current user's store, no administrator rights,
                            no service. Never use it on a real node.
               --data-dir   State directory (default: {AgentPaths.DefaultRoot}).
+              --backups-root
+                           Where backups go (default: the backups folder of the state directory); only
+                           SYSTEM and Administrators can open it.
             """);
         return 0;
     }
 
     public static async Task<int> EnrollAsync(CommandLine line)
     {
-        line.Allow("panel", "token", "panel-key", "servers-root", "no-service", "dev", "data-dir");
+        line.Allow("panel", "token", "panel-key", "servers-root", "backups-root", "no-service", "dev", "data-dir");
         var development = line.Has("dev");
         var installService = !development && !line.Has("no-service");
         var request = new EnrollmentRequest(line.Required("panel"), line.Required("token"), line.Required("panel-key"),
-            line.Value("servers-root") is { } root ? Path.GetFullPath(root) : null, development);
+            line.Value("servers-root") is { } root ? Path.GetFullPath(root) : null, development,
+            line.Value("backups-root") is { } backups ? Path.GetFullPath(backups) : null);
         if (!development && !WindowsDirectorySecurity.IsElevated())
         {
             await Console.Error.WriteLineAsync("Enrollment creates a machine key and a protected state directory: run it from an elevated prompt (Run as administrator).");
@@ -154,6 +158,7 @@ internal static class AgentCommands
               Key age:    {(DateTimeOffset.UtcNow - config.CurrentKeyCreatedAt).Days} days (replaced automatically after {new AgentConnectionOptions().KeyRotationInterval.Days}){(config.PendingRotation is null ? string.Empty : "; a rotation is pending: the agent completes it when it next connects")}
               Panel keys: {string.Join(", ", config.PanelKeys.Select(k => k.KeyId))}
               Servers:    {config.ServersRoot ?? "(not set)"}
+              Backups:    {config.BackupsRootOrDefault(paths)}
               State:      {paths.Root}
             """);
 

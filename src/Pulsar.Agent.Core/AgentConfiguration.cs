@@ -32,11 +32,15 @@ public sealed class AgentPaths(string root)
 
     /// <summary>Rotated console logs, one folder per server (outside the server directory, which its account controls).</summary>
     public string ConsoleLogsDirectory => Path.Combine(Root, "console-logs");
+
+    /// <summary>Backups, one folder per server, unless enrollment chose another place (<see cref="AgentConfig.BackupsRoot"/>).</summary>
+    public string BackupsDirectory => Path.Combine(Root, "backups");
 }
 
 /// <summary>Everything the agent needs to reach and trust its panel, written at enrollment.</summary>
 /// <param name="KeyCreatedAt">When the current node key was registered (null: at enrollment). Drives automatic rotation.</param>
 /// <param name="PendingRotation">A new key the panel registered but the agent has not authenticated with yet.</param>
+/// <param name="BackupsRoot">Where backups go, chosen at enrollment (null: inside the state directory).</param>
 public sealed record AgentConfig(
     Uri Panel,
     Guid NodeId,
@@ -47,7 +51,8 @@ public sealed record AgentConfig(
     DateTimeOffset EnrolledAt,
     bool Development,
     DateTimeOffset? KeyCreatedAt = null,
-    PendingRotation? PendingRotation = null)
+    PendingRotation? PendingRotation = null,
+    string? BackupsRoot = null)
 {
     public DateTimeOffset CurrentKeyCreatedAt => KeyCreatedAt ?? EnrolledAt;
 
@@ -61,6 +66,13 @@ public sealed record AgentConfig(
         return ServersRoot ?? (Development
             ? Path.Combine(paths.Root, "servers")
             : Path.Combine((Environment.GetEnvironmentVariable("SystemDrive") ?? "C:") + Path.DirectorySeparatorChar, "PulsarServers"));
+    }
+
+    /// <summary>Where backups go: out of the servers' reach (only SYSTEM and Administrators can open it).</summary>
+    public string BackupsRootOrDefault(AgentPaths paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        return BackupsRoot ?? paths.BackupsDirectory;
     }
 }
 

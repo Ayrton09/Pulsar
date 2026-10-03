@@ -95,15 +95,25 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         await Task.WhenAll(_transfers.Values);
     }
 
-    private CommandAck Send(CommandEnvelope envelope, ProvisionedServer server, SendFileCommand command)
+    private CommandAck Send(CommandEnvelope envelope, ProvisionedServer server, SendFileCommand command) =>
+        Send(envelope, command.Ticket, command.Path, () => files.OpenRead(server, command.Path, command.MaxSize));
+
+    /// <summary>
+    /// Sends what <paramref name="open"/> opens (a server file, or a backup's archive) to the panel in the background, once
+    /// the ticket is known to be usable; the ack carries what was opened. Exceptions of <paramref name="open"/> pass through.
+    /// </summary>
+    /// <param name="label">Names the content in the agent's log.</param>
+    public CommandAck Send(CommandEnvelope envelope, string ticket, string label, Func<OpenedFile> open)
     {
-        if (!TransferTicket.IsWellFormed(command.Ticket) || _transfers.ContainsKey(command.Ticket))
+        ArgumentNullException.ThrowIfNull(envelope);
+        ArgumentNullException.ThrowIfNull(open);
+        if (!TransferTicket.IsWellFormed(ticket) || _transfers.ContainsKey(ticket))
         {
             return Rejected(envelope, "files.invalid_ticket", "The transfer ticket is malformed or already used.");
         }
 
-        var opened = files.OpenRead(server, command.Path, command.MaxSize);
-        Track(command.Ticket, () => SendAsync(command.Ticket, command.Path, opened));
+        var opened = open();
+        Track(ticket, () => SendAsync(ticket, label, opened));
         return Accepted(envelope, opened.Info);
     }
 

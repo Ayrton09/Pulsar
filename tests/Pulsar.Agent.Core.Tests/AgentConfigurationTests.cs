@@ -65,6 +65,20 @@ public sealed class AgentConfigurationTests : IDisposable
         Assert.Null(config.KeyCreatedAt);
         Assert.Null(config.PendingRotation);
         Assert.Equal(config.EnrolledAt, config.CurrentKeyCreatedAt);
+        Assert.Null(config.BackupsRoot);
+        Assert.Equal(Path.Combine(store.Paths.Root, "backups"), config.BackupsRootOrDefault(store.Paths));
+    }
+
+    [Fact]
+    public void BackupsGoWhereTheyWereToldAtEnrollment()
+    {
+        var paths = new AgentPaths(_root);
+        var config = new AgentConfig(new Uri("https://panel.example.com/"), Guid.NewGuid(), Guid.NewGuid(),
+            new NodeKeyReference("PulsarAgent-1", NodeKeyScope.Machine, NodeKeyStorage.Tpm), [], null, DateTimeOffset.UnixEpoch, Development: false,
+            BackupsRoot: @"E:\PulsarBackups");
+
+        Assert.Equal(@"E:\PulsarBackups", config.BackupsRootOrDefault(paths));
+        Assert.Equal(paths.BackupsDirectory, (config with { BackupsRoot = null }).BackupsRootOrDefault(paths));
     }
 
     [Theory]

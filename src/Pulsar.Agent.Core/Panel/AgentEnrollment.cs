@@ -6,12 +6,14 @@ namespace Pulsar.Agent.Core.Panel;
 /// <param name="Panel">Panel URL as typed by the administrator.</param>
 /// <param name="Token">Single-use enrollment token shown by the panel.</param>
 /// <param name="PanelKeyFingerprint">Fingerprint of the panel key, shown next to the token: the agent pins it.</param>
+/// <param name="BackupsRoot">Where backups go (null: inside the state directory); restricted like the state directory.</param>
 public sealed record EnrollmentRequest(
     string Panel,
     string Token,
     string PanelKeyFingerprint,
     string? ServersRoot,
-    bool Development);
+    bool Development,
+    string? BackupsRoot = null);
 
 /// <summary>
 /// Pairs this machine with a panel (docs/architecture/03): pins the panel key the administrator was shown, creates the
@@ -41,6 +43,11 @@ public sealed class AgentEnrollment(
                 "if they are right, something between this machine and the panel is impersonating it.");
 
         directorySecurity.Secure(configs.Paths.Root, request.Development);
+        if (request.BackupsRoot is { } backups)
+        {
+            directorySecurity.Secure(backups, request.Development);
+        }
+
         var previous = configs.Load();
         var scope = request.Development ? NodeKeyScope.User : NodeKeyScope.Machine;
         var key = keys.Create($"PulsarAgent-{Guid.NewGuid():N}", scope);
@@ -70,7 +77,7 @@ public sealed class AgentEnrollment(
             }
 
             var config = new AgentConfig(panel, result.NodeId, result.CredentialId, key.Reference, result.PanelKeys,
-                request.ServersRoot, clock.GetUtcNow(), request.Development);
+                request.ServersRoot, clock.GetUtcNow(), request.Development, BackupsRoot: request.BackupsRoot);
             configs.Save(config);
             saved = true;
 

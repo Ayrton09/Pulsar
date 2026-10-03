@@ -254,6 +254,51 @@ public abstract class ServerFileManagerContract : IDisposable
 
         Assert.Equal(FileErrors.NotFound, Code(() => Files.List(missing, ServerFilePath.Root)));
         Assert.Equal(FileErrors.NotFound, Code(() => Files.Create(missing, "x.cfg", 1, overwrite: false, expectedVersion: null)));
+        Assert.Equal(FileErrors.NotFound, Code(() => Files.Walk(missing)));
+        Assert.Equal(FileErrors.NotFound, Code(() => Files.EnsureDirectory(missing, "cfg")));
+    }
+
+    [ContractFact]
+    public void WalksTheWholeTreeParentsBeforeTheirChildren()
+    {
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "game", "csgo", "cfg"));
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "empty"));
+        File.WriteAllText(Path.Combine(ServerDirectory, "game", "csgo", "cfg", "server.cfg"), "hostname x");
+        File.WriteAllText(Path.Combine(ServerDirectory, "game", "csgo", "gameinfo.gi"), "");
+        File.WriteAllText(Path.Combine(ServerDirectory, "top.txt"), "abc");
+
+        var entries = Files.Walk(Server);
+
+        Assert.Equal(
+            ["empty", "game", "game/csgo", "game/csgo/cfg", "game/csgo/cfg/server.cfg", "game/csgo/gameinfo.gi", "top.txt"],
+            entries.Select(e => e.Path).Order(StringComparer.Ordinal));
+        var config = entries.Single(e => e.Path == "game/csgo/cfg/server.cfg");
+        Assert.Equal(FileEntryKind.File, config.Kind);
+        Assert.Equal(10, config.Size);
+        Assert.Equal(FileEntryKind.Directory, entries.Single(e => e.Path == "game/csgo").Kind);
+        var paths = entries.Select(e => e.Path).ToList();
+        foreach (var path in paths.Where(p => p.Contains('/', StringComparison.Ordinal)))
+        {
+            Assert.InRange(paths.IndexOf(ServerFilePath.Parent(path)), 0, paths.IndexOf(path) - 1);
+        }
+    }
+
+    [ContractFact]
+    public void EnsuringADirectoryCreatesWhatIsMissingAndKeepsWhatIsThere()
+    {
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "addons"));
+        File.WriteAllText(Path.Combine(ServerDirectory, "addons", "keep.txt"), "x");
+        File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "x");
+
+        Files.EnsureDirectory(Server, "addons/sourcemod/configs");
+        Files.EnsureDirectory(Server, "addons/sourcemod/configs");
+        Files.EnsureDirectory(Server, "addons");
+
+        Assert.True(Directory.Exists(Path.Combine(ServerDirectory, "addons", "sourcemod", "configs")));
+        Assert.True(File.Exists(Path.Combine(ServerDirectory, "addons", "keep.txt")));
+        Assert.Equal(FileErrors.NotADirectory, Code(() => Files.EnsureDirectory(Server, "server.cfg")));
+        Assert.Equal(FileErrors.NotADirectory, Code(() => Files.EnsureDirectory(Server, "server.cfg/x")));
+        Assert.Equal(FileErrors.InvalidPath, Code(() => Files.EnsureDirectory(Server, "../x")));
     }
 
     protected string Version(string path)

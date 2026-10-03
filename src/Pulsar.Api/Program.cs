@@ -108,6 +108,7 @@ try
     api.MapNodeEndpoints();
     api.MapServerEndpoints();
     api.MapServerFileEndpoints();
+    api.MapServerBackupEndpoints();
 
     // Agent protocol: its own authentication, never the browser's (docs/architecture/03).
     app.MapAgentEndpoints();

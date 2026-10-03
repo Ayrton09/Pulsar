@@ -70,9 +70,10 @@ public static class ServerEndpoints
         servers.MapPost("/{id:guid}/console", (Guid id, ConsoleCommandRequest request, ConsoleCommands console, CancellationToken ct) =>
                 CommandAsync(console.SendAsync(new ServerId(id), request.Command, ct)))
             .RequirePermission(Permissions.Server.ConsoleWrite);
+        // Installs and updates need server.install, backups server.backups.create (checked by the operation's type).
         servers.MapPost("/{id:guid}/operations/{operationId:guid}/cancel", (Guid id, Guid operationId, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.CancelOperationAsync(new ServerId(id), operationId, ct)))
-            .RequirePermission(Permissions.Server.Install);
+            .RequirePermission(Permissions.Server.Install, Permissions.Server.BackupsCreate);
 
         var templates = api.MapGroup("/templates").WithTags("Templates");
         templates.MapGet("/", async (TemplateCatalog catalog, CancellationToken ct) => TypedResults.Ok(await catalog.ListAsync(ct)))

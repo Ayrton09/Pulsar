@@ -299,11 +299,6 @@
           "Microsoft.Extensions.Primitives": "10.0.12"
         }
       },
-      "Microsoft.Extensions.FileSystemGlobbing": {
-        "type": "Transitive",
-        "resolved": "10.0.12",
-        "contentHash": "45cV+UeI0chPAIXrx9Wv7K4PJXuuIR2pnOur5MOAo6kOFclBHSLLDrvGAxMfWRMtUvpv/kQZkxlgaUN56jwzSQ=="
-      },
       "Microsoft.Extensions.Identity.Core": {
         "type": "Transitive",
         "resolved": "10.0.12",
@@ -590,6 +585,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.AspNetCore.SignalR.Client": "[10.0.12, )",
+          "Microsoft.Extensions.FileSystemGlobbing": "[10.0.12, )",
           "Microsoft.Extensions.Hosting.Abstractions": "[10.0.12, )",
           "Pulsar.Contracts": "[0.1.0, )",
           "Pulsar.Manifests": "[0.1.0, )"
@@ -675,6 +671,12 @@
           "Microsoft.Extensions.Caching.Memory": "10.0.12",
           "Microsoft.Extensions.Logging": "10.0.12"
         }
+      },
+      "Microsoft.Extensions.FileSystemGlobbing": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "45cV+UeI0chPAIXrx9Wv7K4PJXuuIR2pnOur5MOAo6kOFclBHSLLDrvGAxMfWRMtUvpv/kQZkxlgaUN56jwzSQ=="
       },
       "Microsoft.Extensions.Hosting": {
         "type": "CentralTransitive",
