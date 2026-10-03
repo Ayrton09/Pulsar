@@ -107,6 +107,7 @@ try
     api.MapAuditEndpoints();
     api.MapNodeEndpoints();
     api.MapServerEndpoints();
+    api.MapServerFileEndpoints();
 
     // Agent protocol: its own authentication, never the browser's (docs/architecture/03).
     app.MapAgentEndpoints();

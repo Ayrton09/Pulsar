@@ -72,6 +72,7 @@ internal static class ApiServiceCollectionExtensions
 
         // Development and CI turn on Pulsar's test game; a production panel never offers it.
         services.AddSingleton(new TemplateOptions { EnableTestGame = configuration.GetValue<bool>("Pulsar:EnableTestGame") });
+        services.AddSingleton(configuration.GetSection("Files").Get<FileManagerOptions>() ?? new FileManagerOptions());
         return services;
     }
 

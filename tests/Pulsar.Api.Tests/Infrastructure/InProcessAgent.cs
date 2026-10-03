@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Commands;
+using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Security;
@@ -59,6 +60,9 @@ public sealed class InProcessAgent : IAsyncDisposable
 
     public FolderProvisioner Provisioner { get; } = new();
 
+    /// <summary>File transfer timeouts (tests shorten them).</summary>
+    public FileCommandOptions FileOptions { get; } = new();
+
     /// <summary>The agent's servers while it runs.</summary>
     public ServerHost? Servers => _servers;
 
@@ -86,7 +90,8 @@ public sealed class InProcessAgent : IAsyncDisposable
         _steamCmd = new SteamCmdRunner(Processes, new ScriptedSteamCmdSource(Path.Combine(_root, "steamcmd.exe")), files,
             new SteamCmdOptions { RetryDelays = [TimeSpan.Zero] }, _clock, NullLogger<SteamCmdRunner>.Instance);
         _servers = new ServerHost(Configs, new ServerStore(Configs.Paths, new PlainStateProtector()), Provisioner, Processes,
-            new InstallSteps(install, files), _steamCmd, files, Rcon, new UnmanagedFirewall(), install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance);
+            new InstallSteps(install, files), _steamCmd, files, Rcon, new UnmanagedFirewall(),
+            new FileCommands(new DirectServerFileManager(), channel, FileOptions, NullLogger<FileCommands>.Instance), install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance);
         _connection = new AgentConnection(Configs, Keys, new FixedNodeSystem(), _transport, new PanelAuthenticator(_transport),
             new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance, _servers), Options,
             _clock, new StubLifetime(), NullLoggerFactory.Instance, channel, _servers);

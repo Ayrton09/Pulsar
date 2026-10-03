@@ -53,6 +53,21 @@ public static class ServerErrors
     public static DomainError TemplateVersionExists { get; } =
         new("template.version_exists", "That game key and version are already registered: templates never change, give it a new version.");
 
+    public static DomainError FilesUnsupported { get; } =
+        new("files.unsupported", "The node's agent has no file manager (update the agent).");
+
+    public static DomainError FilePathInvalid(string message) => new("files.invalid_path", message);
+
+    public static DomainError FileTooLarge { get; } = new("files.too_large", "The file is larger than allowed.");
+
+    public static DomainError FileLengthRequired { get; } = new("files.length_required", "Uploads must declare their size (Content-Length).");
+
+    public static DomainError FileTransferFailed { get; } =
+        new("files.transfer_failed", "The transfer between the panel and the node did not complete.");
+
+    /// <summary>The agent refused a file operation; its code (<c>files.*</c>) and message are passed on.</summary>
+    public static DomainError FileRejected(string code, string message) => new(code, message);
+
     /// <summary>A manifest that does not pass validation; the message lists the problems.</summary>
     public static DomainError InvalidManifest(string message) => new("template.invalid", message);
 

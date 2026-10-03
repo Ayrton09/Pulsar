@@ -19,6 +19,14 @@ public static class AgentProtocol
     public const string HubPath = BasePath + "/hub";
     public const string RotateCredentialPath = BasePath + "/credentials/rotate";
 
+    /// <summary>
+    /// File content between the panel and the agent (docs/architecture/03, "Large transfers"): <c>GET</c> what a
+    /// browser uploads, <c>PUT</c> what a browser downloads. The ticket comes in a signed command and works once.
+    /// </summary>
+    public const string TransferPath = BasePath + "/transfers/{ticket}";
+
+    public static string Transfer(string ticket) => TransferPath.Replace("{ticket}", Uri.EscapeDataString(ticket), StringComparison.Ordinal);
+
     /// <summary>Largest hub message either side accepts.</summary>
     public const long MaximumMessageSize = 1024 * 1024;
 

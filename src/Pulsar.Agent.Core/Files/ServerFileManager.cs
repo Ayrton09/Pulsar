@@ -1,0 +1,171 @@
+using Pulsar.Agent.Core.Processes;
+using Pulsar.Contracts;
+
+namespace Pulsar.Agent.Core.Files;
+
+/// <summary>
+/// The file manager's access to a server directory, on behalf of panel users (docs/architecture/08, "File manager").
+/// Paths are <see cref="ServerFilePath"/> paths, checked again here. Implementations never let a junction or link
+/// take an operation outside the server directory, never follow a link the user points at (it is renamed or deleted
+/// itself), and on Windows act as the server's own account, so the operating system also refuses anything that
+/// account could not do. Failures are <see cref="FileManagerException"/> with a <see cref="FileErrors"/> code.
+/// </summary>
+public interface IServerFileManager
+{
+    /// <summary>A directory's entries (<see cref="ServerFilePath.Root"/>: the server directory).</summary>
+    FileListResult List(ProvisionedServer server, string path);
+
+    /// <summary>Creates a directory and its missing parents; fails when the directory exists.</summary>
+    void CreateDirectory(ProvisionedServer server, string path);
+
+    /// <summary>Renames or moves an entry; fails when <paramref name="destination"/> exists.</summary>
+    void Move(ProvisionedServer server, string path, string destination);
+
+    /// <summary>Deletes a file, a link (never its target) or a directory with everything in it.</summary>
+    void Delete(ProvisionedServer server, string path);
+
+    /// <summary>Opens a file to send it; fails for directories, links and files larger than <paramref name="maxSize"/>.</summary>
+    OpenedFile OpenRead(ProvisionedServer server, string path, long maxSize);
+
+    /// <summary>
+    /// Prepares to write <paramref name="size"/> bytes to <paramref name="path"/>: checks the target (see
+    /// <see cref="ReceiveFileCommand"/>) and creates a temporary file next to it, which
+    /// <see cref="PendingFile.Commit"/> puts in place. Its directory must exist.
+    /// </summary>
+    PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion);
+}
+
+public sealed class FileManagerException(string code, string message, Exception? inner = null) : Exception(message, inner)
+{
+    /// <summary>One of <see cref="FileErrors"/>.</summary>
+    public string Code { get; } = code;
+}
+
+/// <summary>A file opened for reading, with what it was when opened.</summary>
+public sealed class OpenedFile(Stream content, FileEntryResult info) : IDisposable
+{
+    public Stream Content { get; } = content;
+
+    public FileEntryResult Info { get; } = info;
+
+    public void Dispose() => Content.Dispose();
+}
+
+/// <summary>
+/// A file being received: written to <see cref="Content"/> (a temporary file next to the target), then put in place
+/// by <see cref="Commit"/>. Disposing it without committing removes the temporary file.
+/// </summary>
+public abstract class PendingFile : IDisposable
+{
+    public abstract Stream Content { get; }
+
+    /// <summary>
+    /// Checks every byte announced was written and the target is still as expected, then replaces it (or creates it)
+    /// in one step: readers see the old file or the new one, never half of it.
+    /// </summary>
+    public abstract FileEntryResult Commit();
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected abstract void Dispose(bool disposing);
+}
+
+/// <summary>Rules every implementation shares.</summary>
+public static class ServerFileRules
+{
+    /// <summary>Temporary files of transfers in progress (left behind only if the agent stops in the middle of one).</summary>
+    public const string TemporaryPrefix = ".pulsar-upload-";
+
+    // A listing travels in one hub message: names are counted as if every character were escaped.
+    private const int ListingBudget = (int)(AgentProtocol.MaximumMessageSize * 3 / 4);
+
+    public static void Validate(string path, bool allowRoot = false)
+    {
+        if (ServerFilePath.Error(path, allowRoot) is { } error)
+        {
+            throw new FileManagerException(FileErrors.InvalidPath, $"'{path}': {error}");
+        }
+    }
+
+    public static string TemporaryName() => TemporaryPrefix + Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8)) + ".tmp";
+
+    /// <summary>Directories first, then the rest, each by name; cut where the listing would grow too large.</summary>
+    public static FileListResult Listing(IEnumerable<FileEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        var sorted = entries
+            .OrderBy(e => e.Kind == FileEntryKind.Directory ? 0 : 1)
+            .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var budget = ListingBudget;
+        var kept = 0;
+        while (kept < sorted.Count && kept < FileLimits.MaxListEntries)
+        {
+            budget -= (sorted[kept].Name.Length * 6) + 128;
+            if (budget < 0)
+            {
+                break;
+            }
+
+            kept++;
+        }
+
+        return new FileListResult(kept == sorted.Count ? sorted : sorted[..kept], kept < sorted.Count);
+    }
+
+    /// <summary>The target of a write may be replaced as asked (see <see cref="ReceiveFileCommand"/>).</summary>
+    public static void CheckTarget(string path, FileEntryResult? existing, bool overwrite, string? expectedVersion)
+    {
+        if (existing is { Entry.Kind: FileEntryKind.Directory })
+        {
+            throw new FileManagerException(FileErrors.IsADirectory, $"'{path}' is a directory.");
+        }
+
+        if (existing is { Entry.Kind: FileEntryKind.Link })
+        {
+            throw new FileManagerException(FileErrors.Link, $"'{path}' is a junction or link.");
+        }
+
+        if (expectedVersion is not null)
+        {
+            if (existing?.Version != expectedVersion)
+            {
+                throw new FileManagerException(FileErrors.Changed, $"'{path}' changed since it was opened.");
+            }
+        }
+        else if (existing is not null && !overwrite)
+        {
+            throw new FileManagerException(FileErrors.Exists, $"'{path}' already exists.");
+        }
+    }
+
+    /// <summary>The file manager error for an exception of the .NET file APIs; null for anything else.</summary>
+    public static FileManagerException? Translate(string path, Exception ex) => ex switch
+    {
+        FileManagerException => null,
+        FileNotFoundException or DirectoryNotFoundException => new FileManagerException(FileErrors.NotFound, $"'{path}' does not exist.", ex),
+        UnauthorizedAccessException => new FileManagerException(FileErrors.AccessDenied, $"'{path}': access denied.", ex),
+        IOException { HResult: unchecked((int)0x80070020) or unchecked((int)0x80070021) } =>
+            new FileManagerException(FileErrors.InUse, $"'{path}' is in use.", ex),
+        IOException { HResult: unchecked((int)0x80070070) or unchecked((int)0x80070027) } =>
+            new FileManagerException(FileErrors.DiskFull, "Not enough disk space.", ex),
+        IOException { HResult: unchecked((int)0x800700B7) or unchecked((int)0x80070050) } =>
+            new FileManagerException(FileErrors.Exists, $"'{path}' already exists.", ex),
+        IOException => new FileManagerException(FileErrors.Failed, $"'{path}': {ex.Message}", ex),
+        _ => null,
+    };
+
+    public static void CheckMove(string path, string destination)
+    {
+        Validate(path);
+        Validate(destination);
+        if (ServerFilePath.IsInside(destination, path))
+        {
+            throw new FileManagerException(FileErrors.InvalidPath, $"'{path}' cannot be moved inside itself.");
+        }
+    }
+}

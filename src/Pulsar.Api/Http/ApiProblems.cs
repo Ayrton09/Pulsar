@@ -20,7 +20,8 @@ public static class ApiProblems
 
     /// <summary>
     /// <c>*.not_found</c> → 404; escalation and self-changes → 403 (the actor lacks the right to do it);
-    /// conflicts with existing state → 409; any other rule → 400.
+    /// conflicts with existing state → 409; file manager codes as HTTP names them (a stale version → 412, the node
+    /// failing a transfer → 502); any other rule → 400.
     /// </summary>
     public static int StatusFor(string code) => code switch
     {
@@ -31,7 +32,14 @@ public static class ApiProblems
             or "server.busy" or "server.must_be_stopped" or "server.not_installed" or "server.not_running" or "server.template_unsupported" or "server.command_rejected"
             or "node.allocation_taken" or "node.allocation_in_use" or "server.no_free_allocation" or "server.allocation_unavailable"
             or "template.version_exists" or "operation.not_cancellable"
+            or "files.unsupported" or "files.exists" or "files.not_a_directory" or "files.is_a_directory" or "files.reparse_point" or "files.in_use"
             => StatusCodes.Status409Conflict,
+        "files.changed" => StatusCodes.Status412PreconditionFailed,
+        "files.access_denied" or "files.outside_server" => StatusCodes.Status403Forbidden,
+        "files.too_large" => StatusCodes.Status413PayloadTooLarge,
+        "files.length_required" => StatusCodes.Status411LengthRequired,
+        "files.disk_full" => StatusCodes.Status507InsufficientStorage,
+        "files.transfer_failed" or "files.failed" => StatusCodes.Status502BadGateway,
         _ => StatusCodes.Status400BadRequest,
     };
 

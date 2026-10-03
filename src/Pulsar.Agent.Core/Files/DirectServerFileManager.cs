@@ -1,0 +1,287 @@
+using Pulsar.Agent.Core.Processes;
+using Pulsar.Contracts;
+
+namespace Pulsar.Agent.Core.Files;
+
+/// <summary>
+/// The file manager with plain .NET file APIs: checks every path component for junctions and links, but acts as the
+/// agent itself and cannot rule out a link swapped in between a check and its use. For tests and platforms without
+/// a stronger implementation; the Windows agent uses one that works on handles as the server's account.
+/// </summary>
+public sealed class DirectServerFileManager : IServerFileManager
+{
+    public FileListResult List(ProvisionedServer server, string path)
+    {
+        var full = Resolve(server, path, allowRoot: true);
+        var info = new DirectoryInfo(full);
+        if (!info.Exists)
+        {
+            throw File.Exists(full) || IsLink(full)
+                ? new FileManagerException(FileErrors.NotADirectory, $"'{path}' is not a directory.")
+                : NotFound(path);
+        }
+
+        return Guard(path, () => ServerFileRules.Listing(info.EnumerateFileSystemInfos().Select(Entry)));
+    }
+
+    public void CreateDirectory(ProvisionedServer server, string path)
+    {
+        var full = Resolve(server, path);
+        if (Directory.Exists(full) || File.Exists(full))
+        {
+            throw new FileManagerException(FileErrors.Exists, $"'{path}' already exists.");
+        }
+
+        for (var parent = ServerFilePath.Parent(path); parent.Length > 0; parent = ServerFilePath.Parent(parent))
+        {
+            if (File.Exists(Resolve(server, parent)))
+            {
+                throw new FileManagerException(FileErrors.NotADirectory, $"'{parent}' is not a directory.");
+            }
+        }
+
+        Guard(path, () => Directory.CreateDirectory(full));
+    }
+
+    public void Move(ProvisionedServer server, string path, string destination)
+    {
+        ServerFileRules.CheckMove(path, destination);
+        var source = Resolve(server, path);
+        var target = Resolve(server, destination);
+        RequireDirectory(server, ServerFilePath.Parent(destination));
+        if (Exists(target))
+        {
+            throw new FileManagerException(FileErrors.Exists, $"'{destination}' already exists.");
+        }
+
+        Guard(path, () =>
+        {
+            if (Directory.Exists(source))
+            {
+                Directory.Move(source, target);
+            }
+            else if (File.Exists(source))
+            {
+                File.Move(source, target);
+            }
+            else
+            {
+                throw NotFound(path);
+            }
+        });
+    }
+
+    public void Delete(ProvisionedServer server, string path)
+    {
+        var full = Resolve(server, path);
+        if (!Exists(full))
+        {
+            throw NotFound(path);
+        }
+
+        Guard(path, () => DeleteTree(full));
+    }
+
+    public OpenedFile OpenRead(ProvisionedServer server, string path, long maxSize)
+    {
+        var full = Resolve(server, path);
+        var entry = Existing(full, path) ?? throw NotFound(path);
+        if (entry.Entry.Kind != FileEntryKind.File)
+        {
+            throw entry.Entry.Kind == FileEntryKind.Link
+                ? new FileManagerException(FileErrors.Link, $"'{path}' is a junction or link.")
+                : new FileManagerException(FileErrors.IsADirectory, $"'{path}' is a directory.");
+        }
+
+        if (entry.Entry.Size > maxSize)
+        {
+            throw new FileManagerException(FileErrors.TooLarge, $"'{path}' is larger than {maxSize} bytes.");
+        }
+
+        return Guard(path, () => new OpenedFile(new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete), entry));
+    }
+
+    public PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(size);
+        var full = Resolve(server, path);
+        var directory = RequireDirectory(server, ServerFilePath.Parent(path));
+        ServerFileRules.CheckTarget(path, Existing(full, path), overwrite, expectedVersion);
+        var temporary = Path.Combine(directory, ServerFileRules.TemporaryName());
+        return Guard(path, () => new Pending(path, full, temporary, size, overwrite, expectedVersion));
+    }
+
+    /// <summary>The absolute path, after checking that no component on the way is a junction or link.</summary>
+    private static string Resolve(ProvisionedServer server, string path, bool allowRoot = false)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ServerFileRules.Validate(path, allowRoot);
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(server.Directory));
+        if (!Directory.Exists(root))
+        {
+            throw new FileManagerException(FileErrors.NotFound, "The server directory does not exist.");
+        }
+
+        if (path.Length == 0)
+        {
+            return root;
+        }
+
+        var full = Path.GetFullPath(Path.Join(root, path.Replace('/', Path.DirectorySeparatorChar)));
+        if (!full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new FileManagerException(FileErrors.OutsideServer, $"'{path}' resolves outside the server directory.");
+        }
+
+        var current = root;
+        var segments = path.Split('/');
+        foreach (var segment in segments[..^1])
+        {
+            current = Path.Combine(current, segment);
+            if (IsLink(current))
+            {
+                throw new FileManagerException(FileErrors.Link, $"'{Path.GetRelativePath(root, current)}' is a junction or link.");
+            }
+        }
+
+        return full;
+    }
+
+    private static string RequireDirectory(ProvisionedServer server, string path)
+    {
+        var full = Resolve(server, path, allowRoot: true);
+        if (IsLink(full) || !Directory.Exists(full))
+        {
+            throw File.Exists(full) || IsLink(full)
+                ? new FileManagerException(FileErrors.NotADirectory, $"'{path}' is not a directory.")
+                : new FileManagerException(FileErrors.NotFound, $"The folder '{path}' does not exist.");
+        }
+
+        return full;
+    }
+
+    private static bool Exists(string full) => File.Exists(full) || Directory.Exists(full) || IsLink(full);
+
+    private static bool IsLink(string full)
+    {
+        try
+        {
+            return File.GetAttributes(full).HasFlag(FileAttributes.ReparsePoint);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return false;
+        }
+    }
+
+    private static FileEntryResult? Existing(string full, string path)
+    {
+        FileSystemInfo info = Directory.Exists(full) ? new DirectoryInfo(full) : new FileInfo(full);
+        if (!info.Exists && !IsLink(full))
+        {
+            return null;
+        }
+
+        var entry = Entry(info) with { Name = ServerFilePath.Name(path) };
+        return new FileEntryResult(entry, FileVersion.Of(entry.Size, entry.ModifiedAt));
+    }
+
+    private static FileEntry Entry(FileSystemInfo info)
+    {
+        var kind = info.Attributes.HasFlag(FileAttributes.ReparsePoint) ? FileEntryKind.Link
+            : info is DirectoryInfo ? FileEntryKind.Directory
+            : FileEntryKind.File;
+        var size = kind == FileEntryKind.File ? ((FileInfo)info).Length : 0;
+        return new FileEntry(info.Name, kind, size, new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero));
+    }
+
+    /// <summary>Deletes links as links: a recursive delete must never empty a junction's target.</summary>
+    private static void DeleteTree(string full)
+    {
+        var attributes = File.GetAttributes(full);
+        if (!attributes.HasFlag(FileAttributes.Directory))
+        {
+            File.SetAttributes(full, attributes & ~FileAttributes.ReadOnly);
+            File.Delete(full);
+            return;
+        }
+
+        if (!attributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            foreach (var child in Directory.EnumerateFileSystemEntries(full))
+            {
+                DeleteTree(child);
+            }
+        }
+
+        Directory.Delete(full);
+    }
+
+    private static void Guard(string path, Action action) => Guard(path, () =>
+    {
+        action();
+        return 0;
+    });
+
+    private static T Guard<T>(string path, Func<T> action)
+    {
+        try
+        {
+            return action();
+        }
+        catch (Exception ex) when (ServerFileRules.Translate(path, ex) is { } failure)
+        {
+            throw failure;
+        }
+    }
+
+    private static FileManagerException NotFound(string path) => new(FileErrors.NotFound, $"'{path}' does not exist.");
+
+    private sealed class Pending : PendingFile
+    {
+        private readonly string _path;
+        private readonly string _target;
+        private readonly string _temporary;
+        private readonly long _size;
+        private readonly bool _overwrite;
+        private readonly string? _expectedVersion;
+        private readonly FileStream _stream;
+        private bool _committed;
+
+        public Pending(string path, string target, string temporary, long size, bool overwrite, string? expectedVersion)
+        {
+            (_path, _target, _temporary, _size, _overwrite, _expectedVersion) = (path, target, temporary, size, overwrite, expectedVersion);
+            _stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        }
+
+        public override Stream Content => _stream;
+
+        public override FileEntryResult Commit()
+        {
+            if (_stream.Length != _size)
+            {
+                throw new FileManagerException(FileErrors.TransferFailed, $"Received {_stream.Length} of {_size} bytes.");
+            }
+
+            _stream.Dispose();
+            ServerFileRules.CheckTarget(_path, Existing(_target, _path), _overwrite, _expectedVersion);
+            Guard(_path, () => File.Move(_temporary, _target, overwrite: true));
+            _committed = true;
+            return Existing(_target, _path)!;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (!disposing)
+            {
+                return;
+            }
+
+            _stream.Dispose();
+            if (!_committed)
+            {
+                File.Delete(_temporary);
+            }
+        }
+    }
+}

@@ -415,7 +415,7 @@ public sealed partial class AgentConnection(
             LogConnected(token.SessionId, verifier.PanelClockOffset);
             // Consoles browsers were already watching: their output resumes where the panel's copy ends.
             servers?.SubscribeConsoles(hello.ConsoleSubscriptions ?? []);
-            await _channel.AttachAsync(connection, cancellationToken);
+            await _channel.AttachAsync(connection, new PanelHttp(transport, config.Panel, token.AccessToken), cancellationToken);
             return session;
         }
         catch

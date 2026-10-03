@@ -1,0 +1,276 @@
+using System.Text;
+using Pulsar.Agent.Core.Files;
+using Pulsar.Agent.Core.Processes;
+using Pulsar.Contracts;
+#if WINDOWS_TESTS
+using ContractFact = Pulsar.Agent.Windows.Tests.WindowsFactAttribute;
+#else
+using ContractFact = Xunit.FactAttribute;
+#endif
+
+namespace Pulsar.Agent.Core.Tests;
+
+/// <summary>
+/// What every file manager implementation does (docs/architecture/08, "File manager"). Shared by the portable
+/// implementation (Pulsar.Agent.Core.Tests) and the Windows one (Pulsar.Agent.Windows.Tests links this file).
+/// </summary>
+public abstract class ServerFileManagerContract : IDisposable
+{
+    protected ServerFileManagerContract()
+    {
+        Root = Path.Combine(Path.GetTempPath(), "pulsar-file-manager-tests", Guid.NewGuid().ToString("N"));
+        ServerDirectory = Directory.CreateDirectory(Path.Combine(Root, "server")).FullName;
+        Server = new ProvisionedServer(ServerDirectory, ProcessIdentity.CurrentUser);
+    }
+
+    protected string Root { get; }
+
+    protected string ServerDirectory { get; }
+
+    protected ProvisionedServer Server { get; }
+
+    protected abstract IServerFileManager Files { get; }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing && Directory.Exists(Root))
+        {
+            DeleteRoot();
+        }
+    }
+
+    protected virtual void DeleteRoot()
+    {
+        foreach (var file in Directory.EnumerateFiles(Root, "*", SearchOption.AllDirectories))
+        {
+            File.SetAttributes(file, FileAttributes.Normal);
+        }
+
+        Directory.Delete(Root, recursive: true);
+    }
+
+    [ContractFact]
+    public void ListsDirectoriesFirstThenEverythingElseByName()
+    {
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "b"));
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "A"));
+        File.WriteAllText(Path.Combine(ServerDirectory, "z.cfg"), "abc");
+        File.WriteAllText(Path.Combine(ServerDirectory, "a.txt"), "");
+
+        var listing = Files.List(Server, ServerFilePath.Root);
+
+        Assert.False(listing.Truncated);
+        Assert.Equal(["A", "b", "a.txt", "z.cfg"], listing.Entries.Select(e => e.Name));
+        Assert.Equal([FileEntryKind.Directory, FileEntryKind.Directory, FileEntryKind.File, FileEntryKind.File], listing.Entries.Select(e => e.Kind));
+        Assert.Equal(3, listing.Entries[3].Size);
+        Assert.InRange(listing.Entries[3].ModifiedAt, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(1));
+    }
+
+    [ContractFact]
+    public void ListingSomethingThatIsNotAFolderFails()
+    {
+        File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "x");
+
+        Assert.Equal(FileErrors.NotFound, Code(() => Files.List(Server, "missing")));
+        Assert.Equal(FileErrors.NotADirectory, Code(() => Files.List(Server, "server.cfg")));
+    }
+
+    [ContractFact]
+    public void CreatesDirectoriesWithTheirParentsButNeverTwice()
+    {
+        Files.CreateDirectory(Server, "addons/sourcemod/configs");
+        File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "x");
+
+        Assert.True(Directory.Exists(Path.Combine(ServerDirectory, "addons", "sourcemod", "configs")));
+        Assert.Equal(FileErrors.Exists, Code(() => Files.CreateDirectory(Server, "addons/sourcemod")));
+        Assert.Equal(FileErrors.Exists, Code(() => Files.CreateDirectory(Server, "server.cfg")));
+        Assert.Equal(FileErrors.NotADirectory, Code(() => Files.CreateDirectory(Server, "server.cfg/x")));
+    }
+
+    [ContractFact]
+    public void RenamesAndMovesWithoutEverReplacing()
+    {
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg"));
+        File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "mine");
+        File.WriteAllText(Path.Combine(ServerDirectory, "other.cfg"), "other");
+
+        Files.Move(Server, "server.cfg", "cfg/server.cfg");
+        Files.Move(Server, "cfg", "config");
+
+        Assert.Equal("mine", File.ReadAllText(Path.Combine(ServerDirectory, "config", "server.cfg")));
+        Assert.Equal(FileErrors.Exists, Code(() => Files.Move(Server, "other.cfg", "config/server.cfg")));
+        Assert.Equal("mine", File.ReadAllText(Path.Combine(ServerDirectory, "config", "server.cfg")));
+        Assert.Equal(FileErrors.InvalidPath, Code(() => Files.Move(Server, "config", "config/inside")));
+        Assert.Equal(FileErrors.NotFound, Code(() => Files.Move(Server, "missing.cfg", "x.cfg")));
+        Assert.Equal(FileErrors.NotFound, Code(() => Files.Move(Server, "other.cfg", "missing/other.cfg")));
+    }
+
+    [ContractFact]
+    public void DeletesFilesAndWholeDirectoriesReadOnlyOrNot()
+    {
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "addons", "plugins", "disabled"));
+        File.WriteAllText(Path.Combine(ServerDirectory, "addons", "plugins", "a.smx"), "a");
+        File.WriteAllText(Path.Combine(ServerDirectory, "addons", "plugins", "disabled", "b.smx"), "b");
+        File.SetAttributes(Path.Combine(ServerDirectory, "addons", "plugins", "a.smx"), FileAttributes.ReadOnly);
+        File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "x");
+
+        Files.Delete(Server, "server.cfg");
+        Files.Delete(Server, "addons");
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(ServerDirectory));
+        Assert.Equal(FileErrors.NotFound, Code(() => Files.Delete(Server, "addons")));
+        Assert.Equal(FileErrors.InvalidPath, Code(() => Files.Delete(Server, ServerFilePath.Root)));
+    }
+
+    [ContractFact]
+    public void ReadsFilesUpToALimitWithTheVersionTheListingShows()
+    {
+        File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "hostname x");
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg"));
+
+        using (var opened = Files.OpenRead(Server, "server.cfg", maxSize: 100))
+        {
+            Assert.Equal("hostname x", new StreamReader(opened.Content).ReadToEnd());
+            var listed = Files.List(Server, ServerFilePath.Root).Entries.Single(e => e.Name == "server.cfg");
+            Assert.Equal(listed, opened.Info.Entry);
+            Assert.Equal(FileVersion.Of(listed.Size, listed.ModifiedAt), opened.Info.Version);
+        }
+
+        Assert.Equal(FileErrors.TooLarge, Code(() => Files.OpenRead(Server, "server.cfg", maxSize: 5)));
+        Assert.Equal(FileErrors.IsADirectory, Code(() => Files.OpenRead(Server, "cfg", maxSize: 100)));
+        Assert.Equal(FileErrors.NotFound, Code(() => Files.OpenRead(Server, "missing.cfg", maxSize: 100)));
+    }
+
+    [ContractFact]
+    public void ANewFileAppearsOnlyWhenComplete()
+    {
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg"));
+        var target = Path.Combine(ServerDirectory, "cfg", "server.cfg");
+
+        FileEntryResult written;
+        using (var pending = Files.Create(Server, "cfg/server.cfg", 4, overwrite: false, expectedVersion: null))
+        {
+            pending.Content.Write("ab"u8);
+            Assert.False(File.Exists(target));
+            pending.Content.Write("cd"u8);
+            written = pending.Commit();
+        }
+
+        Assert.Equal("abcd", File.ReadAllText(target));
+        Assert.Equal(new FileEntry("server.cfg", FileEntryKind.File, 4, written.Entry.ModifiedAt), written.Entry);
+        Assert.Equal(written.Version, Version("cfg/server.cfg"));
+        Assert.Equal(["server.cfg"], Directory.EnumerateFileSystemEntries(Path.Combine(ServerDirectory, "cfg")).Select(Path.GetFileName));
+    }
+
+    [ContractFact]
+    public void ReplacingAFileFollowsTheRules()
+    {
+        File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "old");
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg"));
+        var version = Version("server.cfg");
+
+        Assert.Equal(FileErrors.Exists, Code(() => Files.Create(Server, "server.cfg", 1, overwrite: false, expectedVersion: null)));
+        Assert.Equal(FileErrors.IsADirectory, Code(() => Files.Create(Server, "cfg", 1, overwrite: true, expectedVersion: null)));
+        Assert.Equal(FileErrors.Changed, Code(() => Files.Create(Server, "server.cfg", 1, overwrite: false, expectedVersion: "1-2")));
+        Assert.Equal(FileErrors.Changed, Code(() => Files.Create(Server, "new.cfg", 1, overwrite: false, expectedVersion: version)));
+        Assert.Equal(FileErrors.NotFound, Code(() => Files.Create(Server, "missing/new.cfg", 1, overwrite: false, expectedVersion: null)));
+
+        using (var pending = Files.Create(Server, "server.cfg", 3, overwrite: false, expectedVersion: version))
+        {
+            pending.Content.Write("new"u8);
+            pending.Commit();
+        }
+
+        Assert.Equal("new", File.ReadAllText(Path.Combine(ServerDirectory, "server.cfg")));
+
+        using (var pending = Files.Create(Server, "server.cfg", 1, overwrite: true, expectedVersion: null))
+        {
+            pending.Content.Write("x"u8);
+            pending.Commit();
+        }
+
+        Assert.Equal("x", File.ReadAllText(Path.Combine(ServerDirectory, "server.cfg")));
+    }
+
+    [ContractFact]
+    public void AFileChangedDuringTheTransferIsNotOverwritten()
+    {
+        File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "old");
+        var version = Version("server.cfg");
+
+        using var pending = Files.Create(Server, "server.cfg", 3, overwrite: false, expectedVersion: version);
+        pending.Content.Write("new"u8);
+        File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "the game wrote this");
+
+        Assert.Equal(FileErrors.Changed, Code(() => pending.Commit()));
+        Assert.Equal("the game wrote this", File.ReadAllText(Path.Combine(ServerDirectory, "server.cfg")));
+    }
+
+    [ContractFact]
+    public void AnIncompleteTransferLeavesNothingBehind()
+    {
+        File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "old");
+
+        using (var pending = Files.Create(Server, "server.cfg", 10, overwrite: true, expectedVersion: null))
+        {
+            pending.Content.Write("new"u8);
+            Assert.Equal(FileErrors.TransferFailed, Code(() => pending.Commit()));
+        }
+
+        using (Files.Create(Server, "other.cfg", 10, overwrite: false, expectedVersion: null))
+        {
+            // Abandoned without writing anything.
+        }
+
+        Assert.Equal("old", File.ReadAllText(Path.Combine(ServerDirectory, "server.cfg")));
+        Assert.Equal(["server.cfg"], Directory.EnumerateFileSystemEntries(ServerDirectory).Select(Path.GetFileName));
+    }
+
+    [ContractFact]
+    public void EveryOperationChecksItsPaths()
+    {
+        File.WriteAllText(Path.Combine(Root, "outside.cfg"), "secret");
+
+        Assert.Equal(FileErrors.InvalidPath, Code(() => Files.List(Server, "..")));
+        Assert.Equal(FileErrors.InvalidPath, Code(() => Files.OpenRead(Server, "../outside.cfg", 100)));
+        Assert.Equal(FileErrors.InvalidPath, Code(() => Files.Create(Server, "../x.cfg", 1, overwrite: true, expectedVersion: null)));
+        Assert.Equal(FileErrors.InvalidPath, Code(() => Files.CreateDirectory(Server, "C:/x")));
+        Assert.Equal(FileErrors.InvalidPath, Code(() => Files.Move(Server, "../outside.cfg", "x.cfg")));
+        Assert.Equal(FileErrors.InvalidPath, Code(() => Files.Move(Server, "x.cfg", "../x.cfg")));
+        Assert.Equal(FileErrors.InvalidPath, Code(() => Files.Delete(Server, "../outside.cfg")));
+        Assert.True(File.Exists(Path.Combine(Root, "outside.cfg")));
+    }
+
+    [ContractFact]
+    public void AServerWithoutItsDirectoryHasNoFiles()
+    {
+        var missing = new ProvisionedServer(Path.Combine(Root, "missing"), ProcessIdentity.CurrentUser);
+
+        Assert.Equal(FileErrors.NotFound, Code(() => Files.List(missing, ServerFilePath.Root)));
+        Assert.Equal(FileErrors.NotFound, Code(() => Files.Create(missing, "x.cfg", 1, overwrite: false, expectedVersion: null)));
+    }
+
+    protected string Version(string path)
+    {
+        using var opened = Files.OpenRead(Server, path, long.MaxValue);
+        return opened.Info.Version;
+    }
+
+    protected static string Code(Action action) => Assert.Throws<FileManagerException>(action).Code;
+
+    protected static string Code(Func<object?> action) => Assert.Throws<FileManagerException>(() => action()).Code;
+
+    protected static string Text(OpenedFile opened)
+    {
+        using (opened)
+        {
+            return new StreamReader(opened.Content, Encoding.UTF8).ReadToEnd();
+        }
+    }
+}

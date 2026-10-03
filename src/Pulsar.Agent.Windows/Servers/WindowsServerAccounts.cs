@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
+using Microsoft.Win32.SafeHandles;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.NetworkManagement.NetManagement;
@@ -28,6 +29,7 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
     private const uint UserExists = 2224; // NERR_UserExists
     private const uint UserNotFound = 2221; // NERR_UserNotFound
 
+    private static readonly Lock s_logonLock = new();
     private static readonly string[] s_grantedRights = ["SeBatchLogonRight"];
     private static readonly string[] s_deniedRights =
         ["SeDenyInteractiveLogonRight", "SeDenyRemoteInteractiveLogonRight", "SeDenyNetworkLogonRight"];
@@ -139,30 +141,7 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
     /// </summary>
     public unsafe AccountLogon LogOn(string name)
     {
-        ValidateName(name);
-        var password = NewPassword();
-        fixed (char* namePtr = name)
-        fixed (char* passwordPtr = password)
-        {
-            var info = new USER_INFO_1003 { usri1003_password = passwordPtr };
-            var status = PInvoke.NetUserSetInfo(null, namePtr, 1003, (byte*)&info, null);
-            if (status != 0)
-            {
-                throw new Win32Exception((int)status, $"Cannot set the password of {name}.");
-            }
-        }
-
-        HANDLE token;
-        fixed (char* namePtr = name)
-        fixed (char* domainPtr = ".")
-        fixed (char* passwordPtr = password)
-        {
-            if (!PInvoke.LogonUser(namePtr, domainPtr, passwordPtr, LOGON32_LOGON.LOGON32_LOGON_BATCH, LOGON32_PROVIDER.LOGON32_PROVIDER_DEFAULT, &token))
-            {
-                throw new Win32Exception(Marshal.GetLastPInvokeError(), $"LogonUser({name}) failed.");
-            }
-        }
-
+        var token = LogOnBatch(name);
         var logon = new AccountLogon(token);
         try
         {
@@ -201,6 +180,65 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
         {
             logon.Dispose();
             throw;
+        }
+    }
+
+    /// <summary>
+    /// A token to act as the account in the agent's own threads (the file manager impersonates it, docs/architecture/08):
+    /// logged on as a batch job with a freshly set password and stripped of its privileges like the server's processes.
+    /// No profile is loaded. The caller owns the handle.
+    /// </summary>
+    public static unsafe SafeAccessTokenHandle LogOnForImpersonation(string name)
+    {
+        var token = LogOnBatch(name);
+        try
+        {
+            HANDLE restricted;
+            if (!PInvoke.CreateRestrictedToken(token, CREATE_RESTRICTED_TOKEN_FLAGS.DISABLE_MAX_PRIVILEGE, 0, null, 0, null, 0, null, &restricted))
+            {
+                throw new Win32Exception(Marshal.GetLastPInvokeError(), "CreateRestrictedToken failed.");
+            }
+
+            return new SafeAccessTokenHandle(restricted);
+        }
+        finally
+        {
+            PInvoke.CloseHandle(token);
+        }
+    }
+
+    private static unsafe HANDLE LogOnBatch(string name)
+    {
+        ValidateName(name);
+        var password = NewPassword();
+
+        // Setting a password and logging on with it is one step: another logon in between (a server starting while the
+        // file manager acts as its account) would set its own password and make this one fail.
+        lock (s_logonLock)
+        {
+            fixed (char* namePtr = name)
+            fixed (char* passwordPtr = password)
+            {
+                var info = new USER_INFO_1003 { usri1003_password = passwordPtr };
+                var status = PInvoke.NetUserSetInfo(null, namePtr, 1003, (byte*)&info, null);
+                if (status != 0)
+                {
+                    throw new Win32Exception((int)status, $"Cannot set the password of {name}.");
+                }
+            }
+
+            HANDLE token;
+            fixed (char* namePtr = name)
+            fixed (char* domainPtr = ".")
+            fixed (char* passwordPtr = password)
+            {
+                if (!PInvoke.LogonUser(namePtr, domainPtr, passwordPtr, LOGON32_LOGON.LOGON32_LOGON_BATCH, LOGON32_PROVIDER.LOGON32_PROVIDER_DEFAULT, &token))
+                {
+                    throw new Win32Exception(Marshal.GetLastPInvokeError(), $"LogonUser({name}) failed.");
+                }
+            }
+
+            return token;
         }
     }
 

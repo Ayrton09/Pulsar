@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Steam;
@@ -41,6 +42,7 @@ public sealed partial class ServerHost(
     IServerFiles files,
     IRconConnector rcon,
     IServerFirewall firewall,
+    FileCommands fileCommands,
     InstallOptions installOptions,
     PanelChannel panel,
     SupervisorOptions supervisorOptions,
@@ -82,6 +84,10 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.ConsoleInput;
             yield return AgentCapabilities.ConsoleSubscribe;
             yield return AgentCapabilities.ConsoleUnsubscribe;
+            foreach (var capability in FileCommands.Capabilities)
+            {
+                yield return capability;
+            }
             if (installOptions.TestGameAvailable)
             {
                 yield return AgentCapabilities.TestGame;
@@ -162,6 +168,7 @@ public sealed partial class ServerHost(
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        await fileCommands.StopAsync();
         var servers = _servers.Values.ToList();
         var results = await Task.WhenAll(servers.Select(s => s.Supervisor.ShutdownAsync(options.ShutdownBudget)));
         for (var i = 0; i < servers.Count; i++)
@@ -218,8 +225,22 @@ public sealed partial class ServerHost(
             SubscribeConsoleCommand subscribe => SubscribeConsole(envelope, subscribe),
             UnsubscribeConsoleCommand unsubscribe => new CommandAck(envelope.CommandId,
                 _relay.Unsubscribe(unsubscribe.ServerId) ? AckStatus.Accepted : AckStatus.AlreadyInState, null, null),
+            var command when FileCommands.ServerOf(command) is { } serverId => await FilesAsync(envelope, serverId),
             _ => new CommandAck(envelope.CommandId, AckStatus.UnsupportedCommand, "command.unsupported", null),
         };
+    }
+
+    /// <summary>File manager commands: off the connection's thread (a large deletion takes a while).</summary>
+    private async Task<CommandAck> FilesAsync(CommandEnvelope envelope, Guid serverId)
+    {
+        if (!_servers.TryGetValue(serverId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+        var busy = _operations.ContainsKey(serverId);
+        return await Task.Run(() => fileCommands.Execute(envelope, provisioned, busy));
     }
 
     private async Task<CommandAck> ConsoleInputAsync(CommandEnvelope envelope, SendConsoleInputCommand command)

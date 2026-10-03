@@ -89,6 +89,13 @@ FILE_DISPOSITION_INFO
 OpenProcess
 OpenProcessToken
 
+// File manager (handle-based operations as the server's account, docs/architecture/08)
+CreateDirectory
+GetFileInformationByHandle
+BY_HANDLE_FILE_INFORMATION
+FILE_DISPOSITION_INFO_EX
+FILE_DISPOSITION_INFO_EX_FLAGS
+
 // SteamCMD bootstrapper signature (Authenticode)
 WinVerifyTrust
 WINTRUST_DATA

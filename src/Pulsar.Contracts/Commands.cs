@@ -39,6 +39,12 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(SendConsoleInputCommand), SendConsoleInputCommand.Type)]
 [JsonDerivedType(typeof(SubscribeConsoleCommand), SubscribeConsoleCommand.Type)]
 [JsonDerivedType(typeof(UnsubscribeConsoleCommand), UnsubscribeConsoleCommand.Type)]
+[JsonDerivedType(typeof(ListFilesCommand), ListFilesCommand.Type)]
+[JsonDerivedType(typeof(CreateDirectoryCommand), CreateDirectoryCommand.Type)]
+[JsonDerivedType(typeof(MoveFileCommand), MoveFileCommand.Type)]
+[JsonDerivedType(typeof(DeleteFileCommand), DeleteFileCommand.Type)]
+[JsonDerivedType(typeof(SendFileCommand), SendFileCommand.Type)]
+[JsonDerivedType(typeof(ReceiveFileCommand), ReceiveFileCommand.Type)]
 public abstract record AgentCommand;
 
 /// <summary>Round-trip check of the signed command path (the UI's "test connection").</summary>
@@ -156,6 +162,62 @@ public sealed record UnsubscribeConsoleCommand(Guid ServerId) : AgentCommand
     public const string Type = "server.console_unsubscribe";
 }
 
+/// <summary>Lists a directory of the server (<see cref="ServerFilePath.Root"/>: the server directory); the ack carries a <see cref="FileListResult"/>.</summary>
+public sealed record ListFilesCommand(Guid ServerId, string Path) : AgentCommand
+{
+    public const string Type = "server.files_list";
+}
+
+/// <summary>Creates a directory and any missing parents.</summary>
+public sealed record CreateDirectoryCommand(Guid ServerId, string Path) : AgentCommand
+{
+    public const string Type = "server.files_create_directory";
+}
+
+/// <summary>Renames or moves a file, directory or link inside the server directory; never replaces anything.</summary>
+public sealed record MoveFileCommand(Guid ServerId, string Path, string Destination) : AgentCommand
+{
+    public const string Type = "server.files_move";
+}
+
+/// <summary>Deletes a file, a link (never its target) or a directory with everything in it.</summary>
+public sealed record DeleteFileCommand(Guid ServerId, string Path) : AgentCommand
+{
+    public const string Type = "server.files_delete";
+}
+
+/// <summary>
+/// Sends a file to the panel (docs/architecture/03, "Large transfers"): the agent checks it can (the ack carries a
+/// <see cref="FileEntryResult"/>), then uploads it with <c>PUT</c> to <see cref="AgentProtocol.TransferPath"/>.
+/// </summary>
+/// <param name="MaxSize">Larger files are refused (<c>files.too_large</c>): the editor opens small files only.</param>
+public sealed record SendFileCommand(Guid ServerId, string Path, string Ticket, long MaxSize) : AgentCommand
+{
+    public const string Type = "server.files_send";
+}
+
+/// <summary>
+/// Receives a file from the panel: the agent checks it can, downloads exactly <paramref name="Size"/> bytes with
+/// <c>GET</c> from <see cref="AgentProtocol.TransferPath"/> into a temporary file next to the target, puts it in place
+/// and reports the end with <see cref="IAgentHub.TransferCompleted"/>.
+/// </summary>
+/// <param name="Overwrite">Replace an existing file; without it an existing name fails (<c>files.exists</c>).</param>
+/// <param name="ExpectedVersion">
+/// The <see cref="FileVersion"/> the file must still have (an editor saving what it opened); implies
+/// <paramref name="Overwrite"/>.
+/// </param>
+public sealed record ReceiveFileCommand(Guid ServerId, string Path, string Ticket, long Size, bool Overwrite, string? ExpectedVersion)
+    : AgentCommand
+{
+    public const string Type = "server.files_receive";
+}
+
+/// <summary>What a command answers besides being accepted (a directory listing, say).</summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "$type")]
+[JsonDerivedType(typeof(FileListResult), "files.list")]
+[JsonDerivedType(typeof(FileEntryResult), "files.entry")]
+public abstract record CommandResult;
+
 public enum AckStatus
 {
     Accepted,
@@ -167,7 +229,8 @@ public enum AckStatus
 }
 
 /// <summary>The agent's answer: accepted or not (long work reports completion through events).</summary>
-public sealed record CommandAck(Guid CommandId, AckStatus Status, string? ErrorCode, string? Message);
+/// <param name="Result">What the command answers, for commands that answer something (null from older agents).</param>
+public sealed record CommandAck(Guid CommandId, AckStatus Status, string? ErrorCode, string? Message, CommandResult? Result = null);
 
 /// <summary>Capabilities an agent announces in its Hello; the panel never sends a command the agent did not announce.</summary>
 public static class AgentCapabilities
@@ -188,6 +251,12 @@ public static class AgentCapabilities
     public const string ConsoleInput = SendConsoleInputCommand.Type;
     public const string ConsoleSubscribe = SubscribeConsoleCommand.Type;
     public const string ConsoleUnsubscribe = UnsubscribeConsoleCommand.Type;
+    public const string ListFiles = ListFilesCommand.Type;
+    public const string CreateDirectory = CreateDirectoryCommand.Type;
+    public const string MoveFile = MoveFileCommand.Type;
+    public const string DeleteFile = DeleteFileCommand.Type;
+    public const string SendFile = SendFileCommand.Type;
+    public const string ReceiveFile = ReceiveFileCommand.Type;
 
     /// <summary>
     /// Not a command: the agent can install Pulsar's test game server (the <c>pulsar-test</c> manifest). Only agents
@@ -217,6 +286,12 @@ public static class AgentCapabilities
         SendConsoleInputCommand => ConsoleInput,
         SubscribeConsoleCommand => ConsoleSubscribe,
         UnsubscribeConsoleCommand => ConsoleUnsubscribe,
+        ListFilesCommand => ListFiles,
+        CreateDirectoryCommand => CreateDirectory,
+        MoveFileCommand => MoveFile,
+        DeleteFileCommand => DeleteFile,
+        SendFileCommand => SendFile,
+        ReceiveFileCommand => ReceiveFile,
         null => throw new ArgumentNullException(nameof(command)),
         _ => throw new ArgumentOutOfRangeException(nameof(command), command.GetType().Name, "Command without a capability."),
     };

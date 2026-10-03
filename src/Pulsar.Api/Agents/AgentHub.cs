@@ -22,6 +22,7 @@ internal sealed partial class AgentHub(
     AgentServerEvents servers,
     ConsoleMirrors consoles,
     LiveMetrics liveMetrics,
+    FileTransfers transfers,
     IRealtimeNotifier notifier,
     IHubContext<PanelHub, IPanelClient> browsers,
     IServiceScopeFactory scopes,
@@ -212,6 +213,14 @@ internal sealed partial class AgentHub(
         {
             await consoles.ReceiveAsync(nodeId, output);
         }
+    }
+
+    /// <summary>The end of a file the agent received: answers the browser's upload waiting for it.</summary>
+    public Task TransferCompleted(TransferResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        transfers.Complete(Context.User!.NodeId(), result);
+        return Task.CompletedTask;
     }
 
     /// <summary>Usage of the node's running servers: kept for pages that open later, and pushed to the ones watching.</summary>

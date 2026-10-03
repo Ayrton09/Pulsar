@@ -4,7 +4,13 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
+    <DefineConstants>$(DefineConstants);WINDOWS_TESTS</DefineConstants>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The file manager contract, shared with the portable implementation's tests. -->
+    <Compile Include="..\Pulsar.Agent.Core.Tests\ServerFileManagerContract.cs" Link="ServerFileManagerContract.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="xunit.v3" />

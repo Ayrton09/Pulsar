@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.Extensions.Hosting;
 using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Commands;
+using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Security;
@@ -81,6 +82,10 @@ internal static class AgentHost
             // Development and CI only: enables the pulsar-test manifest.
             builder.Services.AddSingleton(new InstallOptions { TestGameDirectory = builder.Configuration["Pulsar:TestGameDirectory"] });
             builder.Services.AddSingleton<IServerFiles, WindowsServerFiles>();
+            builder.Services.AddSingleton<IServerImpersonation, ServerImpersonation>();
+            builder.Services.AddSingleton<IServerFileManager, WindowsServerFileManager>();
+            builder.Services.AddSingleton(new FileCommandOptions());
+            builder.Services.AddSingleton<FileCommands>();
             builder.Services.AddSingleton<InstallSteps>();
             builder.Services.AddSingleton<ISteamCmdSource, SteamCmdBootstrapper>();
             builder.Services.AddSingleton(new SteamCmdOptions());

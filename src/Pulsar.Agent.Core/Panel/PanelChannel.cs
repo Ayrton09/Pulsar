@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Pulsar.Agent.Core.Panel;
@@ -11,6 +12,7 @@ public sealed class PanelChannel
 {
     private readonly Lock _lock = new();
     private HubConnection? _connection;
+    private PanelHttp? _http;
     private Func<CancellationToken, Task>? _connected;
     private Action? _disconnected;
 
@@ -83,12 +85,39 @@ public sealed class PanelChannel
         }
     }
 
-    internal async Task AttachAsync(HubConnection connection, CancellationToken cancellationToken)
+    /// <summary>
+    /// An HTTP client authenticated with the current session, for calls that belong to it (file transfers); null
+    /// while disconnected. Without a timeout of its own: the caller bounds its requests. The caller disposes it.
+    /// </summary>
+    public HttpClient? CreateHttpClient()
+    {
+        PanelHttp? http;
+        lock (_lock)
+        {
+            http = _connection is { State: HubConnectionState.Connected } ? _http : null;
+        }
+
+        if (http is null)
+        {
+            return null;
+        }
+
+        var client = new HttpClient(http.Transport.CreateHttpHandler(), disposeHandler: true)
+        {
+            BaseAddress = http.Panel,
+            Timeout = Timeout.InfiniteTimeSpan,
+        };
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", http.AccessToken);
+        return client;
+    }
+
+    internal async Task AttachAsync(HubConnection connection, PanelHttp http, CancellationToken cancellationToken)
     {
         Func<CancellationToken, Task>? handlers;
         lock (_lock)
         {
             _connection = connection;
+            _http = http;
             handlers = _connected;
         }
 
@@ -106,6 +135,7 @@ public sealed class PanelChannel
             if (ReferenceEquals(_connection, connection))
             {
                 _connection = null;
+                _http = null;
                 handlers = _disconnected;
             }
         }
@@ -120,4 +150,11 @@ public sealed class PanelChannel
             return _connection is { State: HubConnectionState.Connected } connection ? connection : null;
         }
     }
+}
+
+/// <summary>How to reach the panel over HTTP within a session.</summary>
+internal sealed record PanelHttp(PanelTransport Transport, Uri Panel, string AccessToken)
+{
+    // Holds the session token: never print it.
+    public override string ToString() => $"PanelHttp {{ Panel = {Panel} }}";
 }

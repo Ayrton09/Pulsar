@@ -22,6 +22,9 @@ public interface IAgentHub
 
     /// <summary>Usage of the running servers, every 5 s.</summary>
     Task Metrics(MetricsBatch batch);
+
+    /// <summary>The end of a transfer the agent received (<see cref="ReceiveFileCommand"/>).</summary>
+    Task TransferCompleted(TransferResult result);
 }
 
 /// <summary>Methods the panel calls on a connected agent (SignalR client results).</summary>
