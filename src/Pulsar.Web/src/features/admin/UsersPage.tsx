@@ -16,6 +16,7 @@ import {
   useCreateUser,
   useDeleteUser,
   useResetPassword,
+  useResetTwoFactor,
   useRoles,
   useSetUserRoles,
   useUpdateUser,
@@ -75,11 +76,14 @@ export function UsersPage() {
                   )}
                 </Td>
                 <Td>
-                  {user.isDisabled ? (
-                    <Badge tone="danger">{t('users.disabled')}</Badge>
-                  ) : (
-                    <Badge tone="success">{t('users.active')}</Badge>
-                  )}
+                  <div className="flex flex-wrap gap-1">
+                    {user.isDisabled ? (
+                      <Badge tone="danger">{t('users.disabled')}</Badge>
+                    ) : (
+                      <Badge tone="success">{t('users.active')}</Badge>
+                    )}
+                    {user.twoFactorEnabled && <Badge tone="accent">{t('users.twoFactor')}</Badge>}
+                  </div>
                 </Td>
                 <Td>
                   {user.lastLoginAt ? (
@@ -227,6 +231,7 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
   const setRoles = useSetUserRoles();
   const reset = useResetPassword();
   const remove = useDeleteUser();
+  const resetTwoFactor = useResetTwoFactor();
   const [roleIds, setRoleIds] = useState<Set<string>>(new Set(user.roles.map((r) => r.id)));
   const [newPassword, setNewPassword] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
@@ -234,7 +239,7 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
     resolver: zodResolver(profileSchema),
     defaultValues: { displayName: user.displayName ?? '', email: user.email ?? '', isDisabled: user.isDisabled },
   });
-  const error = update.error ?? setRoles.error ?? reset.error ?? remove.error;
+  const error = update.error ?? setRoles.error ?? reset.error ?? remove.error ?? resetTwoFactor.error;
 
   const onSaveProfile = handleSubmit(({ displayName, email, isDisabled }) =>
     update.mutate(
@@ -325,6 +330,22 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
                 {t('users.resetPassword')}
               </Button>
             </div>
+          </div>
+        )}
+
+        {!isSelf && user.twoFactorEnabled && (
+          <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+            <p className="text-sm text-muted">{t('users.twoFactorOn')}</p>
+            <Button
+              variant="secondary"
+              busy={resetTwoFactor.isPending}
+              onClick={() =>
+                window.confirm(t('users.resetTwoFactorConfirm', { name: user.userName })) &&
+                resetTwoFactor.mutate(user.id, { onSuccess: () => setNotice(t('users.twoFactorReset')) })
+              }
+            >
+              {t('users.resetTwoFactor')}
+            </Button>
           </div>
         )}
 

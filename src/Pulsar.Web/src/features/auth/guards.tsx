@@ -4,8 +4,10 @@ import { Navigate, Outlet, useLocation, useSearchParams } from 'react-router';
 import { Button, Spinner } from '../../components/ui/Button';
 import { errorMessage } from '../../lib/errors';
 import { can } from '../../lib/permissions';
-import { useSession } from './api';
+import { useLogout, useSession, useSessionRefresh } from './api';
+import { AuthCard } from './AuthCard';
 import { safeReturnTo } from './returnTo';
+import { TwoFactorSetup } from './TwoFactor';
 
 export function FullScreenMessage({ children }: { children: ReactNode }) {
   return <main className="flex min-h-screen items-center justify-center p-6">{children}</main>;
@@ -51,7 +53,27 @@ export function RequireSession() {
     const returnTo = location.pathname + location.search;
     return <Navigate to={returnTo === '/' ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`} replace />;
   }
+  if (session.data.user.twoFactorSetupRequired) {
+    return <TwoFactorRequired />;
+  }
   return <Outlet />;
+}
+
+/** A role requires two-factor authentication: nothing else is open until the user sets it up (the API agrees). */
+function TwoFactorRequired() {
+  const { t } = useTranslation();
+  const refresh = useSessionRefresh();
+  const logout = useLogout();
+  return (
+    <AuthCard title={t('twoFactor.requiredTitle')} subtitle={t('twoFactor.requiredSubtitle')}>
+      <TwoFactorSetup onDone={() => void refresh()} />
+      <div className="mt-6 border-t border-border pt-4 text-right">
+        <Button variant="ghost" size="sm" onClick={() => logout.mutate()} busy={logout.isPending}>
+          {t('actions.signOut')}
+        </Button>
+      </div>
+    </AuthCard>
+  );
 }
 
 /** The login and setup pages: only reachable when they make sense. */

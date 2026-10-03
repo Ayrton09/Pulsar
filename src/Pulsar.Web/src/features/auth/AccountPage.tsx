@@ -9,6 +9,7 @@ import { Field, Input } from '../../components/ui/Form';
 import { errorMessage, fieldErrors } from '../../lib/errors';
 import { useChangePassword, useCurrentUser, useUpdateProfile } from './api';
 import { MIN_PASSWORD_LENGTH } from './SetupPage';
+import { TwoFactorSection } from './TwoFactor';
 
 const profileSchema = z.object({
   displayName: z.string().trim().max(128, 'validation.tooLong'),
@@ -35,6 +36,7 @@ export function AccountPage() {
       <div className="grid max-w-3xl gap-6">
         <ProfileForm />
         <PasswordForm />
+        <TwoFactorSection />
       </div>
     </>
   );

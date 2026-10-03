@@ -143,6 +143,7 @@ describe('account', () => {
   it('shows a translated error for a wrong current password', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(adminUser),
+      'GET /api/v1/auth/two-factor': () => json({ enabled: false, required: false, recoveryCodesLeft: 0 }),
       'POST /api/v1/auth/password': () =>
         problem(400, 'auth.wrong_current_password', 'The current password is not correct.'),
     });
@@ -158,7 +159,10 @@ describe('account', () => {
   });
 
   it('checks that both new passwords match before calling the API', async () => {
-    const api = fakeApi({ 'GET /api/v1/auth/session': session(adminUser) });
+    const api = fakeApi({
+      'GET /api/v1/auth/session': session(adminUser),
+      'GET /api/v1/auth/two-factor': () => json({ enabled: false, required: false, recoveryCodesLeft: 0 }),
+    });
     renderAt('/account');
     const user = userEvent.setup();
 
@@ -168,6 +172,6 @@ describe('account', () => {
     await user.click(screen.getByRole('button', { name: 'Change password' }));
 
     expect(await screen.findByText('The passwords do not match.')).toBeInTheDocument();
-    expect(api).toHaveBeenCalledTimes(1);
+    expect(api.mock.calls.map(([request]) => (request as Request).method)).not.toContain('POST');
   });
 });

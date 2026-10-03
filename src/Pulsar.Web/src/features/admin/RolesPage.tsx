@@ -15,6 +15,7 @@ import {
   useCreateRole,
   useDeleteRole,
   usePermissionCatalog,
+  useRequireTwoFactor,
   useRoles,
   useUpdateRole,
   type PermissionScope,
@@ -29,6 +30,7 @@ export function RolesPage() {
   const roles = useRoles();
   const [editing, setEditing] = useState<Role | 'new' | null>(null);
   const canManage = can(user, Permission.RoleManage);
+  const requireTwoFactor = useRequireTwoFactor();
 
   return (
     <>
@@ -39,6 +41,11 @@ export function RolesPage() {
       />
       {roles.isPending && <Spinner label={t('common.loading')} />}
       {roles.isError && <Alert>{errorMessage(t, roles.error)}</Alert>}
+      {requireTwoFactor.isError && (
+        <div className="mb-4">
+          <Alert>{errorMessage(t, requireTwoFactor.error)}</Alert>
+        </div>
+      )}
       {roles.data && (
         <Table label={t('roles.title')}>
           <thead>
@@ -47,6 +54,7 @@ export function RolesPage() {
               <Th>{t('roles.scope')}</Th>
               <Th>{t('roles.permissions')}</Th>
               <Th>{t('roles.assignedUsers')}</Th>
+              <Th>{t('roles.twoFactor')}</Th>
               {canManage && (
                 <Th>
                   <span className="sr-only">{t('common.actions')}</span>
@@ -71,6 +79,20 @@ export function RolesPage() {
                     : t('roles.permissionCount', { count: role.permissions.length })}
                 </Td>
                 <Td>{role.assignedUsers}</Td>
+                <Td>
+                  {canManage ? (
+                    <Checkbox
+                      label={<span className="sr-only">{t('roles.requireTwoFactorFor', { name: role.name })}</span>}
+                      checked={role.requiresTwoFactor}
+                      disabled={requireTwoFactor.isPending}
+                      onChange={(e) => requireTwoFactor.mutate({ id: role.id, required: e.target.checked })}
+                    />
+                  ) : role.requiresTwoFactor ? (
+                    <Badge tone="accent">{t('roles.required')}</Badge>
+                  ) : (
+                    <span className="text-muted">{t('common.none')}</span>
+                  )}
+                </Td>
                 {canManage && (
                   <Td className="text-right">
                     {!role.isSystem && (

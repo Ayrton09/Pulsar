@@ -136,3 +136,21 @@ export function useDeleteRole() {
     onSuccess: changed,
   });
 }
+
+/** The user's key and recovery codes are forgotten and their sessions end (a lost phone). */
+export function useResetTwoFactor() {
+  const changed = useAccessChanged();
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.POST('/api/v1/users/{id}/two-factor/reset', { params: { path: { id } } })),
+    onSuccess: changed,
+  });
+}
+
+export function useRequireTwoFactor() {
+  const changed = useAccessChanged();
+  return useMutation({
+    mutationFn: ({ id, required }: { id: string; required: boolean }) =>
+      unwrap(api.PUT('/api/v1/roles/{id}/two-factor', { params: { path: { id } }, body: { required } })),
+    onSuccess: changed,
+  });
+}

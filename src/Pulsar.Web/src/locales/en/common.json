@@ -107,7 +107,12 @@
     "resetPassword": "Set password",
     "passwordReset": "Password changed. The user's sessions have ended.",
     "saved": "Changes saved.",
-    "deleteConfirm": "Delete the user {{name}}? This cannot be undone."
+    "deleteConfirm": "Delete the user {{name}}? This cannot be undone.",
+    "twoFactor": "Two-factor",
+    "twoFactorOn": "Two-factor authentication is on.",
+    "resetTwoFactor": "Turn off two-factor",
+    "resetTwoFactorConfirm": "Turn off two-factor authentication for {{name}}? Their sessions end; if a role requires it, they set it up again at their next sign-in.",
+    "twoFactorReset": "Two-factor authentication turned off."
   },
   "roles": {
     "title": "Roles",
@@ -130,7 +135,10 @@
     "allPermissions": "All permissions",
     "permissionCount_one": "{{count}} permission",
     "permissionCount_other": "{{count}} permissions",
-    "deleteConfirm": "Delete the role {{name}}?"
+    "deleteConfirm": "Delete the role {{name}}?",
+    "twoFactor": "Two-factor",
+    "requireTwoFactorFor": "Require two-factor authentication from users of {{name}}",
+    "required": "Required"
   },
   "permissionGroups": {
     "server": "Servers",
@@ -228,13 +236,19 @@
         "logout": "Signed out",
         "setup": "Initial setup",
         "password_changed": "Changed own password",
-        "profile_updated": "Updated own profile"
+        "profile_updated": "Updated own profile",
+        "two_factor_enabled": "Turned on two-factor authentication",
+        "two_factor_disabled": "Turned off two-factor authentication",
+        "two_factor_failed": "Wrong two-factor code",
+        "recovery_code_used": "Signed in with a recovery code",
+        "recovery_codes_renewed": "Got new recovery codes"
       },
       "user": {
         "created": "Created a user",
         "updated": "Updated a user",
         "deleted": "Deleted a user",
-        "password_reset": "Set a user's password"
+        "password_reset": "Set a user's password",
+        "two_factor_reset": "Turned off a user's two-factor authentication"
       },
       "role": {
         "created": "Created a role",
@@ -310,7 +324,12 @@
       "invalid_credentials": "Invalid user name or password.",
       "required": "Your session ended. Sign in again.",
       "forbidden": "You do not have permission to do this.",
-      "wrong_current_password": "The current password is not correct."
+      "wrong_current_password": "The current password is not correct.",
+      "invalid_code": "The code is not valid.",
+      "two_factor_required": "Set up two-factor authentication to continue.",
+      "two_factor_required_by_role": "One of your roles requires two-factor authentication.",
+      "two_factor_enabled": "Two-factor authentication is already on.",
+      "two_factor_not_enabled": "Two-factor authentication is off."
     },
     "setup": {
       "invalid_token": "The setup token is not valid. Copy it again from the panel log.",
@@ -448,7 +467,7 @@
   },
   "account": {
     "title": "My account",
-    "description": "Your profile and password.",
+    "description": "Your profile, password and two-factor authentication.",
     "profile": "Profile",
     "userNameFixed": "The user name cannot be changed.",
     "emailHint": "Optional. Not shown to other users.",
@@ -974,5 +993,41 @@
     },
     "missed_one": "Missed: the panel was not running.",
     "missed_other": "{{count}} runs missed: the panel was not running."
+  },
+  "twoFactor": {
+    "title": "Two-factor authentication",
+    "on": "On",
+    "off": "Off",
+    "intro": "Besides your password, sign-in asks for a code from an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, Aegis, 1Password…).",
+    "setUp": "Set up",
+    "scan": "Scan this QR code with your authenticator app.",
+    "qrLabel": "QR code for your authenticator app",
+    "manual": "If you cannot scan it, enter this key in the app:",
+    "appCode": "Code from the app",
+    "turnOn": "Turn on",
+    "codesIntro": "Save these recovery codes somewhere safe, away from your phone. Each one signs you in once if you lose the app. They are shown only now.",
+    "codesLabel": "Recovery codes",
+    "copy": "Copy",
+    "copied": "Copied",
+    "saved": "I saved them",
+    "codesLeft_one": "{{count}} recovery code left.",
+    "codesLeft_other": "{{count}} recovery codes left.",
+    "requiredByRole": "One of your roles requires it.",
+    "newCodes": "New recovery codes",
+    "newCodesTitle": "New recovery codes",
+    "newCodesDescription": "The codes you have now stop working.",
+    "turnOff": "Turn off",
+    "turnOffTitle": "Turn off two-factor authentication",
+    "turnOffDescription": "Sign-in will ask only for your password.",
+    "requiredTitle": "Set up two-factor authentication",
+    "requiredSubtitle": "One of your roles requires it. Set it up to continue.",
+    "loginTitle": "Two-factor authentication",
+    "loginApp": "Enter the code your authenticator app shows.",
+    "loginRecovery": "Enter one of your recovery codes. Each one works once.",
+    "code": "Authentication code",
+    "recoveryCode": "Recovery code",
+    "verify": "Verify",
+    "useRecovery": "Use a recovery code",
+    "useApp": "Use the authenticator app"
   }
 }

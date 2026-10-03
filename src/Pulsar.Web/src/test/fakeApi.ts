@@ -20,6 +20,8 @@ export const adminUser: Schemas['CurrentUserResponse'] = {
   displayName: 'Ada Admin',
   email: null,
   permissions: ['audit.view', 'role.manage', 'user.manage', 'user.view'],
+  twoFactorEnabled: false,
+  twoFactorSetupRequired: false,
 };
 
 /**

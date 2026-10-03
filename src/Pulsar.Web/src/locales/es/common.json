@@ -107,7 +107,12 @@
     "resetPassword": "Cambiar contraseña",
     "passwordReset": "Contraseña cambiada. Se cerraron las sesiones del usuario.",
     "saved": "Cambios guardados.",
-    "deleteConfirm": "¿Eliminar al usuario {{name}}? No se puede deshacer."
+    "deleteConfirm": "¿Eliminar al usuario {{name}}? No se puede deshacer.",
+    "twoFactor": "Dos pasos",
+    "twoFactorOn": "Tiene la verificación en dos pasos activada.",
+    "resetTwoFactor": "Desactivar dos pasos",
+    "resetTwoFactorConfirm": "¿Desactivar la verificación en dos pasos de {{name}}? Sus sesiones terminan; si un rol la exige, la configura de nuevo al iniciar sesión.",
+    "twoFactorReset": "Verificación en dos pasos desactivada."
   },
   "roles": {
     "title": "Roles",
@@ -130,7 +135,10 @@
     "allPermissions": "Todos los permisos",
     "permissionCount_one": "{{count}} permiso",
     "permissionCount_other": "{{count}} permisos",
-    "deleteConfirm": "¿Eliminar el rol {{name}}?"
+    "deleteConfirm": "¿Eliminar el rol {{name}}?",
+    "twoFactor": "Dos pasos",
+    "requireTwoFactorFor": "Exigir verificación en dos pasos a los usuarios de {{name}}",
+    "required": "Exigida"
   },
   "permissionGroups": {
     "server": "Servidores",
@@ -228,13 +236,19 @@
         "logout": "Cerró sesión",
         "setup": "Configuración inicial",
         "password_changed": "Cambió su contraseña",
-        "profile_updated": "Modificó su perfil"
+        "profile_updated": "Modificó su perfil",
+        "two_factor_enabled": "Activó la verificación en dos pasos",
+        "two_factor_disabled": "Desactivó la verificación en dos pasos",
+        "two_factor_failed": "Código de dos pasos incorrecto",
+        "recovery_code_used": "Entró con un código de recuperación",
+        "recovery_codes_renewed": "Generó nuevos códigos de recuperación"
       },
       "user": {
         "created": "Creó un usuario",
         "updated": "Modificó un usuario",
         "deleted": "Eliminó un usuario",
-        "password_reset": "Cambió la contraseña de un usuario"
+        "password_reset": "Cambió la contraseña de un usuario",
+        "two_factor_reset": "Desactivó la verificación en dos pasos de un usuario"
       },
       "role": {
         "created": "Creó un rol",
@@ -310,7 +324,12 @@
       "invalid_credentials": "Usuario o contraseña incorrectos.",
       "required": "Tu sesión terminó. Volvé a ingresar.",
       "forbidden": "No tenés permiso para hacer esto.",
-      "wrong_current_password": "La contraseña actual no es correcta."
+      "wrong_current_password": "La contraseña actual no es correcta.",
+      "invalid_code": "El código no es válido.",
+      "two_factor_required": "Configurá la verificación en dos pasos para continuar.",
+      "two_factor_required_by_role": "Uno de tus roles exige la verificación en dos pasos.",
+      "two_factor_enabled": "La verificación en dos pasos ya está activada.",
+      "two_factor_not_enabled": "La verificación en dos pasos está desactivada."
     },
     "setup": {
       "invalid_token": "El token de configuración no es válido. Copialo de nuevo del log del panel.",
@@ -448,7 +467,7 @@
   },
   "account": {
     "title": "Mi cuenta",
-    "description": "Tu perfil y tu contraseña.",
+    "description": "Tu perfil, tu contraseña y la verificación en dos pasos.",
     "profile": "Perfil",
     "userNameFixed": "El usuario no se puede cambiar.",
     "emailHint": "Opcional. No lo ven otros usuarios.",
@@ -974,5 +993,41 @@
     },
     "missed_one": "Perdida: el panel no estaba en marcha.",
     "missed_other": "{{count}} ejecuciones perdidas: el panel no estaba en marcha."
+  },
+  "twoFactor": {
+    "title": "Verificación en dos pasos",
+    "on": "Activada",
+    "off": "Desactivada",
+    "intro": "Además de tu contraseña, al iniciar sesión se pide un código de una app de autenticación en tu teléfono (Google Authenticator, Microsoft Authenticator, Aegis, 1Password…).",
+    "setUp": "Configurar",
+    "scan": "Escaneá este código QR con tu app de autenticación.",
+    "qrLabel": "Código QR para tu app de autenticación",
+    "manual": "Si no podés escanearlo, ingresá esta clave en la app:",
+    "appCode": "Código de la app",
+    "turnOn": "Activar",
+    "codesIntro": "Guardá estos códigos de recuperación en un lugar seguro, lejos de tu teléfono. Cada uno te deja entrar una vez si perdés la app. Solo se muestran ahora.",
+    "codesLabel": "Códigos de recuperación",
+    "copy": "Copiar",
+    "copied": "Copiados",
+    "saved": "Ya los guardé",
+    "codesLeft_one": "Te queda {{count}} código de recuperación.",
+    "codesLeft_other": "Te quedan {{count}} códigos de recuperación.",
+    "requiredByRole": "Uno de tus roles la exige.",
+    "newCodes": "Nuevos códigos de recuperación",
+    "newCodesTitle": "Nuevos códigos de recuperación",
+    "newCodesDescription": "Los códigos que tenés ahora dejan de funcionar.",
+    "turnOff": "Desactivar",
+    "turnOffTitle": "Desactivar la verificación en dos pasos",
+    "turnOffDescription": "Al iniciar sesión solo se pedirá tu contraseña.",
+    "requiredTitle": "Configurá la verificación en dos pasos",
+    "requiredSubtitle": "Uno de tus roles la exige. Configurala para continuar.",
+    "loginTitle": "Verificación en dos pasos",
+    "loginApp": "Ingresá el código que muestra tu app de autenticación.",
+    "loginRecovery": "Ingresá uno de tus códigos de recuperación. Cada uno sirve una vez.",
+    "code": "Código de verificación",
+    "recoveryCode": "Código de recuperación",
+    "verify": "Verificar",
+    "useRecovery": "Usar un código de recuperación",
+    "useApp": "Usar la app de autenticación"
   }
 }
