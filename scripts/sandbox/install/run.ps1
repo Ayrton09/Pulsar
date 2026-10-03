@@ -169,6 +169,14 @@ catch {
     Check 'unexpected error' $false "$_ $($_.ScriptStackTrace)"
 }
 finally {
+    # For diagnosis: what Windows says about the services, and the panel's own log.
+    $since = (Get-Date).AddHours(-2)
+    Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Service Control Manager'; StartTime = $since } -ErrorAction SilentlyContinue |
+        Where-Object Message -match 'Pulsar' | Format-List TimeCreated, Id, Message | Out-File (Join-Path $report 'events-system.txt')
+    Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $since } -ErrorAction SilentlyContinue |
+        Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error' } | Format-List TimeCreated, ProviderName, Message |
+        Out-File (Join-Path $report 'events-application.txt')
+    Copy-Item 'C:\ProgramData\Pulsar\Panel\logs\*' $report -ErrorAction SilentlyContinue
     Stop-Transcript | Out-Null
     Add-Content $summary 'done'
 }

@@ -231,6 +231,26 @@ function Invoke-Panel($client, [string] $method, [string] $path, $body = $null) 
     return $null
 }
 
+# Applies the database migrations in this console, before the service starts: a database problem shows here, and the
+# service starts quickly (Windows gives a service 30 seconds to report that it runs).
+function Invoke-PanelMigrations {
+    Write-Step 'Preparing the database'
+    $result = Invoke-Native (Join-Path $PanelDir 'Pulsar.Api.exe') migrate --contentRoot $PanelDir
+    if ($result.ExitCode -ne 0) { throw "The panel could not prepare its database:$([Environment]::NewLine)$($result.Output)" }
+}
+
+function Start-Panel {
+    try {
+        Start-Service $PanelService
+    }
+    catch {
+        $log = Get-ChildItem (Join-Path $PanelData 'logs') -Filter 'panel-*.log' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1
+        $tail = ''
+        if ($log) { $tail = (Get-Content $log.FullName -Tail 20) -join [Environment]::NewLine }
+        throw "The panel service did not start ($($_.Exception.Message)). The end of its log ($($log.FullName)):$([Environment]::NewLine)$tail"
+    }
+}
+
 function Wait-PanelReady($client) {
     $deadline = (Get-Date).AddMinutes(3)
     while ((Get-Date) -lt $deadline) {
@@ -437,8 +457,9 @@ function Install-Panel {
             -Protocol TCP -LocalPort $Port -Program $exe -Action Allow
     }
 
+    Invoke-PanelMigrations
     Write-Step 'Starting the panel'
-    Start-Service $PanelService
+    Start-Panel
     Initialize-PanelClient
     $client = [PulsarInstallerClient]::new("https://localhost:$Port", $certificate.Thumbprint)
     try {
@@ -468,7 +489,8 @@ function Update-Panel {
     Write-Step 'Updating the panel'
     Stop-Service $PanelService
     Copy-Program (Join-Path $PSScriptRoot 'panel') $PanelDir
-    Start-Service $PanelService # applies database migrations at start
+    Invoke-PanelMigrations
+    Start-Panel
 }
 
 function Uninstall-Panel {
