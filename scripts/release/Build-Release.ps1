@@ -29,7 +29,8 @@ if (-not $SkipWebBuild) {
 
 if (-not (Test-Path (Join-Path $repo 'src\Pulsar.Api\wwwroot\index.html'))) { throw 'The web app is not built (src\Pulsar.Api\wwwroot).' }
 
-$common = @('-c', 'Release', '-r', 'win-x64', '--self-contained', "-p:Version=$Version", '-p:DebugType=none')
+# Locked restore: the release gets exactly the dependencies (and content hashes) in the lock files.
+$common = @('-c', 'Release', '-r', 'win-x64', '--self-contained', "-p:Version=$Version", '-p:DebugType=none', '-p:RestoreLockedMode=true')
 dotnet publish (Join-Path $repo 'src\Pulsar.Api') @common -o (Join-Path $staging 'panel')
 if ($LASTEXITCODE -ne 0) { throw 'publish panel failed' }
 dotnet publish (Join-Path $repo 'src\Pulsar.Agent') @common -o (Join-Path $staging 'agent')
