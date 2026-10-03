@@ -25,17 +25,25 @@ public sealed class DataProtectionTests(NoDatabaseApiFactory factory) : IClassFi
 
         try
         {
-            using var app = factory.WithWebHostBuilder(b => b
+            string protectedSecret;
+            using (var app = factory.WithWebHostBuilder(b => b
                 .UseSetting("DataProtection:KeysPath", keys)
                 .UseSetting("DataProtection:CertificatePath", pfx)
-                .UseSetting("DataProtection:CertificatePassword", "test password"));
-
-            var protector = app.Services.GetRequiredService<IDataProtectionProvider>().CreateProtector("test");
-            Assert.Equal("secret", protector.Unprotect(protector.Protect("secret")));
+                .UseSetting("DataProtection:CertificatePassword", "test password")))
+            {
+                protectedSecret = app.Services.GetRequiredService<IDataProtectionProvider>().CreateProtector("test").Protect("secret");
+            }
 
             var key = File.ReadAllText(Assert.Single(Directory.GetFiles(keys, "key-*.xml")));
             Assert.Contains("EncryptedXmlDecryptor", key, StringComparison.Ordinal);
             Assert.DoesNotContain("DpapiXmlDecryptor", key, StringComparison.Ordinal);
+
+            // Another panel (a restore on another machine) reads the key ring from disk with the same certificate.
+            using var restored = factory.WithWebHostBuilder(b => b
+                .UseSetting("DataProtection:KeysPath", keys)
+                .UseSetting("DataProtection:CertificatePath", pfx)
+                .UseSetting("DataProtection:CertificatePassword", "test password"));
+            Assert.Equal("secret", restored.Services.GetRequiredService<IDataProtectionProvider>().CreateProtector("test").Unprotect(protectedSecret));
         }
         finally
         {

@@ -513,6 +513,14 @@
         "resolved": "6.0.1",
         "contentHash": "IQ4NXP/B3Ayzvw0rDQzVTYsCKyy0Jp9KI6aYcK7UnGVlR9+Awz++TIPCQtPYfLJfOpm8ajowMR09V7quD3sEHw=="
       },
+      "System.ServiceProcess.ServiceController": {
+        "type": "Transitive",
+        "resolved": "10.0.12",
+        "contentHash": "sFV+RM/yPtshiCAEIuTm8Dt4F7VuKRbL50PnGC9nXHolk/jw+z3T8zx7axKTBC8mqtQU2ZmjsoPC9b1iwOilNQ==",
+        "dependencies": {
+          "System.Diagnostics.EventLog": "10.0.12"
+        }
+      },
       "xunit.analyzers": {
         "type": "Transitive",
         "resolved": "2.1.0",
@@ -595,11 +603,13 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.AspNetCore.OpenApi": "[10.0.12, )",
+          "Microsoft.Extensions.Hosting.WindowsServices": "[10.0.12, )",
           "Pulsar.Application": "[0.1.0, )",
           "Pulsar.Contracts": "[0.1.0, )",
           "Pulsar.Infrastructure": "[0.1.0, )",
           "Pulsar.Manifests": "[0.1.0, )",
-          "Serilog.AspNetCore": "[10.0.0, )"
+          "Serilog.AspNetCore": "[10.0.0, )",
+          "Serilog.Sinks.File": "[7.0.0, )"
         }
       },
       "pulsar.application": {
@@ -728,6 +738,17 @@
           "Microsoft.Extensions.Diagnostics.Abstractions": "10.0.12",
           "Microsoft.Extensions.FileProviders.Abstractions": "10.0.12",
           "Microsoft.Extensions.Logging.Abstractions": "10.0.12"
+        }
+      },
+      "Microsoft.Extensions.Hosting.WindowsServices": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "Za5xCWb7jkHd7+hYu8C22uIf0DGhNASIiXo1xSU450nj01RFCerP06h1Bh3kxUm+5DijfgP0gtpY6v+oI/UI4g==",
+        "dependencies": {
+          "Microsoft.Extensions.Hosting": "10.0.12",
+          "Microsoft.Extensions.Logging.EventLog": "10.0.12",
+          "System.ServiceProcess.ServiceController": "10.0.12"
         }
       },
       "Npgsql.EntityFrameworkCore.PostgreSQL": {

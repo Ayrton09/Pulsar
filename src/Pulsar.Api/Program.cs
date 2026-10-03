@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Options;
 using Pulsar.Api;
 using Pulsar.Api.Access;
@@ -27,16 +28,35 @@ try
 {
     // "Pulsar.Api migrate" applies pending migrations and exits (for Database:ApplyMigrationsOnStartup = false).
     var migrateOnly = args is ["migrate", ..];
-    var builder = WebApplication.CreateBuilder(migrateOnly ? args[1..] : args);
+    var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+    {
+        Args = migrateOnly ? args[1..] : args,
+        // A Windows service starts in System32: settings, the SPA and the bundled games are next to the executable.
+        ContentRootPath = WindowsServiceHelpers.IsWindowsService() ? AppContext.BaseDirectory : null,
+    });
+    builder.Services.AddWindowsService(options => options.ServiceName = "PulsarPanel");
 
     // The console sink is always on, so startup failures are visible even when appsettings.json is missing;
-    // configuration adds levels and extra sinks.
+    // configuration adds levels and extra sinks. Pulsar:LogsDirectory adds daily files (a service has no console).
+    var logsDirectory = builder.Configuration["Pulsar:LogsDirectory"];
     builder.Services.AddSerilog(
-        (services, configuration) => configuration
-            .ReadFrom.Configuration(builder.Configuration)
-            .ReadFrom.Services(services)
-            .Filter.ByExcluding(LogFilters.IsStaleAntiforgeryCookie)
-            .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture),
+        (services, configuration) =>
+        {
+            configuration
+                .ReadFrom.Configuration(builder.Configuration)
+                .ReadFrom.Services(services)
+                .Filter.ByExcluding(LogFilters.IsStaleAntiforgeryCookie)
+                .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
+            if (!string.IsNullOrWhiteSpace(logsDirectory))
+            {
+                configuration.WriteTo.File(Path.Combine(logsDirectory, "panel-.log"),
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 14,
+                    fileSizeLimitBytes: 50 * 1024 * 1024,
+                    rollOnFileSizeLimit: true,
+                    formatProvider: CultureInfo.InvariantCulture);
+            }
+        },
         preserveStaticLogger: true);
 
     builder.Services.AddPulsarApplication();
