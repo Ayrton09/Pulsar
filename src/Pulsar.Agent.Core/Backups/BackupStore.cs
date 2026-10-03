@@ -58,7 +58,8 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     /// <summary>Pulsar's own files in a server directory: never backed up, never restored.</summary>
     public const string PulsarDirectory = ".pulsar";
 
-    private const int BufferSize = 128 * 1024;
+    private const int BufferSize = 256 * 1024;
+    private const int SampleSize = 256 * 1024;
     private const int MaxLoggedSkips = 20;
     private static readonly TimeSpan s_progressInterval = TimeSpan.FromMilliseconds(500);
 
@@ -110,10 +111,16 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
                     using (opened)
                     {
-                        var entry = archive.CreateEntry(file.Path, CompressionLevel.Fastest);
+                        // The start of the file decides: maps, archives and media barely shrink, and deflate would only add to them.
+                        var sampled = await opened.Content.ReadAtLeastAsync(buffer.AsMemory(0, SampleSize), SampleSize, throwOnEndOfStream: false,
+                            cancellationToken);
+                        var level = Shrinks(buffer.AsSpan(0, sampled)) ? CompressionLevel.Fastest : CompressionLevel.NoCompression;
+                        var entry = archive.CreateEntry(file.Path, level);
                         entry.LastWriteTime = ZipTime(opened.Info.Entry.ModifiedAt);
                         await using var target = await entry.OpenAsync(cancellationToken);
-                        long copied = 0;
+                        await target.WriteAsync(buffer.AsMemory(0, sampled), cancellationToken);
+                        long copied = sampled;
+                        meter.Add(sampled);
                         int read;
                         while ((read = await opened.Content.ReadAsync(buffer, cancellationToken)) > 0)
                         {
@@ -294,6 +301,23 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         return [.. candidates.Where(e => matched.Contains(e.Path)).OrderBy(e => e.Path, StringComparer.Ordinal)];
     }
 
+    /// <summary>Whether deflate makes <paramref name="sample"/> at least a tenth smaller (small files are always compressed).</summary>
+    internal static bool Shrinks(ReadOnlySpan<byte> sample)
+    {
+        if (sample.Length < 4096)
+        {
+            return true;
+        }
+
+        var counter = new CountingStream();
+        using (var deflate = new DeflateStream(counter, CompressionLevel.Fastest, leaveOpen: true))
+        {
+            deflate.Write(sample);
+        }
+
+        return counter.Length < sample.Length * 0.9;
+    }
+
     /// <summary>Every entry, checked before anything is written: a restore may only write plain paths below the server directory.</summary>
     private static List<(ZipArchiveEntry Entry, string Path, bool Directory)> Check(ZipArchive archive)
     {
@@ -389,6 +413,40 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete {Path}: {Reason}")]
     private partial void LogNotDeleted(string path, string reason);
+
+    /// <summary>Counts what is written to it, and keeps nothing.</summary>
+    private sealed class CountingStream : Stream
+    {
+        private long _length;
+
+        public override bool CanRead => false;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => true;
+
+        public override long Length => _length;
+
+        public override long Position
+        {
+            get => _length;
+            set => throw new NotSupportedException();
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) => _length += count;
+
+        public override void Write(ReadOnlySpan<byte> buffer) => _length += buffer.Length;
+
+        public override void Flush()
+        {
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+    }
 
     /// <summary>Progress by bytes, reported at most twice a second.</summary>
     private sealed class ProgressMeter(string stage, long total, BackupProgress progress)

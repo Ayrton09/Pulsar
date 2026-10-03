@@ -65,6 +65,28 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task FilesThatDoNotCompressAreStoredAsTheyAre()
+    {
+        var map = RandomNumberGenerator.GetBytes(1 << 20);
+        Directory.CreateDirectory(Path.Combine(_serverDirectory, "addons"));
+        await File.WriteAllBytesAsync(Path.Combine(_serverDirectory, "addons", "map.vpk"), map, TestContext.Current.CancellationToken);
+        Write("cfg/server.cfg", string.Concat(Enumerable.Repeat("sv_cheats 0\n", 50_000)));
+        var location = Location();
+
+        await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+
+        using var zip = ZipFile.OpenRead(location.Archive);
+        var stored = zip.GetEntry("addons/map.vpk")!;
+        Assert.Equal(stored.Length, stored.CompressedLength); // no deflate overhead on data that does not shrink
+        var config = zip.GetEntry("cfg/server.cfg")!;
+        Assert.True(config.CompressedLength < config.Length / 20, $"{config.CompressedLength} of {config.Length}");
+        await using var content = stored.Open();
+        using var copy = new MemoryStream();
+        await content.CopyToAsync(copy, TestContext.Current.CancellationToken);
+        Assert.Equal(map, copy.ToArray());
+    }
+
+    [Fact]
     public async Task WithoutBackupRulesEverythingButPulsarsOwnFilesGoesIn()
     {
         Write("game/bin/server.dll", "binary");
