@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Nodes;
+using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Notifications;
 
@@ -24,48 +25,77 @@ public sealed class NodeWatch(IServiceScopeFactory scopes, TimeProvider clock)
 
     public async Task SweepAsync(CancellationToken cancellationToken)
     {
+        List<NodeId> nodes;
+        NotificationSettings settings;
+        await using (var scope = scopes.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            settings = await db.NotificationSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken) ?? NotificationSettings.Default(clock.GetUtcNow());
+            nodes = await db.Nodes.AsNoTracking().Where(n => n.Status == NodeStatus.Active).Select(n => n.Id).ToListAsync(cancellationToken);
+        }
+
+        // One node at a time: a node an agent's connection changes meanwhile is looked at again at the next sweep,
+        // without holding back the others.
+        foreach (var id in nodes)
+        {
+            await CheckAsync(id, settings, cancellationToken);
+        }
+    }
+
+    private async Task CheckAsync(NodeId id, NotificationSettings settings, CancellationToken cancellationToken)
+    {
         await using var scope = scopes.CreateAsyncScope();
         var services = scope.ServiceProvider;
         var db = services.GetRequiredService<IPulsarDbContext>();
-        var connections = services.GetRequiredService<IAgentConnections>();
+        var node = await db.Nodes.SingleOrDefaultAsync(n => n.Id == id && n.Status == NodeStatus.Active, cancellationToken);
+        if (node is null)
+        {
+            return;
+        }
+
         var notifier = services.GetRequiredService<Notifier>();
         var now = clock.GetUtcNow();
-        var settings = await db.NotificationSettings.AsNoTracking().SingleOrDefaultAsync(cancellationToken) ?? NotificationSettings.Default(now);
-
-        foreach (var node in await db.Nodes.Where(n => n.Status == NodeStatus.Active).ToListAsync(cancellationToken))
+        var connection = services.GetRequiredService<IAgentConnections>().Find(node.Id);
+        if (connection is null)
         {
-            var connection = connections.Find(node.Id);
-            if (connection is null)
+            var lastSeen = node.LastSeenAt ?? node.CreatedAt;
+            var graceFrom = lastSeen > _startedAt ? lastSeen : _startedAt;
+            if (node.OfflineNotifiedAt is not null || now - graceFrom < settings.NodeOfflineAfter)
             {
-                var lastSeen = node.LastSeenAt ?? node.CreatedAt;
-                var graceFrom = lastSeen > _startedAt ? lastSeen : _startedAt;
-                if (node.OfflineNotifiedAt is null && now - graceFrom >= settings.NodeOfflineAfter && node.OfflineNotified(now))
-                {
-                    await notifier.NodeOfflineAsync(node, lastSeen, cancellationToken);
-                }
-
-                continue;
+                return;
             }
 
+            node.OfflineNotified(now);
+            await notifier.NodeOfflineAsync(node, lastSeen, cancellationToken);
+        }
+        else
+        {
+            var changed = false;
             if (node.BackOnline())
             {
                 await notifier.NodeOnlineAsync(node, cancellationToken);
+                changed = true;
             }
 
             if (connection.LastMetrics?.Disks is { Count: > 0 } disks)
             {
                 var low = disks.Where(d => d.TotalBytes > 0 && d.FreeBytes * 100.0 / d.TotalBytes < settings.DiskLowPercent).ToList();
-                if (low.Count > 0)
+                if (low.Count > 0 && node.DiskLowNotified(now))
                 {
-                    if (node.DiskLowNotified(now))
-                    {
-                        await notifier.NodeDiskLowAsync(node, [.. low.Select(d => (d.Root, d.FreeBytes, d.TotalBytes))], cancellationToken);
-                    }
+                    await notifier.NodeDiskLowAsync(node, [.. low.Select(d => (d.Root, d.FreeBytes, d.TotalBytes))], cancellationToken);
+                    changed = true;
                 }
-                else if (disks.All(d => d.TotalBytes <= 0 || d.FreeBytes * 100.0 / d.TotalBytes >= settings.DiskLowPercent + RecoveryMarginPercent))
+                else if (low.Count == 0 && node.DiskLowNotifiedAt is not null
+                    && disks.All(d => d.TotalBytes <= 0 || d.FreeBytes * 100.0 / d.TotalBytes >= settings.DiskLowPercent + RecoveryMarginPercent))
                 {
                     node.DiskSpaceRecovered();
+                    changed = true;
                 }
+            }
+
+            if (!changed)
+            {
+                return;
             }
         }
 
@@ -75,7 +105,7 @@ public sealed class NodeWatch(IServiceScopeFactory scopes, TimeProvider clock)
         }
         catch (DbUpdateConcurrencyException)
         {
-            // An agent's connection changed a node meanwhile: the next sweep sees it again.
+            // The agent's connection changed the node meanwhile: the next sweep sees it again.
         }
     }
 }
