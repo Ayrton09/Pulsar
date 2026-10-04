@@ -16,7 +16,7 @@
 | Templates | **GameTemplate** | Validated, versioned, immutable manifest (`key` + `version`). |
 | Servers | **Server**, ServerVariable | Desired state, observed state, variables (secrets encrypted). |
 | Operations | **Operation** | Long-running work executed by an agent (install, update, backup…). |
-| Backups | **Backup** | Metadata; the archive lives on the node. |
+| Backups | **Backup**, BackupStorage | Metadata; the archive lives on the node, and a copy in S3-compatible storage when its server chose one (Phase 10). |
 | Scheduling | **ScheduledTask**, ScheduledTaskRun | Typed action + cron + IANA time zone. |
 | Notifications | **NotificationChannel**, NotificationSettings, NotificationDelivery | Where messages go (Discord webhook, email), the SMTP server, and an outbox of messages with their attempts (Phase 10). |
 | Audit | **AuditEntry** | Append-only, no foreign keys (survives deletions). |
@@ -259,6 +259,7 @@ CREATE TABLE servers (
     active_operation_id  uuid,                 -- FK added after operations is created
     active_operation_type text,                -- its type: a backup leaves the server free to start (doc 05)
     backup_limit         integer CHECK (backup_limit BETWEEN 1 AND 1000),  -- retention; NULL keeps every backup
+    backup_storage_id    uuid REFERENCES backup_storages(id) ON DELETE RESTRICT,  -- where new backups are copied; NULL: nowhere
     is_suspended         boolean NOT NULL DEFAULT false,
     auto_start           boolean NOT NULL DEFAULT false,  -- start when the agent starts
     restart_on_crash     boolean NOT NULL DEFAULT true,
@@ -355,7 +356,6 @@ CREATE TABLE backups (
     node_id        uuid NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
     name           varchar(128) NOT NULL,
     status         text NOT NULL CHECK (status IN ('creating','completed','failed','cancelled')),
-    -- storage (node_local | remote) arrives with remote storage (post-v1)
     size_bytes     bigint,
     file_count     integer,
     skipped_files  integer,                          -- files the game held open while it ran
@@ -367,9 +367,29 @@ CREATE TABLE backups (
     started_at     timestamptz,
     completed_at   timestamptz,                      -- duration = completed_at - started_at
     error_message  varchar(1024),
+    storage_id     uuid REFERENCES backup_storages(id) ON DELETE RESTRICT, -- its copy's storage, while it has one
+    remote_key     varchar(512),                     -- {prefix}{server}/{backup}.zip
+    remote_status  text NOT NULL DEFAULT 'none' CHECK (remote_status IN ('none','pending','copied','failed')),
+    remote_error   varchar(1024),                    -- a failed copy: the backup is on the node only
     created_at     timestamptz NOT NULL
 );
 CREATE INDEX ix_backups_server ON backups (server_id, created_at DESC);
+
+-- S3-compatible storage backups are copied to (Phase 10); settings.manage.
+CREATE TABLE backup_storages (
+    id                 uuid PRIMARY KEY,
+    name               varchar(64) NOT NULL,
+    endpoint           varchar(255),                 -- https://…; NULL for AWS S3
+    region             varchar(64) NOT NULL,         -- 'auto' for R2
+    bucket             varchar(63) NOT NULL,
+    prefix             varchar(200) NOT NULL,        -- '' or 'folder/'
+    access_key_id      varchar(128) NOT NULL,
+    secret_protected   bytea NOT NULL,               -- Data Protection; sent to nodes only inside backup commands
+    path_style         boolean NOT NULL,
+    created_at         timestamptz NOT NULL,
+    updated_at         timestamptz NOT NULL
+);
+-- A storage that servers use or backups have copies in cannot be deleted.
 -- A backup row is written with its operation; the operation's result completes it (an interrupted one fails it).
 -- Deleting a server deletes its rows (and the node its archives).
 

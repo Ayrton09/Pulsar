@@ -54,7 +54,7 @@ Each `feature` holds `api.ts` (TanStack Query hooks), its pages/components and t
 /servers/:id/{overview|console|files|backups|schedules|network|startup|settings|activity}
 /nodes                             /nodes/new
 /nodes/:id/{overview|servers|system|storage|network|activity|settings}
-/admin/{users|roles|templates|audit|notifications|settings}
+/admin/{users|roles|templates|audit|notifications|backup-storage|settings}
 /account                           profile, password, 2FA
 ```
 
@@ -95,7 +95,8 @@ Server and node pages use a layout with a fixed header (name, status, power acti
 - `/servers/:id?tab=backups` (`server.backups.view`): the server's backups, newest first, with their size, file count, how long they took, who made them (a user or the schedule) and, for a failed one, why. The list follows the live channel: a backup row changing (one completing) refreshes it, and the progress of the active operation shows at the top of the page with Cancel (`server.backups.create` for a backup).
 - Actions: create (`server.backups.create`; an optional name, the time by default; a warning when the server is running), download (a plain link: the panel streams the zip from the node), restore (`server.backups.restore`; asked first; only with the server stopped and idle), lock and unlock, delete (`server.backups.delete`; locked backups cannot be deleted; asked first) and the retention limit (`server.backups.delete`, since it deletes backups; lowering it asks first).
 - While a backup runs, the server can still be started and restarted and its files edited; a restore shows the server as *Restoring* and blocks both.
-- API: `GET /api/v1/servers/{id}/backups` (the list and the limit), `POST …/backups` (201), `GET …/backups/{backupId}/download` (`application/zip`, named after the server and the backup's time), `POST …/backups/{backupId}/restore`, `PUT …/backups/{backupId}/lock`, `DELETE …/backups/{backupId}`, `PUT …/backups/settings`; a backup is cancelled with `POST /api/v1/servers/{id}/operations/{operationId}/cancel`. Requests, downloads, restores, locks, deletions and limit changes are audited.
+- *Remote copy (Phase 10):* each backup says whether its copy is in remote storage, being made, or why it failed; "Remote copy" (`server.backups.delete`, like the retention limit) chooses where new backups are copied among the panel's storages, or nowhere. `/admin/backup-storage` (`settings.manage`): the storages (endpoint or AWS region, bucket and folder, access key id, a secret key that is never shown again, path-style addressing) with how many servers use each and how many copies it holds; one in use cannot be deleted.
+- API: `GET /api/v1/servers/{id}/backups` (the list and the limit), `POST …/backups` (201), `GET …/backups/{backupId}/download` (`application/zip`, named after the server and the backup's time), `POST …/backups/{backupId}/restore`, `PUT …/backups/{backupId}/lock`, `DELETE …/backups/{backupId}`, `PUT …/backups/settings`, `PUT …/backups/storage`, and `GET|POST /api/v1/backup-storages`, `PUT|DELETE …/backup-storages/{storageId}`; a backup is cancelled with `POST /api/v1/servers/{id}/operations/{operationId}/cancel`. Requests, downloads, restores, locks, deletions and limit changes are audited.
 
 ## Schedules
 

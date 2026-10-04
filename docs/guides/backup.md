@@ -42,8 +42,24 @@ installation of the same or a later major version) with `-PostgresBin`.
 ## Backing up game servers
 
 Each server's **Backups** tab makes backups on its node (and schedules can make them every night). They are kept in
-`C:\ProgramData\Pulsar\Agent\backups` on that node: copy that folder elsewhere if the node's disk could be lost.
-Restoring one is done from the same tab.
+`C:\ProgramData\Pulsar\Agent\backups` on that node. Restoring one is done from the same tab.
+
+To keep them safe from the loss of the node, copy them to S3-compatible storage (AWS S3, Cloudflare R2, Backblaze B2,
+or your own MinIO or SeaweedFS):
+
+1. Create a bucket at the provider, and an access key that can read, write and delete in **that bucket only**.
+2. In the panel, **Administration → Backup storage → Add storage**:
+   - **Endpoint:** empty for AWS S3; `https://<account>.r2.cloudflarestorage.com` for R2; `https://s3.<region>.backblazeb2.com` for B2;
+     your server's address otherwise. Use `https://`.
+   - **Region:** the bucket's (AWS, B2), `auto` (R2), `us-east-1` (most others).
+   - **Bucket**, a **folder** in it, the **access key id** and **secret access key**; keep **Bucket in the path** on
+     except for AWS S3.
+3. In each server's **Backups** tab, **Remote copy**: choose the storage.
+
+From then on every new backup is uploaded after it is made, and the tab says whether each copy is there (a failed copy
+leaves the backup on the node and is notified to the channels that want *Backup failed*). If the node loses a backup,
+restoring or downloading it brings it back from the storage. Deleting a backup in Pulsar deletes its copy too; deleting
+a server or a storage leaves the copies already in the bucket.
 
 ## Restoring the panel
 

@@ -49,6 +49,10 @@ PostgreSQL 15 or newer is required by the panel and by the database integration 
 
 `<folder>\connection.txt` holds the generated connection strings. The panel reads `ConnectionStrings:Pulsar` (use `dotnet user-secrets` in `src/Pulsar.Api`), and the integration tests read `PULSAR_TEST_POSTGRES` (a connection string without a database; each test run creates and drops its own databases). Without that variable the database tests are skipped, unless `PULSAR_REQUIRE_DATABASE=true` is set, as in CI.
 
+The remote backup tests need an S3-compatible server: set `PULSAR_TEST_S3` to `endpoint;access key;secret key` (for
+example a local SeaweedFS, `weed server -s3 -s3.config=<identities.json>`, which CI runs in Docker). Without it they are
+skipped.
+
 Backend:
 
 ```bash
