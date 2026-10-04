@@ -171,8 +171,9 @@ public sealed class NotificationTests(NotificationApiFactory factory) : IClassFi
         using var badFrom = await admin.PutAsync("/api/v1/notifications/settings", request with { FromAddress = "nobody" });
         await SetupTests.AssertProblemAsync(badFrom, HttpStatusCode.BadRequest, "notifications.from_invalid");
 
-        // Back to no email for the other tests.
-        using var off = await admin.PutAsync("/api/v1/notifications/settings", request with { PanelUrl = null, SmtpHost = null });
+        // Back to the defaults for the other tests (no email, a 3-minute grace).
+        using var off = await admin.PutAsync("/api/v1/notifications/settings",
+            request with { PanelUrl = null, SmtpHost = null, DiskLowPercent = 10, NodeOfflineMinutes = 3 });
         await AccessScenario.EnsureSuccessAsync(off);
     }
 
@@ -267,10 +268,11 @@ public sealed class NotificationTests(NotificationApiFactory factory) : IClassFi
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
         var watch = new NodeWatch(factory.Services.GetRequiredService<IServiceScopeFactory>(), clock);
 
-        // Enrolled but not connected: offline once the grace (3 minutes) has passed, and only once.
+        // Enrolled but not connected: offline once the grace has passed, and only once.
+        var grace = (await GetJsonAsync<NotificationSettingsView>(admin, "/api/v1/notifications/settings")).NodeOfflineMinutes;
         await watch.SweepAsync(Ct);
         Assert.Empty(await DeliveriesForAsync(channel.Id, node.Node.Id));
-        clock.Advance(TimeSpan.FromMinutes(4));
+        clock.Advance(TimeSpan.FromMinutes(grace + 1));
         await watch.SweepAsync(Ct);
         await watch.SweepAsync(Ct);
         Assert.Equal(["node:" + node.Node.Id + ":offline"], (await DeliveriesForAsync(channel.Id, node.Node.Id)).Select(d => d.Subject));
