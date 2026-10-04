@@ -97,6 +97,17 @@ function Assert-Administrator {
     if (-not [Environment]::Is64BitOperatingSystem) { throw 'Pulsar needs 64-bit Windows.' }
 }
 
+# Pulsar's programs (.NET 10) refuse to start on a Windows that lacks updates: Windows Server 2022 as installed from its
+# original image stops them with "Your Windows doesn't fully support CET". Checked before anything is installed.
+function Assert-RuntimeSupported {
+    $result = Invoke-Native (Join-Path $PSScriptRoot 'agent\PulsarAgent.exe') help
+    if ($result.ExitCode -eq 0) { return }
+    if ($result.Output -match 'CET') {
+        throw "This Windows lacks updates that Pulsar needs ($($result.Output.Trim() -replace '\s+', ' ')). Install all available Windows updates (Settings > Windows Update, or sconfig on Server Core), restart, and run this script again."
+    }
+    throw "Pulsar's programs do not start on this Windows (exit code $($result.ExitCode)):$([Environment]::NewLine)$($result.Output)"
+}
+
 function Test-Service([string] $name) { return $null -ne (Get-Service -Name $name -ErrorAction SilentlyContinue) }
 
 function Invoke-Native([string] $exe) {
@@ -557,6 +568,7 @@ function Uninstall-Agent {
 # --- Main -------------------------------------------------------------------------------------------------------
 
 Assert-Administrator
+if (-not $Uninstall) { Assert-RuntimeSupported }
 
 if ($Update) {
     $any = $false

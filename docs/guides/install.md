@@ -12,6 +12,10 @@ others. Pulsar's installer does either; this guide covers both.
 
 - Windows 11 or Windows Server 2022/2025, 64-bit, with an administrator account. (Windows 10 22H2 works on a
   best-effort basis.)
+- Windows updates installed. Pulsar's programs (.NET 10) do not start on a Windows that lacks them: Windows Server 2022
+  as installed from its original image stops them with "Your Windows doesn't fully support CET". Run Windows Update
+  (Settings > Windows Update, or `sconfig` on Server Core) and restart before installing; the installer checks this
+  first and changes nothing if it fails.
 - For the panel: PostgreSQL 15 or later (step 1), about 500 MB of disk and 1 GB of RAM.
 - For each node: the disk space of its games (Counter-Strike 2 needs about 85 GB) and their memory. Nodes connect to
   the panel; they open no port of their own besides their game servers' ports.
@@ -139,6 +143,8 @@ Back up the panel as described in [backup.md](backup.md): without its keys, the 
 
 - **The installer stops with an error**: it says what failed. Run it again after fixing it; if the panel or the agent
   was already installed, remove it first with `-Uninstall` (it keeps the database and data).
+- **"This Windows lacks updates that Pulsar needs" / "Your Windows doesn't fully support CET"**: install all available
+  Windows updates, restart and run the installer again (see Requirements). Nothing was installed.
 - **The panel does not start**: `C:\ProgramData\Pulsar\Panel\logs\panel-<date>.log` says why (database unreachable,
   port in use…). `Get-Service PulsarPanel` shows its state.
 - **A node stays offline**: on the node, `& 'C:\Program Files\Pulsar\Agent\PulsarAgent.exe' status --check` checks the
