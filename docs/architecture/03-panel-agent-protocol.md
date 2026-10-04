@@ -206,7 +206,7 @@ Size limits are configurable; the agent writes to a temporary file inside the se
 
 ### Identity
 
-- Every node has an **ECDSA P-256 key pair generated on the node itself**. The private key **never leaves the node**: it is created through CNG as a **non-exportable** machine key, using the *Microsoft Platform Crypto Provider* (TPM) when present, or the *Software Key Storage Provider* otherwise.
+- Every node has an **ECDSA P-256 key pair generated on the node itself**. The private key **never leaves the node**: it is created through CNG as a **non-exportable** machine key, using the *Microsoft Platform Crypto Provider* (TPM) when present, or the *Software Key Storage Provider* otherwise. (Checked with a virtual TPM on Windows Server 2022, rotation included: `scripts/hyperv`.)
 - The panel only knows the public key (`node_credentials`). There is no global API key; each node has its own revocable, rotatable credential.
 - The panel has its own signing key; the agent **pins** it at enrollment (by fingerprint) and thereby authenticates the panel independently of the TLS certificate (useful with proxies that terminate TLS or self-signed certificates).
 
