@@ -84,6 +84,22 @@ export function useBackupLimit(serverId: string) {
   });
 }
 
+/** Where new backups are copied besides the node (null: on the node only). */
+export function useBackupStorageChoice(serverId: string) {
+  const changed = useBackupsChanged(serverId);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (storageId: string | null) =>
+      unwrap(
+        api.PUT('/api/v1/servers/{id}/backups/storage', { params: { path: { id: serverId } }, body: { storageId } }),
+      ),
+    onSuccess: (list) => {
+      queryClient.setQueryData(backupKeys.list(serverId), list);
+      return changed();
+    },
+  });
+}
+
 /** Where the browser downloads a backup from (a plain link: the panel streams it from the node). */
 export function backupDownloadUrl(serverId: string, backupId: string): string {
   return `/api/v1/servers/${encodeURIComponent(serverId)}/backups/${encodeURIComponent(backupId)}/download`;

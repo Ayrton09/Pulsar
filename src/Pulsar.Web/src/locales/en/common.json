@@ -27,7 +27,8 @@
     "nodes": "Nodes",
     "servers": "Servers",
     "templates": "Games",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "backupStorage": "Backup storage"
   },
   "auth": {
     "userName": "User name",
@@ -308,7 +309,8 @@
         "schedule_created": "Created a scheduled task",
         "schedule_changed": "Changed a scheduled task",
         "schedule_deleted": "Deleted a scheduled task",
-        "schedule_run_requested": "Ran a scheduled task now"
+        "schedule_run_requested": "Ran a scheduled task now",
+        "backup_storage_changed": "Changed where backups are copied"
       },
       "template": {
         "imported": "Imported a game template"
@@ -319,6 +321,11 @@
         "channel_deleted": "Deleted a notification channel",
         "tested": "Sent a test notification",
         "settings_updated": "Changed the notification settings"
+      },
+      "backup_storage": {
+        "created": "Added a backup storage",
+        "updated": "Changed a backup storage",
+        "deleted": "Deleted a backup storage"
       }
     }
   },
@@ -451,7 +458,8 @@
       "locked": "The backup is locked: unlock it before deleting it.",
       "unsupported": "The node's agent cannot make backups. Update the agent.",
       "in_use": "The backup is being downloaded or restored. Try again when that ends.",
-      "corrupt": "The backup cannot be restored: {{detail}}"
+      "corrupt": "The backup cannot be restored: {{detail}}",
+      "remote_failed": "Remote storage failed: {{detail}}"
     },
     "http": {
       "network": "Could not reach the panel. Check your connection."
@@ -489,6 +497,18 @@
       "smtp_user_invalid": "That user name is not valid.",
       "from_invalid": "The sender is one valid email address and an optional short name.",
       "email_not_configured": "Email is off: set the SMTP server in the settings first."
+    },
+    "backup_storage": {
+      "not_found": "That backup storage does not exist.",
+      "name_invalid": "A storage name is one line of up to 64 characters.",
+      "endpoint_invalid": "The endpoint is the service's https address (like https://<account>.r2.cloudflarestorage.com), or empty for AWS S3.",
+      "region_invalid": "The region is a name like us-east-1 or auto.",
+      "bucket_invalid": "A bucket name is 3 to 63 lowercase letters, digits, dots and hyphens.",
+      "prefix_invalid": "The folder is made of letters, digits, dots, hyphens and underscores, separated by slashes.",
+      "access_key_invalid": "That access key id is not valid.",
+      "secret_required": "Write the secret access key.",
+      "in_use": "Servers or backups use this storage: choose another storage for those servers, or delete their backups, first.",
+      "too_many": "The panel has as many storages as it can (20)."
     }
   },
   "account": {
@@ -951,6 +971,20 @@
       "confirm_one": "Keep only the newest backup? Older unlocked ones are deleted now.",
       "confirm_other": "Keep only the {{count}} newest backups? Older unlocked ones are deleted now.",
       "saved": "Saved."
+    },
+    "remote": {
+      "title": "Remote copy",
+      "hint": "Each new backup is also copied to remote storage, so it survives the loss of this node. A backup the node no longer has is brought back from there to restore or download it.",
+      "none": "The panel has no backup storage yet: settings managers add one in Administration → Backup storage.",
+      "storage": "Copy new backups to",
+      "nodeOnly": "Nowhere (on the node only)",
+      "saved": "Saved.",
+      "statuses": {
+        "none": "",
+        "pending": "Copying to remote storage…",
+        "copied": "Copied to remote storage",
+        "failed": "Not copied to remote storage"
+      }
     }
   },
   "schedules": {
@@ -1147,5 +1181,33 @@
     },
     "attempts": "Attempts",
     "nextTry": "Next try {{when}}"
+  },
+  "storage": {
+    "title": "Backup storage",
+    "description": "S3-compatible storage (AWS S3, Cloudflare R2, Backblaze B2, MinIO…) that servers copy their backups to.",
+    "add": "Add storage",
+    "edit": "Edit storage",
+    "empty": "No storage yet. Add one, then choose it in a server's Backups tab.",
+    "name": "Name",
+    "where": "Where",
+    "use": "In use",
+    "aws": "AWS S3 ({{region}})",
+    "endpoint": "Endpoint",
+    "endpointHint": "The service's address. Empty for AWS S3. Backblaze B2: https://s3.<region>.backblazeb2.com.",
+    "region": "Region",
+    "regionHint": "auto for Cloudflare R2; the bucket's region for AWS and B2; us-east-1 for most others.",
+    "bucket": "Bucket",
+    "prefix": "Folder in the bucket",
+    "prefixHint": "Each backup goes to <folder>/<server>/<backup>.zip.",
+    "accessKeyId": "Access key id",
+    "secret": "Secret access key",
+    "secretKeep": "Leave it empty to keep the saved key.",
+    "pathStyle": "Bucket in the path (most S3-compatible services need it; AWS does not)",
+    "keysHint": "Give these keys access to this bucket only. Nodes get them inside each backup command and keep nothing.",
+    "deleteConfirm": "Delete the storage {{name}}? Backups already copied stay in the bucket.",
+    "servers_one": "{{count}} server",
+    "servers_other": "{{count}} servers",
+    "copies_one": "{{count}} copy",
+    "copies_other": "{{count}} copies"
   }
 }

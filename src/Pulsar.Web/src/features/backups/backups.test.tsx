@@ -73,12 +73,16 @@ function backup(changes: Partial<Schemas['BackupView']>): Schemas['BackupView'] 
     durationSeconds: 4.6,
     errorMessage: null,
     operationId: '0192f1a0-0000-7000-8000-0000000000c1',
+    remoteStatus: 'none',
+    remoteError: null,
     ...changes,
   };
 }
 
 const list: Schemas['BackupList'] = {
   limit: null,
+  storageId: null,
+  storages: [],
   backups: [
     backup({}),
     backup({
@@ -157,7 +161,8 @@ describe('backups tab', () => {
     fakeApi({
       'GET /api/v1/auth/session': session(manager),
       [`GET /api/v1/servers/${serverId}`]: () => json(details({ runtimeState: 'running', desiredState: 'running' })),
-      [`GET /api/v1/servers/${serverId}/backups`]: () => json({ limit: null, backups: [] }),
+      [`GET /api/v1/servers/${serverId}/backups`]: () =>
+        json({ limit: null, storageId: null, storages: [], backups: [] }),
       [`POST /api/v1/servers/${serverId}/backups`]: async (request) => {
         created.push(await request.json());
         return json(backup({ status: 'creating' }), 201);
@@ -241,6 +246,49 @@ describe('backups tab', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Saved.');
     expect(confirm).toHaveBeenCalledWith('Keep only the 2 newest backups? Older unlocked ones are deleted now.');
     expect(limits).toEqual([{ limit: 2 }]);
+  });
+
+  it('copies new backups to the chosen storage and shows how each copy went', async () => {
+    const storageId = '0192f1a0-0000-7000-8000-0000000000e9';
+    const choices: unknown[] = [];
+    let current: Schemas['BackupList'] = {
+      limit: null,
+      storageId: null,
+      storages: [{ id: storageId, name: 'Cloudflare R2' }],
+      backups: [
+        backup({ remoteStatus: 'copied' }),
+        backup({
+          id: '0192f1a0-0000-7000-8000-0000000000b2',
+          name: 'Nightly',
+          remoteStatus: 'failed',
+          remoteError: 'Remote storage refused the credentials or the bucket (AccessDenied).',
+        }),
+      ],
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/backups`]: () => json(current),
+      [`PUT /api/v1/servers/${serverId}/backups/storage`]: async (request) => {
+        const body = (await request.json()) as { storageId: string | null };
+        choices.push(body);
+        current = { ...current, storageId: body.storageId };
+        return json(current);
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=backups`);
+
+    await screen.findByRole('table', { name: 'Backups' });
+    expect(row('Before the update')).toHaveTextContent('Copied to remote storage');
+    expect(row('Nightly')).toHaveTextContent(
+      'Not copied to remote storage: Remote storage refused the credentials or the bucket (AccessDenied).',
+    );
+    await userEvent.selectOptions(screen.getByLabelText('Copy new backups to'), storageId);
+    const form = screen.getByLabelText('Copy new backups to').closest('form') as HTMLElement;
+    await userEvent.click(within(form).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(choices).toEqual([{ storageId }]));
+    expect(await screen.findByText('Saved.')).toBeInTheDocument();
   });
 
   it('shows only what a viewer may do', async () => {

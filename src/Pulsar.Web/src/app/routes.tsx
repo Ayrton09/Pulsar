@@ -138,6 +138,19 @@ export const routes: RouteObject[] = [
               };
             },
           },
+          {
+            path: 'admin/backup-storage',
+            lazy: async () => {
+              const { BackupStoragesPage } = await import('../features/storage/BackupStoragesPage');
+              return {
+                element: (
+                  <RequirePermission anyOf={[Permission.SettingsManage]}>
+                    <BackupStoragesPage />
+                  </RequirePermission>
+                ),
+              };
+            },
+          },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

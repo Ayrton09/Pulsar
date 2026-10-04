@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Badge, Card, Table, Td, Th } from '../../components/ui/Display';
-import { Field, Input } from '../../components/ui/Form';
+import { Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate, useFormatFileSize } from '../../lib/format';
 import { can, Permission } from '../../lib/permissions';
@@ -12,6 +12,7 @@ import type { ServerDetails } from '../servers/api';
 import {
   backupDownloadUrl,
   useBackupLimit,
+  useBackupStorageChoice,
   useBackups,
   useCreateBackup,
   useDeleteBackup,
@@ -118,6 +119,9 @@ export function BackupsTab({ details }: { details: ServerDetails }) {
       )}
 
       {canDelete && <RetentionCard serverId={server.id} limit={backups.data.limit} />}
+      {canDelete && (
+        <RemoteCopyCard serverId={server.id} storageId={backups.data.storageId} storages={backups.data.storages} />
+      )}
       {creating && <CreateBackupDialog serverId={server.id} running={!stopped} onDone={() => setCreating(false)} />}
     </div>
   );
@@ -172,6 +176,12 @@ function BackupRow({
         )}
         {backup.status === 'failed' && backup.errorMessage && (
           <p className="mt-1 text-xs break-words text-danger">{backup.errorMessage}</p>
+        )}
+        {backup.remoteStatus !== 'none' && (
+          <p className={`mt-1 text-xs ${backup.remoteStatus === 'failed' ? 'text-danger' : 'text-muted'}`}>
+            {t(`backups.remote.statuses.${backup.remoteStatus}`)}
+            {backup.remoteError && `: ${backup.remoteError}`}
+          </p>
         )}
       </Td>
       <Td className="hidden whitespace-nowrap text-muted md:table-cell">{formatDate(backup.createdAt)}</Td>
@@ -331,6 +341,69 @@ function RetentionCard({ serverId, limit }: { serverId: string; limit: number | 
       {save.isSuccess && !changed && (
         <p role="status" className="mt-3 text-sm text-success">
           {t('backups.retention.saved')}
+        </p>
+      )}
+    </Card>
+  );
+}
+
+/** Where new backups are copied besides the node: one of the panel's backup storages, or none. */
+function RemoteCopyCard({
+  serverId,
+  storageId,
+  storages,
+}: {
+  serverId: string;
+  storageId: string | null;
+  storages: { id: string; name: string }[];
+}) {
+  const { t } = useTranslation();
+  const save = useBackupStorageChoice(serverId);
+  const [value, setValue] = useState(storageId ?? '');
+  const changed = (value || null) !== storageId;
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (changed) {
+      save.mutate(value || null);
+    }
+  };
+
+  return (
+    <Card className="p-6">
+      <h2 className="text-lg font-semibold">{t('backups.remote.title')}</h2>
+      <p className="mt-1 text-sm text-muted">{t('backups.remote.hint')}</p>
+      {storages.length === 0 && storageId === null ? (
+        <p className="mt-4 text-sm text-muted">{t('backups.remote.none')}</p>
+      ) : (
+        <form onSubmit={submit} className="mt-4 flex flex-wrap items-end gap-3" noValidate>
+          <div className="w-72">
+            <Field label={t('backups.remote.storage')}>
+              {(control) => (
+                <Select {...control} value={value} onChange={(e) => setValue(e.target.value)}>
+                  <option value="">{t('backups.remote.nodeOnly')}</option>
+                  {storages.map((storage) => (
+                    <option key={storage.id} value={storage.id}>
+                      {storage.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          </div>
+          <Button type="submit" variant="secondary" busy={save.isPending} disabled={!changed}>
+            {t('actions.save')}
+          </Button>
+        </form>
+      )}
+      {save.isError && (
+        <div className="mt-3">
+          <Alert>{errorMessage(t, save.error)}</Alert>
+        </div>
+      )}
+      {save.isSuccess && !changed && (
+        <p role="status" className="mt-3 text-sm text-success">
+          {t('backups.remote.saved')}
         </p>
       )}
     </Card>

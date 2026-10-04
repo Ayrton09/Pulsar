@@ -27,7 +27,8 @@
     "nodes": "Nodos",
     "servers": "Servidores",
     "templates": "Juegos",
-    "notifications": "Notificaciones"
+    "notifications": "Notificaciones",
+    "backupStorage": "Almacenamiento de backups"
   },
   "auth": {
     "userName": "Usuario",
@@ -308,7 +309,8 @@
         "schedule_created": "Creó una tarea programada",
         "schedule_changed": "Cambió una tarea programada",
         "schedule_deleted": "Eliminó una tarea programada",
-        "schedule_run_requested": "Ejecutó una tarea programada en el momento"
+        "schedule_run_requested": "Ejecutó una tarea programada en el momento",
+        "backup_storage_changed": "Cambió adónde se copian los backups"
       },
       "template": {
         "imported": "Importó una plantilla de juego"
@@ -319,6 +321,11 @@
         "channel_deleted": "Borró un canal de notificaciones",
         "tested": "Mandó una notificación de prueba",
         "settings_updated": "Cambió la configuración de notificaciones"
+      },
+      "backup_storage": {
+        "created": "Agregó un almacenamiento de backups",
+        "updated": "Cambió un almacenamiento de backups",
+        "deleted": "Borró un almacenamiento de backups"
       }
     }
   },
@@ -451,7 +458,8 @@
       "locked": "El backup está bloqueado: desbloquealo antes de eliminarlo.",
       "unsupported": "El agente del nodo no puede hacer backups. Actualizá el agente.",
       "in_use": "El backup se está descargando o restaurando. Probá de nuevo cuando termine.",
-      "corrupt": "El backup no se puede restaurar: {{detail}}"
+      "corrupt": "El backup no se puede restaurar: {{detail}}",
+      "remote_failed": "Falló el almacenamiento remoto: {{detail}}"
     },
     "http": {
       "network": "No se pudo contactar al panel. Revisá tu conexión."
@@ -489,6 +497,18 @@
       "smtp_user_invalid": "Ese nombre de usuario no es válido.",
       "from_invalid": "El remitente es una dirección de email válida y un nombre corto opcional.",
       "email_not_configured": "El email está apagado: primero configurá el servidor SMTP."
+    },
+    "backup_storage": {
+      "not_found": "Ese almacenamiento de backups no existe.",
+      "name_invalid": "El nombre es una línea de hasta 64 caracteres.",
+      "endpoint_invalid": "El endpoint es la dirección https del servicio (como https://<cuenta>.r2.cloudflarestorage.com), o vacío para AWS S3.",
+      "region_invalid": "La región es un nombre como us-east-1 o auto.",
+      "bucket_invalid": "El nombre del bucket tiene de 3 a 63 letras minúsculas, números, puntos y guiones.",
+      "prefix_invalid": "La carpeta tiene letras, números, puntos, guiones y guiones bajos, separados por barras.",
+      "access_key_invalid": "Ese access key id no es válido.",
+      "secret_required": "Escribí la secret access key.",
+      "in_use": "Hay servidores o backups que usan este almacenamiento: primero elegí otro para esos servidores, o borrá sus backups.",
+      "too_many": "El panel ya tiene todos los almacenamientos que puede (20)."
     }
   },
   "account": {
@@ -951,6 +971,20 @@
       "confirm_one": "¿Guardar solo el backup más nuevo? Los anteriores sin bloquear se eliminan ahora.",
       "confirm_other": "¿Guardar solo los {{count}} backups más nuevos? Los anteriores sin bloquear se eliminan ahora.",
       "saved": "Guardado."
+    },
+    "remote": {
+      "title": "Copia remota",
+      "hint": "Cada backup nuevo también se copia a un almacenamiento remoto, así sobrevive aunque se pierda este nodo. Un backup que el nodo ya no tiene se trae de ahí para restaurarlo o descargarlo.",
+      "none": "El panel todavía no tiene almacenamiento de backups: quien administra la configuración lo agrega en Administración → Almacenamiento de backups.",
+      "storage": "Copiar los backups nuevos a",
+      "nodeOnly": "Ningún lado (solo en el nodo)",
+      "saved": "Guardado.",
+      "statuses": {
+        "none": "",
+        "pending": "Copiando al almacenamiento remoto…",
+        "copied": "Copiado al almacenamiento remoto",
+        "failed": "No se copió al almacenamiento remoto"
+      }
     }
   },
   "schedules": {
@@ -1147,5 +1181,33 @@
     },
     "attempts": "Intentos",
     "nextTry": "Próximo intento {{when}}"
+  },
+  "storage": {
+    "title": "Almacenamiento de backups",
+    "description": "Almacenamiento compatible con S3 (AWS S3, Cloudflare R2, Backblaze B2, MinIO…) donde los servidores copian sus backups.",
+    "add": "Agregar almacenamiento",
+    "edit": "Editar almacenamiento",
+    "empty": "Todavía no hay. Agregá uno y elegilo en la pestaña Backups de cada servidor.",
+    "name": "Nombre",
+    "where": "Dónde",
+    "use": "En uso",
+    "aws": "AWS S3 ({{region}})",
+    "endpoint": "Endpoint",
+    "endpointHint": "La dirección del servicio. Vacío para AWS S3. Backblaze B2: https://s3.<región>.backblazeb2.com.",
+    "region": "Región",
+    "regionHint": "auto para Cloudflare R2; la región del bucket para AWS y B2; us-east-1 para la mayoría de los demás.",
+    "bucket": "Bucket",
+    "prefix": "Carpeta en el bucket",
+    "prefixHint": "Cada backup va a <carpeta>/<servidor>/<backup>.zip.",
+    "accessKeyId": "Access key id",
+    "secret": "Secret access key",
+    "secretKeep": "Dejala vacía para mantener la clave guardada.",
+    "pathStyle": "Bucket en la ruta (la mayoría de los servicios compatibles con S3 lo necesitan; AWS no)",
+    "keysHint": "Dale a estas claves acceso solo a este bucket. Los nodos las reciben dentro de cada comando de backup y no guardan nada.",
+    "deleteConfirm": "¿Borrar el almacenamiento {{name}}? Los backups ya copiados quedan en el bucket.",
+    "servers_one": "{{count}} servidor",
+    "servers_other": "{{count}} servidores",
+    "copies_one": "{{count}} copia",
+    "copies_other": "{{count}} copias"
   }
 }
