@@ -95,9 +95,33 @@
 
 **Done when:** the full v1 flow works on a clean Windows Server 2022 and Windows 11 installation following only the documentation. *Met for installation from the release ZIP, following [docs/guides/install.md](../guides/install.md), on a clean Windows 11 (Windows Sandbox, `scripts/sandbox/install`: PostgreSQL as a service, then the guide's steps) and on Windows Server 2022 (the "Install from the release ZIP" CI job, where PostgreSQL 17 is installed with its own installer as the guide says, next to the runner's PostgreSQL 14, which the installer rightly passes over): panel and agent services, sign-in, node online, signed ping, backup, the panel lost and restored with its node reconnecting by itself, update and uninstall, 32 checks each, no error in the panel's log. The rest of the v1 flow runs on every push: the end-to-end suite through the real UI (setup, roles, two-factor authentication, nodes, a server with its console, files, backups and schedules) and the agent install job (the agent as a service on a clean Windows, a real Counter-Strike: Source installed from Valve and run as its own account). Found on the way: the panel's database migrations ran inside the service start, which Windows limits to 30 seconds (now done by the installer first), and the installer and the backup script took the first PostgreSQL on a machine with several (now the newest; older than 15 refused). Both checks also ran on Hyper-V VMs with a virtual TPM (`scripts/hyperv`): on Windows Server 2022 as its original image installs it (build 20348.169), .NET 10 programs do not start ("Your Windows doesn't fully support CET"); Pulsar keeps CET on, the installer now checks this before changing anything and asks for Windows updates, and the guide lists them as a requirement. With the September 2026 cumulative update (build 20348.5622) both checks pass, the node key in the TPM. Still open: tagging v1.0.0.*
 
+## Phase 10 — Notifications, remote backups and more games
+
+What most changes the experience after v1: knowing when something goes wrong without opening the panel, backups that survive the loss of their node, and the games people look for first.
+
+- Notifications: Discord webhooks and email (SMTP), per event and per server: a server crashed or failed to start, a backup or a scheduled task failed, a node went offline, a node's disk is low (the agent reports its disks; today it does not). Secrets (webhook URLs, SMTP password) encrypted like the other secrets; sending retried and audited; a test button.
+- Remote backups to S3-compatible storage (AWS S3, Backblaze B2, Cloudflare R2, MinIO): uploaded by the agent after the local archive is written, with the same retention; restore downloads from there when the local copy is gone. Credentials never reach the browser.
+- Games: Rust, Valheim and Palworld, each run for real before its manifest is written (as CS2 and CS:S were).
+
+**Done when:** a crashed server and a failed backup each send a Discord message and an email; a backup is uploaded to S3-compatible storage, the node's copy is deleted, and it is restored from the remote copy; Rust, Valheim and Palworld are installed, started, reached by a client and stopped from the panel.
+
 ## Post-v1 (tentative order)
 
-SCP: Secret Laboratory → Minecraft (managed runtimes, `download` step) → MySQL/MariaDB databases for games → aggregated metric history → A2S query → remote backups (S3-compatible) → per-Job resource limits → shim to survive agent restarts → user API keys → non-anonymous Steam login → optional mTLS mode → VSS backups → Linux agent.
+More games (ARK: Survival Ascended, 7 Days to Die, Project Zomboid, SCP: Secret Laboratory) → Minecraft (managed runtimes, `download` step) → mods and Steam Workshop (Metamod/CounterStrikeSharp for CS2, Oxide/uMod for Rust, Workshop items) → A2S query (players, map, server name) → per-Job resource limits (CPU, memory) → user API keys → non-anonymous Steam login → MySQL/MariaDB databases for games → aggregated metric history → shim to survive agent restarts → bulk node enrollment (a reusable, limited, revocable token; an agent-only MSI for Intune/GPO) → optional mTLS mode → VSS backups → Linux agent.
+
+Known gaps to close along the way:
+
+- SteamCMD installs stuck in state `0x6` should recover by themselves (reset the app manifest and retry with `validate`).
+- CS2 does not log RCON answers to cvar queries (`sv_tags`), and `logsCommands` hides them: show them in the console.
+- Atomic file replace on Windows failed once under heavy parallel test load (`AHardLinkIsReplacedOrRemovedNeverWrittenInto`, `ReplacingAFileFollowsTheRules`).
+- Permission changes reach live watches (`PanelHub`) at the next reconnect; hub groups become per user once server-scoped grants are in the UI.
+
+## Before the first public release
+
+- A Windows installer (`.exe`, Inno Setup) on top of `Install-Pulsar.ps1`, with the ZIP still published for automation.
+- Code signing for the installer and the programs (SignPath Foundation or Azure Trusted Signing), so SmartScreen does not warn.
+- A reporting contact in `CODE_OF_CONDUCT.md`; branch protection for `main`; CodeQL on (skipped while the repository is private).
+- Tag `v1.0.0` (the release workflow builds, attests and drafts the release). The version is 1.0.0 until then.
 
 ## Cross-cutting testing strategy
 
