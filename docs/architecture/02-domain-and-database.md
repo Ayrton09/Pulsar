@@ -18,6 +18,7 @@
 | Operations | **Operation** | Long-running work executed by an agent (install, update, backup…). |
 | Backups | **Backup** | Metadata; the archive lives on the node. |
 | Scheduling | **ScheduledTask**, ScheduledTaskRun | Typed action + cron + IANA time zone. |
+| Notifications | **NotificationChannel**, NotificationSettings, NotificationDelivery | Where messages go (Discord webhook, email), the SMTP server, and an outbox of messages with their attempts (Phase 10). |
 | Audit | **AuditEntry** | Append-only, no foreign keys (survives deletions). |
 | Settings | SystemSetting, PanelSigningKey | Configuration and the panel's signing key. |
 
@@ -192,6 +193,8 @@ CREATE TABLE nodes (
     memory_total_bytes  bigint,
     servers_root        text,
     last_seen_at        timestamptz,
+    offline_notified_at timestamptz,         -- told offline (notifications); cleared, and told, when it is back
+    disk_low_notified_at timestamptz,        -- told a drive is low; cleared when every drive has room again
     created_at          timestamptz NOT NULL,
     updated_at          timestamptz NOT NULL
 );
@@ -407,6 +410,55 @@ CREATE TABLE scheduled_task_runs (
 CREATE INDEX ix_task_runs_task ON scheduled_task_runs (task_id, started_at DESC);
 CREATE INDEX ix_task_runs_running ON scheduled_task_runs (started_at) WHERE status = 'running';
 -- The last 100 runs of each task are kept.
+
+-- ===================== Notifications (Phase 10) =====================
+CREATE TABLE notification_channels (
+    id                    uuid PRIMARY KEY,
+    name                  varchar(64) NOT NULL,
+    kind                  text NOT NULL CHECK (kind IN ('discord','email')),
+    is_enabled            boolean NOT NULL,
+    events                text[] NOT NULL,          -- server_crashed, server_start_failed, backup_failed, scheduled_task_failed, node_offline, node_disk_low
+    server_ids            uuid[],                   -- server events only for these; NULL = every server
+    language              varchar(8) NOT NULL,      -- en | es
+    webhook_url_protected bytea,                    -- Discord: the webhook URL, Data Protection
+    recipients            text[] NOT NULL,          -- email: 1..10 addresses
+    created_at            timestamptz NOT NULL,
+    updated_at            timestamptz NOT NULL,
+    CHECK ((kind = 'discord' AND webhook_url_protected IS NOT NULL) OR (kind = 'email' AND cardinality(recipients) > 0))
+);
+
+CREATE TABLE notification_settings (            -- one row (id = 1)
+    id                      integer PRIMARY KEY CHECK (id = 1),
+    panel_url               varchar(255),         -- for links in messages
+    smtp_host               varchar(255),         -- NULL: email off
+    smtp_port               integer NOT NULL,
+    smtp_security           text NOT NULL CHECK (smtp_security IN ('start_tls','tls','none')),
+    smtp_user_name          varchar(255),
+    smtp_password_protected bytea,                -- Data Protection
+    from_address            varchar(254),
+    from_name               varchar(64),
+    disk_low_percent        integer NOT NULL,     -- 1..50, default 10
+    node_offline_minutes    integer NOT NULL,     -- 1..1440, default 3
+    updated_at              timestamptz NOT NULL
+);
+
+CREATE TABLE notification_deliveries (           -- the outbox: written in the same transaction as what raised it
+    id              uuid PRIMARY KEY,
+    channel_id      uuid NOT NULL REFERENCES notification_channels(id) ON DELETE CASCADE,
+    event           text NOT NULL,
+    subject         varchar(128) NOT NULL,        -- server:{id}, node:{id}:offline…: repeats within 10 min are dropped
+    message         jsonb NOT NULL,               -- title, text, severity, fields, link, already in the channel's language
+    status          text NOT NULL CHECK (status IN ('pending','sent','failed')),
+    attempts        integer NOT NULL,
+    next_attempt_at timestamptz,                  -- pending: when a sender may take it (a lease while one sends it)
+    last_error      varchar(512),
+    created_at      timestamptz NOT NULL,
+    sent_at         timestamptz
+);
+CREATE INDEX ix_notification_deliveries_due ON notification_deliveries (next_attempt_at) WHERE status = 'pending';
+CREATE INDEX ix_notification_deliveries_subject ON notification_deliveries (channel_id, event, subject, created_at);
+-- Retries after 30 s, 2 min, 10 min, 30 min and 1 h, then failed; Discord's 429 waits as long as it asks; other
+-- refusals (a deleted webhook, a rejected address) fail at once. Sent and failed deliveries are kept 30 days.
 
 -- ===================== Audit =====================
 CREATE TABLE audit_logs (

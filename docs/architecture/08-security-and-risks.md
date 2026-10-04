@@ -81,6 +81,10 @@ Path traversal tests: an extensive table of malicious inputs (more than 50 Windo
 
 *Implemented in Phase 8.* Tasks run in the panel as the schedule: each action goes through the same service a user's request does, so its rules and audit apply, recorded with actor type `schedule`, the task's name and the run's id as correlation id. A task does later what its author set up, without them, so setting one up (creating, changing, running it now) needs the permission to do its action besides `server.schedules.edit` (`server.restart`, `server.backups.create`, `server.install` for updates, `server.console.write` for commands…), and changing one also needs the permission for the action it had: scheduling cannot be used to do what the user could not. Runs do not check their author again (a task belongs to its server, and whoever can edit schedules can disable it): taking a user's rights away does not stop the tasks they made. Scheduled commands are kept in clear and shown to whoever can see the server's schedules, so commands starting with one of the game's sensitive prefixes (`rcon_password`…) are refused. Due tasks are taken with `FOR UPDATE SKIP LOCKED`, so two panels never run one twice (`ServerScheduleTests` runs three passes at once).
 
+### Notifications
+
+*Implemented in Phase 10.* The panel posts only to Discord's own webhook addresses (`https://discord.com/api/webhooks/{id}/{token}` and its `discordapp.com`, `ptb.` and `canary.` hosts, default port, no user info), checked when saved and again before every post, and its client follows no redirects: a channel cannot be used to make the panel call a machine inside its network. Messages allow no mentions (`allowed_mentions` empty), so a server name cannot ping `@everyone`. The webhook client logs no URLs (the token is in the path). Email goes through the SMTP server an administrator sets (`settings.manage`); STARTTLS is required when chosen and certificates are checked; addresses are plain addresses (no display names or lists, so nothing can add headers). Messages are written in the same transaction as the event that raised them (an outbox) and sent by the panel with retries; what they carry (server, node and task names, exit codes, an error message) is what `settings.manage` holders could see in the panel anyway.
+
 ### Manifests
 
 Privileged import, closed steps, time-bounded regexes, typed variables, argv without a shell, per-format configuration encoders (doc 04).
@@ -94,6 +98,7 @@ Privileged import, closed steps, time-bounded regexes, typed variables, argv wit
 | Panel signing key | `panel_signing_keys` | Data Protection |
 | Data Protection key ring | Panel disk | A certificate (`DataProtection:CertificatePath`, a PFX): what the installer sets up (`keyring\keyring.pfx`, its password in the panel's settings, both readable only by SYSTEM, Administrators and the panel's service account), so a backup restores on another machine. Without one: DPAPI (LocalMachine) on Windows, only the directory's permissions elsewhere |
 | Authenticator keys / recovery codes | `user_tokens` | Data Protection / SHA-256 hashes |
+| Discord webhook URLs, SMTP password | `notification_channels.webhook_url_protected`, `notification_settings.smtp_password_protected` | Data Protection; the API shows a webhook's id and whether a password is set, never the values |
 | Node private key | CNG/TPM key store | Non-exportable |
 | Specs with secrets on the node (secret variables, RCON password) | `state\servers\*.json` | ACL (SYSTEM + Administrators) and the whole record encrypted with DPAPI (machine scope) |
 | Server account passwords | Nowhere | A new random one is set right before every logon and used once (doc 06) |

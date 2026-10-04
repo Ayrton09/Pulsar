@@ -54,7 +54,7 @@ Each `feature` holds `api.ts` (TanStack Query hooks), its pages/components and t
 /servers/:id/{overview|console|files|backups|schedules|network|startup|settings|activity}
 /nodes                             /nodes/new
 /nodes/:id/{overview|servers|system|storage|network|activity|settings}
-/admin/{users|roles|templates|audit|settings}
+/admin/{users|roles|templates|audit|notifications|settings}
 /account                           profile, password, 2FA
 ```
 
@@ -103,6 +103,18 @@ Server and node pages use a layout with a fixed header (name, status, power acti
 - Editor (`server.schedules.edit`): name, action (only the actions the user may do themselves: restart, start, stop, back up, update, console command), the command or "verify every file" when the action needs one, "only while the server is running" for restarts and backups, and when: every day at a time, every week on a day at a time, every 1–12 hours, or a cron expression (five fields). The time zone defaults to the browser's; the list is the browser's IANA zones plus UTC (browsers name some zones by their older names, such as `America/Buenos_Aires`, and the panel accepts them). The next five runs are previewed by the panel as the user edits, shown in the task's time zone, so daylight saving time is visible before saving.
 - Run now runs a task at once, outside its schedule, and shows the outcome; deleting asks first.
 - API: `GET /api/v1/servers/{id}/schedules`, `GET …/schedules/preview?cron=&timeZone=`, `POST …/schedules` (201), `PUT …/schedules/{taskId}`, `DELETE …/schedules/{taskId}`, `POST …/schedules/{taskId}/run`, `GET …/schedules/{taskId}/runs?limit=`. Creating, changing, deleting and running a task now are audited; what a task does is audited as the schedule's.
+
+## Notifications
+
+*Phase 10.*
+
+- `/admin/notifications` (`settings.manage`):
+  - Channels: a Discord webhook or 1 to 10 email addresses; the events each wants (server crashed, did not start, backup failed, scheduled task failed, node offline and back, node low on disk); every server or some; English or Spanish; on or off.
+  - A Discord webhook is shown by its id only: its address is a secret and never comes back. "Send test" sends a message at once and says whether it went, or why not.
+  - Settings: the panel's address (for links in messages), the low-disk threshold (% free) and how long a node may be away before it counts as offline. The SMTP server: host, port, STARTTLS, TLS or none, user, a password that is never shown, sender.
+  - Recent messages: the last 100, with their status, attempts and last error; refreshed while some are pending.
+- `/nodes/:id` shows each drive the agent uses (game servers, backups) with its free space, next to CPU and memory.
+- API: `GET|POST /api/v1/notifications/channels`, `PUT|DELETE …/channels/{id}`, `POST …/channels/{id}/test`, `GET /api/v1/notifications/deliveries`, `GET|PUT /api/v1/notifications/settings`. Changes and tests are audited.
 
 ## Two-factor authentication
 
