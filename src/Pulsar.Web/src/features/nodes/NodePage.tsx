@@ -178,6 +178,20 @@ function UsageCard({ node }: { node: NodeSummary }) {
               total: formatGigabytes(metrics.memoryTotalBytes),
             })}
           />
+          {metrics.disks?.map((disk) => (
+            <Meter
+              key={disk.root}
+              label={t('nodes.disk', {
+                root: disk.root,
+                uses: disk.uses.map((use) => t(`nodes.diskUses.${use}`, { defaultValue: use })).join(', '),
+              })}
+              percent={disk.totalBytes > 0 ? (100 * (disk.totalBytes - disk.freeBytes)) / disk.totalBytes : 0}
+              value={t('nodes.diskValue', {
+                free: formatGigabytes(disk.freeBytes),
+                total: formatGigabytes(disk.totalBytes),
+              })}
+            />
+          ))}
           <Facts
             items={[
               [t('nodes.uptime'), formatUptime(metrics.uptime)],

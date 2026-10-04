@@ -77,6 +77,7 @@ function Shell() {
       anyOf: [Permission.RoleManage, Permission.UserView, Permission.UserManage],
     },
     { to: '/admin/audit', label: t('nav.audit'), anyOf: [Permission.AuditView] },
+    { to: '/admin/notifications', label: t('nav.notifications'), anyOf: [Permission.SettingsManage] },
   ]);
 
   return (

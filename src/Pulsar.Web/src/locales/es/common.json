@@ -26,7 +26,8 @@
     "account": "Mi cuenta",
     "nodes": "Nodos",
     "servers": "Servidores",
-    "templates": "Juegos"
+    "templates": "Juegos",
+    "notifications": "Notificaciones"
   },
   "auth": {
     "userName": "Usuario",
@@ -311,6 +312,13 @@
       },
       "template": {
         "imported": "Importó una plantilla de juego"
+      },
+      "notification": {
+        "channel_created": "Agregó un canal de notificaciones",
+        "channel_updated": "Cambió un canal de notificaciones",
+        "channel_deleted": "Borró un canal de notificaciones",
+        "tested": "Mandó una notificación de prueba",
+        "settings_updated": "Cambió la configuración de notificaciones"
       }
     }
   },
@@ -463,6 +471,24 @@
       "interrupted": "El panel se detuvo antes de que terminara la ejecución.",
       "not_running": "El servidor no estaba en marcha.",
       "error": "El panel no pudo ejecutar la tarea; su log tiene los detalles."
+    },
+    "notifications": {
+      "not_found": "Ese canal de notificaciones no existe.",
+      "name_invalid": "El nombre de un canal es una línea de hasta 64 caracteres.",
+      "events_required": "Elegí al menos un evento.",
+      "servers_invalid": "Elegí hasta 200 servidores, o todos.",
+      "server_unknown": "Uno de los servidores elegidos ya no existe.",
+      "language_invalid": "Elegí inglés o español.",
+      "webhook_invalid": "Esa no es una dirección de webhook de Discord (https://discord.com/api/webhooks/…).",
+      "recipients_invalid": "Escribí de 1 a 10 direcciones de email válidas.",
+      "too_many": "El panel ya tiene todos los canales que puede (50).",
+      "panel_url_invalid": "La dirección del panel es una dirección http o https, como https://panel.ejemplo.com:8443.",
+      "thresholds_invalid": "Poco disco es de 1 a 50 % libre; un nodo se considera desconectado después de 1 a 1440 minutos.",
+      "smtp_host_invalid": "Eso no es un nombre de host ni una dirección.",
+      "smtp_port_invalid": "El puerto es un número de 1 a 65535.",
+      "smtp_user_invalid": "Ese nombre de usuario no es válido.",
+      "from_invalid": "El remitente es una dirección de email válida y un nombre corto opcional.",
+      "email_not_configured": "El email está apagado: primero configurá el servidor SMTP."
     }
   },
   "account": {
@@ -569,7 +595,13 @@
     },
     "rotateKey": "Rotar clave",
     "rotateStarted": "El agente está reemplazando su clave. La nueva credencial aparece abajo cuando se conecta con ella (además, las claves se reemplazan solas cada 90 días).",
-    "panelKeyOutdated": "Clave del panel vieja"
+    "panelKeyOutdated": "Clave del panel vieja",
+    "disk": "Disco {{root}} ({{uses}})",
+    "diskUses": {
+      "servers": "servidores",
+      "backups": "backups"
+    },
+    "diskValue": "{{free}} libres de {{total}}"
   },
   "servers": {
     "title": "Servidores",
@@ -1030,5 +1062,90 @@
     "verify": "Verificar",
     "useRecovery": "Usar un código de recuperación",
     "useApp": "Usar la app de autenticación"
+  },
+  "notifications": {
+    "title": "Notificaciones",
+    "description": "Enterate por Discord o por email cuando un servidor se cae, falla un backup o un nodo se desconecta.",
+    "channels": "Canales",
+    "addChannel": "Agregar canal",
+    "editChannel": "Editar canal",
+    "noChannels": "Todavía no hay canales. Agregá uno para empezar a recibir avisos.",
+    "name": "Nombre",
+    "kind": "Tipo",
+    "kinds": {
+      "discord": "Discord",
+      "email": "Email"
+    },
+    "events": "Eventos",
+    "eventNames": {
+      "serverCrashed": "Un servidor se cayó",
+      "serverStartFailed": "Un servidor no arrancó",
+      "backupFailed": "Falló un backup",
+      "scheduledTaskFailed": "Falló una tarea programada",
+      "nodeOffline": "Nodo desconectado (y cuando vuelve)",
+      "nodeDiskLow": "Nodo con poco disco"
+    },
+    "servers": "Servidores",
+    "allServers": "Todos los servidores",
+    "someServers_one": "{{count}} servidor",
+    "someServers_other": "{{count}} servidores",
+    "onlySomeServers": "Solo algunos servidores",
+    "serversHint": "Los eventos de servidores, solo de los elegidos. Los de nodos van a todos los canales que los quieran.",
+    "language": "Idioma",
+    "languages": {
+      "en": "English",
+      "es": "Español"
+    },
+    "enabled": "Activado",
+    "off": "Apagado",
+    "webhookUrl": "URL del webhook de Discord",
+    "webhookHint": "En Discord: configuración del canal → Integraciones → Webhooks → Nuevo webhook → Copiar URL del webhook.",
+    "webhookKeep": "Dejalo vacío para mantener el webhook actual ({{id}}).",
+    "webhook": "Webhook {{id}}",
+    "recipients": "Direcciones de email",
+    "recipientsHint": "Hasta 10, una por línea o separadas por comas.",
+    "emailNeedsSmtp": "Los canales de email necesitan el servidor SMTP de la configuración de abajo.",
+    "test": "Mandar prueba",
+    "testSent": "Se mandó un mensaje de prueba a {{name}}.",
+    "testFailed": "Falló la prueba a {{name}}: {{error}}",
+    "deleteChannel": "Borrar canal",
+    "deleteConfirm": "¿Borrar el canal {{name}}? También se borra su historial de mensajes.",
+    "settings": "Configuración",
+    "panelUrl": "Dirección del panel",
+    "panelUrlHint": "Cómo se llega al panel, para los links de los mensajes (por ejemplo https://panel.ejemplo.com:8443). Vacío: sin links.",
+    "diskLow": "Poco disco por debajo de (% libre)",
+    "nodeOffline": "Nodo desconectado después de (minutos)",
+    "email": "Email (SMTP)",
+    "emailOff": "El email está apagado hasta que configures un servidor SMTP.",
+    "smtpHost": "Servidor SMTP",
+    "smtpHostHint": "Vacío apaga el email.",
+    "smtpPort": "Puerto",
+    "smtpSecurity": "Seguridad",
+    "securities": {
+      "startTls": "STARTTLS (normalmente 587)",
+      "tls": "TLS (normalmente 465)",
+      "none": "Ninguna (solo un relay de esta red)"
+    },
+    "smtpUser": "Usuario",
+    "smtpPassword": "Contraseña",
+    "smtpPasswordKeep": "Dejala vacía para mantener la contraseña guardada.",
+    "clearPassword": "Borrar la contraseña guardada",
+    "fromAddress": "Dirección del remitente",
+    "fromName": "Nombre del remitente",
+    "save": "Guardar configuración",
+    "saved": "Configuración guardada.",
+    "deliveries": "Mensajes recientes",
+    "noDeliveries": "Todavía no hay mensajes.",
+    "when": "Cuándo",
+    "channel": "Canal",
+    "message": "Mensaje",
+    "status": "Estado",
+    "statuses": {
+      "sent": "Enviado",
+      "pending": "Pendiente",
+      "failed": "Falló"
+    },
+    "attempts": "Intentos",
+    "nextTry": "Próximo intento {{when}}"
   }
 }

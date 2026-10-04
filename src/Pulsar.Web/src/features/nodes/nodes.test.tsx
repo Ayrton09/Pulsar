@@ -42,6 +42,7 @@ const online: Schemas['NodeSummary'] = {
     memoryUsedBytes: 16 * 1024 ** 3,
     memoryTotalBytes: 64 * 1024 ** 3,
     uptime: '3.04:05:06.1230000',
+    disks: [{ root: 'D:\\', totalBytes: 1000 * 1024 ** 3, freeBytes: 250 * 1024 ** 3, uses: ['servers', 'backups'] }],
   },
   createdAt: '2026-09-01T12:00:00Z',
   panelKeyTrust: 'current',
@@ -190,6 +191,9 @@ describe('node page', () => {
     expect(screen.getByText('AMD Ryzen 9 7950X · 32 logical cores')).toBeInTheDocument();
     expect(screen.getByRole('meter', { name: 'CPU' })).toHaveAttribute('aria-valuenow', '13');
     expect(screen.getByText('3 d 4 h')).toBeInTheDocument();
+    const disk = screen.getByRole('meter', { name: 'Disk D:\\ (game servers, backups)' });
+    expect(disk).toHaveAttribute('aria-valuenow', '75');
+    expect(screen.getByText('250 GB free of 1,000 GB')).toBeInTheDocument();
     expect(screen.getByText('sha256:node-key-fingerprint')).toBeInTheDocument();
     expect(screen.getByText('Kept in the TPM')).toBeInTheDocument();
   });

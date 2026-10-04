@@ -26,7 +26,8 @@
     "account": "My account",
     "nodes": "Nodes",
     "servers": "Servers",
-    "templates": "Games"
+    "templates": "Games",
+    "notifications": "Notifications"
   },
   "auth": {
     "userName": "User name",
@@ -311,6 +312,13 @@
       },
       "template": {
         "imported": "Imported a game template"
+      },
+      "notification": {
+        "channel_created": "Added a notification channel",
+        "channel_updated": "Changed a notification channel",
+        "channel_deleted": "Deleted a notification channel",
+        "tested": "Sent a test notification",
+        "settings_updated": "Changed the notification settings"
       }
     }
   },
@@ -463,6 +471,24 @@
       "interrupted": "The panel stopped before the run ended.",
       "not_running": "The server was not running.",
       "error": "The panel could not run the task; its log has the details."
+    },
+    "notifications": {
+      "not_found": "That notification channel does not exist.",
+      "name_invalid": "A channel name is one line of up to 64 characters.",
+      "events_required": "Choose at least one event.",
+      "servers_invalid": "Choose up to 200 servers, or every server.",
+      "server_unknown": "One of the chosen servers no longer exists.",
+      "language_invalid": "Choose English or Spanish.",
+      "webhook_invalid": "That is not a Discord webhook address (https://discord.com/api/webhooks/…).",
+      "recipients_invalid": "Write 1 to 10 valid email addresses.",
+      "too_many": "The panel has as many channels as it can (50).",
+      "panel_url_invalid": "The panel address is an http or https address, like https://panel.example.com:8443.",
+      "thresholds_invalid": "Low disk is 1 to 50 % free; a node is offline after 1 to 1440 minutes.",
+      "smtp_host_invalid": "That is not a host name or address.",
+      "smtp_port_invalid": "The port is a number from 1 to 65535.",
+      "smtp_user_invalid": "That user name is not valid.",
+      "from_invalid": "The sender is one valid email address and an optional short name.",
+      "email_not_configured": "Email is off: set the SMTP server in the settings first."
     }
   },
   "account": {
@@ -569,7 +595,13 @@
     },
     "rotateKey": "Rotate key",
     "rotateStarted": "The agent is replacing its key. The new credential appears below once it connects with it (old keys are also replaced automatically every 90 days).",
-    "panelKeyOutdated": "Old panel key"
+    "panelKeyOutdated": "Old panel key",
+    "disk": "Disk {{root}} ({{uses}})",
+    "diskUses": {
+      "servers": "game servers",
+      "backups": "backups"
+    },
+    "diskValue": "{{free}} free of {{total}}"
   },
   "servers": {
     "title": "Servers",
@@ -1030,5 +1062,90 @@
     "verify": "Verify",
     "useRecovery": "Use a recovery code",
     "useApp": "Use the authenticator app"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "Get told on Discord or by email when a server crashes, a backup fails or a node goes offline.",
+    "channels": "Channels",
+    "addChannel": "Add channel",
+    "editChannel": "Edit channel",
+    "noChannels": "No channels yet. Add one to start getting notified.",
+    "name": "Name",
+    "kind": "Type",
+    "kinds": {
+      "discord": "Discord",
+      "email": "Email"
+    },
+    "events": "Events",
+    "eventNames": {
+      "serverCrashed": "Server crashed",
+      "serverStartFailed": "Server did not start",
+      "backupFailed": "Backup failed",
+      "scheduledTaskFailed": "Scheduled task failed",
+      "nodeOffline": "Node offline (and back online)",
+      "nodeDiskLow": "Node low on disk"
+    },
+    "servers": "Servers",
+    "allServers": "All servers",
+    "someServers_one": "{{count}} server",
+    "someServers_other": "{{count}} servers",
+    "onlySomeServers": "Only some servers",
+    "serversHint": "Server events only for the chosen servers. Node events go to every channel that wants them.",
+    "language": "Language",
+    "languages": {
+      "en": "English",
+      "es": "Español"
+    },
+    "enabled": "Enabled",
+    "off": "Off",
+    "webhookUrl": "Discord webhook URL",
+    "webhookHint": "In Discord: channel settings → Integrations → Webhooks → New webhook → Copy webhook URL.",
+    "webhookKeep": "Leave it empty to keep the current webhook ({{id}}).",
+    "webhook": "Webhook {{id}}",
+    "recipients": "Email addresses",
+    "recipientsHint": "Up to 10, one per line or separated by commas.",
+    "emailNeedsSmtp": "Email channels need the SMTP server in the settings below.",
+    "test": "Send test",
+    "testSent": "Test message sent to {{name}}.",
+    "testFailed": "The test to {{name}} failed: {{error}}",
+    "deleteChannel": "Delete channel",
+    "deleteConfirm": "Delete the channel {{name}}? Its message history goes too.",
+    "settings": "Settings",
+    "panelUrl": "Panel address",
+    "panelUrlHint": "How people reach the panel, for links in messages (e.g. https://panel.example.com:8443). Empty: no links.",
+    "diskLow": "Low disk below (% free)",
+    "nodeOffline": "Node offline after (minutes)",
+    "email": "Email (SMTP)",
+    "emailOff": "Email is off until an SMTP server is set.",
+    "smtpHost": "SMTP server",
+    "smtpHostHint": "Empty turns email off.",
+    "smtpPort": "Port",
+    "smtpSecurity": "Security",
+    "securities": {
+      "startTls": "STARTTLS (usually 587)",
+      "tls": "TLS (usually 465)",
+      "none": "None (a relay on this network only)"
+    },
+    "smtpUser": "User name",
+    "smtpPassword": "Password",
+    "smtpPasswordKeep": "Leave it empty to keep the saved password.",
+    "clearPassword": "Remove the saved password",
+    "fromAddress": "From address",
+    "fromName": "From name",
+    "save": "Save settings",
+    "saved": "Settings saved.",
+    "deliveries": "Recent messages",
+    "noDeliveries": "No messages yet.",
+    "when": "When",
+    "channel": "Channel",
+    "message": "Message",
+    "status": "Status",
+    "statuses": {
+      "sent": "Sent",
+      "pending": "Pending",
+      "failed": "Failed"
+    },
+    "attempts": "Attempts",
+    "nextTry": "Next try {{when}}"
   }
 }

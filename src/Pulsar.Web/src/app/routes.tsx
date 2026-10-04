@@ -125,6 +125,19 @@ export const routes: RouteObject[] = [
               };
             },
           },
+          {
+            path: 'admin/notifications',
+            lazy: async () => {
+              const { NotificationsPage } = await import('../features/notifications/NotificationsPage');
+              return {
+                element: (
+                  <RequirePermission anyOf={[Permission.SettingsManage]}>
+                    <NotificationsPage />
+                  </RequirePermission>
+                ),
+              };
+            },
+          },
           { path: '*', element: <NotFoundPage /> },
         ],
       },
