@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
 using Pulsar.Application.Nodes;
+using Pulsar.Application.Notifications;
 using Pulsar.Application.Realtime;
 using Pulsar.Contracts;
 using Pulsar.Domain.Audit;
@@ -28,8 +29,8 @@ public sealed record ServerFollowUp(ServerId ServerId, UserId? RequestedBy, Serv
 /// the full picture in every Hello (reconciliation: the agent's observation wins). Every event is checked against the
 /// reporting node: an agent can only speak about its own servers and operations.
 /// </summary>
-public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog audit, OperationProgressCache progressCache, IRealtimeNotifier notifier, TimeProvider clock,
-    ILogger<AgentServerEvents> logger)
+public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog audit, OperationProgressCache progressCache, IRealtimeNotifier notifier,
+    Notifier notifications, TimeProvider clock, ILogger<AgentServerEvents> logger)
 {
     private static readonly TimeSpan s_queuedGrace = TimeSpan.FromMinutes(1);
 
@@ -48,6 +49,16 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
             if (!server.Observe(Map(change.State), Map(change.Reason), change.ExitCode, change.StateSequence, change.At, snapshot: false))
             {
                 return;
+            }
+
+            switch (change.Reason)
+            {
+                case StateChangeReason.Crashed or StateChangeReason.CrashLoop:
+                    await notifications.ServerCrashedAsync(server, change.ExitCode, change.Reason == StateChangeReason.CrashLoop, cancellationToken);
+                    break;
+                case StateChangeReason.StartFailed or StateChangeReason.ReadinessTimedOut:
+                    await notifications.ServerStartFailedAsync(server, change.Reason == StateChangeReason.ReadinessTimedOut, change.Detail, cancellationToken);
+                    break;
             }
 
             try
@@ -132,7 +143,7 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                         followUp = new ServerFollowUp(server.Id, operation.RequestedBy);
                         break;
                     case OperationType.BackupCreate:
-                        if (await BackupEndedAsync(operation, completed.Result, now, cancellationToken) && server.BackupLimit is not null)
+                        if (await BackupEndedAsync(server, operation, completed.Result, now, cancellationToken) && server.BackupLimit is not null)
                         {
                             followUp = new ServerFollowUp(server.Id, operation.RequestedBy, ServerFollowUpKind.PruneBackups);
                         }
@@ -152,6 +163,18 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                                 new { server.Name, server.ShortId, requestedBy = operation.RequestedBy?.Value })
                             .WithServer(server.Id, server.NodeId);
                         break;
+                }
+
+                // A scheduled update (or install) that failed after the node took it: the task's run said "dispatched".
+                if (operation is { RequestedVia: OperationRequester.Schedule, Status: OperationStatus.Failed } && operation.Type != OperationType.BackupCreate)
+                {
+                    var taskName = await db.ScheduledTaskRuns.AsNoTracking().Where(r => r.OperationId == operation.Id)
+                        .Join(db.ScheduledTasks.AsNoTracking(), r => r.TaskId, t => t.Id, (r, t) => t.Name)
+                        .FirstOrDefaultAsync(cancellationToken);
+                    if (taskName is not null)
+                    {
+                        await notifications.ScheduledTaskFailedAsync(server, taskName, operation.ErrorMessage ?? operation.ErrorCode, cancellationToken);
+                    }
                 }
             }
 
@@ -204,10 +227,11 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         foreach (var operation in active.Where(o => !inFlight.Contains(o.Id) && (o.Status == OperationStatus.Running || now - o.CreatedAt > s_queuedGrace)))
         {
             operation.Complete(OperationStatus.Interrupted, "operation.interrupted", "The agent restarted or lost the operation.", now);
-            servers.FirstOrDefault(s => s.Id == operation.ServerId)?.OperationCompleted(operation, now);
+            var server = servers.FirstOrDefault(s => s.Id == operation.ServerId);
+            server?.OperationCompleted(operation, now);
             if (operation.Type == OperationType.BackupCreate)
             {
-                await BackupEndedAsync(operation, null, now, cancellationToken);
+                await BackupEndedAsync(server, operation, null, now, cancellationToken);
             }
 
             LogInterrupted(operation.Id, nodeId);
@@ -225,8 +249,8 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         }
     }
 
-    /// <summary>The backup its operation was making ends with it; true when it is complete.</summary>
-    private async Task<bool> BackupEndedAsync(Operation operation, CommandResult? result, DateTimeOffset now, CancellationToken cancellationToken)
+    /// <summary>The backup its operation was making ends with it; true when it is complete. A failed one is notified.</summary>
+    private async Task<bool> BackupEndedAsync(Server? server, Operation operation, CommandResult? result, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var backup = await db.Backups.SingleOrDefaultAsync(b => b.OperationId == operation.Id, cancellationToken);
         if (backup is null)
@@ -241,14 +265,21 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                 return true;
             case OperationStatus.Succeeded:
                 backup.Ended(BackupStatus.Failed, "The node reported no archive.", now);
-                return false;
+                break;
             case OperationStatus.Cancelled:
                 backup.Ended(BackupStatus.Cancelled, null, now);
                 return false;
             default:
                 backup.Ended(BackupStatus.Failed, operation.ErrorMessage ?? operation.ErrorCode, now);
-                return false;
+                break;
         }
+
+        if (server is not null)
+        {
+            await notifications.BackupFailedAsync(server, backup.Name, backup.ErrorMessage, remoteCopy: false, cancellationToken);
+        }
+
+        return false;
     }
 
     private static byte[]? Sha256(string hex)

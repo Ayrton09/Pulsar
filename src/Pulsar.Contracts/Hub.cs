@@ -56,4 +56,15 @@ public sealed record AgentHello(
 public sealed record HelloAccepted(DateTimeOffset ServerTime, IReadOnlyList<PanelKey> PanelKeys,
     IReadOnlyList<ConsoleSubscription>? ConsoleSubscriptions = null);
 
-public sealed record NodeMetrics(DateTimeOffset At, double CpuPercent, long MemoryUsedBytes, long MemoryTotalBytes, TimeSpan Uptime);
+/// <summary>A drive the agent uses (<see cref="DiskUses"/>), with its free space: the panel warns when one is nearly full.</summary>
+public sealed record DiskUsage(string Root, long TotalBytes, long FreeBytes, IReadOnlyList<string> Uses);
+
+public static class DiskUses
+{
+    public const string Servers = "servers";
+    public const string Backups = "backups";
+}
+
+/// <param name="Disks">The drives of the servers and backups folders; null from agents older than Phase 10.</param>
+public sealed record NodeMetrics(DateTimeOffset At, double CpuPercent, long MemoryUsedBytes, long MemoryTotalBytes, TimeSpan Uptime,
+    IReadOnlyList<DiskUsage>? Disks = null);

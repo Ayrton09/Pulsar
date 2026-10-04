@@ -34,7 +34,7 @@ public static class ApiProblems
             or "template.version_exists" or "operation.not_cancellable"
             or "files.unsupported" or "files.exists" or "files.not_a_directory" or "files.is_a_directory" or "files.reparse_point" or "files.in_use"
             or "backups.unsupported" or "backups.not_completed" or "backups.locked" or "backups.in_use" or "backups.corrupt"
-            or "schedules.too_many"
+            or "schedules.too_many" or "notifications.too_many"
             => StatusCodes.Status409Conflict,
         "files.changed" => StatusCodes.Status412PreconditionFailed,
         "files.access_denied" or "files.outside_server" => StatusCodes.Status403Forbidden,

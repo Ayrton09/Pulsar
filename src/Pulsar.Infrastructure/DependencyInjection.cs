@@ -4,10 +4,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Nodes;
+using Pulsar.Application.Notifications;
 using Pulsar.Application.Scheduling;
 using Pulsar.Application.Servers;
 using Pulsar.Infrastructure.Identity;
 using Pulsar.Infrastructure.Nodes;
+using Pulsar.Infrastructure.Notifications;
 using Pulsar.Infrastructure.Persistence;
 using Pulsar.Infrastructure.Scheduling;
 using Pulsar.Infrastructure.Servers;
@@ -50,6 +52,17 @@ public static class DependencyInjection
         services.AddSingleton<IVariableProtector, DataProtectionVariableProtector>();
         services.AddScoped<IScheduledTaskClaims, ScheduledTaskClaims>();
         services.AddHostedService<SchedulerService>();
+
+        services.AddSingleton<INotificationSecretProtector, DataProtectionNotificationSecretProtector>();
+        services.AddScoped<INotificationClaims, NotificationClaims>();
+        services.AddScoped<INotificationTransport, DiscordTransport>();
+        services.AddScoped<INotificationTransport, EmailTransport>();
+        // No redirects (the address was checked) and no request logging (the webhook URL holds its token).
+        services.AddHttpClient(DiscordTransport.ClientName, client => client.Timeout = TimeSpan.FromSeconds(15))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
+        services.AddHostedService<NotificationSenderService>();
+        services.AddHostedService<NodeWatchService>();
 
         services.AddIdentityCore<PulsarUser>(options =>
             {

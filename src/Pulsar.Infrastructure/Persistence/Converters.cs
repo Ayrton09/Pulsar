@@ -25,6 +25,10 @@ internal sealed class ScheduledTaskIdConverter() : ValueConverter<ScheduledTaskI
 
 internal sealed class ScheduledRunIdConverter() : ValueConverter<ScheduledRunId, Guid>(id => id.Value, value => new ScheduledRunId(value));
 
+internal sealed class NotificationChannelIdConverter() : ValueConverter<NotificationChannelId, Guid>(id => id.Value, value => new NotificationChannelId(value));
+
+internal sealed class NotificationDeliveryIdConverter() : ValueConverter<NotificationDeliveryId, Guid>(id => id.Value, value => new NotificationDeliveryId(value));
+
 /// <summary>Stores enums as snake_case text (<c>PendingEnrollment</c> → <c>pending_enrollment</c>), matched by a CHECK constraint.</summary>
 internal sealed class SnakeCaseEnumConverter<TEnum>() : ValueConverter<TEnum, string>(
     value => SnakeCaseEnum<TEnum>.ToText(value),

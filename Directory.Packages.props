@@ -8,6 +8,13 @@
     <PackageVersion Include="Cronos" Version="0.13.0" />
   </ItemGroup>
 
+  <ItemGroup Label="Notifications and remote storage">
+    <!-- Email notifications over SMTP (MIT; Phase 10). -->
+    <PackageVersion Include="MailKit" Version="4.18.1" />
+    <!-- Remote backups to S3-compatible storage, used by the agent (Apache-2.0; Phase 10). -->
+    <PackageVersion Include="AWSSDK.S3" Version="4.0.104.1" />
+  </ItemGroup>
+
   <ItemGroup Label="Hosting and logging">
     <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />

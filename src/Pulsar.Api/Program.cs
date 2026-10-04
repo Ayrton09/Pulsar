@@ -8,6 +8,7 @@ using Pulsar.Api.Access;
 using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Nodes;
+using Pulsar.Api.Notifications;
 using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
 using Pulsar.Api.Servers;
@@ -131,6 +132,7 @@ try
     api.MapServerFileEndpoints();
     api.MapServerBackupEndpoints();
     api.MapServerScheduleEndpoints();
+    api.MapNotificationEndpoints();
 
     // Agent protocol: its own authentication, never the browser's (docs/architecture/03).
     app.MapAgentEndpoints();

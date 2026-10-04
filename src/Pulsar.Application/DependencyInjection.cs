@@ -4,6 +4,7 @@ using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
 using Pulsar.Application.Nodes;
+using Pulsar.Application.Notifications;
 using Pulsar.Application.Realtime;
 using Pulsar.Application.Scheduling;
 using Pulsar.Application.Servers;
@@ -42,6 +43,11 @@ public static class DependencyInjection
         services.AddSingleton<ScheduleSignal>();
         services.AddSingleton<Scheduler>();
         services.AddScoped<ServerSchedules>();
+        services.AddScoped<Notifier>();
+        services.AddScoped<NotificationManagement>();
+        services.AddSingleton<NotificationSignal>();
+        services.AddSingleton<NotificationDispatcher>();
+        services.AddSingleton<NodeWatch>();
         services.TryAddSingleton<IRealtimeNotifier, NoRealtimeNotifier>();
         return services;
     }

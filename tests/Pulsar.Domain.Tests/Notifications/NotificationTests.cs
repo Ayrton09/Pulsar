@@ -1,0 +1,206 @@
+using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Notifications;
+
+namespace Pulsar.Domain.Tests.Notifications;
+
+public sealed class NotificationTests
+{
+    private static readonly DateTimeOffset s_now = new(2026, 10, 4, 12, 0, 0, TimeSpan.Zero);
+    private static readonly byte[] s_protected = [1, 2, 3];
+
+    [Theory]
+    [InlineData("https://discord.com/api/webhooks/123456789/abc-DEF_123", true)]
+    [InlineData("https://discordapp.com/api/webhooks/1/x", true)]
+    [InlineData("https://ptb.discord.com/api/v10/webhooks/1/x", true)]
+    [InlineData(" https://discord.com/api/webhooks/1/x ", true)]
+    [InlineData("http://discord.com/api/webhooks/1/x", false)] // not HTTPS
+    [InlineData("https://discord.com:8443/api/webhooks/1/x", false)]
+    [InlineData("https://user:pw@discord.com/api/webhooks/1/x", false)]
+    [InlineData("https://discord.com.evil.example/api/webhooks/1/x", false)]
+    [InlineData("https://evil.example/api/webhooks/1/x", false)]
+    [InlineData("https://127.0.0.1/api/webhooks/1/x", false)]
+    [InlineData("https://discord.com/api/webhooks/abc/x", false)] // the id is a number
+    [InlineData("https://discord.com/api/webhooks/1", false)]
+    [InlineData("https://discord.com/api/webhooks/1/x/slack", false)]
+    [InlineData("https://discord.com/api/webhooks/1/x%2F..", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void OnlyDiscordWebhookAddressesAreAccepted(string? url, bool expected) =>
+        Assert.Equal(expected, NotificationChannel.IsDiscordWebhook(url));
+
+    [Theory]
+    [InlineData("ops@example.com", true)]
+    [InlineData("a.b+tag@mail.example.org", true)]
+    [InlineData("Ops <ops@example.com>", false)]
+    [InlineData("ops@example.com, other@example.com", false)]
+    [InlineData("ops@localhost", false)]
+    [InlineData("ops@example.com\r\nBcc: x@example.com", false)]
+    [InlineData("not an address", false)]
+    public void EmailAddressesArePlainAddresses(string address, bool expected) =>
+        Assert.Equal(expected, NotificationChannel.IsEmailAddress(address));
+
+    [Fact]
+    public void AnEmailChannelNeedsValidRecipients()
+    {
+        var created = NotificationChannel.Create(NotificationKind.Email, "Admins", [NotificationEvent.ServerCrashed], null, "es", true, null,
+            ["ops@example.com", "OPS@example.com", " other@example.com "], s_now);
+
+        var channel = Assert.IsType<NotificationChannel>(created.Value);
+        Assert.Equal(["ops@example.com", "other@example.com"], channel.Recipients);
+        Assert.Null(channel.WebhookUrlProtected);
+
+        Assert.Equal(NotificationErrors.RecipientsInvalid, Email(recipients: []).Error);
+        Assert.Equal(NotificationErrors.RecipientsInvalid, Email(recipients: ["bad"]).Error);
+        Assert.Equal(NotificationErrors.RecipientsInvalid, Email(recipients: [.. Enumerable.Range(0, 11).Select(i => $"u{i}@example.com")]).Error);
+    }
+
+    [Fact]
+    public void ADiscordChannelNeedsItsWebhookAndKeepsItWhenNotChanged()
+    {
+        Assert.Equal(NotificationErrors.WebhookInvalid,
+            NotificationChannel.Create(NotificationKind.Discord, "Discord", [NotificationEvent.ServerCrashed], null, "en", true, null, null, s_now).Error);
+
+        var channel = Discord();
+        Assert.True(channel.Change("Renamed", [NotificationEvent.NodeOffline], null, "en", true, null, null, s_now).IsSuccess);
+        Assert.Equal(s_protected, channel.WebhookUrlProtected);
+        Assert.Empty(channel.Recipients);
+
+        byte[] replaced = [9];
+        Assert.True(channel.Change("Renamed", [NotificationEvent.NodeOffline], null, "en", true, replaced, null, s_now).IsSuccess);
+        Assert.Equal(replaced, channel.WebhookUrlProtected);
+    }
+
+    [Fact]
+    public void SettingsAreChecked()
+    {
+        Assert.Equal(NotificationErrors.NameInvalid, Email(name: " ").Error);
+        Assert.Equal(NotificationErrors.NameInvalid, Email(name: new string('x', 65)).Error);
+        Assert.Equal(NotificationErrors.EventsRequired, Email(events: []).Error);
+        Assert.Equal(NotificationErrors.EventsRequired, Email(events: [(NotificationEvent)99]).Error);
+        Assert.Equal(NotificationErrors.LanguageInvalid, Email(language: "fr").Error);
+        Assert.Equal(NotificationErrors.ServersInvalid, Email(servers: []).Error);
+        Assert.Equal(NotificationErrors.ServersInvalid, Email(servers: [Guid.Empty]).Error);
+    }
+
+    [Fact]
+    public void AChannelWantsItsEventsForItsServers()
+    {
+        var mine = Guid.NewGuid();
+        var channel = Assert.IsType<NotificationChannel>(Email(events: [NotificationEvent.ServerCrashed, NotificationEvent.NodeOffline],
+            servers: [mine, mine]).Value);
+
+        Assert.Equal([mine], channel.ServerIds);
+        Assert.True(channel.Wants(NotificationEvent.ServerCrashed, mine));
+        Assert.False(channel.Wants(NotificationEvent.ServerCrashed, Guid.NewGuid()));
+        Assert.False(channel.Wants(NotificationEvent.BackupFailed, mine));
+        Assert.True(channel.Wants(NotificationEvent.NodeOffline, null)); // node events are not filtered by server
+
+        channel.Change(channel.Name, channel.Events, null, "en", enabled: false, null, channel.Recipients, s_now);
+        Assert.False(channel.Wants(NotificationEvent.ServerCrashed, mine));
+    }
+
+    [Fact]
+    public void ADeliveryIsRetriedWithGrowingDelaysThenFails()
+    {
+        var delivery = NotificationDelivery.Create(Discord(), NotificationEvent.ServerCrashed, "server:1", Message(), s_now);
+        Assert.Equal(DeliveryStatus.Pending, delivery.Status);
+        Assert.Equal(s_now, delivery.NextAttemptAt);
+
+        var now = s_now;
+        foreach (var delay in NotificationDelivery.RetryDelays)
+        {
+            delivery.Taken(now);
+            Assert.Equal(now + NotificationDelivery.Lease, delivery.NextAttemptAt);
+            delivery.AttemptFailed("503 Service Unavailable", retryable: true, retryAfter: null, now);
+            Assert.Equal(DeliveryStatus.Pending, delivery.Status);
+            Assert.Equal(now + delay, delivery.NextAttemptAt);
+            now += delay;
+        }
+
+        delivery.Taken(now);
+        delivery.AttemptFailed("503 Service Unavailable", retryable: true, retryAfter: null, now);
+        Assert.Equal(DeliveryStatus.Failed, delivery.Status);
+        Assert.Equal(NotificationDelivery.RetryDelays.Count + 1, delivery.Attempts);
+        Assert.Null(delivery.NextAttemptAt);
+    }
+
+    [Fact]
+    public void ARateLimitWaitsAsLongAsAskedAndAPermanentErrorFailsAtOnce()
+    {
+        var limited = NotificationDelivery.Create(Discord(), NotificationEvent.ServerCrashed, "server:1", Message(), s_now);
+        limited.Taken(s_now);
+        limited.AttemptFailed("429", retryable: true, retryAfter: TimeSpan.FromMinutes(5), s_now);
+        Assert.Equal(s_now + TimeSpan.FromMinutes(5), limited.NextAttemptAt);
+
+        var gone = NotificationDelivery.Create(Discord(), NotificationEvent.ServerCrashed, "server:1", Message(), s_now);
+        gone.Taken(s_now);
+        gone.AttemptFailed(new string('x', 600), retryable: false, retryAfter: null, s_now);
+        Assert.Equal(DeliveryStatus.Failed, gone.Status);
+        Assert.Equal(NotificationDelivery.MaxErrorLength, gone.LastError!.Length);
+
+        var sent = NotificationDelivery.Create(Discord(), NotificationEvent.ServerCrashed, "server:1", Message(), s_now);
+        sent.Taken(s_now);
+        sent.Sent(s_now);
+        Assert.Equal(DeliveryStatus.Sent, sent.Status);
+        Assert.Null(sent.NextAttemptAt);
+    }
+
+    [Fact]
+    public void SettingsCheckTheirValues()
+    {
+        var settings = NotificationSettings.Default(s_now);
+        Assert.False(settings.EmailConfigured);
+        Assert.Equal(TimeSpan.FromMinutes(3), settings.NodeOfflineAfter);
+
+        Assert.True(settings.ChangeGeneral("https://panel.example.com:8443/", 15, 5, s_now).IsSuccess);
+        Assert.Equal("https://panel.example.com:8443", settings.PanelUrl);
+        Assert.Equal(NotificationErrors.PanelUrlInvalid, settings.ChangeGeneral("ftp://panel", 10, 3, s_now).Error);
+        Assert.Equal(NotificationErrors.PanelUrlInvalid, settings.ChangeGeneral("https://panel/?x=1", 10, 3, s_now).Error);
+        Assert.Equal(NotificationErrors.ThresholdsInvalid, settings.ChangeGeneral(null, 0, 3, s_now).Error);
+        Assert.Equal(NotificationErrors.ThresholdsInvalid, settings.ChangeGeneral(null, 10, 0, s_now).Error);
+
+        Assert.True(settings.ChangeSmtp("smtp.example.com", 587, SmtpSecurity.StartTls, "pulsar", [7], false, "pulsar@example.com", "Pulsar", s_now)
+            .IsSuccess);
+        Assert.True(settings.EmailConfigured);
+        // No new password: the old one stays.
+        Assert.True(settings.ChangeSmtp("smtp.example.com", 465, SmtpSecurity.Tls, "pulsar", null, false, "pulsar@example.com", null, s_now).IsSuccess);
+        Assert.Equal([7], settings.SmtpPasswordProtected);
+        Assert.True(settings.ChangeSmtp("smtp.example.com", 465, SmtpSecurity.Tls, "pulsar", null, true, "pulsar@example.com", null, s_now).IsSuccess);
+        Assert.Null(settings.SmtpPasswordProtected);
+
+        Assert.Equal(NotificationErrors.SmtpHostInvalid, settings.ChangeSmtp("bad host", 25, SmtpSecurity.None, null, null, false, "a@example.com", null, s_now).Error);
+        Assert.Equal(NotificationErrors.SmtpPortInvalid, settings.ChangeSmtp("smtp.example.com", 0, SmtpSecurity.None, null, null, false, "a@example.com", null, s_now).Error);
+        Assert.Equal(NotificationErrors.FromInvalid, settings.ChangeSmtp("smtp.example.com", 25, SmtpSecurity.None, null, null, false, "nobody", null, s_now).Error);
+
+        Assert.True(settings.ChangeSmtp(null, 0, SmtpSecurity.StartTls, null, null, false, null, null, s_now).IsSuccess);
+        Assert.False(settings.EmailConfigured);
+        Assert.Null(settings.SmtpPasswordProtected);
+    }
+
+    [Fact]
+    public void ANodeIsToldOfflineOnceAndBackOnlineOnce()
+    {
+        var node = Assert.IsType<Node>(Node.Create("node", null, null, s_now).Value);
+        Assert.False(node.BackOnline());
+        Assert.True(node.OfflineNotified(s_now));
+        Assert.False(node.OfflineNotified(s_now));
+        Assert.True(node.BackOnline());
+        Assert.False(node.BackOnline());
+
+        Assert.True(node.DiskLowNotified(s_now));
+        Assert.False(node.DiskLowNotified(s_now));
+        node.DiskSpaceRecovered();
+        Assert.True(node.DiskLowNotified(s_now));
+    }
+
+    private static NotificationChannel Discord() =>
+        Assert.IsType<NotificationChannel>(NotificationChannel.Create(NotificationKind.Discord, "Discord", [NotificationEvent.ServerCrashed], null, "en",
+            true, s_protected, null, s_now).Value);
+
+    private static Common.Result<NotificationChannel> Email(string name = "Admins", NotificationEvent[]? events = null, Guid[]? servers = null,
+        string language = "en", string[]? recipients = null) =>
+        NotificationChannel.Create(NotificationKind.Email, name, events ?? [NotificationEvent.ServerCrashed], servers, language, true, null,
+            recipients ?? ["ops@example.com"], s_now);
+
+    private static NotificationMessage Message() => new("Server crashed", "It exited.", NotificationSeverity.Error, [], null);
+}

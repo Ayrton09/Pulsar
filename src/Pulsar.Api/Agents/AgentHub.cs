@@ -154,8 +154,7 @@ internal sealed partial class AgentHub(
         }
 
         connections.UpdateMetrics(nodeId, Context.ConnectionId, metrics);
-        await browsers.Clients.Group(PanelHub.NodesGroup).NodeMetrics(new NodeMetricsUpdate(nodeId.Value,
-            new NodeMetricsView(metrics.At, metrics.CpuPercent, metrics.MemoryUsedBytes, metrics.MemoryTotalBytes, metrics.Uptime)));
+        await browsers.Clients.Group(PanelHub.NodesGroup).NodeMetrics(new NodeMetricsUpdate(nodeId.Value, NodeMetricsView.From(metrics)));
         var now = clock.GetUtcNow();
         if (Context.Items.TryGetValue(s_lastSeenAtKey, out var value)
             && value is DateTimeOffset lastSeenAt && now - lastSeenAt < s_seenInterval)

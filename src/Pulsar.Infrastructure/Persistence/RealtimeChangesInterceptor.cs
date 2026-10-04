@@ -1,9 +1,11 @@
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Pulsar.Application.Notifications;
 using Pulsar.Application.Realtime;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Notifications;
 using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
 
@@ -11,7 +13,7 @@ namespace Pulsar.Infrastructure.Persistence;
 
 /// <summary>
 /// After every successful save, tells browsers which servers and nodes changed (whoever changed them: a user, an agent's
-/// report, a reconciliation), so no code path can forget to.
+/// report, a reconciliation), so no code path can forget to; and wakes the notification sender when notifications were queued.
 /// </summary>
 internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : SaveChangesInterceptor
 {
@@ -99,6 +101,9 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
                 case NodeCredential credential:
                     changes.Nodes.Add(credential.NodeId);
                     break;
+                case NotificationDelivery when entry.State == EntityState.Added:
+                    changes.NotificationsQueued = true;
+                    break;
             }
         }
 
@@ -113,6 +118,12 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
         }
 
         _pending.Remove(context);
+        if (changes.NotificationsQueued)
+        {
+            // Committed: the sender finds them now.
+            (services.GetService(typeof(NotificationSignal)) as NotificationSignal)?.Notify();
+        }
+
         // Resolved late: the infrastructure also runs without the application layer (startup checks, tests).
         if (services.GetService(typeof(IRealtimeNotifier)) is not IRealtimeNotifier notifier)
         {
@@ -143,5 +154,7 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
         public HashSet<ServerId> Servers { get; } = [];
 
         public HashSet<NodeId> Nodes { get; } = [];
+
+        public bool NotificationsQueued { get; set; }
     }
 }

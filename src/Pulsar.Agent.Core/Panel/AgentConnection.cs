@@ -390,7 +390,8 @@ public sealed partial class AgentConnection(
         builder.Services.AddSingleton(loggerFactory);
         var connection = builder.Build();
 
-        var session = new Session(connection, token.SessionId, token.AccessToken, system, options, clock, _logger, _channel);
+        var session = new Session(connection, token.SessionId, token.AccessToken, system, options, clock, _logger, _channel,
+            () => DiskUsageSampler.Sample(config.ServersRootOrDefault(configs.Paths), config.BackupsRootOrDefault(configs.Paths)));
         try
         {
             connection.On<SignedMessage, CommandAck>(nameof(IAgentClient.Execute), message => dispatcher.ExecuteAsync(verifier, message, this));
@@ -482,7 +483,8 @@ public sealed partial class AgentConnection(
         AgentConnectionOptions options,
         TimeProvider clock,
         ILogger logger,
-        PanelChannel channel) : IAsyncDisposable
+        PanelChannel channel,
+        Func<IReadOnlyList<DiskUsage>> disks) : IAsyncDisposable
     {
         private readonly TaskCompletionSource<Exception?> _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly CancellationTokenSource _stop = new();
@@ -555,7 +557,11 @@ public sealed partial class AgentConnection(
             {
                 try
                 {
-                    await connection.SendAsync(nameof(IAgentHub.NodeMetrics), system.SampleMetrics(), cancellationToken);
+                    var metrics = system.SampleMetrics() with
+                    {
+                        Disks = disks(),
+                    };
+                    await connection.SendAsync(nameof(IAgentHub.NodeMetrics), metrics, cancellationToken);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

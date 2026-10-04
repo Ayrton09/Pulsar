@@ -76,7 +76,51 @@ public sealed class Node
 
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    /// <summary>When the panel told that this node went offline; cleared (and told) when it is back.</summary>
+    public DateTimeOffset? OfflineNotifiedAt { get; private set; }
+
+    /// <summary>When the panel told that a drive of this node is low; cleared when every drive has room again.</summary>
+    public DateTimeOffset? DiskLowNotifiedAt { get; private set; }
+
     public static string Normalize(string name) => name.Trim().ToUpperInvariant();
+
+    /// <summary>Marks the node as told offline; false when it already was.</summary>
+    public bool OfflineNotified(DateTimeOffset now)
+    {
+        if (OfflineNotifiedAt is not null)
+        {
+            return false;
+        }
+
+        OfflineNotifiedAt = now;
+        return true;
+    }
+
+    /// <summary>Clears the offline mark; true when the node had been told offline (so its return is told too).</summary>
+    public bool BackOnline()
+    {
+        if (OfflineNotifiedAt is null)
+        {
+            return false;
+        }
+
+        OfflineNotifiedAt = null;
+        return true;
+    }
+
+    /// <summary>Records a low drive; false when it was already told.</summary>
+    public bool DiskLowNotified(DateTimeOffset now)
+    {
+        if (DiskLowNotifiedAt is not null)
+        {
+            return false;
+        }
+
+        DiskLowNotifiedAt = now;
+        return true;
+    }
+
+    public void DiskSpaceRecovered() => DiskLowNotifiedAt = null;
 
     public static Result<Node> Create(string name, string? description, string? publicHost, DateTimeOffset now)
     {

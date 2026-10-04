@@ -20,7 +20,20 @@ public sealed record NodeInventoryView(
     string AgentVersion,
     int ProtocolVersion);
 
-public sealed record NodeMetricsView(DateTimeOffset At, double CpuPercent, long MemoryUsedBytes, long MemoryTotalBytes, TimeSpan Uptime);
+/// <param name="Uses">"servers", "backups".</param>
+public sealed record DiskUsageView(string Root, long TotalBytes, long FreeBytes, IReadOnlyList<string> Uses);
+
+/// <param name="Disks">The drives of the node's servers and backups folders; null from agents older than Phase 10.</param>
+public sealed record NodeMetricsView(DateTimeOffset At, double CpuPercent, long MemoryUsedBytes, long MemoryTotalBytes, TimeSpan Uptime,
+    IReadOnlyList<DiskUsageView>? Disks)
+{
+    public static NodeMetricsView From(NodeMetrics metrics)
+    {
+        ArgumentNullException.ThrowIfNull(metrics);
+        return new NodeMetricsView(metrics.At, metrics.CpuPercent, metrics.MemoryUsedBytes, metrics.MemoryTotalBytes, metrics.Uptime,
+            metrics.Disks?.Select(d => new DiskUsageView(d.Root, d.TotalBytes, d.FreeBytes, d.Uses)).ToList());
+    }
+}
 
 public sealed record NodeSummary(
     Guid Id,
@@ -299,9 +312,7 @@ public sealed class NodeManagement(
         var inventory = node.Inventory is { } i
             ? new NodeInventoryView(i.Hostname, i.OsDescription, i.OsBuild, i.CpuModel, i.LogicalCores, i.MemoryTotalBytes, i.ServersRoot, i.AgentVersion, i.ProtocolVersion)
             : null;
-        var metrics = connection?.LastMetrics is { } m
-            ? new NodeMetricsView(m.At, m.CpuPercent, m.MemoryUsedBytes, m.MemoryTotalBytes, m.Uptime)
-            : null;
+        var metrics = connection?.LastMetrics is { } m ? NodeMetricsView.From(m) : null;
         return new NodeSummary(node.Id.Value, node.Name, node.Description, node.PublicHost, node.Status, connection is not null,
             node.LastSeenAt, inventory, metrics, node.CreatedAt, Trust(connection?.PinnedPanelKeys ?? node.PinnedPanelKeys, activeKeyId));
     }

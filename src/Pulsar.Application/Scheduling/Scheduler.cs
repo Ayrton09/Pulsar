@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Nodes;
+using Pulsar.Application.Notifications;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 using Pulsar.Domain.Common;
@@ -113,6 +114,12 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
             db.ChangeTracker.Clear();
             run = await db.ScheduledTaskRuns.SingleAsync(r => r.Id == runId, CancellationToken.None);
             run.Failed("schedules.error", "The panel could not run the task; its log has the details.", clock.GetUtcNow());
+        }
+
+        if (run.Status == ScheduledRunStatus.Failed
+            && await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == task.ServerId, CancellationToken.None) is { } server)
+        {
+            await services.GetRequiredService<Notifier>().ScheduledTaskFailedAsync(server, task.Name, run.Message ?? run.ErrorCode, CancellationToken.None);
         }
 
         await db.SaveChangesAsync(CancellationToken.None);

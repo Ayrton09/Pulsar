@@ -90,6 +90,15 @@ public static class AuditActions
         public const string Retired = "panel_key.retired";
     }
 
+    public static class Notification
+    {
+        public const string ChannelCreated = "notification.channel_created";
+        public const string ChannelUpdated = "notification.channel_updated";
+        public const string ChannelDeleted = "notification.channel_deleted";
+        public const string Tested = "notification.tested";
+        public const string SettingsUpdated = "notification.settings_updated";
+    }
+
     public static class Role
     {
         public const string Created = "role.created";

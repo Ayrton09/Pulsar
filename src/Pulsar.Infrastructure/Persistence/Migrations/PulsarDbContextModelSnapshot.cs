@@ -322,6 +322,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(512)")
                         .HasColumnName("description");
 
+                    b.Property<DateTimeOffset?>("DiskLowNotifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("disk_low_notified_at");
+
                     b.Property<DateTimeOffset?>("LastSeenAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_seen_at");
@@ -337,6 +341,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("normalized_name");
+
+                    b.Property<DateTimeOffset?>("OfflineNotifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("offline_notified_at");
 
                     b.PrimitiveCollection<string[]>("PinnedPanelKeys")
                         .HasColumnType("text[]")
@@ -634,6 +642,228 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.ToTable("panel_signing_keys", null, t =>
                         {
                             t.HasCheckConstraint("ck_panel_signing_keys_status", "status IN ('active', 'retired', 'retiring')");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Notifications.NotificationChannel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.PrimitiveCollection<string[]>("Events")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("events");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("language");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("name");
+
+                    b.PrimitiveCollection<string[]>("Recipients")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("recipients");
+
+                    b.PrimitiveCollection<Guid[]>("ServerIds")
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("server_ids");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<byte[]>("WebhookUrlProtected")
+                        .HasColumnType("bytea")
+                        .HasColumnName("webhook_url_protected");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notification_channels");
+
+                    b.ToTable("notification_channels", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_notification_channels_kind", "kind IN ('discord', 'email')");
+
+                            t.HasCheckConstraint("ck_notification_channels_target", "(kind = 'discord' AND webhook_url_protected IS NOT NULL) OR (kind = 'email' AND cardinality(recipients) > 0)");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Notifications.NotificationDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<Guid>("ChannelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("channel_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Event")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("event");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("last_error");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("message");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt_at");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("subject");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notification_deliveries");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_notification_deliveries_created_at");
+
+                    b.HasIndex("NextAttemptAt")
+                        .HasDatabaseName("ix_notification_deliveries_due")
+                        .HasFilter("status = 'pending'");
+
+                    b.HasIndex("ChannelId", "Event", "Subject", "CreatedAt")
+                        .HasDatabaseName("ix_notification_deliveries_subject");
+
+                    b.ToTable("notification_deliveries", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_notification_deliveries_event", "event IN ('backup_failed', 'node_disk_low', 'node_offline', 'scheduled_task_failed', 'server_crashed', 'server_start_failed')");
+
+                            t.HasCheckConstraint("ck_notification_deliveries_status", "status IN ('failed', 'pending', 'sent')");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Notifications.NotificationSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<int>("DiskLowPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("disk_low_percent");
+
+                    b.Property<string>("FromAddress")
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("from_address");
+
+                    b.Property<string>("FromName")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("from_name");
+
+                    b.Property<int>("NodeOfflineMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("node_offline_minutes");
+
+                    b.Property<string>("PanelUrl")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("panel_url");
+
+                    b.Property<string>("SmtpHost")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("smtp_host");
+
+                    b.Property<byte[]>("SmtpPasswordProtected")
+                        .HasColumnType("bytea")
+                        .HasColumnName("smtp_password_protected");
+
+                    b.Property<int>("SmtpPort")
+                        .HasColumnType("integer")
+                        .HasColumnName("smtp_port");
+
+                    b.Property<string>("SmtpSecurity")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("smtp_security");
+
+                    b.Property<string>("SmtpUserName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("smtp_user_name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notification_settings");
+
+                    b.ToTable("notification_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_notification_settings_singleton", "id = 1");
+
+                            t.HasCheckConstraint("ck_notification_settings_smtp_security", "smtp_security IN ('none', 'start_tls', 'tls')");
                         });
                 });
 
@@ -1543,6 +1773,16 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_node_enrollment_tokens_nodes_node_id");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Notifications.NotificationDelivery", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Notifications.NotificationChannel", null)
+                        .WithMany()
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notification_deliveries_notification_channels_channel_id");
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Scheduling.ScheduledTask", b =>

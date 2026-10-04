@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Notifications;
 using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
 
@@ -42,6 +43,12 @@ public interface IPulsarDbContext
     DbSet<ScheduledTask> ScheduledTasks { get; }
 
     DbSet<ScheduledTaskRun> ScheduledTaskRuns { get; }
+
+    DbSet<NotificationChannel> NotificationChannels { get; }
+
+    DbSet<NotificationSettings> NotificationSettings { get; }
+
+    DbSet<NotificationDelivery> NotificationDeliveries { get; }
 
     /// <summary>Transactions and set-based updates (e.g. consuming a token atomically).</summary>
     DatabaseFacade Database { get; }

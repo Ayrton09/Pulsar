@@ -81,6 +81,20 @@ public readonly record struct ScheduledRunId(Guid Value)
     public override string ToString() => Value.ToString();
 }
 
+public readonly record struct NotificationChannelId(Guid Value)
+{
+    public static NotificationChannelId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString();
+}
+
+public readonly record struct NotificationDeliveryId(Guid Value)
+{
+    public static NotificationDeliveryId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString();
+}
+
 /// <summary>Converts <see cref="UserId"/> to and from its GUID string form.</summary>
 public sealed class UserIdTypeConverter : TypeConverter
 {

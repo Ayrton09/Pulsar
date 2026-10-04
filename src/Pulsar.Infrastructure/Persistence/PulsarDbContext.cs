@@ -6,6 +6,7 @@ using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Notifications;
 using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
 using Pulsar.Infrastructure.Identity;
@@ -44,6 +45,12 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<ScheduledTaskRun> ScheduledTaskRuns => Set<ScheduledTaskRun>();
 
+    public DbSet<NotificationChannel> NotificationChannels => Set<NotificationChannel>();
+
+    public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
+
+    public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         configurationBuilder.Properties<UserId>().HaveConversion<UserIdConverter>();
@@ -56,6 +63,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
         configurationBuilder.Properties<BackupId>().HaveConversion<BackupIdConverter>();
         configurationBuilder.Properties<ScheduledTaskId>().HaveConversion<ScheduledTaskIdConverter>();
         configurationBuilder.Properties<ScheduledRunId>().HaveConversion<ScheduledRunIdConverter>();
+        configurationBuilder.Properties<NotificationChannelId>().HaveConversion<NotificationChannelIdConverter>();
+        configurationBuilder.Properties<NotificationDeliveryId>().HaveConversion<NotificationDeliveryIdConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder builder)
