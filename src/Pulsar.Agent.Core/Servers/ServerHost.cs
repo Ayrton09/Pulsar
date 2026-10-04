@@ -53,6 +53,9 @@ public sealed partial class ServerHost(
     TimeProvider clock,
     ILoggerFactory loggerFactory) : IHostedService, IServerEventSink, IDisposable
 {
+    // The panel waits for the ack: deleting a remote copy gets a bounded time.
+    private static readonly TimeSpan s_remoteDeleteTimeout = TimeSpan.FromSeconds(20);
+
     private const string Platform = ManifestValidator.WindowsX64;
 
     private readonly ILogger _logger = loggerFactory.CreateLogger<ServerHost>();
@@ -96,6 +99,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.RestoreBackup;
             yield return AgentCapabilities.DeleteBackup;
             yield return AgentCapabilities.SendBackup;
+            yield return AgentCapabilities.RemoteBackups;
             if (installOptions.TestGameAvailable)
             {
                 yield return AgentCapabilities.TestGame;
@@ -236,8 +240,8 @@ public sealed partial class ServerHost(
             CancelOperationCommand cancel => Cancel(envelope, cancel),
             CreateBackupCommand create => CreateBackup(envelope, create),
             RestoreBackupCommand restore => RestoreBackup(envelope, restore),
-            DeleteBackupCommand delete => await Task.Run(() => DeleteBackup(envelope, delete)),
-            SendBackupCommand send => await Task.Run(() => SendBackup(envelope, send)),
+            DeleteBackupCommand delete => await DeleteBackupAsync(envelope, delete),
+            SendBackupCommand send => await SendBackupAsync(envelope, send),
             StartServerCommand start => await Control(envelope, start.ServerId, s => s.StartAsync(), allowedDuringOperation: false),
             StopServerCommand stop => await Control(envelope, stop.ServerId, s => s.StopAsync(), allowedDuringOperation: true),
             RestartServerCommand restart => await Control(envelope, restart.ServerId, s => s.RestartAsync(), allowedDuringOperation: false),
@@ -562,8 +566,9 @@ public sealed partial class ServerHost(
         return RunOperation(envelope, command.ServerId, operationId, exclusive: false, async cancellationToken =>
         {
             var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
-            return await backups.CreateAsync(location, provisioned, server.Manifest.Backup,
-                (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
+            BackupProgress progress = (stage, percent) => SendProgressAsync(operationId, stage, percent);
+            var made = await backups.CreateAsync(location, provisioned, server.Manifest.Backup, progress, cancellationToken);
+            return command.Remote is { } remote ? await backups.CopyToRemoteAsync(location, made, remote, progress, cancellationToken) : made;
         });
     }
 
@@ -590,12 +595,18 @@ public sealed partial class ServerHost(
         {
             var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
             TerminateStrays(command.ServerId, provisioned.Identity);
-            await backups.RestoreAsync(location, provisioned, command.Sha256, (stage, percent) => SendProgressAsync(operationId, stage, percent),
-                cancellationToken);
+            BackupProgress progress = (stage, percent) => SendProgressAsync(operationId, stage, percent);
+            if (command.Remote is { } remote)
+            {
+                await backups.FetchAsync(location, remote, command.Sha256, progress, cancellationToken);
+            }
+
+            await backups.RestoreAsync(location, provisioned, command.Sha256, progress, cancellationToken);
         });
     }
 
-    private CommandAck DeleteBackup(CommandEnvelope envelope, DeleteBackupCommand command)
+    /// <summary>The archive, then its remote copy: the panel forgets the backup only when both are gone.</summary>
+    private async Task<CommandAck> DeleteBackupAsync(CommandEnvelope envelope, DeleteBackupCommand command)
     {
         if (!_servers.TryGetValue(command.ServerId, out var server))
         {
@@ -604,7 +615,14 @@ public sealed partial class ServerHost(
 
         try
         {
-            var deleted = backups.Delete(Backup(server, command.BackupId));
+            var deleted = await Task.Run(() => backups.Delete(Backup(server, command.BackupId)));
+            if (command.Remote is { } remote)
+            {
+                using var timeout = new CancellationTokenSource(s_remoteDeleteTimeout);
+                await backups.DeleteRemoteAsync(remote, timeout.Token);
+                deleted = true;
+            }
+
             return new CommandAck(envelope.CommandId, deleted ? AckStatus.Accepted : AckStatus.AlreadyInState, null, null);
         }
         catch (BackupException ex)
@@ -613,7 +631,7 @@ public sealed partial class ServerHost(
         }
     }
 
-    private CommandAck SendBackup(CommandEnvelope envelope, SendBackupCommand command)
+    private async Task<CommandAck> SendBackupAsync(CommandEnvelope envelope, SendBackupCommand command)
     {
         if (!_servers.TryGetValue(command.ServerId, out var server))
         {
@@ -623,7 +641,8 @@ public sealed partial class ServerHost(
         var location = Backup(server, command.BackupId);
         try
         {
-            return fileCommands.Send(envelope, command.Ticket, $"backup {command.BackupId}", () => backups.Open(location));
+            var opened = await backups.OpenAsync(location, command.Remote, CancellationToken.None);
+            return fileCommands.Send(envelope, command.Ticket, $"backup {command.BackupId}", () => opened);
         }
         catch (BackupException ex)
         {

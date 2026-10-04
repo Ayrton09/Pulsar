@@ -122,6 +122,9 @@ public sealed class Server
     /// <summary>How many backups to keep (locked ones aside); null keeps them all.</summary>
     public int? BackupLimit { get; private set; }
 
+    /// <summary>Where new backups are copied besides the node (Phase 10); null: on the node only.</summary>
+    public BackupStorageId? BackupStorageId { get; private set; }
+
     public bool AutoStart { get; private set; }
 
     public bool RestartOnCrash { get; private set; }
@@ -324,6 +327,13 @@ public sealed class Server
         BackupLimit = limit;
         UpdatedAt = now;
         return Result.Success();
+    }
+
+    /// <summary>Where new backups are copied (null: nowhere); backups already made keep their copies where they are.</summary>
+    public void SetBackupStorage(BackupStorageId? storage, DateTimeOffset now)
+    {
+        BackupStorageId = storage;
+        UpdatedAt = now;
     }
 
     /// <summary>Stop and kill are always allowed: they only ever make things safer.</summary>

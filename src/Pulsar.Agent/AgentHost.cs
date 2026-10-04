@@ -87,6 +87,7 @@ internal static class AgentHost
             builder.Services.AddSingleton<IServerFileManager, WindowsServerFileManager>();
             builder.Services.AddSingleton(new FileCommandOptions());
             builder.Services.AddSingleton<FileCommands>();
+            builder.Services.AddSingleton<IRemoteBackupStore, S3RemoteBackupStore>();
             builder.Services.AddSingleton<BackupStore>();
             builder.Services.AddSingleton<InstallSteps>();
             builder.Services.AddSingleton<ISteamCmdSource, SteamCmdBootstrapper>();

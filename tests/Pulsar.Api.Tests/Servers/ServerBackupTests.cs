@@ -5,12 +5,14 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Pulsar.Api.Notifications;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Servers;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Notifications;
 using Pulsar.Domain.Servers;
 
 namespace Pulsar.Api.Tests.Servers;
@@ -183,6 +185,115 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
         Assert.False(Directory.Exists(Path.Combine(agent.Configs.Paths.BackupsDirectory, _shortIds[server])));
         await using var scope = factory.Services.CreateAsyncScope();
         Assert.False(await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Backups.AnyAsync(b => b.ServerId == new ServerId(server), Ct));
+    }
+
+    [DatabaseFact]
+    public async Task ACopyGoesToRemoteStorageAndComesBackWhenTheNodeLostIt()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "remote");
+        var server = await InstalledServerAsync(admin, agent, "Remote copy");
+        var config = Path.Combine(ServerDirectory(agent, server), "data", "server.cfg");
+        await File.WriteAllTextAsync(config, "hostname remote", Ct);
+
+        var storage = await CreateStorageAsync(admin, "Offsite");
+        Assert.Equal("Offsite", storage.Name);
+        using (var listed = await admin.GetAsync("/api/v1/backup-storages"))
+        {
+            Assert.DoesNotContain("storage secret key", await listed.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        var chosen = await ChooseStorageAsync(admin, server, storage.Id);
+        Assert.Equal(storage.Id, chosen.StorageId);
+        Assert.Contains(chosen.Storages, s => s.Id == storage.Id && s.Name == "Offsite");
+
+        var backup = await MadeAsync(admin, server, "Offsite copy");
+        backup = await WaitForAsync(admin, server, backup.Id, b => b.RemoteStatus == RemoteCopyStatus.Copied, "copied");
+        var key = $"pulsar-backups/servers/{_shortIds[server]}/{backup.Id:N}.zip";
+        Assert.True(agent.RemoteBackups.Objects.ContainsKey(key), string.Join(", ", agent.RemoteBackups.Objects.Keys));
+        Assert.Contains("storage secret key", agent.RemoteBackups.SecretsSeen);
+
+        // The node loses its archive: a restore brings it back from remote storage first.
+        File.Delete(Archive(agent, server, backup.Id));
+        await File.WriteAllTextAsync(config, "hostname changed", Ct);
+        await EnsureAsync(await admin.PostAsync($"/api/v1/servers/{server}/backups/{backup.Id}/restore"));
+        var details = await ServerApi.WaitForAsync(admin, server, s => s.Server.ActiveOperation is null, "restored");
+        Assert.Equal(OperationStatus.Succeeded, details.RecentOperations.First(o => o.Type == OperationType.BackupRestore).Status);
+        Assert.Equal("hostname remote", await File.ReadAllTextAsync(config, Ct));
+        Assert.True(File.Exists(Archive(agent, server, backup.Id)));
+
+        // Lost again: a download comes straight from remote storage.
+        File.Delete(Archive(agent, server, backup.Id));
+        using (var download = await admin.GetAsync($"/api/v1/servers/{server}/backups/{backup.Id}/download"))
+        {
+            await EnsureAsync(download);
+            Assert.Equal(backup.Sha256, Convert.ToHexStringLower(SHA256.HashData(await download.Content.ReadAsByteArrayAsync(Ct))));
+        }
+
+        // A storage holding copies cannot go; deleting the backup deletes its copy too.
+        await ProblemAsync(await admin.DeleteAsync($"/api/v1/backup-storages/{storage.Id}"), HttpStatusCode.Conflict, "backup_storage.in_use");
+        await EnsureAsync(await admin.DeleteAsync($"/api/v1/servers/{server}/backups/{backup.Id}"));
+        Assert.False(agent.RemoteBackups.Objects.ContainsKey(key));
+        await ChooseStorageAsync(admin, server, null);
+        await EnsureAsync(await admin.DeleteAsync($"/api/v1/backup-storages/{storage.Id}"));
+
+        var audited = await AuditAsync(server);
+        Assert.Equal(2, audited.Count(a => a.Action == AuditActions.Server.BackupStorageChanged));
+    }
+
+    [DatabaseFact]
+    public async Task AFailedCopyKeepsTheBackupOnTheNodeAndIsNotified()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "remote-failure");
+        var server = await InstalledServerAsync(admin, agent, "Copy fails");
+        var storage = await CreateStorageAsync(admin, "Broken storage");
+        await ChooseStorageAsync(admin, server, storage.Id);
+        await EnsureAsync(await admin.PostAsync("/api/v1/notifications/channels", new NotificationChannelRequest("Backups", NotificationKind.Email, true,
+            [NotificationEvent.BackupFailed], [server], "en", null, ["ops@example.com"])));
+        agent.RemoteBackups.FailUploads = "Remote storage refused the credentials or the bucket (AccessDenied).";
+
+        var made = await MadeAsync(admin, server, "Local only");
+        var backup = await WaitForAsync(admin, server, made.Id, b => b.RemoteStatus == RemoteCopyStatus.Failed, "copy failed");
+        Assert.Equal(BackupStatus.Completed, backup.Status);
+        Assert.Equal("Remote storage refused the credentials or the bucket (AccessDenied).", backup.RemoteError);
+        Assert.True(File.Exists(Archive(agent, server, backup.Id)));
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+        var delivery = await db.NotificationDeliveries.AsNoTracking().SingleAsync(d => d.Subject == $"server:{server}:remote", Ct);
+        Assert.Equal("Remote copy of a backup of Copy fails failed", delivery.Message.Title);
+        // Its copy failed, so the storage keeps nothing of it: the storage can go once no server uses it.
+        await ChooseStorageAsync(admin, server, null);
+        await EnsureAsync(await admin.DeleteAsync($"/api/v1/backup-storages/{storage.Id}"));
+    }
+
+    private static async Task<BackupStorageView> CreateStorageAsync(PanelClient admin, string name)
+    {
+        using var response = await admin.PostAsync("/api/v1/backup-storages",
+            new BackupStorageRequest(name, "https://s3.example.com", "auto", "pulsar-backups", "servers", "AKIDEXAMPLE", "storage secret key", true));
+        await EnsureAsync(response);
+        var body = await response.Content.ReadAsStringAsync(Ct);
+        Assert.DoesNotContain("storage secret key", body, StringComparison.Ordinal);
+        return JsonSerializer.Deserialize<BackupStorageView>(body, AccessScenario.Json)!;
+    }
+
+    private static async Task<BackupList> ChooseStorageAsync(PanelClient client, Guid server, Guid? storage)
+    {
+        using var response = await client.PutAsync($"/api/v1/servers/{server}/backups/storage", new BackupStorageChoiceRequest(storage));
+        await EnsureAsync(response);
+        return (await response.Content.ReadFromJsonAsync<BackupList>(AccessScenario.Json, Ct))!;
+    }
+
+    private static async Task<BackupView> WaitForAsync(PanelClient client, Guid server, Guid backup, Func<BackupView, bool> condition, string what)
+    {
+        BackupView? last = null;
+        await InProcessAgent.EventuallyAsync(async () =>
+        {
+            last = (await ListAsync(client, server)).Backups.SingleOrDefault(b => b.Id == backup);
+            return last is not null && condition(last);
+        }, () => $"backup {what} (last: {last?.Status} {last?.RemoteStatus} {last?.RemoteError})");
+        return last!;
     }
 
     private static async Task<BackupView> MadeAsync(PanelClient client, Guid server, string name) =>

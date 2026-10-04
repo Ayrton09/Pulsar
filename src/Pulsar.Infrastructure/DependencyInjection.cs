@@ -50,6 +50,7 @@ public static class DependencyInjection
         services.AddPulsarDataProtection(configuration);
         services.AddSingleton<IPanelKeyRing, PanelKeyRing>();
         services.AddSingleton<IVariableProtector, DataProtectionVariableProtector>();
+        services.AddSingleton<IBackupStorageSecretProtector, DataProtectionBackupStorageSecretProtector>();
         services.AddScoped<IScheduledTaskClaims, ScheduledTaskClaims>();
         services.AddHostedService<SchedulerService>();
 

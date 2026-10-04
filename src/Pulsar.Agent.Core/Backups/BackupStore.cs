@@ -17,6 +17,8 @@ public static class BackupStages
     public const string Archiving = "archiving";
     public const string Checking = "checking";
     public const string Restoring = "restoring";
+    public const string Uploading = "uploading";
+    public const string Downloading = "downloading";
 }
 
 /// <summary>Reports a stage and, when known, how far it got (0–100).</summary>
@@ -53,7 +55,7 @@ public sealed record BackupLocation(string Root, string ShortId, Guid BackupId)
 /// files are read and written only through the <see cref="IServerFileManager"/>: never through a link, and on Windows as
 /// the server's account. The archives themselves live in the agent's own directory, out of the servers' reach.
 /// </summary>
-public sealed partial class BackupStore(IServerFileManager files, ILogger<BackupStore> logger)
+public sealed partial class BackupStore(IServerFileManager files, ILogger<BackupStore> logger, IRemoteBackupStore? remote = null)
 {
     /// <summary>Pulsar's own files in a server directory: never backed up, never restored.</summary>
     public const string PulsarDirectory = ".pulsar";
@@ -231,6 +233,89 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         }
     }
 
+    /// <summary>
+    /// Copies a made backup to remote storage. A failed copy does not fail the backup (it is on the node): the result says
+    /// why. A cancelled one removes the archive too, as a cancelled backup leaves nothing.
+    /// </summary>
+    public async Task<BackupResult> CopyToRemoteAsync(BackupLocation location, BackupResult made, RemoteBackupTarget target, BackupProgress progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(location);
+        ArgumentNullException.ThrowIfNull(made);
+        ArgumentNullException.ThrowIfNull(progress);
+        try
+        {
+            await progress(BackupStages.Uploading, 0);
+            await Remote.UploadAsync(target, location.Archive, made.Sha256, percent => progress(BackupStages.Uploading, percent), cancellationToken);
+            LogUploaded(location.ShortId, location.BackupId, target.Bucket);
+            return made with { RemoteCopied = true };
+        }
+        catch (BackupException ex)
+        {
+            LogUploadFailed(location.ShortId, location.BackupId, ex.Message);
+            return made with { RemoteError = ex.Message };
+        }
+        catch (OperationCanceledException)
+        {
+            TryDelete(location.Archive);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Brings a backup the node no longer has back from remote storage (before a restore), checked against the SHA-256
+    /// the node made it with. The archive stays on the node.
+    /// </summary>
+    public async Task FetchAsync(BackupLocation location, RemoteBackupTarget target, string sha256, BackupProgress progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(location);
+        ArgumentNullException.ThrowIfNull(progress);
+        if (File.Exists(location.Archive))
+        {
+            return;
+        }
+
+        System.IO.Directory.CreateDirectory(location.Directory);
+        try
+        {
+            await progress(BackupStages.Downloading, 0);
+            await Remote.DownloadAsync(target, location.Partial, percent => progress(BackupStages.Downloading, percent), cancellationToken);
+            var (_, hash) = await HashAsync(location.Partial, cancellationToken);
+            if (!string.Equals(hash, sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BackupException(BackupErrors.Corrupt, "The copy in remote storage is not the backup the node made (its SHA-256 differs).");
+            }
+
+            File.Move(location.Partial, location.Archive);
+            LogFetched(location.ShortId, location.BackupId, target.Bucket);
+        }
+        finally
+        {
+            TryDelete(location.Partial);
+        }
+    }
+
+    /// <summary>Opens the archive to send it, from remote storage when the node no longer has it.</summary>
+    public async Task<OpenedFile> OpenAsync(BackupLocation location, RemoteBackupTarget? target, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(location);
+        if (target is null || File.Exists(location.Archive))
+        {
+            return Open(location);
+        }
+
+        var copy = await Remote.OpenAsync(target, cancellationToken);
+        var entry = new FileEntry(Path.GetFileName(location.Archive), FileEntryKind.File, copy.Length, copy.Modified);
+        LogOpenedRemote(location.ShortId, location.BackupId);
+        return new OpenedFile(copy.Content, new FileEntryResult(entry, FileVersion.Of(entry.Size, copy.Modified)));
+    }
+
+    /// <summary>Deletes the copy in remote storage (one already gone is fine).</summary>
+    public Task DeleteRemoteAsync(RemoteBackupTarget target, CancellationToken cancellationToken) => Remote.DeleteAsync(target, cancellationToken);
+
+    private IRemoteBackupStore Remote => remote ?? throw new BackupException(BackupErrors.RemoteFailed, "This agent cannot reach remote storage.");
+
     /// <summary>Opens the archive to send it (the panel streams it to a browser).</summary>
     public OpenedFile Open(BackupLocation location)
     {
@@ -348,6 +433,18 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
         return entries;
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Backup {BackupId} of server {ShortId} copied to remote storage (bucket {Bucket})")]
+    private partial void LogUploaded(string shortId, Guid backupId, string bucket);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Backup {BackupId} of server {ShortId} was not copied to remote storage: {Reason}")]
+    private partial void LogUploadFailed(string shortId, Guid backupId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Backup {BackupId} of server {ShortId} fetched from remote storage (bucket {Bucket})")]
+    private partial void LogFetched(string shortId, Guid backupId, string bucket);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Backup {BackupId} of server {ShortId} sent from remote storage")]
+    private partial void LogOpenedRemote(string shortId, Guid backupId);
 
     private static FileStream OpenArchive(BackupLocation location, FileOptions options)
     {

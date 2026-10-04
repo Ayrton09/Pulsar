@@ -44,6 +44,8 @@ public interface IPulsarDbContext
 
     DbSet<ScheduledTaskRun> ScheduledTaskRuns { get; }
 
+    DbSet<BackupStorage> BackupStorages { get; }
+
     DbSet<NotificationChannel> NotificationChannels { get; }
 
     DbSet<NotificationSettings> NotificationSettings { get; }

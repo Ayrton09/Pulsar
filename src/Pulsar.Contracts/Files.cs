@@ -197,6 +197,9 @@ public static class BackupErrors
 
     /// <summary>The archive is open (a download or a restore is reading it).</summary>
     public const string InUse = "backups.in_use";
+
+    /// <summary>Remote storage refused or failed (credentials, bucket, network); the message says what it answered.</summary>
+    public const string RemoteFailed = "backups.remote_failed";
 }
 
 /// <summary>A directory's entries: directories first, then files and links, each by name.</summary>

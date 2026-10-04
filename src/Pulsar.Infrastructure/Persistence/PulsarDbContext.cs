@@ -45,6 +45,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<ScheduledTaskRun> ScheduledTaskRuns => Set<ScheduledTaskRun>();
 
+    public DbSet<BackupStorage> BackupStorages => Set<BackupStorage>();
+
     public DbSet<NotificationChannel> NotificationChannels => Set<NotificationChannel>();
 
     public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
@@ -63,6 +65,7 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
         configurationBuilder.Properties<BackupId>().HaveConversion<BackupIdConverter>();
         configurationBuilder.Properties<ScheduledTaskId>().HaveConversion<ScheduledTaskIdConverter>();
         configurationBuilder.Properties<ScheduledRunId>().HaveConversion<ScheduledRunIdConverter>();
+        configurationBuilder.Properties<BackupStorageId>().HaveConversion<BackupStorageIdConverter>();
         configurationBuilder.Properties<NotificationChannelId>().HaveConversion<NotificationChannelIdConverter>();
         configurationBuilder.Properties<NotificationDeliveryId>().HaveConversion<NotificationDeliveryIdConverter>();
     }

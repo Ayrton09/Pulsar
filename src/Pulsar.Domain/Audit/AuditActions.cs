@@ -73,6 +73,7 @@ public static class AuditActions
         public const string BackupLocked = "server.backup_locked";
         public const string BackupUnlocked = "server.backup_unlocked";
         public const string BackupLimitChanged = "server.backup_limit_changed";
+        public const string BackupStorageChanged = "server.backup_storage_changed";
         public const string ScheduleCreated = "server.schedule_created";
         public const string ScheduleChanged = "server.schedule_changed";
         public const string ScheduleDeleted = "server.schedule_deleted";
@@ -88,6 +89,13 @@ public static class AuditActions
     {
         public const string Rotated = "panel_key.rotated";
         public const string Retired = "panel_key.retired";
+    }
+
+    public static class BackupStorage
+    {
+        public const string Created = "backup_storage.created";
+        public const string Updated = "backup_storage.updated";
+        public const string Deleted = "backup_storage.deleted";
     }
 
     public static class Notification

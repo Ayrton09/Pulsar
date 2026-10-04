@@ -56,6 +56,22 @@ jobs:
           Start-Service -Name $service.Name
           & "$env:PGBIN\psql.exe" -v ON_ERROR_STOP=1 -c "CREATE ROLE pulsar_ci LOGIN CREATEDB PASSWORD 'pulsar_ci';"
 
+      # An S3-compatible server for the remote backup tests (SeaweedFS, Apache-2.0), with test-only credentials.
+      - name: Start S3 storage (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p "$RUNNER_TEMP/s3"
+          cat > "$RUNNER_TEMP/s3/s3.json" <<'JSON'
+          {"identities":[{"name":"pulsar-ci","credentials":[{"accessKey":"pulsar-ci-access","secretKey":"pulsar-ci-secret-not-a-real-one"}],"actions":["Admin","Read","Write","List","Tagging"]}]}
+          JSON
+          docker run -d --name seaweedfs -p 8333:8333 -v "$RUNNER_TEMP/s3:/config:ro" chrislusf/seaweedfs:4.48 \
+            server -s3 -s3.port=8333 -s3.config=/config/s3.json -volume.max=100 -master.volumeSizeLimitMB=64
+          for i in $(seq 1 60); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8333/)" != "000" ] && break
+            sleep 1
+          done
+          echo "PULSAR_TEST_S3=http://127.0.0.1:8333;pulsar-ci-access;pulsar-ci-secret-not-a-real-one" >> "$GITHUB_ENV"
+
       - name: Test
         run: dotnet test --solution Pulsar.slnx -c Release --no-build
         env:

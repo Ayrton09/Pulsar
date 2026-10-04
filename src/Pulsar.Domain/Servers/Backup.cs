@@ -11,6 +11,20 @@ public enum BackupStatus
     Cancelled,
 }
 
+/// <summary>The backup's copy in remote storage (<see cref="BackupStorage"/>).</summary>
+public enum RemoteCopyStatus
+{
+    /// <summary>No remote storage for this backup.</summary>
+    None,
+
+    /// <summary>The node uploads it after making the backup.</summary>
+    Pending,
+    Copied,
+
+    /// <summary>The upload failed; the backup is on the node only.</summary>
+    Failed,
+}
+
 /// <summary>
 /// A backup of a server (ADR-0012; docs/architecture/02, "Backups"): metadata only, the zip lives on the server's node.
 /// Made by a <see cref="OperationType.BackupCreate"/> operation; locked backups are never deleted by retention.
@@ -78,6 +92,16 @@ public sealed class Backup
 
     public DateTimeOffset CreatedAt { get; private set; }
 
+    /// <summary>The storage its copy goes (or went) to; kept while the copy exists, so the storage cannot be deleted under it.</summary>
+    public BackupStorageId? StorageId { get; private set; }
+
+    /// <summary>The copy's object key in <see cref="StorageId"/>'s bucket.</summary>
+    public string? RemoteKey { get; private set; }
+
+    public RemoteCopyStatus RemoteStatus { get; private set; }
+
+    public string? RemoteError { get; private set; }
+
     /// <summary>How long the node took (from the request to its result).</summary>
     public TimeSpan? Duration => Status == BackupStatus.Completed && CompletedAt is { } end ? end - (StartedAt ?? CreatedAt) : null;
 
@@ -93,6 +117,41 @@ public sealed class Backup
         }
 
         return new Backup(BackupId.New(), server.Id, server.NodeId, trimmed, operation.Id, createdBy, createdVia, now);
+    }
+
+    /// <summary>The node copies this backup to <paramref name="storage"/> once made.</summary>
+    public void CopyTo(BackupStorage storage, string serverShortId)
+    {
+        ArgumentNullException.ThrowIfNull(storage);
+        StorageId = storage.Id;
+        RemoteKey = storage.KeyFor(serverShortId, Id);
+        RemoteStatus = RemoteCopyStatus.Pending;
+    }
+
+    /// <summary>The copy could not even be asked for (the node's agent cannot upload): the backup is on the node only.</summary>
+    public void CopyNotPossible(string reason)
+    {
+        StorageId = null;
+        RemoteKey = null;
+        RemoteStatus = RemoteCopyStatus.Failed;
+        RemoteError = Truncate(reason);
+    }
+
+    /// <summary>How the upload the node made after the backup went.</summary>
+    public void RemoteCopyEnded(bool copied, string? error)
+    {
+        if (RemoteStatus != RemoteCopyStatus.Pending)
+        {
+            return;
+        }
+
+        RemoteStatus = copied ? RemoteCopyStatus.Copied : RemoteCopyStatus.Failed;
+        RemoteError = copied ? null : Truncate(error ?? "The node did not copy the backup.");
+        if (!copied)
+        {
+            StorageId = null; // nothing there to keep the storage for
+            RemoteKey = null;
+        }
     }
 
     public void Completed(long size, int fileCount, int skippedFiles, byte[] sha256, DateTimeOffset now)
@@ -125,9 +184,17 @@ public sealed class Backup
         }
 
         Status = status;
-        ErrorMessage = errorMessage is { Length: > MaxErrorMessageLength } ? errorMessage[..MaxErrorMessageLength] : errorMessage;
+        ErrorMessage = errorMessage is null ? null : Truncate(errorMessage);
         CompletedAt = now;
+        if (RemoteStatus == RemoteCopyStatus.Pending)
+        {
+            RemoteStatus = RemoteCopyStatus.None;
+            StorageId = null;
+            RemoteKey = null;
+        }
     }
+
+    private static string Truncate(string text) => text.Length > MaxErrorMessageLength ? text[..MaxErrorMessageLength] : text;
 
     /// <summary>A locked backup is kept until it is unlocked: retention skips it and deleting it is refused.</summary>
     public Result SetLocked(bool locked)

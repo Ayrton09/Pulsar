@@ -262,6 +262,15 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         {
             case OperationStatus.Succeeded when result is BackupResult made && Sha256(made.Sha256) is { } hash:
                 backup.Completed(made.Size, made.FileCount, made.SkippedFiles, hash, now);
+                if (backup.RemoteStatus == RemoteCopyStatus.Pending)
+                {
+                    backup.RemoteCopyEnded(made.RemoteCopied, made.RemoteError);
+                    if (!made.RemoteCopied && server is not null)
+                    {
+                        await notifications.BackupFailedAsync(server, backup.Name, backup.RemoteError, remoteCopy: true, cancellationToken);
+                    }
+                }
+
                 return true;
             case OperationStatus.Succeeded:
                 backup.Ended(BackupStatus.Failed, "The node reported no archive.", now);

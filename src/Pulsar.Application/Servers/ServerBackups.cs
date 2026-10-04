@@ -15,6 +15,8 @@ namespace Pulsar.Application.Servers;
 /// <param name="Sha256">Lowercase hex, once the backup is complete.</param>
 /// <param name="DurationSeconds">How long the node took to make it.</param>
 /// <param name="OperationId">The operation making it (to follow its progress or cancel it).</param>
+/// <param name="RemoteStatus">Its copy in remote storage.</param>
+/// <param name="RemoteError">Why the copy failed.</param>
 public sealed record BackupView(
     Guid Id,
     string Name,
@@ -29,15 +31,23 @@ public sealed record BackupView(
     DateTimeOffset? CompletedAt,
     double? DurationSeconds,
     string? ErrorMessage,
-    Guid? OperationId);
+    Guid? OperationId,
+    RemoteCopyStatus RemoteStatus,
+    string? RemoteError);
 
 /// <param name="Limit">How many backups retention keeps (locked ones besides); null keeps them all.</param>
-public sealed record BackupList(IReadOnlyList<BackupView> Backups, int? Limit);
+/// <summary>A storage a server can copy its backups to (its name only: the rest is the panel's settings).</summary>
+public sealed record BackupStorageOption(Guid Id, string Name);
+
+/// <param name="StorageId">Where new backups are copied besides the node; null: on the node only.</param>
+/// <param name="Storages">The storages to choose from.</param>
+public sealed record BackupList(IReadOnlyList<BackupView> Backups, int? Limit, Guid? StorageId, IReadOnlyList<BackupStorageOption> Storages);
 
 /// <summary>
 /// A server's backups (ADR-0012; docs/architecture/05 and 08): made and restored by its node as operations, deleted
-/// and downloaded through plain commands. The archives stay on the node; the panel keeps their metadata, applies the
-/// retention limit after every new backup, and audits every request.
+/// and downloaded through plain commands. The archives stay on the node, and with a <see cref="BackupStorage"/> the node
+/// also copies each one there (and brings it back when it no longer has it); the panel keeps their metadata, applies
+/// the retention limit after every new backup, and audits every request.
 /// </summary>
 public sealed partial class ServerBackups(
     IPulsarDbContext db,
@@ -45,6 +55,7 @@ public sealed partial class ServerBackups(
     AgentSessionStore sessions,
     ServerOperations operations,
     FileTransfers transfers,
+    BackupStorages storages,
     IAuditLog audit,
     IRequestContext request,
     TimeProvider clock,
@@ -83,7 +94,8 @@ public sealed partial class ServerBackups(
         }
 
         var backup = created.Value;
-        var run = await operations.RunAsync(server, operation, new CreateBackupCommand(server.Id.Value, backup.Id.Value), () =>
+        var remote = await RemoteForNewAsync(server, backup, cancellationToken);
+        var run = await operations.RunAsync(server, operation, new CreateBackupCommand(server.Id.Value, backup.Id.Value, remote), () =>
         {
             db.Backups.Add(backup);
             audit.Record(AuditActions.Server.BackupRequested, metadata: new { backup = backup.Id.Value, backup.Name })
@@ -126,7 +138,9 @@ public sealed partial class ServerBackups(
         }
 
         var operation = Operation.Create(OperationType.BackupRestore, server.NodeId, server.Id, request.UserId, OperationRequester.User, clock.GetUtcNow());
-        var run = await operations.RunAsync(server, operation, new RestoreBackupCommand(server.Id.Value, backup.Id.Value, Convert.ToHexStringLower(sha256)),
+        var remote = await RemoteOfAsync(backup, cancellationToken);
+        var run = await operations.RunAsync(server, operation,
+            new RestoreBackupCommand(server.Id.Value, backup.Id.Value, Convert.ToHexStringLower(sha256), remote),
             () => audit.Record(AuditActions.Server.BackupRestoreRequested, metadata: new { backup = backup.Id.Value, backup.Name })
                 .WithServer(server.Id, server.NodeId),
             cancellationToken);
@@ -259,7 +273,8 @@ public sealed partial class ServerBackups(
         var download = transfers.BeginDownload(server.NodeId);
         try
         {
-            var ack = Ack(await connections.SendAsync(server.NodeId, new SendBackupCommand(server.Id.Value, backup.Id.Value, download.Ticket),
+            var remote = await RemoteOfAsync(backup, cancellationToken);
+            var ack = Ack(await connections.SendAsync(server.NodeId, new SendBackupCommand(server.Id.Value, backup.Id.Value, download.Ticket, remote),
                 request.UserId, cancellationToken));
             if (!ack.IsSuccess || ack.Value.Result is not FileEntryResult file)
             {
@@ -297,7 +312,8 @@ public sealed partial class ServerBackups(
                 return connection.Error!;
             }
 
-            var ack = Ack(await connections.SendAsync(server.NodeId, new DeleteBackupCommand(server.Id.Value, backup.Id.Value),
+            var remote = await RemoteOfAsync(backup, cancellationToken);
+            var ack = Ack(await connections.SendAsync(server.NodeId, new DeleteBackupCommand(server.Id.Value, backup.Id.Value, remote),
                 actor.UserId, cancellationToken));
             if (!ack.IsSuccess)
             {
@@ -321,10 +337,79 @@ public sealed partial class ServerBackups(
         return Result.Success();
     }
 
+    /// <summary>Where new backups are copied besides the node (null: nowhere). Backups already made keep their copies.</summary>
+    public async Task<Result<BackupList>> SetStorageAsync(ServerId id, Guid? storageId, CancellationToken cancellationToken)
+    {
+        var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        var storage = storageId is { } wanted
+            ? await db.BackupStorages.AsNoTracking().SingleOrDefaultAsync(s => s.Id == new BackupStorageId(wanted), cancellationToken)
+            : null;
+        if (storageId is not null && storage is null)
+        {
+            return BackupStorageErrors.NotFound;
+        }
+
+        for (var attempt = 0; ; attempt++)
+        {
+            server.SetBackupStorage(storage?.Id, clock.GetUtcNow());
+            audit.Record(AuditActions.Server.BackupStorageChanged, metadata: new { storage = storage?.Id.Value, storageName = storage?.Name })
+                .WithServer(server.Id, server.NodeId);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < 2)
+            {
+                // The agent reported a state change in between: set it again on the fresh row.
+                db.ChangeTracker.Clear();
+                server = await db.Servers.SingleAsync(s => s.Id == id, cancellationToken);
+            }
+        }
+
+        return await ListOfAsync(server, cancellationToken);
+    }
+
+    /// <summary>The copy target for a new backup, with the copy recorded on it; null without a storage (or with an agent that cannot copy).</summary>
+    private async Task<RemoteBackupTarget?> RemoteForNewAsync(Server server, Backup backup, CancellationToken cancellationToken)
+    {
+        if (server.BackupStorageId is not { } storageId
+            || await db.BackupStorages.AsNoTracking().SingleOrDefaultAsync(s => s.Id == storageId, cancellationToken) is not { } storage)
+        {
+            return null;
+        }
+
+        if (connections.Find(server.NodeId) is { } agent && !agent.Capabilities.Contains(AgentCapabilities.RemoteBackups))
+        {
+            backup.CopyNotPossible("The node's agent is too old to copy backups to remote storage: update it.");
+            return null;
+        }
+
+        backup.CopyTo(storage, server.ShortId);
+        var target = storages.Target(storage, backup.RemoteKey!);
+        if (target is null)
+        {
+            backup.CopyNotPossible("The storage's secret key cannot be read with this panel's keys: set it again.");
+        }
+
+        return target;
+    }
+
+    /// <summary>The target of a backup's copy, when it has one.</summary>
+    private Task<RemoteBackupTarget?> RemoteOfAsync(Backup backup, CancellationToken cancellationToken) =>
+        backup.RemoteStatus == RemoteCopyStatus.Copied ? storages.TargetAsync(backup.StorageId, backup.RemoteKey, cancellationToken) : Task.FromResult<RemoteBackupTarget?>(null);
+
     private async Task<BackupList> ListOfAsync(Server server, CancellationToken cancellationToken)
     {
         var backups = await db.Backups.AsNoTracking().Where(b => b.ServerId == server.Id).OrderByDescending(b => b.CreatedAt).ToListAsync(cancellationToken);
-        return new BackupList([.. backups.Select(View)], server.BackupLimit);
+        var options = await db.BackupStorages.AsNoTracking().OrderBy(s => s.Name).Select(s => new BackupStorageOption(s.Id.Value, s.Name))
+            .ToListAsync(cancellationToken);
+        return new BackupList([.. backups.Select(View)], server.BackupLimit, server.BackupStorageId?.Value, options);
     }
 
     private Result Connection(NodeId node, string capability)
@@ -359,7 +444,7 @@ public sealed partial class ServerBackups(
 
     internal static BackupView View(Backup b) => new(b.Id.Value, b.Name, b.Status, b.SizeBytes, b.FileCount, b.SkippedFiles,
         b.Sha256 is { } hash ? Convert.ToHexStringLower(hash) : null, b.IsLocked, b.CreatedVia, b.CreatedAt, b.CompletedAt, b.Duration?.TotalSeconds,
-        b.ErrorMessage, b.OperationId?.Value);
+        b.ErrorMessage, b.OperationId?.Value, b.RemoteStatus, b.RemoteError);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Retention on server {ServerId} stopped at backup {BackupId}; it continues after the next backup")]
     private partial void LogPruneStopped(ServerId serverId, BackupId backupId);

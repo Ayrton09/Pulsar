@@ -25,6 +25,8 @@ internal sealed class ScheduledTaskIdConverter() : ValueConverter<ScheduledTaskI
 
 internal sealed class ScheduledRunIdConverter() : ValueConverter<ScheduledRunId, Guid>(id => id.Value, value => new ScheduledRunId(value));
 
+internal sealed class BackupStorageIdConverter() : ValueConverter<BackupStorageId, Guid>(id => id.Value, value => new BackupStorageId(value));
+
 internal sealed class NotificationChannelIdConverter() : ValueConverter<NotificationChannelId, Guid>(id => id.Value, value => new NotificationChannelId(value));
 
 internal sealed class NotificationDeliveryIdConverter() : ValueConverter<NotificationDeliveryId, Guid>(id => id.Value, value => new NotificationDeliveryId(value));

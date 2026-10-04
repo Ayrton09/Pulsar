@@ -64,6 +64,9 @@ public sealed class InProcessAgent : IAsyncDisposable
     /// <summary>File transfer timeouts (tests shorten them).</summary>
     public FileCommandOptions FileOptions { get; } = new();
 
+    /// <summary>The agent's remote storage (in memory).</summary>
+    public MemoryRemoteBackups RemoteBackups { get; } = new();
+
     /// <summary>The agent's servers while it runs.</summary>
     public ServerHost? Servers => _servers;
 
@@ -93,7 +96,7 @@ public sealed class InProcessAgent : IAsyncDisposable
         _servers = new ServerHost(Configs, new ServerStore(Configs.Paths, new PlainStateProtector()), Provisioner, Processes,
             new InstallSteps(install, files), _steamCmd, files, Rcon, new UnmanagedFirewall(),
             new FileCommands(new DirectServerFileManager(), channel, FileOptions, NullLogger<FileCommands>.Instance),
-            new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance), install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance);
+            new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance, RemoteBackups), install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance);
         _connection = new AgentConnection(Configs, Keys, new FixedNodeSystem(), _transport, new PanelAuthenticator(_transport),
             new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance, _servers), Options,
             _clock, new StubLifetime(), NullLoggerFactory.Instance, channel, _servers);

@@ -55,6 +55,7 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         builder.HasMany(s => s.Variables).WithOne().HasForeignKey(v => v.ServerId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(s => s.Variables).HasField("_variables").UsePropertyAccessMode(PropertyAccessMode.Field);
 
+        builder.HasOne<BackupStorage>().WithMany().HasForeignKey(s => s.BackupStorageId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Node>().WithMany().HasForeignKey(s => s.NodeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<GameTemplate>().WithMany().HasForeignKey(s => s.TemplateId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Operation>().WithMany().HasForeignKey(s => s.ActiveOperationId).OnDelete(DeleteBehavior.SetNull);
@@ -138,6 +139,7 @@ internal sealed class BackupConfiguration : IEntityTypeConfiguration<Backup>
         {
             t.HasCheckConstraint("ck_backups_status", SnakeCaseEnum<BackupStatus>.CheckConstraint("status"));
             t.HasCheckConstraint("ck_backups_created_via", SnakeCaseEnum<OperationRequester>.CheckConstraint("created_via"));
+            t.HasCheckConstraint("ck_backups_remote_status", SnakeCaseEnum<RemoteCopyStatus>.CheckConstraint("remote_status"));
         });
 
         builder.HasKey(b => b.Id);
@@ -146,6 +148,10 @@ internal sealed class BackupConfiguration : IEntityTypeConfiguration<Backup>
         builder.Property(b => b.Status).HasConversion<SnakeCaseEnumConverter<BackupStatus>>();
         builder.Property(b => b.CreatedVia).HasConversion<SnakeCaseEnumConverter<OperationRequester>>();
         builder.Property(b => b.ErrorMessage).HasMaxLength(Backup.MaxErrorMessageLength);
+        builder.Property(b => b.RemoteStatus).HasConversion<SnakeCaseEnumConverter<RemoteCopyStatus>>().HasDefaultValue(RemoteCopyStatus.None)
+            .HasSentinel(RemoteCopyStatus.None);
+        builder.Property(b => b.RemoteKey).HasMaxLength(512);
+        builder.Property(b => b.RemoteError).HasMaxLength(Backup.MaxErrorMessageLength);
         builder.Ignore(b => b.Duration);
         // The agent's result, retention and users (locking, deleting) can race: the loser retries or gives way.
         builder.Property<uint>("Version").IsRowVersion();
@@ -156,5 +162,24 @@ internal sealed class BackupConfiguration : IEntityTypeConfiguration<Backup>
         builder.HasOne<Node>().WithMany().HasForeignKey(b => b.NodeId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne<Operation>().WithMany().HasForeignKey(b => b.OperationId).OnDelete(DeleteBehavior.SetNull);
         builder.HasOne<PulsarUser>().WithMany().HasForeignKey(b => b.CreatedBy).OnDelete(DeleteBehavior.SetNull);
+        // A storage holding copies cannot be deleted (the application says so first; this is the backstop).
+        builder.HasOne<BackupStorage>().WithMany().HasForeignKey(b => b.StorageId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class BackupStorageConfiguration : IEntityTypeConfiguration<BackupStorage>
+{
+    public void Configure(EntityTypeBuilder<BackupStorage> builder)
+    {
+        builder.ToTable("backup_storages");
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.Id).ValueGeneratedNever();
+        builder.Property(s => s.Name).HasMaxLength(BackupStorage.MaxNameLength);
+        builder.Property(s => s.Endpoint).HasMaxLength(BackupStorage.MaxEndpointLength);
+        builder.Property(s => s.Region).HasMaxLength(BackupStorage.MaxRegionLength);
+        builder.Property(s => s.Bucket).HasMaxLength(63);
+        builder.Property(s => s.Prefix).HasMaxLength(BackupStorage.MaxPrefixLength);
+        builder.Property(s => s.AccessKeyId).HasMaxLength(BackupStorage.MaxAccessKeyLength);
+        builder.Property<uint>("Version").IsRowVersion();
     }
 }

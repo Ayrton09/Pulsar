@@ -15,3 +15,15 @@ internal sealed class DataProtectionVariableProtector(IDataProtectionProvider pr
 
     public string Unprotect(byte[] protectedValue) => Encoding.UTF8.GetString(_protector.Unprotect(protectedValue));
 }
+
+/// <summary>Backup storage secret keys encrypted with the panel's Data Protection key ring (ADR-0011).</summary>
+internal sealed class DataProtectionBackupStorageSecretProtector(IDataProtectionProvider provider) : IBackupStorageSecretProtector
+{
+    private const string Purpose = "Pulsar.BackupStorage.v1";
+
+    private readonly IDataProtector _protector = provider.CreateProtector(Purpose);
+
+    public byte[] Protect(string value) => _protector.Protect(Encoding.UTF8.GetBytes(value));
+
+    public string Unprotect(byte[] protectedValue) => Encoding.UTF8.GetString(_protector.Unprotect(protectedValue));
+}

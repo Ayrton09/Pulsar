@@ -217,34 +217,57 @@ public sealed record ReceiveFileCommand(Guid ServerId, string Path, string Ticke
 }
 
 /// <summary>
-/// Operation: archives the server's files (the manifest's <c>backup</c> globs) into a zip kept on the node
-/// (docs/architecture/03, "Backups"). The server may keep running. The result carries a <see cref="BackupResult"/>.
+/// S3-compatible storage a backup is copied to (AWS S3, Cloudflare R2, Backblaze B2, SeaweedFS…). The panel sends it,
+/// secret included, with each backup command that needs it; the agent keeps none of it (docs/architecture/08).
 /// </summary>
-public sealed record CreateBackupCommand(Guid ServerId, Guid BackupId) : AgentCommand
+/// <param name="Endpoint">The service's address (https://…); null for AWS S3 in <paramref name="Region"/>.</param>
+/// <param name="Key">The backup's object key in the bucket.</param>
+/// <param name="PathStyle">The bucket in the path rather than in the host name (most S3-compatible services).</param>
+public sealed record RemoteBackupTarget(string? Endpoint, string Region, string Bucket, string Key, string AccessKeyId, string SecretAccessKey,
+    bool PathStyle)
+{
+    // Records print every member: the secret must never reach a log through ToString.
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"Endpoint = {Endpoint}, Region = {Region}, Bucket = {Bucket}, Key = {Key}, AccessKeyId = {AccessKeyId}, PathStyle = {PathStyle}");
+        return true;
+    }
+}
+
+/// <summary>
+/// Operation: archives the server's files (the manifest's <c>backup</c> globs) into a zip kept on the node
+/// (docs/architecture/03, "Backups"), then copies it to <paramref name="Remote"/> when there is one. The server may keep
+/// running. The result carries a <see cref="BackupResult"/>.
+/// </summary>
+public sealed record CreateBackupCommand(Guid ServerId, Guid BackupId, RemoteBackupTarget? Remote = null) : AgentCommand
 {
     public const string Type = "server.backup_create";
 }
 
 /// <summary>
 /// Operation: puts the backup's files back in the server directory (files it does not have stay as they are). The
-/// server must be stopped; the archive must still have <paramref name="Sha256"/> (lowercase hex).
+/// server must be stopped; the archive must still have <paramref name="Sha256"/> (lowercase hex). An archive no longer
+/// on the node is fetched from <paramref name="Remote"/> first (and kept).
 /// </summary>
-public sealed record RestoreBackupCommand(Guid ServerId, Guid BackupId, string Sha256) : AgentCommand
+public sealed record RestoreBackupCommand(Guid ServerId, Guid BackupId, string Sha256, RemoteBackupTarget? Remote = null) : AgentCommand
 {
     public const string Type = "server.backup_restore";
 }
 
-/// <summary>Deletes a backup's archive from the node; one that is already gone is <see cref="AckStatus.AlreadyInState"/>.</summary>
-public sealed record DeleteBackupCommand(Guid ServerId, Guid BackupId) : AgentCommand
+/// <summary>
+/// Deletes a backup's archive from the node, and its copy from <paramref name="Remote"/>; one that is already gone is
+/// <see cref="AckStatus.AlreadyInState"/>.
+/// </summary>
+public sealed record DeleteBackupCommand(Guid ServerId, Guid BackupId, RemoteBackupTarget? Remote = null) : AgentCommand
 {
     public const string Type = "server.backup_delete";
 }
 
 /// <summary>
 /// Sends a backup's archive to the panel like <see cref="SendFileCommand"/> (the ack carries a <see cref="FileEntryResult"/>),
-/// with <c>PUT</c> to <see cref="AgentProtocol.TransferPath"/>.
+/// with <c>PUT</c> to <see cref="AgentProtocol.TransferPath"/>; from <paramref name="Remote"/> when the node no longer has it.
 /// </summary>
-public sealed record SendBackupCommand(Guid ServerId, Guid BackupId, string Ticket) : AgentCommand
+public sealed record SendBackupCommand(Guid ServerId, Guid BackupId, string Ticket, RemoteBackupTarget? Remote = null) : AgentCommand
 {
     public const string Type = "server.backup_send";
 }
@@ -261,7 +284,10 @@ public abstract record CommandResult;
 /// <param name="FileCount">Files in it.</param>
 /// <param name="SkippedFiles">Files left out because the game held them open (a backup of a running server).</param>
 /// <param name="Sha256">The archive's SHA-256, lowercase hex: a restore checks it first.</param>
-public sealed record BackupResult(long Size, int FileCount, int SkippedFiles, string Sha256) : CommandResult;
+/// <param name="RemoteCopied">The archive was copied to the command's remote storage.</param>
+/// <param name="RemoteError">Why the copy to remote storage failed (the backup itself is fine on the node).</param>
+public sealed record BackupResult(long Size, int FileCount, int SkippedFiles, string Sha256, bool RemoteCopied = false, string? RemoteError = null)
+    : CommandResult;
 
 public enum AckStatus
 {
@@ -315,6 +341,9 @@ public static class AgentCapabilities
 
     /// <summary>Not a command: the agent manages Windows Firewall rules for its servers (its administrator enabled it).</summary>
     public const string Firewall = "node.firewall";
+
+    /// <summary>Not a command: the agent copies backups to S3-compatible storage (<see cref="RemoteBackupTarget"/>).</summary>
+    public const string RemoteBackups = "backups.remote";
 
     /// <summary>The capability an agent must announce to receive <paramref name="command"/>.</summary>
     public static string Of(AgentCommand command) => command switch

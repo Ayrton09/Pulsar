@@ -1078,6 +1078,23 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("operation_id");
 
+                    b.Property<string>("RemoteError")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("remote_error");
+
+                    b.Property<string>("RemoteKey")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("remote_key");
+
+                    b.Property<string>("RemoteStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("none")
+                        .HasColumnName("remote_status");
+
                     b.Property<Guid>("ServerId")
                         .HasColumnType("uuid")
                         .HasColumnName("server_id");
@@ -1103,6 +1120,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("status");
 
+                    b.Property<Guid?>("StorageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("storage_id");
+
                     b.Property<uint>("Version")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -1121,6 +1142,9 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.HasIndex("OperationId")
                         .HasDatabaseName("ix_backups_operation_id");
 
+                    b.HasIndex("StorageId")
+                        .HasDatabaseName("ix_backups_storage_id");
+
                     b.HasIndex("ServerId", "CreatedAt")
                         .HasDatabaseName("ix_backups_server_id_created_at");
 
@@ -1128,8 +1152,80 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_backups_created_via", "created_via IN ('schedule', 'system', 'user')");
 
+                            t.HasCheckConstraint("ck_backups_remote_status", "remote_status IN ('copied', 'failed', 'none', 'pending')");
+
                             t.HasCheckConstraint("ck_backups_status", "status IN ('cancelled', 'completed', 'creating', 'failed')");
                         });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Servers.BackupStorage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccessKeyId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("access_key_id");
+
+                    b.Property<string>("Bucket")
+                        .IsRequired()
+                        .HasMaxLength(63)
+                        .HasColumnType("character varying(63)")
+                        .HasColumnName("bucket");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Endpoint")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("endpoint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("PathStyle")
+                        .HasColumnType("boolean")
+                        .HasColumnName("path_style");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("prefix");
+
+                    b.Property<string>("Region")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("region");
+
+                    b.Property<byte[]>("SecretProtected")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("secret_protected");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_backup_storages");
+
+                    b.ToTable("backup_storages", (string)null);
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Servers.GameTemplate", b =>
@@ -1317,6 +1413,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("backup_limit");
 
+                    b.Property<Guid?>("BackupStorageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("backup_storage_id");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -1411,6 +1511,9 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ActiveOperationId")
                         .HasDatabaseName("ix_servers_active_operation_id");
+
+                    b.HasIndex("BackupStorageId")
+                        .HasDatabaseName("ix_servers_backup_storage_id");
 
                     b.HasIndex("NodeId")
                         .HasDatabaseName("ix_servers_node_id");
@@ -1844,6 +1947,12 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_backups_servers_server_id");
+
+                    b.HasOne("Pulsar.Domain.Servers.BackupStorage", null)
+                        .WithMany()
+                        .HasForeignKey("StorageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_backups_backup_storages_storage_id");
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Servers.Operation", b =>
@@ -1875,6 +1984,12 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ActiveOperationId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_servers_operations_active_operation_id");
+
+                    b.HasOne("Pulsar.Domain.Servers.BackupStorage", null)
+                        .WithMany()
+                        .HasForeignKey("BackupStorageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_servers_backup_storages_backup_storage_id");
 
                     b.HasOne("Pulsar.Domain.Nodes.Node", null)
                         .WithMany()
