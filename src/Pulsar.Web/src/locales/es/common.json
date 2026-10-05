@@ -90,7 +90,7 @@
   },
   "users": {
     "title": "Usuarios",
-    "description": "Personas que pueden ingresar al panel y sus roles globales.",
+    "description": "Personas que pueden ingresar al panel, sus roles globales y su acceso a nodos y servidores.",
     "create": "Agregar usuario",
     "user": "Usuario",
     "roles": "Roles",
@@ -114,7 +114,20 @@
     "twoFactorOn": "Tiene la verificación en dos pasos activada.",
     "resetTwoFactor": "Desactivar dos pasos",
     "resetTwoFactorConfirm": "¿Desactivar la verificación en dos pasos de {{name}}? Sus sesiones terminan; si un rol la exige, la configura de nuevo al iniciar sesión.",
-    "twoFactorReset": "Verificación en dos pasos desactivada."
+    "twoFactorReset": "Verificación en dos pasos desactivada.",
+    "access": {
+      "title": "Acceso a nodos y servidores",
+      "hint": "Un rol de nodo o de servidor vale solo ahí: el usuario ve y administra ese nodo (con sus servidores) o ese servidor, y nada más.",
+      "empty": "Sin roles en nodos o servidores puntuales.",
+      "on": "{{role}} en {{target}}",
+      "node": "Nodo",
+      "server": "Servidor",
+      "role": "Rol",
+      "choose": "Elegí…",
+      "add": "Dar acceso",
+      "remove": "Quitar",
+      "noRoles": "Todavía no hay roles de este alcance: creá uno en Roles."
+    }
   },
   "roles": {
     "title": "Roles",

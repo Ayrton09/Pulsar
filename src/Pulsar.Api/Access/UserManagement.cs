@@ -10,14 +10,16 @@ using Pulsar.Application.Audit;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Servers;
 using Pulsar.Infrastructure.Identity;
 using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Access;
 
 /// <summary>
-/// User administration (ASP.NET Core Identity accounts + global role assignments) with the anti-escalation rules of
-/// docs/architecture/02. Lives in the API because it works directly with Identity's UserManager.
+/// User administration (ASP.NET Core Identity accounts, and role assignments: global, on a node or on a server) with the
+/// anti-escalation rules of docs/architecture/02. Lives in the API because it works directly with Identity's UserManager.
 /// </summary>
 public sealed class UserManagement(
     PulsarDbContext db,
@@ -32,7 +34,8 @@ public sealed class UserManagement(
     {
         var all = await db.Users.AsNoTracking().OrderBy(u => u.NormalizedUserName).ToListAsync(ct);
         var roles = await RoleReferencesAsync(null, ct);
-        return [.. all.Select(u => Describe(u, roles))];
+        var access = await AccessReferencesAsync(null, ct);
+        return [.. all.Select(u => Describe(u, roles, access))];
     }
 
     public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> GetAsync(UserId id, CancellationToken ct)
@@ -43,7 +46,7 @@ public sealed class UserManagement(
             return ApiProblems.FromDomainError(AccessErrors.UserNotFound);
         }
 
-        return TypedResults.Ok(Describe(user, await RoleReferencesAsync(id, ct)));
+        return TypedResults.Ok(await DescribeAsync(user, ct));
     }
 
     public async Task<Results<Created<UserResponse>, ProblemHttpResult, ValidationProblem>> CreateAsync(CreateUserRequest input, CancellationToken ct)
@@ -95,7 +98,7 @@ public sealed class UserManagement(
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
-        var response = Describe(user, roles.Select(r => (user.Id, new RoleReference(r.Id.Value, r.Name))).ToList());
+        var response = Describe(user, roles.Select(r => (user.Id, new RoleReference(r.Id.Value, r.Name))).ToList(), []);
         return TypedResults.Created($"/api/v1/users/{user.Id}", response);
     }
 
@@ -145,7 +148,7 @@ public sealed class UserManagement(
             }
         }
 
-        return TypedResults.Ok(Describe(user, await RoleReferencesAsync(id, ct)));
+        return TypedResults.Ok(await DescribeAsync(user, ct));
     }
 
     public async Task<Results<NoContent, ProblemHttpResult, ValidationProblem>> ResetPasswordAsync(UserId id, ResetPasswordRequest input, CancellationToken ct)
@@ -271,7 +274,119 @@ public sealed class UserManagement(
         await transaction.CommitAsync(ct);
         evaluator.Invalidate(id);
         connections.EndUser(id);
-        return TypedResults.Ok(Describe(user, await RoleReferencesAsync(id, ct)));
+        return TypedResults.Ok(await DescribeAsync(user, ct));
+    }
+
+    /// <summary>
+    /// Grants (<paramref name="granted"/>) or revokes a node or server role of a user on <paramref name="targetId"/>,
+    /// under the same rules as global roles: nobody changes their own, the role must be of that scope, and the actor
+    /// must hold every permission of the role there. Repeating a grant or a revoke changes nothing. The user's live
+    /// connections are closed, so what they watch follows at once.
+    /// </summary>
+    public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> SetAccessAsync(UserId id, PermissionScope scope, Guid targetId, RoleId roleId,
+        bool granted, CancellationToken ct)
+    {
+        var user = await db.Users.SingleOrDefaultAsync(u => u.Id == id, ct);
+        if (user is null)
+        {
+            return ApiProblems.FromDomainError(AccessErrors.UserNotFound);
+        }
+
+        if (await db.Roles.SingleOrDefaultAsync(r => r.Id == roleId, ct) is not { } role)
+        {
+            return ApiProblems.FromDomainError(AccessErrors.RoleNotFound);
+        }
+
+        AccessTarget target;
+        string targetName;
+        if (scope == PermissionScope.Node)
+        {
+            var node = await db.Nodes.Where(n => n.Id == new NodeId(targetId)).Select(n => new { n.Id, n.Name }).SingleOrDefaultAsync(ct);
+            if (node is null)
+            {
+                return ApiProblems.FromDomainError(NodeErrors.NotFound);
+            }
+
+            (target, targetName) = (AccessTarget.ForNode(node.Id), node.Name);
+        }
+        else
+        {
+            var server = await db.Servers.Where(s => s.Id == new ServerId(targetId)).Select(s => new { s.Id, s.NodeId, s.Name }).SingleOrDefaultAsync(ct);
+            if (server is null)
+            {
+                return ApiProblems.FromDomainError(ServerErrors.NotFound);
+            }
+
+            (target, targetName) = (AccessTarget.ForServer(server.Id, server.NodeId), server.Name);
+        }
+
+        var actor = Actor;
+        var allowed = AccessRules.CanChangeAssignment(actor, await evaluator.GetAsync(actor, ct), id, role, target);
+        if (!allowed.IsSuccess)
+        {
+            return ApiProblems.FromDomainError(allowed.Error!);
+        }
+
+        var changed = scope == PermissionScope.Node
+            ? await SetNodeAccessAsync(id, new NodeId(targetId), roleId, granted, actor, ct)
+            : await SetServerAccessAsync(id, new ServerId(targetId), roleId, granted, actor, ct);
+        if (changed)
+        {
+            audit.Record(granted ? AuditActions.Role.Assigned : AuditActions.Role.Revoked, metadata: new
+            {
+                userName = user.UserName,
+                role = role.Name,
+                permissions = role.Permissions.Order(StringComparer.Ordinal),
+                scope = scope == PermissionScope.Node ? "node" : "server",
+                target = targetName,
+                targetId,
+            }).WithTarget("user", user.Id.ToString());
+            await db.SaveChangesAsync(ct);
+            evaluator.Invalidate(id);
+            connections.EndUser(id);
+        }
+
+        return TypedResults.Ok(await DescribeAsync(user, ct));
+    }
+
+    private async Task<bool> SetNodeAccessAsync(UserId id, NodeId node, RoleId role, bool granted, UserId actor, CancellationToken ct)
+    {
+        var existing = await db.NodeAccess.SingleOrDefaultAsync(a => a.UserId == id && a.NodeId == node && a.RoleId == role, ct);
+        if (granted == (existing is not null))
+        {
+            return false;
+        }
+
+        if (existing is null)
+        {
+            db.NodeAccess.Add(new NodeAccess(id, node, role, actor, clock.GetUtcNow()));
+        }
+        else
+        {
+            db.NodeAccess.Remove(existing);
+        }
+
+        return true;
+    }
+
+    private async Task<bool> SetServerAccessAsync(UserId id, ServerId server, RoleId role, bool granted, UserId actor, CancellationToken ct)
+    {
+        var existing = await db.ServerAccess.SingleOrDefaultAsync(a => a.UserId == id && a.ServerId == server && a.RoleId == role, ct);
+        if (granted == (existing is not null))
+        {
+            return false;
+        }
+
+        if (existing is null)
+        {
+            db.ServerAccess.Add(new ServerAccess(id, server, role, actor, clock.GetUtcNow()));
+        }
+        else
+        {
+            db.ServerAccess.Remove(existing);
+        }
+
+        return true;
     }
 
     private UserId Actor => request.UserId ?? throw new InvalidOperationException("User management requires a signed-in user.");
@@ -319,7 +434,37 @@ public sealed class UserManagement(
         return [.. rows.Select(x => (x.UserId, new RoleReference(x.RoleId.Value, x.Name)))];
     }
 
-    private static UserResponse Describe(PulsarUser user, List<(UserId UserId, RoleReference Role)> roles) => new(
+    private async Task<List<(UserId UserId, AccessReference Access)>> AccessReferencesAsync(UserId? user, CancellationToken ct)
+    {
+        var nodes = await (
+                from a in db.NodeAccess
+                join r in db.Roles on a.RoleId equals r.Id
+                join n in db.Nodes on a.NodeId equals n.Id
+                where user == null || a.UserId == user
+                select new { a.UserId, TargetId = n.Id.Value, TargetName = n.Name, RoleId = r.Id, RoleName = r.Name })
+            .ToListAsync(ct);
+        var servers = await (
+                from a in db.ServerAccess
+                join r in db.Roles on a.RoleId equals r.Id
+                join s in db.Servers on a.ServerId equals s.Id
+                where user == null || a.UserId == user
+                select new { a.UserId, TargetId = s.Id.Value, TargetName = s.Name, RoleId = r.Id, RoleName = r.Name })
+            .ToListAsync(ct);
+        return
+        [
+            .. nodes.Select(x => (x.UserId, new AccessReference(PermissionScope.Node, x.TargetId, x.TargetName, new RoleReference(x.RoleId.Value, x.RoleName))))
+                .Concat(servers.Select(x => (x.UserId,
+                    new AccessReference(PermissionScope.Server, x.TargetId, x.TargetName, new RoleReference(x.RoleId.Value, x.RoleName)))))
+                .OrderBy(x => x.Item2.Scope).ThenBy(x => x.Item2.TargetName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.Item2.Role.Name, StringComparer.OrdinalIgnoreCase),
+        ];
+    }
+
+    private async Task<UserResponse> DescribeAsync(PulsarUser user, CancellationToken ct) =>
+        Describe(user, await RoleReferencesAsync(user.Id, ct), await AccessReferencesAsync(user.Id, ct));
+
+    private static UserResponse Describe(PulsarUser user, List<(UserId UserId, RoleReference Role)> roles,
+        List<(UserId UserId, AccessReference Access)> access) => new(
         user.Id.Value,
         user.UserName!,
         user.DisplayName,
@@ -328,7 +473,8 @@ public sealed class UserManagement(
         user.TwoFactorEnabled,
         user.CreatedAt,
         user.LastLoginAt,
-        [.. roles.Where(r => r.UserId == user.Id).Select(r => r.Role)]);
+        [.. roles.Where(r => r.UserId == user.Id).Select(r => r.Role)],
+        [.. access.Where(a => a.UserId == user.Id).Select(a => a.Access)]);
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

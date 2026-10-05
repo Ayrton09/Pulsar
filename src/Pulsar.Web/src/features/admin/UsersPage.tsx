@@ -6,11 +6,13 @@ import { z } from 'zod';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Badge, PageHeader, Table, Td, Th } from '../../components/ui/Display';
-import { Checkbox, Field, Input } from '../../components/ui/Form';
+import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage, fieldErrors } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
 import { can, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
+import { useNodes } from '../nodes/api';
+import { useServers } from '../servers/api';
 import { MIN_PASSWORD_LENGTH } from '../auth/SetupPage';
 import {
   useCreateUser,
@@ -18,9 +20,11 @@ import {
   useResetPassword,
   useResetTwoFactor,
   useRoles,
+  useSetUserAccess,
   useSetUserRoles,
   useUpdateUser,
   useUsers,
+  type Access,
   type Role,
   type User,
 } from './api';
@@ -69,9 +73,13 @@ export function UsersPage() {
                   )}
                 </Td>
                 <Td>
-                  {user.roles.length > 0 ? (
-                    user.roles.map((r) => r.name).join(', ')
-                  ) : (
+                  {user.roles.length > 0 && user.roles.map((r) => r.name).join(', ')}
+                  {user.access.map((access) => (
+                    <p key={`${access.scope}-${access.targetId}-${access.role.id}`} className="text-xs text-muted">
+                      {t('users.access.on', { role: access.role.name, target: access.targetName })}
+                    </p>
+                  ))}
+                  {user.roles.length === 0 && user.access.length === 0 && (
                     <span className="text-muted">{t('common.none')}</span>
                   )}
                 </Td>
@@ -297,6 +305,10 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
           </div>
         )}
 
+        {!isSelf && roles.data && (
+          <AccessSection user={user} roles={roles.data} onSaved={() => setNotice(t('users.saved'))} />
+        )}
+
         {!isSelf && (
           <div className="space-y-3 border-t border-border pt-4">
             <Field label={t('users.newPassword')} hint={t('auth.passwordHint', { min: MIN_PASSWORD_LENGTH })}>
@@ -370,5 +382,133 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
         </div>
       </div>
     </Dialog>
+  );
+}
+
+/**
+ * Roles on one node (and its servers) or on one server: what the user has, and adding or taking one away. Applied at
+ * once (the user's live pages follow); the list here is the panel's answer to each change.
+ */
+function AccessSection({ user, roles, onSaved }: { user: User; roles: Role[]; onSaved: () => void }) {
+  const { t } = useTranslation();
+  const change = useSetUserAccess();
+  const nodes = useNodes();
+  const servers = useServers();
+  const [access, setAccess] = useState<Access[]>(user.access);
+  const [scope, setScope] = useState<'node' | 'server'>('server');
+  const [targetId, setTargetId] = useState('');
+  const [roleId, setRoleId] = useState('');
+  const targets =
+    scope === 'node'
+      ? (nodes.data ?? []).map((node) => ({ id: node.id, name: node.name }))
+      : (servers.data ?? []).map((server) => ({ id: server.id, name: `${server.name} (${server.nodeName})` }));
+  const scopedRoles = roles.filter((role) => role.scope === scope);
+
+  const apply = (next: { scope: 'node' | 'server'; targetId: string; roleId: string; granted: boolean }) =>
+    change.mutate(
+      { id: user.id, ...next },
+      {
+        onSuccess: (updated) => {
+          setAccess(updated.access);
+          onSaved();
+        },
+      },
+    );
+
+  return (
+    <section aria-labelledby="user-access" className="space-y-3 border-t border-border pt-4">
+      <div>
+        <h3 id="user-access" className="text-sm font-medium">
+          {t('users.access.title')}
+        </h3>
+        <p className="text-xs text-muted">{t('users.access.hint')}</p>
+      </div>
+      {change.isError && <Alert>{errorMessage(t, change.error)}</Alert>}
+      {access.length === 0 ? (
+        <p className="text-sm text-muted">{t('users.access.empty')}</p>
+      ) : (
+        <ul className="space-y-1 text-sm">
+          {access.map((granted) => (
+            <li
+              key={`${granted.scope}-${granted.targetId}-${granted.role.id}`}
+              className="flex items-center justify-between gap-2"
+            >
+              <span className="break-words">
+                {t('users.access.on', { role: granted.role.name, target: granted.targetName })}{' '}
+                <span className="text-xs text-muted">({t(`roles.scopes.${granted.scope}`)})</span>
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                busy={change.isPending}
+                onClick={() =>
+                  apply({
+                    scope: granted.scope as 'node' | 'server',
+                    targetId: granted.targetId,
+                    roleId: granted.role.id,
+                    granted: false,
+                  })
+                }
+              >
+                {t('users.access.remove')}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Field label={t('roles.scope')}>
+          {(ids) => (
+            <Select
+              {...ids}
+              value={scope}
+              onChange={(e) => {
+                setScope(e.target.value as 'node' | 'server');
+                setTargetId('');
+                setRoleId('');
+              }}
+            >
+              <option value="server">{t('roles.scopes.server')}</option>
+              <option value="node">{t('roles.scopes.node')}</option>
+            </Select>
+          )}
+        </Field>
+        <Field label={scope === 'node' ? t('users.access.node') : t('users.access.server')}>
+          {(ids) => (
+            <Select {...ids} value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+              <option value="">{t('users.access.choose')}</option>
+              {targets.map((target) => (
+                <option key={target.id} value={target.id}>
+                  {target.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label={t('users.access.role')}>
+          {(ids) => (
+            <Select {...ids} value={roleId} onChange={(e) => setRoleId(e.target.value)}>
+              <option value="">{t('users.access.choose')}</option>
+              {scopedRoles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      </div>
+      {scopedRoles.length === 0 && <p className="text-xs text-muted">{t('users.access.noRoles')}</p>}
+      <div className="flex justify-end">
+        <Button
+          variant="secondary"
+          busy={change.isPending}
+          disabled={targetId === '' || roleId === ''}
+          onClick={() => apply({ scope, targetId, roleId, granted: true })}
+        >
+          {t('users.access.add')}
+        </Button>
+      </div>
+    </section>
   );
 }

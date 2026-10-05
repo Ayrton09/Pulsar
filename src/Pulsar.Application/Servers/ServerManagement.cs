@@ -82,6 +82,7 @@ public sealed partial class ServerManagement(
     ServerOperations operations,
     OperationProgressCache progress,
     IPermissionEvaluator permissions,
+    VisibleResources visible,
     IAuditLog audit,
     IRequestContext request,
     TimeProvider clock,
@@ -98,6 +99,11 @@ public sealed partial class ServerManagement(
         }
 
         var servers = await query.OrderBy(s => s.Name).ToListAsync(cancellationToken);
+        if (await visible.ServersAsync(cancellationToken) is { } sees)
+        {
+            servers = [.. servers.Where(s => sees(s.Id, s.NodeId))];
+        }
+
         return await SummariesAsync(servers, cancellationToken);
     }
 
@@ -117,6 +123,16 @@ public sealed partial class ServerManagement(
         if (!await db.Nodes.AnyAsync(n => n.Id == nodeId, cancellationToken))
         {
             return NodeErrors.NotFound;
+        }
+
+        if (request.UserId is { } user)
+        {
+            var granted = await permissions.GetAsync(user, cancellationToken);
+            if (!granted.Has(Permissions.Server.Create, AccessTarget.ForNode(nodeId)))
+            {
+                // A node the user cannot see is one that does not exist, for them.
+                return ResourceVisibility.Node.Any(p => granted.Has(p, AccessTarget.ForNode(nodeId))) ? ServerErrors.CreateForbidden : NodeErrors.NotFound;
+            }
         }
 
         var template = await templates.FindOfferedAsync(templateId, cancellationToken);

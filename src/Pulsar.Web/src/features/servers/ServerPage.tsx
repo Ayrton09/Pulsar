@@ -7,7 +7,7 @@ import { Alert, Badge, Card, PageHeader, Table, Td, Th } from '../../components/
 import { Checkbox } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatBytes, useFormatDate, useFormatDuration } from '../../lib/format';
-import { can, Permission } from '../../lib/permissions';
+import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { BackupsTab } from '../backups/BackupsTab';
 import { FilesTab } from '../files/FilesTab';
@@ -41,12 +41,14 @@ export function ServerPage() {
   useWatchServers();
   const metrics = useServerMetrics(id);
   const [search, setSearch] = useSearchParams();
+  // Until the server is loaded nothing is shown, tabs included.
+  const target = details.data?.server ?? { id, nodeId: '' };
   const tabs = allTabs.filter(
     (name) =>
-      (name !== 'console' || can(me, Permission.ServerConsoleView)) &&
-      (name !== 'files' || can(me, Permission.ServerFilesView)) &&
-      (name !== 'backups' || can(me, Permission.ServerBackupsView)) &&
-      (name !== 'schedules' || can(me, Permission.ServerSchedulesView)),
+      (name !== 'console' || canOnServer(me, target, Permission.ServerConsoleView)) &&
+      (name !== 'files' || canOnServer(me, target, Permission.ServerFilesView)) &&
+      (name !== 'backups' || canOnServer(me, target, Permission.ServerBackupsView)) &&
+      (name !== 'schedules' || canOnServer(me, target, Permission.ServerSchedulesView)),
   );
   const requested = search.get('tab');
   const tab: Tab = tabs.find((name) => name === requested) ?? 'overview';
@@ -91,7 +93,7 @@ export function ServerPage() {
       <LifecycleActions details={details.data} />
       {server.activeOperation && (
         <div className="mt-4">
-          <OperationProgress serverId={server.id} operation={server.activeOperation} />
+          <OperationProgress server={server} operation={server.activeOperation} />
         </div>
       )}
       <div role="tablist" aria-label={t('servers.tabs.label')} className="mt-6 flex gap-1 border-b border-border">
@@ -176,7 +178,7 @@ function LifecycleActions({ details }: { details: ServerDetails }) {
     ['restart', Permission.ServerRestart, available.restart],
     ['kill', Permission.ServerKill, available.kill],
   ];
-  const visible = buttons.filter(([, permission]) => can(me, permission));
+  const visible = buttons.filter(([, permission]) => canOnServer(me, server, permission));
   if (visible.length === 0) {
     return null;
   }
@@ -373,8 +375,8 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
   const [validate, setValidate] = useState(false);
   const { server } = details;
   const available = serverActions(server);
-  const canInstall = can(me, Permission.ServerInstall);
-  const canDelete = can(me, Permission.ServerDelete);
+  const canInstall = canOnServer(me, details.server, Permission.ServerInstall);
+  const canDelete = canOnServer(me, details.server, Permission.ServerDelete);
   if (!canInstall && !canDelete) {
     return null;
   }

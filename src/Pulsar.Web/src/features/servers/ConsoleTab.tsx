@@ -9,7 +9,7 @@ import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Display';
 import { Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
-import { can, Permission } from '../../lib/permissions';
+import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useLiveStatus, useServerConsole } from '../live/hooks';
 import type { ConsoleEntry } from '../live/types';
@@ -120,7 +120,9 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
         data-testid="console-output"
         className="h-[28rem] overflow-hidden rounded-md border border-border bg-[#0b0f14] p-2"
       />
-      {can(me, Permission.ServerConsoleWrite) && <CommandInput serverId={server.id} running={running} />}
+      {canOnServer(me, server, Permission.ServerConsoleWrite) && (
+        <CommandInput serverId={server.id} running={running} />
+      )}
     </section>
   );
 }

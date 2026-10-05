@@ -279,7 +279,9 @@ public static class AuthEndpoints
     {
         var permissions = await evaluator.GetAsync(user.Id, ct);
         return new CurrentUserResponse(user.Id.Value, user.UserName!, user.DisplayName, user.Email,
-            [.. permissions.Global.Order(StringComparer.Ordinal)], user.TwoFactorEnabled, permissions.RequiresTwoFactor && !user.TwoFactorEnabled);
+            [.. permissions.Global.Order(StringComparer.Ordinal)], user.TwoFactorEnabled, permissions.RequiresTwoFactor && !user.TwoFactorEnabled,
+            [.. permissions.Nodes.Select(n => new ScopedPermissions(n.Key.Value, [.. n.Value.Order(StringComparer.Ordinal)]))],
+            [.. permissions.Servers.Select(s => new ScopedPermissions(s.Key.Value, [.. s.Value.Order(StringComparer.Ordinal)]))]);
     }
 
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];

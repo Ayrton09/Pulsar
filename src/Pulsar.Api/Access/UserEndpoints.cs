@@ -25,6 +25,14 @@ public static class UserEndpoints
             m.SetRolesAsync(new UserId(id), request, ct)).RequirePermission(Permissions.User.Manage);
         users.MapDelete("/{id:guid}", (Guid id, UserManagement m, CancellationToken ct) => m.DeleteAsync(new UserId(id), ct))
             .RequirePermission(Permissions.User.Manage);
+        users.MapPut("/{id:guid}/nodes/{nodeId:guid}/roles/{roleId:guid}", (Guid id, Guid nodeId, Guid roleId, UserManagement m, CancellationToken ct) =>
+            m.SetAccessAsync(new UserId(id), PermissionScope.Node, nodeId, new RoleId(roleId), granted: true, ct)).RequirePermission(Permissions.User.Manage);
+        users.MapDelete("/{id:guid}/nodes/{nodeId:guid}/roles/{roleId:guid}", (Guid id, Guid nodeId, Guid roleId, UserManagement m, CancellationToken ct) =>
+            m.SetAccessAsync(new UserId(id), PermissionScope.Node, nodeId, new RoleId(roleId), granted: false, ct)).RequirePermission(Permissions.User.Manage);
+        users.MapPut("/{id:guid}/servers/{serverId:guid}/roles/{roleId:guid}", (Guid id, Guid serverId, Guid roleId, UserManagement m, CancellationToken ct) =>
+            m.SetAccessAsync(new UserId(id), PermissionScope.Server, serverId, new RoleId(roleId), granted: true, ct)).RequirePermission(Permissions.User.Manage);
+        users.MapDelete("/{id:guid}/servers/{serverId:guid}/roles/{roleId:guid}", (Guid id, Guid serverId, Guid roleId, UserManagement m, CancellationToken ct) =>
+            m.SetAccessAsync(new UserId(id), PermissionScope.Server, serverId, new RoleId(roleId), granted: false, ct)).RequirePermission(Permissions.User.Manage);
         return api;
     }
 

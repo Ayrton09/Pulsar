@@ -6,7 +6,7 @@ import { Alert, Badge, Card, Table, Td, Th } from '../../components/ui/Display';
 import { Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate, useFormatFileSize } from '../../lib/format';
-import { can, Permission } from '../../lib/permissions';
+import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import type { ServerDetails } from '../servers/api';
 import {
@@ -44,9 +44,9 @@ export function BackupsTab({ details }: { details: ServerDetails }) {
   const lock = useLockBackup(server.id);
   const remove = useDeleteBackup(server.id);
   const [creating, setCreating] = useState(false);
-  const canCreate = can(me, Permission.ServerBackupsCreate);
-  const canRestore = can(me, Permission.ServerBackupsRestore);
-  const canDelete = can(me, Permission.ServerBackupsDelete);
+  const canCreate = canOnServer(me, server, Permission.ServerBackupsCreate);
+  const canRestore = canOnServer(me, server, Permission.ServerBackupsRestore);
+  const canDelete = canOnServer(me, server, Permission.ServerBackupsDelete);
   const connected = server.nodeConnected;
   const idle = server.activeOperation === null;
   const stopped = server.runtimeState === 'offline' || server.runtimeState === 'crashed';

@@ -37,15 +37,33 @@ internal sealed class PermissionEvaluator(IPulsarDbContext db, IMemoryCache cach
             return cached;
         }
 
-        var roles = await db.Roles
+        var global = await db.Roles
             .AsNoTracking()
             .Where(r => db.UserRoles.Any(a => a.UserId == user && a.RoleId == r.Id))
             .ToListAsync(cancellationToken);
+        var nodes = await db.NodeAccess.AsNoTracking().Where(a => a.UserId == user).Select(a => new { a.NodeId, a.RoleId }).ToListAsync(cancellationToken);
+        var servers = await db.ServerAccess.AsNoTracking().Where(a => a.UserId == user)
+            .Join(db.Servers, a => a.ServerId, s => s.Id, (a, s) => new { a.ServerId, s.NodeId, a.RoleId })
+            .ToListAsync(cancellationToken);
+        var scopedRoleIds = nodes.Select(n => n.RoleId).Concat(servers.Select(s => s.RoleId)).Distinct().ToList();
+        var scopedRoles = scopedRoleIds.Count == 0
+            ? []
+            : await db.Roles.AsNoTracking().Where(r => scopedRoleIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, cancellationToken);
 
         var builder = new EffectivePermissions.Builder();
-        foreach (var role in roles)
+        foreach (var role in global)
         {
             builder.Add(role, AccessTarget.Global);
+        }
+
+        foreach (var node in nodes)
+        {
+            builder.Add(scopedRoles[node.RoleId], AccessTarget.ForNode(node.NodeId));
+        }
+
+        foreach (var server in servers)
+        {
+            builder.Add(scopedRoles[server.RoleId], AccessTarget.ForServer(server.ServerId, server.NodeId));
         }
 
         var permissions = builder.Build();

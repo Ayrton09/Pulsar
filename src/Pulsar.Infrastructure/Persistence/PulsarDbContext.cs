@@ -21,6 +21,10 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<UserRoleAssignment> UserRoles => Set<UserRoleAssignment>();
 
+    public DbSet<NodeAccess> NodeAccess => Set<NodeAccess>();
+
+    public DbSet<ServerAccess> ServerAccess => Set<ServerAccess>();
+
     public DbSet<AuditEntry> AuditLog => Set<AuditEntry>();
 
     public DbSet<Node> Nodes => Set<Node>();

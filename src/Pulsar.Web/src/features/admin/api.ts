@@ -3,6 +3,7 @@ import { api, unwrap, type Schemas } from '../../api/client';
 import { sessionKey } from '../auth/api';
 
 export type User = Schemas['UserResponse'];
+export type Access = Schemas['AccessReference'];
 export type Role = Schemas['RoleSummary'];
 export type PermissionInfo = Schemas['PermissionResponse'];
 export type PermissionScope = Schemas['PermissionScope'];
@@ -84,6 +85,40 @@ export function useUpdateUser() {
       unwrap(api.PUT('/api/v1/users/{id}', { params: { path: { id } }, body })),
     onSuccess: changed,
   });
+}
+
+/** Gives (`granted`) or takes away a role of a user on one node or one server; answers the user as it now is. */
+export function useSetUserAccess() {
+  const changed = useAccessChanged();
+  return useMutation({
+    mutationFn: ({ id, scope, targetId, roleId, granted }: AccessChange) => {
+      const path = { id, roleId, ...(scope === 'node' ? { nodeId: targetId } : { serverId: targetId }) };
+      if (scope === 'node') {
+        const params = { params: { path: path as { id: string; nodeId: string; roleId: string } } };
+        return unwrap(
+          granted
+            ? api.PUT('/api/v1/users/{id}/nodes/{nodeId}/roles/{roleId}', params)
+            : api.DELETE('/api/v1/users/{id}/nodes/{nodeId}/roles/{roleId}', params),
+        );
+      }
+
+      const params = { params: { path: path as { id: string; serverId: string; roleId: string } } };
+      return unwrap(
+        granted
+          ? api.PUT('/api/v1/users/{id}/servers/{serverId}/roles/{roleId}', params)
+          : api.DELETE('/api/v1/users/{id}/servers/{serverId}/roles/{roleId}', params),
+      );
+    },
+    onSuccess: changed,
+  });
+}
+
+export interface AccessChange {
+  id: string;
+  scope: 'node' | 'server';
+  targetId: string;
+  roleId: string;
+  granted: boolean;
 }
 
 export function useSetUserRoles() {

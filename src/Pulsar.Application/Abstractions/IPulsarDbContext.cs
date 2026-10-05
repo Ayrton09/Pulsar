@@ -20,6 +20,10 @@ public interface IPulsarDbContext
 
     DbSet<UserRoleAssignment> UserRoles { get; }
 
+    DbSet<NodeAccess> NodeAccess { get; }
+
+    DbSet<ServerAccess> ServerAccess { get; }
+
     DbSet<AuditEntry> AuditLog { get; }
 
     DbSet<Node> Nodes { get; }

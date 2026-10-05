@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet } from 'react-router';
 import { Button } from '../../components/ui/Button';
-import { can, Permission } from '../../lib/permissions';
+import { canAnywhere, Permission } from '../../lib/permissions';
 import { useCurrentUser, useLogout } from '../auth/api';
 import { InsecureConnectionBanner } from '../auth/InsecureConnectionBanner';
 import { useLiveStatus } from '../live/hooks';
@@ -62,7 +62,8 @@ function Shell() {
   const user = useCurrentUser();
   const logout = useLogout();
 
-  const visible = (items: NavItem[]) => items.filter((item) => item.anyOf.length === 0 || can(user, ...item.anyOf));
+  const visible = (items: NavItem[]) =>
+    items.filter((item) => item.anyOf.length === 0 || canAnywhere(user, ...item.anyOf));
   const main = visible([
     { to: '/', label: t('nav.dashboard'), anyOf: [] },
     { to: '/servers', label: t('nav.servers'), anyOf: [Permission.ServerView] },

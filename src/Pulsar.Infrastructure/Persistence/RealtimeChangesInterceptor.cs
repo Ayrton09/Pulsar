@@ -71,6 +71,7 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
             {
                 case Server server:
                     changes.Servers.Add(server.Id);
+                    changes.ServerNodes[server.Id] = server.NodeId;
                     break;
                 case Operation { ServerId: { } serverId }:
                     changes.Servers.Add(serverId);
@@ -132,7 +133,7 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
 
         if (changes.Servers.Count > 0)
         {
-            notifier.ServersChanged(changes.Servers);
+            notifier.ServersChanged(changes.Servers, changes.ServerNodes);
         }
 
         if (changes.Nodes.Count > 0)
@@ -152,6 +153,8 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
     private sealed class Changes
     {
         public HashSet<ServerId> Servers { get; } = [];
+
+        public Dictionary<ServerId, NodeId> ServerNodes { get; } = [];
 
         public HashSet<NodeId> Nodes { get; } = [];
 

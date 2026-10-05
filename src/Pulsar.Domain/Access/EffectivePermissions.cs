@@ -83,6 +83,25 @@ public sealed class EffectivePermissions
 
     public bool HasGlobal(string permission) => _global.Contains(permission);
 
+    /// <summary>
+    /// True when the permission applies somewhere: globally, on a node or on a server. For the gates of lists and of
+    /// pages that then show only what it applies to; never enough on its own to act on a resource.
+    /// </summary>
+    public bool HasAnywhere(string permission) =>
+        _global.Contains(permission) || _nodes.Values.Any(set => set.Contains(permission)) || _servers.Values.Any(set => set.Contains(permission));
+
+    /// <summary>Node-scoped grants, by node (global ones not included).</summary>
+    public IReadOnlyDictionary<NodeId, FrozenSet<string>> Nodes => _nodes;
+
+    /// <summary>Server-scoped grants, by server (global and node ones not included).</summary>
+    public IReadOnlyDictionary<ServerId, FrozenSet<string>> Servers => _servers;
+
+    /// <summary>Nodes where <paramref name="permission"/> was granted (and so applies to their servers); see also <see cref="HasGlobal"/>.</summary>
+    public IEnumerable<NodeId> NodesWith(string permission) => _nodes.Where(p => p.Value.Contains(permission)).Select(p => p.Key);
+
+    /// <summary>Servers where <paramref name="permission"/> was granted on the server itself.</summary>
+    public IEnumerable<ServerId> ServersWith(string permission) => _servers.Where(p => p.Value.Contains(permission)).Select(p => p.Key);
+
     private static bool Contains<TKey>(FrozenDictionary<TKey, FrozenSet<string>> map, TKey key, string permission)
         where TKey : notnull => map.TryGetValue(key, out var set) && set.Contains(permission);
 

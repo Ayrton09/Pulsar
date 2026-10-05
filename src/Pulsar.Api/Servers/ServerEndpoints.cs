@@ -41,9 +41,9 @@ public static class ServerEndpoints
     public static RouteGroupBuilder MapServerEndpoints(this RouteGroupBuilder api)
     {
         var servers = api.MapGroup("/servers").WithTags("Servers");
-        servers.MapGet("/", ListAsync).RequirePermission(Permissions.Server.View);
+        servers.MapGet("/", ListAsync).RequirePermissionAnywhere(Permissions.Server.View);
         servers.MapGet("/{id:guid}", GetAsync).RequirePermission(Permissions.Server.View);
-        servers.MapPost("/", CreateAsync).RequirePermission(Permissions.Server.Create);
+        servers.MapPost("/", CreateAsync).RequirePermissionAnywhere(Permissions.Server.Create); // checked on the node by ServerManagement
         servers.MapPost("/{id:guid}/start", (Guid id, ServerManagement m, CancellationToken ct) => CommandAsync(m.StartAsync(new ServerId(id), ct)))
             .RequirePermission(Permissions.Server.Start);
         servers.MapPost("/{id:guid}/stop", (Guid id, ServerManagement m, CancellationToken ct) => CommandAsync(m.StopAsync(new ServerId(id), ct)))
@@ -77,9 +77,9 @@ public static class ServerEndpoints
 
         var templates = api.MapGroup("/templates").WithTags("Templates");
         templates.MapGet("/", async (TemplateCatalog catalog, CancellationToken ct) => TypedResults.Ok(await catalog.ListAsync(ct)))
-            .RequirePermission(Permissions.Template.View, Permissions.Server.Create);
+            .RequirePermissionAnywhere(Permissions.Template.View, Permissions.Server.Create);
         templates.MapGet("/{id:guid}", async (Guid id, TemplateCatalog catalog, CancellationToken ct) => (await catalog.GetAsync(id, ct)).ToHttp())
-            .RequirePermission(Permissions.Template.View, Permissions.Server.Create);
+            .RequirePermissionAnywhere(Permissions.Template.View, Permissions.Server.Create);
         templates.MapPost("/preview", async (TemplateContentRequest request, TemplateCatalog catalog, CancellationToken ct) =>
                 TypedResults.Ok(await catalog.PreviewAsync(request.Content, ct)))
             .RequirePermission(Permissions.Template.Manage);

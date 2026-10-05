@@ -34,6 +34,23 @@ public sealed class AccessRulesTests
     }
 
     [Fact]
+    public void ScopedGrantsCountAnywhereButOnlyListTheirOwnResources()
+    {
+        var permissions = new EffectivePermissions.Builder()
+            .Add(Role("Node", PermissionScope.Node, Permissions.Server.View, Permissions.Server.Create), AccessTarget.ForNode(s_node))
+            .Add(Role("Server", PermissionScope.Server, Permissions.Server.View), AccessTarget.ForServer(s_server, s_otherNode))
+            .Build();
+
+        Assert.True(permissions.HasAnywhere(Permissions.Server.View));
+        Assert.True(permissions.HasAnywhere(Permissions.Server.Create));
+        Assert.False(permissions.HasAnywhere(Permissions.Server.Delete));
+        Assert.False(permissions.HasGlobal(Permissions.Server.View));
+        Assert.Equal([s_node], permissions.NodesWith(Permissions.Server.View));
+        Assert.Equal([s_server], permissions.ServersWith(Permissions.Server.View));
+        Assert.Empty(permissions.ServersWith(Permissions.Server.Create));
+    }
+
+    [Fact]
     public void AddingARoleAtTheWrongScopeIsABug()
     {
         var serverRole = Role("Server", PermissionScope.Server, Permissions.Server.View);

@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Pulsar.Domain.Access;
+using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Servers;
 using Pulsar.Infrastructure.Identity;
 
 namespace Pulsar.Infrastructure.Persistence.Configurations;
@@ -48,6 +50,48 @@ internal sealed class UserRoleAssignmentConfiguration : IEntityTypeConfiguration
         builder.Property(a => a.RoleScope).HasConversion<SnakeCaseEnumConverter<PermissionScope>>();
 
         builder.HasOne<PulsarUser>().WithMany().HasForeignKey(a => a.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Role>().WithMany()
+            .HasForeignKey(a => new { a.RoleId, a.RoleScope })
+            .HasPrincipalKey(r => new { r.Id, r.Scope })
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<PulsarUser>().WithMany().HasForeignKey(a => a.GrantedBy).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+/// <summary>Node assignments (docs/architecture/02): gone with their user or node; their role cannot be deleted.</summary>
+internal sealed class NodeAccessConfiguration : IEntityTypeConfiguration<NodeAccess>
+{
+    public void Configure(EntityTypeBuilder<NodeAccess> builder)
+    {
+        builder.ToTable("node_access", t => t.HasCheckConstraint("ck_node_access_role_scope", "role_scope = 'node'"));
+
+        builder.HasKey(a => new { a.UserId, a.NodeId, a.RoleId });
+        builder.HasIndex(a => a.NodeId);
+        builder.Property(a => a.RoleScope).HasConversion<SnakeCaseEnumConverter<PermissionScope>>();
+
+        builder.HasOne<PulsarUser>().WithMany().HasForeignKey(a => a.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Node>().WithMany().HasForeignKey(a => a.NodeId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Role>().WithMany()
+            .HasForeignKey(a => new { a.RoleId, a.RoleScope })
+            .HasPrincipalKey(r => new { r.Id, r.Scope })
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<PulsarUser>().WithMany().HasForeignKey(a => a.GrantedBy).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+/// <summary>Server assignments (docs/architecture/02): gone with their user or server; their role cannot be deleted.</summary>
+internal sealed class ServerAccessConfiguration : IEntityTypeConfiguration<ServerAccess>
+{
+    public void Configure(EntityTypeBuilder<ServerAccess> builder)
+    {
+        builder.ToTable("server_access", t => t.HasCheckConstraint("ck_server_access_role_scope", "role_scope = 'server'"));
+
+        builder.HasKey(a => new { a.UserId, a.ServerId, a.RoleId });
+        builder.HasIndex(a => a.ServerId);
+        builder.Property(a => a.RoleScope).HasConversion<SnakeCaseEnumConverter<PermissionScope>>();
+
+        builder.HasOne<PulsarUser>().WithMany().HasForeignKey(a => a.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Server>().WithMany().HasForeignKey(a => a.ServerId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne<Role>().WithMany()
             .HasForeignKey(a => new { a.RoleId, a.RoleScope })
             .HasPrincipalKey(r => new { r.Id, r.Scope })

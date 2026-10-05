@@ -370,6 +370,33 @@ describe('server page', () => {
     expect(start).toHaveBeenCalledOnce();
   });
 
+  it('shows what a role on this server allows, and only that', async () => {
+    // No global permission: a role on this one server.
+    const friend = {
+      ...adminUser,
+      permissions: [],
+      serverPermissions: [
+        { id: installedOffline.id, permissions: ['server.view', 'server.start', 'server.console.view'] },
+      ],
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(friend),
+      [`GET /api/v1/servers/${installedOffline.id}`]: () => json(details(installedOffline)),
+    });
+    renderAt(`/servers/${installedOffline.id}`);
+
+    const actions = await screen.findByRole('region', { name: 'Server actions' });
+    expect(within(actions).getByRole('button', { name: 'Start' })).toBeEnabled();
+    expect(within(actions).queryByRole('button', { name: 'Kill' })).not.toBeInTheDocument();
+    const tabs = screen.getByRole('tablist', { name: 'Server sections' });
+    expect(within(tabs).getByRole('tab', { name: 'Console' })).toBeInTheDocument();
+    expect(within(tabs).queryByRole('tab', { name: 'Files' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete server' })).not.toBeInTheDocument();
+    const navigation = screen.getByRole('navigation');
+    expect(within(navigation).getByRole('link', { name: 'Servers' })).toBeInTheDocument();
+    expect(within(navigation).queryByRole('link', { name: 'Nodes' })).not.toBeInTheDocument();
+  });
+
   it('asks before killing and reports a command the node refused', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     fakeApi({

@@ -9,7 +9,7 @@ import { Alert, Badge, Card, Table, Td, Th } from '../../components/ui/Display';
 import { Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate, useFormatFileSize } from '../../lib/format';
-import { can, Permission } from '../../lib/permissions';
+import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import type { ServerDetails } from '../servers/api';
 import {
@@ -35,7 +35,7 @@ export function FilesTab({ details }: { details: ServerDetails }) {
   const me = useCurrentUser();
   const [search, setSearch] = useSearchParams();
   const { server } = details;
-  const canEdit = can(me, Permission.ServerFilesEdit);
+  const canEdit = canOnServer(me, server, Permission.ServerFilesEdit);
   const path = search.get('path') ?? '';
   const file = search.get('file');
 

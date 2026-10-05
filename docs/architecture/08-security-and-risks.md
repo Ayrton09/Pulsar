@@ -35,6 +35,7 @@ Explicit assumptions:
 - Resource authorization on **every** endpoint (enforced by a test) and hub method; IDs of other users' resources → 404 (in the browser hub: `null`).
 - The browser hub (`/hubs/panel`) requires a signed-in user, WebSockets only, and refuses an `Origin` other than the panel's own host (cross-site WebSocket hijacking; SameSite cookies are per site, not per origin). Permissions are checked when a page starts watching. A WebSocket outlives the cookie checks of ordinary requests, so (*Phase 9*) the panel closes a user's live connections when they are disabled or deleted, their password or two-factor setup changes or their roles change, and closes every connection when a role changes; connections reopen on their own and are checked again, and a connection only opens for a session whose security stamp is still current (checked at once, not at the cookie's next one-minute check).
 - RBAC anti-escalation (doc 02).
+- *Phase 11:* roles given on one node or one server. The gate resolves the server or node of the route and checks the permission there, answering `404` for what the user cannot see; lists are filtered. Live notices follow the same rule: watchers with global roles share the `servers` and `nodes` groups, others join groups per node and per server they see, and the panel sends each server's and node's notices and usage to those groups only, so nobody learns the ids of servers they cannot see. Changing a user's assignments closes their live connections, which reopen with what they may see now.
 
 ### Panel ↔ Agent
 
@@ -134,7 +135,7 @@ Append-only from the application, no secrets, with IP and actor. Failed sign-ins
 | T7 | Zip slip on restore | Per-entry validator |
 | T8 | Malicious plugin escalates to SYSTEM, reaches other servers or shuts the node down | Per-server account, ACL, Job, restricted token without privileges |
 | T9 | Malicious manifest | Privileged import, closed steps, capability review |
-| T10 | RBAC privilege escalation / IDOR | Single per-resource evaluator, anti-escalation, authorization matrix tests |
+| T10 | RBAC privilege escalation / IDOR | Single per-resource evaluator, anti-escalation, authorization matrix tests; node and server roles checked against the route's resource by one gate, other resources answered 404 (`ScopedAccessTests`) |
 | T11 | XSS / CSRF / clickjacking | Escaped React, CSP, SameSite + antiforgery, frame-ancestors |
 | T12 | Login brute force | Lockout, rate limiting, 2FA |
 | T13 | Malicious escape sequences in the console | xterm without the clipboard addon (no OSC 52), http/https links only (OSC 8 too) opened with `noopener`, terminal input not wired to the game (title and query answers go nowhere) |

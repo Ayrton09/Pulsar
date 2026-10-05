@@ -12,10 +12,23 @@ namespace Pulsar.Api.Realtime;
 public sealed class BrowserConnections
 {
     private readonly ConcurrentDictionary<string, (UserId User, HubCallerContext Context)> _connections = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> _scoped = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Some connection watches lists through node or server roles: notices must then also go to the groups of the
+    /// nodes and servers they are about (<see cref="PanelNotifier"/>).
+    /// </summary>
+    internal bool AnyScopedWatcher => !_scoped.IsEmpty;
 
     internal void Add(UserId user, HubCallerContext context) => _connections[context.ConnectionId] = (user, context);
 
-    internal void Remove(string connectionId) => _connections.TryRemove(connectionId, out _);
+    internal void Remove(string connectionId)
+    {
+        _connections.TryRemove(connectionId, out _);
+        _scoped.TryRemove(connectionId, out _);
+    }
+
+    internal void WatchesScoped(string connectionId) => _scoped[connectionId] = 0;
 
     /// <summary>The user was disabled or deleted, changed their password or two-factor setup, or got other roles.</summary>
     public void EndUser(UserId user)

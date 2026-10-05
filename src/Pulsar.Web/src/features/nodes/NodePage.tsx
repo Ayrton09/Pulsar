@@ -10,7 +10,7 @@ import { Field, Input } from '../../components/ui/Form';
 import { ApiError } from '../../api/client';
 import { errorMessage, fieldErrors } from '../../lib/errors';
 import { useFormatDate, useFormatGigabytes, useFormatUptime } from '../../lib/format';
-import { can, Permission } from '../../lib/permissions';
+import { canOnNode, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useWatchNodes } from '../live/hooks';
 import {
@@ -37,8 +37,8 @@ export function NodePage() {
   const me = useCurrentUser();
   const details = useNode(id);
   useWatchNodes();
-  const canManage = can(me, Permission.NodeManage);
-  const canManageCredentials = can(me, Permission.NodeCredentialsManage);
+  const canManage = canOnNode(me, id, Permission.NodeManage);
+  const canManageCredentials = canOnNode(me, id, Permission.NodeCredentialsManage);
 
   if (details.isPending) {
     return <Spinner label={t('common.loading')} />;

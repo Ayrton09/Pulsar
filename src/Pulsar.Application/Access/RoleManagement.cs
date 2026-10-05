@@ -40,7 +40,7 @@ public sealed class RoleManagement(
             return AccessErrors.RoleNotFound;
         }
 
-        var count = await db.UserRoles.CountAsync(a => a.RoleId == id, cancellationToken);
+        var count = (await AssignmentsAsync(id, cancellationToken)).Count;
         return Summarize(role, count);
     }
 
@@ -120,7 +120,7 @@ public sealed class RoleManagement(
         await db.SaveChangesAsync(cancellationToken);
         evaluator.InvalidateAll();
 
-        var count = await db.UserRoles.CountAsync(a => a.RoleId == id, cancellationToken);
+        var count = (await AssignmentsAsync(id, cancellationToken)).Count;
         return Summarize(role, count);
     }
 
@@ -150,7 +150,7 @@ public sealed class RoleManagement(
             evaluator.InvalidateAll();
         }
 
-        var count = await db.UserRoles.CountAsync(a => a.RoleId == id, cancellationToken);
+        var count = (await AssignmentsAsync(id, cancellationToken)).Count;
         return Summarize(role, count);
     }
 
@@ -174,7 +174,8 @@ public sealed class RoleManagement(
             return allowed;
         }
 
-        if (await db.UserRoles.AnyAsync(a => a.RoleId == id, cancellationToken))
+        if (await db.UserRoles.AnyAsync(a => a.RoleId == id, cancellationToken) || await db.NodeAccess.AnyAsync(a => a.RoleId == id, cancellationToken)
+            || await db.ServerAccess.AnyAsync(a => a.RoleId == id, cancellationToken))
         {
             return AccessErrors.RoleInUse;
         }
@@ -193,10 +194,17 @@ public sealed class RoleManagement(
     private Task<bool> NameTakenAsync(string normalizedName, RoleId? except, CancellationToken cancellationToken) =>
         db.Roles.AnyAsync(r => r.NormalizedName == normalizedName && (except == null || r.Id != except), cancellationToken);
 
+    /// <summary>Users holding each role anywhere: globally, on a node or on a server (a user counts once per role).</summary>
     private async Task<Dictionary<RoleId, int>> CountAssignmentsAsync(CancellationToken cancellationToken) =>
-        await db.UserRoles.GroupBy(a => a.RoleId)
-            .Select(g => new { RoleId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.RoleId, x => x.Count, cancellationToken);
+        (await AssignmentsAsync(null, cancellationToken)).GroupBy(a => a.RoleId).ToDictionary(g => g.Key, g => g.Count());
+
+    private async Task<HashSet<(RoleId RoleId, UserId UserId)>> AssignmentsAsync(RoleId? role, CancellationToken cancellationToken)
+    {
+        var global = await db.UserRoles.Where(a => role == null || a.RoleId == role).Select(a => new { a.RoleId, a.UserId }).ToListAsync(cancellationToken);
+        var nodes = await db.NodeAccess.Where(a => role == null || a.RoleId == role).Select(a => new { a.RoleId, a.UserId }).ToListAsync(cancellationToken);
+        var servers = await db.ServerAccess.Where(a => role == null || a.RoleId == role).Select(a => new { a.RoleId, a.UserId }).ToListAsync(cancellationToken);
+        return [.. global.Concat(nodes).Concat(servers).Select(a => (a.RoleId, a.UserId))];
+    }
 
     private static RoleSummary Summarize(Role role, int assignedUsers) => new(
         role.Id.Value, role.Name, role.Description, role.Scope, role.IsSystem, role.RequiresTwoFactor, Sorted(role.Permissions), assignedUsers,

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
 using Pulsar.Contracts;
 using Pulsar.Domain.Audit;
@@ -92,11 +93,17 @@ public sealed class NodeManagement(
     AgentSessionStore sessions,
     IRequestContext request,
     IAuditLog audit,
+    VisibleResources visible,
     TimeProvider clock)
 {
     public async Task<IReadOnlyList<NodeSummary>> ListAsync(CancellationToken cancellationToken)
     {
         var nodes = await db.Nodes.AsNoTracking().OrderBy(n => n.NormalizedName).ToListAsync(cancellationToken);
+        if (await visible.NodesAsync(cancellationToken) is { } sees)
+        {
+            nodes = [.. nodes.Where(n => sees(n.Id))];
+        }
+
         var activeKeyId = await ActiveKeyIdAsync(cancellationToken);
         return [.. nodes.Select(n => Summarize(n, activeKeyId))];
     }

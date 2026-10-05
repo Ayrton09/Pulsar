@@ -22,6 +22,8 @@ export const adminUser: Schemas['CurrentUserResponse'] = {
   permissions: ['audit.view', 'role.manage', 'user.manage', 'user.view'],
   twoFactorEnabled: false,
   twoFactorSetupRequired: false,
+  nodePermissions: [],
+  serverPermissions: [],
 };
 
 /**

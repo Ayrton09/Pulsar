@@ -34,10 +34,36 @@ export const Permission = {
   ServerDelete: 'server.delete',
 } as const;
 
+type CurrentUser = Schemas['CurrentUserResponse'] | null | undefined;
+
 /**
- * True when the user holds any of the permissions. Only for hiding what the user cannot do:
- * the API is the authority and checks every request.
+ * True when the user holds any of the permissions globally (everywhere). Only for hiding what the user cannot do: the
+ * API is the authority and checks every request. For a server or a node, use `canOnServer` and `canOnNode`, which also
+ * count roles given on them.
  */
-export function can(user: Schemas['CurrentUserResponse'] | null | undefined, ...anyOf: string[]): boolean {
+export function can(user: CurrentUser, ...anyOf: string[]): boolean {
   return !!user && anyOf.some((permission) => user.permissions.includes(permission));
+}
+
+/** True when the user holds any of the permissions on this node: globally or through a role on it. */
+export function canOnNode(user: CurrentUser, nodeId: string, ...anyOf: string[]): boolean {
+  const onNode = user?.nodePermissions?.find((grant) => grant.id === nodeId)?.permissions ?? [];
+  return can(user, ...anyOf) || anyOf.some((permission) => onNode.includes(permission));
+}
+
+/** True when the user holds any of the permissions on this server: globally, through its node, or through a role on it. */
+export function canOnServer(user: CurrentUser, server: { id: string; nodeId: string }, ...anyOf: string[]): boolean {
+  const onServer = user?.serverPermissions?.find((grant) => grant.id === server.id)?.permissions ?? [];
+  return canOnNode(user, server.nodeId, ...anyOf) || anyOf.some((permission) => onServer.includes(permission));
+}
+
+/**
+ * True when the user holds any of the permissions somewhere: globally, or on some node or server. For navigation and
+ * lists, which then show only what the permission applies to.
+ */
+export function canAnywhere(user: CurrentUser, ...anyOf: string[]): boolean {
+  const scoped = [...(user?.nodePermissions ?? []), ...(user?.serverPermissions ?? [])];
+  return (
+    can(user, ...anyOf) || scoped.some((grant) => anyOf.some((permission) => grant.permissions.includes(permission)))
+  );
 }

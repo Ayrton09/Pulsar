@@ -29,34 +29,84 @@ internal sealed class PanelHub(
 {
     public const string Path = "/hubs/panel";
 
-    /// <summary>Notices about every server. Global permission only: with server- or node-scoped grants this must filter per user.</summary>
+    /// <summary>Notices about every server, for users who see every server (a global role).</summary>
     public const string ServersGroup = "servers";
 
+    /// <summary>Notices and usage of every node, for users who see every node.</summary>
     public const string NodesGroup = "nodes";
 
+    /// <summary>Usage and operation progress of one server (its page).</summary>
     public static string ServerGroup(ServerId server) => $"server:{server.Value}";
 
-    /// <summary>Notices when any server changes (lists, the dashboard). False without the permission.</summary>
+    /// <summary>Notices about one server, for users who see it through a role on it.</summary>
+    public static string ServerListGroup(ServerId server) => $"server-list:{server.Value}";
+
+    /// <summary>Notices about the servers of one node, for users who see them through a role on the node.</summary>
+    public static string NodeServersGroup(NodeId node) => $"node-servers:{node.Value}";
+
+    /// <summary>Notices and usage of one node, for users who see it through a role on it.</summary>
+    public static string NodeGroup(NodeId node) => $"node:{node.Value}";
+
+    /// <summary>
+    /// Notices when servers change (lists, the dashboard, server pages): about every server with a global role, else
+    /// about the servers the user's node and server roles let them see. False when they see none.
+    /// </summary>
     public async Task<bool> WatchServers()
     {
-        if (!await HasGlobalAsync(Permissions.Server.View))
+        if (await PermissionsAsync() is not { } granted)
         {
             return false;
         }
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, ServersGroup);
-        return true;
+        if (ResourceVisibility.Server.Any(granted.HasGlobal))
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, ServersGroup);
+            return true;
+        }
+
+        var groups = ResourceVisibility.Server.SelectMany(granted.NodesWith).Distinct().Select(NodeServersGroup)
+            .Concat(ResourceVisibility.Server.SelectMany(granted.ServersWith).Distinct().Select(ServerListGroup))
+            .ToList();
+        return await JoinScopedAsync(groups);
     }
 
-    /// <summary>Notices and usage of every node (lists, node pages, the dashboard). False without the permission.</summary>
+    /// <summary>
+    /// Notices and usage of nodes (lists, node pages, the dashboard): every node with a global role, else the nodes the
+    /// user's node roles let them see. False when they see none.
+    /// </summary>
     public async Task<bool> WatchNodes()
     {
-        if (!await HasGlobalAsync(Permissions.Node.View))
+        if (await PermissionsAsync() is not { } granted)
         {
             return false;
         }
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, NodesGroup);
+        if (ResourceVisibility.Node.Any(granted.HasGlobal))
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, NodesGroup);
+            return true;
+        }
+
+        return await JoinScopedAsync([.. ResourceVisibility.Node.SelectMany(granted.NodesWith).Distinct().Select(NodeGroup)]);
+    }
+
+    /// <summary>
+    /// Joins the groups of what scoped roles let the user see. They hold for the connection's life: changing a user's
+    /// roles closes their connections (<see cref="BrowserConnections"/>), and the reconnection joins again.
+    /// </summary>
+    private async Task<bool> JoinScopedAsync(List<string> groups)
+    {
+        if (groups.Count == 0)
+        {
+            return false;
+        }
+
+        connections.WatchesScoped(Context.ConnectionId);
+        foreach (var group in groups)
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, group);
+        }
+
         return true;
     }
 
@@ -110,8 +160,8 @@ internal sealed class PanelHub(
         return base.OnDisconnectedAsync(exception);
     }
 
-    private async Task<bool> HasGlobalAsync(string permission) =>
-        Context.User?.GetUserId() is { } user && (await permissions.GetAsync(user, Context.ConnectionAborted)).HasGlobal(permission);
+    private async Task<EffectivePermissions?> PermissionsAsync() =>
+        Context.User?.GetUserId() is { } user ? await permissions.GetAsync(user, Context.ConnectionAborted) : null;
 
     /// <summary>The server and its node, if it exists and the user holds <paramref name="permission"/> on it.</summary>
     private async Task<(ServerId Id, NodeId Node)?> FindServerAsync(Guid serverId, string permission)

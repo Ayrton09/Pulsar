@@ -90,7 +90,7 @@
   },
   "users": {
     "title": "Users",
-    "description": "People who can sign in to this panel and their global roles.",
+    "description": "People who can sign in to this panel, their global roles and their access to single nodes and servers.",
     "create": "Add user",
     "user": "User",
     "roles": "Roles",
@@ -114,7 +114,20 @@
     "twoFactorOn": "Two-factor authentication is on.",
     "resetTwoFactor": "Turn off two-factor",
     "resetTwoFactorConfirm": "Turn off two-factor authentication for {{name}}? Their sessions end; if a role requires it, they set it up again at their next sign-in.",
-    "twoFactorReset": "Two-factor authentication turned off."
+    "twoFactorReset": "Two-factor authentication turned off.",
+    "access": {
+      "title": "Access to nodes and servers",
+      "hint": "A node or server role applies there only: the user sees and manages that node (with its servers) or that server, and nothing else.",
+      "empty": "No roles on single nodes or servers.",
+      "on": "{{role}} on {{target}}",
+      "node": "Node",
+      "server": "Server",
+      "role": "Role",
+      "choose": "Choose…",
+      "add": "Give access",
+      "remove": "Remove",
+      "noRoles": "There are no roles of this scope yet: create one in Roles."
+    }
   },
   "roles": {
     "title": "Roles",

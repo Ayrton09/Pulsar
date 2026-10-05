@@ -1,9 +1,15 @@
 using System.ComponentModel.DataAnnotations;
+using Pulsar.Domain.Access;
 using Pulsar.Infrastructure.Identity;
 
 namespace Pulsar.Api.Access;
 
 public sealed record RoleReference(Guid Id, string Name);
+
+/// <summary>A role the user holds on one node (and its servers) or on one server.</summary>
+/// <param name="Scope"><see cref="PermissionScope.Node"/> or <see cref="PermissionScope.Server"/>.</param>
+/// <param name="TargetId">The node or the server.</param>
+public sealed record AccessReference(PermissionScope Scope, Guid TargetId, string TargetName, RoleReference Role);
 
 public sealed record UserResponse(
     Guid Id,
@@ -14,7 +20,8 @@ public sealed record UserResponse(
     bool TwoFactorEnabled,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastLoginAt,
-    IReadOnlyList<RoleReference> Roles);
+    IReadOnlyList<RoleReference> Roles,
+    IReadOnlyList<AccessReference> Access);
 
 public sealed record CreateUserRequest(
     [property: Required, StringLength(PulsarUser.MaxUserNameLength, MinimumLength = 1)] string UserName,

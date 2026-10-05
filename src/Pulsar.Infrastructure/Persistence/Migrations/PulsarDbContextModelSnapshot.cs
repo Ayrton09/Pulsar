@@ -104,6 +104,51 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.ToTable("user_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Access.NodeAccess", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("role_id");
+
+                    b.Property<DateTimeOffset>("GrantedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("granted_at");
+
+                    b.Property<Guid?>("GrantedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("granted_by");
+
+                    b.Property<string>("RoleScope")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("role_scope");
+
+                    b.HasKey("UserId", "NodeId", "RoleId")
+                        .HasName("pk_node_access");
+
+                    b.HasIndex("GrantedBy")
+                        .HasDatabaseName("ix_node_access_granted_by");
+
+                    b.HasIndex("NodeId")
+                        .HasDatabaseName("ix_node_access_node_id");
+
+                    b.HasIndex("RoleId", "RoleScope")
+                        .HasDatabaseName("ix_node_access_role_id_role_scope");
+
+                    b.ToTable("node_access", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_node_access_role_scope", "role_scope = 'node'");
+                        });
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Access.Role", b =>
                 {
                     b.Property<Guid>("Id")
@@ -167,6 +212,51 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.ToTable("roles", null, t =>
                         {
                             t.HasCheckConstraint("ck_roles_scope", "scope IN ('global', 'node', 'server')");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Access.ServerAccess", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("server_id");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("role_id");
+
+                    b.Property<DateTimeOffset>("GrantedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("granted_at");
+
+                    b.Property<Guid?>("GrantedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("granted_by");
+
+                    b.Property<string>("RoleScope")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("role_scope");
+
+                    b.HasKey("UserId", "ServerId", "RoleId")
+                        .HasName("pk_server_access");
+
+                    b.HasIndex("GrantedBy")
+                        .HasDatabaseName("ix_server_access_granted_by");
+
+                    b.HasIndex("ServerId")
+                        .HasDatabaseName("ix_server_access_server_id");
+
+                    b.HasIndex("RoleId", "RoleScope")
+                        .HasDatabaseName("ix_server_access_role_id_role_scope");
+
+                    b.ToTable("server_access", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_server_access_role_scope", "role_scope = 'server'");
                         });
                 });
 
@@ -1708,6 +1798,37 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_user_tokens_users_user_id");
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Access.NodeAccess", b =>
+                {
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithMany()
+                        .HasForeignKey("GrantedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_node_access_users_granted_by");
+
+                    b.HasOne("Pulsar.Domain.Nodes.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_access_nodes_node_id");
+
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_access_users_user_id");
+
+                    b.HasOne("Pulsar.Domain.Access.Role", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId", "RoleScope")
+                        .HasPrincipalKey("Id", "Scope")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_access_roles_role_id_role_scope");
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Access.Role", b =>
                 {
                     b.OwnsMany("Pulsar.Domain.Access.RoleGrant", "Grants", b1 =>
@@ -1732,6 +1853,37 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         });
 
                     b.Navigation("Grants");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Access.ServerAccess", b =>
+                {
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithMany()
+                        .HasForeignKey("GrantedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_server_access_users_granted_by");
+
+                    b.HasOne("Pulsar.Domain.Servers.Server", null)
+                        .WithMany()
+                        .HasForeignKey("ServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_server_access_servers_server_id");
+
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_server_access_users_user_id");
+
+                    b.HasOne("Pulsar.Domain.Access.Role", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId", "RoleScope")
+                        .HasPrincipalKey("Id", "Scope")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_server_access_roles_role_id_role_scope");
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Access.UserRoleAssignment", b =>

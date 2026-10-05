@@ -50,6 +50,8 @@ public static class ServerErrors
     public static DomainError OperationNotCancellable { get; } =
         new("operation.not_cancellable", "Only running installs, updates and backups can be cancelled.");
 
+    public static DomainError CreateForbidden { get; } = new("server.create_forbidden", "You may not create servers on this node.");
+
     public static DomainError OperationForbidden { get; } =
         new("operation.forbidden", "You may not cancel this kind of operation on this server.");
 

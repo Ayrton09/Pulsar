@@ -5,7 +5,7 @@ import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Card, PageHeader, Table, Td, Th } from '../../components/ui/Display';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
-import { can, Permission } from '../../lib/permissions';
+import { canAnywhere, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useWatchServers } from '../live/hooks';
 import { useServers } from './api';
@@ -19,7 +19,7 @@ export function ServersPage() {
   useWatchServers();
   const formatDate = useFormatDate();
   const [creating, setCreating] = useState(false);
-  const canCreate = can(me, Permission.ServerCreate);
+  const canCreate = canAnywhere(me, Permission.ServerCreate);
 
   return (
     <>

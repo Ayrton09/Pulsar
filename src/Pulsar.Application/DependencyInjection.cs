@@ -18,6 +18,7 @@ public static class DependencyInjection
         services.AddMemoryCache();
         services.AddSingleton<PermissionCacheVersion>();
         services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
+        services.AddScoped<VisibleResources>();
         services.AddScoped<IAuditLog, AuditLog>();
         services.AddScoped<RoleManagement>();
         services.AddScoped<AuditQueries>();

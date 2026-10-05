@@ -4,7 +4,7 @@ import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Card } from '../../components/ui/Display';
 import { Checkbox, Field, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
-import { can, Permission } from '../../lib/permissions';
+import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useAllocations } from '../nodes/api';
 import {
@@ -20,7 +20,7 @@ import { VariableFields } from './VariableFields';
 import { initialValue, variableError, type VariableValues } from './variables';
 
 /** The running operation: its stage, a progress bar when the agent reports one, and Cancel for installs and updates. */
-export function OperationProgress({ serverId, operation }: { serverId: string; operation: OperationView }) {
+export function OperationProgress({ server, operation }: { server: ServerRef; operation: OperationView }) {
   const { t } = useTranslation();
   const me = useCurrentUser();
   const cancel = useCancelOperation();
@@ -40,12 +40,12 @@ export function OperationProgress({ serverId, operation }: { serverId: string; o
           )}
           {percent !== null && <span className="ml-2 tabular-nums">{percent}%</span>}
         </p>
-        {operation.cancellable && can(me, cancelPermission) && (
+        {operation.cancellable && canOnServer(me, server, cancelPermission) && (
           <Button
             variant="secondary"
             disabled={operation.cancelRequested}
             busy={cancel.isPending}
-            onClick={() => cancel.mutate({ id: serverId, operationId: operation.id })}
+            onClick={() => cancel.mutate({ id: server.id, operationId: operation.id })}
           >
             {operation.cancelRequested ? t('servers.operations.cancelling') : t('actions.cancel')}
           </Button>
@@ -83,26 +83,27 @@ export function SettingsTab({ details }: { details: ServerDetails }) {
   }
   // Keyed on the saved settings: a save starts the form again from what the panel stored.
   return (
-    <SettingsForm
-      key={JSON.stringify(settings.data)}
-      serverId={details.server.id}
-      settings={settings.data}
-      save={save}
-    />
+    <SettingsForm key={JSON.stringify(settings.data)} server={details.server} settings={settings.data} save={save} />
   );
 }
 
+/** A server as permission checks need it. */
+interface ServerRef {
+  id: string;
+  nodeId: string;
+}
+
 interface SettingsFormProps {
-  serverId: string;
+  server: ServerRef;
   settings: ServerSettings;
   save: ReturnType<typeof useUpdateServerSettings>;
 }
 
-function SettingsForm({ serverId, settings, save }: SettingsFormProps) {
+function SettingsForm({ server, settings, save }: SettingsFormProps) {
   const { t } = useTranslation();
   const me = useCurrentUser();
-  const canEdit = can(me, Permission.ServerStartupEdit);
-  const canEditProtected = can(me, Permission.ServerSettingsEdit);
+  const canEdit = canOnServer(me, server, Permission.ServerStartupEdit);
+  const canEditProtected = canOnServer(me, server, Permission.ServerSettingsEdit);
   const definitions = settings.variables.map((v) => v.definition);
   const stored = Object.fromEntries(
     settings.variables.map((v) => [
@@ -148,7 +149,7 @@ function SettingsForm({ serverId, settings, save }: SettingsFormProps) {
       }
     }
     save.mutate({
-      id: serverId,
+      id: server.id,
       body: {
         variables: changed,
         extraArguments: extra
@@ -253,7 +254,7 @@ export function NetworkTab({ details }: { details: ServerDetails }) {
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const { server } = details;
   const stopped = server.runtimeState === 'offline' || server.runtimeState === 'crashed';
-  const canEdit = can(me, Permission.ServerSettingsEdit) && stopped && server.activeOperation === null;
+  const canEdit = canOnServer(me, server, Permission.ServerSettingsEdit) && stopped && server.activeOperation === null;
   const options = (allocations.data ?? []).filter((a) => a.serverId === null || a.serverId === server.id);
 
   if (details.ports.length === 0) {

@@ -32,7 +32,7 @@ public static class NodeEndpoints
     public static RouteGroupBuilder MapNodeEndpoints(this RouteGroupBuilder api)
     {
         var nodes = api.MapGroup("/nodes").WithTags("Nodes");
-        nodes.MapGet("/", ListAsync).RequirePermission(Permissions.Node.View, Permissions.Node.Manage);
+        nodes.MapGet("/", ListAsync).RequirePermissionAnywhere(Permissions.Node.View, Permissions.Node.Manage, Permissions.Server.Create);
         nodes.MapGet("/{id:guid}", GetAsync).RequirePermission(Permissions.Node.View, Permissions.Node.Manage);
         nodes.MapPost("/", CreateAsync).RequirePermission(Permissions.Node.Manage);
         nodes.MapPut("/{id:guid}", UpdateAsync).RequirePermission(Permissions.Node.Manage);

@@ -9,7 +9,8 @@ namespace Pulsar.Application.Realtime;
 public interface IRealtimeNotifier
 {
     /// <summary>Servers whose state, settings or operations changed (stored ones; the browser fetches them again).</summary>
-    void ServersChanged(IReadOnlyCollection<ServerId> servers);
+    /// <param name="nodes">The node of each server known without asking the database (a deleted server's, at least).</param>
+    void ServersChanged(IReadOnlyCollection<ServerId> servers, IReadOnlyDictionary<ServerId, NodeId>? nodes = null);
 
     /// <summary>Nodes that changed: stored data, or their connection.</summary>
     void NodesChanged(IReadOnlyCollection<NodeId> nodes);
@@ -21,7 +22,7 @@ public interface IRealtimeNotifier
 /// <summary>For hosts without browsers (tests of the application layer, the migration command).</summary>
 internal sealed class NoRealtimeNotifier : IRealtimeNotifier
 {
-    public void ServersChanged(IReadOnlyCollection<ServerId> servers)
+    public void ServersChanged(IReadOnlyCollection<ServerId> servers, IReadOnlyDictionary<ServerId, NodeId>? nodes = null)
     {
     }
 

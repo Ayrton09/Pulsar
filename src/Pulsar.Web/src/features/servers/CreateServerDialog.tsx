@@ -6,7 +6,7 @@ import { Dialog } from '../../components/ui/Dialog';
 import { Alert } from '../../components/ui/Display';
 import { Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
-import { can, Permission } from '../../lib/permissions';
+import { canOnNode, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useAllocations, useNodes } from '../nodes/api';
 import { useCreateServer, useTemplate, useTemplates, type TemplateDetails, type TemplateVariable } from './api';
@@ -39,7 +39,10 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
   const [showErrors, setShowErrors] = useState(false);
   const template = useTemplate(templateId || undefined);
   const allocations = useAllocations(nodeId || undefined);
-  const connected = nodes.data?.filter((node) => node.connected) ?? [];
+  const me = useCurrentUser();
+  // The nodes listed include those the user only sees: they may create servers on some of them.
+  const connected =
+    nodes.data?.filter((node) => node.connected && canOnNode(me, node.id, Permission.ServerCreate)) ?? [];
   const details = template.data;
 
   const chooseTemplate = (id: string) => {
@@ -251,7 +254,7 @@ function PortsStep({ details, nodeId, allocations, loading, ports, onChange }: P
       {free.length === 0 && (
         <Alert>
           {t('servers.wizard.noAllocations')}{' '}
-          {can(me, Permission.NodeManage) && (
+          {canOnNode(me, nodeId, Permission.NodeManage) && (
             <Link to={`/nodes/${nodeId}`} className="underline">
               {t('servers.wizard.addAllocations')}
             </Link>

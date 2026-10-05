@@ -13,6 +13,9 @@ public sealed record SessionResponse(bool SetupRequired, CurrentUserResponse? Us
 /// <see cref="TwoFactorSetupRequired"/>: a role requires two-factor authentication and the user has not set it up;
 /// until they do, only the session, logout and setting it up are open to them.
 /// </summary>
+/// <param name="Permissions">Permissions held globally (everywhere).</param>
+/// <param name="NodePermissions">Permissions held on single nodes, and so on their servers.</param>
+/// <param name="ServerPermissions">Permissions held on single servers.</param>
 public sealed record CurrentUserResponse(
     Guid Id,
     string UserName,
@@ -20,7 +23,12 @@ public sealed record CurrentUserResponse(
     string? Email,
     IReadOnlyList<string> Permissions,
     bool TwoFactorEnabled,
-    bool TwoFactorSetupRequired);
+    bool TwoFactorSetupRequired,
+    IReadOnlyList<ScopedPermissions> NodePermissions,
+    IReadOnlyList<ScopedPermissions> ServerPermissions);
+
+/// <summary>What a user may do on one node or one server, besides their global permissions.</summary>
+public sealed record ScopedPermissions(Guid Id, IReadOnlyList<string> Permissions);
 
 /// <summary>
 /// The answer to a correct password: the signed-in user, or <see cref="TwoFactorRequired"/> when the user still has to
