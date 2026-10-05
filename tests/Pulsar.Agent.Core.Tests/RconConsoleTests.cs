@@ -361,13 +361,31 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
     public async Task AGameThatLogsRconCommandsGetsNoSecondCopy()
     {
         var supervisor = await RunningAsync(logsCommands: true);
-        _rcon.Answer = _ => "hostname: Pulsar";
+        _rcon.Answer = _ => "hostname: Pulsar\nplayers : 0 humans";
+        _rcon.OnCommand = command => File.AppendAllText(Path.Combine(_root, "cstrike", "console.log"),
+            $"rcon from \"127.0.0.1:50000\": command \"{command}\"\nhostname: Pulsar\nplayers : 0 humans\n");
 
         Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status"));
 
-        await EventuallyAsync(() => _rcon.Commands.Contains("status"));
+        const string Logged = "rcon from \"127.0.0.1:50000\": command \"status\"\nhostname: Pulsar\nplayers : 0 humans\n";
+        await EventuallyAsync(supervisor, Logged);
+        await Task.Delay(s_loggedAnswerWait * 3, TestContext.Current.CancellationToken);
         await supervisor.FlushAsync();
-        Assert.Equal("", Text(supervisor));
+        Assert.Equal(Logged, Text(supervisor));
+    }
+
+    [Fact]
+    public async Task AnAnswerAGameThatLogsCommandsLeavesOutIsShown()
+    {
+        // CS2 logs "status" and its answer, but not the answer to a cvar query.
+        var supervisor = await RunningAsync(logsCommands: true);
+        _rcon.Answer = command => command == "sv_tags" ? "  sv_tags = pulsar,casual" : "";
+        _rcon.OnCommand = command => File.AppendAllText(Path.Combine(_root, "cstrike", "console.log"),
+            $"rcon from \"127.0.0.1:50000\": command \"{command}\"\n");
+
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("sv_tags"));
+
+        await EventuallyAsync(supervisor, "rcon from \"127.0.0.1:50000\": command \"sv_tags\"\n  sv_tags = pulsar,casual\n");
     }
 
     [Fact]
@@ -419,6 +437,8 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
 
     private const string Rcon = "Rc0nPassw0rd";
 
+    private static readonly TimeSpan s_loggedAnswerWait = TimeSpan.FromMilliseconds(300);
+
     private async Task<ServerSupervisor> RunningAsync(bool logsCommands = false, ManifestConsoleMode mode = ManifestConsoleMode.LogfileRcon)
     {
         var supervisor = Supervisor(new RconReadiness(60), logsCommands, mode);
@@ -452,7 +472,7 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         };
         var definition = new ServerDefinition(Guid.NewGuid(), "abcd1234", _root, ProcessIdentity.CurrentUser, plan, AutoStart: false, RestartOnCrash: true);
         _supervisor = new ServerSupervisor(definition, _processes, _events, _clock,
-            new SupervisorOptions { LogPollInterval = TimeSpan.FromMilliseconds(20) }, NullLogger.Instance, new DirectServerFiles(), _rcon);
+            new SupervisorOptions { LogPollInterval = TimeSpan.FromMilliseconds(20), LoggedAnswerWait = s_loggedAnswerWait }, NullLogger.Instance, new DirectServerFiles(), _rcon);
         return _supervisor;
     }
 

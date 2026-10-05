@@ -214,8 +214,9 @@ public enum RconProtocol
 /// games): the firewall rules Pulsar manages open just those, and RCON stays reachable from the node only.
 /// </param>
 /// <param name="LogsCommands">
-/// The game writes the commands it receives over RCON, and their answers, to its log file (CS2 does, srcds does not):
-/// the console then shows the log alone instead of adding the agent's copy of each command and answer.
+/// The game writes the commands it receives over RCON to its log file (CS2 does, srcds does not): the console then
+/// shows the log instead of adding the agent's copy of each command, and adds an answer only when the log does not
+/// show it (CS2 logs the answer to <c>status</c> but not to cvar queries).
 /// </param>
 public sealed record RconDefinition(RconProtocol Protocol, string Port, bool LogsCommands = false);
 

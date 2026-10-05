@@ -44,6 +44,12 @@ public sealed class SupervisorOptions
 
     /// <summary>Wait between attempts to reach a starting game over RCON (<c>rcon</c> readiness).</summary>
     public TimeSpan RconRetryInterval { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// How long an RCON answer waits to show up in the log of a game that logs RCON commands (CS2) before the console
+    /// shows it itself: such a game logs some answers (<c>status</c>) but not others (cvar queries).
+    /// </summary>
+    public TimeSpan LoggedAnswerWait { get; set; } = TimeSpan.FromSeconds(2);
 }
 
 /// <summary>
@@ -60,6 +66,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private readonly IServerFirewall _firewall;
     private readonly IServerEventSink _events;
     private readonly ServerConsole _console;
+    private readonly RecentLog _recentLog = new();
     private readonly TimeProvider _clock;
     private readonly SupervisorOptions _options;
     private readonly ILogger _logger;
@@ -545,9 +552,15 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         var lines = readiness is null ? null : new ConsoleLines();
         try
         {
+            var logsCommands = plan.Console.Rcon?.LogsCommands == true;
             await foreach (var text in tail.ReadAsync(cancellationToken))
             {
                 _console.Write(text, _clock.GetUtcNow());
+                if (logsCommands)
+                {
+                    _recentLog.Append(text);
+                }
+
                 if (lines is null)
                 {
                     continue;
@@ -630,7 +643,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     /// <summary>
     /// A console command for the running game. Pseudo consoles echo what they receive; for pipes and RCON the console
-    /// shows the command itself, unless the game logs RCON commands on its own (CS2).
+    /// shows the command itself, unless the game logs RCON commands on its own (CS2), and the answer, unless the game
+    /// logged it.
     /// </summary>
     private async Task<AckStatus> HandleInputAsync(string line)
     {
@@ -649,14 +663,14 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 return AckStatus.Rejected;
             }
 
-            var echo = plan.Console.Rcon?.LogsCommands != true;
-            if (echo)
+            var logged = plan.Console.Rcon?.LogsCommands == true;
+            if (!logged)
             {
                 _console.Write($"> {line}\n", now);
             }
 
             // In the background: an answer can take a second (CS2) and the mailbox must stay free for stop and kill.
-            _ = SendConsoleRconAsync(endpoint, line, echo, _generation, _watchers?.Token ?? _stopping.Token);
+            _ = SendConsoleRconAsync(endpoint, line, logged, _generation, _watchers?.Token ?? _stopping.Token);
             return AckStatus.Accepted;
         }
 
@@ -679,7 +693,37 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     }
 
     /// <summary>One RCON session per process for console commands, opened on the first one and kept while it works.</summary>
-    private async Task SendConsoleRconAsync(RconEndpoint endpoint, string line, bool showAnswer, int generation, CancellationToken cancellationToken)
+    private async Task SendConsoleRconAsync(RconEndpoint endpoint, string line, bool logged, int generation, CancellationToken cancellationToken)
+    {
+        var mark = _recentLog.Position;
+        var answer = await ExecuteConsoleRconAsync(endpoint, line, generation, cancellationToken);
+        if (string.IsNullOrEmpty(answer))
+        {
+            return;
+        }
+
+        if (logged && FirstLine(answer) is { } probe)
+        {
+            try
+            {
+                if (await _recentLog.ShowsAsync(probe, mark, _options.LoggedAnswerWait, cancellationToken))
+                {
+                    return;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+
+        _console.Write(answer.EndsWith('\n') ? answer : answer + "\n", _clock.GetUtcNow());
+    }
+
+    private static string? FirstLine(string text) => text.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0);
+
+    /// <summary>The answer; null when the command failed (noted in the console) or the process went away.</summary>
+    private async Task<string?> ExecuteConsoleRconAsync(RconEndpoint endpoint, string line, int generation, CancellationToken cancellationToken)
     {
         try
         {
@@ -687,7 +731,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {
-            return;
+            return null;
         }
 
         try
@@ -703,13 +747,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
                 try
                 {
-                    var answer = await _consoleRcon!.Value.Session.ExecuteAsync(line, cancellationToken);
-                    if (showAnswer && answer.Length > 0)
-                    {
-                        _console.Write(answer.EndsWith('\n') ? answer : answer + "\n", _clock.GetUtcNow());
-                    }
-
-                    return;
+                    return await _consoleRcon!.Value.Session.ExecuteAsync(line, cancellationToken);
                 }
                 catch (RconException ex) when (kept && ex.ConnectionLost)
                 {
@@ -723,10 +761,12 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         {
             await CloseConsoleRconAsync();
             _console.Note($"RCON: {ex.Message}", _clock.GetUtcNow());
+            return null;
         }
         catch (OperationCanceledException)
         {
             // The process exited or the supervisor is going away.
+            return null;
         }
         finally
         {

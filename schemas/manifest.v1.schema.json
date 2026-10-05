@@ -214,7 +214,7 @@
       "properties": {
         "protocol": { "enum": ["source"] },
         "port": { "type": "string", "description": "Name of a required port; RCON listens on its TCP side, which only needs to be reachable from the node." },
-        "logsCommands": { "type": "boolean", "default": false, "description": "The game writes commands received over RCON and their answers to its log file, so the console does not add them again." }
+        "logsCommands": { "type": "boolean", "default": false, "description": "The game writes commands received over RCON to its log file, so the console does not add them again; an answer is added only when the log does not show it." }
       }
     },
     "ConfigFileDefinition": {
