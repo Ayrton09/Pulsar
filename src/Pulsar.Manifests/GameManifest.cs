@@ -83,13 +83,19 @@ public enum PortProtocol
 /// </summary>
 /// <param name="Default">The port tried first when the server is created.</param>
 /// <param name="Required">An optional port (CSTV, say) can be left without an allocation.</param>
+/// <param name="Follows">A port the game opens at a fixed distance from another (Valheim: the game port + 1): the panel
+/// gives it the allocation of the same address at that port, never one of its own choosing.</param>
 public sealed record PortDefinition(
     string Name,
     string Label,
     IReadOnlyList<PortProtocol> Protocols,
     int Default,
     bool Required = true,
-    string? Description = null);
+    string? Description = null,
+    PortFollow? Follows = null);
+
+/// <summary>This port is always <see cref="Port"/>'s port number plus <see cref="Offset"/>, on the same address.</summary>
+public sealed record PortFollow(string Port, int Offset);
 
 public sealed record InstallDefinition(IReadOnlyList<InstallStep> Steps);
 
@@ -99,6 +105,7 @@ public sealed record InstallDefinition(IReadOnlyList<InstallStep> Steps);
 [JsonDerivedType(typeof(EnsureDirectoryStep), "ensureDirectory")]
 [JsonDerivedType(typeof(WriteFileIfMissingStep), "writeFileIfMissing")]
 [JsonDerivedType(typeof(TestGameServerStep), "testGameServer")]
+[JsonDerivedType(typeof(MinecraftServerStep), "minecraftServer")]
 public abstract record InstallStep;
 
 /// <summary>
@@ -130,6 +137,17 @@ public sealed record WriteFileIfMissingStep(string Path, string Content) : Insta
 /// </summary>
 public sealed record TestGameServerStep(string Path) : InstallStep;
 
+/// <summary>
+/// Installs Minecraft: Java Edition's dedicated server as <c>server.jar</c>, from Mojang, and the Java runtime its
+/// version asks for in <c>java/</c>, from Adoptium (Eclipse Temurin). The agent checks both against the checksums their
+/// publishers list.
+/// </summary>
+/// <param name="VersionVar">A variable holding the version ("1.21.4", or "latest" for the latest release); latest without one.</param>
+public sealed record MinecraftServerStep(string? VersionVar = null) : InstallStep
+{
+    public const string Latest = "latest";
+}
+
 /// <summary>How the game runs on one platform (<c>windows-x64</c>).</summary>
 public sealed record RuntimeDefinition(
     string Executable,
@@ -152,7 +170,8 @@ public sealed record ArgumentText(string Text) : ArgumentTemplate;
 /// <c>{ "if": "var.x", "then": [...] }</c>: included when the variable is true or a non-empty string, or, for
 /// <c>port.&lt;name&gt;</c>, when that optional port has an allocation.
 /// </summary>
-public sealed record ArgumentCondition(string If, IReadOnlyList<ArgumentTemplate> Then) : ArgumentTemplate;
+/// <param name="Else">What goes instead when the condition does not hold (Rust: turn a feature off when its port is not assigned).</param>
+public sealed record ArgumentCondition(string If, IReadOnlyList<ArgumentTemplate> Then, IReadOnlyList<ArgumentTemplate>? Else = null) : ArgumentTemplate;
 
 public enum ManifestConsoleMode
 {
@@ -242,6 +261,13 @@ public enum ConfigFileFormat
 
     /// <summary><c>key=value</c> per line.</summary>
     Properties,
+
+    /// <summary>
+    /// Keys of one <c>[section]</c> of an Unreal Engine ini, as plain <c>Key=Value</c> lines or as the members of one
+    /// <c>Struct=(Key=Value,...)</c> line (Palworld's <c>OptionSettings</c>).
+    /// </summary>
+    [JsonStringEnumMemberName("unreal-ini")]
+    UnrealIni,
 }
 
 public enum ConfigFileMode
@@ -257,7 +283,10 @@ public enum ConfigFileMode
 /// A configuration file the agent writes before every start (docs/architecture/04, "Configuration files"). Values are
 /// templates; each format's encoder refuses what would break out of a line or a value.
 /// </summary>
-public sealed record ConfigFileDefinition(string Path, ConfigFileFormat Format, ConfigFileMode Mode, IReadOnlyDictionary<string, string> Set);
+/// <param name="Section">The <c>[section]</c> the keys go into (<see cref="ConfigFileFormat.UnrealIni"/> only).</param>
+/// <param name="Struct">The struct line the keys are members of, when they are not plain lines (<see cref="ConfigFileFormat.UnrealIni"/> only).</param>
+public sealed record ConfigFileDefinition(string Path, ConfigFileFormat Format, ConfigFileMode Mode, IReadOnlyDictionary<string, string> Set,
+    string? Section = null, string? Struct = null);
 
 /// <summary>What a backup contains: globs relative to the server directory (Phase 7).</summary>
 public sealed record BackupDefinition(IReadOnlyList<string>? Include = null, IReadOnlyList<string>? Exclude = null);

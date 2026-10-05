@@ -84,6 +84,77 @@ public sealed class ConfigFileWriterTests
         Assert.Equal(key, ConfigFileWriter.KeyOf(ConfigFileFormat.SourceCfg, line));
     }
 
+    [Fact]
+    public void AnUnrealStructKeepsTheMembersPulsarDoesNotDeclare()
+    {
+        // Palworld's PalWorldSettings.ini: every setting is a member of one OptionSettings line.
+        const string existing = """
+            [/Script/Engine.Something]
+            OptionSettings=(Untouched=1)
+
+            [/Script/Pal.PalGameWorldSettings]
+            OptionSettings=(Difficulty=None,ServerName="Old, name",ExpRate=2.000000,BanListURL="https://x/banlist.txt",ServerPassword="old",ServerName="again")
+
+            """;
+        var file = Unreal(ConfigFileMode.Patch, "OptionSettings",
+            ("ServerName", "Pulsar Palworld"), ("ServerPassword", ""), ("RCONEnabled", "True"), ("RCONPort", "8211"), ("AdminPassword", "123"));
+
+        var text = ConfigFileWriter.Apply(file, existing.Replace("\r\n", "\n", StringComparison.Ordinal));
+
+        Assert.Equal("""
+            [/Script/Engine.Something]
+            OptionSettings=(Untouched=1)
+
+            [/Script/Pal.PalGameWorldSettings]
+            OptionSettings=(Difficulty=None,ServerName="Pulsar Palworld",ExpRate=2.000000,BanListURL="https://x/banlist.txt",RCONEnabled=True,RCONPort=8211,AdminPassword=123)
+
+            """.Replace("\r\n", "\n", StringComparison.Ordinal), text);
+    }
+
+    [Fact]
+    public void AnUnrealSectionIsCreatedWhenMissing()
+    {
+        var file = Unreal(ConfigFileMode.Patch, "OptionSettings", ("ServerName", "x y"), ("PublicPort", "8211"));
+
+        Assert.Equal("[/Script/Pal.PalGameWorldSettings]\nOptionSettings=(ServerName=\"x y\",PublicPort=8211)\n", ConfigFileWriter.Apply(file, null));
+        Assert.Equal("[Other]\r\nA=1\r\n\r\n[/Script/Pal.PalGameWorldSettings]\r\nOptionSettings=(ServerName=\"x y\",PublicPort=8211)\r\n",
+            ConfigFileWriter.Apply(file, "[Other]\r\nA=1\r\n"));
+        Assert.Equal("; Written by Pulsar before every start: changes made here are lost.\n[/Script/Pal.PalGameWorldSettings]\nOptionSettings=(ServerName=\"x y\",PublicPort=8211)\n",
+            ConfigFileWriter.Apply(Unreal(ConfigFileMode.Managed, "OptionSettings", ("ServerName", "x y"), ("PublicPort", "8211")), "[Other]\nA=1\n"));
+    }
+
+    [Fact]
+    public void UnrealKeysCanBePlainLinesOfASection()
+    {
+        // ARK's GameUserSettings.ini style.
+        var file = Unreal(ConfigFileMode.Patch, structName: null, ("ServerPassword", "abc"), ("MaxPlayers", "20"));
+
+        Assert.Equal("[/Script/Pal.PalGameWorldSettings]\nServerPassword=abc\nOther=1\nMaxPlayers=20\n[Next]\nServerPassword=keep\n",
+            ConfigFileWriter.Apply(file, "[/Script/Pal.PalGameWorldSettings]\nserverpassword=old\nOther=1\nServerPassword=again\n[Next]\nServerPassword=keep\n"));
+    }
+
+    [Fact]
+    public void ABrokenUnrealStructIsNotOverwritten()
+    {
+        var file = Unreal(ConfigFileMode.Patch, "OptionSettings", ("ServerName", "x"));
+
+        var error = Assert.Throws<LaunchPlanException>(() => ConfigFileWriter.Apply(file, "[/Script/Pal.PalGameWorldSettings]\nOptionSettings=(ServerName=\"x\"\n"));
+        Assert.Contains("OptionSettings", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("say \"hi\"")]
+    [InlineData("C:\\path")]
+    public void UnrealValuesCannotEscapeTheirQuotes(string value)
+    {
+        Assert.NotNull(ConfigFileWriter.ValueError(ConfigFileFormat.UnrealIni, value));
+    }
+
+    private static RenderedConfigFile Unreal(ConfigFileMode mode, string? structName, params (string Key, string Value)[] entries) =>
+        new("Pal/Saved/Config/WindowsServer/PalWorldSettings.ini", ConfigFileFormat.UnrealIni, mode,
+            [.. entries.Select(e => new ConfigEntry(e.Key, e.Value, Secret: false))])
+        { Section = "/Script/Pal.PalGameWorldSettings", Struct = structName };
+
     private static RenderedConfigFile Cfg(ConfigFileMode mode, params (string Key, string Value)[] entries) =>
         new("cstrike/cfg/server.cfg", ConfigFileFormat.SourceCfg, mode, [.. entries.Select(e => new ConfigEntry(e.Key, e.Value, Secret: false))]);
 }

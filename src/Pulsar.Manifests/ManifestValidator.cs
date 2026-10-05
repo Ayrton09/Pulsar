@@ -296,6 +296,41 @@ public static partial class ManifestValidator
             error("ports", "Two ports have the same default.");
         }
 
+        for (var i = 0; i < ports.Count; i++)
+        {
+            if (ports[i].Follows is not { } follow)
+            {
+                continue;
+            }
+
+            var path = $"ports[{i}].follows";
+            if (!byName.TryGetValue(follow.Port, out var followed) || followed == ports[i])
+            {
+                error($"{path}.port", "The name of another port of the game.");
+            }
+            else if (followed.Follows is not null)
+            {
+                error($"{path}.port", "A port can follow only a port that does not follow another.");
+            }
+            else
+            {
+                if (followed.Required != ports[i].Required)
+                {
+                    error($"{path}", "A port and the port it follows are both required or both optional.");
+                }
+
+                if (ports[i].Default != followed.Default + follow.Offset)
+                {
+                    error($"ports[{i}].default", $"The followed port's default plus {follow.Offset}.");
+                }
+            }
+
+            if (follow.Offset is < 1 or > 10)
+            {
+                error($"{path}.offset", "From 1 to 10.");
+            }
+        }
+
         return byName;
     }
 
@@ -344,6 +379,12 @@ public static partial class ManifestValidator
                         context.Error($"{path}.content", "At most 64 KiB.");
                     }
 
+                    break;
+                case MinecraftServerStep { VersionVar: { } versionVar }
+                    when !context.Variables.TryGetValue(versionVar, out var version) || version.Secret
+                         || version.Type is not (VariableType.String or VariableType.Enum)
+                         || (version.Type == VariableType.String && version.Pattern is null):
+                    context.Error($"{path}.versionVar", "Must name a string variable with a 'pattern', or an enum.");
                     break;
                 case TestGameServerStep step:
                     ValidateRelativePath($"{path}.path", step.Path, context.Error);
@@ -419,9 +460,14 @@ public static partial class ManifestValidator
                 context.Error($"{path}.console.inputNewline", "Commands go through RCON in 'logfile+rcon' mode.");
             }
         }
-        else if (console.LogFile is not null || console.Rcon is not null)
+        else if (console.LogFile is not null)
         {
-            context.Error($"{path}.console", "'logFile' and 'rcon' belong to the 'logfile+rcon' mode.");
+            context.Error($"{path}.console.logFile", "'logFile' belongs to the 'logfile+rcon' mode.");
+        }
+        else if (console.Rcon is not null && console.InputNewline is not null)
+        {
+            // pty or pipes with RCON: the output comes from the process, commands go through RCON (Palworld).
+            context.Error($"{path}.console.inputNewline", "Commands go through RCON when the console has one.");
         }
 
         // RCON listens on TCP whatever the port declares: the declared protocols are what the firewall opens, and RCON
@@ -461,6 +507,12 @@ public static partial class ManifestValidator
                     }
 
                     ValidateArguments($"{path}[{i}].then", condition.Then, context, guarded);
+                    if (condition.Else is { } otherwise)
+                    {
+                        // Not guarded: the else side runs exactly when the port is not assigned.
+                        ValidateArguments($"{path}[{i}].else", otherwise, context, guardedPorts);
+                    }
+
                     break;
             }
         }
@@ -478,7 +530,7 @@ public static partial class ManifestValidator
         {
             switch (placeholder)
             {
-                case ["server", "shortId"]:
+                case ["server", "shortId"] or ["server", "dir"]:
                     break;
                 case ["var", var key, .. var rest] when rest.Length <= 1:
                     if (!context.Variables.TryGetValue(key, out var variable))
@@ -530,7 +582,7 @@ public static partial class ManifestValidator
 
         if (malformed)
         {
-            context.Error(path, "Malformed placeholder: use {{var.<key>}}, {{var.<key>.<sub>}}, {{port.<name>}}, {{port.<name>.ip}}, {{rcon.password}} or {{server.shortId}}.");
+            context.Error(path, "Malformed placeholder: use {{var.<key>}}, {{var.<key>.<sub>}}, {{port.<name>}}, {{port.<name>.ip}}, {{rcon.password}}, {{server.shortId}} or {{server.dir}}.");
         }
     }
 
@@ -561,9 +613,31 @@ public static partial class ManifestValidator
                 context.Error($"{path}.set", "Keys differ only by case.");
             }
 
+            if (file.Format == ConfigFileFormat.UnrealIni)
+            {
+                if (file.Section is null || !UnrealSectionPattern().IsMatch(file.Section))
+                {
+                    context.Error($"{path}.section", "The section the keys go into, without its brackets ('/Script/Pal.PalGameWorldSettings').");
+                }
+
+                if (file.Struct is not null && !UnrealKeyPattern().IsMatch(file.Struct))
+                {
+                    context.Error($"{path}.struct", "The name of the struct line ('OptionSettings').");
+                }
+            }
+            else if (file.Section is not null || file.Struct is not null)
+            {
+                context.Error(path, "'section' and 'struct' belong to the 'unreal-ini' format.");
+            }
+
             foreach (var (key, value) in file.Set)
             {
-                var keyPattern = file.Format == ConfigFileFormat.SourceCfg ? SourceCfgKeyPattern() : PropertiesKeyPattern();
+                var keyPattern = file.Format switch
+                {
+                    ConfigFileFormat.SourceCfg => SourceCfgKeyPattern(),
+                    ConfigFileFormat.UnrealIni => UnrealKeyPattern(),
+                    _ => PropertiesKeyPattern(),
+                };
                 if (!keyPattern.IsMatch(key))
                 {
                     context.Error($"{path}.set.{key}", "Invalid key for this format.");
@@ -741,6 +815,12 @@ public static partial class ManifestValidator
 
     [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.CultureInvariant)]
     private static partial Regex EnvironmentNamePattern();
+
+    [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.CultureInvariant)]
+    private static partial Regex UnrealKeyPattern();
+
+    [GeneratedRegex("^[A-Za-z0-9_./:-]{1,128}$", RegexOptions.CultureInvariant)]
+    private static partial Regex UnrealSectionPattern();
 
     [GeneratedRegex(@"^(CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])(\..*)?$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex ReservedName();

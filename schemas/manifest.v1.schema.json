@@ -83,7 +83,18 @@
         "protocols": { "type": "array", "minItems": 1, "maxItems": 2, "uniqueItems": true, "items": { "enum": ["udp", "tcp"] } },
         "default": { "type": "integer", "minimum": 1, "maximum": 65535 },
         "required": { "type": "boolean", "default": true, "description": "Optional ports can only be used inside { \"if\": \"port.<name>\" } arguments." },
-        "description": { "type": "string" }
+        "description": { "type": "string" },
+        "follows": { "$ref": "#/$defs/PortFollow" }
+      }
+    },
+    "PortFollow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port", "offset"],
+      "description": "The game opens this port at a fixed distance from another (Valheim: the game port + 1): it gets the allocation of the same address at that port.",
+      "properties": {
+        "port": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+        "offset": { "type": "integer", "minimum": 1, "maximum": 10 }
       }
     },
     "InstallDefinition": {
@@ -97,12 +108,13 @@
     "InstallStep": {
       "type": "object",
       "required": ["type"],
-      "properties": { "type": { "enum": ["steamcmd", "ensureDirectory", "writeFileIfMissing", "testGameServer"] } },
+      "properties": { "type": { "enum": ["steamcmd", "ensureDirectory", "writeFileIfMissing", "testGameServer", "minecraftServer"] } },
       "oneOf": [
         { "$ref": "#/$defs/SteamCmdStep" },
         { "$ref": "#/$defs/EnsureDirectoryStep" },
         { "$ref": "#/$defs/WriteFileIfMissingStep" },
-        { "$ref": "#/$defs/TestGameServerStep" }
+        { "$ref": "#/$defs/TestGameServerStep" },
+        { "$ref": "#/$defs/MinecraftServerStep" }
       ]
     },
     "SteamCmdStep": {
@@ -142,6 +154,16 @@
       "description": "Pulsar's own test game server; only for the pulsar-test manifest.",
       "properties": { "type": { "const": "testGameServer" }, "path": { "$ref": "#/$defs/RelativePath" } }
     },
+    "MinecraftServerStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "Minecraft: Java Edition's server.jar from Mojang and the Java runtime its version needs in java/ (Eclipse Temurin), both checked against their publishers' checksums.",
+      "properties": {
+        "type": { "const": "minecraftServer" },
+        "versionVar": { "type": "string", "description": "A variable holding the version ('1.21.4', or 'latest' for the latest release)." }
+      }
+    },
     "RuntimeDefinition": {
       "type": "object",
       "additionalProperties": false,
@@ -156,7 +178,7 @@
       }
     },
     "ArgumentTemplate": {
-      "description": "One argv element, with {{var.<key>}}, {{var.<key>.<sub>}}, {{port.<name>}}, {{port.<name>.ip}}, {{rcon.password}} or {{server.shortId}} placeholders, or a conditional group.",
+      "description": "One argv element, with {{var.<key>}}, {{var.<key>.<sub>}}, {{port.<name>}}, {{port.<name>.ip}}, {{rcon.password}}, {{server.shortId}} or {{server.dir}} placeholders, or a conditional group.",
       "oneOf": [
         { "type": "string", "maxLength": 1024 },
         { "$ref": "#/$defs/ArgumentCondition" }
@@ -168,7 +190,8 @@
       "required": ["if", "then"],
       "properties": {
         "if": { "type": "string", "pattern": "^(var|port)\\.[A-Za-z][A-Za-z0-9_]*$", "description": "A boolean or string variable (true or non-empty), or an optional port (assigned)." },
-        "then": { "type": "array", "items": { "$ref": "#/$defs/ArgumentTemplate" } }
+        "then": { "type": "array", "items": { "$ref": "#/$defs/ArgumentTemplate" } },
+        "else": { "type": "array", "items": { "$ref": "#/$defs/ArgumentTemplate" }, "description": "What goes instead when the condition does not hold." }
       }
     },
     "ConsoleDefinition": {
@@ -200,9 +223,11 @@
       "required": ["path", "format", "mode", "set"],
       "properties": {
         "path": { "$ref": "#/$defs/RelativePath" },
-        "format": { "enum": ["source-cfg", "properties"] },
+        "format": { "enum": ["source-cfg", "properties", "unreal-ini"] },
         "mode": { "enum": ["patch", "managed"], "description": "patch: only the declared keys change; managed: the whole file is written by Pulsar." },
-        "set": { "type": "object", "minProperties": 1, "maxProperties": 128, "additionalProperties": { "type": "string" } }
+        "set": { "type": "object", "minProperties": 1, "maxProperties": 128, "additionalProperties": { "type": "string" } },
+        "section": { "type": "string", "pattern": "^[A-Za-z0-9_./:-]{1,128}$", "description": "unreal-ini: the [section] the keys go into, without its brackets." },
+        "struct": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$", "description": "unreal-ini: the keys are members of this Struct=(Key=Value,...) line instead of plain lines." }
       }
     },
     "ReadinessDefinition": {

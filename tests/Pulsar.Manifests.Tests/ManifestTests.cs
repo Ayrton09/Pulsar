@@ -42,6 +42,20 @@ public sealed class ManifestTests
         Assert.Equal(["--ready-after", "0", "--ignore-quit"], plan.Arguments);
     }
 
+    [Fact]
+    public void AConditionCanSayWhatGoesWhenItDoesNotHold()
+    {
+        var manifest = Parse(Manifest(m => m["runtime"]!["windows-x64"]!["arguments"]!.AsArray()
+            .Add(new JsonObject { ["if"] = "var.ignoreQuit", ["then"] = new JsonArray("--on"), ["else"] = new JsonArray("--off") })));
+
+        var on = Render(manifest, new Dictionary<string, string?> { ["ignoreQuit"] = "true", ["readyAfterMs"] = "0" });
+        var off = Render(manifest, new Dictionary<string, string?> { ["ignoreQuit"] = "false", ["readyAfterMs"] = "0" });
+
+        Assert.Equal("--on", on.Arguments[^1]);
+        Assert.Equal("--off", off.Arguments[^1]);
+        Assert.DoesNotContain("--on", off.Arguments);
+    }
+
     [Theory]
     [InlineData("readyAfterMs", "-1")]
     [InlineData("readyAfterMs", "600001")]
@@ -224,6 +238,86 @@ public sealed class ManifestTests
         Assert.Contains(errors, e => e.Path == "stop.steps[0]"); // a console command needs a console
         Assert.Contains(errors, e => e.Path == "stop.steps[1]");
     }
+
+    [Fact]
+    public void AProcessConsoleCanTakeItsCommandsThroughRcon()
+    {
+        // Palworld: the output comes from its console, commands go through RCON.
+        var manifest = (Action<JsonObject> change) => Manifest(m =>
+        {
+            var console = new JsonObject { ["mode"] = "pty", ["rcon"] = new JsonObject { ["protocol"] = "source", ["port"] = "game" } };
+            change(console);
+            m["runtime"]!["windows-x64"]!["console"] = console;
+            m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add("-adminpassword={{rcon.password}}");
+            m["ports"] = new JsonArray(new JsonObject { ["name"] = "game", ["label"] = "Game", ["protocols"] = new JsonArray("udp"), ["default"] = 8211 });
+        });
+
+        Assert.Equal(ManifestConsoleMode.Pty, Parse(manifest(_ => { })).Runtime[ManifestValidator.WindowsX64].Console.Mode);
+        Parse(manifest(c => c["mode"] = "pipes"));
+        Assert.Contains(TestManifests.Errors(manifest(c => c["logFile"] = "output.log")), e => e.Path == "runtime.windows-x64.console.logFile");
+        Assert.Contains(TestManifests.Errors(manifest(c => c["inputNewline"] = "\r\n")), e => e.Path == "runtime.windows-x64.console.inputNewline");
+    }
+
+    [Theory]
+    [InlineData("message", null)] // a string with a pattern
+    [InlineData("readyAfterMs", "install.steps[2].versionVar")] // an integer
+    [InlineData("nope", "install.steps[2].versionVar")]
+    public void MinecraftsVersionComesFromAVariable(string variable, string? error)
+    {
+        var json = Manifest(m => m["install"]!["steps"]!.AsArray().Add(new JsonObject { ["type"] = "minecraftServer", ["versionVar"] = variable }));
+
+        if (error is null)
+        {
+            Assert.IsType<MinecraftServerStep>(Parse(json).Install!.Steps[2]);
+        }
+        else
+        {
+            Assert.Contains(TestManifests.Errors(json), e => e.Path == error);
+        }
+    }
+
+    [Fact]
+    public void TheServerFolderIsOnlyKnownToTheAgent()
+    {
+        // SCP:SL ignores relative folders for its configuration.
+        var manifest = Parse(Manifest(m => m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add("-configpath={{server.dir}}\\config\\")));
+        var binding = new ServerBinding("abcd1234", new Dictionary<string, string?>());
+
+        Assert.Null(LaunchPlanRenderer.Check(manifest, ManifestValidator.WindowsX64, binding)); // the panel checks with a stand-in
+        Assert.Throws<LaunchPlanException>(() => LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, binding));
+        var plan = LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, binding with { Directory = "D:\\Pulsar\\servers\\abcd1234" });
+        Assert.Equal("-configpath=D:\\Pulsar\\servers\\abcd1234\\config\\", plan.Arguments[^1]);
+    }
+
+    [Fact]
+    public void AFollowingPortIsTheOneItFollowsPlusItsOffset()
+    {
+        var json = Manifest(m => m["ports"] = Ports(follows: new JsonObject { ["port"] = "game", ["offset"] = 1 }));
+        var manifest = Parse(json); // valid
+
+        var binding = (int query) => new ServerBinding("abcd1234", new Dictionary<string, string?>(),
+            new Dictionary<string, PortAssignment> { ["game"] = new("10.0.0.5", 2456), ["query"] = new("10.0.0.5", query) });
+        Assert.Null(LaunchPlanRenderer.Check(manifest, ManifestValidator.WindowsX64, binding(2457)));
+        Assert.Equal("Port 'query' must be port 'game' + 1 on the same address.", LaunchPlanRenderer.Check(manifest, ManifestValidator.WindowsX64, binding(2460)));
+    }
+
+    [Theory]
+    [InlineData("nope", 1, 2457, "ports[1].follows.port")] // no such port
+    [InlineData("query", 1, 2457, "ports[1].follows.port")] // itself
+    [InlineData("game", 0, 2456, "ports[1].follows.offset")]
+    [InlineData("game", 1, 2458, "ports[1].default")] // not the followed default + 1
+    public void FollowingPortsAreChecked(string port, int offset, int defaultPort, string path)
+    {
+        var errors = Errors(m => m["ports"] = Ports(new JsonObject { ["port"] = port, ["offset"] = offset }, defaultPort));
+
+        Assert.Contains(errors, e => e.Path == path);
+    }
+
+    private static JsonArray Ports(JsonObject follows, int queryDefault = 2457) =>
+    [
+        new JsonObject { ["name"] = "game", ["label"] = "Game", ["protocols"] = new JsonArray("udp"), ["default"] = 2456 },
+        new JsonObject { ["name"] = "query", ["label"] = "Query", ["protocols"] = new JsonArray("udp"), ["default"] = queryDefault, ["follows"] = follows },
+    ];
 
     [Fact]
     public void TheHashIdentifiesTheExactBytes()

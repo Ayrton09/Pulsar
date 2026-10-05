@@ -206,6 +206,25 @@ public sealed class SourceManifestTests
         Assert.Contains(errors, e => e.Path.StartsWith("configFiles[0].set", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("source-cfg", "/Script/Pal.PalGameWorldSettings", null, "configFiles[0]")] // a section for another format
+    [InlineData("unreal-ini", null, null, "configFiles[0].section")]
+    [InlineData("unreal-ini", "Pal]Settings", null, "configFiles[0].section")]
+    [InlineData("unreal-ini", "/Script/Pal.PalGameWorldSettings", "Option Settings", "configFiles[0].struct")]
+    public void UnrealFilesNameTheirSection(string format, string? section, string? structName, string path)
+    {
+        var errors = TestManifests.Errors(TestManifests.Change("css", m =>
+        {
+            var file = m["configFiles"]![0]!.AsObject();
+            file["format"] = format;
+            file["set"] = new JsonObject { ["hostname"] = "x" };
+            file["section"] = section;
+            file["struct"] = structName;
+        }));
+
+        Assert.Contains(errors, e => e.Path == path);
+    }
+
     [Fact]
     public void SecretsStayOutOfTheEnvironment()
     {

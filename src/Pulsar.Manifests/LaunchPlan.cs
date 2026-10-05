@@ -55,19 +55,28 @@ public sealed record ConfigEntry(string Key, string Value, bool Secret)
     public override string ToString() => Secret ? $"{Key}=***" : $"{Key}={Value}";
 }
 
-public sealed record RenderedConfigFile(string Path, ConfigFileFormat Format, ConfigFileMode Mode, IReadOnlyList<ConfigEntry> Entries);
+public sealed record RenderedConfigFile(string Path, ConfigFileFormat Format, ConfigFileMode Mode, IReadOnlyList<ConfigEntry> Entries)
+{
+    /// <inheritdoc cref="ConfigFileDefinition.Section"/>
+    public string? Section { get; init; }
+
+    /// <inheritdoc cref="ConfigFileDefinition.Struct"/>
+    public string? Struct { get; init; }
+}
 
 /// <summary>Everything a manifest is rendered with for one server.</summary>
 /// <param name="Values">Variable values (defaults fill the gaps); checked again by the renderer, whoever sent them.</param>
 /// <param name="Ports">Allocation of each manifest port (optional ports may be missing).</param>
 /// <param name="ExtraArguments">Added at the end, one argv element each, when the manifest allows them.</param>
 /// <param name="RconPassword">Generated and kept by the agent; required when the manifest has an RCON console.</param>
+/// <param name="Directory">The server's absolute folder, known only to the agent; required by {{server.dir}}.</param>
 public sealed record ServerBinding(
     string ShortId,
     IReadOnlyDictionary<string, string?> Values,
     IReadOnlyDictionary<string, PortAssignment>? Ports = null,
     IReadOnlyList<string>? ExtraArguments = null,
-    string? RconPassword = null)
+    string? RconPassword = null,
+    string? Directory = null)
 {
     public override string ToString() => $"ServerBinding {{ ShortId = {ShortId} }}";
 }
@@ -195,6 +204,7 @@ public static class LaunchPlanRenderer
         string Placeholder(string[] parts) => parts switch
         {
             ["server", "shortId"] => binding.ShortId,
+            ["server", "dir"] => binding.Directory ?? throw new LaunchPlanException("The server folder is not known."),
             ["var", var key] => resolved[key] ?? "",
             ["var", var key, var sub] => definitions[key].Options!.Single(o => o.Value == resolved[key]).Map![sub],
             ["port", var name] => ports.TryGetValue(name, out var port) ? port.Port.ToString(CultureInfo.InvariantCulture) : throw NoAllocation(name),
@@ -236,6 +246,10 @@ public static class LaunchPlanRenderer
                         {
                             Add(condition.Then);
                         }
+                        else if (condition.Else is { } otherwise)
+                        {
+                            Add(otherwise);
+                        }
 
                         break;
                 }
@@ -276,7 +290,8 @@ public static class LaunchPlanRenderer
 
                 return new ConfigEntry(entry.Key, value, secret);
             }),
-        ])).ToList();
+        ])
+        { Section = file.Section, Struct = file.Struct }).ToList();
 
         return new LaunchPlan(runtime.Executable, runtime.WorkingDirectory ?? "", arguments, environment, runtime.Console, manifest.Readiness, manifest.Stop)
         {
@@ -293,7 +308,12 @@ public static class LaunchPlanRenderer
         ArgumentNullException.ThrowIfNull(binding);
         try
         {
-            _ = Render(manifest, platform, binding with { RconPassword = binding.RconPassword ?? new string('x', 32) });
+            // The panel checks without the agent's secrets and paths: stand-ins take their place.
+            _ = Render(manifest, platform, binding with
+            {
+                RconPassword = binding.RconPassword ?? new string('x', 32),
+                Directory = binding.Directory ?? "C:/Pulsar/servers/" + binding.ShortId,
+            });
             return null;
         }
         catch (LaunchPlanException ex)
@@ -323,6 +343,15 @@ public static class LaunchPlanRenderer
         if (given.Values.GroupBy(p => p.Port).Any(g => g.Count() > 1))
         {
             throw new LaunchPlanException("Two ports of the server have the same port number.");
+        }
+
+        foreach (var (name, assignment) in given)
+        {
+            if (definitions[name].Follows is { } follow
+                && (!given.TryGetValue(follow.Port, out var followed) || followed.IpAddress != assignment.IpAddress || assignment.Port != followed.Port + follow.Offset))
+            {
+                throw new LaunchPlanException($"Port '{name}' must be port '{follow.Port}' + {follow.Offset} on the same address.");
+            }
         }
 
         return given.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
@@ -357,6 +386,7 @@ public static class LaunchPlanRenderer
                     break;
                 case ArgumentCondition condition:
                     names.UnionWith(ReservedArgumentNames(condition.Then));
+                    names.UnionWith(ReservedArgumentNames(condition.Else ?? []));
                     break;
             }
         }

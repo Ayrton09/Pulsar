@@ -15,6 +15,7 @@ internal sealed class ArgumentTemplateConverter : JsonConverter<ArgumentTemplate
             case JsonTokenType.StartObject:
                 string? condition = null;
                 List<ArgumentTemplate>? then = null;
+                List<ArgumentTemplate>? otherwise = null;
                 while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
                 {
                     var name = reader.GetString();
@@ -27,13 +28,16 @@ internal sealed class ArgumentTemplateConverter : JsonConverter<ArgumentTemplate
                         case "then":
                             then = JsonSerializer.Deserialize<List<ArgumentTemplate>>(ref reader, options) ?? throw new JsonException("'then' must be an array.");
                             break;
+                        case "else":
+                            otherwise = JsonSerializer.Deserialize<List<ArgumentTemplate>>(ref reader, options) ?? throw new JsonException("'else' must be an array.");
+                            break;
                         default:
                             throw new JsonException($"Unknown argument property '{name}'.");
                     }
                 }
 
                 return condition is not null && then is not null
-                    ? new ArgumentCondition(condition, then)
+                    ? new ArgumentCondition(condition, then, otherwise)
                     : throw new JsonException("A conditional argument needs 'if' and 'then'.");
             default:
                 throw new JsonException("An argument must be a string or a conditional object.");
@@ -52,6 +56,12 @@ internal sealed class ArgumentTemplateConverter : JsonConverter<ArgumentTemplate
                 writer.WriteString("if", condition.If);
                 writer.WritePropertyName("then");
                 JsonSerializer.Serialize(writer, condition.Then, options);
+                if (condition.Else is { } otherwise)
+                {
+                    writer.WritePropertyName("else");
+                    JsonSerializer.Serialize(writer, otherwise, options);
+                }
+
                 writer.WriteEndObject();
                 break;
             default:
