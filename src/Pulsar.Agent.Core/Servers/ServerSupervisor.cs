@@ -50,6 +50,9 @@ public sealed class SupervisorOptions
     /// shows it itself: such a game logs some answers (<c>status</c>) but not others (cvar queries).
     /// </summary>
     public TimeSpan LoggedAnswerWait { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>How often a running game with a query is asked for its name, map and players.</summary>
+    public TimeSpan QueryInterval { get; set; } = TimeSpan.FromSeconds(10);
 }
 
 /// <summary>
@@ -63,6 +66,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private readonly IGameProcessManager _processes;
     private readonly IServerFiles _files;
     private readonly IRconConnector _rcon;
+    private readonly IServerQuery _query;
     private readonly IServerFirewall _firewall;
     private readonly IServerEventSink _events;
     private readonly ServerConsole _console;
@@ -94,15 +98,17 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private volatile ServerStateChanged? _lastChange;
     private (int Generation, IRconSession Session)? _consoleRcon; // guarded by _rconLock
     private (int Generation, ProcessUsage Usage, DateTimeOffset At)? _lastUsage;
+    private volatile QueryAnswer? _lastQuery;
 
     public ServerSupervisor(ServerDefinition definition, IGameProcessManager processes, IServerEventSink events, TimeProvider clock,
         SupervisorOptions options, ILogger logger, IServerFiles? files = null, IRconConnector? rcon = null, IServerFirewall? firewall = null,
-        ServerConsole? console = null)
+        ServerConsole? console = null, IServerQuery? query = null)
     {
         _definition = definition;
         _processes = processes;
         _files = files ?? new DirectServerFiles();
         _rcon = rcon ?? new SourceRconConnector();
+        _query = query ?? new ServerQuery(clock);
         _firewall = firewall ?? new UnmanagedFirewall();
         _console = console ?? new ServerConsole(new ConsoleBuffer(clock));
         _events = events;
@@ -493,6 +499,14 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 PostLater(TimeSpan.FromSeconds(rcon.TimeoutSeconds), new ReadinessTimeout(generation));
                 _ = ProbeRconAsync(plan.Rcon!, generation, _watchers.Token);
                 break;
+            case QueryReadiness queried:
+                PostLater(TimeSpan.FromSeconds(queried.TimeoutSeconds), new ReadinessTimeout(generation));
+                break;
+        }
+
+        if (plan.Query is { } query)
+        {
+            _ = QueryLoopAsync(query, generation, readiness: plan.Readiness is QueryReadiness, _watchers.Token);
         }
     }
 
@@ -593,6 +607,49 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         {
             LogLogTailFailed(ServerId, ex.Message);
             _console.Note($"Cannot follow the log file {plan.Console.LogFile}: {ex.Message}", _clock.GetUtcNow());
+        }
+    }
+
+    /// <summary>
+    /// Asks the game for its name, map and players while it runs (often while it starts: its first answer is what
+    /// <see cref="QueryReadiness"/> waits for). The last answer goes with the metrics while it is recent.
+    /// </summary>
+    private async Task QueryLoopAsync(QueryEndpoint endpoint, int generation, bool readiness, CancellationToken cancellationToken)
+    {
+        var failures = 0;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var info = await _query.QueryAsync(endpoint, cancellationToken);
+                _lastQuery = new QueryAnswer(generation, info);
+                failures = 0;
+                if (readiness)
+                {
+                    _mailbox.Writer.TryWrite(new Ready(generation));
+                    readiness = false;
+                }
+            }
+            catch (QueryException ex)
+            {
+                if (++failures == 3 && _snapshot.State == RuntimeState.Running)
+                {
+                    LogQueryFailing(ServerId, ex.Message);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            try
+            {
+                await Task.Delay(_snapshot.State == RuntimeState.Running ? _options.QueryInterval : _options.RconRetryInterval, _clock, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
         }
     }
 
@@ -813,7 +870,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
 
         _lastUsage = (_generation, usage, now);
-        return new ServerMetrics(ServerId, Math.Round(cpu, 1), usage.MemoryBytes, usage.ProcessCount, now - process.StartedAt);
+        // An answer older than a few queries is from a game that stopped answering: better nothing than stale players.
+        var query = _lastQuery is { } answer && answer.Generation == _generation && now - answer.Info.At <= _options.QueryInterval * 3 ? answer.Info : null;
+        return new ServerMetrics(ServerId, Math.Round(cpu, 1), usage.MemoryBytes, usage.ProcessCount, now - process.StartedAt, query);
     }
 
     private void StopWatchers()
@@ -1103,6 +1162,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Debug, Message = "Server {ServerId}: usage not sampled: {Reason}")]
     private partial void LogSampleFailed(Guid serverId, string reason);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId} does not answer its query: {Reason}")]
+    private partial void LogQueryFailing(Guid serverId, string reason);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: cannot follow its log file: {Reason}")]
     private partial void LogLogTailFailed(Guid serverId, string reason);
 
@@ -1161,6 +1223,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private sealed record Exited(int Generation, int ExitCode) : Message;
 
     private sealed record Ready(int Generation) : Message;
+
+    private sealed record QueryAnswer(int Generation, ServerQueryInfo Info);
 
     private sealed record ReadinessTimeout(int Generation) : Message;
 

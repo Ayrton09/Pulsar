@@ -13,7 +13,7 @@ import { BackupsTab } from '../backups/BackupsTab';
 import { FilesTab } from '../files/FilesTab';
 import { SchedulesTab } from '../schedules/SchedulesTab';
 import { useServerMetrics, useWatchServers } from '../live/hooks';
-import type { ServerMetrics } from '../live/types';
+import type { ServerMetrics, ServerQuery } from '../live/types';
 import {
   useDeleteServer,
   useReinstallServer,
@@ -113,6 +113,7 @@ export function ServerPage() {
           <>
             <div className="grid gap-6 xl:grid-cols-2">
               <OverviewCard details={details.data} />
+              {server.runtimeState === 'running' && metrics?.query && <PlayersCard query={metrics.query} />}
               <OperationsCard operations={details.data.recentOperations} />
             </div>
             <AdministrationSection details={details.data} />
@@ -129,16 +130,27 @@ export function ServerPage() {
   );
 }
 
-/** CPU, memory and uptime of the running server, pushed every few seconds. */
+/** CPU, memory and uptime of the running server, and its players when it answers queries, pushed every few seconds. */
 function ServerUsage({ metrics }: { metrics: ServerMetrics }) {
   const { t } = useTranslation();
   const formatBytes = useFormatBytes();
   const formatDuration = useFormatDuration();
+  const { query } = metrics;
   const items: [string, string][] = [
     [t('servers.usage.cpu'), t('servers.usage.cpuValue', { value: metrics.cpuPercent })],
     [t('servers.usage.memory'), formatBytes(metrics.memoryBytes)],
     [t('servers.usage.uptime'), formatDuration(metrics.uptimeSeconds)],
   ];
+  if (query) {
+    const players = t('servers.usage.playersValue', { players: query.players, max: query.maxPlayers });
+    items.push([
+      t('servers.usage.players'),
+      query.bots > 0 ? `${players} ${t('servers.usage.bots', { count: query.bots })}` : players,
+    ]);
+    if (query.map) {
+      items.push([t('servers.usage.map'), query.map]);
+    }
+  }
   return (
     <dl aria-label={t('servers.usage.label')} className="mb-4 flex flex-wrap gap-x-8 gap-y-2 text-sm">
       {items.map(([label, value]) => (
@@ -263,6 +275,52 @@ const statusTones = {
   cancelled: 'neutral',
   interrupted: 'danger',
 } as const;
+
+/** Who is playing, as the game answered its query: names are the players' own, shown as text. */
+function PlayersCard({ query }: { query: ServerQuery }) {
+  const { t } = useTranslation();
+  const formatDuration = useFormatDuration();
+  return (
+    <Card className="p-6">
+      <h2 className="text-lg font-semibold">{t('servers.players.title')}</h2>
+      {(query.name || query.version) && (
+        <p className="mt-1 text-sm break-words text-muted">
+          {[query.name, query.version && t('servers.players.version', { version: query.version })]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+      )}
+      <div className="mt-4">
+        {query.playerList.length === 0 ? (
+          <p className="text-sm text-muted">
+            {query.players > 0 ? t('servers.players.notListed') : t('servers.players.empty')}
+          </p>
+        ) : (
+          <Table label={t('servers.players.title')}>
+            <thead>
+              <tr>
+                <Th>{t('servers.players.name')}</Th>
+                <Th>{t('servers.players.score')}</Th>
+                <Th>{t('servers.players.time')}</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {query.playerList.map((player, index) => (
+                <tr key={index}>
+                  <Td className="break-all">{player.name}</Td>
+                  <Td className="tabular-nums">{player.score ?? '—'}</Td>
+                  <Td className="tabular-nums">
+                    {player.connectedSeconds === null ? '—' : formatDuration(player.connectedSeconds)}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 function OperationsCard({ operations }: { operations: OperationView[] }) {
   const { t } = useTranslation();

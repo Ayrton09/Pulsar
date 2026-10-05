@@ -68,6 +68,7 @@
       "set": { "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}" } }
   ],
 
+  "query": { "protocol": "a2s", "port": "game" },
   "readiness": { "type": "rcon", "timeoutSeconds": 300 },
 
   "stop": {

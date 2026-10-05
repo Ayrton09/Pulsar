@@ -15,6 +15,7 @@ using Pulsar.Agent.Core.Security;
 using Pulsar.Agent.Core.Servers;
 using Pulsar.Agent.Core.Steam;
 using Pulsar.Contracts;
+using Pulsar.Manifests;
 
 namespace Pulsar.Api.Tests.Infrastructure;
 
@@ -70,6 +71,9 @@ public sealed class InProcessAgent : IAsyncDisposable
     /// <summary>The agent's servers while it runs.</summary>
     public ServerHost? Servers => _servers;
 
+    /// <summary>What the scripted game servers answer to their manifest's query.</summary>
+    public ScriptedQuery Query => field ??= new ScriptedQuery(_clock);
+
     /// <summary>RCON sessions to the scripted game servers (logfile+rcon manifests).</summary>
     public ScriptedRcon Rcon => field ??= new ScriptedRcon(Processes);
 
@@ -96,7 +100,7 @@ public sealed class InProcessAgent : IAsyncDisposable
         _servers = new ServerHost(Configs, new ServerStore(Configs.Paths, new PlainStateProtector()), Provisioner, Processes,
             new InstallSteps(install, files), _steamCmd, files, Rcon, new UnmanagedFirewall(),
             new FileCommands(new DirectServerFileManager(), channel, FileOptions, NullLogger<FileCommands>.Instance),
-            new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance, RemoteBackups), install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance);
+            new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance, RemoteBackups), install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance, Query);
         _connection = new AgentConnection(Configs, Keys, new FixedNodeSystem(), _transport, new PanelAuthenticator(_transport),
             new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance, _servers), Options,
             _clock, new StubLifetime(), NullLoggerFactory.Instance, channel, _servers);
@@ -240,4 +244,16 @@ public sealed class InProcessAgent : IAsyncDisposable
             };
         }
     }
+}
+
+/// <summary>Answers every query with <see cref="Answer"/>, as a game whose query port answers would.</summary>
+public sealed class ScriptedQuery(TimeProvider clock) : IServerQuery
+{
+    public Func<QueryEndpoint, ServerQueryInfo?> Answer { get; set; } = _ => null;
+
+    public ServerQueryInfo Info(string name, string map, params string[] players) =>
+        new(clock.GetUtcNow(), name, map, players.Length, 16, 0, "1.0", [.. players.Select(p => new QueryPlayer(p, 0, TimeSpan.FromMinutes(1)))]);
+
+    public Task<ServerQueryInfo> QueryAsync(QueryEndpoint endpoint, CancellationToken cancellationToken) =>
+        Answer(endpoint) is { } info ? Task.FromResult(info with { At = clock.GetUtcNow() }) : throw new QueryException("No answer.");
 }

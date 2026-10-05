@@ -377,6 +377,60 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     }
 
     /// <summary>Starts and waits until the supervisor has handled it (the ack comes before the process exists).</summary>
+    [Fact]
+    public async Task TheGamesQueryAnswerGoesWithItsMetricsWhileItIsRecent()
+    {
+        var query = new FakeQuery { Answer = () => Answer("Pulsar") };
+        var supervisor = await Running(plan => plan with { Query = new QueryEndpoint(QueryProtocol.A2s, "127.0.0.1", 27015) }, query: query);
+
+        var sample = await supervisor.SampleAsync();
+
+        Assert.Equal("Pulsar", sample?.Query?.Name);
+        Assert.Equal(new QueryEndpoint(QueryProtocol.A2s, "127.0.0.1", 27015), query.Endpoints[0]);
+        query.Answer = () => throw new QueryException("No answer.");
+        _clock.Advance(TimeSpan.FromSeconds(31)); // three intervals without an answer
+        Assert.Null((await supervisor.SampleAsync())?.Query);
+    }
+
+    [Fact]
+    public async Task QueryReadinessWaitsForTheGamesFirstAnswer()
+    {
+        var query = new FakeQuery { Answer = () => throw new QueryException("Not listening yet.") };
+        var supervisor = Supervisor(plan => plan with { Readiness = new QueryReadiness(60), Query = new QueryEndpoint(QueryProtocol.A2s, "127.0.0.1", 27015) },
+            query: query);
+        await Started(supervisor);
+        await LogTailTests.Eventually(() => query.Endpoints.Count > 0, () => "never queried");
+        Assert.Equal(RuntimeState.Starting, supervisor.Snapshot.State);
+
+        query.Answer = () => Answer("Pulsar");
+        while (supervisor.Snapshot.State == RuntimeState.Starting)
+        {
+            _clock.Advance(TimeSpan.FromSeconds(2));
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+
+        await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
+    }
+
+    private ServerQueryInfo Answer(string name) => new(_clock.GetUtcNow(), name, "de_dust2", 1, 16, 0, "1.0", [new QueryPlayer("Ana", 3, null)]);
+
+    private sealed class FakeQuery : IServerQuery
+    {
+        public List<QueryEndpoint> Endpoints { get; } = [];
+
+        public Func<ServerQueryInfo> Answer { get; set; } = () => throw new QueryException("No answer.");
+
+        public Task<ServerQueryInfo> QueryAsync(QueryEndpoint endpoint, CancellationToken cancellationToken)
+        {
+            lock (Endpoints)
+            {
+                Endpoints.Add(endpoint);
+            }
+
+            return Task.FromResult(Answer());
+        }
+    }
+
     private static async Task<AckStatus> Started(ServerSupervisor supervisor)
     {
         var ack = await supervisor.StartAsync();
@@ -384,16 +438,16 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
         return ack;
     }
 
-    private async Task<ServerSupervisor> Running(Func<LaunchPlan, LaunchPlan>? change = null, bool restartOnCrash = true)
+    private async Task<ServerSupervisor> Running(Func<LaunchPlan, LaunchPlan>? change = null, bool restartOnCrash = true, IServerQuery? query = null)
     {
-        var supervisor = Supervisor(change, restartOnCrash);
+        var supervisor = Supervisor(change, restartOnCrash, query);
         await Started(supervisor);
         _processes.Last.Print("Test server ready\r\n");
         await _events.WaitForAsync(RuntimeState.Running);
         return supervisor;
     }
 
-    private ServerSupervisor Supervisor(Func<LaunchPlan, LaunchPlan>? change = null, bool restartOnCrash = true)
+    private ServerSupervisor Supervisor(Func<LaunchPlan, LaunchPlan>? change = null, bool restartOnCrash = true, IServerQuery? query = null)
     {
         var plan = new LaunchPlan("bin/game.exe", "", ["--ready-after", "0"], new Dictionary<string, string>(),
             new ConsoleDefinition(ManifestConsoleMode.Pty, InputNewline: "\r\n"),
@@ -401,7 +455,7 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
             new StopDefinition([new ConsoleCommandStop("quit")], 15));
         var definition = new ServerDefinition(Guid.NewGuid(), "abcd1234", @"C:\servers\abcd1234", ProcessIdentity.CurrentUser,
             change?.Invoke(plan) ?? plan, AutoStart: false, RestartOnCrash: restartOnCrash);
-        _supervisor = new ServerSupervisor(definition, _processes, _events, _clock, new SupervisorOptions(), NullLogger.Instance);
+        _supervisor = new ServerSupervisor(definition, _processes, _events, _clock, new SupervisorOptions(), NullLogger.Instance, query: query);
         return _supervisor;
     }
 }

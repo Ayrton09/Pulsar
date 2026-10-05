@@ -205,7 +205,7 @@ Fragment for Counter-Strike: Source (validated by spike 0001):
 
 ### Readiness and stop
 
-- Readiness: `logPattern` (regex over the output, or over the log file in `logfile+rcon`), `processAlive` (`graceSeconds`), `rcon` (the first successful RCON login), post-v1 `query` (A2S for Source). Moves `Starting → Running`. The bundled Source manifests use `rcon`: `Server is hibernating` never appears when users turn hibernation off.
+- Readiness: `logPattern` (regex over the output, or over the log file in `logfile+rcon`), `processAlive` (`graceSeconds`), `rcon` (the first successful RCON login), `query` (the first answer to the manifest's query, Phase 11). Moves `Starting → Running`. The bundled Source manifests use `rcon`: `Server is hibernating` never appears when users turn hibernation off.
 - Stop: steps `consoleCommand` (`pty`/`pipes`), `rconCommand` (any console with `rcon`), `ctrlC` (`pty` only), `wait`; after `timeoutSeconds` the agent **terminates the Job** (kills the whole tree).
 
 ### Backups
@@ -214,9 +214,13 @@ Globs (`Microsoft.Extensions.FileSystemGlobbing`) relative to the server directo
 
 As implemented (Phase 7): the globs match files only and ignore case (as Windows does); `dir/**` takes everything below `dir`. Pulsar's own files are never backed up, whatever the globs say: the server's SteamCMD (`.pulsar/**`) and transfers in progress (`.pulsar-upload-*`). Links are never followed, so nothing outside the server directory gets in.
 
+### Query
+
+`"query": { "protocol": "a2s", "port": "game" }`: how the agent asks the running game for its name, map, player counts and players, shown on the server's page. `a2s` is Valve's server query over UDP (Source games, Rust, Valheim and most Steam games; a challenge answered when the game asks for one, answers split over several packets put back together, Rust's player counts above 255 read from its keywords); `minecraft` is Minecraft's Server List Ping over TCP (the message of the day as the name, the player sample as the list). The port must be a required port of the manifest with the protocol's transport. Bundled: CS2 and CS:S on `game`, Rust and Valheim on `query` (Valheim answers only when the server is listed), Minecraft on `game`. *Implemented in Phase 11.*
+
 ### Reserved for later versions
 
-`query` (query protocol), additional `healthChecks`, `databases` (request a MySQL/MariaDB database from the game databases module), managed `runtime`s, `linux-x64`.
+Additional `healthChecks`, `databases` (request a MySQL/MariaDB database from the game databases module), managed `runtime`s, `linux-x64`.
 
 ## Validation
 

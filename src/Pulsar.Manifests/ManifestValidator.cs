@@ -119,7 +119,12 @@ public static partial class ManifestValidator
             Error("runtime", "The game must receive the RCON password: use {{rcon.password}} in its arguments or a configuration file.");
         }
 
-        ValidateReadiness(manifest.Readiness, runtime?.Console, Error);
+        if (manifest.Query is { } query)
+        {
+            ValidateQuery(query, ports, Error);
+        }
+
+        ValidateReadiness(manifest.Readiness, runtime?.Console, manifest.Query, Error);
         ValidateStop(manifest.Stop, runtime?.Console, Error);
         if (manifest.Backup is { } backup)
         {
@@ -665,10 +670,32 @@ public static partial class ManifestValidator
         }
     }
 
-    private static void ValidateReadiness(ReadinessDefinition readiness, ConsoleDefinition? console, Action<string, string> error)
+    /// <summary>The query goes to a port every server has, over the transport the game answers it on.</summary>
+    private static void ValidateQuery(QueryDefinition query, Dictionary<string, PortDefinition> ports, Action<string, string> error)
+    {
+        var transport = query.Protocol == QueryProtocol.Minecraft ? PortProtocol.Tcp : PortProtocol.Udp;
+        if (!ports.TryGetValue(query.Port, out var port) || !port.Required || !port.Protocols.Contains(transport))
+        {
+            error("query.port", $"Must name a required {transport.ToString().ToUpperInvariant()} port of the manifest.");
+        }
+    }
+
+    private static void ValidateReadiness(ReadinessDefinition readiness, ConsoleDefinition? console, QueryDefinition? query, Action<string, string> error)
     {
         switch (readiness)
         {
+            case QueryReadiness queried:
+                if (query is null)
+                {
+                    error("readiness", "Query readiness needs a 'query' section.");
+                }
+
+                if (queried.TimeoutSeconds is < 1 or > 3600)
+                {
+                    error("readiness.timeoutSeconds", "Between 1 and 3600.");
+                }
+
+                break;
             case LogPatternReadiness log:
                 if (CompileError(log.Pattern) is { } patternError)
                 {

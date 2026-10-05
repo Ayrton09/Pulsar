@@ -63,6 +63,7 @@
     }
   },
 
+  "query": { "protocol": "a2s", "port": "query" },
   "readiness": { "type": "rcon", "timeoutSeconds": 1800 },
 
   "stop": {

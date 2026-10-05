@@ -31,7 +31,8 @@
         "configFiles": { "type": "array", "items": { "$ref": "#/$defs/ConfigFileDefinition" } },
         "readiness": { "$ref": "#/$defs/ReadinessDefinition" },
         "stop": { "$ref": "#/$defs/StopDefinition" },
-        "backup": { "$ref": "#/$defs/BackupDefinition" }
+        "backup": { "$ref": "#/$defs/BackupDefinition" },
+        "query": { "$ref": "#/$defs/QueryDefinition" }
       }
     },
     "RequirementsDefinition": {
@@ -217,6 +218,15 @@
         "logsCommands": { "type": "boolean", "default": false, "description": "The game writes commands received over RCON to its log file, so the console does not add them again; an answer is added only when the log does not show it." }
       }
     },
+    "QueryDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "port"],
+      "properties": {
+        "protocol": { "enum": ["a2s", "minecraft"], "description": "a2s: Valve's server queries over UDP (Source and most Steam games); minecraft: the Server List Ping over TCP." },
+        "port": { "type": "string", "description": "Name of a required port with the protocol's transport (UDP for a2s, TCP for minecraft)." }
+      }
+    },
     "ConfigFileDefinition": {
       "type": "object",
       "additionalProperties": false,
@@ -233,11 +243,12 @@
     "ReadinessDefinition": {
       "type": "object",
       "required": ["type"],
-      "properties": { "type": { "enum": ["logPattern", "processAlive", "rcon"] } },
+      "properties": { "type": { "enum": ["logPattern", "processAlive", "rcon", "query"] } },
       "oneOf": [
         { "$ref": "#/$defs/LogPatternReadiness" },
         { "$ref": "#/$defs/ProcessAliveReadiness" },
-        { "$ref": "#/$defs/RconReadiness" }
+        { "$ref": "#/$defs/RconReadiness" },
+        { "$ref": "#/$defs/QueryReadiness" }
       ]
     },
     "LogPatternReadiness": {
@@ -261,6 +272,12 @@
       "additionalProperties": false,
       "required": ["type", "timeoutSeconds"],
       "properties": { "type": { "const": "rcon" }, "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 } }
+    },
+    "QueryReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "timeoutSeconds"],
+      "properties": { "type": { "const": "query" }, "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 } }
     },
     "StopDefinition": {
       "type": "object",

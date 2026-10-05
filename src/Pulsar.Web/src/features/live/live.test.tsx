@@ -191,6 +191,72 @@ describe('live updates', () => {
     expect(header).toHaveTextContent('1 h 5 min');
   });
 
+  it('shows who is playing, as plain text', async () => {
+    serverApi();
+    const live = await renderAt(`/servers/${server.id}`);
+    await waitFor(() => expect(live.calls('WatchServer')).toHaveLength(1));
+
+    live.emit('ServerMetrics', {
+      serverId: server.id,
+      at: '2026-10-02T12:06:00Z',
+      cpuPercent: 3,
+      memoryBytes: 1024 * 1024 * 1024,
+      processCount: 1,
+      uptimeSeconds: 600,
+      query: {
+        at: '2026-10-02T12:06:00Z',
+        name: 'Retakes <b>24/7</b>',
+        map: 'de_dust2',
+        players: 3,
+        maxPlayers: 16,
+        bots: 1,
+        version: '1.40.2.1',
+        playerList: [
+          { name: '<img src=x onerror=alert(1)>', score: 7, connectedSeconds: 3_660 },
+          { name: 'Bob', score: null, connectedSeconds: null },
+        ],
+      },
+    });
+
+    const header = await screen.findByLabelText('Usage');
+    expect(header).toHaveTextContent('3 / 16 (1 bot)');
+    expect(header).toHaveTextContent('de_dust2');
+    const players = await screen.findByRole('table', { name: 'Players' });
+    expect(players).toHaveTextContent('<img src=x onerror=alert(1)>');
+    expect(players).toHaveTextContent('1 h 1 min');
+    expect(within(players).getAllByRole('row')).toHaveLength(3);
+    expect(screen.getByText('Retakes <b>24/7</b> · version 1.40.2.1')).toBeInTheDocument();
+    expect(document.querySelector('img, b')).toBeNull();
+  });
+
+  it('says so when the game counts its players without listing them', async () => {
+    serverApi();
+    const live = await renderAt(`/servers/${server.id}`);
+    await waitFor(() => expect(live.calls('WatchServer')).toHaveLength(1));
+
+    live.emit('ServerMetrics', {
+      serverId: server.id,
+      at: '2026-10-02T12:06:00Z',
+      cpuPercent: 3,
+      memoryBytes: 1024,
+      processCount: 1,
+      uptimeSeconds: 600,
+      query: {
+        at: '2026-10-02T12:06:00Z',
+        name: null,
+        map: null,
+        players: 2,
+        maxPlayers: 10,
+        bots: 0,
+        version: null,
+        playerList: [],
+      },
+    });
+
+    expect(await screen.findByText('The game does not list its players.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Usage')).toHaveTextContent('2 / 10');
+  });
+
   it('fetches the servers again when the panel says they changed, instead of polling', async () => {
     const api = serverApi();
     const live = await renderAt('/servers');

@@ -134,7 +134,10 @@ public sealed record ConsoleEntry(long Sequence, DateTimeOffset At, string Text,
 
 public sealed record MetricsBatch(DateTimeOffset At, IReadOnlyList<ServerMetrics> Servers);
 public sealed record ServerMetrics(
-    Guid ServerId, double CpuPercent, long MemoryBytes, int ProcessCount, TimeSpan Uptime);
+    Guid ServerId, double CpuPercent, long MemoryBytes, int ProcessCount, TimeSpan Uptime,
+    ServerQueryInfo? Query);   // Phase 11: what the game answered to its manifest's query
+public sealed record ServerQueryInfo(DateTimeOffset At, string? Name, string? Map, int Players, int MaxPlayers,
+    int Bots, string? Version, IReadOnlyList<QueryPlayer> PlayerList);
 
 public sealed record OperationProgress(Guid OperationId, string Stage, double? Percent, string? Message);
 public sealed record OperationCompleted(Guid OperationId, Guid? ServerId, OperationOutcome Outcome,
@@ -144,6 +147,8 @@ public sealed record OperationCompleted(Guid OperationId, Guid? ServerId, Operat
 `HelloAccepted` returns the server time (to detect clock skew), the desired state of every server, the console subscriptions browsers are watching (`ConsoleSubscriptions`, with the panel's last sequence of each) and the current panel keys. This drives **reconciliation** after every reconnect or panel restart (see doc 05).
 
 Disk usage is not part of the periodic metrics: walking 60 GB of CS2 every 5 s would be absurd. It is computed on demand and cached (≥ 10 min).
+
+*Query (Phase 11):* a running server whose manifest has a `query` is asked every 10 seconds (every 2 while it starts) by its supervisor, not by the metrics timer, so a game slow to answer never delays the batch; the last answer goes with the server's metrics while it is less than 30 seconds old. Its texts come from the game and from its players: the agent removes control characters, direction overrides and Minecraft colour codes and cuts them to 128 characters and 256 players (`QueryText`), and the panel does the same again before pushing them to browsers, which show them as text.
 
 ### Console: flow and volume
 

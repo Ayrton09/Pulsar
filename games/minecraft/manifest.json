@@ -79,6 +79,7 @@
       } }
   ],
 
+  "query": { "protocol": "minecraft", "port": "game" },
   "readiness": { "type": "logPattern", "pattern": "Done \\([0-9.,]+s\\)! For help, type", "timeoutSeconds": 600 },
 
   "stop": {

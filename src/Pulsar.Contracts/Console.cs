@@ -32,7 +32,83 @@ public static class ConsoleInput
 /// <summary>Resource usage of a running server's process tree (its Job), sampled by the agent.</summary>
 /// <param name="CpuPercent">Share of the whole machine since the previous sample (0–100, like the node's CPU).</param>
 /// <param name="MemoryBytes">Working set of every process of the server.</param>
-public sealed record ServerMetrics(Guid ServerId, double CpuPercent, long MemoryBytes, int ProcessCount, TimeSpan Uptime);
+/// <param name="Query">What the game last answered to its manifest's query; null without one, or when it does not answer.</param>
+public sealed record ServerMetrics(Guid ServerId, double CpuPercent, long MemoryBytes, int ProcessCount, TimeSpan Uptime, ServerQueryInfo? Query = null);
+
+/// <summary>
+/// A running game's answer to its query (A2S, Minecraft's Server List Ping). Every text comes from the game and from
+/// its players: untrusted, cleaned by the agent (<see cref="QueryText"/>) and shown as plain text.
+/// </summary>
+/// <param name="At">When the game answered.</param>
+/// <param name="Bots">Bots among <paramref name="Players"/> (A2S); 0 when the game does not say.</param>
+/// <param name="PlayerList">Who is playing, as far as the game tells (A2S lists them; Minecraft gives a sample).</param>
+public sealed record ServerQueryInfo(
+    DateTimeOffset At,
+    string? Name,
+    string? Map,
+    int Players,
+    int MaxPlayers,
+    int Bots,
+    string? Version,
+    IReadOnlyList<QueryPlayer> PlayerList);
+
+/// <param name="Score">The game's score (A2S); null when it has none.</param>
+/// <param name="Connected">How long the player has been on the server (A2S); null when the game does not say.</param>
+public sealed record QueryPlayer(string Name, long? Score, TimeSpan? Connected);
+
+/// <summary>Limits on what a game's query answer may carry, applied by the agent and checked again by the panel.</summary>
+public static class QueryText
+{
+    public const int MaxLength = 128;
+
+    public const int MaxPlayers = 256;
+
+    /// <summary>
+    /// Control characters, direction overrides and colour codes (Minecraft's <c>§a</c>) removed, whitespace trimmed, cut
+    /// to <see cref="MaxLength"/>; null when nothing is left.
+    /// </summary>
+    public static string? Clean(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return null;
+        }
+
+        var builder = new System.Text.StringBuilder(Math.Min(text.Length, MaxLength));
+        for (var i = 0; i < text.Length && builder.Length < MaxLength; i++)
+        {
+            var c = text[i];
+            if (c == '§')
+            {
+                i++; // the formatting code after it
+                continue;
+            }
+
+            // Direction overrides would let a player's name reorder the text shown after it.
+            if (char.IsControl(c) || c is >= '‪' and <= '‮' or >= '⁦' and <= '⁩'
+                || char.IsSurrogate(c) && !(char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1])))
+            {
+                continue;
+            }
+
+            if (char.IsHighSurrogate(c))
+            {
+                if (builder.Length + 2 > MaxLength)
+                {
+                    break;
+                }
+
+                builder.Append(c).Append(text[++i]);
+                continue;
+            }
+
+            builder.Append(c);
+        }
+
+        var cleaned = builder.ToString().Trim();
+        return cleaned.Length == 0 ? null : cleaned;
+    }
+}
 
 /// <summary>Every running server of a node, every few seconds; servers not running are not listed.</summary>
 public sealed record MetricsBatch(DateTimeOffset At, IReadOnlyList<ServerMetrics> Servers);

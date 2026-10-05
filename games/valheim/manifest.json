@@ -65,6 +65,7 @@
     }
   },
 
+  "query": { "protocol": "a2s", "port": "query" },
   "readiness": { "type": "logPattern", "pattern": "Registering lobby", "timeoutSeconds": 600 },
 
   "stop": {

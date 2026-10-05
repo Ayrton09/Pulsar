@@ -25,7 +25,8 @@ public sealed record GameManifest(
     InstallDefinition? Install = null,
     InstallDefinition? Update = null,
     IReadOnlyList<ConfigFileDefinition>? ConfigFiles = null,
-    BackupDefinition? Backup = null)
+    BackupDefinition? Backup = null,
+    QueryDefinition? Query = null)
 {
     /// <summary>Optional editor hint (<c>"$schema"</c>); ignored.</summary>
     [JsonPropertyName("$schema")]
@@ -220,11 +221,27 @@ public enum RconProtocol
 /// </param>
 public sealed record RconDefinition(RconProtocol Protocol, string Port, bool LogsCommands = false);
 
+public enum QueryProtocol
+{
+    /// <summary>Valve's server queries (A2S_INFO, A2S_PLAYER) over UDP: Source games and most Steam games.</summary>
+    A2s,
+
+    /// <summary>Minecraft's Server List Ping over TCP.</summary>
+    Minecraft,
+}
+
+/// <summary>
+/// How the agent asks a running server for its name, map and players (docs/architecture/04, "Query"), on a required
+/// port of the manifest that has the protocol's transport (UDP for A2S, TCP for Minecraft).
+/// </summary>
+public sealed record QueryDefinition(QueryProtocol Protocol, string Port);
+
 /// <summary>When a starting server counts as running (docs/architecture/04, "Readiness and stop").</summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(LogPatternReadiness), "logPattern")]
 [JsonDerivedType(typeof(ProcessAliveReadiness), "processAlive")]
 [JsonDerivedType(typeof(RconReadiness), "rcon")]
+[JsonDerivedType(typeof(QueryReadiness), "query")]
 public abstract record ReadinessDefinition;
 
 /// <summary>A line of output matches <see cref="Pattern"/> (non-backtracking regex).</summary>
@@ -235,6 +252,9 @@ public sealed record ProcessAliveReadiness(int GraceSeconds) : ReadinessDefiniti
 
 /// <summary>The first RCON command that succeeds.</summary>
 public sealed record RconReadiness(int TimeoutSeconds) : ReadinessDefinition;
+
+/// <summary>The first answer to the manifest's query.</summary>
+public sealed record QueryReadiness(int TimeoutSeconds) : ReadinessDefinition;
 
 public sealed record StopDefinition(IReadOnlyList<StopStep> Steps, int TimeoutSeconds);
 

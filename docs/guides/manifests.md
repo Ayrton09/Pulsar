@@ -53,9 +53,13 @@ Then:
    in clear.
 7. **Configuration files**: settings the game reads from a file (`source-cfg`, `properties` or `unreal-ini`), written
    or patched by the agent before every start.
-8. **Readiness and stop**: how the agent knows the game is ready (a console pattern, RCON answering, a port) and how
-   to stop it cleanly (a console or RCON command, then a wait) before it is killed.
-9. **Backups**: which folders a backup includes and excludes.
+8. **Readiness and stop**: how the agent knows the game is ready (a console pattern, RCON answering, the query
+   answering) and how to stop it cleanly (a console or RCON command, then a wait) before it is killed.
+9. **Query**: `"query": { "protocol": "a2s", "port": "query" }` lets the panel show the players and the map. `a2s`
+   for Source and most Steam games (often on the game port, sometimes on a separate query port), `minecraft` for the
+   Server List Ping. Check that the game answers before adding it: Steam's server browser (View, Game Servers,
+   Favorites, add the address and query port) shows whether it does.
+10. **Backups**: which folders a backup includes and excludes.
 
 ## Check it
 

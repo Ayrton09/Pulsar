@@ -29,6 +29,26 @@ export interface ServerMetrics {
   memoryBytes: number;
   processCount: number;
   uptimeSeconds: number;
+  /** What the game last answered to its query; absent without one or when it does not answer. */
+  query?: ServerQuery | null;
+}
+
+/** A running game's name, map and players. Every text comes from the game and its players: show it as plain text. */
+export interface ServerQuery {
+  at: string;
+  name: string | null;
+  map: string | null;
+  players: number;
+  maxPlayers: number;
+  bots: number;
+  version: string | null;
+  playerList: QueryPlayer[];
+}
+
+export interface QueryPlayer {
+  name: string;
+  score: number | null;
+  connectedSeconds: number | null;
 }
 
 export interface ServerWatch {

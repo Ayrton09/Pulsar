@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Nodes;
+using Pulsar.Api.Realtime;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Abstractions;
@@ -106,6 +108,42 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         {
             Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
         }
+    }
+
+    [DatabaseFact]
+    public async Task WhoIsPlayingReachesTheBrowserCleaned()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "query");
+        await AllocateAsync(admin, agent.Config!.NodeId, "0.0.0.0", "27015-27020");
+        var server = await InstalledAsync(admin, agent, "css");
+        var asked = new List<Pulsar.Manifests.QueryEndpoint>();
+        agent.Query.Answer = endpoint =>
+        {
+            lock (asked)
+            {
+                asked.Add(endpoint);
+            }
+
+            return agent.Query.Info("Pulsar‮ test", "de_dust2", "Ana", "<b>Bob</b>");
+        };
+        await using var browser = await BrowserHub.ConnectAsync(factory, admin);
+        await browser.Connection.InvokeAsync<ServerWatch?>("WatchServer", server, Ct);
+
+        await ServerApi.CommandAsync(admin, server, "start");
+
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(browser.Metrics.Any(m => m.ServerId == server && m.Query is not null)), "players pushed");
+        var query = browser.Metrics.Last(m => m.ServerId == server && m.Query is not null).Query!;
+        Assert.Equal("Pulsar test", query.Name); // the agent's text is cleaned again by the panel
+        Assert.Equal(("de_dust2", 2, 16), (query.Map, query.Players, query.MaxPlayers));
+        Assert.Equal(["Ana", "<b>Bob</b>"], query.PlayerList.Select(p => p.Name)); // plain text for the page to show as such
+        Assert.Equal(60, query.PlayerList[0].ConnectedSeconds);
+        lock (asked)
+        {
+            Assert.Equal(new Pulsar.Manifests.QueryEndpoint(Pulsar.Manifests.QueryProtocol.A2s, "127.0.0.1", 27015), asked[0]); // the game port
+        }
+
+        Assert.NotNull((await browser.Connection.InvokeAsync<ServerWatch?>("WatchServer", server, Ct))!.Metrics!.Query); // a page opened now
     }
 
     [DatabaseTheory]

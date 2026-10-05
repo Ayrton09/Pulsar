@@ -51,7 +51,8 @@ public sealed partial class ServerHost(
     SupervisorOptions supervisorOptions,
     ServerHostOptions options,
     TimeProvider clock,
-    ILoggerFactory loggerFactory) : IHostedService, IServerEventSink, IDisposable
+    ILoggerFactory loggerFactory,
+    IServerQuery? query = null) : IHostedService, IServerEventSink, IDisposable
 {
     // The panel waits for the ack: deleting a remote copy gets a bounded time.
     private static readonly TimeSpan s_remoteDeleteTimeout = TimeSpan.FromSeconds(20);
@@ -795,7 +796,7 @@ public sealed partial class ServerHost(
             : null;
         var console = new ServerConsole(new ConsoleBuffer(clock, options.ConsoleBufferCapacity), log);
         var supervisor = new ServerSupervisor(definition, processes, this, clock, supervisorOptions,
-            loggerFactory.CreateLogger<ServerSupervisor>(), files, rcon, firewall, console);
+            loggerFactory.CreateLogger<ServerSupervisor>(), files, rcon, firewall, console, query);
         _servers[serverId] = new Server(spec.ShortId, Parse(spec), spec, rconPassword, supervisor);
         return supervisor;
     }

@@ -320,6 +320,68 @@ public sealed class ManifestTests
     ];
 
     [Fact]
+    public void AServerIsQueriedOnItsQueryPortsAddress()
+    {
+        var manifest = Parse(Manifest(m =>
+        {
+            m["ports"] = QueryPorts();
+            m["query"] = new JsonObject { ["protocol"] = "a2s", ["port"] = "query" };
+        }));
+        var binding = (string address) => new ServerBinding("abcd1234", new Dictionary<string, string?>(),
+            new Dictionary<string, PortAssignment> { ["game"] = new(address, 28015), ["query"] = new(address, 28017), ["rcon"] = new(address, 28016) });
+
+        Assert.Equal(new QueryEndpoint(QueryProtocol.A2s, "127.0.0.1", 28017),
+            LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, binding(PortAssignment.AnyAddress)).Query);
+        Assert.Equal(new QueryEndpoint(QueryProtocol.A2s, "10.0.0.5", 28017),
+            LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, binding("10.0.0.5")).Query);
+        Assert.Null(Render(TestManifest(), new Dictionary<string, string?>()).Query);
+    }
+
+    [Theory]
+    [InlineData("a2s", "nope")] // no such port
+    [InlineData("a2s", "rcon")] // TCP only: A2S is UDP
+    [InlineData("minecraft", "query")] // UDP only: the Server List Ping is TCP
+    [InlineData("a2s", "tv")] // optional: the server may not have it
+    public void TheQueryPortIsChecked(string protocol, string port)
+    {
+        var errors = Errors(m =>
+        {
+            m["ports"] = QueryPorts();
+            m["query"] = new JsonObject { ["protocol"] = protocol, ["port"] = port };
+        });
+
+        Assert.Contains(errors, e => e.Path == "query.port");
+    }
+
+    [Fact]
+    public void QueryReadinessNeedsAQuery()
+    {
+        var readiness = new JsonObject { ["type"] = "query", ["timeoutSeconds"] = 120 };
+
+        Assert.Contains(Errors(m => m["readiness"] = readiness.DeepClone()), e => e.Path == "readiness");
+        Assert.IsType<QueryReadiness>(Parse(Manifest(m =>
+        {
+            m["ports"] = QueryPorts();
+            m["query"] = new JsonObject { ["protocol"] = "a2s", ["port"] = "query" };
+            m["readiness"] = readiness.DeepClone();
+        })).Readiness);
+        Assert.Contains(Errors(m =>
+        {
+            m["ports"] = QueryPorts();
+            m["query"] = new JsonObject { ["protocol"] = "a2s", ["port"] = "query" };
+            m["readiness"] = new JsonObject { ["type"] = "query", ["timeoutSeconds"] = 0 };
+        }), e => e.Path == "readiness.timeoutSeconds");
+    }
+
+    private static JsonArray QueryPorts() =>
+    [
+        new JsonObject { ["name"] = "game", ["label"] = "Game", ["protocols"] = new JsonArray("udp"), ["default"] = 28015 },
+        new JsonObject { ["name"] = "query", ["label"] = "Query", ["protocols"] = new JsonArray("udp"), ["default"] = 28017 },
+        new JsonObject { ["name"] = "rcon", ["label"] = "Remote console", ["protocols"] = new JsonArray("tcp"), ["default"] = 28016 },
+        new JsonObject { ["name"] = "tv", ["label"] = "TV", ["protocols"] = new JsonArray("udp"), ["default"] = 28020, ["required"] = false },
+    ];
+
+    [Fact]
     public void TheHashIdentifiesTheExactBytes()
     {
         var bytes = File.ReadAllBytes(TestManifestPath());

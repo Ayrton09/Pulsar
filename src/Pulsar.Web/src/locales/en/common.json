@@ -803,7 +803,21 @@
       "cpu": "CPU",
       "cpuValue": "{{value, number(maximumFractionDigits: 1)}} %",
       "memory": "Memory",
-      "uptime": "Uptime"
+      "uptime": "Uptime",
+      "players": "Players",
+      "playersValue": "{{players, number}} / {{max, number}}",
+      "bots_one": "({{count, number}} bot)",
+      "bots_other": "({{count, number}} bots)",
+      "map": "Map"
+    },
+    "players": {
+      "title": "Players",
+      "version": "version {{version}}",
+      "name": "Name",
+      "score": "Score",
+      "time": "Time on the server",
+      "empty": "Nobody is playing.",
+      "notListed": "The game does not list its players."
     }
   },
   "panelKeys": {

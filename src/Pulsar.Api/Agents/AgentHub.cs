@@ -236,7 +236,8 @@ internal sealed partial class AgentHub(
             .ToHashSet();
         foreach (var sample in batch.Servers.Where(s => own.Contains(new ServerId(s.ServerId))))
         {
-            var view = new ServerMetricsView(sample.ServerId, batch.At, sample.CpuPercent, sample.MemoryBytes, sample.ProcessCount, sample.Uptime.TotalSeconds);
+            var view = new ServerMetricsView(sample.ServerId, batch.At, sample.CpuPercent, sample.MemoryBytes, sample.ProcessCount, sample.Uptime.TotalSeconds,
+                ServerQueryView.From(sample.Query));
             liveMetrics.Update(view);
             await browsers.Clients.Group(PanelHub.ServerGroup(new ServerId(sample.ServerId))).ServerMetrics(view);
         }

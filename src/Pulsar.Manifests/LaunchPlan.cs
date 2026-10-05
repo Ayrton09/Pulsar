@@ -29,6 +29,9 @@ public sealed record LaunchPlan(
 
     /// <summary>Where and how the agent reaches the game's remote console (<c>logfile+rcon</c>).</summary>
     public RconEndpoint? Rcon { get; init; }
+
+    /// <summary>Where and how the agent asks the running game for its name, map and players.</summary>
+    public QueryEndpoint? Query { get; init; }
 }
 
 /// <summary>An <c>ip:port</c> pair of a node given to a server (both protocols). <c>0.0.0.0</c> means every interface.</summary>
@@ -48,6 +51,9 @@ public sealed record RconEndpoint(RconProtocol Protocol, string Address, int Por
     // The password is a credential: never in logs or exception messages.
     public override string ToString() => $"{Protocol} rcon at {Address}:{Port}";
 }
+
+/// <param name="Address">Loopback when the game listens on every interface.</param>
+public sealed record QueryEndpoint(QueryProtocol Protocol, string Address, int Port);
 
 /// <summary>One line a configuration file gets; an empty <see cref="Value"/> removes the key.</summary>
 public sealed record ConfigEntry(string Key, string Value, bool Secret)
@@ -299,6 +305,7 @@ public static class LaunchPlanRenderer
             PortNames = [.. manifest.PortList.Select(p => p.Name)],
             ConfigFiles = configFiles,
             Rcon = rcon,
+            Query = manifest.Query is { } query ? QueryEndpointFor(query, ports) : null,
         };
     }
 
@@ -355,6 +362,17 @@ public static class LaunchPlanRenderer
         }
 
         return given.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+    }
+
+    private static QueryEndpoint QueryEndpointFor(QueryDefinition definition, Dictionary<string, PortAssignment> ports)
+    {
+        if (!ports.TryGetValue(definition.Port, out var port))
+        {
+            throw NoAllocation(definition.Port);
+        }
+
+        var address = port.IpAddress == PortAssignment.AnyAddress ? IPAddress.Loopback.ToString() : port.IpAddress;
+        return new QueryEndpoint(definition.Protocol, address, port.Port);
     }
 
     private static RconEndpoint RconEndpointFor(RconDefinition definition, Dictionary<string, PortAssignment> ports, string? password)

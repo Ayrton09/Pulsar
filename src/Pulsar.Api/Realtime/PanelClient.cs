@@ -24,7 +24,30 @@ public interface IPanelClient
 public sealed record OperationProgressView(Guid ServerId, Guid OperationId, string Stage, decimal? Percent);
 
 /// <param name="CpuPercent">Share of the node's whole CPU (0–100).</param>
-public sealed record ServerMetricsView(Guid ServerId, DateTimeOffset At, double CpuPercent, long MemoryBytes, int ProcessCount, double UptimeSeconds);
+/// <param name="Query">What the game last answered to its query; null without one or when it does not answer.</param>
+public sealed record ServerMetricsView(Guid ServerId, DateTimeOffset At, double CpuPercent, long MemoryBytes, int ProcessCount, double UptimeSeconds,
+    ServerQueryView? Query = null);
+
+/// <summary>
+/// A running game's name, map and players, as it answered its query. Every text is the game's or its players': the
+/// agent cleaned it, the panel cleans it again (a node is not trusted with what browsers show) and pages show it as
+/// plain text.
+/// </summary>
+public sealed record ServerQueryView(DateTimeOffset At, string? Name, string? Map, int Players, int MaxPlayers, int Bots, string? Version,
+    IReadOnlyList<QueryPlayerView> PlayerList)
+{
+    private const int MaxCount = 1_000_000;
+
+    public static ServerQueryView? From(ServerQueryInfo? info) => info is null ? null : new ServerQueryView(info.At, QueryText.Clean(info.Name),
+        QueryText.Clean(info.Map), Math.Clamp(info.Players, 0, MaxCount), Math.Clamp(info.MaxPlayers, 0, MaxCount), Math.Clamp(info.Bots, 0, MaxCount),
+        QueryText.Clean(info.Version),
+        [.. (info.PlayerList ?? []).Take(QueryText.MaxPlayers).Select(p => QueryText.Clean(p.Name) is { } name
+            ? new QueryPlayerView(name, p.Score, p.Connected is { } connected && connected >= TimeSpan.Zero ? Math.Floor(connected.TotalSeconds) : null)
+            : null).OfType<QueryPlayerView>()]);
+}
+
+/// <param name="ConnectedSeconds">How long the player has been on the server, when the game says.</param>
+public sealed record QueryPlayerView(string Name, long? Score, double? ConnectedSeconds);
 
 /// <summary>A node's latest usage, as the node API returns it.</summary>
 public sealed record NodeMetricsUpdate(Guid NodeId, NodeMetricsView Metrics);
