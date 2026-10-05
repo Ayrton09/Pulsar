@@ -5193,6 +5193,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/servers/{id}/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpgradeTemplateRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ServerDetails"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/servers/{id}/limits": {
         parameters: {
             query?: never;
@@ -9144,6 +9230,7 @@ export interface components {
             ports: components["schemas"]["ServerPortView"][];
             recentOperations: components["schemas"]["OperationView"][];
             limits: components["schemas"]["ServerLimitsView"];
+            templateUpgrade?: null | components["schemas"]["TemplateUpgradeView"];
         };
         ServerLimitsRequest: {
             /** Format: int32 */
@@ -9287,6 +9374,11 @@ export interface components {
         };
         /** @enum {unknown} */
         TemplateSource: "bundled" | "imported";
+        TemplateUpgradeView: {
+            /** Format: uuid */
+            templateId: string;
+            version: string;
+        };
         TemplateVariable: {
             key: string;
             label: string;
@@ -9363,6 +9455,10 @@ export interface components {
             displayName: null | string;
             email: null | string;
             isDisabled: boolean;
+        };
+        UpgradeTemplateRequest: {
+            /** Format: uuid */
+            templateId: string;
         };
         UserResponse: {
             /** Format: uuid */

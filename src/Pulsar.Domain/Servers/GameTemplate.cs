@@ -73,4 +73,46 @@ public sealed class GameTemplate
         ArgumentNullException.ThrowIfNull(contentSha256);
         return new GameTemplate(TemplateId.New(), key, version, schemaVersion, name, description, source, content, contentSha256, now);
     }
+
+    /// <summary>
+    /// Orders semantic versions (<c>1.2.3</c>, <c>1.2.3-beta.1</c>; manifests are validated to have one): by their
+    /// numbers, and a pre-release before its release. Below zero when <paramref name="left"/> is older.
+    /// </summary>
+    public static int CompareVersions(string left, string right)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+        var (leftNumbers, leftPre) = Split(left);
+        var (rightNumbers, rightPre) = Split(right);
+        for (var i = 0; i < 3; i++)
+        {
+            var compared = leftNumbers[i].CompareTo(rightNumbers[i]);
+            if (compared != 0)
+            {
+                return compared;
+            }
+        }
+
+        return (leftPre, rightPre) switch
+        {
+            (null, null) => 0,
+            (null, _) => 1,
+            (_, null) => -1,
+            _ => string.CompareOrdinal(leftPre, rightPre),
+        };
+
+        static (long[] Numbers, string? PreRelease) Split(string version)
+        {
+            var core = version.Split('+')[0];
+            var dash = core.IndexOf('-', StringComparison.Ordinal);
+            var numbers = (dash < 0 ? core : core[..dash]).Split('.');
+            var parsed = new long[3];
+            for (var i = 0; i < 3 && i < numbers.Length; i++)
+            {
+                _ = long.TryParse(numbers[i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out parsed[i]);
+            }
+
+            return (parsed, dash < 0 ? null : core[(dash + 1)..]);
+        }
+    }
 }

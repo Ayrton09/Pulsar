@@ -125,6 +125,10 @@ Server and node pages use a layout with a fixed header (name, status, power acti
 - `/admin/users`: a badge for users with it on, and turning it off for a user who lost their phone (asked first; their sessions end).
 - API: `GET /api/v1/auth/two-factor`, `POST …/two-factor/setup`, `POST …/two-factor/enable`, `POST …/two-factor/disable`, `POST …/two-factor/recovery-codes`, `PUT /api/v1/roles/{id}/two-factor`, `POST /api/v1/users/{id}/two-factor/reset`.
 
+## Template upgrades
+
+The server page's Administration section says when a newer version of the server's game template exists, with "Move to x.y.z" (asked first; `server.install`, the server stopped).
+
 ## API keys
 
 - `/account`: the user's keys (name, the first characters, permissions, last use, expiry) with Revoke (asked first), and Create: a name, an expiry (30, 90 or 365 days, or never) and optionally a checklist of the permissions the user holds anywhere. The value is shown once, with Copy and "I copied it".

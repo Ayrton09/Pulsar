@@ -20,6 +20,9 @@ public static class ServerErrors
 
     public static DomainError Busy { get; } = new("server.busy", "Another operation is running on this server.");
 
+    public static DomainError TemplateNotNewer { get; } =
+        new("server.template_not_newer", "A server moves only to a newer version of its own game's template.");
+
     public static DomainError NotInstalled { get; } = new("server.not_installed", "The server is not installed.");
 
     public static DomainError MustBeStopped { get; } = new("server.must_be_stopped", "Stop the server first.");

@@ -5278,6 +5278,96 @@
         }
       }
     },
+    "/api/v1/servers/{id}/template": {
+      "put": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpgradeTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/servers/{id}/limits": {
       "put": {
         "tags": [
@@ -11397,6 +11487,16 @@
           },
           "limits": {
             "$ref": "#/components/schemas/ServerLimitsView"
+          },
+          "templateUpgrade": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TemplateUpgradeView"
+              }
+            ]
           }
         }
       },
@@ -12045,6 +12145,22 @@
           "imported"
         ]
       },
+      "TemplateUpgradeView": {
+        "required": [
+          "templateId",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "templateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
       "TemplateVariable": {
         "required": [
           "key",
@@ -12396,6 +12512,18 @@
           },
           "isDisabled": {
             "type": "boolean"
+          }
+        }
+      },
+      "UpgradeTemplateRequest": {
+        "required": [
+          "templateId"
+        ],
+        "type": "object",
+        "properties": {
+          "templateId": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },

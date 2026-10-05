@@ -20,6 +20,7 @@ import {
   useServer,
   useServerCommand,
   useUpdateGame,
+  useUpgradeTemplate,
   type OperationView,
   type ServerCommand,
   type ServerDetails,
@@ -388,6 +389,7 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
   const reinstall = useReinstallServer();
   const remove = useDeleteServer();
   const update = useUpdateGame();
+  const upgrade = useUpgradeTemplate();
   const [validate, setValidate] = useState(false);
   const { server } = details;
   const available = serverActions(server);
@@ -397,11 +399,30 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
     return null;
   }
 
-  const error = reinstall.error ?? remove.error ?? update.error;
+  const error = reinstall.error ?? remove.error ?? update.error ?? upgrade.error;
+  const next = details.templateUpgrade;
   return (
     <section className="mt-8 space-y-4">
       <h2 className="text-lg font-semibold">{t('servers.administration')}</h2>
       {error && <Alert>{errorMessage(t, error)}</Alert>}
+      {canInstall && next && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3">
+          <p className="text-sm">
+            {t('servers.templateUpgrade', { current: details.templateVersion, next: next.version })}
+          </p>
+          <Button
+            variant="secondary"
+            disabled={!available.reinstall}
+            busy={upgrade.isPending}
+            onClick={() =>
+              window.confirm(t('servers.templateUpgradeConfirm', { name: server.name, version: next.version })) &&
+              upgrade.mutate({ id: server.id, templateId: next.templateId })
+            }
+          >
+            {t('servers.templateUpgradeAction', { version: next.version })}
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         {canInstall && details.canUpdate && (
           <Button

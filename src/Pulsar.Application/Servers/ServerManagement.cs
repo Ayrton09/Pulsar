@@ -60,7 +60,11 @@ public sealed record ServerDetails(
     bool CanUpdate,
     IReadOnlyList<ServerPortView> Ports,
     IReadOnlyList<OperationView> RecentOperations,
-    ServerLimitsView Limits);
+    ServerLimitsView Limits,
+    TemplateUpgradeView? TemplateUpgrade = null);
+
+/// <summary>The newest version of the server's game template, when it is newer than the one the server runs.</summary>
+public sealed record TemplateUpgradeView(Guid TemplateId, string Version);
 
 /// <summary>Caps on the server's CPU (share of its node, %) and memory (MiB); null fields are not capped.</summary>
 public sealed record ServerLimitsView(int? CpuPercent, int? MemoryMb);
@@ -240,6 +244,74 @@ public sealed partial class ServerManagement(
         audit.Record(AuditActions.Server.InstallRequested).WithServer(server.Id, server.NodeId);
         await db.SaveChangesAsync(cancellationToken);
         return await DetailsAsync(server, cancellationToken);
+    }
+
+    /// <summary>
+    /// Moves a stopped server to a newer version of its game's template (docs/architecture/02, "Template upgrades"):
+    /// its values are checked against the new version (values of removed variables are dropped, new required ports get
+    /// an allocation), then the server is provisioned and installed again with it, its files kept.
+    /// </summary>
+    public async Task<Result<ServerDetails>> UpgradeTemplateAsync(ServerId id, Guid templateId, CancellationToken cancellationToken)
+    {
+        var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        if (Connection(server.NodeId) is null)
+        {
+            return NodeErrors.NotConnected;
+        }
+
+        var current = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
+        if (await templates.FindOfferedAsync(templateId, cancellationToken) is not { } next)
+        {
+            return ServerErrors.TemplateNotFound;
+        }
+
+        var manifest = ServerSpecs.Parse(next);
+        var now = clock.GetUtcNow();
+        var changed = server.ChangeTemplate(current, next, [.. manifest.VariableList.Select(v => v.Key)], now);
+        if (!changed.IsSuccess)
+        {
+            return changed.Error!;
+        }
+
+        // No new values: the stored ones (and the new version's defaults) must make a valid whole.
+        var values = specs.SetVariables(server, manifest, new Dictionary<string, string?>(), canEditProtected: true, request.UserId, now);
+        if (!values.IsSuccess)
+        {
+            return values.Error!;
+        }
+
+        var ports = await specs.AssignPortsAsync(server, manifest, requested: null, cancellationToken);
+        if (!ports.IsSuccess)
+        {
+            return ports.Error!;
+        }
+
+        var valid = specs.Check(server, manifest, [.. db.NodeAllocations.Local.Where(a => a.ServerId == server.Id)]);
+        if (!valid.IsSuccess)
+        {
+            return valid.Error!;
+        }
+
+        audit.Record(AuditActions.Server.TemplateChanged, metadata: new { key = next.Key, from = current.Version, to = next.Version })
+            .WithServer(server.Id, server.NodeId);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            return ServerErrors.AllocationUnavailable;
+        }
+
+        var result = await RunOperationAsync(server, OperationType.ServerProvision,
+            new ProvisionServerCommand(server.Id.Value, await specs.BuildAsync(server, next, cancellationToken)), request.UserId,
+            OperationRequester.User, cancellationToken);
+        return result.IsSuccess ? await DetailsAsync(server, cancellationToken) : result.Error!;
     }
 
     /// <summary>The install that follows a successful provisioning (started by the panel itself).</summary>
@@ -656,8 +728,13 @@ public sealed partial class ServerManagement(
         var ports = manifest.PortList.Select(p => allocations.GetValueOrDefault(p.Name) is { } a
             ? new ServerPortView(p.Name, p.Label, p.Required, a.Id.Value, a.IpAddress, a.Port, p.Follows?.Port)
             : new ServerPortView(p.Name, p.Label, p.Required, null, null, null, p.Follows?.Port)).ToList();
+        var newer = (await db.GameTemplates.AsNoTracking().Where(t => t.Key == template.Key).ToListAsync(cancellationToken))
+            .Where(t => GameTemplate.CompareVersions(t.Version, template.Version) > 0)
+            .OrderByDescending(t => t.Version, Comparer<string>.Create(GameTemplate.CompareVersions))
+            .FirstOrDefault();
         return new ServerDetails(summary, server.Description, server.AutoStart, server.RestartOnCrash, template.Key, template.Version,
-            manifest.Update is not null, ports, [.. operations.Select(View)], new ServerLimitsView(server.CpuLimitPercent, server.MemoryLimitMb));
+            manifest.Update is not null, ports, [.. operations.Select(View)], new ServerLimitsView(server.CpuLimitPercent, server.MemoryLimitMb),
+            newer is null ? null : new TemplateUpgradeView(newer.Id.Value, newer.Version));
     }
 
     private async Task<IReadOnlyList<ServerSummary>> SummariesAsync(IReadOnlyList<Server> servers, CancellationToken cancellationToken)

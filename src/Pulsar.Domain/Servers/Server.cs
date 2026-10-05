@@ -262,6 +262,37 @@ public sealed class Server
 
     public Result RequestRestart(DateTimeOffset now) => RequestStart(now);
 
+    /// <summary>
+    /// Moves the server to a newer version of its game's template (docs/architecture/02, "Template upgrades"), while
+    /// it is stopped and nothing else runs on it. Values of variables the new version no longer has are dropped; the
+    /// caller checks the rest against the new manifest and installs the server again with it.
+    /// </summary>
+    public Result ChangeTemplate(GameTemplate current, GameTemplate next, IReadOnlyCollection<string> variables, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        ArgumentNullException.ThrowIfNull(next);
+        ArgumentNullException.ThrowIfNull(variables);
+        if (current.Id != TemplateId || next.Key != current.Key || GameTemplate.CompareVersions(next.Version, current.Version) <= 0)
+        {
+            return ServerErrors.TemplateNotNewer;
+        }
+
+        if (ActiveOperationId is not null)
+        {
+            return ServerErrors.Busy;
+        }
+
+        if (RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
+        {
+            return ServerErrors.MustBeStopped;
+        }
+
+        _variables.RemoveAll(v => !variables.Contains(v.Key));
+        TemplateId = next.Id;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
     /// <summary>Sets a plain variable value (null removes it, so the manifest default applies).</summary>
     public void SetVariable(string key, string? value, UserId? by, DateTimeOffset now)
     {

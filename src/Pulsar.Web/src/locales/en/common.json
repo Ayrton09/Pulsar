@@ -314,6 +314,7 @@
         "restart": "Restarted a server",
         "kill": "Killed a server",
         "install_requested": "Asked to reinstall a server",
+        "template_changed": "Moved a server to another version of its template",
         "update_requested": "Asked to update a game",
         "settings_changed": "Changed a server's settings",
         "ports_changed": "Changed a server's ports",
@@ -752,6 +753,9 @@
     "reinstallConfirm": "Reinstall {{name}}? Its game files are installed again.",
     "deleteConfirm": "Delete {{name}}? Its files, its backups and its Windows account are removed from the node. This cannot be undone.",
     "updateGame": "Update game",
+    "templateUpgrade": "This server runs version {{current}} of its game template; version {{next}} is available.",
+    "templateUpgradeAction": "Move to {{version}}",
+    "templateUpgradeConfirm": "Move {{name}} to version {{version}} of its template? It must be stopped; it is installed again with it and keeps its files and settings.",
     "validateFiles": "Also verify every installed file (slow; repairs a damaged install)",
     "tabs": {
       "label": "Server sections",

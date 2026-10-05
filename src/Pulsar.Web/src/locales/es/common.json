@@ -314,6 +314,7 @@
         "restart": "Reinició un servidor",
         "kill": "Forzó el cierre de un servidor",
         "install_requested": "Pidió reinstalar un servidor",
+        "template_changed": "Pasó un servidor a otra versión de su plantilla",
         "update_requested": "Pidió actualizar un juego",
         "settings_changed": "Cambió la configuración de un servidor",
         "ports_changed": "Cambió los puertos de un servidor",
@@ -752,6 +753,9 @@
     "reinstallConfirm": "¿Reinstalar {{name}}? Se vuelven a instalar los archivos del juego.",
     "deleteConfirm": "¿Eliminar {{name}}? Se borran sus archivos, sus backups y su cuenta de Windows del nodo. No se puede deshacer.",
     "updateGame": "Actualizar juego",
+    "templateUpgrade": "Este servidor usa la versión {{current}} de la plantilla de su juego; está disponible la {{next}}.",
+    "templateUpgradeAction": "Pasar a la {{version}}",
+    "templateUpgradeConfirm": "¿Pasar {{name}} a la versión {{version}} de su plantilla? Tiene que estar detenido; se instala de nuevo con ella y conserva sus archivos y su configuración.",
     "validateFiles": "Verificar también cada archivo instalado (lento; repara una instalación dañada)",
     "tabs": {
       "label": "Secciones del servidor",

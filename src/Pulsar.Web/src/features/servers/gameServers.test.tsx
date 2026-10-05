@@ -366,6 +366,30 @@ describe('a game server page', () => {
     expect(body).toEqual({ cpuPercent: 25, memoryMb: 2048 });
   });
 
+  it('moves a stopped server to a newer version of its template', async () => {
+    let body: unknown;
+    const newer = '0192f1a0-0000-7000-8000-0000000000f3';
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () =>
+        json({ ...details(), templateUpgrade: { templateId: newer, version: '1.1.0' } }),
+      [`PUT /api/v1/servers/${serverId}/template`]: async (request) => {
+        body = await request.json();
+        return json({ ...details(), templateVersion: '1.1.0', templateUpgrade: null });
+      },
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderAt(`/servers/${serverId}`);
+    const user = userEvent.setup();
+
+    expect(
+      await screen.findByText('This server runs version 1.0.0 of its game template; version 1.1.0 is available.'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Move to 1.1.0' }));
+
+    await vi.waitFor(() => expect(body).toEqual({ templateId: newer }));
+  });
+
   it('shows limits read-only to who cannot change them', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(operator),

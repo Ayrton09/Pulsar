@@ -33,6 +33,9 @@ public sealed class AuthRateLimitOptions
 
     /// <summary>Requests per minute each API key may make (<c>RateLimiting:Auth:ApiKeyPermitLimit</c>).</summary>
     public int ApiKeyPermitLimit { get; set; } = 600;
+
+    /// <summary>Agent enrollments per minute from one address (<c>RateLimiting:Auth:EnrollPermitLimit</c>).</summary>
+    public int EnrollPermitLimit { get; set; } = 10;
 }
 
 internal static class ApiServiceCollectionExtensions
@@ -169,7 +172,7 @@ internal static class ApiServiceCollectionExtensions
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.PermitLimit, Window = limits.Window, QueueLimit = 0 }));
             options.AddPolicy(AgentEndpoints.EnrollRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
                 context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-                _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.EnrollPermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
             options.AddPolicy(AgentEndpoints.AuthRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
                 context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));

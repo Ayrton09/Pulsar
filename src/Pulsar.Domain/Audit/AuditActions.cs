@@ -59,6 +59,7 @@ public static class AuditActions
         public const string Restarted = "server.restart";
         public const string Killed = "server.kill";
         public const string InstallRequested = "server.install_requested";
+        public const string TemplateChanged = "server.template_changed";
         public const string UpdateRequested = "server.update_requested";
         public const string SettingsChanged = "server.settings_changed";
         public const string PortsChanged = "server.ports_changed";

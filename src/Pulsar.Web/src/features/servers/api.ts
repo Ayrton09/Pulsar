@@ -128,6 +128,16 @@ export function useUpdateServerSettings() {
   });
 }
 
+/** Moves a stopped server to a newer version of its game's template; it is installed again with it. */
+export function useUpgradeTemplate() {
+  const changed = useServersChanged();
+  return useMutation({
+    mutationFn: ({ id, templateId }: { id: string; templateId: string }) =>
+      unwrap(api.PUT('/api/v1/servers/{id}/template', { params: { path: { id } }, body: { templateId } })),
+    onSuccess: changed,
+  });
+}
+
 /** Sets the server's CPU and memory caps (null removes one); a running server gets them at once. */
 export function useSetServerLimits() {
   const changed = useServersChanged();

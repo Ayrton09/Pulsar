@@ -32,6 +32,9 @@ public sealed record UpdateServerPortsRequest([property: Required] Dictionary<st
 
 public sealed record UpdateGameRequest(bool Validate);
 
+/// <param name="TemplateId">A newer version of the server's game template.</param>
+public sealed record UpgradeTemplateRequest(Guid TemplateId);
+
 /// <param name="CpuPercent">Share of the node's CPU, 1–100; null: no cap.</param>
 /// <param name="MemoryMb">Memory the server's processes may commit, in MiB; null: no cap.</param>
 public sealed record ServerLimitsRequest(
@@ -70,6 +73,9 @@ public static class ServerEndpoints
         servers.MapPut("/{id:guid}/ports", (Guid id, UpdateServerPortsRequest request, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.UpdatePortsAsync(new ServerId(id), request.Ports, ct)))
             .RequirePermission(Permissions.Server.SettingsEdit);
+        servers.MapPut("/{id:guid}/template", (Guid id, UpgradeTemplateRequest request, ServerManagement m, CancellationToken ct) =>
+                DetailsAsync(m.UpgradeTemplateAsync(new ServerId(id), request.TemplateId, ct)))
+            .RequirePermission(Permissions.Server.Install);
         servers.MapPut("/{id:guid}/limits", (Guid id, ServerLimitsRequest request, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.SetLimitsAsync(new ServerId(id), request.CpuPercent, request.MemoryMb, ct)))
             .RequirePermission(Permissions.Server.LimitsEdit);

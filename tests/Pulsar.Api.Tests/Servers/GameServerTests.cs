@@ -143,6 +143,62 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
     }
 
     [DatabaseFact]
+    public async Task AServerMovesToANewerVersionOfItsTemplate()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "upgrade");
+        await AllocateAsync(admin, agent.Config!.NodeId, "0.0.0.0", "27015-27020");
+        var server = await InstalledAsync(admin, agent, "css");
+        var original = (await ServerApi.GetAsync(admin, server))!;
+        Assert.Equal("1.0.0", original.TemplateVersion);
+
+        // A newer version of the same game: a new setting written to its configuration file.
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(GamePath("css"), Ct))!.AsObject();
+        manifest["version"] = "1.1.0";
+        manifest["variables"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse(
+            """{ "key": "contact", "label": "Contact", "type": "string", "default": "admin at example", "pattern": "^[a-z ]{0,32}$" }"""));
+        manifest["configFiles"]![0]!["set"]!["sv_contact"] = "{{var.contact}}";
+        Guid next;
+        using (var imported = await admin.PostAsync("/api/v1/templates", new TemplateContentRequest(manifest.ToJsonString())))
+        {
+            await AccessScenario.EnsureSuccessAsync(imported);
+            next = (await imported.Content.ReadFromJsonAsync<TemplateDetails>(AccessScenario.Json, Ct))!.Template.Id;
+        }
+
+        Assert.Equal(new TemplateUpgradeView(next, "1.1.0"), (await ServerApi.GetAsync(admin, server))!.TemplateUpgrade);
+        var upgraded = await PutAsync<ServerDetails>(admin, $"/api/v1/servers/{server}/template", new UpgradeTemplateRequest(next));
+        Assert.Equal("1.1.0", upgraded.TemplateVersion);
+        Assert.Null(upgraded.TemplateUpgrade);
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null,
+            "provisioned and installed again");
+
+        // The agent runs the new version.
+        await ServerApi.CommandAsync(admin, server, "start");
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Running, "running");
+        var config = await File.ReadAllTextAsync(Path.Combine(agent.ServersRoot, original.Server.ShortId, "cstrike", "cfg", "server.cfg"), Ct);
+        Assert.Contains("sv_contact \"admin at example\"", config, StringComparison.Ordinal);
+
+        // Never back, and never while running.
+        using (var back = await PutResponseAsync(admin, $"/api/v1/servers/{server}/template", new UpgradeTemplateRequest(original.Server.TemplateId)))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, back.StatusCode);
+        }
+
+        await ServerApi.CommandAsync(admin, server, "stop");
+    }
+
+    private static string GamePath(string game)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Pulsar.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        return Path.Combine(directory!.FullName, "games", game, "manifest.json");
+    }
+
+    [DatabaseFact]
     public async Task WhoIsPlayingReachesTheBrowserCleaned()
     {
         using var admin = await factory.CreateAdminClientAsync();
@@ -344,7 +400,7 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
     internal static async Task<TemplateDetails> TemplateAsync(PanelClient client, string key)
     {
         var templates = await client.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct);
-        var template = templates!.Single(t => t.Key == key);
+        var template = templates!.Single(t => t.Key == key && t.Source == TemplateSource.Bundled); // not a newer version a test imported
         return (await client.Http.GetFromJsonAsync<TemplateDetails>(new Uri($"/api/v1/templates/{template.Id}", UriKind.Relative), AccessScenario.Json, Ct))!;
     }
 

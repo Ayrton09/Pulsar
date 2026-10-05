@@ -29,7 +29,7 @@ public static class ApiProblems
         "access.escalation" or "access.self_change" or "server.variable_protected" or "operation.forbidden" or "schedules.forbidden" or "server.create_forbidden" => StatusCodes.Status403Forbidden,
         "role.name_taken" or "role.in_use" or "access.last_administrator" or "role.system_immutable"
             or "node.name_taken" or "node.not_connected" or "node.has_servers" or "panel_key.rotation_in_progress" or "panel_key.not_retiring"
-            or "server.busy" or "server.must_be_stopped" or "server.not_installed" or "server.not_running" or "server.template_unsupported" or "server.command_rejected"
+            or "server.busy" or "server.must_be_stopped" or "server.not_installed" or "server.not_running" or "server.template_unsupported" or "server.template_not_newer" or "server.command_rejected"
             or "node.allocation_taken" or "node.allocation_in_use" or "server.no_free_allocation" or "server.allocation_unavailable"
             or "template.version_exists" or "operation.not_cancellable"
             or "files.unsupported" or "files.exists" or "files.not_a_directory" or "files.is_a_directory" or "files.reparse_point" or "files.in_use"
