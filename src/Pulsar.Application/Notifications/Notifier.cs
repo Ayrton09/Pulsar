@@ -14,9 +14,9 @@ namespace Pulsar.Application.Notifications;
 /// </summary>
 public sealed class Notifier(IPulsarDbContext db, TimeProvider clock)
 {
-    public Task ServerCrashedAsync(Server server, int? exitCode, bool crashLoop, CancellationToken cancellationToken) =>
-        ForServerAsync(server, NotificationEvent.ServerCrashed, crashLoop ? "crash_loop" : null,
-            (language, facts, link) => NotificationTexts.ServerCrashed(language, facts, exitCode, crashLoop, link), cancellationToken);
+    public Task ServerCrashedAsync(Server server, int? exitCode, bool crashLoop, CancellationToken cancellationToken, bool memoryLimit = false) =>
+        ForServerAsync(server, NotificationEvent.ServerCrashed, crashLoop ? "crash_loop" : memoryLimit ? "memory_limit" : null,
+            (language, facts, link) => NotificationTexts.ServerCrashed(language, facts, exitCode, crashLoop, link, memoryLimit), cancellationToken);
 
     public Task ServerStartFailedAsync(Server server, bool notReady, string? detail, CancellationToken cancellationToken) =>
         ForServerAsync(server, NotificationEvent.ServerStartFailed, null,

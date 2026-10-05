@@ -101,6 +101,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.DeleteBackup;
             yield return AgentCapabilities.SendBackup;
             yield return AgentCapabilities.RemoteBackups;
+            yield return AgentCapabilities.Limits;
             if (installOptions.TestGameAvailable)
             {
                 yield return AgentCapabilities.TestGame;
@@ -359,6 +360,11 @@ public sealed partial class ServerHost(
             if (LaunchPlanRenderer.Check(manifest, Platform, Binding(spec, rconPassword: null)) is { } error)
             {
                 return Rejected(envelope, "server.invalid_spec", error);
+            }
+
+            if (spec.Limits is { IsValid: false })
+            {
+                return Rejected(envelope, "server.invalid_spec", "The server's limits are out of range.");
             }
 
             if (manifest.Install?.Steps.OfType<TestGameServerStep>().Any() == true && !installOptions.TestGameAvailable)
@@ -826,8 +832,14 @@ public sealed partial class ServerHost(
     private ServerDefinition Definition(Guid serverId, ServerRuntimeSpec spec, string? rconPassword)
     {
         var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), spec.ShortId);
+        if (spec.Limits is { IsValid: false })
+        {
+            throw new LaunchPlanException("The server's limits are out of range.");
+        }
+
         var plan = LaunchPlanRenderer.Render(Parse(spec), Platform, Binding(spec, rconPassword) with { Directory = provisioned.Directory });
-        return new ServerDefinition(serverId, spec.ShortId, provisioned.Directory, provisioned.Identity, plan, spec.AutoStart, spec.RestartOnCrash);
+        return new ServerDefinition(serverId, spec.ShortId, provisioned.Directory, provisioned.Identity, plan, spec.AutoStart, spec.RestartOnCrash,
+            ProcessLimits.From(spec.Limits));
     }
 
     private static ServerBinding Binding(ServerRuntimeSpec spec, string? rconPassword) => new(spec.ShortId, spec.Variables,

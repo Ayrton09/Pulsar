@@ -15,7 +15,8 @@ public sealed record ServerDefinition(
     ProcessIdentity Identity,
     LaunchPlan Plan,
     bool AutoStart,
-    bool RestartOnCrash);
+    bool RestartOnCrash,
+    ProcessLimits? Limits = null);
 
 /// <summary>Where a supervisor reports what happens to its server.</summary>
 public interface IServerEventSink
@@ -286,6 +287,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 kill.Answer(HandleKill());
                 break;
             case Update update:
+                ApplyLimits(update.Definition.Limits);
                 _definition = update.Definition;
                 update.Done.TrySetResult();
                 break;
@@ -448,7 +450,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         var plan = _definition.Plan;
         // logfile+rcon games still get a console: srcds dies without one (spike 0001), even though it writes nothing to it.
         var spec = new ProcessLaunchSpec(ServerId, _definition.Directory, plan.Executable, plan.Arguments, plan.WorkingDirectory, plan.Environment,
-            plan.Console.Mode == ManifestConsoleMode.Pipes ? ConsoleMode.Pipes : ConsoleMode.Pty, Encoding(plan.Console.Encoding), _definition.Identity);
+            plan.Console.Mode == ManifestConsoleMode.Pipes ? ConsoleMode.Pipes : ConsoleMode.Pty, Encoding(plan.Console.Encoding), _definition.Identity,
+            _definition.Limits);
         IGameProcess process;
         try
         {
@@ -872,7 +875,27 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _lastUsage = (_generation, usage, now);
         // An answer older than a few queries is from a game that stopped answering: better nothing than stale players.
         var query = _lastQuery is { } answer && answer.Generation == _generation && now - answer.Info.At <= _options.QueryInterval * 3 ? answer.Info : null;
-        return new ServerMetrics(ServerId, Math.Round(cpu, 1), usage.MemoryBytes, usage.ProcessCount, now - process.StartedAt, query);
+        return new ServerMetrics(ServerId, Math.Round(cpu, 1), usage.MemoryBytes, usage.ProcessCount, now - process.StartedAt, query,
+            usage.CommittedBytes);
+    }
+
+    /// <summary>New caps apply to the running game at once (the next start gets them from the definition).</summary>
+    private void ApplyLimits(ProcessLimits? limits)
+    {
+        if (limits == _definition.Limits || _process is not { } process)
+        {
+            return;
+        }
+
+        try
+        {
+            process.ApplyLimits(limits);
+            LogLimitsApplied(ServerId, limits?.CpuPercent, limits?.MemoryBytes);
+        }
+        catch (GameProcessException ex)
+        {
+            LogLimitsFailed(ServerId, ex.Message);
+        }
     }
 
     private void StopWatchers()
@@ -940,6 +963,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _process = null;
         StopWatchers();
         _exitCode = exitCode;
+        // A crash after a process was refused memory by the server's limit: its cause is known.
+        var crashReason = process.ReachedMemoryLimit ? StateChangeReason.MemoryLimit : StateChangeReason.Crashed;
         if (process.CountProcesses() > 0)
         {
             // Children (crash handlers, helpers) get a moment to finish; then the job is terminated with them in it.
@@ -973,10 +998,10 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             return;
         }
 
-        LogCrashed(ServerId, exitCode);
+        LogCrashed(ServerId, exitCode, crashReason);
         if (!_desiredRunning || !_definition.RestartOnCrash)
         {
-            Transition(RuntimeState.Crashed, StateChangeReason.Crashed, exitCode);
+            Transition(RuntimeState.Crashed, crashReason, exitCode);
             return;
         }
 
@@ -995,7 +1020,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
 
         var delay = _options.CrashBackoff[Math.Min(_restarts.Count, _options.CrashBackoff.Count - 1)];
-        Transition(RuntimeState.Crashed, StateChangeReason.Crashed, exitCode, $"restart in {delay.TotalSeconds:0} s");
+        Transition(RuntimeState.Crashed, crashReason, exitCode, $"restart in {delay.TotalSeconds:0} s");
         PostLater(delay, new AutoRestart(++_restartTimer));
     }
 
@@ -1144,8 +1169,14 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId} could not start: {Code} ({Reason})")]
     private partial void LogStartFailed(Guid serverId, string code, string reason);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId} crashed with exit code {ExitCode}")]
-    private partial void LogCrashed(Guid serverId, int exitCode);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId} crashed with exit code {ExitCode} ({Reason})")]
+    private partial void LogCrashed(Guid serverId, int exitCode, StateChangeReason reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: limits applied to the running game (CPU {CpuPercent} %, memory {MemoryBytes} bytes)")]
+    private partial void LogLimitsApplied(Guid serverId, int? cpuPercent, long? memoryBytes);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: the new limits could not be applied to the running game (they apply at its next start): {Reason}")]
+    private partial void LogLimitsFailed(Guid serverId, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId} crashed {Count} times within {Window}; not restarting it again")]
     private partial void LogCrashLoop(Guid serverId, int count, TimeSpan window);

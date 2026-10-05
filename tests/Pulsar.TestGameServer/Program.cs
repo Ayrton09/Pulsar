@@ -9,7 +9,7 @@
 //   --exit-after <ms> <code>  exit by itself with <code> after a delay (a crash when <code> is not 0)
 //   --print-args              print every argument between brackets (argv round trip)
 // Commands (one per line): quit, crash <code>, say <text>, conout <text>, spawn, whoami, env <name>, read <path>,
-//   write <path>, handle <value>, privileges.
+//   write <path>, handle <value>, privileges, allocate <MB>, burn <seconds>.
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -65,6 +65,7 @@ for (var i = 0; i < args.Length; i++)
     }
 }
 
+var kept = new List<nint>(); // memory taken by "allocate"
 using var interrupted = new ManualResetEventSlim();
 Console.CancelKeyPress += (_, e) =>
 {
@@ -113,6 +114,40 @@ while ((line = Console.ReadLine()) is not null)
                 Console.WriteLine($"Test server: child {child?.Id}");
             }
 
+            break;
+        case "allocate":
+            // Commits (and touches) the given MB of native memory, as a game engine does, and keeps it; past a memory
+            // limit the allocation fails and the OutOfMemoryException, unhandled, ends the process. (Not managed
+            // memory: .NET's garbage collector reads a job's limit and stays under it.)
+            for (var mb = 0; mb < int.Parse(argument, CultureInfo.InvariantCulture); mb += 16)
+            {
+                var block = Marshal.AllocHGlobal(16 * 1024 * 1024);
+                unsafe
+                {
+                    new Span<byte>((void*)block, 16 * 1024 * 1024).Fill(1);
+                }
+
+                kept.Add(block);
+            }
+
+            Console.WriteLine($"Test server: allocated {argument} MB");
+            break;
+        case "burn":
+            // Every processor of the machine busy for the given seconds. (Not Environment.ProcessorCount: .NET counts
+            // the share of the machine a CPU cap allowed when the process started.)
+            var until = Stopwatch.StartNew();
+            var seconds = double.Parse(argument, CultureInfo.InvariantCulture);
+            var processors = int.Parse(Environment.GetEnvironmentVariable("NUMBER_OF_PROCESSORS") ?? "1", CultureInfo.InvariantCulture);
+            var burners = Enumerable.Range(0, processors).Select(_ => new Thread(() =>
+            {
+                while (until.Elapsed.TotalSeconds < seconds)
+                {
+                    Thread.SpinWait(1000);
+                }
+            })).ToList();
+            burners.ForEach(t => t.Start());
+            burners.ForEach(t => t.Join());
+            Console.WriteLine("Test server: burned");
             break;
         case "whoami":
             Console.WriteLine($"Test server: user={WindowsIdentity.GetCurrent().Name}");

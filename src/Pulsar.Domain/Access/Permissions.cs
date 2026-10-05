@@ -26,6 +26,9 @@ public static class Permissions
         public const string StartupEdit = "server.startup.edit";
         public const string SettingsEdit = "server.settings.edit";
         public const string Install = "server.install";
+
+        /// <summary>CPU and memory caps: grantable on a node or globally only, so a server's owner cannot raise their own.</summary>
+        public const string LimitsEdit = "server.limits.edit";
         public const string Create = "server.create";
         public const string Delete = "server.delete";
     }

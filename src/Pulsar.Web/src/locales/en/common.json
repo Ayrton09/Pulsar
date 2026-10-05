@@ -196,6 +196,9 @@
         "edit": "Edit server settings"
       },
       "install": "Install and update",
+      "limits": {
+        "edit": "Set CPU and memory limits"
+      },
       "create": "Create servers",
       "delete": "Delete servers"
     },
@@ -319,6 +322,7 @@
         "backup_locked": "Locked a backup",
         "backup_unlocked": "Unlocked a backup",
         "backup_limit_changed": "Changed how many backups to keep",
+        "limits_changed": "Changed the CPU and memory limits",
         "schedule_created": "Created a scheduled task",
         "schedule_changed": "Changed a scheduled task",
         "schedule_deleted": "Deleted a scheduled task",
@@ -691,7 +695,8 @@
       "startFailed": "Could not start. Check the operations and the agent log.",
       "agentStopping": "Stopped because its node's agent stopped.",
       "agentStarted": "Started again by its node's agent.",
-      "autoRestart": "Restarting after a crash."
+      "autoRestart": "Restarting after a crash.",
+      "memoryLimit": "Stopped at its memory limit (exit code {{code}}). Raise the limit or lower what it uses."
     },
     "commands": {
       "start": "Start",
@@ -789,6 +794,17 @@
       "extraArgumentsHint": "One per line; each line is one argument, added after the game's own.",
       "autoStart": "Start when the node's agent starts"
     },
+    "limits": {
+      "title": "Resources",
+      "hint": "Caps on the server's share of its node's CPU and on the memory its processes commit. They apply to a running server at once. A game that needs more memory than its limit stops (and says why).",
+      "cpu": "CPU limit (% of the node)",
+      "memory": "Memory limit (MiB)",
+      "none": "No limit",
+      "noneSet": "No limits: the server may use the whole node.",
+      "cpuValue": "CPU: up to {{value, number}} % of the node",
+      "memoryValue": "Memory: up to {{value}}",
+      "saved": "Limits saved."
+    },
     "network": {
       "title": "Ports",
       "hint": "Each port uses one of the node's allocations.",
@@ -821,7 +837,9 @@
       "playersValue": "{{players, number}} / {{max, number}}",
       "bots_one": "({{count, number}} bot)",
       "bots_other": "({{count, number}} bots)",
-      "map": "Map"
+      "map": "Map",
+      "ofLimit": "{{value}} of {{limit}}",
+      "cpuLimit": "{{value, number}} %"
     },
     "players": {
       "title": "Players",

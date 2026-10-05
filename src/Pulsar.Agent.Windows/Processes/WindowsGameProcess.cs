@@ -106,6 +106,25 @@ internal sealed class WindowsGameProcess : IGameProcess
         }
     }
 
+    public bool ReachedMemoryLimit => _job.ReachedMemoryLimit;
+
+    public void ApplyLimits(ProcessLimits? limits)
+    {
+        if (Volatile.Read(ref _disposed) == 1)
+        {
+            return;
+        }
+
+        try
+        {
+            _job.SetLimits(limits);
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            throw new GameProcessException("process.limits_failed", $"The server's limits could not be applied: {ex.Message}", ex);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1)

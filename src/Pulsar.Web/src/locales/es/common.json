@@ -196,6 +196,9 @@
         "edit": "Editar la configuración del servidor"
       },
       "install": "Instalar y actualizar",
+      "limits": {
+        "edit": "Poner límites de CPU y memoria"
+      },
       "create": "Crear servidores",
       "delete": "Eliminar servidores"
     },
@@ -319,6 +322,7 @@
         "backup_locked": "Bloqueó un backup",
         "backup_unlocked": "Desbloqueó un backup",
         "backup_limit_changed": "Cambió cuántos backups guardar",
+        "limits_changed": "Cambió los límites de CPU y memoria",
         "schedule_created": "Creó una tarea programada",
         "schedule_changed": "Cambió una tarea programada",
         "schedule_deleted": "Eliminó una tarea programada",
@@ -691,7 +695,8 @@
       "startFailed": "No pudo iniciar. Mirá las operaciones y el log del agente.",
       "agentStopping": "Se detuvo porque se detuvo el agente de su nodo.",
       "agentStarted": "Lo volvió a iniciar el agente de su nodo.",
-      "autoRestart": "Reiniciando después de una caída."
+      "autoRestart": "Reiniciando después de una caída.",
+      "memoryLimit": "Se cerró al llegar a su límite de memoria (código de salida {{code}}). Subí el límite o bajá lo que usa."
     },
     "commands": {
       "start": "Iniciar",
@@ -789,6 +794,17 @@
       "extraArgumentsHint": "Uno por línea; cada línea es un argumento y va después de los del juego.",
       "autoStart": "Arrancar cuando arranca el agente del nodo"
     },
+    "limits": {
+      "title": "Recursos",
+      "hint": "Topes a la parte de la CPU del nodo que puede usar el servidor y a la memoria que reservan sus procesos. Se aplican al momento, aunque esté en marcha. Un juego que necesita más memoria que su límite se cierra (y dice por qué).",
+      "cpu": "Límite de CPU (% del nodo)",
+      "memory": "Límite de memoria (MiB)",
+      "none": "Sin límite",
+      "noneSet": "Sin límites: el servidor puede usar todo el nodo.",
+      "cpuValue": "CPU: hasta {{value, number}} % del nodo",
+      "memoryValue": "Memoria: hasta {{value}}",
+      "saved": "Límites guardados."
+    },
     "network": {
       "title": "Puertos",
       "hint": "Cada puerto usa una de las asignaciones del nodo.",
@@ -821,7 +837,9 @@
       "playersValue": "{{players, number}} / {{max, number}}",
       "bots_one": "({{count, number}} bot)",
       "bots_other": "({{count, number}} bots)",
-      "map": "Mapa"
+      "map": "Mapa",
+      "ofLimit": "{{value}} de {{limit}}",
+      "cpuLimit": "{{value, number}} %"
     },
     "players": {
       "title": "Jugadores",

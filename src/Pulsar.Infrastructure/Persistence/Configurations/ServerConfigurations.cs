@@ -36,6 +36,8 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
             t.HasCheckConstraint("ck_servers_last_state_reason", SnakeCaseEnum<ServerStateReason>.CheckConstraint("last_state_reason"));
             t.HasCheckConstraint("ck_servers_active_operation_type", SnakeCaseEnum<OperationType>.CheckConstraint("active_operation_type"));
             t.HasCheckConstraint("ck_servers_backup_limit", $"backup_limit BETWEEN 1 AND {Server.MaxBackupLimit}");
+            t.HasCheckConstraint("ck_servers_cpu_limit_percent", "cpu_limit_percent BETWEEN 1 AND 100");
+            t.HasCheckConstraint("ck_servers_memory_limit_mb", $"memory_limit_mb BETWEEN {Server.MinMemoryLimitMb} AND {Server.MaxMemoryLimitMb}");
         });
 
         builder.HasKey(s => s.Id);

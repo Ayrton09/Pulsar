@@ -128,6 +128,16 @@ export function useUpdateServerSettings() {
   });
 }
 
+/** Sets the server's CPU and memory caps (null removes one); a running server gets them at once. */
+export function useSetServerLimits() {
+  const changed = useServersChanged();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Schemas['ServerLimitsRequest'] }) =>
+      unwrap(api.PUT('/api/v1/servers/{id}/limits', { params: { path: { id } }, body })),
+    onSuccess: changed,
+  });
+}
+
 export function useUpdateServerPorts() {
   const changed = useServersChanged();
   return useMutation({

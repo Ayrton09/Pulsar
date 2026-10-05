@@ -111,6 +111,38 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
     }
 
     [DatabaseFact]
+    public async Task LimitsReachTheRunningGameAndATooHungryOneSaysWhyItStopped()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "limits");
+        await AllocateAsync(admin, agent.Config!.NodeId, "0.0.0.0", "27015-27020");
+        var server = await InstalledAsync(admin, agent, "css");
+
+        var limited = await PutAsync<ServerDetails>(admin, $"/api/v1/servers/{server}/limits", new ServerLimitsRequest(25, 1024));
+        Assert.Equal(new ServerLimitsView(25, 1024), limited.Limits);
+        using (var invalid = await PutResponseAsync(admin, $"/api/v1/servers/{server}/limits", new ServerLimitsRequest(0, 64)))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        }
+
+        await ServerApi.CommandAsync(admin, server, "start");
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Running, "running");
+        var game = agent.Processes.Started.Last(p => !p.IsSteamCmd);
+        Assert.Equal(new Pulsar.Agent.Core.Processes.ProcessLimits(25, 1024L * 1024 * 1024), game.StartLimits);
+
+        // Changed while it runs: the running game gets the new caps at once.
+        await PutAsync<ServerDetails>(admin, $"/api/v1/servers/{server}/limits", new ServerLimitsRequest(null, 2048));
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(game.AppliedLimits.LastOrDefault() == new Pulsar.Agent.Core.Processes.ProcessLimits(null, 2048L * 1024 * 1024)),
+            "new limits applied to the running game");
+
+        game.ReachedMemoryLimit = true;
+        game.Exit(unchecked((int)0xC0000017));
+        var crashed = await ServerApi.WaitForAsync(admin, server, s => s.Server.LastStateReason == ServerStateReason.MemoryLimit, "crashed at its memory limit");
+        Assert.Equal(unchecked((int)0xC0000017), crashed.Server.LastExitCode);
+        await ServerApi.CommandAsync(admin, server, "stop");
+    }
+
+    [DatabaseFact]
     public async Task WhoIsPlayingReachesTheBrowserCleaned()
     {
         using var admin = await factory.CreateAdminClientAsync();
@@ -140,7 +172,7 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         Assert.Equal(60, query.PlayerList[0].ConnectedSeconds);
         lock (asked)
         {
-            Assert.Equal(new Pulsar.Manifests.QueryEndpoint(Pulsar.Manifests.QueryProtocol.A2s, "127.0.0.1", 27015), asked[0]); // the game port
+            Assert.Equal(new Pulsar.Manifests.QueryEndpoint(Pulsar.Manifests.QueryProtocol.A2s, "0.0.0.0", 27015), asked[0]); // the game port, every interface (the agent finds where it answers)
         }
 
         Assert.NotNull((await browser.Connection.InvokeAsync<ServerWatch?>("WatchServer", server, Ct))!.Metrics!.Query); // a page opened now

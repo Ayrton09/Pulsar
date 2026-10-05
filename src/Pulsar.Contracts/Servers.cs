@@ -48,6 +48,12 @@ public enum StateChangeReason
 
     /// <summary>Started by the agent itself after it started (auto-start, or running before an orderly agent stop).</summary>
     AgentStarted,
+
+    /// <summary>
+    /// Ended (with a non-zero code) after its memory reached the server's limit (<see cref="ServerLimits.MemoryBytes"/>):
+    /// a crash whose cause is known. The crash policy applies as for <see cref="Crashed"/>.
+    /// </summary>
+    MemoryLimit,
 }
 
 /// <summary>
@@ -56,6 +62,7 @@ public enum StateChangeReason
 /// </summary>
 /// <param name="Variables">Values of the manifest's variables, secret ones included (the agent keeps them encrypted).</param>
 /// <param name="Ports">The node allocation given to each manifest port.</param>
+/// <param name="Limits">Caps on the server's resources; null (or older panels) for none.</param>
 public sealed record ServerRuntimeSpec(
     string ShortId,
     string Manifest,
@@ -63,10 +70,27 @@ public sealed record ServerRuntimeSpec(
     IReadOnlyList<string> ExtraArguments,
     bool AutoStart,
     bool RestartOnCrash,
-    IReadOnlyDictionary<string, ServerPort>? Ports = null)
+    IReadOnlyDictionary<string, ServerPort>? Ports = null,
+    ServerLimits? Limits = null)
 {
     // Variables may hold secrets: never print them.
     public override string ToString() => $"ServerRuntimeSpec {{ ShortId = {ShortId} }}";
+}
+
+/// <summary>
+/// Caps on a server's process tree, enforced by its Job (docs/architecture/06, "Resource limits"); null fields are not
+/// capped. Applied to a running server at once.
+/// </summary>
+/// <param name="CpuPercent">Share of the whole machine, 1–100 (the unit of <see cref="ServerMetrics.CpuPercent"/>).</param>
+/// <param name="MemoryBytes">Memory committed by all the server's processes together.</param>
+public sealed record ServerLimits(int? CpuPercent, long? MemoryBytes)
+{
+    public const int MinCpuPercent = 1;
+    public const int MaxCpuPercent = 100;
+    public const long MinMemoryBytes = 128L * 1024 * 1024;
+
+    /// <summary>Whether the values are within range (the agent checks again what the panel checked).</summary>
+    public bool IsValid => (CpuPercent is null or (>= MinCpuPercent and <= MaxCpuPercent)) && (MemoryBytes is null or >= MinMemoryBytes);
 }
 
 /// <summary>An <c>ip:port</c> pair of the node (both protocols); <c>0.0.0.0</c> means every interface.</summary>

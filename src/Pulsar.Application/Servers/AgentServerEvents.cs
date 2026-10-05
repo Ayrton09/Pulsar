@@ -53,8 +53,9 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
 
             switch (change.Reason)
             {
-                case StateChangeReason.Crashed or StateChangeReason.CrashLoop:
-                    await notifications.ServerCrashedAsync(server, change.ExitCode, change.Reason == StateChangeReason.CrashLoop, cancellationToken);
+                case StateChangeReason.Crashed or StateChangeReason.CrashLoop or StateChangeReason.MemoryLimit:
+                    await notifications.ServerCrashedAsync(server, change.ExitCode, change.Reason == StateChangeReason.CrashLoop, cancellationToken,
+                        memoryLimit: change.Reason == StateChangeReason.MemoryLimit);
                     break;
                 case StateChangeReason.StartFailed or StateChangeReason.ReadinessTimedOut:
                     await notifications.ServerStartFailedAsync(server, change.Reason == StateChangeReason.ReadinessTimedOut, change.Detail, cancellationToken);
@@ -327,6 +328,7 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         StateChangeReason.StartFailed => ServerStateReason.StartFailed,
         StateChangeReason.AgentStopping => ServerStateReason.AgentStopping,
         StateChangeReason.AgentStarted => ServerStateReason.AgentStarted,
+        StateChangeReason.MemoryLimit => ServerStateReason.MemoryLimit,
         _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, null),
     };
 

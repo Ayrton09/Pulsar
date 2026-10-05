@@ -9,10 +9,20 @@ namespace Pulsar.Application.Notifications;
 /// </summary>
 public static class NotificationTexts
 {
-    public static NotificationMessage ServerCrashed(string language, ServerFacts server, int? exitCode, bool crashLoop, string? link)
+    public static NotificationMessage ServerCrashed(string language, ServerFacts server, int? exitCode, bool crashLoop, string? link,
+        bool memoryLimit = false)
     {
         var es = IsSpanish(language);
         var code = exitCode?.ToString(CultureInfo.InvariantCulture) ?? "?";
+        if (memoryLimit && !crashLoop)
+        {
+            return new NotificationMessage(
+                es ? $"{server.Name} se quedó sin memoria" : $"{server.Name} ran out of memory",
+                es ? "Llegó al límite de memoria del servidor y se cerró. Subí el límite o bajá lo que usa (jugadores, mapa, mods)."
+                    : "It reached the server's memory limit and exited. Raise the limit or lower what it uses (players, map, mods).",
+                NotificationSeverity.Error, ServerFields(es, server, (es ? "Código de salida" : "Exit code", code)), link);
+        }
+
         return crashLoop
             ? new NotificationMessage(
                 es ? $"{server.Name} se cae una y otra vez" : $"{server.Name} keeps crashing",

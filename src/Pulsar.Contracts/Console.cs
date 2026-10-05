@@ -33,7 +33,12 @@ public static class ConsoleInput
 /// <param name="CpuPercent">Share of the whole machine since the previous sample (0–100, like the node's CPU).</param>
 /// <param name="MemoryBytes">Working set of every process of the server.</param>
 /// <param name="Query">What the game last answered to its manifest's query; null without one, or when it does not answer.</param>
-public sealed record ServerMetrics(Guid ServerId, double CpuPercent, long MemoryBytes, int ProcessCount, TimeSpan Uptime, ServerQueryInfo? Query = null);
+/// <param name="CommittedBytes">
+/// Memory committed by every process of the server: what a memory limit counts (<see cref="ServerLimits.MemoryBytes"/>);
+/// null from older agents.
+/// </param>
+public sealed record ServerMetrics(Guid ServerId, double CpuPercent, long MemoryBytes, int ProcessCount, TimeSpan Uptime, ServerQueryInfo? Query = null,
+    long? CommittedBytes = null);
 
 /// <summary>
 /// A running game's answer to its query (A2S, Minecraft's Server List Ping). Every text comes from the game and from

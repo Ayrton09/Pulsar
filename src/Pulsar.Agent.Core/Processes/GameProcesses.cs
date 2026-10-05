@@ -68,7 +68,17 @@ public sealed record ProcessLaunchSpec(
     IReadOnlyDictionary<string, string> Environment,
     ConsoleMode ConsoleMode,
     ConsoleEncoding Encoding,
-    ProcessIdentity Identity);
+    ProcessIdentity Identity,
+    ProcessLimits? Limits = null);
+
+/// <summary>Caps on a process tree (its Job); null fields are not capped.</summary>
+/// <param name="CpuPercent">Share of the whole machine, 1–100.</param>
+/// <param name="MemoryBytes">Memory committed by the whole tree.</param>
+public sealed record ProcessLimits(int? CpuPercent, long? MemoryBytes)
+{
+    public static ProcessLimits? From(Pulsar.Contracts.ServerLimits? limits) =>
+        limits is { CpuPercent: null, MemoryBytes: null } or null ? null : new ProcessLimits(limits.CpuPercent, limits.MemoryBytes);
+}
 
 /// <summary>Decoded console output, in arrival order. A pseudo console delivers screen updates, not lines.</summary>
 public sealed record ConsoleChunk(DateTimeOffset At, string Text);
@@ -76,7 +86,8 @@ public sealed record ConsoleChunk(DateTimeOffset At, string Text);
 /// <summary>Resource usage of a server's process tree at one moment.</summary>
 /// <param name="CpuTime">CPU time of every process the tree ever had (finished ones included), user and kernel.</param>
 /// <param name="MemoryBytes">Working set of the processes alive now.</param>
-public sealed record ProcessUsage(TimeSpan CpuTime, long MemoryBytes, int ProcessCount);
+/// <param name="CommittedBytes">Memory committed by the processes alive now (what a memory limit counts).</param>
+public sealed record ProcessUsage(TimeSpan CpuTime, long MemoryBytes, int ProcessCount, long CommittedBytes = 0);
 
 /// <summary>A running server process and the tree it belongs to (its Job).</summary>
 public interface IGameProcess : IAsyncDisposable
@@ -108,6 +119,13 @@ public interface IGameProcess : IAsyncDisposable
 
     /// <summary>Kills the whole tree at once (children and grandchildren included).</summary>
     void TerminateTree(int exitCode);
+
+    /// <summary>Replaces the tree's caps while it runs (null removes them).</summary>
+    /// <exception cref="GameProcessException">The caps could not be applied.</exception>
+    void ApplyLimits(ProcessLimits? limits);
+
+    /// <summary>Whether a process of the tree was refused memory because of the memory cap since it started.</summary>
+    bool ReachedMemoryLimit { get; }
 }
 
 /// <summary>A server process could not be started; <see cref="Code"/> is stable and reported to the panel.</summary>

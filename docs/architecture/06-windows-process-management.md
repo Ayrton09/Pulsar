@@ -136,7 +136,7 @@ When the main process exits and the Job still has processes (crash handlers, hel
 |---|---|
 | CPU % | `QueryInformationJobObject(JobObjectBasicAccountingInformation)`: Δ(TotalUserTime + TotalKernelTime) / (Δt × logical cores) |
 | Process count | `ActiveProcesses` from the same query |
-| Memory | `JobObjectBasicProcessIdList` → `GetProcessMemoryInfo` per process (private bytes / working set). Handles opened with `PROCESS_QUERY_LIMITED_INFORMATION` are reused. |
+| Memory | `JobObjectBasicProcessIdList` → `GetProcessMemoryInfo` per process: working set, and commit charge (`PagefileUsage`, what a memory limit counts; Phase 12). |
 | Main PID, uptime | From the supervisor state |
 | Disk | On demand, cached (never in the 5 s cycle) |
 
@@ -191,9 +191,14 @@ Optional, decided by the machine's administrator in the agent's configuration (`
 
 KILL_ON_JOB_CLOSE is recommended for v1 for reliability. `IGameProcess` allows a future implementation backed by a per-server *shim* (`containerd-shim` pattern) without changing the rest of the agent. An orderly service stop (`OnStop`) stops the servers gracefully (manifest steps) before exiting, within the time the SCM allows.
 
-## Future limits (prepared, not implemented in v1)
+## Resource limits (Phase 12)
 
-The Job already exists per server, so adding limits is configuration, not redesign: `JOB_OBJECT_LIMIT_JOB_MEMORY`, `JobObjectCpuRateControlInformation` (hard cap or weights), `JobObjectNetRateControlInformation`, I/O priority.
+The Job already exists per server, so limits are configuration of it. A server has an optional CPU cap (a share of the whole node, 1–100 %, the unit its usage is shown in) and an optional memory cap (MiB), set with `server.limits.edit` (node or global roles only) and sent in the server's spec (`ServerRuntimeSpec.Limits`; agents announce `server.limits`, and the panel refuses limits for an agent that does not).
+
+- CPU: `JobObjectCpuRateControlInformation` with `ENABLE | HARD_CAP`, the rate in cycles per 10,000. Every job gets one, the whole machine when there is no cap: Windows refuses to turn rate control off on a job that never had it, and this way a cap can be added, changed and removed while the server runs. Programs that size their threads by the processors they may use see the cap in force when they start (.NET counts `Environment.ProcessorCount` from it; found by the tests, whose CPU burner first used it).
+- Memory: `JOB_OBJECT_LIMIT_JOB_MEMORY` counts the memory the whole tree commits; a process asking for more is refused it, and most games then crash. The job's completion port reports `JOB_OBJECT_MSG_JOB_MEMORY_LIMIT`; a crash after it is reported as `MemoryLimit` (the crash policy applies as for any crash) and notified as "ran out of memory". .NET programs stay under a job's memory limit by themselves (their garbage collector reads it), so the test game allocates native memory, as engines do. The usage shows committed memory next to the cap (the working set otherwise).
+- Changes reach a running server at once (`ApplyServerSpecCommand` → `IGameProcess.ApplyLimits`); SteamCMD runs are never capped.
+- Not done: network rate (`JobObjectNetRateControlInformation`) and I/O priority.
 
 ## Tests
 

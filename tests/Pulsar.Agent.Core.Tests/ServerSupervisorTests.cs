@@ -14,6 +14,7 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     private readonly FakeProcessManager _processes = new();
     private readonly RecordingEvents _events = new();
     private ServerSupervisor? _supervisor;
+    private ServerDefinition? _definition;
 
     public async ValueTask DisposeAsync()
     {
@@ -243,6 +244,39 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ACrashAfterTheMemoryLimitRefusedMemorySaysSoAndIsRestarted()
+    {
+        var supervisor = await Running(limits: new ProcessLimits(null, 512L * 1024 * 1024));
+
+        _processes.Last.ReachedMemoryLimit = true;
+        _processes.Last.Exit(unchecked((int)0xC0000017));
+
+        var crashed = await _events.WaitForAsync(RuntimeState.Crashed, StateChangeReason.MemoryLimit);
+        Assert.Equal("restart in 5 s", crashed.Detail);
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await _events.WaitForAsync(RuntimeState.Starting, StateChangeReason.AutoRestart);
+        Assert.Equal(2, _processes.Started.Count);
+        Assert.Equal(new ProcessLimits(null, 512L * 1024 * 1024), _processes.Specs[1].Limits);
+    }
+
+    [Fact]
+    public async Task LimitsReachTheLaunchAndChangesReachTheRunningGame()
+    {
+        var supervisor = await Running(limits: new ProcessLimits(50, 1024L * 1024 * 1024));
+        Assert.Equal(new ProcessLimits(50, 1024L * 1024 * 1024), _processes.Specs[0].Limits);
+
+        await supervisor.UpdateAsync(_definition! with { Limits = new ProcessLimits(20, null) });
+        await supervisor.UpdateAsync(_definition! with { Limits = new ProcessLimits(20, null) });
+        await supervisor.UpdateAsync(_definition! with { Limits = null });
+
+        Assert.Equal([new ProcessLimits(20, null), null], _processes.Last.AppliedLimits);
+        Assert.Equal(AckStatus.Accepted, await supervisor.RestartAsync());
+        await _events.WaitForAsync(RuntimeState.Starting, StateChangeReason.Requested, afterIndex: 1);
+        await supervisor.FlushAsync();
+        Assert.Null(_processes.Specs[^1].Limits);
+    }
+
+    [Fact]
     public async Task ACrashedServerIsNotRestartedWhenItsPolicySaysSo()
     {
         var supervisor = await Running(restartOnCrash: false);
@@ -438,23 +472,26 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
         return ack;
     }
 
-    private async Task<ServerSupervisor> Running(Func<LaunchPlan, LaunchPlan>? change = null, bool restartOnCrash = true, IServerQuery? query = null)
+    private async Task<ServerSupervisor> Running(Func<LaunchPlan, LaunchPlan>? change = null, bool restartOnCrash = true, IServerQuery? query = null,
+        ProcessLimits? limits = null)
     {
-        var supervisor = Supervisor(change, restartOnCrash, query);
+        var supervisor = Supervisor(change, restartOnCrash, query, limits);
         await Started(supervisor);
         _processes.Last.Print("Test server ready\r\n");
         await _events.WaitForAsync(RuntimeState.Running);
         return supervisor;
     }
 
-    private ServerSupervisor Supervisor(Func<LaunchPlan, LaunchPlan>? change = null, bool restartOnCrash = true, IServerQuery? query = null)
+    private ServerSupervisor Supervisor(Func<LaunchPlan, LaunchPlan>? change = null, bool restartOnCrash = true, IServerQuery? query = null,
+        ProcessLimits? limits = null)
     {
         var plan = new LaunchPlan("bin/game.exe", "", ["--ready-after", "0"], new Dictionary<string, string>(),
             new ConsoleDefinition(ManifestConsoleMode.Pty, InputNewline: "\r\n"),
             new LogPatternReadiness("^Test server ready", 60),
             new StopDefinition([new ConsoleCommandStop("quit")], 15));
         var definition = new ServerDefinition(Guid.NewGuid(), "abcd1234", @"C:\servers\abcd1234", ProcessIdentity.CurrentUser,
-            change?.Invoke(plan) ?? plan, AutoStart: false, RestartOnCrash: restartOnCrash);
+            change?.Invoke(plan) ?? plan, AutoStart: false, RestartOnCrash: restartOnCrash, limits);
+        _definition = definition;
         _supervisor = new ServerSupervisor(definition, _processes, _events, _clock, new SupervisorOptions(), NullLogger.Instance, query: query);
         return _supervisor;
     }

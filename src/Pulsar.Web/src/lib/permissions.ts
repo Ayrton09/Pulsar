@@ -29,6 +29,7 @@ export const Permission = {
   ServerSchedulesView: 'server.schedules.view',
   ServerSchedulesEdit: 'server.schedules.edit',
   ServerInstall: 'server.install',
+  ServerLimitsEdit: 'server.limits.edit',
   ServerStartupEdit: 'server.startup.edit',
   ServerSettingsEdit: 'server.settings.edit',
   ServerDelete: 'server.delete',

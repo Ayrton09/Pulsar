@@ -1507,6 +1507,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("backup_storage_id");
 
+                    b.Property<int?>("CpuLimitPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("cpu_limit_percent");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -1548,6 +1552,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LastStoppedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_stopped_at");
+
+                    b.Property<int?>("MemoryLimitMb")
+                        .HasColumnType("integer")
+                        .HasColumnName("memory_limit_mb");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1621,11 +1629,15 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_servers_backup_limit", "backup_limit BETWEEN 1 AND 1000");
 
+                            t.HasCheckConstraint("ck_servers_cpu_limit_percent", "cpu_limit_percent BETWEEN 1 AND 100");
+
                             t.HasCheckConstraint("ck_servers_desired_state", "desired_state IN ('running', 'stopped')");
 
                             t.HasCheckConstraint("ck_servers_install_state", "install_state IN ('failed', 'installed', 'installing', 'not_installed')");
 
-                            t.HasCheckConstraint("ck_servers_last_state_reason", "last_state_reason IN ('agent_started', 'agent_stopping', 'auto_restart', 'crash_loop', 'crashed', 'exited_by_itself', 'killed', 'readiness_timed_out', 'ready', 'reconciled', 'requested', 'start_failed', 'stop_timed_out')");
+                            t.HasCheckConstraint("ck_servers_last_state_reason", "last_state_reason IN ('agent_started', 'agent_stopping', 'auto_restart', 'crash_loop', 'crashed', 'exited_by_itself', 'killed', 'memory_limit', 'readiness_timed_out', 'ready', 'reconciled', 'requested', 'start_failed', 'stop_timed_out')");
+
+                            t.HasCheckConstraint("ck_servers_memory_limit_mb", "memory_limit_mb BETWEEN 128 AND 1048576");
 
                             t.HasCheckConstraint("ck_servers_runtime_state", "runtime_state IN ('crashed', 'offline', 'running', 'starting', 'stopping')");
                         });

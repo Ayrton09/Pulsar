@@ -25,8 +25,9 @@ public sealed record OperationProgressView(Guid ServerId, Guid OperationId, stri
 
 /// <param name="CpuPercent">Share of the node's whole CPU (0–100).</param>
 /// <param name="Query">What the game last answered to its query; null without one or when it does not answer.</param>
+/// <param name="CommittedBytes">Memory committed by the server's processes (what its memory limit counts); null from older agents.</param>
 public sealed record ServerMetricsView(Guid ServerId, DateTimeOffset At, double CpuPercent, long MemoryBytes, int ProcessCount, double UptimeSeconds,
-    ServerQueryView? Query = null);
+    ServerQueryView? Query = null, long? CommittedBytes = null);
 
 /// <summary>
 /// A running game's name, map and players, as it answered its query. Every text is the game's or its players': the

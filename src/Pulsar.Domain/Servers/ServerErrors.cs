@@ -60,6 +60,12 @@ public static class ServerErrors
     public static DomainError BackupNameInvalid { get; } =
         new("backups.name_invalid", $"A backup name is one line of 1 to {Backup.MaxNameLength} characters.");
 
+    public static DomainError LimitsInvalid { get; } =
+        new("server.limits_invalid", $"A CPU limit is 1 to 100 %, a memory limit {Server.MinMemoryLimitMb} MiB to {Server.MaxMemoryLimitMb} MiB.");
+
+    public static DomainError LimitsUnsupported { get; } =
+        new("server.limits_unsupported", "The node's agent cannot limit a server's CPU and memory (update the agent).");
+
     public static DomainError BackupLimitInvalid { get; } =
         new("backups.limit_invalid", $"Keep between 1 and {Server.MaxBackupLimit} backups, or set no limit.");
 

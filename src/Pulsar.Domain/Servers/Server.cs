@@ -44,6 +44,9 @@ public enum ServerStateReason
     AgentStopping,
     AgentStarted,
 
+    /// <summary>Crashed after its memory reached the server's limit.</summary>
+    MemoryLimit,
+
     /// <summary>Taken from an agent's Hello (reconciliation), not from a change it reported.</summary>
     Reconciled,
 }
@@ -60,6 +63,8 @@ public sealed class Server
     public const int MaxExtraArguments = 32;
     public const int MaxExtraArgumentLength = 512;
     public const int MaxBackupLimit = 1000;
+    public const int MinMemoryLimitMb = 128;
+    public const int MaxMemoryLimitMb = 1024 * 1024; // 1 TiB
 
     private const string ShortIdAlphabet = "abcdefghijklmnopqrstuvwxyz234567";
 
@@ -124,6 +129,12 @@ public sealed class Server
 
     /// <summary>Where new backups are copied besides the node (Phase 10); null: on the node only.</summary>
     public BackupStorageId? BackupStorageId { get; private set; }
+
+    /// <summary>Cap on the server's share of its node's CPU (1–100 %); null: none.</summary>
+    public int? CpuLimitPercent { get; private set; }
+
+    /// <summary>Cap on the memory the server's processes commit, in MiB; null: none.</summary>
+    public int? MemoryLimitMb { get; private set; }
 
     public bool AutoStart { get; private set; }
 
@@ -325,6 +336,20 @@ public sealed class Server
         }
 
         BackupLimit = limit;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
+    /// <summary>Caps on the server's CPU and memory (docs/architecture/06, "Resource limits"); null removes a cap.</summary>
+    public Result SetLimits(int? cpuPercent, int? memoryMb, DateTimeOffset now)
+    {
+        if (cpuPercent is < 1 or > 100 || memoryMb is < MinMemoryLimitMb or > MaxMemoryLimitMb)
+        {
+            return ServerErrors.LimitsInvalid;
+        }
+
+        CpuLimitPercent = cpuPercent;
+        MemoryLimitMb = memoryMb;
         UpdatedAt = now;
         return Result.Success();
     }

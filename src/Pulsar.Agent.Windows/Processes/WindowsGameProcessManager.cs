@@ -139,7 +139,15 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
         string environment, AccountLogon? logon, string? desktop, IDisposable[] resources)
     {
         var pty = spec.ConsoleMode == ConsoleMode.Pty;
-        var job = JobObject.Create();
+        JobObject job;
+        try
+        {
+            job = JobObject.Create(spec.Limits);
+        }
+        catch (Win32Exception ex)
+        {
+            throw new GameProcessException("process.limits_failed", $"The server's limits could not be applied: {ex.Message}", ex);
+        }
         HANDLE inRead = default, inWrite = default, outRead = default, outWrite = default, errRead = default, errWrite = default;
         HPCON pseudoConsole = default;
         SafeFileHandle? process = null;

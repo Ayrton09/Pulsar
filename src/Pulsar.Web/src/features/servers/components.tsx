@@ -66,4 +66,5 @@ const explained = new Set<string>([
   'agentStopping',
   'agentStarted',
   'autoRestart',
+  'memoryLimit',
 ]);

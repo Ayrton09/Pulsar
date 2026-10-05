@@ -32,7 +32,16 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
         ArgumentNullException.ThrowIfNull(template);
         var allocations = await AllocationsOf(server.Id, cancellationToken);
         return new ServerRuntimeSpec(server.ShortId, template.Content, Values(server), server.ExtraArguments, server.AutoStart, server.RestartOnCrash,
-            allocations.ToDictionary(a => a.PortName!, a => new ServerPort(a.IpAddress, a.Port)));
+            allocations.ToDictionary(a => a.PortName!, a => new ServerPort(a.IpAddress, a.Port)), Limits(server));
+    }
+
+    /// <summary>The server's caps for its agent; null without any (older agents never see the field then).</summary>
+    public static ServerLimits? Limits(Server server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        return server.CpuLimitPercent is null && server.MemoryLimitMb is null
+            ? null
+            : new ServerLimits(server.CpuLimitPercent, server.MemoryLimitMb * 1024L * 1024);
     }
 
     /// <summary>The server's stored values, secret ones decrypted.</summary>

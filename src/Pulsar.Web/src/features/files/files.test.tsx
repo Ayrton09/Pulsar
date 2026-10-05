@@ -76,6 +76,7 @@ const details: Schemas['ServerDetails'] = {
   canUpdate: true,
   ports: [],
   recentOperations: [],
+  limits: { cpuPercent: null, memoryMb: null },
 };
 
 const at = '2026-10-03T10:00:00Z';

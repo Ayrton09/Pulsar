@@ -103,13 +103,14 @@ internal sealed class OutputCollector
     /// <summary>Output is complete (the process and its console are gone).</summary>
     public Task Completed => _pump;
 
-    public async Task<string> WaitForAsync(string expected, int timeoutSeconds = 30)
+    /// <param name="occurrence">Waits for the n-th time the text appears (1 = the first).</param>
+    public async Task<string> WaitForAsync(string expected, int timeoutSeconds = 30, int occurrence = 1)
     {
         var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
         while (DateTime.UtcNow < deadline)
         {
             var text = Text;
-            if (text.Contains(expected, StringComparison.Ordinal))
+            if (text.Split(expected).Length - 1 >= occurrence)
             {
                 return text;
             }

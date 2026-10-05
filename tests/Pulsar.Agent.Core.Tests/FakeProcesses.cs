@@ -133,6 +133,13 @@ internal sealed class FakeGameProcess(int processId) : IGameProcess
         Exit(exitCode);
     }
 
+    /// <summary>The caps applied while it runs (the start's caps are in its <see cref="ProcessLaunchSpec"/>).</summary>
+    public List<ProcessLimits?> AppliedLimits { get; } = [];
+
+    public void ApplyLimits(ProcessLimits? limits) => AppliedLimits.Add(limits);
+
+    public bool ReachedMemoryLimit { get; set; }
+
     public ValueTask DisposeAsync()
     {
         Disposed = true;

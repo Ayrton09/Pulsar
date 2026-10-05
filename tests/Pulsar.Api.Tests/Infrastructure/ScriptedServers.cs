@@ -22,7 +22,7 @@ public sealed class ScriptedProcessManager : IGameProcessManager
             throw new GameProcessException("process.executable_missing", $"{spec.Executable} does not exist in the server directory.");
         }
 
-        var process = new ScriptedProcess(_started.Count + 100) { Arguments = spec.Arguments };
+        var process = new ScriptedProcess(_started.Count + 100) { Arguments = spec.Arguments, StartLimits = spec.Limits };
         _started.Enqueue(process);
         if (spec.Executable == Pulsar.Agent.Core.Steam.SteamCmdRunner.Executable)
         {
@@ -133,6 +133,17 @@ public sealed class ScriptedProcess(int processId) : IGameProcess
     public ProcessUsage SampleUsage() => IsAlive ? new ProcessUsage(TimeSpan.FromMilliseconds(250), 64 * 1024 * 1024, 1) : new ProcessUsage(TimeSpan.Zero, 0, 0);
 
     public void TerminateTree(int exitCode) => Exit(exitCode);
+
+    /// <summary>The caps it was started with.</summary>
+    public ProcessLimits? StartLimits { get; init; }
+
+    /// <summary>The caps applied while it ran, in order.</summary>
+    public ConcurrentQueue<ProcessLimits?> AppliedLimits { get; } = new();
+
+    public void ApplyLimits(ProcessLimits? limits) => AppliedLimits.Enqueue(limits);
+
+    /// <summary>Set before <see cref="Exit"/> for a crash at the memory limit.</summary>
+    public bool ReachedMemoryLimit { get; set; }
 
     public ValueTask DisposeAsync()
     {

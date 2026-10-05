@@ -345,6 +345,9 @@ public static class AgentCapabilities
     /// <summary>Not a command: the agent copies backups to S3-compatible storage (<see cref="RemoteBackupTarget"/>).</summary>
     public const string RemoteBackups = "backups.remote";
 
+    /// <summary>Not a command: the agent enforces <see cref="ServerRuntimeSpec.Limits"/> (CPU and memory caps of a server's Job).</summary>
+    public const string Limits = "server.limits";
+
     /// <summary>The capability an agent must announce to receive <paramref name="command"/>.</summary>
     public static string Of(AgentCommand command) => command switch
     {

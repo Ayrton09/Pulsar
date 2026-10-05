@@ -2,14 +2,16 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Card } from '../../components/ui/Display';
-import { Checkbox, Field, Select } from '../../components/ui/Form';
+import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
+import { useFormatBytes } from '../../lib/format';
 import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useAllocations } from '../nodes/api';
 import {
   useCancelOperation,
   useServerSettings,
+  useSetServerLimits,
   useUpdateServerPorts,
   useUpdateServerSettings,
   type OperationView,
@@ -75,6 +77,7 @@ export function SettingsTab({ details }: { details: ServerDetails }) {
   const settings = useServerSettings(details.server.id);
   // Here, not in the form: a save remounts the form with what the panel stored, and the result must survive that.
   const save = useUpdateServerSettings();
+  const saveLimits = useSetServerLimits();
   if (settings.isPending) {
     return <Spinner label={t('common.loading')} />;
   }
@@ -83,7 +86,96 @@ export function SettingsTab({ details }: { details: ServerDetails }) {
   }
   // Keyed on the saved settings: a save starts the form again from what the panel stored.
   return (
-    <SettingsForm key={JSON.stringify(settings.data)} server={details.server} settings={settings.data} save={save} />
+    <div className="space-y-6">
+      <SettingsForm key={JSON.stringify(settings.data)} server={details.server} settings={settings.data} save={save} />
+      <LimitsCard key={JSON.stringify(details.limits)} details={details} save={saveLimits} />
+    </div>
+  );
+}
+
+/**
+ * CPU and memory caps (docs/architecture/06, "Resource limits"). Everyone who sees the server sees them; changing them
+ * takes server.limits.edit, which is given on a node or globally only (a server's owner does not raise their own).
+ */
+function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnType<typeof useSetServerLimits> }) {
+  const { t } = useTranslation();
+  const me = useCurrentUser();
+  const formatBytes = useFormatBytes();
+  const { limits, server } = details;
+  const canEdit = canOnServer(me, server, Permission.ServerLimitsEdit);
+  const [cpu, setCpu] = useState(limits.cpuPercent?.toString() ?? '');
+  const [memory, setMemory] = useState(limits.memoryMb?.toString() ?? '');
+  const number = (text: string) => (text.trim() === '' ? null : Number(text));
+
+  return (
+    <Card className="p-6">
+      <div role="region" aria-labelledby="server-limits" className="space-y-4">
+        <div>
+          <h2 id="server-limits" className="text-lg font-semibold">
+            {t('servers.limits.title')}
+          </h2>
+          <p className="mt-1 text-sm text-muted">{t('servers.limits.hint')}</p>
+        </div>
+        {save.isError && <Alert>{errorMessage(t, save.error)}</Alert>}
+        {save.isSuccess && (
+          <p role="status" className="text-sm text-success">
+            {t('servers.limits.saved')}
+          </p>
+        )}
+        {canEdit ? (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              save.mutate({ id: server.id, body: { cpuPercent: number(cpu), memoryMb: number(memory) } });
+            }}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t('servers.limits.cpu')}>
+                {(ids) => (
+                  <Input
+                    {...ids}
+                    type="number"
+                    min={1}
+                    max={100}
+                    placeholder={t('servers.limits.none')}
+                    value={cpu}
+                    onChange={(e) => setCpu(e.target.value)}
+                  />
+                )}
+              </Field>
+              <Field label={t('servers.limits.memory')}>
+                {(ids) => (
+                  <Input
+                    {...ids}
+                    type="number"
+                    min={128}
+                    step={128}
+                    placeholder={t('servers.limits.none')}
+                    value={memory}
+                    onChange={(e) => setMemory(e.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" busy={save.isPending}>
+                {t('actions.save')}
+              </Button>
+            </div>
+          </form>
+        ) : limits.cpuPercent == null && limits.memoryMb == null ? (
+          <p className="text-sm text-muted">{t('servers.limits.noneSet')}</p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {limits.cpuPercent != null && <li>{t('servers.limits.cpuValue', { value: limits.cpuPercent })}</li>}
+            {limits.memoryMb != null && (
+              <li>{t('servers.limits.memoryValue', { value: formatBytes(limits.memoryMb * 1024 * 1024) })}</li>
+            )}
+          </ul>
+        )}
+      </div>
+    </Card>
   );
 }
 

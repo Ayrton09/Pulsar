@@ -88,7 +88,7 @@ export function ServerPage() {
         }
       />
       {(server.runtimeState === 'starting' || server.runtimeState === 'running') && metrics && (
-        <ServerUsage metrics={metrics} />
+        <ServerUsage metrics={metrics} limits={details.data.limits} />
       )}
       <LifecycleActions details={details.data} />
       {server.activeOperation && (
@@ -133,14 +133,30 @@ export function ServerPage() {
 }
 
 /** CPU, memory and uptime of the running server, and its players when it answers queries, pushed every few seconds. */
-function ServerUsage({ metrics }: { metrics: ServerMetrics }) {
+function ServerUsage({ metrics, limits }: { metrics: ServerMetrics; limits: ServerDetails['limits'] }) {
   const { t } = useTranslation();
   const formatBytes = useFormatBytes();
   const formatDuration = useFormatDuration();
   const { query } = metrics;
+  const cpu = t('servers.usage.cpuValue', { value: metrics.cpuPercent });
+  // With a memory limit, what it counts (committed memory) next to it; otherwise the working set, as Task Manager shows.
+  const memoryLimit = limits.memoryMb == null ? null : limits.memoryMb * 1024 * 1024;
   const items: [string, string][] = [
-    [t('servers.usage.cpu'), t('servers.usage.cpuValue', { value: metrics.cpuPercent })],
-    [t('servers.usage.memory'), formatBytes(metrics.memoryBytes)],
+    [
+      t('servers.usage.cpu'),
+      limits.cpuPercent == null
+        ? cpu
+        : t('servers.usage.ofLimit', { value: cpu, limit: t('servers.usage.cpuLimit', { value: limits.cpuPercent }) }),
+    ],
+    [
+      t('servers.usage.memory'),
+      memoryLimit == null
+        ? formatBytes(metrics.memoryBytes)
+        : t('servers.usage.ofLimit', {
+            value: formatBytes(metrics.committedBytes ?? metrics.memoryBytes),
+            limit: formatBytes(memoryLimit),
+          }),
+    ],
     [t('servers.usage.uptime'), formatDuration(metrics.uptimeSeconds)],
   ];
   if (query) {

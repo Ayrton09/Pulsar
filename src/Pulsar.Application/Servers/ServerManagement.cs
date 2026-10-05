@@ -59,7 +59,11 @@ public sealed record ServerDetails(
     string TemplateVersion,
     bool CanUpdate,
     IReadOnlyList<ServerPortView> Ports,
-    IReadOnlyList<OperationView> RecentOperations);
+    IReadOnlyList<OperationView> RecentOperations,
+    ServerLimitsView Limits);
+
+/// <summary>Caps on the server's CPU (share of its node, %) and memory (MiB); null fields are not capped.</summary>
+public sealed record ServerLimitsView(int? CpuPercent, int? MemoryMb);
 
 /// <summary>A variable of the server: its definition and value. Secret values are never returned, only whether one is set.</summary>
 public sealed record ServerVariableView(TemplateVariable Definition, string? Value, bool HasValue);
@@ -315,6 +319,47 @@ public sealed partial class ServerManagement(
         await db.SaveChangesAsync(cancellationToken);
         await SyncSpecAsync(id, cancellationToken); // best effort now; it is sent again before the next start anyway
         return Settings(server, manifest);
+    }
+
+    /// <summary>
+    /// Sets the caps on the server's CPU and memory (null removes one). They reach a running game at once through its
+    /// agent, and every later start; an agent that cannot enforce them refuses nothing silently: the change is refused.
+    /// </summary>
+    public async Task<Result<ServerDetails>> SetLimitsAsync(ServerId id, int? cpuPercent, int? memoryMb, CancellationToken cancellationToken)
+    {
+        var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        if ((cpuPercent is not null || memoryMb is not null)
+            && connections.Find(server.NodeId) is { } agent && !agent.Capabilities.Contains(AgentCapabilities.Limits))
+        {
+            return ServerErrors.LimitsUnsupported;
+        }
+
+        var changed = server.SetLimits(cpuPercent, memoryMb, clock.GetUtcNow());
+        if (!changed.IsSuccess)
+        {
+            return changed.Error!;
+        }
+
+        audit.Record(AuditActions.Server.LimitsChanged, metadata: new { cpuPercent, memoryMb }).WithServer(server.Id, server.NodeId);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The agent reported a state change in between: set the limits again on the fresh row.
+            await db.Entry(server).ReloadAsync(cancellationToken);
+            server.SetLimits(cpuPercent, memoryMb, clock.GetUtcNow());
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        await SyncSpecAsync(id, cancellationToken); // a running game gets them now; the next start gets them anyway
+        return await DetailsAsync(server, cancellationToken);
     }
 
     /// <summary>Gives the server other allocations of its node (stopped servers only: the game listens on them).</summary>
@@ -612,7 +657,7 @@ public sealed partial class ServerManagement(
             ? new ServerPortView(p.Name, p.Label, p.Required, a.Id.Value, a.IpAddress, a.Port, p.Follows?.Port)
             : new ServerPortView(p.Name, p.Label, p.Required, null, null, null, p.Follows?.Port)).ToList();
         return new ServerDetails(summary, server.Description, server.AutoStart, server.RestartOnCrash, template.Key, template.Version,
-            manifest.Update is not null, ports, [.. operations.Select(View)]);
+            manifest.Update is not null, ports, [.. operations.Select(View)], new ServerLimitsView(server.CpuLimitPercent, server.MemoryLimitMb));
     }
 
     private async Task<IReadOnlyList<ServerSummary>> SummariesAsync(IReadOnlyList<Server> servers, CancellationToken cancellationToken)

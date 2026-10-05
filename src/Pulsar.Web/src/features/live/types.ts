@@ -31,6 +31,8 @@ export interface ServerMetrics {
   uptimeSeconds: number;
   /** What the game last answered to its query; absent without one or when it does not answer. */
   query?: ServerQuery | null;
+  /** Memory committed by the server's processes: what its memory limit counts. Absent from older agents. */
+  committedBytes?: number | null;
 }
 
 /** A running game's name, map and players. Every text comes from the game and its players: show it as plain text. */

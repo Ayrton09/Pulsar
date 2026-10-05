@@ -103,6 +103,80 @@ public sealed class GameProcessTests : IDisposable
     }
 
     [WindowsFact]
+    public async Task AMemoryLimitRefusesMemoryAndSaysSo()
+    {
+        await using var process = await Start(ConsoleMode.Pipes, new ProcessLimits(null, 256L * 1024 * 1024));
+        var output = new OutputCollector(process);
+        await output.WaitForAsync("Test server ready");
+
+        await process.WriteInputAsync("allocate 64\n", TestContext.Current.CancellationToken);
+        await output.WaitForAsync("Test server: allocated 64 MB");
+        Assert.False(process.ReachedMemoryLimit);
+        Assert.True(process.SampleUsage().CommittedBytes > 64L * 1024 * 1024);
+
+        await process.WriteInputAsync("allocate 512\n", TestContext.Current.CancellationToken);
+
+        var code = await process.Exited.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        Assert.NotEqual(0, code);
+        Assert.DoesNotContain("allocated 512", output.Text, StringComparison.Ordinal);
+        await WaitUntilAsync(() => process.ReachedMemoryLimit);
+    }
+
+    [WindowsFact]
+    public async Task AMemoryLimitAppliesToARunningProcess()
+    {
+        await using var process = await Start(ConsoleMode.Pipes);
+        var output = new OutputCollector(process);
+        await output.WaitForAsync("Test server ready");
+        await process.WriteInputAsync("allocate 320\n", TestContext.Current.CancellationToken);
+        await output.WaitForAsync("Test server: allocated 320 MB");
+
+        process.ApplyLimits(new ProcessLimits(null, 512L * 1024 * 1024));
+        await process.WriteInputAsync("allocate 320\n", TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(0, await process.Exited.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+        await WaitUntilAsync(() => process.ReachedMemoryLimit);
+    }
+
+    [WindowsFact]
+    public async Task ACpuLimitCapsTheShareOfTheMachine()
+    {
+        await using var process = await Start(ConsoleMode.Pipes, new ProcessLimits(10, null));
+        var output = new OutputCollector(process);
+        await output.WaitForAsync("Test server ready");
+
+        var limited = await BurnAsync(process, output, 1);
+        process.ApplyLimits(new ProcessLimits(50, null));
+        var raised = await BurnAsync(process, output, 2);
+        process.ApplyLimits(new ProcessLimits(5, null));
+        var lowered = await BurnAsync(process, output, 3);
+
+        // A hard cap of a share of every processor (with room for scheduling granularity), changed at once both ways.
+        Assert.True(limited <= 0.15, $"Limited to 10 %: {limited:P0} of the machine");
+        Assert.True(raised > limited * 2 && raised <= 0.6, $"Limited: {limited:P0}, raised to 50 %: {raised:P0}");
+        Assert.True(lowered <= 0.1, $"Lowered to 5 %: {lowered:P0}");
+    }
+
+    private static async Task<double> BurnAsync(IGameProcess process, OutputCollector output, int round)
+    {
+        var before = process.SampleUsage().CpuTime;
+        var clock = Stopwatch.StartNew();
+        await process.WriteInputAsync("burn 2\n", TestContext.Current.CancellationToken);
+        await output.WaitForAsync("Test server: burned", occurrence: round);
+        return (process.SampleUsage().CpuTime - before).TotalSeconds / clock.Elapsed.TotalSeconds / Environment.ProcessorCount;
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        for (var i = 0; i < 100 && !condition(); i++)
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+
+        Assert.True(condition());
+    }
+
+    [WindowsFact]
     public async Task TheExitCodeOfACrashIsReported()
     {
         await using var process = await Start(ConsoleMode.Pipes, "--exit-after", "200", "42");
@@ -214,6 +288,9 @@ public sealed class GameProcessTests : IDisposable
 
     private Task<IGameProcess> Start(ConsoleMode mode, params string[] arguments) =>
         TestServerDirectory.Manager().StartAsync(_server.Spec(mode, ["--ready-after", "100", .. arguments]), TestContext.Current.CancellationToken);
+
+    private Task<IGameProcess> Start(ConsoleMode mode, ProcessLimits limits) =>
+        TestServerDirectory.Manager().StartAsync(_server.Spec(mode, ["--ready-after", "100"]) with { Limits = limits }, TestContext.Current.CancellationToken);
 
     private static int[] ProcessIds(string output) =>
         [.. System.Text.RegularExpressions.Regex.Matches(output, @"(?:child|grandchild) (\d+)").Select(m => int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture))];

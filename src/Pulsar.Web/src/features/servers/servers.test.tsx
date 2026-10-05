@@ -100,6 +100,7 @@ function details(
     canUpdate: false,
     ports: [],
     recentOperations: operations,
+    limits: { cpuPercent: null, memoryMb: null },
   };
 }
 
