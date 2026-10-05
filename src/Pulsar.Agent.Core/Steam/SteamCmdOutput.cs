@@ -94,6 +94,16 @@ public static partial class SteamCmdOutput
         return ("steamcmd.failed", true);
     }
 
+    /// <summary>
+    /// "state is 0x6" (update required, files present): SteamCMD cannot update files whose build it has no manifests
+    /// for, as after a copy from another install or an update interrupted at the wrong time. Another identical run
+    /// fails the same way; forgetting the app's state and validating every file recovers.
+    /// </summary>
+    public static bool NeedsReset(string? error) => error is not null && StuckState().IsMatch(error);
+
+    [GeneratedRegex(@"state is 0x0*6 after update job", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex StuckState();
+
     [GeneratedRegex(@"^Update state \(0x[0-9a-fA-F]+\) (?<label>[^,]*), progress: [0-9.]+ \((?<done>\d+) / (?<total>\d+)\)", RegexOptions.CultureInvariant)]
     private static partial Regex UpdateState();
 

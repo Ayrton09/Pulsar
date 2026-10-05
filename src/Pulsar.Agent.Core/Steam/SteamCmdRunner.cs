@@ -75,6 +75,7 @@ public sealed partial class SteamCmdRunner(
             await EnsureCopyAsync(job, cancellationToken);
             var attempts = 0;
             var selfUpdates = 0;
+            var reset = false;
             while (true)
             {
                 var result = await RunOnceAsync(job, progress, cancellationToken);
@@ -102,6 +103,16 @@ public sealed partial class SteamCmdRunner(
                 }
 
                 await progress(InstallStages.Retrying, null);
+                if (!reset && SteamCmdOutput.NeedsReset(result.Error))
+                {
+                    // Through the server's files: the folder is the game's to write, links included.
+                    files.Delete(job.ServerRoot, $"steamapps/appmanifest_{job.AppId.ToString(CultureInfo.InvariantCulture)}.acf");
+                    job = job with { Validate = true };
+                    reset = true;
+                    LogReset(job.ServerId, job.AppId);
+                    continue;
+                }
+
                 var delay = options.RetryDelays.Count == 0 ? TimeSpan.Zero : options.RetryDelays[Math.Min(attempts - 1, options.RetryDelays.Count - 1)];
                 await Task.Delay(delay, clock, cancellationToken);
             }
@@ -282,6 +293,10 @@ public sealed partial class SteamCmdRunner(
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Server {ServerId}: SteamCMD attempt {Attempt} for app {AppId} failed (exit code {ExitCode}): {Error}. Last lines: {Tail}")]
     private partial void LogAttemptFailed(Guid serverId, int appId, int attempt, int exitCode, string error, string tail);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Server {ServerId}: app {AppId} is stuck in state 0x6; its app manifest was removed and SteamCMD runs again validating every file")]
+    private partial void LogReset(Guid serverId, int appId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: SteamCMD for app {AppId} cancelled")]
     private partial void LogCancelled(Guid serverId, int appId);

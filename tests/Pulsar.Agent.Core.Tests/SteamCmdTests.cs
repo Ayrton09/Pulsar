@@ -45,6 +45,16 @@ public sealed class SteamCmdOutputTests
     {
         Assert.Equal((code, retry), SteamCmdOutput.Classify(error));
     }
+
+    [Theory]
+    [InlineData("Error! App '232330' state is 0x6 after update job.", true)]
+    [InlineData("Error! App '232330' state is 0x602 after update job.", false)]
+    [InlineData("Error! App '232330' state is 0x202 after update job.", false)]
+    [InlineData(null, false)]
+    public void OnlyState0x6NeedsAReset(string? error, bool reset)
+    {
+        Assert.Equal(reset, SteamCmdOutput.NeedsReset(error));
+    }
 }
 
 public sealed class SteamCmdRunnerTests : IDisposable
@@ -174,6 +184,59 @@ public sealed class SteamCmdRunnerTests : IDisposable
 
         Assert.Equal("steamcmd.disk", error.Code);
         Assert.Single(_processes.Started);
+    }
+
+    [Fact]
+    public async Task AnInstallStuckInState0x6IsResetAndValidated()
+    {
+        // SteamCMD cannot update files whose build it has no manifests for (copied from another install, or an
+        // interrupted update): its app manifest goes, and a validating run checks every file instead.
+        var manifest = Path.Combine(_root, "server", "steamapps", "appmanifest_232330.acf");
+        Directory.CreateDirectory(Path.GetDirectoryName(manifest)!);
+        File.WriteAllText(manifest, "\"AppState\" { \"StateFlags\" \"6\" }");
+        var manifestAtSecondRun = true;
+        _processes.OnStarted = (process, _) =>
+        {
+            if (_processes.Started.Count == 1)
+            {
+                process.Print("Error! App '232330' state is 0x6 after update job.\r\n");
+                process.Exit(8);
+                return;
+            }
+
+            manifestAtSecondRun = File.Exists(manifest);
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        await runner.RunAsync(Job(), Report, TestContext.Current.CancellationToken);
+
+        Assert.False(manifestAtSecondRun);
+        Assert.DoesNotContain("validate", _processes.Specs[0].Arguments);
+        Assert.Contains("validate", _processes.Specs[1].Arguments);
+        Assert.Contains(("retrying", null), _progress);
+    }
+
+    [Fact]
+    public async Task AnInstallStillStuckAfterItsResetFails()
+    {
+        var manifest = Path.Combine(_root, "server", "steamapps", "appmanifest_232330.acf");
+        _processes.OnStarted = (process, _) =>
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(manifest)!);
+            File.WriteAllText(manifest, "written again");
+            process.Print("Error! App '232330' state is 0x6 after update job.\r\n");
+            process.Exit(8);
+        };
+        using var runner = Runner();
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => runner.RunAsync(Job(), Report, TestContext.Current.CancellationToken));
+
+        Assert.Equal("steamcmd.failed", error.Code);
+        Assert.Equal(3, _processes.Started.Count);
+        Assert.True(File.Exists(manifest)); // reset once, not at every attempt
+        Assert.All(_processes.Specs.Skip(1), spec => Assert.Contains("validate", spec.Arguments));
     }
 
     [Fact]
