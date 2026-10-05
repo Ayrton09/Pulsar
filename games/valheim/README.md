@@ -9,3 +9,6 @@ development panel and agent:
 - Ctrl+C saves the world and exits with code 0 in about 4 s; there are no console commands.
 - `-savedir saves` keeps worlds in the server folder; backups take `saves/**`.
 - A2S answers only when the server is listed (`-public 1`). The manifest sets `SteamAppId=892970` in the environment, as Valheim's own start script does.
+
+Checked again on 2026-10-05 (Phase 11): listed (`-public 1`), the server answers the agent's A2S query on its query
+port and the panel shows the player count; Valheim puts the server name where A2S has the map.

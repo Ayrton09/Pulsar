@@ -9,3 +9,6 @@ development panel and agent:
 - The console is standard output and input (`pipes`); `-Dstdout.encoding=UTF-8` keeps accents readable.
 - A Server List Ping answers with the version, the slots and the message of the day set in Pulsar.
 - `eula.txt` is written only when the `eula` variable says the terms were accepted.
+
+Checked again on 2026-10-05 (Phase 11): the panel shows the message of the day, the version (26.3) and the player
+count from the Server List Ping the agent sends every 10 seconds (`query`, on the game port).
