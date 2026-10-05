@@ -35,6 +35,19 @@ public static class AccessErrors
 
     public static DomainError RoleNotFound { get; } = new("role.not_found", "The role does not exist.");
 
+    public static DomainError ApiKeyNameInvalid { get; } =
+        new("api_key.name_invalid", $"An API key's name is one line of 1 to {ApiKey.MaxNameLength} characters.");
+
+    public static DomainError ApiKeyPermissionsInvalid { get; } =
+        new("api_key.permissions_invalid", "List at least one existing permission, or none to give the key all of yours.");
+
+    public static DomainError ApiKeyExpiryInvalid { get; } = new("api_key.expiry_invalid", "An API key must expire in the future.");
+
+    public static DomainError ApiKeyTooMany { get; } =
+        new("api_key.too_many", $"A user can have at most {ApiKey.MaxPerUser} API keys; revoke one first.");
+
+    public static DomainError ApiKeyNotFound { get; } = new("api_key.not_found", "The API key does not exist.");
+
     public static DomainError RoleNameTaken { get; } = new("role.name_taken", "Another role already has this name.");
 
     public static DomainError RoleInUse { get; } =

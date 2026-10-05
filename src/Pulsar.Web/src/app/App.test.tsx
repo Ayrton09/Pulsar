@@ -144,6 +144,7 @@ describe('account', () => {
     fakeApi({
       'GET /api/v1/auth/session': session(adminUser),
       'GET /api/v1/auth/two-factor': () => json({ enabled: false, required: false, recoveryCodesLeft: 0 }),
+      'GET /api/v1/account/api-keys': () => json([]),
       'POST /api/v1/auth/password': () =>
         problem(400, 'auth.wrong_current_password', 'The current password is not correct.'),
     });

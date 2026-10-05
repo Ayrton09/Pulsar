@@ -9,6 +9,7 @@ import { Field, Input } from '../../components/ui/Form';
 import { errorMessage, fieldErrors } from '../../lib/errors';
 import { useChangePassword, useCurrentUser, useUpdateProfile } from './api';
 import { MIN_PASSWORD_LENGTH } from './SetupPage';
+import { ApiKeysSection } from './ApiKeys';
 import { TwoFactorSection } from './TwoFactor';
 
 const profileSchema = z.object({
@@ -37,6 +38,7 @@ export function AccountPage() {
         <ProfileForm />
         <PasswordForm />
         <TwoFactorSection />
+        <ApiKeysSection />
       </div>
     </>
   );

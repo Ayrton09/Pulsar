@@ -181,6 +181,15 @@ export function useResetTwoFactor() {
   });
 }
 
+/** Revokes every API key of a user (after a leak); answers the user as they are now. */
+export function useRevokeUserApiKeys() {
+  const changed = useAccessChanged();
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.DELETE('/api/v1/users/{id}/api-keys', { params: { path: { id } } })),
+    onSuccess: changed,
+  });
+}
+
 export function useRequireTwoFactor() {
   const queryClient = useQueryClient();
   const changed = useAccessChanged();

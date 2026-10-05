@@ -21,7 +21,8 @@ public sealed record UserResponse(
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastLoginAt,
     IReadOnlyList<RoleReference> Roles,
-    IReadOnlyList<AccessReference> Access);
+    IReadOnlyList<AccessReference> Access,
+    int ApiKeys = 0);
 
 public sealed record CreateUserRequest(
     [property: Required, StringLength(PulsarUser.MaxUserNameLength, MinimumLength = 1)] string UserName,

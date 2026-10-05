@@ -185,14 +185,15 @@ public static class PermissionEndpointExtensions
             throw new ArgumentException($"Unknown permission '{unknown}'.", nameof(anyOf));
         }
 
-        var policy = new AuthorizationPolicyBuilder(IdentityConstants.ApplicationScheme)
+        // The session cookie or an API key (docs/architecture/02, "API keys").
+        var policy = new AuthorizationPolicyBuilder(UserSchemes.CookieOrApiKey)
             .RequireAuthenticatedUser()
             .AddRequirements(TwoFactorRequirement.Instance, new PermissionRequirement(anyOf, anywhere))
             .Build();
         return builder.RequireAuthorization(policy).WithMetadata(new RequiredPermissionMetadata(anyOf, anywhere));
     }
 
-    /// <summary>Requires a signed-in user, without any particular permission.</summary>
+    /// <summary>Requires a signed-in user (the session cookie: never an API key), without any particular permission.</summary>
     public static TBuilder RequireSignedInUser<TBuilder>(this TBuilder builder)
         where TBuilder : IEndpointConventionBuilder
     {

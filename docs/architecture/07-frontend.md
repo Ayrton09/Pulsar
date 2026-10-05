@@ -125,6 +125,13 @@ Server and node pages use a layout with a fixed header (name, status, power acti
 - `/admin/users`: a badge for users with it on, and turning it off for a user who lost their phone (asked first; their sessions end).
 - API: `GET /api/v1/auth/two-factor`, `POST …/two-factor/setup`, `POST …/two-factor/enable`, `POST …/two-factor/disable`, `POST …/two-factor/recovery-codes`, `PUT /api/v1/roles/{id}/two-factor`, `POST /api/v1/users/{id}/two-factor/reset`.
 
+## API keys
+
+- `/account`: the user's keys (name, the first characters, permissions, last use, expiry) with Revoke (asked first), and Create: a name, an expiry (30, 90 or 365 days, or never) and optionally a checklist of the permissions the user holds anywhere. The value is shown once, with Copy and "I copied it".
+- `/admin/users`: how many keys a user has, and Revoke all (asked first).
+- The audit log shows key actions as "API key: user · key".
+- API: `GET`/`POST /api/v1/account/api-keys`, `DELETE /api/v1/account/api-keys/{id}`, `DELETE /api/v1/users/{id}/api-keys`.
+
 ## Client-side security
 
 - Cookie authentication `HttpOnly; Secure; SameSite=Strict`. **No tokens in localStorage.**

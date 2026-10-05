@@ -28,6 +28,7 @@ public sealed class UserManagement(
     IRequestContext request,
     IAuditLog audit,
     BrowserConnections connections,
+    ApiKeys apiKeys,
     TimeProvider clock)
 {
     public async Task<IReadOnlyList<UserResponse>> ListAsync(CancellationToken ct)
@@ -35,7 +36,8 @@ public sealed class UserManagement(
         var all = await db.Users.AsNoTracking().OrderBy(u => u.NormalizedUserName).ToListAsync(ct);
         var roles = await RoleReferencesAsync(null, ct);
         var access = await AccessReferencesAsync(null, ct);
-        return [.. all.Select(u => Describe(u, roles, access))];
+        var keys = await apiKeys.CountAsync([.. all.Select(u => u.Id)], ct);
+        return [.. all.Select(u => Describe(u, roles, access, keys.GetValueOrDefault(u.Id)))];
     }
 
     public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> GetAsync(UserId id, CancellationToken ct)
@@ -98,7 +100,7 @@ public sealed class UserManagement(
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
-        var response = Describe(user, roles.Select(r => (user.Id, new RoleReference(r.Id.Value, r.Name))).ToList(), []);
+        var response = Describe(user, roles.Select(r => (user.Id, new RoleReference(r.Id.Value, r.Name))).ToList(), [], apiKeys: 0);
         return TypedResults.Created($"/api/v1/users/{user.Id}", response);
     }
 
@@ -177,6 +179,19 @@ public sealed class UserManagement(
     /// Turns off a user's two-factor authentication (a lost phone and no recovery codes left): the key and the codes
     /// are forgotten and the user's sessions end. A role that requires it makes them set it up again at sign-in.
     /// </summary>
+    /// <summary>Revokes every API key of the user (after a leak, say); the user can create new ones.</summary>
+    public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> RevokeApiKeysAsync(UserId id, CancellationToken ct)
+    {
+        var (user, problem) = await FindManageableAsync(id, ct);
+        if (problem is not null)
+        {
+            return problem;
+        }
+
+        await apiKeys.RevokeAllAsync(user!.Id, ct);
+        return TypedResults.Ok(await DescribeAsync(user, ct));
+    }
+
     public async Task<Results<NoContent, ProblemHttpResult>> ResetTwoFactorAsync(UserId id, CancellationToken ct)
     {
         var (user, problem) = await FindManageableAsync(id, ct);
@@ -461,10 +476,11 @@ public sealed class UserManagement(
     }
 
     private async Task<UserResponse> DescribeAsync(PulsarUser user, CancellationToken ct) =>
-        Describe(user, await RoleReferencesAsync(user.Id, ct), await AccessReferencesAsync(user.Id, ct));
+        Describe(user, await RoleReferencesAsync(user.Id, ct), await AccessReferencesAsync(user.Id, ct),
+            (await apiKeys.CountAsync([user.Id], ct)).GetValueOrDefault(user.Id));
 
     private static UserResponse Describe(PulsarUser user, List<(UserId UserId, RoleReference Role)> roles,
-        List<(UserId UserId, AccessReference Access)> access) => new(
+        List<(UserId UserId, AccessReference Access)> access, int apiKeys) => new(
         user.Id.Value,
         user.UserName!,
         user.DisplayName,
@@ -474,7 +490,8 @@ public sealed class UserManagement(
         user.CreatedAt,
         user.LastLoginAt,
         [.. roles.Where(r => r.UserId == user.Id).Select(r => r.Role)],
-        [.. access.Where(a => a.UserId == user.Id).Select(a => a.Access)]);
+        [.. access.Where(a => a.UserId == user.Id).Select(a => a.Access)],
+        apiKeys);
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

@@ -16,6 +16,8 @@ public static class AuditActions
         public const string TwoFactorFailed = "auth.two_factor_failed";
         public const string RecoveryCodeUsed = "auth.recovery_code_used";
         public const string RecoveryCodesRenewed = "auth.recovery_codes_renewed";
+        public const string ApiKeyCreated = "auth.api_key_created";
+        public const string ApiKeyRevoked = "auth.api_key_revoked";
     }
 
     public static class User
@@ -25,6 +27,7 @@ public static class AuditActions
         public const string Deleted = "user.deleted";
         public const string PasswordReset = "user.password_reset";
         public const string TwoFactorReset = "user.two_factor_reset";
+        public const string ApiKeysRevoked = "user.api_keys_revoked";
     }
 
     public static class Node

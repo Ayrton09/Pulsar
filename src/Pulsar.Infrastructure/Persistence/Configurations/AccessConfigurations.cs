@@ -99,3 +99,21 @@ internal sealed class ServerAccessConfiguration : IEntityTypeConfiguration<Serve
         builder.HasOne<PulsarUser>().WithMany().HasForeignKey(a => a.GrantedBy).OnDelete(DeleteBehavior.SetNull);
     }
 }
+
+/// <summary>API keys (docs/architecture/02, "API keys"): found by the hash of their value; gone with their user.</summary>
+internal sealed class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKey>
+{
+    public void Configure(EntityTypeBuilder<ApiKey> builder)
+    {
+        builder.ToTable("api_keys");
+        builder.HasKey(k => k.Id);
+        builder.Property(k => k.Id).ValueGeneratedNever();
+        builder.Property(k => k.Name).HasMaxLength(ApiKey.MaxNameLength);
+        builder.Property(k => k.Prefix).HasMaxLength(ApiKey.VisiblePrefixLength);
+        builder.Property(k => k.TokenHash).HasMaxLength(32);
+        builder.HasIndex(k => k.TokenHash).IsUnique();
+        builder.HasIndex(k => k.UserId);
+        builder.Property(k => k.Permissions).HasColumnType("text[]");
+        builder.HasOne<PulsarUser>().WithMany().HasForeignKey(k => k.UserId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

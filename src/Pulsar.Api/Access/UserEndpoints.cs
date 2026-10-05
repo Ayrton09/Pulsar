@@ -21,6 +21,8 @@ public static class UserEndpoints
             m.ResetPasswordAsync(new UserId(id), request, ct)).RequirePermission(Permissions.User.Manage);
         users.MapPost("/{id:guid}/two-factor/reset", (Guid id, UserManagement m, CancellationToken ct) =>
             m.ResetTwoFactorAsync(new UserId(id), ct)).RequirePermission(Permissions.User.Manage);
+        users.MapDelete("/{id:guid}/api-keys", (Guid id, UserManagement m, CancellationToken ct) => m.RevokeApiKeysAsync(new UserId(id), ct))
+            .RequirePermission(Permissions.User.Manage);
         users.MapPut("/{id:guid}/roles", (Guid id, SetUserRolesRequest request, UserManagement m, CancellationToken ct) =>
             m.SetRolesAsync(new UserId(id), request, ct)).RequirePermission(Permissions.User.Manage);
         users.MapDelete("/{id:guid}", (Guid id, UserManagement m, CancellationToken ct) => m.DeleteAsync(new UserId(id), ct))

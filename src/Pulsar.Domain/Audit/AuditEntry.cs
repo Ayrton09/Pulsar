@@ -17,6 +17,9 @@ public enum AuditActorType
     Schedule,
     System,
     Anonymous,
+
+    /// <summary>A user through one of their API keys (the user id is the key's user; the display names both).</summary>
+    ApiKey,
 }
 
 /// <summary>Who performed an audited action, captured at the time of the event.</summary>
@@ -27,6 +30,8 @@ public sealed record AuditActor(AuditActorType Type, UserId? UserId, string? Dis
     public static AuditActor Anonymous { get; } = new(AuditActorType.Anonymous, null, null);
 
     public static AuditActor ForUser(UserId userId, string? display) => new(AuditActorType.User, userId, display);
+
+    public static AuditActor ForApiKey(UserId userId, string? userName, string keyName) => new(AuditActorType.ApiKey, userId, $"{userName} · {keyName}");
 }
 
 /// <summary>Request details recorded with an entry.</summary>

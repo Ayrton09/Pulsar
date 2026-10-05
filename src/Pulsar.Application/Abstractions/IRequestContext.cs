@@ -12,4 +12,9 @@ public interface IRequestContext
     AuditActor Actor { get; }
 
     AuditRequestInfo RequestInfo { get; }
+
+    /// <summary>
+    /// The only permissions the request may use (an API key limited to some), on top of its user's; null: no limit.
+    /// </summary>
+    IReadOnlySet<string>? PermissionLimit => null;
 }

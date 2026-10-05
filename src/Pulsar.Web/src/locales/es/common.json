@@ -115,6 +115,11 @@
     "resetTwoFactor": "Desactivar dos pasos",
     "resetTwoFactorConfirm": "¿Desactivar la verificación en dos pasos de {{name}}? Sus sesiones terminan; si un rol la exige, la configura de nuevo al iniciar sesión.",
     "twoFactorReset": "Verificación en dos pasos desactivada.",
+    "apiKeys_one": "{{count}} API key activa",
+    "apiKeys_other": "{{count}} API keys activas",
+    "revokeApiKeys": "Revocar todas",
+    "revokeApiKeysConfirm": "¿Revocar todas las API keys de {{name}}? Lo que las use deja de funcionar ya.",
+    "apiKeysRevoked": "API keys revocadas.",
     "access": {
       "title": "Acceso a nodos y servidores",
       "hint": "Un rol de nodo o de servidor vale solo ahí: el usuario ve y administra ese nodo (con sus servidores) o ese servidor, y nada más.",
@@ -240,7 +245,8 @@
       "node": "Nodo",
       "schedule": "Tarea programada",
       "system": "Sistema",
-      "anonymous": "Anónimo"
+      "anonymous": "Anónimo",
+      "apiKey": "API key"
     },
     "outcomes": {
       "success": "Correcto",
@@ -259,14 +265,17 @@
         "two_factor_disabled": "Desactivó la verificación en dos pasos",
         "two_factor_failed": "Código de dos pasos incorrecto",
         "recovery_code_used": "Entró con un código de recuperación",
-        "recovery_codes_renewed": "Generó nuevos códigos de recuperación"
+        "recovery_codes_renewed": "Generó nuevos códigos de recuperación",
+        "api_key_created": "Creó una API key",
+        "api_key_revoked": "Revocó una API key"
       },
       "user": {
         "created": "Creó un usuario",
         "updated": "Modificó un usuario",
         "deleted": "Eliminó un usuario",
         "password_reset": "Cambió la contraseña de un usuario",
-        "two_factor_reset": "Desactivó la verificación en dos pasos de un usuario"
+        "two_factor_reset": "Desactivó la verificación en dos pasos de un usuario",
+        "api_keys_revoked": "Revocó las API keys de un usuario"
       },
       "role": {
         "created": "Creó un rol",
@@ -351,6 +360,13 @@
     "insecureDescription": "Las contraseñas y la sesión viajan en texto plano. Usá HTTPS fuera de una red de confianza."
   },
   "errors": {
+    "api_key": {
+      "name_invalid": "Poné un nombre de una línea, de hasta 64 caracteres.",
+      "permissions_invalid": "Elegí al menos un permiso.",
+      "expiry_invalid": "Elegí cuándo vence la key.",
+      "too_many": "Tenés demasiadas API keys: revocá una primero.",
+      "not_found": "Esa key ya no existe."
+    },
     "unexpected": "Algo salió mal. Probá de nuevo.",
     "auth": {
       "invalid_credentials": "Usuario o contraseña incorrectos.",
@@ -530,7 +546,7 @@
   },
   "account": {
     "title": "Mi cuenta",
-    "description": "Tu perfil, tu contraseña y la verificación en dos pasos.",
+    "description": "Tu perfil, tu contraseña, la verificación en dos pasos y tus API keys.",
     "profile": "Perfil",
     "userNameFixed": "El usuario no se puede cambiar.",
     "emailHint": "Opcional. No lo ven otros usuarios.",
@@ -1107,6 +1123,37 @@
     },
     "missed_one": "Perdida: el panel no estaba en marcha.",
     "missed_other": "{{count}} ejecuciones perdidas: el panel no estaba en marcha."
+  },
+  "apiKeys": {
+    "title": "API keys",
+    "hint": "Para scripts y herramientas: mandá la key como \"Authorization: Bearer <key>\". Actúa como vos, con tus permisos o solo los que elijas, y nunca llega a tu cuenta, tu contraseña ni tus keys.",
+    "create": "Crear key",
+    "empty": "No tenés API keys.",
+    "name": "Nombre",
+    "nameHint": "Qué la usa, por ejemplo \"Bot de Discord\".",
+    "expiry": "Vence",
+    "expiries": {
+      "30": "En 30 días",
+      "90": "En 90 días",
+      "365": "En un año",
+      "never": "Nunca"
+    },
+    "limit": "Solo algunos de mis permisos",
+    "allPermissions": "Todos tus permisos",
+    "limited_one": "{{count}} permiso",
+    "limited_other": "{{count}} permisos",
+    "lastUsed": "último uso {{when}}",
+    "neverUsed": "sin usar",
+    "expires": "vence {{when}}",
+    "expired": "venció {{when}}",
+    "noExpiry": "no vence",
+    "revoke": "Revocar",
+    "revokeConfirm": "¿Revocar {{name}}? Lo que la use deja de funcionar ya.",
+    "createdTitle": "Tu nueva API key",
+    "createdIntro": "Copiala ahora: se muestra solo esta vez. Guardala como una contraseña.",
+    "value": "API key",
+    "usage": "Mandala en cada pedido como: Authorization: Bearer <key>",
+    "done": "Ya la copié"
   },
   "twoFactor": {
     "title": "Verificación en dos pasos",

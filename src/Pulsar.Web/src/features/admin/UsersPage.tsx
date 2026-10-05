@@ -19,6 +19,7 @@ import {
   useDeleteUser,
   useResetPassword,
   useResetTwoFactor,
+  useRevokeUserApiKeys,
   useRoles,
   useSetUserAccess,
   useSetUserRoles,
@@ -240,6 +241,8 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
   const reset = useResetPassword();
   const remove = useDeleteUser();
   const resetTwoFactor = useResetTwoFactor();
+  const revokeKeys = useRevokeUserApiKeys();
+  const [apiKeys, setApiKeys] = useState(user.apiKeys);
   const [roleIds, setRoleIds] = useState<Set<string>>(new Set(user.roles.map((r) => r.id)));
   const [newPassword, setNewPassword] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
@@ -247,7 +250,8 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
     resolver: zodResolver(profileSchema),
     defaultValues: { displayName: user.displayName ?? '', email: user.email ?? '', isDisabled: user.isDisabled },
   });
-  const error = update.error ?? setRoles.error ?? reset.error ?? remove.error ?? resetTwoFactor.error;
+  const error =
+    update.error ?? setRoles.error ?? reset.error ?? remove.error ?? resetTwoFactor.error ?? revokeKeys.error;
 
   const onSaveProfile = handleSubmit(({ displayName, email, isDisabled }) =>
     update.mutate(
@@ -357,6 +361,27 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
               }
             >
               {t('users.resetTwoFactor')}
+            </Button>
+          </div>
+        )}
+
+        {!isSelf && apiKeys > 0 && (
+          <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+            <p className="text-sm text-muted">{t('users.apiKeys', { count: apiKeys })}</p>
+            <Button
+              variant="secondary"
+              busy={revokeKeys.isPending}
+              onClick={() =>
+                window.confirm(t('users.revokeApiKeysConfirm', { name: user.userName })) &&
+                revokeKeys.mutate(user.id, {
+                  onSuccess: (updated) => {
+                    setApiKeys(updated.apiKeys);
+                    setNotice(t('users.apiKeysRevoked'));
+                  },
+                })
+              }
+            >
+              {t('users.revokeApiKeys')}
             </Button>
           </div>
         )}

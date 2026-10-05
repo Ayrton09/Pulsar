@@ -25,11 +25,22 @@ public interface IPermissionEvaluator
     void InvalidateAll();
 }
 
-internal sealed class PermissionEvaluator(IPulsarDbContext db, IMemoryCache cache, PermissionCacheVersion version) : IPermissionEvaluator
+internal sealed class PermissionEvaluator(IPulsarDbContext db, IMemoryCache cache, PermissionCacheVersion version, IRequestContext request)
+    : IPermissionEvaluator
 {
     private static readonly TimeSpan s_ttl = TimeSpan.FromMinutes(1);
 
+    /// <summary>
+    /// The user's permissions; for the user making a request with a limited API key, only those the key allows (so
+    /// every check, list and rule of the request sees the narrower set).
+    /// </summary>
     public async Task<EffectivePermissions> GetAsync(UserId user, CancellationToken cancellationToken)
+    {
+        var permissions = await LoadAsync(user, cancellationToken);
+        return request.UserId == user && request.PermissionLimit is { } limit ? permissions.Restrict(limit) : permissions;
+    }
+
+    private async Task<EffectivePermissions> LoadAsync(UserId user, CancellationToken cancellationToken)
     {
         var key = (nameof(PermissionEvaluator), user, version.Current);
         if (cache.TryGetValue(key, out EffectivePermissions? cached) && cached is not null)

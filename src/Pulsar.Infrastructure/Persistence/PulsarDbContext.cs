@@ -25,6 +25,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<ServerAccess> ServerAccess => Set<ServerAccess>();
 
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+
     public DbSet<AuditEntry> AuditLog => Set<AuditEntry>();
 
     public DbSet<Node> Nodes => Set<Node>();
@@ -70,6 +72,7 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
         configurationBuilder.Properties<ScheduledTaskId>().HaveConversion<ScheduledTaskIdConverter>();
         configurationBuilder.Properties<ScheduledRunId>().HaveConversion<ScheduledRunIdConverter>();
         configurationBuilder.Properties<BackupStorageId>().HaveConversion<BackupStorageIdConverter>();
+        configurationBuilder.Properties<ApiKeyId>().HaveConversion<ApiKeyIdConverter>();
         configurationBuilder.Properties<NotificationChannelId>().HaveConversion<NotificationChannelIdConverter>();
         configurationBuilder.Properties<NotificationDeliveryId>().HaveConversion<NotificationDeliveryIdConverter>();
     }

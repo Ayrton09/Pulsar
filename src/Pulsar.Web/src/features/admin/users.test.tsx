@@ -20,6 +20,7 @@ const friend: Schemas['UserResponse'] = {
   lastLoginAt: null,
   roles: [],
   access: [],
+  apiKeys: 0,
 };
 const operatorRole: Schemas['RoleSummary'] = {
   id: '0192f1a0-0000-7000-8000-0000000000c1',

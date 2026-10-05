@@ -37,7 +37,8 @@ internal sealed class AntiforgeryValidationFilter(IAntiforgery antiforgery) : IE
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var method = context.HttpContext.Request.Method;
-        if (!(HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method) || HttpMethods.IsTrace(method)))
+        // A request authenticated by an API key carries no cookie a browser would add by itself: nothing to forge.
+        if (!context.HttpContext.User.IsApiKey() && !(HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method) || HttpMethods.IsTrace(method)))
         {
             try
             {

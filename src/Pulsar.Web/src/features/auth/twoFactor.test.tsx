@@ -107,6 +107,7 @@ describe('two-factor setup', () => {
           insecureConnection: false,
         }),
       'GET /api/v1/auth/two-factor': () => json({ enabled, required: true, recoveryCodesLeft: enabled ? 10 : 0 }),
+      'GET /api/v1/account/api-keys': () => json([]),
       'POST /api/v1/auth/two-factor/setup': () =>
         json({
           sharedKey: 'JBSW Y3DP EHPK 3PXP',
@@ -145,6 +146,7 @@ describe('two-factor setup', () => {
       'GET /api/v1/auth/session': () =>
         json({ setupRequired: false, user: { ...adminUser, twoFactorEnabled: enabled }, insecureConnection: false }),
       'GET /api/v1/auth/two-factor': () => json({ enabled, required: false, recoveryCodesLeft: enabled ? 5 : 0 }),
+      'GET /api/v1/account/api-keys': () => json([]),
       'POST /api/v1/auth/two-factor/setup': () =>
         json({
           sharedKey: 'JBSW Y3DP EHPK 3PXP',
@@ -178,6 +180,7 @@ describe('two-factor setup', () => {
       'GET /api/v1/auth/session': () =>
         json({ setupRequired: false, user: { ...adminUser, twoFactorEnabled: enabled }, insecureConnection: false }),
       'GET /api/v1/auth/two-factor': () => json({ enabled, required: false, recoveryCodesLeft: 3 }),
+      'GET /api/v1/account/api-keys': () => json([]),
       'POST /api/v1/auth/two-factor/disable': async (request) => {
         const { password } = await body(request);
         if (password !== 'my password here') {
@@ -211,6 +214,7 @@ describe('two-factor setup', () => {
       'GET /api/v1/auth/session': () =>
         json({ setupRequired: false, user: { ...adminUser, twoFactorEnabled: true }, insecureConnection: false }),
       'GET /api/v1/auth/two-factor': () => json({ enabled: true, required: true, recoveryCodesLeft: 10 }),
+      'GET /api/v1/account/api-keys': () => json([]),
     });
     renderAt('/account');
 

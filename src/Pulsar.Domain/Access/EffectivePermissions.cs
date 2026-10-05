@@ -102,6 +102,26 @@ public sealed class EffectivePermissions
     /// <summary>Servers where <paramref name="permission"/> was granted on the server itself.</summary>
     public IEnumerable<ServerId> ServersWith(string permission) => _servers.Where(p => p.Value.Contains(permission)).Select(p => p.Key);
 
+    /// <summary>
+    /// The same grants narrowed to <paramref name="allowed"/> (an API key limited to some permissions): nothing is
+    /// added, and the two-factor requirement stays.
+    /// </summary>
+    public EffectivePermissions Restrict(IReadOnlySet<string> allowed)
+    {
+        ArgumentNullException.ThrowIfNull(allowed);
+        return new EffectivePermissions(
+            _global.Where(allowed.Contains).ToFrozenSet(StringComparer.Ordinal),
+            Narrow(_nodes, allowed),
+            Narrow(_servers, allowed),
+            RequiresTwoFactor);
+    }
+
+    private static FrozenDictionary<TKey, FrozenSet<string>> Narrow<TKey>(FrozenDictionary<TKey, FrozenSet<string>> map, IReadOnlySet<string> allowed)
+        where TKey : notnull =>
+        map.Select(p => (p.Key, Set: p.Value.Where(allowed.Contains).ToFrozenSet(StringComparer.Ordinal)))
+            .Where(p => p.Set.Count > 0)
+            .ToFrozenDictionary(p => p.Key, p => p.Set);
+
     private static bool Contains<TKey>(FrozenDictionary<TKey, FrozenSet<string>> map, TKey key, string permission)
         where TKey : notnull => map.TryGetValue(key, out var set) && set.Contains(permission);
 

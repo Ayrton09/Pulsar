@@ -115,6 +115,11 @@
     "resetTwoFactor": "Turn off two-factor",
     "resetTwoFactorConfirm": "Turn off two-factor authentication for {{name}}? Their sessions end; if a role requires it, they set it up again at their next sign-in.",
     "twoFactorReset": "Two-factor authentication turned off.",
+    "apiKeys_one": "{{count}} active API key",
+    "apiKeys_other": "{{count}} active API keys",
+    "revokeApiKeys": "Revoke all",
+    "revokeApiKeysConfirm": "Revoke every API key of {{name}}? Whatever uses them stops working now.",
+    "apiKeysRevoked": "API keys revoked.",
     "access": {
       "title": "Access to nodes and servers",
       "hint": "A node or server role applies there only: the user sees and manages that node (with its servers) or that server, and nothing else.",
@@ -240,7 +245,8 @@
       "node": "Node",
       "schedule": "Schedule",
       "system": "System",
-      "anonymous": "Anonymous"
+      "anonymous": "Anonymous",
+      "apiKey": "API key"
     },
     "outcomes": {
       "success": "Success",
@@ -259,14 +265,17 @@
         "two_factor_disabled": "Turned off two-factor authentication",
         "two_factor_failed": "Wrong two-factor code",
         "recovery_code_used": "Signed in with a recovery code",
-        "recovery_codes_renewed": "Got new recovery codes"
+        "recovery_codes_renewed": "Got new recovery codes",
+        "api_key_created": "Created an API key",
+        "api_key_revoked": "Revoked an API key"
       },
       "user": {
         "created": "Created a user",
         "updated": "Updated a user",
         "deleted": "Deleted a user",
         "password_reset": "Set a user's password",
-        "two_factor_reset": "Turned off a user's two-factor authentication"
+        "two_factor_reset": "Turned off a user's two-factor authentication",
+        "api_keys_revoked": "Revoked a user's API keys"
       },
       "role": {
         "created": "Created a role",
@@ -351,6 +360,13 @@
     "insecureDescription": "Passwords and sessions travel in clear text. Use HTTPS outside a trusted network."
   },
   "errors": {
+    "api_key": {
+      "name_invalid": "Give the key a name of one line, up to 64 characters.",
+      "permissions_invalid": "Choose at least one permission.",
+      "expiry_invalid": "Choose when the key expires.",
+      "too_many": "You have too many API keys: revoke one first.",
+      "not_found": "That key does not exist any more."
+    },
     "unexpected": "Something went wrong. Try again.",
     "auth": {
       "invalid_credentials": "Invalid user name or password.",
@@ -530,7 +546,7 @@
   },
   "account": {
     "title": "My account",
-    "description": "Your profile, password and two-factor authentication.",
+    "description": "Your profile, password, two-factor authentication and API keys.",
     "profile": "Profile",
     "userNameFixed": "The user name cannot be changed.",
     "emailHint": "Optional. Not shown to other users.",
@@ -1107,6 +1123,37 @@
     },
     "missed_one": "Missed: the panel was not running.",
     "missed_other": "{{count}} runs missed: the panel was not running."
+  },
+  "apiKeys": {
+    "title": "API keys",
+    "hint": "For scripts and tools: send a key as \"Authorization: Bearer <key>\". It acts as you, with your permissions or only the ones you choose, and never reaches your account, password or keys.",
+    "create": "Create key",
+    "empty": "You have no API keys.",
+    "name": "Name",
+    "nameHint": "What uses it, e.g. \"Discord bot\".",
+    "expiry": "Expires",
+    "expiries": {
+      "30": "In 30 days",
+      "90": "In 90 days",
+      "365": "In a year",
+      "never": "Never"
+    },
+    "limit": "Only some of my permissions",
+    "allPermissions": "All your permissions",
+    "limited_one": "{{count}} permission",
+    "limited_other": "{{count}} permissions",
+    "lastUsed": "last used {{when}}",
+    "neverUsed": "never used",
+    "expires": "expires {{when}}",
+    "expired": "expired {{when}}",
+    "noExpiry": "does not expire",
+    "revoke": "Revoke",
+    "revokeConfirm": "Revoke {{name}}? Whatever uses it stops working now.",
+    "createdTitle": "Your new API key",
+    "createdIntro": "Copy it now: it is shown only this once. Keep it like a password.",
+    "value": "API key",
+    "usage": "Send it in every request as: Authorization: Bearer <key>",
+    "done": "I copied it"
   },
   "twoFactor": {
     "title": "Two-factor authentication",

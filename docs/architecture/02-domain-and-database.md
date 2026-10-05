@@ -105,6 +105,16 @@ Effective permissions(user, server S on node N) =
 
 There is no `Admin = true`: "administrator" is just a role.
 
+### API keys (Phase 12)
+
+A user creates keys for scripts and tools from their account (`/api/v1/account/api-keys`, session cookie only) and sends one as `Authorization: Bearer pulsar_…`.
+
+- A key acts as its user, with the user's permissions as they are at each request (a removed role takes effect at once), optionally narrowed to a list of permissions (`EffectivePermissions.Restrict`: the evaluator narrows the request user's permissions, so every check, list and anti-escalation rule of the request sees the smaller set). It has a name, an optional expiry, and records its last use (at most once a minute).
+- Stored as the SHA-256 of its value (32 random bytes), found by that hash; the value is shown once. The first 13 characters are kept to tell keys apart. At most 25 working keys per user.
+- Authentication: a policy scheme sends requests with `Bearer pulsar_…` to the key handler and all others to the cookie; the two are never merged (a cookie sent with a key is ignored). Only endpoints guarded by a permission accept keys; sign-in, the account, two-factor, the keys themselves (`RequireSignedInUser`) and the live hub take the cookie only, so a key never creates keys or changes its user's password. A key from a user who is disabled or deleted stops at once; keys of a user whose role requires two-factor authentication work only while the user has it on.
+- No antiforgery token for key requests (no cookie a browser adds by itself), a rate limit per key (600 requests a minute, `RateLimiting:Auth:ApiKeyPermitLimit`), audited with the actor type `api_key` (the user's id, "user · key name").
+- Revoked by their user, or all at once by an administrator (`DELETE /api/v1/users/{id}/api-keys`, `user.manage`).
+
 ## PostgreSQL schema
 
 Conventions:
@@ -322,6 +332,19 @@ CREATE TABLE server_access (
     granted_at  timestamptz NOT NULL,
     PRIMARY KEY (user_id, server_id, role_id),
     FOREIGN KEY (role_id, role_scope) REFERENCES roles(id, scope) ON DELETE RESTRICT
+);
+
+CREATE TABLE api_keys (  -- Phase 12
+    id            uuid PRIMARY KEY,
+    user_id       uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name          varchar(64) NOT NULL,
+    prefix        varchar(13) NOT NULL,         -- shown to tell keys apart
+    token_hash    bytea NOT NULL UNIQUE,        -- SHA-256 of the value
+    permissions   text[],                       -- NULL: all of the user's
+    created_at    timestamptz NOT NULL,
+    expires_at    timestamptz,
+    last_used_at  timestamptz,
+    revoked_at    timestamptz
 );
 
 -- ===================== Operations =====================

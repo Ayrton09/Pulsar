@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -29,6 +30,9 @@ public sealed class AuthRateLimitOptions
     public int PermitLimit { get; set; } = 10;
 
     public TimeSpan Window { get; set; } = TimeSpan.FromMinutes(1);
+
+    /// <summary>Requests per minute each API key may make (<c>RateLimiting:Auth:ApiKeyPermitLimit</c>).</summary>
+    public int ApiKeyPermitLimit { get; set; } = 600;
 }
 
 internal static class ApiServiceCollectionExtensions
@@ -67,9 +71,11 @@ internal static class ApiServiceCollectionExtensions
         {
             document.Info.Title = "Pulsar API";
             document.Info.Version = "v1";
-            document.Info.Description = "Pulsar panel API. Cookie authentication; state-changing requests need the " +
+            document.Info.Description = "Pulsar panel API. Browsers use the session cookie; state-changing requests then need the " +
                 $"{AntiforgeryProtection.HeaderName} header with the token from the __Host-pulsar-xsrf cookie " +
-                "(pulsar-xsrf when Security:AllowInsecureHttp is on).";
+                "(pulsar-xsrf when Security:AllowInsecureHttp is on). Scripts use an API key created in the account page: " +
+                "`Authorization: Bearer pulsar_…`, no cookie and no antiforgery header. A key works on the operations that " +
+                "need a permission (with its user's permissions, or the ones it lists); never on /auth or /account.";
             return Task.CompletedTask;
         }));
 
@@ -107,7 +113,10 @@ internal static class ApiServiceCollectionExtensions
 
     private static void AddAuthentication(IServiceCollection services, PanelCookies cookies)
     {
-        services.AddAuthentication(IdentityConstants.ApplicationScheme).AddIdentityCookies();
+        services.AddAuthentication(IdentityConstants.ApplicationScheme)
+            .AddPolicyScheme(UserSchemes.CookieOrApiKey, "Session cookie or API key", options => options.ForwardDefaultSelector = UserSchemes.Select)
+            .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationHandler.Scheme, null)
+            .AddIdentityCookies();
         services.ConfigureApplicationCookie(options =>
         {
             options.Cookie.Name = cookies.Session;
@@ -164,6 +173,12 @@ internal static class ApiServiceCollectionExtensions
             options.AddPolicy(AgentEndpoints.AuthRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
                 context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            // Each API key has its own budget (a script in a loop must not slow the panel down); browsers have none.
+            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+                context.User.IsApiKey() && context.User.FindFirstValue(ApiKeyClaims.KeyId) is { } key
+                    ? RateLimitPartition.GetFixedWindowLimiter(key,
+                        _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.ApiKeyPermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
+                    : RateLimitPartition.GetNoLimiter(""));
             options.OnRejected = (context, _) => new ValueTask(WriteProblemAsync(context.HttpContext,
                 StatusCodes.Status429TooManyRequests, "rate_limit.exceeded", "Too many attempts. Try again in a minute."));
         });
