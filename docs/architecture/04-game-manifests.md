@@ -122,15 +122,17 @@ Additional default validation for `string` values used as arguments: no leading 
 
 ### Argument templates
 
-- Allowed placeholders: `{{var.<key>}}`, `{{var.<key>.<sub>}}`, `{{port.<name>}}`, `{{port.<name>.ip}}`, `{{rcon.password}}`, `{{server.shortId}}`. Nothing else: no functions, no expressions, no environment access.
+- Allowed placeholders: `{{var.<key>}}`, `{{var.<key>.<sub>}}`, `{{port.<name>}}`, `{{port.<name>.ip}}`, `{{rcon.password}}`, `{{server.shortId}}`, `{{server.dir}}` (the server's absolute folder, filled in by the agent, for games that ignore relative paths; the panel checks manifests with a stand-in). Nothing else: no functions, no expressions, no environment access.
 - **Every array element is exactly one argument (argv) after substitution.** A value is never split into several arguments.
-- A single conditional: `{ "if": "var.x", "then": [...] }` (true for boolean `true` or a non-empty string) or `{ "if": "port.x", "then": [...] }` (an optional port that has an allocation). Optional ports can only be used inside their own condition.
+- A single conditional: `{ "if": "var.x", "then": [...] }` (true for boolean `true` or a non-empty string) or `{ "if": "port.x", "then": [...] }` (an optional port that has an allocation), with an optional `"else": [...]` for when it does not hold (Rust turns its companion app off with `+app.port -1` when that port has no allocation). Optional ports can only be used inside their own condition, never in its `else`.
 - The agent builds the Windows command line with the MSVCRT/`CommandLineToArgvW` quoting algorithm (quotes and backslashes escaped correctly) and passes it to `CreateProcessAsUser` with an explicit `lpApplicationName`. Never through `cmd.exe`.
 - `allowExtraArguments`: when `true`, users with `server.startup.edit` can add arguments (each one argv, with the same control-character validation). When `false`, they cannot.
 
 ### Ports
 
 `ports` lists what the game listens on: `name`, `label`, `protocols` (`udp`, `tcp`), `default` and `required` (default `true`). A server gets one allocation of its node (an `ip:port` pair, both protocols reserved) per port; required ports get one when the server is created (the free allocation on the default port first), optional ones only when asked for. **`protocols` are what the firewall opens** when Pulsar manages it: declare only what players need. An RCON console uses the TCP side of its port even when the port declares UDP only, which keeps RCON reachable from the node alone.
+
+A port can `follow` another: `"follows": { "port": "game", "offset": 1 }` says the game always listens there at the other port's number plus `offset` (1 to 10), on the same address (Valheim's query port is its game port + 1). Its `default` must be the followed port's default plus the offset, both share `required`, and chains are refused. The panel gives it the allocation `ip:port+offset` of the node together with the followed port, so a server can only take a game port whose follower is also free; users never pick it, and the renderer refuses a binding that breaks the rule.
 
 ### Executable and paths
 
@@ -149,17 +151,21 @@ Additional default validation for `string` values used as arguments: no leading 
 | `steamcmd` | Yes | `appId`, `login` (`anonymous` in v1), `beta?`, `betaPasswordVar?` (a secret variable, with `beta`), `validate?` |
 | `ensureDirectory` | Yes | `path` |
 | `writeFileIfMissing` | Yes | `path`, `content` (literal text, no placeholders) |
+| `minecraftServer` | Yes | `versionVar?` (a string variable with a pattern, or an enum: a version id or `latest`) |
 | `download` | Post-v1 | `url` (**https only**), **mandatory** `sha256`, `path` |
 | `extractArchive` | Post-v1 | `archive`, `destination`, zip-slip protection |
+
+`minecraftServer` writes Mojang's `server.jar` for that version and installs the Java runtime the version's metadata asks for (`javaVersion.majorVersion`) in `java/`: the latest Eclipse Temurin JRE of that major version for Windows x64, from Adoptium's API. The agent downloads only over HTTPS from Mojang's and Adoptium's hosts (and GitHub's, where Adoptium's binaries live), follows redirects itself to check every hop, and accepts a file only if it matches the checksum its publisher lists in the metadata fetched over that same TLS: SHA-1 for Mojang (the only one it publishes), SHA-256 for Adoptium. The runtime's archive must contain `bin/java.exe` and nothing outside `java/`; `java/pulsar-java.txt` records its release and files, so an update replaces exactly those and skips the download when the release is the same.
 
 There is no `run`/`exec`/`script` step. If a game needed its own installer, it would be discussed as a new typed step with its own security review. `install` runs on install and reinstall; `update` (optional) on the update operation, which can also ask SteamCMD to validate every file. SteamCMD steps run as the server's account (doc 06); the others are done by the agent through its link-safe file access.
 
 ### Configuration files
 
 - `mode: "patch"`: the agent changes only the declared keys and keeps the rest of the file (users can still edit it in the file manager). `mode: "managed"`: the file is regenerated entirely; the UI warns that manual edits are lost.
-- v1 formats: `source-cfg` (`cvar "value"` per line) and `properties` (`key=value`). `ini` and `json` post-v1.
+- v1 formats: `source-cfg` (`cvar "value"` per line), `properties` (`key=value`) and `unreal-ini`: the keys of one `section` of an Unreal Engine ini, as plain `Key=Value` lines or, with `struct`, as the members of one `Struct=(Key=Value,...)` line (Palworld's `OptionSettings`). In a struct, strings are quoted and numbers and `True`/`False` are not, as Unreal writes them; the members Pulsar does not declare stay, and a struct line that cannot be read stops the start rather than being overwritten. Other sections are kept. Generic `ini` and `json` post-v1.
 - Each format has an **encoder** that rejects whatever would break it: `source-cfg` rejects `"`, `;`, `\r`, `\n` (in Source, `;` separates commands: `hostname "x"; rcon_password y` would be an injection).
 - An empty value removes the key (patch mode) or leaves it out (managed mode), secrets included: declared keys belong to Pulsar, so a value written there by hand is replaced at the next start. The agent writes the files before every start; a file larger than 1 MiB is refused.
+- `unreal-ini` rejects `"` and `\` (Unreal reads `\` as an escape inside quotes); its keys and `struct` are `^[A-Za-z_][A-Za-z0-9_]{0,127}$`, and `section` is `^[A-Za-z0-9_./:-]{1,128}$`.
 - `properties` writes each backslash as `\\`; `source-cfg` keys are `^[A-Za-z0-9_.]{1,64}$`, `properties` keys `^[A-Za-z0-9_.-]{1,128}$`.
 
 ### Console
@@ -173,9 +179,10 @@ Three modes, chosen per game from the evidence of [spike 0001](../spikes/0001-co
 | `logfile+rcon` | Tail of `console.logFile` | RCON (`console.rcon`) | **Source engine on Windows** (srcds allocates its own console and crashes without one) |
 
 - `encoding` (`pipes` and `logfile+rcon`): `utf-8` (default), `oem`, `ansi`.
-- `inputNewline` (`pty`/`pipes`), `sensitiveCommandPrefixes` (commands starting with these are audited as `rcon_password ***`).
+- `inputNewline` (`pty`/`pipes` without `rcon`), `sensitiveCommandPrefixes` (commands starting with these are audited as `rcon_password ***`).
 - `logFile` (`logfile+rcon`): relative path of the log the game writes (e.g. `cstrike/console.log` with `-condebug`). The agent deletes it before each start and follows it (byte order mark skipped, truncation read from the start).
-- `rcon` (`logfile+rcon`): `{ "protocol": "source", "port": "game" }`, a required port of the manifest. The agent generates a random 32-character password at every provisioning (a reinstall rotates it) and keeps it encrypted in its state; the manifest passes it to the game with `{{rcon.password}}` (the only placeholder not backed by a user variable, refused in the environment), and a manifest with an RCON console must use it. The agent's client speaks both dialects measured in spike 0001 (srcds and CS2). The live console shows each command typed in it and its RCON answer; `"logsCommands": true` says the game writes both to its log file itself (CS2 does, srcds does not), so the console does not show them twice.
+- `rcon` (required in `logfile+rcon`, optional in `pty`/`pipes`): `{ "protocol": "source", "port": "game" }`, a required port of the manifest. The agent generates a random 32-character password at every provisioning (a reinstall rotates it) and keeps it encrypted in its state; the manifest passes it to the game with `{{rcon.password}}` (the only placeholder not backed by a user variable, refused in the environment), and a manifest with an RCON console must use it. The agent's client speaks both dialects measured in spike 0001 (srcds and CS2). The live console shows each command typed in it and its RCON answer; `"logsCommands": true` says the game writes both to its log file itself (CS2 does, srcds does not), so the console does not show them twice.
+- `pty`/`pipes` with `rcon`: the output still comes from the process, but commands typed in the live console and `rconCommand` stop steps go through RCON (Palworld prints its log but reads nothing from its console).
 - The game still gets a pseudo console (srcds dies without one); its output is drained and ignored.
 
 Fragment for Counter-Strike: Source (validated by spike 0001):
@@ -199,7 +206,7 @@ Fragment for Counter-Strike: Source (validated by spike 0001):
 ### Readiness and stop
 
 - Readiness: `logPattern` (regex over the output, or over the log file in `logfile+rcon`), `processAlive` (`graceSeconds`), `rcon` (the first successful RCON login), post-v1 `query` (A2S for Source). Moves `Starting → Running`. The bundled Source manifests use `rcon`: `Server is hibernating` never appears when users turn hibernation off.
-- Stop: steps `consoleCommand` (`pty`/`pipes`), `rconCommand` (`logfile+rcon`), `ctrlC` (`pty` only), `wait`; after `timeoutSeconds` the agent **terminates the Job** (kills the whole tree).
+- Stop: steps `consoleCommand` (`pty`/`pipes`), `rconCommand` (any console with `rcon`), `ctrlC` (`pty` only), `wait`; after `timeoutSeconds` the agent **terminates the Job** (kills the whole tree).
 
 ### Backups
 
