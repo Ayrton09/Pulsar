@@ -105,16 +105,21 @@ What most changes the experience after v1: knowing when something goes wrong wit
 
 **Done when:** a crashed server and a failed backup each send a Discord message and an email; a backup is uploaded to S3-compatible storage, the node's copy is deleted, and it is restored from the remote copy; each new game is installed, started, reported ready (and answering A2S or RCON where the game has them) and stopped from the panel.
 
+## Phase 11 — Players, access per server and known gaps
+
+What a server's owner sees and who else can manage it: the players on a server without joining it, and access to one server or one node for someone who is not an administrator. Along the way, the gaps found in earlier phases.
+
+- Query: a manifest `query` section (`a2s` for Source and Steam games, `minecraft` for the Server List Ping) on a named port; the agent asks running servers for their name, map, players and slots and sends it with the metrics; the panel shows it with the list of players. A `query` readiness. Player names are untrusted text.
+- Access per server and per node: a role given to a user on one server or one node (the domain has supported it since Phase 1; the database, the API and the pages did not). Lists, pages and live updates show each user only what they may see; permission changes reach live watches without reconnecting.
+- SteamCMD installs stuck in state `0x6` recover by themselves (the app manifest reset, retried with `validate`).
+- RCON answers the game does not log (CS2 cvar queries such as `sv_tags`) are shown in the console, without a second copy of those it does.
+- Atomic file replace on Windows tolerates other programs holding the old file (it failed once under heavy parallel test load: `AHardLinkIsReplacedOrRemovedNeverWrittenInto`, `ReplacingAFileFollowsTheRules`).
+
+**Done when:** CS:S, CS2, Valheim and Rust show their players and map in the panel through A2S, and Minecraft through the Server List Ping; a user given a role on one server sees and manages only that server, and loses it live when the role is taken away; a CS:S install put into state `0x6` recovers on its own; `sv_tags` over RCON shows its answer in the CS2 console once.
+
 ## Post-v1 (tentative order)
 
-More games (ARK: Survival Ascended, 7 Days to Die, Project Zomboid) → mods and Steam Workshop (Metamod/CounterStrikeSharp for CS2, Oxide/uMod for Rust, Workshop items) → A2S query (players, map, server name) → per-Job resource limits (CPU, memory) → user API keys → non-anonymous Steam login → MySQL/MariaDB databases for games → aggregated metric history → shim to survive agent restarts → bulk node enrollment (a reusable, limited, revocable token; an agent-only MSI for Intune/GPO) → optional mTLS mode → VSS backups → Linux agent.
-
-Known gaps to close along the way:
-
-- SteamCMD installs stuck in state `0x6` should recover by themselves (reset the app manifest and retry with `validate`).
-- CS2 does not log RCON answers to cvar queries (`sv_tags`), and `logsCommands` hides them: show them in the console.
-- Atomic file replace on Windows failed once under heavy parallel test load (`AHardLinkIsReplacedOrRemovedNeverWrittenInto`, `ReplacingAFileFollowsTheRules`).
-- Permission changes reach live watches (`PanelHub`) at the next reconnect; hub groups become per user once server-scoped grants are in the UI.
+More games (ARK: Survival Ascended, 7 Days to Die, Project Zomboid) → mods and Steam Workshop (Metamod/CounterStrikeSharp for CS2, Oxide/uMod for Rust, Workshop items) → per-Job resource limits (CPU, memory) → user API keys → non-anonymous Steam login → MySQL/MariaDB databases for games → aggregated metric history → shim to survive agent restarts → bulk node enrollment (a reusable, limited, revocable token; an agent-only MSI for Intune/GPO) → optional mTLS mode → VSS backups → Linux agent.
 
 ## Before the first public release
 
