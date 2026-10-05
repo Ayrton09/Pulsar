@@ -1,0 +1,83 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "project-zomboid",
+  "version": "1.0.0",
+  "name": "Project Zomboid",
+  "description": "Project Zomboid dedicated server, installed anonymously with SteamCMD (about 7 GB), run with the Java runtime it ships. Its world and settings live in the zomboid folder of the server.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 15, "minMemoryMb": 8192 },
+
+  "variables": [
+    { "key": "publicName", "label": "Server name", "type": "string", "default": "Pulsar Project Zomboid", "maxLength": 64, "pattern": "^.{1,64}$" },
+    { "key": "adminPassword", "label": "Admin password", "type": "string", "secret": true, "required": true, "maxLength": 64, "pattern": "^[A-Za-z0-9_.!@#$%^&*-]{8,64}$",
+      "description": "For the \"admin\" account in the game. Set again at every start." },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
+      "description": "Players need it to join. Leave empty for an open server." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 16, "min": 1, "max": 100 },
+    { "key": "memoryGb", "label": "Java memory (GB)", "type": "integer", "default": 4, "min": 2, "max": 64,
+      "description": "The Java heap. Keep it under the server's memory limit, if it has one." },
+    { "key": "public", "label": "Listed in the server browser", "type": "boolean", "default": false },
+    { "key": "workshopItems", "label": "Workshop items", "type": "string", "default": "", "maxLength": 2048, "pattern": "^([0-9]+(;[0-9]+)*)?$",
+      "description": "Steam Workshop item ids, separated by semicolons. The server downloads them when it starts." },
+    { "key": "mods", "label": "Mod ids", "type": "string", "default": "", "maxLength": 2048, "pattern": "^[A-Za-z0-9_ .;\\\\-]*$",
+      "description": "The mods to load, by their mod id (not their Workshop id), separated by semicolons. Build 42 writes each as \\ModId." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 16261 },
+    { "name": "udp", "label": "Game (second port)", "protocols": ["udp"], "default": 16262, "follows": { "port": "game", "offset": 1 } }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 380870 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 380870 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "jre64/bin/java.exe",
+      "arguments": [
+        "-Djava.awt.headless=true", "-Dzomboid.steam=1", "-Dzomboid.znetlog=1",
+        "-XX:+UseZGC", "-XX:-CreateCoredumpOnCrash", "-XX:-OmitStackTraceInFastThrow",
+        "-Xms{{var.memoryGb}}g", "-Xmx{{var.memoryGb}}g",
+        "-Djava.library.path=natives/",
+        "-cp", "java/;java/projectzomboid.jar",
+        "zombie.network.GameServer",
+        "-statistic", "0",
+        "-servername", "pulsar",
+        "-cachedir={{server.dir}}/zomboid",
+        "-adminpassword", "{{var.adminPassword}}",
+        "-port", "{{port.game}}"
+      ],
+      "console": { "mode": "pipes", "encoding": "utf-8" }
+    }
+  },
+
+  "configFiles": [
+    { "path": "zomboid/Server/pulsar.ini", "format": "key-value", "mode": "patch",
+      "set": {
+        "PublicName": "{{var.publicName}}",
+        "Password": "{{var.password}}",
+        "MaxPlayers": "{{var.maxPlayers}}",
+        "Public": "{{var.public}}",
+        "DefaultPort": "{{port.game}}",
+        "UDPPort": "{{port.udp}}",
+        "UPnP": "false",
+        "WorkshopItems": "{{var.workshopItems}}",
+        "Mods": "{{var.mods}}"
+      } }
+  ],
+
+  "query": { "protocol": "a2s", "port": "game" },
+  "readiness": { "type": "logPattern", "pattern": "\\*\\*\\* SERVER STARTED", "timeoutSeconds": 900 },
+
+  "stop": {
+    "steps": [ { "type": "consoleCommand", "command": "quit" } ],
+    "timeoutSeconds": 120
+  },
+
+  "backup": {
+    "include": ["zomboid/Saves/**", "zomboid/Server/**", "zomboid/db/**"]
+  }
+}

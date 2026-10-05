@@ -1,0 +1,97 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "7dtd",
+  "version": "1.0.0",
+  "name": "7 Days to Die",
+  "description": "7 Days to Die dedicated server, installed anonymously with SteamCMD (about 17 GB). Its settings live in pulsar-serverconfig.xml, a copy of the game's own serverconfig.xml that its updates leave alone.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 30, "minMemoryMb": 8192 },
+
+  "variables": [
+    { "key": "serverName", "label": "Server name", "type": "string", "default": "Pulsar 7 Days to Die", "maxLength": 64, "pattern": "^.{1,64}$" },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
+      "description": "Players need it to join. Leave empty for an open server." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 8, "min": 1, "max": 64 },
+    { "key": "world", "label": "World", "type": "string", "default": "Navezgane", "maxLength": 64, "pattern": "^[A-Za-z0-9_ -]{1,64}$",
+      "description": "Navezgane, a pregenerated world (Pregen06k01…) or RWG for a random one." },
+    { "key": "gameName", "label": "Save name", "type": "string", "default": "Pulsar", "maxLength": 64, "pattern": "^[A-Za-z0-9_. -]{1,64}$",
+      "description": "Names the save. A new name starts a new game in the same world." },
+    { "key": "visibility", "label": "Server list", "type": "enum", "default": "public",
+      "options": [
+        { "value": "public", "label": "Listed", "map": { "value": "2" } },
+        { "value": "friends", "label": "Friends only", "map": { "value": "1" } },
+        { "value": "hidden", "label": "Not listed", "map": { "value": "0" } }
+      ] },
+    { "key": "eac", "label": "EasyAntiCheat", "type": "boolean", "default": true,
+      "description": "Most code mods need it off." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp", "tcp"], "default": 26900 },
+    { "name": "net2", "label": "Game (second port)", "protocols": ["udp"], "default": 26901, "follows": { "port": "game", "offset": 1 } },
+    { "name": "net3", "label": "Game (third port)", "protocols": ["udp"], "default": 26902, "follows": { "port": "game", "offset": 2 } },
+    { "name": "telnet", "label": "Console (telnet)", "protocols": ["tcp"], "default": 8081, "internal": true,
+      "description": "The game's console, used only by Pulsar on this machine (with a password Pulsar generates)." }
+  ],
+
+  "install": {
+    "steps": [
+      { "type": "steamcmd", "appId": 294420 },
+      { "type": "copyFileIfMissing", "from": "serverconfig.xml", "to": "pulsar-serverconfig.xml" }
+    ]
+  },
+  "update": {
+    "steps": [
+      { "type": "steamcmd", "appId": 294420 },
+      { "type": "copyFileIfMissing", "from": "serverconfig.xml", "to": "pulsar-serverconfig.xml" }
+    ]
+  },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "7DaysToDieServer.exe",
+      "arguments": ["-logfile", "-", "-quit", "-batchmode", "-nographics", "-configfile=pulsar-serverconfig.xml", "-dedicated"],
+      "environment": { "SteamAppId": "251570", "SteamGameId": "251570" },
+      "console": {
+        "mode": "pipes",
+        "encoding": "utf-8",
+        "rcon": { "protocol": "telnet", "port": "telnet", "logsCommands": true },
+        "sensitiveCommandPrefixes": ["admin"]
+      }
+    }
+  },
+
+  "configFiles": [
+    { "path": "pulsar-serverconfig.xml", "format": "xml-properties", "mode": "patch", "section": "ServerSettings",
+      "set": {
+        "ServerName": "{{var.serverName}}",
+        "ServerPassword": "{{var.password}}",
+        "ServerPort": "{{port.game}}",
+        "ServerVisibility": "{{var.visibility.value}}",
+        "ServerMaxPlayerCount": "{{var.maxPlayers}}",
+        "GameWorld": "{{var.world}}",
+        "GameName": "{{var.gameName}}",
+        "EACEnabled": "{{var.eac}}",
+        "TelnetEnabled": "true",
+        "TelnetPort": "{{port.telnet}}",
+        "TelnetPassword": "{{rcon.password}}",
+        "WebDashboardEnabled": "false",
+        "UserDataFolder": "{{server.dir}}/UserData"
+      } }
+  ],
+
+  "query": { "protocol": "a2s", "port": "game" },
+  "readiness": { "type": "logPattern", "pattern": "StartGame done", "timeoutSeconds": 900 },
+
+  "stop": {
+    "steps": [ { "type": "rconCommand", "command": "shutdown" } ],
+    "timeoutSeconds": 120
+  },
+
+  "backup": {
+    "include": ["UserData/Saves/**", "UserData/GeneratedWorlds/**", "pulsar-serverconfig.xml"]
+  }
+}

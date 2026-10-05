@@ -1,0 +1,77 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "ark-sa",
+  "version": "1.0.0",
+  "name": "ARK: Survival Ascended",
+  "description": "ARK: Survival Ascended dedicated server, installed anonymously with SteamCMD (about 12 GB). Dedicated servers are for personal, non-commercial use unless you have a licence from its publisher; read this game's README.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 30, "minMemoryMb": 16384 },
+
+  "variables": [
+    { "key": "sessionName", "label": "Server name", "type": "string", "default": "Pulsar ARK", "maxLength": 63, "pattern": "^[^?\"\\\\]{1,63}$",
+      "description": "As players see it in the server list." },
+    { "key": "map", "label": "Map", "type": "string", "default": "TheIsland_WP", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$",
+      "description": "The map's name with its _WP suffix: TheIsland_WP, ScorchedEarth_WP, TheCenter_WP, Aberration_WP, Extinction_WP…" },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 70, "min": 1, "max": 200 },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
+      "description": "Players need it to join. Leave empty for an open server." },
+    { "key": "mods", "label": "Mods", "type": "string", "default": "", "maxLength": 512, "pattern": "^([0-9]{1,10}(,[0-9]{1,10}){0,49})?$",
+      "description": "CurseForge project ids, separated by commas (\"928548,929420\"). The server downloads and updates them itself when it starts." },
+    { "key": "battleye", "label": "BattlEye anti-cheat", "type": "boolean", "default": false }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 7777,
+      "description": "Players connect over UDP. RCON listens on TCP on the same port and is only used by Pulsar on this machine." }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 2430930 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 2430930 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "ShooterGame/Binaries/Win64/ArkAscendedServer.exe",
+      "workingDirectory": "ShooterGame/Binaries/Win64",
+      "arguments": [
+        "{{var.map}}?listen?SessionName={{var.sessionName}}?Port={{port.game}}",
+        "-WinLiveMaxPlayers={{var.maxPlayers}}",
+        { "if": "var.mods", "then": ["-mods={{var.mods}}"] },
+        { "if": "var.battleye", "then": [], "else": ["-NoBattlEye"] },
+        "-servergamelog"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "ShooterGame/Saved/Logs/ShooterGame.log",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["ServerAdminPassword", "SetServerPassword"]
+      }
+    }
+  },
+
+  "configFiles": [
+    { "path": "ShooterGame/Saved/Config/WindowsServer/GameUserSettings.ini", "format": "unreal-ini", "mode": "patch",
+      "section": "ServerSettings",
+      "set": {
+        "ServerAdminPassword": "{{rcon.password}}",
+        "RCONEnabled": "True",
+        "RCONPort": "{{port.game}}",
+        "ServerPassword": "{{var.password}}"
+      } }
+  ],
+
+  "readiness": { "type": "logPattern", "pattern": "is now advertising for join", "timeoutSeconds": 1200 },
+
+  "stop": {
+    "steps": [ { "type": "rconCommand", "command": "SaveWorld" }, { "type": "wait", "seconds": 5 }, { "type": "rconCommand", "command": "DoExit" } ],
+    "timeoutSeconds": 180
+  },
+
+  "backup": {
+    "include": ["ShooterGame/Saved/SavedArks/**", "ShooterGame/Saved/Config/WindowsServer/*.ini"],
+    "exclude": ["**/*.log"]
+  }
+}
