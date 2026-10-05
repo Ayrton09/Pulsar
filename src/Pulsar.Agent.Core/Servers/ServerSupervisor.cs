@@ -641,7 +641,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
 
         var now = _clock.GetUtcNow();
-        if (plan.Console.Mode == ManifestConsoleMode.LogfileRcon)
+        // Through RCON whenever the console has it (logfile+rcon, or a process console whose game takes no input).
+        if (plan.Console.Mode == ManifestConsoleMode.LogfileRcon || plan.Console.Rcon is not null)
         {
             if (plan.Rcon is not { } endpoint)
             {

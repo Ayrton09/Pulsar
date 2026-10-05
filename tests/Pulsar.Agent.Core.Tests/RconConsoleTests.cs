@@ -401,11 +401,27 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         await EventuallyAsync(supervisor, "Shutting down\n");
     }
 
+    [Fact]
+    public async Task AProcessConsoleCanTakeItsCommandsThroughRcon()
+    {
+        // Palworld: its output on its own console, no input there; commands go through RCON.
+        var supervisor = await RunningAsync(mode: ManifestConsoleMode.Pty);
+        _rcon.Answer = command => command == "ShowPlayers" ? "name,playeruid,steamid" : "";
+
+        _processes.Last.Print("Running Palworld dedicated server on :8211\r\n");
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("ShowPlayers"));
+
+        await EventuallyAsync(() => Text(supervisor).Contains("> ShowPlayers\nname,playeruid,steamid\n", StringComparison.Ordinal));
+        Assert.Contains("Running Palworld dedicated server on :8211", Text(supervisor), StringComparison.Ordinal);
+        Assert.Equal(["ShowPlayers"], _rcon.Commands);
+        Assert.Empty(_processes.Last.Input); // nothing typed into the game's console
+    }
+
     private const string Rcon = "Rc0nPassw0rd";
 
-    private async Task<ServerSupervisor> RunningAsync(bool logsCommands = false)
+    private async Task<ServerSupervisor> RunningAsync(bool logsCommands = false, ManifestConsoleMode mode = ManifestConsoleMode.LogfileRcon)
     {
-        var supervisor = Supervisor(new RconReadiness(60), logsCommands);
+        var supervisor = Supervisor(new RconReadiness(60), logsCommands, mode);
         _rcon.Listening = true;
         await supervisor.StartAsync();
         await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
@@ -423,10 +439,10 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
 
     private static Task EventuallyAsync(Func<bool> condition) => LogTailTests.Eventually(condition, () => "condition not met");
 
-    private ServerSupervisor Supervisor(ReadinessDefinition readiness, bool logsCommands = false)
+    private ServerSupervisor Supervisor(ReadinessDefinition readiness, bool logsCommands = false, ManifestConsoleMode mode = ManifestConsoleMode.LogfileRcon)
     {
         var plan = new LaunchPlan("srcds.exe", "", ["-game", "cstrike"], new Dictionary<string, string>(),
-            new ConsoleDefinition(ManifestConsoleMode.LogfileRcon, LogFile: "cstrike/console.log",
+            new ConsoleDefinition(mode, LogFile: mode == ManifestConsoleMode.LogfileRcon ? "cstrike/console.log" : null,
                 Rcon: new RconDefinition(RconProtocol.Source, "game", logsCommands)),
             readiness, new StopDefinition([new RconCommandStop("quit")], 30))
         {

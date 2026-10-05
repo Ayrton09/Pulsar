@@ -12,6 +12,14 @@ public sealed class InstallOptions
     public string? TestGameDirectory { get; set; }
 
     public bool TestGameAvailable => TestGameDirectory is { } directory && Directory.Exists(directory);
+
+    /// <summary>Sends the downloads of install steps such as <see cref="MinecraftServerStep"/>; it must not follow redirects.</summary>
+    public HttpMessageHandler HttpHandler { get; init; } = new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        ConnectTimeout = TimeSpan.FromSeconds(30),
+    };
 }
 
 /// <summary>
@@ -22,6 +30,25 @@ public sealed class InstallOptions
 /// </summary>
 public sealed class InstallSteps(InstallOptions options, IServerFiles files)
 {
+    /// <summary>Runs one step that is not a SteamCMD step, reporting its progress.</summary>
+    /// <param name="variables">The server's variable values, defaults included.</param>
+    public async Task RunAsync(InstallStep step, string serverDirectory, IReadOnlyDictionary<string, string?> variables,
+        Func<string, double?, Task> progress, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+        ArgumentNullException.ThrowIfNull(variables);
+        ArgumentNullException.ThrowIfNull(progress);
+        if (step is MinecraftServerStep minecraft)
+        {
+            var version = minecraft.VersionVar is { } key ? variables.GetValueOrDefault(key) : null;
+            await new MinecraftInstaller(files, options.HttpHandler).InstallAsync(serverDirectory, version, progress, cancellationToken);
+            return;
+        }
+
+        await progress(Steam.InstallStages.Installing, null);
+        await Task.Run(() => Run(step, serverDirectory), cancellationToken);
+    }
+
     /// <summary>Runs one step that is not a SteamCMD step.</summary>
     public void Run(InstallStep step, string serverDirectory)
     {

@@ -19,10 +19,31 @@ public sealed partial class ConsoleLines
         ArgumentNullException.ThrowIfNull(text);
         _pending.Append(text);
         var lines = new List<string>();
-        int newline;
-        while ((newline = IndexOf(_pending, '\n')) >= 0)
+        while (true)
         {
-            lines.Add(Clean(_pending.ToString(0, newline)));
+            var newline = IndexOf(_pending, '\n');
+            var pending = _pending.ToString();
+            // A pseudo console repaints lines written together with moves to the start of the next row instead of line
+            // breaks: such a move ends a line that has text (a home on an empty line, the first repaint, adds nothing).
+            var move = RowStart().Match(pending);
+            if (move.Success && (newline < 0 || move.Index < newline))
+            {
+                var line = Clean(pending[..move.Index]);
+                if (line.Length > 0)
+                {
+                    lines.Add(line);
+                }
+
+                _pending.Remove(0, move.Index + move.Length);
+                continue;
+            }
+
+            if (newline < 0)
+            {
+                break;
+            }
+
+            lines.Add(Clean(pending[..newline]));
             _pending.Remove(0, newline + 1);
         }
 
@@ -55,4 +76,8 @@ public sealed partial class ConsoleLines
     // CSI (ESC [ ... final), OSC (ESC ] ... BEL or ESC \), and two-character escapes.
     [GeneratedRegex(@"\x1B\[[0-?]*[ -/]*[@-~]|\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)|\x1B[@-Z\\-_]", RegexOptions.CultureInvariant)]
     private static partial Regex Escapes();
+
+    // Cursor position (CUP) to column 1 of a row, or home: ESC [ row ; 1 H, ESC [ row H, ESC [ H.
+    [GeneratedRegex(@"\x1B\[[0-9]*(?:;1?)?H", RegexOptions.CultureInvariant)]
+    private static partial Regex RowStart();
 }

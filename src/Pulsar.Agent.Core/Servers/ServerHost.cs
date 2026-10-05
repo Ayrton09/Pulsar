@@ -439,8 +439,8 @@ public sealed partial class ServerHost(
                 }
                 else
                 {
-                    await SendProgressAsync(operationId, InstallStages.Installing, null);
-                    await Task.Run(() => installSteps.Run(step, provisioned.Directory), cancellationToken);
+                    await installSteps.RunAsync(step, provisioned.Directory, VariableValues.Resolve(server.Manifest, server.Spec.Variables),
+                        (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
                 }
             }
 
@@ -825,7 +825,7 @@ public sealed partial class ServerHost(
     private ServerDefinition Definition(Guid serverId, ServerRuntimeSpec spec, string? rconPassword)
     {
         var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), spec.ShortId);
-        var plan = LaunchPlanRenderer.Render(Parse(spec), Platform, Binding(spec, rconPassword));
+        var plan = LaunchPlanRenderer.Render(Parse(spec), Platform, Binding(spec, rconPassword) with { Directory = provisioned.Directory });
         return new ServerDefinition(serverId, spec.ShortId, provisioned.Directory, provisioned.Identity, plan, spec.AutoStart, spec.RestartOnCrash);
     }
 
