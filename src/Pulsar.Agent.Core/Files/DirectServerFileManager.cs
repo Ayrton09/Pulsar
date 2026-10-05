@@ -287,6 +287,8 @@ public sealed class DirectServerFileManager : IServerFileManager
 
     private sealed class Pending : PendingFile
     {
+        private static readonly TimeSpan[] s_replaceRetries = [TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(250)];
+
         private readonly string _path;
         private readonly string _target;
         private readonly string _temporary;
@@ -313,9 +315,32 @@ public sealed class DirectServerFileManager : IServerFileManager
 
             _stream.Dispose();
             ServerFileRules.CheckTarget(_path, Existing(_target, _path), _overwrite, _expectedVersion);
-            Guard(_path, () => File.Move(_temporary, _target, overwrite: true));
+            Guard(_path, Replace);
             _committed = true;
             return Existing(_target, _path)!;
+        }
+
+        /// <summary>
+        /// A replace on Windows (MoveFileEx) fails while another program reads the old file, as a virus scanner does
+        /// right after it is written: tried again a few times before giving up.
+        /// </summary>
+        private void Replace()
+        {
+            foreach (var delay in s_replaceRetries)
+            {
+                try
+                {
+                    File.Move(_temporary, _target, overwrite: true);
+                    return;
+                }
+                catch (Exception ex) when (OperatingSystem.IsWindows()
+                    && (ex is UnauthorizedAccessException || ex.HResult is unchecked((int)0x80070020) or unchecked((int)0x80070021)))
+                {
+                    Thread.Sleep(delay);
+                }
+            }
+
+            File.Move(_temporary, _target, overwrite: true);
         }
 
         protected override void Dispose(bool disposing)

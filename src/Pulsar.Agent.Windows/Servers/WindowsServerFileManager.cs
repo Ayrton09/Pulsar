@@ -291,14 +291,37 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
     /// target folder is the one already checked, not a path looked up again. The Win32 call refuses a root directory,
     /// so this goes to the native one (FILE_RENAME_INFORMATION, the same structure).
     /// </summary>
-    private static unsafe void Rename(SafeFileHandle handle, SafeFileHandle directory, string name, bool replace, string path)
+    /// <remarks>
+    /// POSIX semantics, as deletes: a file replaced while another program reads it (a virus scanner, the search
+    /// indexer, a game reading its configuration) is replaced anyway, where a classic rename refuses with access
+    /// denied; that program keeps reading the old content. A read-only file is replaced as it would be deleted.
+    /// </remarks>
+    private static void Rename(SafeFileHandle handle, SafeFileHandle directory, string name, bool replace, string path)
     {
-        // FILE_RENAME_INFORMATION: a BOOLEAN, the root directory handle, the name's length in bytes, the name.
+        var flags = NtFile.FileRenamePosixSemantics | NtFile.FileRenameIgnoreReadOnlyAttribute | (replace ? NtFile.FileRenameReplaceIfExists : 0u);
+        var status = SetRename(handle, directory, name, flags, NtFile.FileRenameInformationEx);
+
+        // File systems without POSIX renames (FAT, older ReFS): the classic rename.
+        if (status is NtFile.StatusInvalidParameter or NtFile.StatusNotSupported or NtFile.StatusInvalidInfoClass)
+        {
+            status = SetRename(handle, directory, name, replace ? 1u : 0u, NtFile.FileRenameInformation);
+        }
+
+        if (status < 0)
+        {
+            throw Failure(path, (WIN32_ERROR)NtFile.RtlNtStatusToDosError(status));
+        }
+    }
+
+    private static unsafe int SetRename(SafeFileHandle handle, SafeFileHandle directory, string name, uint flags, int informationClass)
+    {
+        // FILE_RENAME_INFORMATION: ReplaceIfExists (a BOOLEAN) or, for the extended class, Flags (a ULONG) in the same
+        // place; the root directory handle; the name's length in bytes; the name.
         var rootOffset = IntPtr.Size;
         var lengthOffset = rootOffset + IntPtr.Size;
         var nameOffset = lengthOffset + sizeof(uint);
         var buffer = new byte[nameOffset + ((name.Length + 1) * sizeof(char))];
-        buffer[0] = replace ? (byte)1 : (byte)0;
+        BinaryPrimitives.WriteUInt32LittleEndian(buffer, flags);
         var added = false;
         directory.DangerousAddRef(ref added);
         try
@@ -316,11 +339,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             MemoryMarshal.AsBytes(name.AsSpan()).CopyTo(buffer.AsSpan(nameOffset));
             fixed (byte* info = buffer)
             {
-                var status = NtFile.NtSetInformationFile(handle, out _, info, (uint)buffer.Length, NtFile.FileRenameInformation);
-                if (status < 0)
-                {
-                    throw Failure(path, (WIN32_ERROR)NtFile.RtlNtStatusToDosError(status));
-                }
+                return NtFile.NtSetInformationFile(handle, out _, info, (uint)buffer.Length, informationClass);
             }
         }
         finally
@@ -725,6 +744,15 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
 internal static unsafe partial class NtFile
 {
     public const int FileRenameInformation = 10;
+    public const int FileRenameInformationEx = 65;
+
+    public const uint FileRenameReplaceIfExists = 0x1;
+    public const uint FileRenamePosixSemantics = 0x2;
+    public const uint FileRenameIgnoreReadOnlyAttribute = 0x40;
+
+    public const int StatusInvalidParameter = unchecked((int)0xC000000D);
+    public const int StatusNotSupported = unchecked((int)0xC00000BB);
+    public const int StatusInvalidInfoClass = unchecked((int)0xC0000003);
 
     [LibraryImport("ntdll.dll")]
     public static partial int NtSetInformationFile(SafeFileHandle fileHandle, out IoStatusBlock ioStatusBlock, byte* fileInformation, uint length, int fileInformationClass);

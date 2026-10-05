@@ -179,6 +179,40 @@ public sealed class WindowsServerFileManagerTests : ServerFileManagerContract
     }
 
     [WindowsFact]
+    public void AFileAnotherProgramHasOpenIsStillReplaced()
+    {
+        // What a virus scanner or the search indexer does to a file just written: read it, sharing everything.
+        var target = Path.Combine(ServerDirectory, "server.cfg");
+        File.WriteAllText(target, "old");
+        using var scanner = new FileStream(target, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+        using (var pending = Files.Create(Server, "server.cfg", 3, overwrite: true, expectedVersion: null))
+        {
+            pending.Content.Write("new"u8);
+            pending.Commit();
+        }
+
+        Assert.Equal("new", File.ReadAllText(target));
+        Assert.Equal("old", new StreamReader(scanner).ReadToEnd());
+    }
+
+    [WindowsFact]
+    public void AReadOnlyFileIsReplacedAsItIsDeleted()
+    {
+        var target = Path.Combine(ServerDirectory, "server.cfg");
+        File.WriteAllText(target, "old");
+        File.SetAttributes(target, FileAttributes.ReadOnly);
+
+        using (var pending = Files.Create(Server, "server.cfg", 3, overwrite: true, expectedVersion: null))
+        {
+            pending.Content.Write("new"u8);
+            pending.Commit();
+        }
+
+        Assert.Equal("new", File.ReadAllText(target));
+    }
+
+    [WindowsFact]
     public void DeletingAFolderNeverEmptiesWhatALinkInItPointsAt()
     {
         Directory.CreateDirectory(Path.Combine(ServerDirectory, "addons", "deep"));
