@@ -1,0 +1,78 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "palworld",
+  "version": "1.0.0",
+  "name": "Palworld",
+  "description": "Palworld dedicated server, installed anonymously with SteamCMD (about 4 GB). Pulsar talks to it over RCON; other world settings can be added to PalWorldSettings.ini by hand.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 10, "minMemoryMb": 8192 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Palworld", "maxLength": 64, "pattern": "^[^\"\\\\]{1,64}$" },
+    { "key": "description", "label": "Description", "type": "string", "default": "", "maxLength": 200, "pattern": "^[^\"\\\\]{0,200}$" },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\"\\\\ ]{1,32}$",
+      "description": "Leave it empty for an open server." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 32, "min": 1, "max": 32 },
+    { "key": "community", "label": "List it as a community server", "type": "boolean", "default": false }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 8211,
+      "description": "Players connect over UDP. RCON listens on TCP on the same port and is only used by Pulsar on this machine." },
+    { "name": "query", "label": "Steam query", "protocols": ["udp"], "default": 27015 }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 2394010 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 2394010 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "Pal/Binaries/Win64/PalServer-Win64-Shipping-Cmd.exe",
+      "workingDirectory": "Pal/Binaries/Win64",
+      "arguments": [
+        "Pal",
+        "-port={{port.game}}",
+        "-QueryPort={{port.query}}",
+        "-players={{var.maxPlayers}}",
+        "-logformat=text",
+        { "if": "var.community", "then": ["-publiclobby"] }
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "pty",
+        "encoding": "utf-8",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["AdminPassword"]
+      }
+    }
+  },
+
+  "configFiles": [
+    { "path": "Pal/Saved/Config/WindowsServer/PalWorldSettings.ini", "format": "unreal-ini", "mode": "patch",
+      "section": "/Script/Pal.PalGameWorldSettings", "struct": "OptionSettings",
+      "set": {
+        "ServerName": "{{var.name}}",
+        "ServerDescription": "{{var.description}}",
+        "ServerPassword": "{{var.password}}",
+        "ServerPlayerMaxNum": "{{var.maxPlayers}}",
+        "PublicPort": "{{port.game}}",
+        "AdminPassword": "{{rcon.password}}",
+        "RCONEnabled": "True",
+        "RCONPort": "{{port.game}}"
+      } }
+  ],
+
+  "readiness": { "type": "rcon", "timeoutSeconds": 600 },
+
+  "stop": {
+    "steps": [ { "type": "rconCommand", "command": "Save" }, { "type": "rconCommand", "command": "Shutdown 1 Pulsar" } ],
+    "timeoutSeconds": 60
+  },
+
+  "backup": {
+    "include": ["Pal/Saved/SaveGames/**", "Pal/Saved/Config/WindowsServer/PalWorldSettings.ini"]
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "valheim",
+  "version": "1.0.0",
+  "name": "Valheim",
+  "description": "Valheim dedicated server, installed anonymously with SteamCMD (about 2 GB). The world is saved in the server folder.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 4, "minMemoryMb": 4096 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Valheim", "maxLength": 64, "pattern": "^[^\"]{1,64}$",
+      "description": "Shown in the server list. It cannot contain the password." },
+    { "key": "world", "label": "World", "type": "string", "default": "Dedicated", "maxLength": 64, "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "description": "Its name: a new name makes a new world." },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "required": true, "maxLength": 32, "pattern": "^[^\" ]{5,32}$",
+      "description": "Players need it to join: 5 characters at least, and not part of the server name." },
+    { "key": "visibility", "label": "Server list", "type": "enum", "default": "public",
+      "options": [
+        { "value": "public", "label": "Listed (players find it)", "map": { "public": "1" } },
+        { "value": "private", "label": "Not listed (join by address)", "map": { "public": "0" } }
+      ] },
+    { "key": "crossplay", "label": "Crossplay (Xbox and Game Pass players)", "type": "boolean", "default": false,
+      "description": "Joins through PlayFab's relay instead of the server's ports." },
+    { "key": "preset", "label": "Difficulty", "type": "enum", "default": "normal",
+      "options": [
+        { "value": "normal", "label": "Normal" },
+        { "value": "casual", "label": "Casual" },
+        { "value": "easy", "label": "Easy" },
+        { "value": "hard", "label": "Hard" },
+        { "value": "hardcore", "label": "Hardcore" },
+        { "value": "immersive", "label": "Immersive" },
+        { "value": "hammer", "label": "Hammer (build mode)" }
+      ] }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 2456, "description": "Players connect here." },
+    { "name": "query", "label": "Steam query", "protocols": ["udp"], "default": 2457, "follows": { "port": "game", "offset": 1 },
+      "description": "Valheim always opens the game port + 1 for the server list: Pulsar gives it that allocation." }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 896660 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 896660 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "valheim_server.exe",
+      "arguments": [
+        "-nographics", "-batchmode",
+        "-name", "{{var.name}}",
+        "-port", "{{port.game}}",
+        "-world", "{{var.world}}",
+        "-password", "{{var.password}}",
+        "-public", "{{var.visibility.public}}",
+        "-preset", "{{var.preset}}",
+        "-savedir", "saves",
+        { "if": "var.crossplay", "then": ["-crossplay"] }
+      ],
+      "environment": { "SteamAppId": "892970" },
+      "allowExtraArguments": true,
+      "console": { "mode": "pty", "encoding": "utf-8" }
+    }
+  },
+
+  "readiness": { "type": "logPattern", "pattern": "Registering lobby", "timeoutSeconds": 600 },
+
+  "stop": {
+    "steps": [ { "type": "ctrlC" } ],
+    "timeoutSeconds": 60
+  },
+
+  "backup": {
+    "include": ["saves/**"],
+    "exclude": ["**/*.old", "saves/worlds_local/*.fwl.old"]
+  }
+}

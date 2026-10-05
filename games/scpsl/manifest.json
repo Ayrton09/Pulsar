@@ -1,0 +1,53 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "scpsl",
+  "version": "1.0.0",
+  "name": "SCP: Secret Laboratory",
+  "description": "SCP: Secret Laboratory dedicated server run by its LocalAdmin, installed anonymously with SteamCMD (about 1 GB). Its configuration is kept in the server folder, under config; LocalAdmin keeps its own settings and logs in the profile of the account the server runs as.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 3, "minMemoryMb": 2048 },
+
+  "variables": [
+    { "key": "eula", "label": "SCP: Secret Laboratory EULA", "type": "enum", "required": true,
+      "options": [ { "value": "accepted", "label": "I accept it" } ],
+      "description": "The game's terms for servers: https://link.scpslgame.com/eula. Its server does not run without accepting them." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 7777 }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 996560 }, { "type": "ensureDirectory", "path": "config/config" } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 996560 }, { "type": "ensureDirectory", "path": "config/config" } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "LocalAdmin.exe",
+      "arguments": [
+        "{{port.game}}",
+        "--acceptEULA",
+        "--useDefault", "--noSetCursor", "--noTerminalTitle", "--printStd",
+        "--",
+        "-appdatapath", "{{server.dir}}/config/",
+        "-configpath", "{{server.dir}}/config/config/"
+      ],
+      "allowExtraArguments": false,
+      "console": { "mode": "pty", "encoding": "utf-8" }
+    }
+  },
+
+  "readiness": { "type": "logPattern", "pattern": "Waiting for players\\.\\.\\.", "timeoutSeconds": 300 },
+
+  "stop": {
+    "steps": [ { "type": "consoleCommand", "command": "exit" }, { "type": "wait", "seconds": 20 } ],
+    "timeoutSeconds": 45
+  },
+
+  "backup": {
+    "include": ["config/**"],
+    "exclude": ["config/LocalAdminLogs/**", "config/ServerLogs/**", "config/internal/**"]
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "rust",
+  "version": "1.0.0",
+  "name": "Rust",
+  "description": "Rust dedicated server, installed anonymously with SteamCMD (about 6 GB). Generating a new map takes several minutes and a lot of memory.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 15, "minMemoryMb": 8192 },
+
+  "variables": [
+    { "key": "hostname", "label": "Server name", "type": "string", "default": "Pulsar Rust", "maxLength": 64, "pattern": "^[^\";]{1,64}$" },
+    { "key": "description", "label": "Description", "type": "string", "default": "", "maxLength": 200, "pattern": "^[^\";]{0,200}$" },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 50, "min": 1, "max": 500 },
+    { "key": "worldSize", "label": "Map size", "type": "integer", "default": 3000, "min": 1000, "max": 6000,
+      "description": "In meters per side. Bigger maps take longer to generate and need more memory." },
+    { "key": "seed", "label": "Map seed", "type": "integer", "default": 12345, "min": 0, "max": 2147483647,
+      "description": "The same seed and size make the same map." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 28015,
+      "description": "Players connect over UDP. RCON listens on TCP on the same port and is only used by Pulsar on this machine." },
+    { "name": "query", "label": "Server list query", "protocols": ["udp"], "default": 28017 },
+    { "name": "app", "label": "Rust+ companion app", "protocols": ["tcp"], "default": 28082, "required": false,
+      "description": "Assign it to let players pair the Rust+ app." }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 258550 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 258550 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "RustDedicated.exe",
+      "arguments": [
+        "-batchmode", "-nographics",
+        "-logfile", "output.log",
+        "+server.ip", "{{port.game.ip}}",
+        "+server.port", "{{port.game}}",
+        "+server.queryport", "{{port.query}}",
+        "+rcon.ip", "{{port.game.ip}}",
+        "+rcon.port", "{{port.game}}",
+        "+rcon.password", "{{rcon.password}}",
+        "+rcon.web", "0",
+        { "if": "port.app", "then": ["+app.port", "{{port.app}}"], "else": ["+app.port", "-1"] },
+        "+server.identity", "pulsar",
+        "+server.level", "Procedural Map",
+        "+server.seed", "{{var.seed}}",
+        "+server.worldsize", "{{var.worldSize}}",
+        "+server.maxplayers", "{{var.maxPlayers}}",
+        "+server.hostname", "{{var.hostname}}",
+        "+server.description", "{{var.description}}"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "output.log",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["rcon.password", "server.password"]
+      }
+    }
+  },
+
+  "readiness": { "type": "rcon", "timeoutSeconds": 1800 },
+
+  "stop": {
+    "steps": [ { "type": "rconCommand", "command": "quit" } ],
+    "timeoutSeconds": 120
+  },
+
+  "backup": {
+    "include": ["server/pulsar/**"],
+    "exclude": ["**/*.log", "server/pulsar/*.tmp"]
+  }
+}

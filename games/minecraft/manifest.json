@@ -1,0 +1,92 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "minecraft",
+  "version": "1.0.0",
+  "name": "Minecraft: Java Edition",
+  "description": "Minecraft: Java Edition's dedicated server, downloaded from Mojang, with the Java runtime its version needs (Eclipse Temurin, from Adoptium). Players need Minecraft: Java Edition of the same version.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 3, "minMemoryMb": 4096 },
+
+  "variables": [
+    { "key": "eula", "label": "Minecraft EULA", "type": "enum", "required": true,
+      "options": [ { "value": "accepted", "label": "I accept it", "map": { "flag": "true" } } ],
+      "description": "Mojang's terms: https://aka.ms/MinecraftEULA. Its server does not run without accepting them." },
+    { "key": "version", "label": "Minecraft version", "type": "string", "default": "latest", "maxLength": 32,
+      "pattern": "^(latest|[0-9A-Za-z][0-9A-Za-z._-]{0,31})$",
+      "description": "'latest' for the latest release, or a version such as 1.21.4. Changing it takes an update; going back to an older version can damage the world." },
+    { "key": "motd", "label": "Message of the day", "type": "string", "default": "A Minecraft server on Pulsar", "maxLength": 59,
+      "pattern": "^[^\\\\]{0,59}$" },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 20, "min": 1, "max": 500 },
+    { "key": "memoryMb", "label": "Memory (MB)", "type": "integer", "default": 2048, "min": 512, "max": 65536,
+      "description": "The most memory Java may use for the server." },
+    { "key": "difficulty", "label": "Difficulty", "type": "enum", "default": "easy",
+      "options": [
+        { "value": "peaceful", "label": "Peaceful" }, { "value": "easy", "label": "Easy" },
+        { "value": "normal", "label": "Normal" }, { "value": "hard", "label": "Hard" }
+      ] },
+    { "key": "gamemode", "label": "Game mode", "type": "enum", "default": "survival",
+      "options": [
+        { "value": "survival", "label": "Survival" }, { "value": "creative", "label": "Creative" },
+        { "value": "adventure", "label": "Adventure" }, { "value": "spectator", "label": "Spectator" }
+      ] },
+    { "key": "onlineMode", "label": "Check accounts with Mojang", "type": "boolean", "default": true,
+      "description": "Turn it off only behind a proxy that checks them: anyone could join with any name." },
+    { "key": "whitelist", "label": "Only players on the whitelist", "type": "boolean", "default": false },
+    { "key": "pvp", "label": "Players can hurt each other", "type": "boolean", "default": true },
+    { "key": "seed", "label": "World seed", "type": "string", "default": "", "maxLength": 64, "pattern": "^[^\\\\]{0,64}$",
+      "description": "Only used when the world is created." },
+    { "key": "viewDistance", "label": "View distance (chunks)", "type": "integer", "default": 10, "min": 3, "max": 32 }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["tcp"], "default": 25565 }
+  ],
+
+  "install": { "steps": [ { "type": "minecraftServer", "versionVar": "version" } ] },
+  "update": { "steps": [ { "type": "minecraftServer", "versionVar": "version" } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "java/bin/java.exe",
+      "arguments": [
+        "-Xmx{{var.memoryMb}}M",
+        "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8",
+        "-jar", "server.jar", "--nogui"
+      ],
+      "allowExtraArguments": false,
+      "console": { "mode": "pipes", "encoding": "utf-8" }
+    }
+  },
+
+  "configFiles": [
+    { "path": "eula.txt", "format": "properties", "mode": "patch", "set": { "eula": "{{var.eula.flag}}" } },
+    { "path": "server.properties", "format": "properties", "mode": "patch",
+      "set": {
+        "server-ip": "{{port.game.ip}}",
+        "server-port": "{{port.game}}",
+        "motd": "{{var.motd}}",
+        "max-players": "{{var.maxPlayers}}",
+        "difficulty": "{{var.difficulty}}",
+        "gamemode": "{{var.gamemode}}",
+        "online-mode": "{{var.onlineMode}}",
+        "white-list": "{{var.whitelist}}",
+        "pvp": "{{var.pvp}}",
+        "level-seed": "{{var.seed}}",
+        "view-distance": "{{var.viewDistance}}"
+      } }
+  ],
+
+  "readiness": { "type": "logPattern", "pattern": "Done \\([0-9.,]+s\\)! For help, type", "timeoutSeconds": 600 },
+
+  "stop": {
+    "steps": [ { "type": "consoleCommand", "command": "stop" } ],
+    "timeoutSeconds": 90
+  },
+
+  "backup": {
+    "include": ["world/**", "world_nether/**", "world_the_end/**", "server.properties", "*.json"]
+  }
+}
