@@ -1,5 +1,8 @@
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Globalization;
+using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -82,15 +85,24 @@ internal static partial class A2sQuery
 
     private static readonly byte[] s_noChallenge = [0xFF, 0xFF, 0xFF, 0xFF];
 
+    /// <summary>The address each game port on every interface answered on last (<see cref="AnsweringAddressAsync"/>).</summary>
+    private static readonly ConcurrentDictionary<int, IPAddress> s_answering = new();
+
     /// <summary>The players have this long once the info came: a game that does not list them still gets its counts shown.</summary>
     private static readonly TimeSpan s_playersTimeout = TimeSpan.FromSeconds(1);
 
     public static async Task<ServerQueryInfo> QueryAsync(QueryEndpoint endpoint, TimeProvider clock, CancellationToken cancellationToken)
     {
         using var udp = new UdpClient(AddressFamily.InterNetwork);
-        udp.Connect(endpoint.Address, endpoint.Port);
+        udp.Connect(endpoint.Address == PortAssignment.AnyAddress ? await AnsweringAddressAsync(endpoint.Port, cancellationToken) : IPAddress.Parse(endpoint.Address),
+            endpoint.Port);
         // A2S_INFO takes the challenge after its payload, A2S_PLAYER in place of its -1.
         var info = await RequestAsync(udp, challenge => [0x54, .. "Source Engine Query\0"u8, .. challenge], Info, cancellationToken);
+        if (endpoint.Address == PortAssignment.AnyAddress)
+        {
+            s_answering[endpoint.Port] = ((IPEndPoint)udp.Client.RemoteEndPoint!).Address;
+        }
+
         var at = clock.GetUtcNow();
         var (name, map, players, maxPlayers, bots, version) = ReadInfo(info);
         IReadOnlyList<QueryPlayer> list = [];
@@ -108,6 +120,59 @@ internal static partial class A2sQuery
         }
 
         return new ServerQueryInfo(at, name, map, players, maxPlayers, bots, version, list);
+    }
+
+    /// <summary>
+    /// The local address a game listening on every interface answers on: loopback for most, but srcds ignores queries
+    /// from loopback and answers on the machine's other addresses. The first query goes to all of them at once; the
+    /// address that answers is kept for the next ones, and asked again when it stops answering.
+    /// </summary>
+    private static async Task<IPAddress> AnsweringAddressAsync(int port, CancellationToken cancellationToken)
+    {
+        if (s_answering.TryGetValue(port, out var known))
+        {
+            s_answering.TryRemove(port, out _); // put back below once it answers again
+            return known;
+        }
+
+        var candidates = new List<IPAddress> { IPAddress.Loopback };
+        candidates.AddRange(NetworkInterface.GetAllNetworkInterfaces()
+            .Where(n => n.OperationalStatus == OperationalStatus.Up)
+            .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+            .Select(a => a.Address)
+            .Where(a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a) && !a.ToString().StartsWith("169.254.", StringComparison.Ordinal))
+            .Distinct());
+        using var probe = new UdpClient(new IPEndPoint(IPAddress.Any, 0));
+        byte[] request = [0xFF, 0xFF, 0xFF, 0xFF, 0x54, .. "Source Engine Query\0"u8];
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                await probe.SendAsync(request, new IPEndPoint(candidate, port), cancellationToken);
+            }
+            catch (SocketException)
+            {
+                // An address that cannot be reached right now.
+            }
+        }
+
+        while (true)
+        {
+            UdpReceiveResult answer;
+            try
+            {
+                answer = await probe.ReceiveAsync(cancellationToken);
+            }
+            catch (SocketException)
+            {
+                continue; // ICMP "port unreachable" from one of the addresses
+            }
+
+            if (answer.RemoteEndPoint.Port == port && candidates.Contains(answer.RemoteEndPoint.Address))
+            {
+                return answer.RemoteEndPoint.Address;
+            }
+        }
     }
 
     /// <summary>
@@ -360,7 +425,8 @@ internal static class MinecraftPing
     public static async Task<ServerQueryInfo> QueryAsync(QueryEndpoint endpoint, TimeProvider clock, CancellationToken cancellationToken)
     {
         using var client = new TcpClient { NoDelay = true };
-        await client.ConnectAsync(endpoint.Address, endpoint.Port, cancellationToken);
+        var address = endpoint.Address == PortAssignment.AnyAddress ? IPAddress.Loopback : IPAddress.Parse(endpoint.Address);
+        await client.ConnectAsync(address, endpoint.Port, cancellationToken);
         var stream = client.GetStream();
 
         var handshake = new List<byte>();

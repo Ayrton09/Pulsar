@@ -52,7 +52,10 @@ public sealed record RconEndpoint(RconProtocol Protocol, string Address, int Por
     public override string ToString() => $"{Protocol} rcon at {Address}:{Port}";
 }
 
-/// <param name="Address">Loopback when the game listens on every interface.</param>
+/// <param name="Address">
+/// <see cref="PortAssignment.AnyAddress"/> when the game listens on every interface: the agent asks where it answers
+/// (srcds ignores queries from loopback).
+/// </param>
 public sealed record QueryEndpoint(QueryProtocol Protocol, string Address, int Port);
 
 /// <summary>One line a configuration file gets; an empty <see cref="Value"/> removes the key.</summary>
@@ -371,8 +374,7 @@ public static class LaunchPlanRenderer
             throw NoAllocation(definition.Port);
         }
 
-        var address = port.IpAddress == PortAssignment.AnyAddress ? IPAddress.Loopback.ToString() : port.IpAddress;
-        return new QueryEndpoint(definition.Protocol, address, port.Port);
+        return new QueryEndpoint(definition.Protocol, port.IpAddress, port.Port);
     }
 
     private static RconEndpoint RconEndpointFor(RconDefinition definition, Dictionary<string, PortAssignment> ports, string? password)

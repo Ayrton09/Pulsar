@@ -330,7 +330,8 @@ public sealed class ManifestTests
         var binding = (string address) => new ServerBinding("abcd1234", new Dictionary<string, string?>(),
             new Dictionary<string, PortAssignment> { ["game"] = new(address, 28015), ["query"] = new(address, 28017), ["rcon"] = new(address, 28016) });
 
-        Assert.Equal(new QueryEndpoint(QueryProtocol.A2s, "127.0.0.1", 28017),
+        // Every interface: the agent finds the address the game answers on (srcds ignores queries from loopback).
+        Assert.Equal(new QueryEndpoint(QueryProtocol.A2s, PortAssignment.AnyAddress, 28017),
             LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, binding(PortAssignment.AnyAddress)).Query);
         Assert.Equal(new QueryEndpoint(QueryProtocol.A2s, "10.0.0.5", 28017),
             LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, binding("10.0.0.5")).Query);

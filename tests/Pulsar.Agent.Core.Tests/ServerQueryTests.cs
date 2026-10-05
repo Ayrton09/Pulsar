@@ -33,6 +33,30 @@ public sealed class ServerQueryTests
     }
 
     [Fact]
+    public async Task AGameOnEveryInterfaceIsQueriedWhereItAnswers()
+    {
+        await using var game = new FakeA2sServer { Info = Info("Anywhere", "de_dust2", players: 0, max: 10, bots: 0, "1.0") };
+
+        var info = await _query.QueryAsync(game.Endpoint with { Address = PortAssignment.AnyAddress }, TestContext.Current.CancellationToken);
+
+        Assert.Equal("Anywhere", info.Name);
+    }
+
+    [Fact]
+    public async Task MinecraftOnEveryInterfaceIsAskedOnLoopback()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var served = ServeMinecraftAsync(listener, """{"version":{"name":"26.3"},"players":{"max":5,"online":0},"description":"hi"}""");
+
+        var info = await _query.QueryAsync(new QueryEndpoint(QueryProtocol.Minecraft, PortAssignment.AnyAddress, port), TestContext.Current.CancellationToken);
+
+        Assert.Equal("hi", info.Name);
+        await served;
+    }
+
+    [Fact]
     public async Task ASplitAnswerIsPutBackTogether()
     {
         var names = Enumerable.Range(1, 120).Select(i => ($"player-with-a-long-name-{i:D3}", i, 10f)).ToArray();
