@@ -377,6 +377,15 @@ public static partial class ManifestValidator
                 case EnsureDirectoryStep step:
                     ValidateRelativePath($"{path}.path", step.Path, context.Error);
                     break;
+                case CopyFileIfMissingStep step:
+                    ValidateRelativePath($"{path}.from", step.From, context.Error);
+                    ValidateRelativePath($"{path}.to", step.To, context.Error);
+                    if (string.Equals(step.From, step.To, StringComparison.OrdinalIgnoreCase))
+                    {
+                        context.Error($"{path}.to", "A different file than 'from'.");
+                    }
+
+                    break;
                 case WriteFileIfMissingStep step:
                     ValidateRelativePath($"{path}.path", step.Path, context.Error);
                     if (step.Content.Length > 64 * 1024)
@@ -630,9 +639,26 @@ public static partial class ManifestValidator
                     context.Error($"{path}.struct", "The name of the struct line ('OptionSettings').");
                 }
             }
+            else if (file.Format == ConfigFileFormat.XmlProperties)
+            {
+                if (file.Section is null || !XmlElementPattern().IsMatch(file.Section))
+                {
+                    context.Error($"{path}.section", "The file's root element ('ServerSettings').");
+                }
+
+                if (file.Struct is not null)
+                {
+                    context.Error($"{path}.struct", "'struct' belongs to the 'unreal-ini' format.");
+                }
+
+                if (file.Mode != ConfigFileMode.Patch)
+                {
+                    context.Error($"{path}.mode", "'xml-properties' files are patched (the game's other settings stay).");
+                }
+            }
             else if (file.Section is not null || file.Struct is not null)
             {
-                context.Error(path, "'section' and 'struct' belong to the 'unreal-ini' format.");
+                context.Error(path, "'section' and 'struct' belong to the 'unreal-ini' and 'xml-properties' formats.");
             }
 
             foreach (var (key, value) in file.Set)
@@ -848,6 +874,9 @@ public static partial class ManifestValidator
 
     [GeneratedRegex("^[A-Za-z0-9_./:-]{1,128}$", RegexOptions.CultureInvariant)]
     private static partial Regex UnrealSectionPattern();
+
+    [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_.-]{0,63}$", RegexOptions.CultureInvariant)]
+    private static partial Regex XmlElementPattern();
 
     [GeneratedRegex(@"^(CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])(\..*)?$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex ReservedName();

@@ -304,7 +304,8 @@ public static class LaunchPlanRenderer
 
         return new LaunchPlan(runtime.Executable, runtime.WorkingDirectory ?? "", arguments, environment, runtime.Console, manifest.Readiness, manifest.Stop)
         {
-            Ports = [.. manifest.PortList.Where(p => ports.ContainsKey(p.Name)).Select(p => new BoundPort(p.Name, ports[p.Name].IpAddress, ports[p.Name].Port, p.Protocols))],
+            // Internal ports (a console only the agent uses) are never opened in the firewall.
+            Ports = [.. manifest.PortList.Where(p => ports.ContainsKey(p.Name) && !p.Internal).Select(p => new BoundPort(p.Name, ports[p.Name].IpAddress, ports[p.Name].Port, p.Protocols))],
             PortNames = [.. manifest.PortList.Select(p => p.Name)],
             ConfigFiles = configFiles,
             Rcon = rcon,

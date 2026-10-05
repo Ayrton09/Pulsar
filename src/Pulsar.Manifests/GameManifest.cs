@@ -86,6 +86,7 @@ public enum PortProtocol
 /// <param name="Required">An optional port (CSTV, say) can be left without an allocation.</param>
 /// <param name="Follows">A port the game opens at a fixed distance from another (Valheim: the game port + 1): the panel
 /// gives it the allocation of the same address at that port, never one of its own choosing.</param>
+/// <param name="Internal">Only the agent uses it, on the node (7 Days to Die's telnet console): never opened in the firewall.</param>
 public sealed record PortDefinition(
     string Name,
     string Label,
@@ -93,7 +94,8 @@ public sealed record PortDefinition(
     int Default,
     bool Required = true,
     string? Description = null,
-    PortFollow? Follows = null);
+    PortFollow? Follows = null,
+    bool Internal = false);
 
 /// <summary>This port is always <see cref="Port"/>'s port number plus <see cref="Offset"/>, on the same address.</summary>
 public sealed record PortFollow(string Port, int Offset);
@@ -107,6 +109,7 @@ public sealed record InstallDefinition(IReadOnlyList<InstallStep> Steps);
 [JsonDerivedType(typeof(WriteFileIfMissingStep), "writeFileIfMissing")]
 [JsonDerivedType(typeof(TestGameServerStep), "testGameServer")]
 [JsonDerivedType(typeof(MinecraftServerStep), "minecraftServer")]
+[JsonDerivedType(typeof(CopyFileIfMissingStep), "copyFileIfMissing")]
 public abstract record InstallStep;
 
 /// <summary>
@@ -131,6 +134,13 @@ public sealed record EnsureDirectoryStep(string Path) : InstallStep;
 
 /// <summary>Writes <see cref="Content"/> (literal text, no placeholders) to a file that does not exist yet.</summary>
 public sealed record WriteFileIfMissingStep(string Path, string Content) : InstallStep;
+
+/// <summary>
+/// Copies a file of the server directory to <see cref="To"/> when that does not exist yet: a game's shipped settings
+/// file as the server's own, which the game's updates then leave alone (7 Days to Die overwrites its
+/// <c>serverconfig.xml</c>).
+/// </summary>
+public sealed record CopyFileIfMissingStep(string From, string To) : InstallStep;
 
 /// <summary>
 /// Copies Pulsar's test game server into <see cref="Path"/>. Only for the <c>pulsar-test</c> manifest, and only agents
@@ -203,7 +213,11 @@ public sealed record ConsoleDefinition(
 
 public enum RconProtocol
 {
+    /// <summary>Source RCON (srcds, CS2, Rust, ARK, Palworld).</summary>
     Source,
+
+    /// <summary>A line console over telnet with an optional password prompt (7 Days to Die).</summary>
+    Telnet,
 }
 
 /// <summary>
@@ -289,6 +303,17 @@ public enum ConfigFileFormat
     /// </summary>
     [JsonStringEnumMemberName("unreal-ini")]
     UnrealIni,
+
+    /// <summary><c>key=value</c> per line, written as is (no escapes): Project Zomboid's <c>.ini</c>.</summary>
+    [JsonStringEnumMemberName("key-value")]
+    KeyValue,
+
+    /// <summary>
+    /// <c>&lt;property name="Key" value="Value"/&gt;</c> elements of an XML file (7 Days to Die's
+    /// <c>serverconfig.xml</c>); values are escaped. Patch mode only; <c>section</c> names the root element.
+    /// </summary>
+    [JsonStringEnumMemberName("xml-properties")]
+    XmlProperties,
 }
 
 public enum ConfigFileMode
@@ -304,7 +329,10 @@ public enum ConfigFileMode
 /// A configuration file the agent writes before every start (docs/architecture/04, "Configuration files"). Values are
 /// templates; each format's encoder refuses what would break out of a line or a value.
 /// </summary>
-/// <param name="Section">The <c>[section]</c> the keys go into (<see cref="ConfigFileFormat.UnrealIni"/> only).</param>
+/// <param name="Section">
+/// The <c>[section]</c> the keys go into (<see cref="ConfigFileFormat.UnrealIni"/>), or the root element of an
+/// <see cref="ConfigFileFormat.XmlProperties"/> file (to create it when it is missing).
+/// </param>
 /// <param name="Struct">The struct line the keys are members of, when they are not plain lines (<see cref="ConfigFileFormat.UnrealIni"/> only).</param>
 public sealed record ConfigFileDefinition(string Path, ConfigFileFormat Format, ConfigFileMode Mode, IReadOnlyDictionary<string, string> Set,
     string? Section = null, string? Struct = null);

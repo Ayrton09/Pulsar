@@ -76,7 +76,7 @@ internal static class AgentHost
                 services.GetRequiredService<ILogger<WindowsServerProvisioner>>()));
             builder.Services.AddSingleton<IStateProtector, DpapiStateProtector>();
             builder.Services.AddSingleton<ServerStore>();
-            builder.Services.AddSingleton<IRconConnector>(new SourceRconConnector());
+            builder.Services.AddSingleton<IRconConnector>(new RconConnectors());
             builder.Services.AddSingleton<IServerQuery>(services => new ServerQuery(services.GetRequiredService<TimeProvider>()));
             // Off unless the machine's administrator turns it on: the firewall is theirs (docs/architecture/06).
             builder.Services.AddSingleton<IServerFirewall>(services => new WindowsServerFirewall(

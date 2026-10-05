@@ -85,7 +85,8 @@
         "default": { "type": "integer", "minimum": 1, "maximum": 65535 },
         "required": { "type": "boolean", "default": true, "description": "Optional ports can only be used inside { \"if\": \"port.<name>\" } arguments." },
         "description": { "type": "string" },
-        "follows": { "$ref": "#/$defs/PortFollow" }
+        "follows": { "$ref": "#/$defs/PortFollow" },
+        "internal": { "type": "boolean", "default": false, "description": "Only the agent uses it, on this machine (a game's telnet console): never opened in the firewall." }
       }
     },
     "PortFollow": {
@@ -109,13 +110,14 @@
     "InstallStep": {
       "type": "object",
       "required": ["type"],
-      "properties": { "type": { "enum": ["steamcmd", "ensureDirectory", "writeFileIfMissing", "testGameServer", "minecraftServer"] } },
+      "properties": { "type": { "enum": ["steamcmd", "ensureDirectory", "writeFileIfMissing", "testGameServer", "minecraftServer", "copyFileIfMissing"] } },
       "oneOf": [
         { "$ref": "#/$defs/SteamCmdStep" },
         { "$ref": "#/$defs/EnsureDirectoryStep" },
         { "$ref": "#/$defs/WriteFileIfMissingStep" },
         { "$ref": "#/$defs/TestGameServerStep" },
-        { "$ref": "#/$defs/MinecraftServerStep" }
+        { "$ref": "#/$defs/MinecraftServerStep" },
+        { "$ref": "#/$defs/CopyFileIfMissingStep" }
       ]
     },
     "SteamCmdStep": {
@@ -163,6 +165,17 @@
       "properties": {
         "type": { "const": "minecraftServer" },
         "versionVar": { "type": "string", "description": "A variable holding the version ('1.21.4', or 'latest' for the latest release)." }
+      }
+    },
+    "CopyFileIfMissingStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "from", "to"],
+      "description": "Copies a file of the server directory to 'to' when that does not exist yet (a game's shipped settings as the server's own).",
+      "properties": {
+        "type": { "const": "copyFileIfMissing" },
+        "from": { "$ref": "#/$defs/RelativePath" },
+        "to": { "$ref": "#/$defs/RelativePath" }
       }
     },
     "RuntimeDefinition": {
@@ -213,7 +226,7 @@
       "additionalProperties": false,
       "required": ["protocol", "port"],
       "properties": {
-        "protocol": { "enum": ["source"] },
+        "protocol": { "enum": ["source", "telnet"] },
         "port": { "type": "string", "description": "Name of a required port; RCON listens on its TCP side, which only needs to be reachable from the node." },
         "logsCommands": { "type": "boolean", "default": false, "description": "The game writes commands received over RCON to its log file, so the console does not add them again; an answer is added only when the log does not show it." }
       }
@@ -233,10 +246,10 @@
       "required": ["path", "format", "mode", "set"],
       "properties": {
         "path": { "$ref": "#/$defs/RelativePath" },
-        "format": { "enum": ["source-cfg", "properties", "unreal-ini"] },
+        "format": { "enum": ["source-cfg", "properties", "unreal-ini", "key-value", "xml-properties"] },
         "mode": { "enum": ["patch", "managed"], "description": "patch: only the declared keys change; managed: the whole file is written by Pulsar." },
         "set": { "type": "object", "minProperties": 1, "maxProperties": 128, "additionalProperties": { "type": "string" } },
-        "section": { "type": "string", "pattern": "^[A-Za-z0-9_./:-]{1,128}$", "description": "unreal-ini: the [section] the keys go into, without its brackets." },
+        "section": { "type": "string", "pattern": "^[A-Za-z0-9_./:-]{1,128}$", "description": "unreal-ini: the [section] the keys go into, without its brackets. xml-properties: the root element." },
         "struct": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$", "description": "unreal-ini: the keys are members of this Struct=(Key=Value,...) line instead of plain lines." }
       }
     },

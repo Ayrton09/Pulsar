@@ -64,6 +64,32 @@ public sealed class InstallStepsTests : IDisposable
     }
 
     [WindowsFact]
+    public void AShippedSettingsFileIsCopiedOnceAndNeverThroughALink()
+    {
+        var steps = Steps();
+        var copy = new CopyFileIfMissingStep("serverconfig.xml", "pulsar-serverconfig.xml");
+        File.WriteAllText(Path.Combine(_server, "serverconfig.xml"), "<ServerSettings/>");
+
+        steps.Run(copy, _server);
+        File.WriteAllText(Path.Combine(_server, "pulsar-serverconfig.xml"), "edited by the owner");
+        File.WriteAllText(Path.Combine(_server, "serverconfig.xml"), "<ServerSettings>updated by the game</ServerSettings>");
+        steps.Run(copy, _server);
+
+        Assert.Equal("edited by the owner", File.ReadAllText(Path.Combine(_server, "pulsar-serverconfig.xml")));
+
+        // A server that links the copy's source to a file outside cannot have the agent read it into its directory.
+        File.Delete(Path.Combine(_server, "pulsar-serverconfig.xml"));
+        File.Delete(Path.Combine(_server, "serverconfig.xml"));
+        Run("cmd.exe", "/c", "mklink", "/J", Path.Combine(_server, "config"), _outside);
+        File.WriteAllText(Path.Combine(_outside, "secret.txt"), "not yours");
+        Assert.Equal("files.outside_server",
+            Assert.Throws<GameProcessException>(() => steps.Run(new CopyFileIfMissingStep("config/secret.txt", "copy.txt"), _server)).Code);
+        Assert.False(File.Exists(Path.Combine(_server, "copy.txt")));
+        Assert.Equal("install.copy_source_missing",
+            Assert.Throws<GameProcessException>(() => steps.Run(copy, _server)).Code);
+    }
+
+    [WindowsFact]
     public void WithoutTheTestGameTheStepIsRefused()
     {
         var error = Assert.Throws<GameProcessException>(() => Run(new InstallSteps(new InstallOptions(), new WindowsServerFiles()), _server));

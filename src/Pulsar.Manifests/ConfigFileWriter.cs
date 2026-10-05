@@ -54,6 +54,11 @@ public static partial class ConfigFileWriter
             return Join(UnrealIni(file, file.Mode == ConfigFileMode.Patch ? existing : null), newline);
         }
 
+        if (file.Format == ConfigFileFormat.XmlProperties)
+        {
+            return Join(XmlProperties(file, existing), newline);
+        }
+
         var output = new List<string>();
         var pending = file.Entries.ToDictionary(e => e.Key, StringComparer.OrdinalIgnoreCase);
         var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -182,6 +187,93 @@ public static partial class ConfigFileWriter
         return lines;
     }
 
+    /// <summary>
+    /// The declared keys as <c>&lt;property name="Key" value="Value"/&gt;</c> elements: the first element (outside
+    /// comments) for each key gets the new value and keeps the rest of its line (the game's comment), repeats and
+    /// empty values are removed, missing keys go before the root's closing tag. A missing file starts as an empty root.
+    /// </summary>
+    private static List<string> XmlProperties(RenderedConfigFile file, string? existing)
+    {
+        var lines = Lines(existing ?? $"<?xml version=\"1.0\"?>\n<{file.Section}>\n</{file.Section}>\n");
+        var pending = file.Entries.ToDictionary(e => e.Key, StringComparer.Ordinal);
+        var written = new HashSet<string>(StringComparer.Ordinal);
+        var output = new List<string>();
+        var inComment = false;
+        var close = -1;
+        foreach (var line in lines)
+        {
+            var commented = inComment;
+            inComment = InComment(line, line.Length, commented);
+            // The first property element of the line that is not inside a comment.
+            var match = XmlProperty().Match(line);
+            while (match.Success && InComment(line, match.Index, commented))
+            {
+                match = match.NextMatch();
+            }
+
+            if (!match.Success || !pending.TryGetValue(match.Groups["key"].Value, out var entry))
+            {
+                if (!commented && line.TrimStart().StartsWith($"</{file.Section}>", StringComparison.Ordinal))
+                {
+                    close = output.Count;
+                }
+
+                output.Add(line);
+                continue;
+            }
+
+            var rest = line[..match.Index] + line[(match.Index + match.Length)..];
+            if (entry.Value.Length > 0 && written.Add(entry.Key))
+            {
+                output.Add(line[..match.Index] + XmlElement(entry) + line[(match.Index + match.Length)..]);
+            }
+            else if (rest.Trim().Length > 0 && !rest.TrimStart().StartsWith("<!--", StringComparison.Ordinal))
+            {
+                output.Add(rest); // other elements on the same line stay
+            }
+        }
+
+        var missing = file.Entries.Where(e => e.Value.Length > 0 && written.Add(e.Key)).Select(e => "\t" + XmlElement(e)).ToList();
+        if (missing.Count > 0)
+        {
+            if (close < 0)
+            {
+                throw new LaunchPlanException($"{file.Path}: no </{file.Section}> line to add settings before; fix the file or delete it.");
+            }
+
+            output.InsertRange(close, missing);
+        }
+
+        return output;
+    }
+
+    /// <summary>Whether position <paramref name="end"/> of the line is inside an XML comment (<c>&lt;!-- … --&gt;</c>).</summary>
+    private static bool InComment(string line, int end, bool startsInComment)
+    {
+        var inside = startsInComment;
+        for (var i = 0; i < end; i++)
+        {
+            if (inside && string.CompareOrdinal(line, i, "-->", 0, 3) == 0)
+            {
+                inside = false;
+                i += 2;
+            }
+            else if (!inside && string.CompareOrdinal(line, i, "<!--", 0, 4) == 0)
+            {
+                inside = true;
+                i += 3;
+            }
+        }
+
+        return inside;
+    }
+
+    private static string XmlElement(ConfigEntry entry) =>
+        $"<property name=\"{entry.Key}\" value=\"{System.Security.SecurityElement.Escape(entry.Value)}\"/>";
+
+    [GeneratedRegex("""<property\s+name="(?<key>[^"]+)"\s+value="[^"]*"\s*/>""", RegexOptions.CultureInvariant)]
+    private static partial Regex XmlProperty();
+
     /// <summary>Replaces the first item setting each key, drops its repeats and appends the missing ones; empty values remove the key.</summary>
     private static List<string> Patch(List<string> items, IReadOnlyList<ConfigEntry> entries, Func<ConfigEntry, string> write)
     {
@@ -273,6 +365,7 @@ public static partial class ConfigFileWriter
     private static string Line(ConfigFileFormat format, ConfigEntry entry) => format switch
     {
         ConfigFileFormat.SourceCfg => $"{entry.Key} \"{entry.Value}\"",
+        ConfigFileFormat.KeyValue => $"{entry.Key}={entry.Value}",
         _ => $"{entry.Key}={entry.Value.Replace("\\", "\\\\", StringComparison.Ordinal)}",
     };
 
@@ -308,7 +401,7 @@ public static partial class ConfigFileWriter
                     return null;
                 }
 
-                var separator = text.IndexOfAny(['=', ':']);
+                var separator = format == ConfigFileFormat.KeyValue ? text.IndexOf('=', StringComparison.Ordinal) : text.IndexOfAny(['=', ':']);
                 var key = (separator < 0 ? text : text[..separator]).TrimEnd();
                 return key.Length > 0 ? key : null;
         }

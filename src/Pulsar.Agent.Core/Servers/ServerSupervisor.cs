@@ -108,7 +108,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _definition = definition;
         _processes = processes;
         _files = files ?? new DirectServerFiles();
-        _rcon = rcon ?? new SourceRconConnector();
+        _rcon = rcon ?? new RconConnectors();
         _query = query ?? new ServerQuery(clock);
         _firewall = firewall ?? new UnmanagedFirewall();
         _console = console ?? new ServerConsole(new ConsoleBuffer(clock));

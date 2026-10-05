@@ -69,12 +69,47 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files)
                 }
 
                 break;
+            case CopyFileIfMissingStep copy:
+                CopyIfMissing(serverDirectory, copy);
+                break;
             case TestGameServerStep test:
                 CopyTestGame(serverDirectory, test.Path);
                 break;
             default:
                 throw new GameProcessException("install.unsupported_step", $"This agent cannot run the install step {step.GetType().Name}.");
         }
+    }
+
+    /// <summary>Largest file <see cref="CopyFileIfMissingStep"/> copies (settings files, not game data).</summary>
+    public const long MaxCopySize = 16L * 1024 * 1024;
+
+    private void CopyIfMissing(string serverDirectory, CopyFileIfMissingStep copy)
+    {
+        using (var existing = files.OpenRead(serverDirectory, copy.To))
+        {
+            if (existing is not null)
+            {
+                return;
+            }
+        }
+
+        using var source = files.OpenRead(serverDirectory, copy.From)
+            ?? throw new GameProcessException("install.copy_source_missing", $"'{copy.From}' does not exist; the game's install did not create it.");
+        using var content = new MemoryStream();
+        var buffer = new byte[81920];
+        int read;
+        while ((read = source.Read(buffer)) > 0)
+        {
+            if (content.Length + read > MaxCopySize)
+            {
+                throw new GameProcessException("install.copy_too_large", $"'{copy.From}' is larger than {MaxCopySize / 1024 / 1024} MiB.");
+            }
+
+            content.Write(buffer, 0, read);
+        }
+
+        content.Position = 0;
+        files.Write(serverDirectory, copy.To, content);
     }
 
     /// <summary>A path inside the server directory whose existing components are real directories, never links.</summary>

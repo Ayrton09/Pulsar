@@ -150,6 +150,70 @@ public sealed class ConfigFileWriterTests
         Assert.NotNull(ConfigFileWriter.ValueError(ConfigFileFormat.UnrealIni, value));
     }
 
+    [Fact]
+    public void KeyValueFilesKeepValuesAsTheyAre()
+    {
+        const string existing = "# Mods to load\nMods=\nPublic=true\nWorkshopItems=1\nMap=Muldraugh, KY\n";
+        var file = new RenderedConfigFile("zomboid/Server/pulsar.ini", ConfigFileFormat.KeyValue, ConfigFileMode.Patch,
+            [new ConfigEntry("Mods", @"\Hydrocraft;\Brita", Secret: false), new ConfigEntry("Public", "false", Secret: false),
+                new ConfigEntry("UPnP", "false", Secret: false)]);
+
+        Assert.Equal("# Mods to load\nMods=\\Hydrocraft;\\Brita\nPublic=false\nWorkshopItems=1\nMap=Muldraugh, KY\nUPnP=false\n",
+            ConfigFileWriter.Apply(file, existing));
+        Assert.Null(ConfigFileWriter.KeyOf(ConfigFileFormat.KeyValue, "# Comment=1"));
+        Assert.Equal("Time", ConfigFileWriter.KeyOf(ConfigFileFormat.KeyValue, "Time=12:30"));
+    }
+
+    [Fact]
+    public void XmlPropertiesChangeTheirValueAndKeepTheGamesComments()
+    {
+        const string existing = """
+            <?xml version="1.0"?>
+            <ServerSettings>
+            	<!-- Server representation -->
+            	<property name="ServerName"		value="My Game Host"/>		<!-- Whatever you want -->
+            	<property name="ServerPort"		value="26900"/>
+            	<!-- <property name="UserDataFolder"	value="absolute_path"/> -->
+            	<!--
+            	<property name="SaveGameFolder" value="old"/>
+            	-->
+            	<property name="ServerPassword"	value="secret"/>	<!-- remove me -->
+            </ServerSettings>
+
+            """;
+        var file = Xml(("ServerName", "Pulsar & \"friends\""), ("ServerPort", "26905"), ("UserDataFolder", "C:/servers/abcd/data"),
+            ("SaveGameFolder", "C:/servers/abcd/saves"), ("ServerPassword", ""));
+
+        Assert.Equal("""
+            <?xml version="1.0"?>
+            <ServerSettings>
+            	<!-- Server representation -->
+            	<property name="ServerName" value="Pulsar &amp; &quot;friends&quot;"/>		<!-- Whatever you want -->
+            	<property name="ServerPort" value="26905"/>
+            	<!-- <property name="UserDataFolder"	value="absolute_path"/> -->
+            	<!--
+            	<property name="SaveGameFolder" value="old"/>
+            	-->
+            	<property name="UserDataFolder" value="C:/servers/abcd/data"/>
+            	<property name="SaveGameFolder" value="C:/servers/abcd/saves"/>
+            </ServerSettings>
+
+            """.Replace("\r\n", "\n", StringComparison.Ordinal), ConfigFileWriter.Apply(file, existing.Replace("\r\n", "\n", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void AMissingXmlFileStartsAsItsRootAndABrokenOneIsNotOverwritten()
+    {
+        Assert.Equal("<?xml version=\"1.0\"?>\n<ServerSettings>\n\t<property name=\"ServerPort\" value=\"26900\"/>\n</ServerSettings>\n",
+            ConfigFileWriter.Apply(Xml(("ServerPort", "26900")), null));
+        Assert.Throws<LaunchPlanException>(() => ConfigFileWriter.Apply(Xml(("ServerPort", "26900")), "<ServerSettings>\n"));
+    }
+
+    private static RenderedConfigFile Xml(params (string Key, string Value)[] entries) =>
+        new("pulsar-serverconfig.xml", ConfigFileFormat.XmlProperties, ConfigFileMode.Patch,
+            [.. entries.Select(e => new ConfigEntry(e.Key, e.Value, Secret: false))])
+        { Section = "ServerSettings" };
+
     private static RenderedConfigFile Unreal(ConfigFileMode mode, string? structName, params (string Key, string Value)[] entries) =>
         new("Pal/Saved/Config/WindowsServer/PalWorldSettings.ini", ConfigFileFormat.UnrealIni, mode,
             [.. entries.Select(e => new ConfigEntry(e.Key, e.Value, Secret: false))])

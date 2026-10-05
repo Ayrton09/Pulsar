@@ -52,7 +52,11 @@ public sealed class SourceRconConnector : IRconConnector
 {
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
-    public TimeSpan AnswerTimeout { get; init; } = TimeSpan.FromSeconds(5);
+    /// <summary>
+    /// How long the game may take to start answering (and to accept the password). ARK: Survival Ascended takes 2 to
+    /// 4 s, and more while it hitches, even when nobody plays (Phase 12).
+    /// </summary>
+    public TimeSpan AnswerTimeout { get; init; } = TimeSpan.FromSeconds(15);
 
     /// <summary>How long after the last packet an answer is considered complete.</summary>
     public TimeSpan AnswerIdle { get; init; } = TimeSpan.FromMilliseconds(250);
