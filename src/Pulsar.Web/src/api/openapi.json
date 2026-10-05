@@ -10498,6 +10498,12 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "follows": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -11025,6 +11031,19 @@
               "null",
               "string"
             ]
+          },
+          "follows": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "offset": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           }
         }
       },

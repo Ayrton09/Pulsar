@@ -86,6 +86,7 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
     );
     const chosen = Object.fromEntries(
       details.ports
+        .filter((port) => !port.follows)
         .map((port) => [port.name, ports[port.name] ?? (port.required ? AUTOMATIC : '')] as const)
         .filter(([, value]) => value !== AUTOMATIC && value !== '')
         .map(([key, value]) => [key, value]),
@@ -257,37 +258,52 @@ function PortsStep({ details, nodeId, allocations, loading, ports, onChange }: P
           )}
         </Alert>
       )}
-      {details.ports.map((port) => (
-        <Field
-          key={port.name}
-          label={port.required ? `${port.label} *` : port.label}
-          hint={[
-            port.description,
-            t('servers.wizard.portDefault', { port: port.default, protocols: port.protocols.join('/').toUpperCase() }),
-          ]
-            .filter(Boolean)
-            .join(' ')}
-        >
-          {(ids) => (
-            <Select
-              {...ids}
-              value={ports[port.name] ?? (port.required ? AUTOMATIC : '')}
-              onChange={(e) => onChange(port.name, e.target.value)}
-            >
-              {port.required ? (
-                <option value={AUTOMATIC}>{t('servers.wizard.automatic')}</option>
-              ) : (
-                <option value="">{t('servers.wizard.noPort')}</option>
-              )}
-              {free.map((allocation) => (
-                <option key={allocation.id} value={allocation.id}>
-                  {allocation.ipAddress}:{allocation.port}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
-      ))}
+      {details.ports.map((port) =>
+        port.follows ? (
+          <p key={port.name} className="text-sm">
+            <span className="font-medium">{port.label}</span>{' '}
+            <span className="text-muted">
+              {t('servers.wizard.followsPort', {
+                port: details.ports.find((p) => p.name === port.follows)?.label ?? port.follows,
+                offset: port.offset ?? 1,
+              })}
+            </span>
+          </p>
+        ) : (
+          <Field
+            key={port.name}
+            label={port.required ? `${port.label} *` : port.label}
+            hint={[
+              port.description,
+              t('servers.wizard.portDefault', {
+                port: port.default,
+                protocols: port.protocols.join('/').toUpperCase(),
+              }),
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            {(ids) => (
+              <Select
+                {...ids}
+                value={ports[port.name] ?? (port.required ? AUTOMATIC : '')}
+                onChange={(e) => onChange(port.name, e.target.value)}
+              >
+                {port.required ? (
+                  <option value={AUTOMATIC}>{t('servers.wizard.automatic')}</option>
+                ) : (
+                  <option value="">{t('servers.wizard.noPort')}</option>
+                )}
+                {free.map((allocation) => (
+                  <option key={allocation.id} value={allocation.id}>
+                    {allocation.ipAddress}:{allocation.port}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        ),
+      )}
     </div>
   );
 }

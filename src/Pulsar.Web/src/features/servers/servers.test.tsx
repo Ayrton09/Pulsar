@@ -256,6 +256,89 @@ describe('servers page', () => {
     });
   });
 
+  it('does not ask for a port that comes with another one', async () => {
+    let body: unknown;
+    const template = {
+      id: installedOffline.templateId,
+      key: 'valheim',
+      version: '1.0.0',
+      name: 'Valheim',
+      description: null,
+      isTestGame: false,
+      source: 'bundled',
+    };
+    const allocation = (id: string, port: number) => ({
+      id,
+      ipAddress: '0.0.0.0',
+      port,
+      serverId: null,
+      serverName: null,
+      portName: null,
+      notes: null,
+    });
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([]),
+      'GET /api/v1/nodes': () =>
+        json([{ id: installedOffline.nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/templates': () => json([template]),
+      [`GET /api/v1/templates/${installedOffline.templateId}`]: () =>
+        json({
+          template,
+          minDiskGb: null,
+          minMemoryMb: null,
+          variables: [],
+          ports: [
+            { name: 'game', label: 'Game', protocols: ['udp'], default: 2456, required: true, description: null },
+            {
+              name: 'query',
+              label: 'Server list query',
+              protocols: ['udp'],
+              default: 2457,
+              required: true,
+              description: null,
+              follows: 'game',
+              offset: 1,
+            },
+          ],
+          allowExtraArguments: false,
+          canUpdate: false,
+          capabilities: {
+            executable: 'valheim_server.exe',
+            steamAppIds: [896660],
+            configFiles: [],
+            consoleMode: 'pty',
+          },
+        }),
+      [`GET /api/v1/nodes/${installedOffline.nodeId}/allocations`]: () =>
+        json([
+          allocation('0192f1a0-0000-7000-8000-0000000000c1', 2456),
+          allocation('0192f1a0-0000-7000-8000-0000000000c2', 2457),
+        ]),
+      'POST /api/v1/servers': async (request) => {
+        body = await request.json();
+        return json(details(installing, [installOperation]), 201);
+      },
+      [`GET /api/v1/servers/${installing.id}`]: () => json(details(installing, [installOperation])),
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Create server' }));
+    await user.type(screen.getByLabelText('Name'), 'Viking');
+    await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
+    await user.selectOptions(await screen.findByLabelText('Game'), 'Valheim 1.0.0');
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+    await user.selectOptions(await screen.findByLabelText('Game *'), '0.0.0.0:2456');
+
+    expect(screen.getByText('comes with Game: its port + 1.')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Server list query/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByRole('heading', { name: 'Fresh' });
+    expect(body).toMatchObject({ name: 'Viking', ports: { game: '0192f1a0-0000-7000-8000-0000000000c1' } });
+  });
+
   it('does not offer to create servers to users who can only view them', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(viewer),

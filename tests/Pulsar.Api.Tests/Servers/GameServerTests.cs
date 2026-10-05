@@ -155,6 +155,29 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
     }
 
     [DatabaseFact]
+    public async Task APortThatFollowsAnotherGetsTheNextAllocation()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "following");
+        var template = await TemplateAsync(admin, "valheim");
+        var nodeId = agent.Config!.NodeId;
+        var password = new Dictionary<string, string?> { ["password"] = "secret123" };
+        // 2456-2459 in pairs, and 2470 alone (its next port is not an allocation).
+        await AllocateAsync(admin, nodeId, "0.0.0.0", "2456-2459,2470");
+
+        var first = await CreateAsync(admin, new CreateServerRequest(nodeId, template.Template.Id, "First", null, Variables: password));
+        Assert.Equal((2456, 2457), (Port(first, "game"), Port(first, "query")));
+        var second = await CreateAsync(admin, new CreateServerRequest(nodeId, template.Template.Id, "Second", null, Variables: password));
+        Assert.Equal((2458, 2459), (Port(second, "game"), Port(second, "query")));
+
+        // 2470 is free, but 2471 is not an allocation: no third server.
+        using var third = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(nodeId, template.Template.Id, "Third", null,
+            Variables: password));
+        Assert.Equal(HttpStatusCode.Conflict, third.StatusCode);
+        Assert.Contains("server.no_free_allocation", await third.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+    }
+
+    [DatabaseFact]
     public async Task AllocationsNeverOverlap()
     {
         using var admin = await factory.CreateAdminClientAsync();
@@ -268,6 +291,8 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         await AccessScenario.EnsureSuccessAsync(response);
         return (await response.Content.ReadFromJsonAsync<ServerDetails>(AccessScenario.Json, Ct))!;
     }
+
+    private static int? Port(ServerDetails server, string name) => server.Ports.Single(p => p.Name == name).Port;
 
     private static async Task<ServerSettings> SettingsAsync(PanelClient client, Guid server) =>
         (await client.Http.GetFromJsonAsync<ServerSettings>(new Uri($"/api/v1/servers/{server}/settings", UriKind.Relative), AccessScenario.Json, Ct))!;

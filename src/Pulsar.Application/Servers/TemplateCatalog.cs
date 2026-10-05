@@ -48,7 +48,9 @@ public sealed record TemplateVariable(
     IReadOnlyList<TemplateOption> Options,
     string? Description);
 
-public sealed record TemplatePort(string Name, string Label, IReadOnlyList<PortProtocol> Protocols, int Default, bool Required, string? Description);
+/// <param name="Follows">The port this one comes with (its port number plus <paramref name="Offset"/>): not chosen on its own.</param>
+public sealed record TemplatePort(string Name, string Label, IReadOnlyList<PortProtocol> Protocols, int Default, bool Required, string? Description,
+    string? Follows = null, int? Offset = null);
 
 /// <summary>Everything a user needs to create a server from a template, and what importing it would allow.</summary>
 public sealed record TemplateDetails(
@@ -229,7 +231,7 @@ public sealed partial class TemplateCatalog(IPulsarDbContext db, TemplateOptions
         var steps = (manifest.Install?.Steps ?? []).Concat(manifest.Update?.Steps ?? []);
         return new TemplateDetails(View(template), manifest.Requirements?.MinDiskGb, manifest.Requirements?.MinMemoryMb,
             [.. manifest.VariableList.Select(Variable)],
-            [.. manifest.PortList.Select(p => new TemplatePort(p.Name, p.Label, p.Protocols, p.Default, p.Required, p.Description))],
+            [.. manifest.PortList.Select(p => new TemplatePort(p.Name, p.Label, p.Protocols, p.Default, p.Required, p.Description, p.Follows?.Port, p.Follows?.Offset))],
             runtime.AllowExtraArguments, manifest.Update is not null,
             new TemplateCapabilities(runtime.Executable, [.. steps.OfType<SteamCmdStep>().Select(s => s.AppId).Distinct()],
                 [.. manifest.ConfigFileList.Select(f => f.Path)], runtime.Console.Mode));

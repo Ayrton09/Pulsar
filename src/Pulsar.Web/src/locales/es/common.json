@@ -742,7 +742,8 @@
       "addAllocations": "Agregá asignaciones al nodo",
       "portDefault": "Normalmente {{port}} ({{protocols}}).",
       "automatic": "Automático (una libre, primero el puerto habitual)",
-      "noPort": "Ninguno"
+      "noPort": "Ninguno",
+      "followsPort": "va con {{port}}: su puerto + {{offset}}."
     },
     "variables": {
       "none": "Este juego no tiene configuración.",
@@ -779,7 +780,8 @@
       "title": "Puertos",
       "hint": "Cada puerto usa una de las asignaciones del nodo.",
       "stopFirst": "Detené el servidor para cambiar sus puertos.",
-      "none": "Este juego no escucha en ningún puerto."
+      "none": "Este juego no escucha en ningún puerto.",
+      "follows": "(va con {{port}})"
     },
     "console": {
       "title": "Consola",

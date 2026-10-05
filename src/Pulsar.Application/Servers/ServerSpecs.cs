@@ -116,7 +116,16 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
         var nodeAllocations = await db.NodeAllocations.Where(a => a.NodeId == server.NodeId).ToListAsync(cancellationToken);
         var mine = nodeAllocations.Where(a => a.ServerId == server.Id).ToList();
         var chosen = new Dictionary<string, NodeAllocation>(StringComparer.Ordinal);
-        foreach (var port in manifest.PortList)
+        var followers = manifest.PortList.Where(p => p.Follows is not null).ToList();
+
+        // The allocation a following port gets once the port it follows has one (free, or already the server's).
+        NodeAllocation? FollowerOf(NodeAllocation followed, PortFollow follow) => nodeAllocations.FirstOrDefault(a =>
+            a.IpAddress == followed.IpAddress && a.Port == followed.Port + follow.Offset && (a.ServerId is null || a.ServerId == server.Id));
+
+        bool FollowersFit(PortDefinition port, NodeAllocation candidate) =>
+            followers.Where(f => f.Follows!.Port == port.Name).All(f => FollowerOf(candidate, f.Follows!) is { } next && !chosen.ContainsValue(next));
+
+        foreach (var port in manifest.PortList.Where(p => p.Follows is null))
         {
             NodeAllocation? allocation;
             if (requested is not null && requested.TryGetValue(port.Name, out var id))
@@ -142,7 +151,8 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
                 allocation = mine.FirstOrDefault(a => a.PortName == port.Name);
                 if (allocation is null && port.Required)
                 {
-                    var free = nodeAllocations.Where(a => a.ServerId is null && !chosen.ContainsValue(a) && chosen.Values.All(c => c.Port != a.Port))
+                    var free = nodeAllocations.Where(a => a.ServerId is null && !chosen.ContainsValue(a) && chosen.Values.All(c => c.Port != a.Port)
+                            && FollowersFit(port, a))
                         .OrderBy(a => a.Port == port.Default ? 0 : 1).ThenBy(a => a.Port).ThenBy(a => a.IpAddress, StringComparer.Ordinal);
                     allocation = free.FirstOrDefault();
                     if (allocation is null)
@@ -163,6 +173,24 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
             }
 
             chosen[port.Name] = allocation;
+        }
+
+        // Following ports are never chosen: they come with the port they follow (a requested one is ignored).
+        foreach (var port in followers)
+        {
+            if (!chosen.TryGetValue(port.Follows!.Port, out var followed))
+            {
+                continue; // an optional port left out takes its followers with it
+            }
+
+            var next = FollowerOf(followed, port.Follows);
+            if (next is null || chosen.ContainsValue(next))
+            {
+                return ServerErrors.InvalidSettings(
+                    $"{port.Label} needs the allocation {followed.IpAddress}:{followed.Port + port.Follows.Offset}, free on the node, next to {followed.IpAddress}:{followed.Port}.");
+            }
+
+            chosen[port.Name] = next;
         }
 
         foreach (var allocation in mine.Where(a => !chosen.ContainsValue(a)))

@@ -742,7 +742,8 @@
       "addAllocations": "Add allocations to the node",
       "portDefault": "Usually {{port}} ({{protocols}}).",
       "automatic": "Automatic (a free one, the usual port first)",
-      "noPort": "None"
+      "noPort": "None",
+      "followsPort": "comes with {{port}}: its port + {{offset}}."
     },
     "variables": {
       "none": "This game has no settings.",
@@ -779,7 +780,8 @@
       "title": "Ports",
       "hint": "Each port uses one of the node's allocations.",
       "stopFirst": "Stop the server to change its ports.",
-      "none": "This game does not listen on any port."
+      "none": "This game does not listen on any port.",
+      "follows": "(comes with {{port}})"
     },
     "console": {
       "title": "Console",

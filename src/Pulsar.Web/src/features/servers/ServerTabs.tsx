@@ -276,6 +276,24 @@ export function NetworkTab({ details }: { details: ServerDetails }) {
       {allocations.isError && <Alert>{errorMessage(t, allocations.error)}</Alert>}
       {details.ports.map((port) => {
         const current = port.allocationId ?? '';
+        if (port.follows) {
+          // Not chosen: it comes with the port it follows.
+          return (
+            <p key={port.name} className="text-sm">
+              <span className="font-medium">{port.label}</span>{' '}
+              {port.ipAddress && (
+                <span>
+                  {port.ipAddress}:{port.port}{' '}
+                </span>
+              )}
+              <span className="text-muted">
+                {t('servers.network.follows', {
+                  port: details.ports.find((p) => p.name === port.follows)?.label ?? port.follows,
+                })}
+              </span>
+            </p>
+          );
+        }
         return (
           <Field key={port.name} label={port.required ? `${port.label} *` : port.label}>
             {(ids) => (
@@ -307,7 +325,9 @@ export function NetworkTab({ details }: { details: ServerDetails }) {
                 {
                   id: server.id,
                   ports: Object.fromEntries(
-                    details.ports.map((p) => [p.name, (chosen[p.name] ?? p.allocationId ?? '') || null]),
+                    details.ports
+                      .filter((p) => !p.follows)
+                      .map((p) => [p.name, (chosen[p.name] ?? p.allocationId ?? '') || null]),
                   ),
                 },
                 { onSuccess: () => setChosen({}) },

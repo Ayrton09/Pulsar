@@ -47,7 +47,8 @@ public sealed record ServerSummary(
     DateTimeOffset CreatedAt);
 
 /// <summary>A manifest port of the server and the allocation it has (none for an unassigned optional port).</summary>
-public sealed record ServerPortView(string Name, string Label, bool Required, Guid? AllocationId, string? IpAddress, int? Port);
+/// <param name="Follows">The port this one comes with: it is not chosen on its own.</param>
+public sealed record ServerPortView(string Name, string Label, bool Required, Guid? AllocationId, string? IpAddress, int? Port, string? Follows = null);
 
 public sealed record ServerDetails(
     ServerSummary Server,
@@ -592,8 +593,8 @@ public sealed partial class ServerManagement(
         var allocations = (await db.NodeAllocations.AsNoTracking().Where(a => a.ServerId == server.Id).ToListAsync(cancellationToken))
             .ToDictionary(a => a.PortName!);
         var ports = manifest.PortList.Select(p => allocations.GetValueOrDefault(p.Name) is { } a
-            ? new ServerPortView(p.Name, p.Label, p.Required, a.Id.Value, a.IpAddress, a.Port)
-            : new ServerPortView(p.Name, p.Label, p.Required, null, null, null)).ToList();
+            ? new ServerPortView(p.Name, p.Label, p.Required, a.Id.Value, a.IpAddress, a.Port, p.Follows?.Port)
+            : new ServerPortView(p.Name, p.Label, p.Required, null, null, null, p.Follows?.Port)).ToList();
         return new ServerDetails(summary, server.Description, server.AutoStart, server.RestartOnCrash, template.Key, template.Version,
             manifest.Update is not null, ports, [.. operations.Select(View)]);
     }

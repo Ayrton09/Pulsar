@@ -8416,6 +8416,7 @@ export interface components {
             ipAddress: null | string;
             /** Format: int32 */
             port: null | number;
+            follows?: null | string;
         };
         /** @enum {unknown} */
         ServerRuntimeState: "offline" | "starting" | "running" | "stopping" | "crashed";
@@ -8530,6 +8531,9 @@ export interface components {
             default: number;
             required: boolean;
             description: null | string;
+            follows?: null | string;
+            /** Format: int32 */
+            offset?: null | number;
         };
         /** @enum {unknown} */
         TemplateSource: "bundled" | "imported";
