@@ -27,6 +27,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
 
+    public DbSet<ServerAddon> ServerAddons => Set<ServerAddon>();
+
     public DbSet<AuditEntry> AuditLog => Set<AuditEntry>();
 
     public DbSet<Node> Nodes => Set<Node>();

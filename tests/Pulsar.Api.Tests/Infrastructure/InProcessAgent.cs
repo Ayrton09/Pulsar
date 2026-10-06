@@ -74,6 +74,9 @@ public sealed class InProcessAgent : IAsyncDisposable
     /// <summary>What the scripted game servers answer to their manifest's query.</summary>
     public ScriptedQuery Query => field ??= new ScriptedQuery(_clock);
 
+    /// <summary>The agent's downloads (addons, Minecraft): set before <see cref="StartAsync"/> to fake the sites; null for the real ones.</summary>
+    public HttpMessageHandler? Http { get; set; }
+
     /// <summary>RCON sessions to the scripted game servers (logfile+rcon manifests).</summary>
     public ScriptedRcon Rcon => field ??= new ScriptedRcon(Processes);
 
@@ -93,7 +96,7 @@ public sealed class InProcessAgent : IAsyncDisposable
         await File.WriteAllTextAsync(Path.Combine(testGame, "Pulsar.TestGameServer.exe"), "not a real executable", TestContext.Current.CancellationToken);
 
         var channel = new PanelChannel();
-        var install = new InstallOptions { TestGameDirectory = testGame };
+        var install = Http is null ? new InstallOptions { TestGameDirectory = testGame } : new InstallOptions { TestGameDirectory = testGame, HttpHandler = Http };
         var files = new DirectServerFiles();
         _steamCmd = new SteamCmdRunner(Processes, new ScriptedSteamCmdSource(Path.Combine(_root, "steamcmd.exe")), files,
             new SteamCmdOptions { RetryDelays = [TimeSpan.Zero] }, _clock, NullLogger<SteamCmdRunner>.Instance);

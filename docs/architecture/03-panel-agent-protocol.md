@@ -102,6 +102,7 @@ public enum AckStatus { Accepted, AlreadyInState, Rejected, Busy, UnsupportedCom
 | `PrepareTransferCommand` | Ticket, direction (upload/download), relative path, maximum size. |
 | `CreateBackupCommand` / `RestoreBackupCommand` | BackupId, ServerId (+ the archive's SHA-256 for a restore); operations: the envelope carries the OperationId. |
 | `DeleteBackupCommand` / `SendBackupCommand` | BackupId, ServerId (+ a transfer ticket to send it); answered in the ack. |
+| `InstallAddonCommand` / `RemoveAddonCommand` | ServerId, `Key` of an addon of the server's manifest; operations (Phase 12). |
 | `CancelOperationCommand` | OperationId. |
 | `RotateCredentialCommand` | — (the agent starts the rotation). |
 | `UpdatePanelKeysCommand` | List of panel keys signed by the currently pinned key. |
@@ -193,6 +194,14 @@ Size limits are configurable; the agent writes to a temporary file inside the se
 - *Storage:* `<backups root>\<shortId>\<backupId>.zip`, by default the agent's `backups` folder (SYSTEM and Administrators only: a game server can neither read nor change its backups), or the folder given at enrollment (`--backups-root`, restricted the same way). Written as `<backupId>.zip.partial` and renamed when complete; an agent that stopped halfway deletes the partial archives when it starts. Deleting a server deletes its backups.
 - *Errors:* `backups.not_found` (the archive is not on the node), `backups.corrupt` (its SHA-256 changed, or an entry a restore may not write), `backups.in_use`; reading and writing server files fail with the file manager's codes (`files.*`).
 - *Remote copies (Phase 10):* the four backup commands take an optional `Remote`, a `RemoteBackupTarget(Endpoint, Region, Bucket, Key, AccessKeyId, SecretAccessKey, PathStyle)` the panel builds from the server's backup storage (additive; agents announce the `backups.remote` capability, and the panel sends none to agents that do not). After the archive is written the agent uploads it (stage `uploading`, multipart, the archive's SHA-256 as `pulsar-sha256` metadata) and reports `BackupResult.RemoteCopied` or `RemoteError`: a failed copy does not fail the backup. A restore of an archive the node no longer has downloads it first (stage `downloading`), checks it against the SHA-256 and keeps it; a download streams it from the storage; a delete removes the copy too (within 20 s, before the ack). The agent keeps nothing of the target: the secret arrives in each command and is not printed (`RemoteBackupTarget.ToString` leaves it out). Failures are `backups.remote_failed` with what the storage answered.
+
+### Addons (Phase 12)
+
+- *Operations:* `server.addon_install` and `server.addon_remove`, exclusive and only on a stopped, installed server (the panel answers `server.must_be_stopped` otherwise); an install can be cancelled. The key names an addon of the manifest the agent already holds: the panel never sends a URL, a repository or a file list. Progress stages: `preparing` (asking GitHub for the release), `downloading` (percent), `installing` (unpacking).
+- *Results:* a successful operation's `OperationCompleted` carries `AddonsResult(Addons)`, a list of `AddonRelease(Key, Release)` (no release: removed); an update that reinstalls `reinstallAfterUpdate` addons reports their releases the same way. The panel keeps them in `server_addons`.
+- *Spec:* `ServerRuntimeSpec.Addons` (additive) lists the installed keys; before each start the agent applies their `lineEdits`.
+- *Capabilities:* `server.addon_install` and `server.addon_remove`; the panel refuses addons for agents without them (`addon.unsupported`).
+- *Errors:* `addon.no_release`, `addon.no_asset` (not exactly one asset matches), `addon.no_checksum` (GitHub publishes no SHA-256), `addon.checksum_mismatch`, `addon.untrusted_host`, `addon.download_failed`, `addon.unsupported_source`, `addon.bad_archive` (an entry outside the target, or more than Pulsar unpacks), `addon.file_missing` (at a start: a file an installed addon edits is missing; a missing anchor is `config.invalid`).
 
 ### Protocol versioning
 

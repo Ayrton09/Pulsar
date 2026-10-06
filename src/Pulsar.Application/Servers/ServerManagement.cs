@@ -61,7 +61,8 @@ public sealed record ServerDetails(
     IReadOnlyList<ServerPortView> Ports,
     IReadOnlyList<OperationView> RecentOperations,
     ServerLimitsView Limits,
-    TemplateUpgradeView? TemplateUpgrade = null);
+    TemplateUpgradeView? TemplateUpgrade = null,
+    bool HasAddons = false);
 
 /// <summary>The newest version of the server's game template, when it is newer than the one the server runs.</summary>
 public sealed record TemplateUpgradeView(Guid TemplateId, string Version);
@@ -734,7 +735,7 @@ public sealed partial class ServerManagement(
             .FirstOrDefault();
         return new ServerDetails(summary, server.Description, server.AutoStart, server.RestartOnCrash, template.Key, template.Version,
             manifest.Update is not null, ports, [.. operations.Select(View)], new ServerLimitsView(server.CpuLimitPercent, server.MemoryLimitMb),
-            newer is null ? null : new TemplateUpgradeView(newer.Id.Value, newer.Version));
+            newer is null ? null : new TemplateUpgradeView(newer.Id.Value, newer.Version), manifest.AddonList.Count > 0);
     }
 
     private async Task<IReadOnlyList<ServerSummary>> SummariesAsync(IReadOnlyList<Server> servers, CancellationToken cancellationToken)

@@ -1538,7 +1538,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_operations_status", "status IN ('cancelled', 'failed', 'interrupted', 'queued', 'running', 'succeeded')");
 
-                            t.HasCheckConstraint("ck_operations_type", "type IN ('backup_create', 'backup_restore', 'server_delete', 'server_install', 'server_provision', 'server_update')");
+                            t.HasCheckConstraint("ck_operations_type", "type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'server_delete', 'server_install', 'server_provision', 'server_update')");
                         });
                 });
 
@@ -1686,7 +1686,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("servers", null, t =>
                         {
-                            t.HasCheckConstraint("ck_servers_active_operation_type", "active_operation_type IN ('backup_create', 'backup_restore', 'server_delete', 'server_install', 'server_provision', 'server_update')");
+                            t.HasCheckConstraint("ck_servers_active_operation_type", "active_operation_type IN ('addon_install', 'addon_remove', 'backup_create', 'backup_restore', 'server_delete', 'server_install', 'server_provision', 'server_update')");
 
                             t.HasCheckConstraint("ck_servers_backup_limit", "backup_limit BETWEEN 1 AND 1000");
 
@@ -1702,6 +1702,37 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_servers_runtime_state", "runtime_state IN ('crashed', 'offline', 'running', 'starting', 'stopping')");
                         });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Servers.ServerAddon", b =>
+                {
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("server_id");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("key");
+
+                    b.Property<DateTimeOffset>("InstalledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("installed_at");
+
+                    b.Property<string>("Release")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("release");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("ServerId", "Key")
+                        .HasName("pk_server_addons");
+
+                    b.ToTable("server_addons", (string)null);
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Servers.ServerVariable", b =>
@@ -2239,6 +2270,16 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_servers_game_templates_template_id");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Servers.ServerAddon", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Servers.Server", null)
+                        .WithMany()
+                        .HasForeignKey("ServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_server_addons_servers_server_id");
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Servers.ServerVariable", b =>

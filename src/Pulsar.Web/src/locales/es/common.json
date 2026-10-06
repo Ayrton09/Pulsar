@@ -361,6 +361,13 @@
     "insecureDescription": "Las contraseñas y la sesión viajan en texto plano. Usá HTTPS fuera de una red de confianza."
   },
   "errors": {
+    "addon": {
+      "not_found": "El juego del servidor no tiene ese mod.",
+      "unsupported": "El agente del nodo no puede instalar mods: actualizalo.",
+      "requires": "Ese mod necesita otro instalado antes.",
+      "conflicts": "Ese mod no se puede instalar junto con otro que ya está instalado: quitalo primero.",
+      "required_by": "Otro mod instalado necesita este: quitalo primero."
+    },
     "api_key": {
       "name_invalid": "Poné un nombre de una línea, de hasta 64 caracteres.",
       "permissions_invalid": "Elegí al menos un permiso.",
@@ -735,7 +742,9 @@
         "serverDelete": "Eliminar",
         "serverUpdate": "Actualizar",
         "backupCreate": "Backup",
-        "backupRestore": "Restauración"
+        "backupRestore": "Restauración",
+        "addonInstall": "Instalar mod",
+        "addonRemove": "Quitar mod"
       },
       "statuses": {
         "queued": "En cola",
@@ -764,6 +773,7 @@
       "settings": "Configuración",
       "network": "Red",
       "files": "Archivos",
+      "addons": "Mods",
       "backups": "Backups",
       "schedules": "Programación"
     },
@@ -794,7 +804,7 @@
     },
     "stages": {
       "queued": "esperando su turno",
-      "preparing": "preparando SteamCMD",
+      "preparing": "preparando",
       "downloading": "descargando",
       "verifying": "verificando",
       "committing": "terminando",
@@ -987,6 +997,21 @@
       "binary": "Este archivo no es de texto: descargalo."
     },
     "refresh": "Actualizar"
+  },
+  "addons": {
+    "hint": "Mods y frameworks de mods que conoce la plantilla de este juego. El nodo descarga su última versión del GitHub de sus autores y la instala solo si coincide con el checksum que publica GitHub. Los hacen terceros, con sus propias licencias.",
+    "stopToChange": "Detené el servidor para instalar, actualizar o quitar mods.",
+    "license": "Licencia: {{license}}",
+    "installed": "Instalado · {{release}}",
+    "notInstalled": "No instalado",
+    "installedAt": "Instalado el {{when}}",
+    "requires": "Necesita {{names}}.",
+    "conflicts": "No se puede instalar junto con {{names}}.",
+    "reinstallAfterUpdate": "Las actualizaciones del juego lo pisan: se vuelve a instalar después de cada una.",
+    "install": "Instalar",
+    "update": "Actualizar a la última",
+    "remove": "Quitar",
+    "removeConfirm": "¿Quitar {{name}} de {{server}}? Se borran los archivos que instaló, aunque los hayas cambiado; los que agregaste vos se conservan."
   },
   "backups": {
     "title": "Backups",

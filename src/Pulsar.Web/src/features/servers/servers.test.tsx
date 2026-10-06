@@ -101,6 +101,7 @@ function details(
     ports: [],
     recentOperations: operations,
     limits: { cpuPercent: null, memoryMb: null },
+    hasAddons: false,
   };
 }
 

@@ -27,11 +27,8 @@ public sealed class MinecraftInstaller(IServerFiles files, HttpMessageHandler ha
     /// <summary>The runtime's release and the files it installed, so an update replaces exactly those.</summary>
     private const string JavaMarker = JavaDirectory + "/pulsar-java.txt";
 
-    private const long MaximumMetadata = 8 * 1024 * 1024;
-    private const long MaximumDownload = 512L * 1024 * 1024;
     private const long MaximumExtracted = 2L * 1024 * 1024 * 1024;
     private const int MaximumEntries = 20_000;
-    private const int MaximumRedirects = 5;
 
     // GitHub serves Adoptium's binaries: github.com redirects to its asset hosts.
     private static readonly HashSet<string> s_hosts = new(StringComparer.OrdinalIgnoreCase)
@@ -39,8 +36,6 @@ public sealed class MinecraftInstaller(IServerFiles files, HttpMessageHandler ha
         "piston-meta.mojang.com", "piston-data.mojang.com", "launchermeta.mojang.com", "launcher.mojang.com",
         "api.adoptium.net", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com",
     };
-
-    private static readonly JsonSerializerOptions s_json = new(JsonSerializerDefaults.Web);
 
     /// <summary>A download that stops sending for this long is abandoned.</summary>
     public TimeSpan StallTimeout { get; init; } = TimeSpan.FromMinutes(1);
@@ -51,7 +46,8 @@ public sealed class MinecraftInstaller(IServerFiles files, HttpMessageHandler ha
     public async Task InstallAsync(string serverDirectory, string? version, Func<string, double?, Task> progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(progress);
-        using var client = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
+        using var http = new HttpClient(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
+        var client = new VerifiedDownloader(http, s_hosts, "minecraft", "Minecraft or Java") { StallTimeout = StallTimeout };
         try
         {
             await progress(InstallStages.Preparing, null);
@@ -81,7 +77,7 @@ public sealed class MinecraftInstaller(IServerFiles files, HttpMessageHandler ha
         }
     }
 
-    private async Task InstallJavaAsync(HttpClient client, string serverDirectory, int major, Func<double, Task> progress,
+    private async Task InstallJavaAsync(VerifiedDownloader client, string serverDirectory, int major, Func<double, Task> progress,
         CancellationToken cancellationToken)
     {
         var assets = await GetJsonAsync<AdoptiumAsset[]>(client,
@@ -183,108 +179,14 @@ public sealed class MinecraftInstaller(IServerFiles files, HttpMessageHandler ha
             : (lines[0], [.. lines.Skip(1).Where(l => ManifestValidator.IsValidRelativePath($"{JavaDirectory}/{l}"))]);
     }
 
-    private async Task<T> GetJsonAsync<T>(HttpClient client, Uri uri, string? sha1, CancellationToken cancellationToken)
-    {
-        await using var body = await DownloadAsync(client, uri, sha1 is null ? null : HashAlgorithmName.SHA1, sha1, _ => Task.CompletedTask,
-            cancellationToken, MaximumMetadata);
-        return await JsonSerializer.DeserializeAsync<T>(body, s_json, cancellationToken)
-            ?? throw Failed("minecraft.download_failed", $"{uri.Host} sent no data.");
-    }
+    private static Task<T> GetJsonAsync<T>(VerifiedDownloader client, Uri uri, string? sha1, CancellationToken cancellationToken) =>
+        client.GetJsonAsync<T>(uri, sha1, cancellationToken);
 
-    /// <summary>The body in a temporary file (deleted when closed), checked against <paramref name="expected"/>.</summary>
-    private async Task<FileStream> DownloadAsync(HttpClient client, Uri uri, HashAlgorithmName? algorithm, string? expected,
-        Func<double, Task> progress, CancellationToken cancellationToken, long maximum = MaximumDownload)
-    {
-        using var response = await SendAsync(client, uri, cancellationToken);
-        var length = response.Content.Headers.ContentLength;
-        if (length > maximum)
-        {
-            throw Failed("minecraft.download_failed", $"The download from {uri.Host} is larger than expected.");
-        }
+    private static Task<FileStream> DownloadAsync(VerifiedDownloader client, Uri uri, HashAlgorithmName? algorithm, string? expected,
+        Func<double, Task> progress, CancellationToken cancellationToken) =>
+        client.DownloadAsync(uri, algorithm, expected, progress, cancellationToken);
 
-        var file = new FileStream(Path.GetTempFileName(), FileMode.Create, FileAccess.ReadWrite, FileShare.None, 81920,
-            FileOptions.DeleteOnClose | FileOptions.Asynchronous);
-        try
-        {
-            using var hash = algorithm is { } name ? IncrementalHash.CreateHash(name) : null;
-            await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var buffer = new byte[81920];
-            long total = 0;
-            var reported = -1;
-            while (true)
-            {
-                using var stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                stall.CancelAfter(StallTimeout);
-                var read = await body.ReadAsync(buffer, stall.Token);
-                if (read == 0)
-                {
-                    break;
-                }
-
-                total += read;
-                if (total > maximum)
-                {
-                    throw Failed("minecraft.download_failed", $"The download from {uri.Host} is larger than expected.");
-                }
-
-                hash?.AppendData(buffer, 0, read);
-                await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                if (length > 0 && (int)(total * 100 / length.Value) is var percent && percent != reported)
-                {
-                    reported = percent;
-                    await progress(percent);
-                }
-            }
-
-            if (hash is not null && !Convert.ToHexString(hash.GetHashAndReset()).Equals(expected, StringComparison.OrdinalIgnoreCase))
-            {
-                throw Failed("minecraft.checksum_mismatch", $"The download from {uri.Host} does not match its published checksum.");
-            }
-
-            file.Position = 0;
-            return file;
-        }
-        catch
-        {
-            await file.DisposeAsync();
-            throw;
-        }
-    }
-
-    /// <summary>Follows redirects by hand, so every hop is checked against the publishers' hosts.</summary>
-    private static async Task<HttpResponseMessage> SendAsync(HttpClient client, Uri uri, CancellationToken cancellationToken)
-    {
-        for (var hop = 0; hop <= MaximumRedirects; hop++)
-        {
-            if (uri.Scheme != Uri.UriSchemeHttps || !s_hosts.Contains(uri.Host))
-            {
-                throw Failed("minecraft.untrusted_host", $"Pulsar does not download Minecraft or Java from {uri.GetLeftPart(UriPartial.Authority)}.");
-            }
-
-            var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if ((int)response.StatusCode is >= 300 and < 400 && response.Headers.Location is { } location)
-            {
-                uri = location.IsAbsoluteUri ? location : new Uri(uri, location);
-                response.Dispose();
-                continue;
-            }
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var status = (int)response.StatusCode;
-                response.Dispose();
-                throw Failed("minecraft.download_failed", $"{uri.Host} answered {status}.");
-            }
-
-            return response;
-        }
-
-        throw Failed("minecraft.download_failed", "Too many redirects.");
-    }
-
-    private static Uri Https(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri)
-        ? uri
-        : throw Failed("minecraft.download_failed", $"'{url}' is not a download address.");
+    private static Uri Https(string url) => VerifiedDownloader.Https(url, "minecraft");
 
     private static GameProcessException Failed(string code, string message, Exception? inner = null) => new(code, message, inner);
 

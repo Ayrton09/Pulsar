@@ -32,6 +32,9 @@ public sealed record LaunchPlan(
 
     /// <summary>Where and how the agent asks the running game for its name, map and players.</summary>
     public QueryEndpoint? Query { get; init; }
+
+    /// <summary>The lines the installed addons need in the game's files, kept before every start (<see cref="LineEditor"/>).</summary>
+    public IReadOnlyList<LineEdit> LineEdits { get; init; } = [];
 }
 
 /// <summary>An <c>ip:port</c> pair of a node given to a server (both protocols). <c>0.0.0.0</c> means every interface.</summary>
@@ -79,13 +82,15 @@ public sealed record RenderedConfigFile(string Path, ConfigFileFormat Format, Co
 /// <param name="ExtraArguments">Added at the end, one argv element each, when the manifest allows them.</param>
 /// <param name="RconPassword">Generated and kept by the agent; required when the manifest has an RCON console.</param>
 /// <param name="Directory">The server's absolute folder, known only to the agent; required by {{server.dir}}.</param>
+/// <param name="Addons">Keys of the manifest's addons installed on the server.</param>
 public sealed record ServerBinding(
     string ShortId,
     IReadOnlyDictionary<string, string?> Values,
     IReadOnlyDictionary<string, PortAssignment>? Ports = null,
     IReadOnlyList<string>? ExtraArguments = null,
     string? RconPassword = null,
-    string? Directory = null)
+    string? Directory = null,
+    IReadOnlyList<string>? Addons = null)
 {
     public override string ToString() => $"ServerBinding {{ ShortId = {ShortId} }}";
 }
@@ -310,6 +315,7 @@ public static class LaunchPlanRenderer
             ConfigFiles = configFiles,
             Rcon = rcon,
             Query = manifest.Query is { } query ? QueryEndpointFor(query, ports) : null,
+            LineEdits = [.. manifest.AddonList.Where(a => binding.Addons?.Contains(a.Key) == true).SelectMany(a => a.LineEditList)],
         };
     }
 

@@ -63,6 +63,7 @@ public enum StateChangeReason
 /// <param name="Variables">Values of the manifest's variables, secret ones included (the agent keeps them encrypted).</param>
 /// <param name="Ports">The node allocation given to each manifest port.</param>
 /// <param name="Limits">Caps on the server's resources; null (or older panels) for none.</param>
+/// <param name="Addons">Keys of the manifest's addons installed on the server (their lines are kept at every start).</param>
 public sealed record ServerRuntimeSpec(
     string ShortId,
     string Manifest,
@@ -71,7 +72,8 @@ public sealed record ServerRuntimeSpec(
     bool AutoStart,
     bool RestartOnCrash,
     IReadOnlyDictionary<string, ServerPort>? Ports = null,
-    ServerLimits? Limits = null)
+    ServerLimits? Limits = null,
+    IReadOnlyList<string>? Addons = null)
 {
     // Variables may hold secrets: never print them.
     public override string ToString() => $"ServerRuntimeSpec {{ ShortId = {ShortId} }}";

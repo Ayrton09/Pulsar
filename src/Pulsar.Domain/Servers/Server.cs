@@ -190,12 +190,14 @@ public sealed class Server
         }
 
         if (operation.Type is OperationType.ServerUpdate or OperationType.BackupCreate or OperationType.BackupRestore
+                or OperationType.AddonInstall or OperationType.AddonRemove
             && InstallState != InstallState.Installed)
         {
             return ServerErrors.NotInstalled;
         }
 
         if (operation.Type is OperationType.ServerInstall or OperationType.ServerUpdate or OperationType.BackupRestore
+                or OperationType.AddonInstall or OperationType.AddonRemove
             && RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
         {
             return ServerErrors.MustBeStopped;

@@ -541,6 +541,28 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 _files.Write(_definition.Directory, file.Path, content);
             }
 
+            // The installed addons' lines (Metamod's in gameinfo.gi), written again after a game update replaced the file.
+            foreach (var edits in plan.LineEdits.GroupBy(e => e.Path, StringComparer.OrdinalIgnoreCase))
+            {
+                string text;
+                using (var stream = _files.OpenRead(_definition.Directory, edits.Key))
+                {
+                    if (stream is null || stream.Length > ConfigFileWriter.MaximumSize)
+                    {
+                        throw new GameProcessException("addon.file_missing", $"{edits.Key}, which an installed addon edits, is missing or too large.");
+                    }
+
+                    text = new StreamReader(stream, System.Text.Encoding.UTF8).ReadToEnd();
+                }
+
+                var edited = edits.Aggregate(text, LineEditor.Apply);
+                if (edited != text)
+                {
+                    using var content = new MemoryStream(new System.Text.UTF8Encoding(false).GetBytes(edited));
+                    _files.Write(_definition.Directory, edits.Key, content);
+                }
+            }
+
             if (plan.Console.LogFile is { } logFile)
             {
                 _files.Delete(_definition.Directory, logFile);

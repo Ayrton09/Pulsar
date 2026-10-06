@@ -54,6 +54,7 @@ const details: Schemas['ServerDetails'] = {
   ports: [],
   recentOperations: [],
   limits: { cpuPercent: null, memoryMb: null },
+  hasAddons: false,
 };
 
 function run(changes: Partial<Schemas['ScheduledRunView']> = {}): Schemas['ScheduledRunView'] {

@@ -223,6 +223,32 @@ As implemented (Phase 7): the globs match files only and ignore case (as Windows
 
 `"query": { "protocol": "a2s", "port": "game" }`: how the agent asks the running game for its name, map, player counts and players, shown on the server's page. `a2s` is Valve's server query over UDP (Source games, Rust, Valheim and most Steam games; a challenge answered when the game asks for one, answers split over several packets put back together, Rust's player counts above 255 read from its keywords); `minecraft` is Minecraft's Server List Ping over TCP (the message of the day as the name, the player sample as the list). The port must be a required port of the manifest with the protocol's transport. A server on every interface (`0.0.0.0`) is asked where it answers: srcds ignores queries from loopback (checked with CS:S), so the agent's first query goes to loopback and to each of the node's addresses at once, and the address that answers is used from then on (Minecraft is asked on loopback). Bundled: CS2 and CS:S on `game`, Rust and Valheim on `query` (Valheim answers only when the server is listed, and puts its name where the map goes), Minecraft on `game`. CS2 counts its players and bots but sends their names empty, so the panel shows counts without a list. Checked on 2026-10-05 with each game through a published panel and a real agent. *Implemented in Phase 11.*
 
+### Addons
+
+```json
+"addons": [
+  { "key": "metamod", "name": "Metamod:Source", "license": "zlib", "url": "https://www.metamodsource.net/",
+    "source": { "type": "githubRelease", "repo": "alliedmodders/metamod-source", "asset": "^mmsource-2\\.0\\.0-git[0-9]+-windows\\.zip$", "prerelease": true },
+    "target": "game/csgo",
+    "lineEdits": [ { "path": "game/csgo/gameinfo.gi", "after": "Game_LowViolence csgo_lv", "line": "Game\tcsgo/addons/metamod" } ] },
+  { "key": "counterstrikesharp", "name": "CounterStrikeSharp", "license": "GPL-3.0", "url": "https://docs.cssharp.dev/",
+    "source": { "type": "githubRelease", "repo": "roflmuffin/CounterStrikeSharp", "asset": "^counterstrikesharp-with-runtime-windows-.*\\.zip$" },
+    "target": "game/csgo", "requires": ["metamod"] }
+]
+```
+
+Mods and mod frameworks the game supports, installed on request from the server's **Mods** tab (never by the game's install). Each one has a `key` (`^[a-z0-9][a-z0-9-]{1,31}$`, unique), a `name`, its `license` and an https `url` shown before installing, and:
+
+- `source`: a closed set, like install steps. `githubRelease` takes the GitHub `repo` (`owner/name`), an `asset` regex (NonBacktracking, at most 200 characters) that must match exactly one asset of the release, and either a `tag` (a fixed release, such as Carbon's `production_build`) or `prerelease: true` (the newest release, pre-releases included: Metamod's only builds for CS2), or neither (the latest stable release). GitHub must publish the asset's SHA-256 (`digest`); without one the agent refuses it.
+- `target`: the folder the zip is unpacked into ("" for the server's own folder).
+- `requires` / `conflicts`: other addons of the manifest. The panel refuses to install one before what it needs, or next to one it conflicts with (either side declaring it is enough), and to remove one another installed addon needs (`409`).
+- `reinstallAfterUpdate`: the game's updates overwrite it (Oxide replaces Rust's own files), so after every update the agent installs its latest release again, in the same operation.
+- `lineEdits` (at most 8): lines the addon needs in the game's files. Before every start, while the addon is installed, the agent puts `line` right after the first line starting with `after` (spaces and tabs compared as one run, the anchor's indentation kept, never twice); a missing file fails the start (`addon.file_missing`), and so does a missing anchor (`config.invalid`). Removing the addon takes the line out. This is how Metamod stays in `gameinfo.gi`, which every CS2 update restores.
+
+The agent downloads only from `api.github.com`, `github.com` and GitHub's asset hosts, over https, with the same rules as the Minecraft downloads (no other redirects, a size cap, a stall timeout, the hash checked before anything is unpacked). The zip's paths go through the same checks as the file manager's; it records the files it added and the game files it replaced in `.pulsar/addons/<key>.json`. Installing an installed addon brings it to its latest release (nothing is downloaded when the asset is the same); the new release's files replace the old ones, and the files only the old one had are deleted. Removing deletes the files it added (changed ones too), the folders that leaves empty below its `target`, and its lines; game files it had replaced stay until the next update with file validation brings them back.
+
+Bundled: `cs2` has Metamod:Source and CounterStrikeSharp (with its .NET runtime); `rust` has Oxide (uMod) and Carbon, which exclude each other. *Implemented in Phase 12.*
+
 ### Reserved for later versions
 
 Additional `healthChecks`, `databases` (request a MySQL/MariaDB database from the game databases module), managed `runtime`s, `linux-x64`.

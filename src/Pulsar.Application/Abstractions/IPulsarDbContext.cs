@@ -26,6 +26,8 @@ public interface IPulsarDbContext
 
     DbSet<ApiKey> ApiKeys { get; }
 
+    DbSet<ServerAddon> ServerAddons { get; }
+
     DbSet<AuditEntry> AuditLog { get; }
 
     DbSet<Node> Nodes { get; }

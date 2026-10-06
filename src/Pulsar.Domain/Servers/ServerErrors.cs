@@ -20,6 +20,20 @@ public static class ServerErrors
 
     public static DomainError Busy { get; } = new("server.busy", "Another operation is running on this server.");
 
+    public static DomainError AddonUnknown { get; } = new("addon.not_found", "The server's game has no such addon.");
+
+    public static DomainError AddonsUnsupported { get; } =
+        new("addon.unsupported", "The node's agent cannot install addons (update the agent).");
+
+    public static DomainError AddonRequires(string name, string other) =>
+        new("addon.requires", $"{name} needs {other} installed first.");
+
+    public static DomainError AddonConflicts(string name, string other) =>
+        new("addon.conflicts", $"{name} cannot be installed with {other}: remove it first.");
+
+    public static DomainError AddonRequiredBy(string name, string other) =>
+        new("addon.required_by", $"{other} needs {name}: remove it first.");
+
     public static DomainError TemplateNotNewer { get; } =
         new("server.template_not_newer", "A server moves only to a newer version of its own game's template.");
 

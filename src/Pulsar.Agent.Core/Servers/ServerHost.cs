@@ -102,6 +102,8 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.SendBackup;
             yield return AgentCapabilities.RemoteBackups;
             yield return AgentCapabilities.Limits;
+            yield return AgentCapabilities.InstallAddon;
+            yield return AgentCapabilities.RemoveAddon;
             if (installOptions.TestGameAvailable)
             {
                 yield return AgentCapabilities.TestGame;
@@ -238,6 +240,8 @@ public sealed partial class ServerHost(
             InstallServerCommand install => Install(envelope, install),
             DeleteServerCommand delete => Delete(envelope, delete),
             UpdateServerCommand update => Update(envelope, update),
+            InstallAddonCommand install => InstallAddon(envelope, install),
+            RemoveAddonCommand remove => RemoveAddon(envelope, remove),
             ApplyServerSpecCommand apply => await ApplySpecAsync(envelope, apply),
             CancelOperationCommand cancel => Cancel(envelope, cancel),
             CreateBackupCommand create => CreateBackup(envelope, create),
@@ -406,15 +410,73 @@ public sealed partial class ServerHost(
     }
 
     private CommandAck Install(CommandEnvelope envelope, InstallServerCommand command) =>
-        RunSteps(envelope, command.ServerId, s => s.Manifest.Install?.Steps ?? [], validate: null);
+        RunSteps(envelope, command.ServerId, s => s.Manifest.Install?.Steps ?? [], validate: null, update: false);
 
     private CommandAck Update(CommandEnvelope envelope, UpdateServerCommand command) =>
         _servers.TryGetValue(command.ServerId, out var server) && server.Manifest.Update is null
             ? Rejected(envelope, "server.update_unsupported", "This game has no update steps.")
-            : RunSteps(envelope, command.ServerId, s => s.Manifest.Update!.Steps, command.Validate ? true : null);
+            : RunSteps(envelope, command.ServerId, s => s.Manifest.Update!.Steps, command.Validate ? true : null, update: true);
+
+    private AddonInstaller Addons => new(files, installOptions.HttpHandler);
+
+    /// <summary>Installs one of the manifest's addons, or brings it to its latest release (docs/architecture/04, "Addons").</summary>
+    private CommandAck InstallAddon(CommandEnvelope envelope, InstallAddonCommand command) =>
+        AddonOperation(envelope, command.ServerId, command.AddonKey, async (server, addon, directory, operationId, cancellationToken) =>
+        {
+            var record = await Addons.InstallAsync(directory, addon, force: false, (stage, percent) => SendProgressAsync(operationId, stage, percent),
+                cancellationToken);
+            LogAddonInstalled(command.ServerId, addon.Key, record.Release);
+            return new AddonsResult([new AddonRelease(addon.Key, record.Release)]);
+        });
+
+    /// <summary>Removes an addon; game files it had replaced come back with a validating update.</summary>
+    private CommandAck RemoveAddon(CommandEnvelope envelope, RemoveAddonCommand command) =>
+        AddonOperation(envelope, command.ServerId, command.AddonKey, async (server, addon, directory, operationId, cancellationToken) =>
+        {
+            var replaced = Addons.Remove(directory, addon);
+            if (replaced.Count > 0 && server.Manifest.Update is { } update)
+            {
+                await RunStepsAsync(server, operationId, update.Steps, validate: true, cancellationToken);
+            }
+
+            LogAddonRemoved(command.ServerId, addon.Key, replaced.Count);
+            return new AddonsResult([new AddonRelease(addon.Key, null)]);
+        });
+
+    private CommandAck AddonOperation(CommandEnvelope envelope, Guid serverId, string key,
+        Func<Server, AddonDefinition, string, Guid, CancellationToken, Task<CommandResult?>> work)
+    {
+        if (envelope.OperationId is not { } operationId)
+        {
+            return Rejected(envelope, "command.operation_required", "Changing addons is an operation.");
+        }
+
+        if (!_servers.TryGetValue(serverId, out var server))
+        {
+            return Rejected(envelope, "server.unknown", "This node does not have that server.");
+        }
+
+        if (server.Manifest.AddonList.FirstOrDefault(a => a.Key == key) is not { } addon)
+        {
+            return Rejected(envelope, "addon.unknown", "The server's game has no such addon.");
+        }
+
+        if (server.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
+        {
+            return Rejected(envelope, "server.running", "Stop the server before changing its addons.");
+        }
+
+        return RunOperation(envelope, serverId, operationId, exclusive: true, async cancellationToken =>
+        {
+            var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+            TerminateStrays(serverId, provisioned.Identity);
+            return await work(server, addon, provisioned.Directory, operationId, cancellationToken);
+        });
+    }
 
     /// <summary>Install or update: the manifest's steps, SteamCMD ones as the server's account, the others by the agent.</summary>
-    private CommandAck RunSteps(CommandEnvelope envelope, Guid serverId, Func<Server, IReadOnlyList<InstallStep>> steps, bool? validate)
+    /// <param name="update">An update: the installed addons the game's update overwrites are installed again afterwards.</param>
+    private CommandAck RunSteps(CommandEnvelope envelope, Guid serverId, Func<Server, IReadOnlyList<InstallStep>> steps, bool? validate, bool update)
     {
         if (envelope.OperationId is not { } operationId)
         {
@@ -431,28 +493,53 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.running", "Stop the server before installing it.");
         }
 
-        return RunOperation(envelope, serverId, operationId, async cancellationToken =>
+        return RunOperation(envelope, serverId, operationId, exclusive: true, async cancellationToken =>
         {
-            var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
-            TerminateStrays(serverId, provisioned.Identity);
-            foreach (var step in steps(server))
+            var directory = await RunStepsAsync(server, operationId, steps(server), validate, cancellationToken);
+            LogInstalled(serverId);
+            if (!update)
             {
-                if (step is SteamCmdStep steam)
-                {
-                    var betaPassword = steam.BetaPasswordVar is { } key ? server.Spec.Variables.GetValueOrDefault(key) : null;
-                    var job = new SteamCmdJob(serverId, provisioned.Directory, provisioned.Identity, steam.AppId, steam.Beta, betaPassword,
-                        validate ?? steam.Validate);
-                    await steamCmd.RunAsync(job, (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
-                }
-                else
-                {
-                    await installSteps.RunAsync(step, provisioned.Directory, VariableValues.Resolve(server.Manifest, server.Spec.Variables),
-                        (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
-                }
+                return null;
             }
 
-            LogInstalled(serverId);
+            // Oxide and the like: the game's update put its own files back.
+            var reinstalled = new List<AddonRelease>();
+            foreach (var addon in server.Manifest.AddonList.Where(a => a.ReinstallAfterUpdate && server.Spec.Addons?.Contains(a.Key) == true))
+            {
+                var record = await Addons.InstallAsync(directory, addon, force: true, (stage, percent) => SendProgressAsync(operationId, stage, percent),
+                    cancellationToken);
+                LogAddonInstalled(serverId, addon.Key, record.Release);
+                reinstalled.Add(new AddonRelease(addon.Key, record.Release));
+            }
+
+            return reinstalled.Count > 0 ? new AddonsResult(reinstalled) : null;
         });
+    }
+
+    /// <summary>Runs install or update steps; returns the server's folder.</summary>
+    private async Task<string> RunStepsAsync(Server server, Guid operationId, IReadOnlyList<InstallStep> steps, bool? validate,
+        CancellationToken cancellationToken)
+    {
+        var serverId = server.Supervisor.ServerId;
+        var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
+        TerminateStrays(serverId, provisioned.Identity);
+        foreach (var step in steps)
+        {
+            if (step is SteamCmdStep steam)
+            {
+                var betaPassword = steam.BetaPasswordVar is { } key ? server.Spec.Variables.GetValueOrDefault(key) : null;
+                var job = new SteamCmdJob(serverId, provisioned.Directory, provisioned.Identity, steam.AppId, steam.Beta, betaPassword,
+                    validate ?? steam.Validate);
+                await steamCmd.RunAsync(job, (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
+            }
+            else
+            {
+                await installSteps.RunAsync(step, provisioned.Directory, VariableValues.Resolve(server.Manifest, server.Spec.Variables),
+                    (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
+            }
+        }
+
+        return provisioned.Directory;
     }
 
     /// <summary>New variables, ports, arguments or restart policy for the next start; never a different manifest.</summary>
@@ -843,7 +930,8 @@ public sealed partial class ServerHost(
     }
 
     private static ServerBinding Binding(ServerRuntimeSpec spec, string? rconPassword) => new(spec.ShortId, spec.Variables,
-        spec.Ports?.ToDictionary(p => p.Key, p => new PortAssignment(p.Value.IpAddress, p.Value.Port)), spec.ExtraArguments, rconPassword);
+        spec.Ports?.ToDictionary(p => p.Key, p => new PortAssignment(p.Value.IpAddress, p.Value.Port)), spec.ExtraArguments, rconPassword,
+        Addons: spec.Addons);
 
     /// <summary>32 random letters and digits (about 190 bits): RCON is exposed on the game's TCP port (docs/architecture/08, T18).</summary>
     private static string NewRconPassword() =>
@@ -890,6 +978,12 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId} installed")]
     private partial void LogInstalled(Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: addon {Addon} installed ({Release})")]
+    private partial void LogAddonInstalled(Guid serverId, string addon, string release);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: addon {Addon} removed ({Replaced} game files to restore)")]
+    private partial void LogAddonRemoved(Guid serverId, string addon, int replaced);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId} ({ShortId}) deleted from this node")]
     private partial void LogDeleted(Guid serverId, string shortId);

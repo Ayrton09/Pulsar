@@ -70,6 +70,7 @@ Compatibility matrix (active operation vs requested action):
 | Install/Update | ✗ | Kill cancels the operation | ✗ | ✗ | ✗ | ✗ |
 | Backup | ✓ | ✓ | ✗ | ✗ | ✗ | ✓ |
 | Restore | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Addon install/remove (Phase 12; requires Offline) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 ## Full creation flow (v1)
 

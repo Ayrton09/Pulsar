@@ -66,6 +66,12 @@ Then:
    Server List Ping. Check that the game answers before adding it: Steam's server browser (View, Game Servers,
    Favorites, add the address and query port) shows whether it does.
 10. **Backups**: which folders a backup includes and excludes.
+11. **Addons** (optional): mods and mod frameworks users can install from the server's Mods tab, from the GitHub
+   releases of their authors (`cs2` and `rust` show how). The release's asset must be a zip and GitHub must list its
+   SHA-256 (the `digest` of the asset in its API); give the folder it unpacks into, what it needs and
+   excludes, and the lines it needs in the game's files (Metamod's in `gameinfo.gi`), which the agent puts back before
+   every start. Mark `reinstallAfterUpdate` when the game's updates overwrite it. Naming a repository means trusting its
+   authors with code that runs as the game server.
 
 ## Check it
 

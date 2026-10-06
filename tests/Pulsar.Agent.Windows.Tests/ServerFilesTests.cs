@@ -86,6 +86,25 @@ public sealed class ServerFilesTests : IDisposable
     }
 
     [WindowsFact]
+    public void OnlyAnEmptyRealDirectoryIsRemoved()
+    {
+        Directory.CreateDirectory(Path.Combine(_server, "addons", "empty"));
+        File.WriteAllText(Path.Combine(_server, "addons", "kept.cfg"), "x");
+        Run("mklink", "/J", Path.Combine(_server, "link"), Directory.CreateDirectory(Path.Combine(_outside, "empty")).FullName);
+
+        Assert.True(_files.DeleteEmptyDirectory(_server, "addons/empty"));
+        Assert.False(_files.DeleteEmptyDirectory(_server, "addons")); // holds kept.cfg
+        Assert.False(_files.DeleteEmptyDirectory(_server, "link")); // a junction, even to an empty folder
+        Assert.False(_files.DeleteEmptyDirectory(_server, "missing"));
+        Assert.False(_files.DeleteEmptyDirectory(_server, "addons/kept.cfg")); // a file
+
+        Assert.False(Directory.Exists(Path.Combine(_server, "addons", "empty")));
+        Assert.True(File.Exists(Path.Combine(_server, "addons", "kept.cfg")));
+        Assert.True(Directory.Exists(Path.Combine(_server, "link")));
+        Assert.True(Directory.Exists(Path.Combine(_outside, "empty")));
+    }
+
+    [WindowsFact]
     public void ReadingSharesTheFileWithTheGameWritingIt()
     {
         using var game = new FileStream(Path.Combine(_server, "console.log"), FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);

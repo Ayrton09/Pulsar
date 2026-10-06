@@ -31,8 +31,9 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(template);
         var allocations = await AllocationsOf(server.Id, cancellationToken);
+        var addons = await ServerAddons.InstalledKeysAsync(db, server.Id, cancellationToken);
         return new ServerRuntimeSpec(server.ShortId, template.Content, Values(server), server.ExtraArguments, server.AutoStart, server.RestartOnCrash,
-            allocations.ToDictionary(a => a.PortName!, a => new ServerPort(a.IpAddress, a.Port)), Limits(server));
+            allocations.ToDictionary(a => a.PortName!, a => new ServerPort(a.IpAddress, a.Port)), Limits(server), addons.Count > 0 ? addons : null);
     }
 
     /// <summary>The server's caps for its agent; null without any (older agents never see the field then).</summary>

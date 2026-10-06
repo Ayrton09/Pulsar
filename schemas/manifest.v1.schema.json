@@ -32,7 +32,50 @@
         "readiness": { "$ref": "#/$defs/ReadinessDefinition" },
         "stop": { "$ref": "#/$defs/StopDefinition" },
         "backup": { "$ref": "#/$defs/BackupDefinition" },
-        "query": { "$ref": "#/$defs/QueryDefinition" }
+        "query": { "$ref": "#/$defs/QueryDefinition" },
+        "addons": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/AddonDefinition" }, "description": "Mods the game supports, installed on request." }
+      }
+    },
+    "AddonDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "name", "license", "url", "source"],
+      "properties": {
+        "key": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,31}$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 512 },
+        "license": { "type": "string", "minLength": 1, "maxLength": 64, "description": "As the addon's authors state it; shown before installing." },
+        "url": { "type": "string", "pattern": "^https://", "maxLength": 256, "description": "The addon's home page." },
+        "source": { "$ref": "#/$defs/GitHubReleaseSource" },
+        "target": { "type": "string", "description": "Folder of the server the archive is unpacked into; empty for the server's folder." },
+        "requires": { "type": "array", "items": { "type": "string" } },
+        "conflicts": { "type": "array", "items": { "type": "string" } },
+        "reinstallAfterUpdate": { "type": "boolean", "default": false, "description": "The game's updates overwrite it: its latest release is installed again after each update." },
+        "lineEdits": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/LineEdit" } }
+      }
+    },
+    "GitHubReleaseSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "repo", "asset"],
+      "description": "A zip asset of a GitHub release, checked against the SHA-256 GitHub publishes for it.",
+      "properties": {
+        "type": { "const": "githubRelease" },
+        "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$" },
+        "asset": { "type": "string", "maxLength": 200, "description": "Regular expression for the asset's file name." },
+        "tag": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$", "description": "A fixed release; the latest one without it." },
+        "prerelease": { "type": "boolean", "default": false, "description": "Take the newest release even when it is marked as a pre-release." }
+      }
+    },
+    "LineEdit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "after", "line"],
+      "description": "Keeps 'line' right after the first line of 'path' that reads 'after' (spaces aside), before every start.",
+      "properties": {
+        "path": { "$ref": "#/$defs/RelativePath" },
+        "after": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "line": { "type": "string", "minLength": 1, "maxLength": 256 }
       }
     },
     "RequirementsDefinition": {

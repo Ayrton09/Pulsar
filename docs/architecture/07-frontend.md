@@ -98,6 +98,14 @@ Server and node pages use a layout with a fixed header (name, status, power acti
 - *Remote copy (Phase 10):* each backup says whether its copy is in remote storage, being made, or why it failed; "Remote copy" (`server.backups.delete`, like the retention limit) chooses where new backups are copied among the panel's storages, or nowhere. `/admin/backup-storage` (`settings.manage`): the storages (endpoint or AWS region, bucket and folder, access key id, a secret key that is never shown again, path-style addressing) with how many servers use each and how many copies it holds; one in use cannot be deleted.
 - API: `GET /api/v1/servers/{id}/backups` (the list and the limit), `POST …/backups` (201), `GET …/backups/{backupId}/download` (`application/zip`, named after the server and the backup's time), `POST …/backups/{backupId}/restore`, `PUT …/backups/{backupId}/lock`, `DELETE …/backups/{backupId}`, `PUT …/backups/settings`, `PUT …/backups/storage`, and `GET|POST /api/v1/backup-storages`, `PUT|DELETE …/backup-storages/{storageId}`; a backup is cancelled with `POST /api/v1/servers/{id}/operations/{operationId}/cancel`. Requests, downloads, restores, locks, deletions and limit changes are audited.
 
+## Mods
+
+*Phase 12.*
+
+- `/servers/:id?tab=addons`, labelled **Mods** (`server.view`), only for games whose template has addons: one card per addon with its name (a link to its home page), licence, description, what it needs and excludes, whether game updates reinstall it, and the release installed and when.
+- Install, "Update to latest" and Remove (asked first) need `server.install` and a stopped, installed, idle server; otherwise the tab says to stop it. The operation's progress shows at the top of the page with Cancel for installs, like an update; the list refreshes when it ends. Refusals (what it needs, what it excludes, what needs it) are shown with the names.
+- API: `GET /api/v1/servers/{id}/addons`, `POST` and `DELETE /api/v1/servers/{id}/addons/{key}`; the server's details carry `hasAddons`.
+
 ## Schedules
 
 - `/servers/:id?tab=schedules` (`server.schedules.view`): the server's tasks with what each does, when (in words: "Every day at 04:00", with its time zone when it is not the browser's), its next run (in the browser's time) and how its last run went (done, failed and why, skipped and why: "3 runs missed: the panel was not running"). History shows the last 50 runs. The list follows the live channel: a run ending refreshes it.

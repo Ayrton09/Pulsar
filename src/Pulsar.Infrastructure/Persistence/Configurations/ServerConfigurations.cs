@@ -185,3 +185,16 @@ internal sealed class BackupStorageConfiguration : IEntityTypeConfiguration<Back
         builder.Property<uint>("Version").IsRowVersion();
     }
 }
+
+/// <summary>Addons installed on servers (docs/architecture/02, "Addons"): gone with their server.</summary>
+internal sealed class ServerAddonConfiguration : IEntityTypeConfiguration<ServerAddon>
+{
+    public void Configure(EntityTypeBuilder<ServerAddon> builder)
+    {
+        builder.ToTable("server_addons");
+        builder.HasKey(a => new { a.ServerId, a.Key });
+        builder.Property(a => a.Key).HasMaxLength(ServerAddon.MaxKeyLength);
+        builder.Property(a => a.Release).HasMaxLength(ServerAddon.MaxReleaseLength);
+        builder.HasOne<Server>().WithMany().HasForeignKey(a => a.ServerId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

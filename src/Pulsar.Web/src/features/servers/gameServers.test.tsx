@@ -141,6 +141,7 @@ function details(server: Schemas['ServerSummary'] = summary): Schemas['ServerDet
     ],
     recentOperations: [],
     limits: { cpuPercent: null, memoryMb: null },
+    hasAddons: false,
   };
 }
 

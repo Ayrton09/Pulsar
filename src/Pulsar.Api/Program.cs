@@ -132,6 +132,7 @@ try
     api.MapServerEndpoints();
     api.MapServerFileEndpoints();
     api.MapServerBackupEndpoints();
+    api.MapServerAddonEndpoints();
     api.MapServerScheduleEndpoints();
     api.MapNotificationEndpoints();
 

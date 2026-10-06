@@ -132,7 +132,103 @@ public static partial class ManifestValidator
             ValidateGlobs("backup.exclude", backup.Exclude ?? [], Error);
         }
 
+        ValidateAddons(manifest.AddonList, Error);
         return errors;
+    }
+
+    private static void ValidateAddons(IReadOnlyList<AddonDefinition> addons, Action<string, string> error)
+    {
+        if (addons.Count > 16)
+        {
+            error("addons", "At most 16 addons.");
+        }
+
+        var keys = addons.Select(a => a.Key).ToHashSet(StringComparer.Ordinal);
+        if (keys.Count != addons.Count)
+        {
+            error("addons", "Each addon key can be declared once.");
+        }
+
+        for (var i = 0; i < addons.Count; i++)
+        {
+            var addon = addons[i];
+            var path = $"addons[{i}]";
+            if (!AddonKeyPattern().IsMatch(addon.Key))
+            {
+                error($"{path}.key", "Lowercase letters, digits and '-', 2 to 32 characters.");
+            }
+
+            if (!IsLabel(addon.Name, 64) || !IsLabel(addon.License, 64) || (addon.Description is { } description && !IsLabel(description, 512)))
+            {
+                error(path, "A name and a licence of 1 to 64 characters, a description of at most 512, on one line.");
+            }
+
+            if (!Uri.TryCreate(addon.Url, UriKind.Absolute, out var url) || url.Scheme != Uri.UriSchemeHttps || addon.Url.Length > 256)
+            {
+                error($"{path}.url", "The addon's home page, over https.");
+            }
+
+            if (addon.Target.Length > 0)
+            {
+                ValidateRelativePath($"{path}.target", addon.Target, error);
+            }
+
+            switch (addon.Source)
+            {
+                case GitHubReleaseSource github:
+                    if (!GitHubRepoPattern().IsMatch(github.Repo))
+                    {
+                        error($"{path}.source.repo", "A GitHub repository, 'owner/name'.");
+                    }
+
+                    if (github.Asset.Length is 0 or > 200 || CompileError(github.Asset) is not null)
+                    {
+                        error($"{path}.source.asset", "A regular expression (non-backtracking, at most 200 characters) for the asset's file name.");
+                    }
+
+                    if (github.Tag is { } tag && (!BranchPattern().IsMatch(tag) || github.Prerelease))
+                    {
+                        error($"{path}.source.tag", "1–64 letters, digits, '_', '-' or '.'; not with 'prerelease'.");
+                    }
+
+                    break;
+                default:
+                    error($"{path}.source", "Unknown source.");
+                    break;
+            }
+
+            foreach (var other in addon.RequiresList.Concat(addon.ConflictsList))
+            {
+                if (other == addon.Key || !keys.Contains(other))
+                {
+                    error(path, $"'{other}' must be another addon of the manifest.");
+                }
+            }
+
+            if (addon.RequiresList.Intersect(addon.ConflictsList).Any())
+            {
+                error(path, "An addon cannot both require and exclude another.");
+            }
+
+            if (addon.LineEditList.Count > 8)
+            {
+                error($"{path}.lineEdits", "At most 8 line edits.");
+            }
+
+            for (var j = 0; j < addon.LineEditList.Count; j++)
+            {
+                var edit = addon.LineEditList[j];
+                ValidateRelativePath($"{path}.lineEdits[{j}].path", edit.Path, error);
+                if (!IsLine(edit.After) || !IsLine(edit.Line))
+                {
+                    error($"{path}.lineEdits[{j}]", "'after' and 'line' are one line of 1 to 256 characters (tabs allowed).");
+                }
+            }
+        }
+
+        static bool IsLabel(string text, int max) => text.Trim().Length > 0 && text.Length <= max && !text.Any(char.IsControl);
+
+        static bool IsLine(string text) => text.Trim().Length > 0 && text.Length <= 256 && !text.Any(c => char.IsControl(c) && c != '\t');
     }
 
     /// <summary>A path relative to the server directory: forward slashes, no way out of it, nothing Windows treats specially.</summary>
@@ -877,6 +973,12 @@ public static partial class ManifestValidator
 
     [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_.-]{0,63}$", RegexOptions.CultureInvariant)]
     private static partial Regex XmlElementPattern();
+
+    [GeneratedRegex("^[a-z0-9][a-z0-9-]{1,31}$", RegexOptions.CultureInvariant)]
+    private static partial Regex AddonKeyPattern();
+
+    [GeneratedRegex("^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$", RegexOptions.CultureInvariant)]
+    private static partial Regex GitHubRepoPattern();
 
     [GeneratedRegex(@"^(CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])(\..*)?$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex ReservedName();

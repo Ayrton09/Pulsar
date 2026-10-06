@@ -49,6 +49,8 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(RestoreBackupCommand), RestoreBackupCommand.Type)]
 [JsonDerivedType(typeof(DeleteBackupCommand), DeleteBackupCommand.Type)]
 [JsonDerivedType(typeof(SendBackupCommand), SendBackupCommand.Type)]
+[JsonDerivedType(typeof(InstallAddonCommand), InstallAddonCommand.Type)]
+[JsonDerivedType(typeof(RemoveAddonCommand), RemoveAddonCommand.Type)]
 public abstract record AgentCommand;
 
 /// <summary>Round-trip check of the signed command path (the UI's "test connection").</summary>
@@ -133,6 +135,24 @@ public sealed record UpdateServerCommand(Guid ServerId, bool Validate) : AgentCo
 public sealed record ApplyServerSpecCommand(Guid ServerId, ServerRuntimeSpec Spec) : AgentCommand
 {
     public const string Type = "server.apply_spec";
+}
+
+/// <summary>
+/// Operation: installs (or brings to its latest release) one of the manifest's addons (docs/architecture/04, "Addons").
+/// Completes with an <see cref="AddonsResult"/>.
+/// </summary>
+public sealed record InstallAddonCommand(Guid ServerId, string AddonKey) : AgentCommand
+{
+    public const string Type = "server.addon_install";
+}
+
+/// <summary>
+/// Operation: removes an addon: the files it added and its lines; game files it replaced are restored by a validating
+/// update. Completes with an <see cref="AddonsResult"/> naming it without a release.
+/// </summary>
+public sealed record RemoveAddonCommand(Guid ServerId, string AddonKey) : AgentCommand
+{
+    public const string Type = "server.addon_remove";
 }
 
 /// <summary>Cancels a running operation (an install or update kills SteamCMD); it then completes as cancelled.</summary>
@@ -277,7 +297,16 @@ public sealed record SendBackupCommand(Guid ServerId, Guid BackupId, string Tick
 [JsonDerivedType(typeof(FileListResult), "files.list")]
 [JsonDerivedType(typeof(FileEntryResult), "files.entry")]
 [JsonDerivedType(typeof(BackupResult), "backups.created")]
+[JsonDerivedType(typeof(AddonsResult), "addons.changed")]
 public abstract record CommandResult;
+
+/// <summary>
+/// Addons an operation installed, updated (an addon installed again after a game update) or removed (no release).
+/// </summary>
+public sealed record AddonsResult(IReadOnlyList<AddonRelease> Addons) : CommandResult;
+
+/// <param name="Release">The release installed (a GitHub tag); null when the addon was removed.</param>
+public sealed record AddonRelease(string Key, string? Release);
 
 /// <summary>A backup the node made.</summary>
 /// <param name="Size">Bytes of the archive.</param>
@@ -345,6 +374,9 @@ public static class AgentCapabilities
     /// <summary>Not a command: the agent copies backups to S3-compatible storage (<see cref="RemoteBackupTarget"/>).</summary>
     public const string RemoteBackups = "backups.remote";
 
+    public const string InstallAddon = InstallAddonCommand.Type;
+    public const string RemoveAddon = RemoveAddonCommand.Type;
+
     /// <summary>Not a command: the agent enforces <see cref="ServerRuntimeSpec.Limits"/> (CPU and memory caps of a server's Job).</summary>
     public const string Limits = "server.limits";
 
@@ -377,6 +409,8 @@ public static class AgentCapabilities
         RestoreBackupCommand => RestoreBackup,
         DeleteBackupCommand => DeleteBackup,
         SendBackupCommand => SendBackup,
+        InstallAddonCommand => InstallAddon,
+        RemoveAddonCommand => RemoveAddon,
         null => throw new ArgumentNullException(nameof(command)),
         _ => throw new ArgumentOutOfRangeException(nameof(command), command.GetType().Name, "Command without a capability."),
     };

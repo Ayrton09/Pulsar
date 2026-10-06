@@ -60,6 +60,8 @@ public static class AuditActions
         public const string Killed = "server.kill";
         public const string InstallRequested = "server.install_requested";
         public const string TemplateChanged = "server.template_changed";
+        public const string AddonInstallRequested = "server.addon_install_requested";
+        public const string AddonRemoveRequested = "server.addon_remove_requested";
         public const string UpdateRequested = "server.update_requested";
         public const string SettingsChanged = "server.settings_changed";
         public const string PortsChanged = "server.ports_changed";

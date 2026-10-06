@@ -72,7 +72,20 @@
   },
 
   "backup": {
-    "include": ["server/pulsar/**"],
+    "include": ["server/pulsar/**", "oxide/config/**", "oxide/data/**", "oxide/plugins/**", "carbon/configs/**", "carbon/data/**", "carbon/plugins/**"],
     "exclude": ["**/*.log", "server/pulsar/*.tmp"]
-  }
+  },
+
+  "addons": [
+    { "key": "oxide", "name": "Oxide (uMod)", "license": "MIT", "url": "https://umod.org/games/rust",
+      "description": "Server plugins in C#. It replaces some of Rust's own files, so it is installed again after every game update. Plugins go in oxide/plugins.",
+      "source": { "type": "githubRelease", "repo": "OxideMod/Oxide.Rust", "asset": "^Oxide\\.Rust\\.zip$" },
+      "reinstallAfterUpdate": true,
+      "conflicts": ["carbon"] },
+    { "key": "carbon", "name": "Carbon", "license": "GPL-3.0", "url": "https://carbonmod.gg/",
+      "description": "Server plugins in C#, compatible with most Oxide plugins. Installed again after every game update. Plugins go in carbon/plugins.",
+      "source": { "type": "githubRelease", "repo": "CarbonCommunity/Carbon", "asset": "^Carbon\\.Windows\\.Release\\.zip$", "tag": "production_build" },
+      "reinstallAfterUpdate": true,
+      "conflicts": ["oxide"] }
+  ]
 }

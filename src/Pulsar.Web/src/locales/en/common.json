@@ -361,6 +361,13 @@
     "insecureDescription": "Passwords and sessions travel in clear text. Use HTTPS outside a trusted network."
   },
   "errors": {
+    "addon": {
+      "not_found": "The server's game has no such mod.",
+      "unsupported": "The node's agent cannot install mods: update the agent.",
+      "requires": "{{detail}}",
+      "conflicts": "{{detail}}",
+      "required_by": "{{detail}}"
+    },
     "api_key": {
       "name_invalid": "Give the key a name of one line, up to 64 characters.",
       "permissions_invalid": "Choose at least one permission.",
@@ -735,7 +742,9 @@
         "serverDelete": "Delete",
         "serverUpdate": "Update",
         "backupCreate": "Backup",
-        "backupRestore": "Restore"
+        "backupRestore": "Restore",
+        "addonInstall": "Install mod",
+        "addonRemove": "Remove mod"
       },
       "statuses": {
         "queued": "Queued",
@@ -764,6 +773,7 @@
       "settings": "Settings",
       "network": "Network",
       "files": "Files",
+      "addons": "Mods",
       "backups": "Backups",
       "schedules": "Schedules"
     },
@@ -794,7 +804,7 @@
     },
     "stages": {
       "queued": "waiting for its turn",
-      "preparing": "preparing SteamCMD",
+      "preparing": "preparing",
       "downloading": "downloading",
       "verifying": "verifying",
       "committing": "finishing",
@@ -987,6 +997,21 @@
       "binary": "This file is not text: download it instead."
     },
     "refresh": "Refresh"
+  },
+  "addons": {
+    "hint": "Mods and mod frameworks this game's template knows. The node downloads their latest release from their authors' GitHub and installs it only when it matches the checksum GitHub publishes. They are made by third parties, under their own licences.",
+    "stopToChange": "Stop the server to install, update or remove mods.",
+    "license": "Licence: {{license}}",
+    "installed": "Installed · {{release}}",
+    "notInstalled": "Not installed",
+    "installedAt": "Installed on {{when}}",
+    "requires": "Needs {{names}}.",
+    "conflicts": "Cannot be installed with {{names}}.",
+    "reinstallAfterUpdate": "Game updates overwrite it: it is installed again after each update.",
+    "install": "Install",
+    "update": "Update to latest",
+    "remove": "Remove",
+    "removeConfirm": "Remove {{name}} from {{server}}? The files it installed are deleted, even if you changed them; files you added yourself are kept."
   },
   "backups": {
     "title": "Backups",

@@ -26,7 +26,8 @@ public sealed record GameManifest(
     InstallDefinition? Update = null,
     IReadOnlyList<ConfigFileDefinition>? ConfigFiles = null,
     BackupDefinition? Backup = null,
-    QueryDefinition? Query = null)
+    QueryDefinition? Query = null,
+    IReadOnlyList<AddonDefinition>? Addons = null)
 {
     /// <summary>Optional editor hint (<c>"$schema"</c>); ignored.</summary>
     [JsonPropertyName("$schema")]
@@ -37,6 +38,8 @@ public sealed record GameManifest(
     public IReadOnlyList<PortDefinition> PortList => Ports ?? [];
 
     public IReadOnlyList<ConfigFileDefinition> ConfigFileList => ConfigFiles ?? [];
+
+    public IReadOnlyList<AddonDefinition> AddonList => Addons ?? [];
 }
 
 /// <summary>What a node should have for the game; shown when creating a server, not enforced.</summary>

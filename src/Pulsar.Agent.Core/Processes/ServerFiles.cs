@@ -21,6 +21,9 @@ public interface IServerFiles
 
     /// <summary>Creates the directory and its parents if they do not exist.</summary>
     void CreateDirectory(string serverRoot, string relativePath);
+
+    /// <summary>Removes the directory if it is empty; false when it is missing, holds anything, or is a link.</summary>
+    bool DeleteEmptyDirectory(string serverRoot, string relativePath);
 }
 
 /// <summary>
@@ -48,4 +51,16 @@ public sealed class DirectServerFiles : IServerFiles
     public void Delete(string serverRoot, string relativePath) => File.Delete(InstallSteps.Resolve(serverRoot, relativePath));
 
     public void CreateDirectory(string serverRoot, string relativePath) => Directory.CreateDirectory(InstallSteps.Resolve(serverRoot, relativePath));
+
+    public bool DeleteEmptyDirectory(string serverRoot, string relativePath)
+    {
+        var directory = new DirectoryInfo(InstallSteps.Resolve(serverRoot, relativePath));
+        if (!directory.Exists || directory.LinkTarget is not null || directory.EnumerateFileSystemInfos().Any())
+        {
+            return false;
+        }
+
+        directory.Delete(recursive: false);
+        return true;
+    }
 }

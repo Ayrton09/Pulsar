@@ -14,7 +14,7 @@
 | Nodes | **Node**, NodeCredential, NodeEnrollmentToken | Cryptographic identity per node. |
 | Nodes | NodeAllocation | Reservable `ip:port` pair (TCP and UDP) assignable to a server. |
 | Templates | **GameTemplate** | Validated, versioned, immutable manifest (`key` + `version`). |
-| Servers | **Server**, ServerVariable | Desired state, observed state, variables (secrets encrypted). |
+| Servers | **Server**, ServerVariable, ServerAddon | Desired state, observed state, variables (secrets encrypted), installed addons (Phase 12). |
 | Operations | **Operation** | Long-running work executed by an agent (install, update, backup…). |
 | Backups | **Backup**, BackupStorage | Metadata; the archive lives on the node, and a copy in S3-compatible storage when its server chose one (Phase 10). |
 | Scheduling | **ScheduledTask**, ScheduledTaskRun | Typed action + cron + IANA time zone. |
@@ -118,6 +118,10 @@ A user creates keys for scripts and tools from their account (`/api/v1/account/a
 ### Template upgrades (Phase 12)
 
 A server keeps the template version it was created with (templates never change). When a newer version of its game's template exists (same key, a higher semantic version, a pre-release before its release), the server's details say so and `PUT /api/v1/servers/{id}/template` (`server.install`) moves a stopped server, with nothing else running on it, to that version: values of variables the new version no longer has are dropped, the others (and the new defaults) must still be valid, new required ports get an allocation, and the server is provisioned and installed again with the new manifest, its files kept (install steps such as SteamCMD only check them). Audited as `server.template_changed`. Never back to an older version.
+
+### Addons (Phase 12)
+
+The addons a server's game supports come from its template (doc 04, "Addons"); the panel keeps only which are installed and which release (`server_addons`), from the results of the operations that install, update and remove them (`addon_install`, `addon_remove`: the server installed and stopped, nothing else running; installing can be cancelled). A game update that reinstalls addons reports their new releases the same way. The installed keys go in the server's spec, so the agent keeps their lines in the game's files at every start. `GET /api/v1/servers/{id}/addons` (`server.view`), `POST` and `DELETE /api/v1/servers/{id}/addons/{key}` (`server.install`: they change the game's files); requests are audited (`server.addon_install_requested`, `server.addon_remove_requested`).
 
 ## PostgreSQL schema
 
@@ -291,6 +295,15 @@ CREATE TABLE servers (
 );
 CREATE INDEX ix_servers_node ON servers (node_id);
 
+CREATE TABLE server_addons (  -- Phase 12
+    server_id     uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    key           varchar(32) NOT NULL,          -- the manifest's addon key
+    release       varchar(128) NOT NULL,         -- the GitHub release installed
+    installed_at  timestamptz NOT NULL,
+    updated_at    timestamptz NOT NULL,
+    PRIMARY KEY (server_id, key)
+);
+
 CREATE TABLE server_variables (
     server_id        uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     key              varchar(64) NOT NULL,
@@ -356,7 +369,8 @@ CREATE TABLE operations (
     id                   uuid PRIMARY KEY,
     type                 text NOT NULL CHECK (type IN (
                              'server_provision','server_install','server_update',
-                             'server_delete','backup_create','backup_restore')),
+                             'server_delete','backup_create','backup_restore',
+                             'addon_install','addon_remove')),
                              -- a reinstall is provision + install; deleting a backup is a plain command
     status               text NOT NULL CHECK (status IN (
                              'queued','running','succeeded','failed','cancelled','interrupted')),

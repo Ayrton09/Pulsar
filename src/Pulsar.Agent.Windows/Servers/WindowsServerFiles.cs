@@ -17,6 +17,7 @@ namespace Pulsar.Agent.Windows.Servers;
 public sealed class WindowsServerFiles : IServerFiles
 {
     private const uint DeleteAccess = 0x00010000;
+    private const uint ReadAttributesAccess = 0x00000080;
     private const uint GenericRead = 0x80000000;
     private const uint GenericWrite = 0x40000000;
 
@@ -73,6 +74,44 @@ public sealed class WindowsServerFiles : IServerFiles
                 throw Failure("files.delete_failed", relativePath);
             }
         }
+    }
+
+    public bool DeleteEmptyDirectory(string serverRoot, string relativePath)
+    {
+        var (root, path) = Paths(serverRoot, relativePath);
+        using var handle = Open(path, DeleteAccess | ReadAttributesAccess, FILE_CREATION_DISPOSITION.OPEN_EXISTING, allowMissing: true, directory: true);
+        if (handle is null)
+        {
+            return false;
+        }
+
+        FILE_ATTRIBUTE_TAG_INFO info;
+        unsafe
+        {
+            if (!PInvoke.GetFileInformationByHandleEx((HANDLE)handle.DangerousGetHandle(), FILE_INFO_BY_HANDLE_CLASS.FileAttributeTagInfo, &info, (uint)sizeof(FILE_ATTRIBUTE_TAG_INFO)))
+            {
+                throw Failure("files.open_failed", relativePath);
+            }
+        }
+
+        // Only a real directory: a link in its place is left alone.
+        if ((info.FileAttributes & (uint)FILE_FLAGS_AND_ATTRIBUTES.FILE_ATTRIBUTE_REPARSE_POINT) != 0
+            || (info.FileAttributes & (uint)FILE_FLAGS_AND_ATTRIBUTES.FILE_ATTRIBUTE_DIRECTORY) == 0)
+        {
+            return false;
+        }
+
+        CheckLocation(handle, root, relativePath);
+        var disposition = new FILE_DISPOSITION_INFO { DeleteFile = true };
+        unsafe
+        {
+            if (PInvoke.SetFileInformationByHandle((HANDLE)handle.DangerousGetHandle(), FILE_INFO_BY_HANDLE_CLASS.FileDispositionInfo, &disposition, (uint)sizeof(FILE_DISPOSITION_INFO)))
+            {
+                return true;
+            }
+        }
+
+        return (WIN32_ERROR)Marshal.GetLastPInvokeError() == WIN32_ERROR.ERROR_DIR_NOT_EMPTY ? false : throw Failure("files.delete_failed", relativePath);
     }
 
     public void CreateDirectory(string serverRoot, string relativePath)

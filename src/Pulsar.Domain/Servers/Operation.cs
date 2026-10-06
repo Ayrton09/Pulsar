@@ -10,6 +10,8 @@ public enum OperationType
     ServerDelete,
     BackupCreate,
     BackupRestore,
+    AddonInstall,
+    AddonRemove,
 }
 
 public enum OperationStatus
@@ -87,7 +89,8 @@ public sealed class Operation
     /// <summary>When a user asked to cancel it (the agent then reports it as cancelled).</summary>
     public DateTimeOffset? CancelRequestedAt { get; private set; }
 
-    public bool IsCancellable => IsActive && Type is OperationType.ServerInstall or OperationType.ServerUpdate or OperationType.BackupCreate;
+    public bool IsCancellable => IsActive && Type is OperationType.ServerInstall or OperationType.ServerUpdate or OperationType.BackupCreate
+        or OperationType.AddonInstall;
 
     public bool IsActive => Status is OperationStatus.Queued or OperationStatus.Running;
 
