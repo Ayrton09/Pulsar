@@ -106,6 +106,10 @@ Server and node pages use a layout with a fixed header (name, status, power acti
 - Install, "Update to latest" and Remove (asked first) need `server.install` and a stopped, installed, idle server; otherwise the tab says to stop it. The operation's progress shows at the top of the page with Cancel for installs, like an update; the list refreshes when it ends. Refusals (what it needs, what it excludes, what needs it) are shown with the names.
 - API: `GET /api/v1/servers/{id}/addons`, `POST` and `DELETE /api/v1/servers/{id}/addons/{key}`; the server's details carry `hasAddons`.
 
+## Workshop
+
+*Phase 12.* A variable with `workshop` settings (doc 04, "Variables") is edited as a list, in the create wizard and in the Settings tab: each item by its name on Steam (a link to its page), with its size and last update, or why it is suspect (Steam does not know it, it is in another game's Workshop, it is a collection). An id or a Steam link adds an item; a collection offers to add its items. Removing is one click; the value saved is the game's own list. Steam is asked through the panel (`POST /api/v1/workshop/lookup`, `server.create` or `server.startup.edit` anywhere; up to 100 ids a request), never from the browser: no third-party requests from the page, and the CSP stays as it is. When Steam cannot be reached the ids are shown and edited as they are.
+
 ## Schedules
 
 - `/servers/:id?tab=schedules` (`server.schedules.view`): the server's tasks with what each does, when (in words: "Every day at 04:00", with its time zone when it is not the browser's), its next run (in the browser's time) and how its last run went (done, failed and why, skipped and why: "3 runs missed: the panel was not running"). History shows the last 50 runs. The list follows the live channel: a run ending refreshes it.

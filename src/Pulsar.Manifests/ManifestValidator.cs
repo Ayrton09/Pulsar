@@ -316,6 +316,24 @@ public static partial class ManifestValidator
                 error($"{path}.secret", "Only string variables can be secret.");
             }
 
+            if (variable.Workshop is { } workshop)
+            {
+                if (variable.Type != VariableType.String || variable.Secret)
+                {
+                    error($"{path}.workshop", "Only string variables that are not secret can list Workshop items.");
+                }
+
+                if (workshop.AppId is < 1 or > uint.MaxValue)
+                {
+                    error($"{path}.workshop.appId", "A Steam app id.");
+                }
+
+                if (workshop.Separator is not (";" or ","))
+                {
+                    error($"{path}.workshop.separator", "';' or ','.");
+                }
+            }
+
             switch (variable.Type)
             {
                 case VariableType.String:

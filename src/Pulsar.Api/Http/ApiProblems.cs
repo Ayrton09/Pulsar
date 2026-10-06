@@ -42,7 +42,7 @@ public static class ApiProblems
         "files.too_large" => StatusCodes.Status413PayloadTooLarge,
         "files.length_required" => StatusCodes.Status411LengthRequired,
         "files.disk_full" => StatusCodes.Status507InsufficientStorage,
-        "files.transfer_failed" or "files.failed" => StatusCodes.Status502BadGateway,
+        "files.transfer_failed" or "files.failed" or "workshop.unavailable" => StatusCodes.Status502BadGateway,
         _ => StatusCodes.Status400BadRequest,
     };
 

@@ -69,7 +69,16 @@ public sealed record VariableDefinition(
     long? Min = null,
     long? Max = null,
     IReadOnlyList<EnumOption>? Options = null,
-    string? Description = null);
+    string? Description = null,
+    WorkshopList? Workshop = null);
+
+/// <summary>
+/// A string variable that lists Steam Workshop items by id (Project Zomboid's <c>WorkshopItems</c>): the panel offers
+/// an editor that looks the items up on Steam. The game downloads them itself.
+/// </summary>
+/// <param name="AppId">The Steam app whose Workshop the items belong to (the game's, not its dedicated server's).</param>
+/// <param name="Separator">Between ids: <c>;</c> or <c>,</c>.</param>
+public sealed record WorkshopList(long AppId, string Separator = ";");
 
 /// <summary>One choice of an <see cref="VariableType.Enum"/> variable; <see cref="Map"/> gives its sub-values.</summary>
 public sealed record EnumOption(string Value, string Label, IReadOnlyDictionary<string, string>? Map = null);

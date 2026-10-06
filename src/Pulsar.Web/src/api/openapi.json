@@ -2466,6 +2466,88 @@
         }
       }
     },
+    "/api/v1/workshop/lookup": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkshopLookupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkshopItemView"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/roles": {
       "get": {
         "tags": [
@@ -12573,6 +12655,16 @@
               "null",
               "string"
             ]
+          },
+          "workshop": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TemplateWorkshop"
+              }
+            ]
           }
         }
       },
@@ -12612,6 +12704,22 @@
           },
           "source": {
             "$ref": "#/components/schemas/TemplateSource"
+          }
+        }
+      },
+      "TemplateWorkshop": {
+        "required": [
+          "appId",
+          "separator"
+        ],
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "separator": {
+            "type": "string"
           }
         }
       },
@@ -12936,6 +13044,79 @@
           "boolean",
           "enum"
         ]
+      },
+      "WorkshopItemView": {
+        "required": [
+          "id",
+          "found",
+          "title",
+          "otherGame",
+          "size",
+          "updatedAt",
+          "isCollection",
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "otherGame": {
+            "type": "boolean"
+          },
+          "size": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "updatedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "isCollection": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WorkshopLookupRequest": {
+        "required": [
+          "appId",
+          "ids"
+        ],
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ids": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
       }
     }
   },
@@ -12956,13 +13137,13 @@
       "name": "Audit"
     },
     {
+      "name": "Servers"
+    },
+    {
       "name": "Nodes"
     },
     {
       "name": "Panel keys"
-    },
-    {
-      "name": "Servers"
     },
     {
       "name": "Templates"

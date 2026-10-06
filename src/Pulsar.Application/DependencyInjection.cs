@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<ServerManagement>();
         services.AddScoped<ServerBackups>();
         services.AddScoped<ServerAddons>();
+        services.AddScoped<WorkshopLookup>();
         services.AddScoped<BackupStorages>();
         services.AddScoped<ConsoleCommands>();
         services.AddScoped<ServerFiles>();

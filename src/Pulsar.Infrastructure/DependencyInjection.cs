@@ -13,6 +13,7 @@ using Pulsar.Infrastructure.Notifications;
 using Pulsar.Infrastructure.Persistence;
 using Pulsar.Infrastructure.Scheduling;
 using Pulsar.Infrastructure.Servers;
+using Pulsar.Infrastructure.Steam;
 
 namespace Pulsar.Infrastructure;
 
@@ -63,6 +64,11 @@ public static class DependencyInjection
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
             .RemoveAllLoggers();
         services.AddHostedService<NotificationSenderService>();
+        // Steam's public Workshop API: one host, no redirects; nothing secret in the requests.
+        services.AddScoped<ISteamWorkshop, SteamWorkshopClient>();
+        services.AddHttpClient(SteamWorkshopClient.ClientName, client => client.Timeout = TimeSpan.FromSeconds(15))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
         services.AddHostedService<NodeWatchService>();
 
         services.AddIdentityCore<PulsarUser>(options =>

@@ -104,7 +104,18 @@
         "min": { "type": "integer" },
         "max": { "type": "integer" },
         "options": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/EnumOption" } },
-        "description": { "type": "string", "maxLength": 512 }
+        "description": { "type": "string", "maxLength": 512 },
+        "workshop": { "$ref": "#/$defs/WorkshopList" }
+      }
+    },
+    "WorkshopList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appId"],
+      "description": "The variable lists Steam Workshop item ids; the panel offers an editor that looks them up on Steam.",
+      "properties": {
+        "appId": { "type": "integer", "minimum": 1, "maximum": 4294967295, "description": "The game's Steam app id (whose Workshop the items are in)." },
+        "separator": { "enum": [";", ","], "default": ";" }
       }
     },
     "EnumOption": {

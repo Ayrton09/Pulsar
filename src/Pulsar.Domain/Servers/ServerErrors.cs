@@ -34,6 +34,12 @@ public static class ServerErrors
     public static DomainError AddonRequiredBy(string name, string other) =>
         new("addon.required_by", $"{other} needs {name}: remove it first.");
 
+    public static DomainError WorkshopInvalid { get; } =
+        new("workshop.invalid", "Give a Steam app id and 1 to 100 Workshop ids (numbers).");
+
+    public static DomainError WorkshopUnavailable(string reason) =>
+        new("workshop.unavailable", $"Steam could not be asked about these Workshop items: {reason}");
+
     public static DomainError TemplateNotNewer { get; } =
         new("server.template_not_newer", "A server moves only to a newer version of its own game's template.");
 

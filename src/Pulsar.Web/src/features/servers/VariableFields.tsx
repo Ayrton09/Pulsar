@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import type { TemplateVariable } from './api';
 import type { VariableValues } from './variables';
+import { WorkshopField } from './WorkshopField';
 
 interface VariableFieldsProps {
   variables: TemplateVariable[];
@@ -56,7 +57,15 @@ export function VariableFields({ variables, values, onChange, secretsSet, errors
         return (
           <Field key={variable.key} label={label} hint={hint || undefined} error={error ? t(error) : undefined}>
             {(ids) =>
-              variable.type === 'enum' ? (
+              variable.workshop ? (
+                <WorkshopField
+                  variable={{ ...variable, workshop: variable.workshop }}
+                  value={value}
+                  disabled={disabled}
+                  onChange={(next) => onChange(variable.key, next)}
+                  control={ids}
+                />
+              ) : variable.type === 'enum' ? (
                 <Select
                   {...ids}
                   value={value}

@@ -46,7 +46,11 @@ public sealed record TemplateVariable(
     long? Min,
     long? Max,
     IReadOnlyList<TemplateOption> Options,
-    string? Description);
+    string? Description,
+    TemplateWorkshop? Workshop = null);
+
+/// <summary>The variable lists Steam Workshop items of <paramref name="AppId"/>, separated by <paramref name="Separator"/>.</summary>
+public sealed record TemplateWorkshop(long AppId, string Separator);
 
 /// <param name="Follows">The port this one comes with (its port number plus <paramref name="Offset"/>): not chosen on its own.</param>
 public sealed record TemplatePort(string Name, string Label, IReadOnlyList<PortProtocol> Protocols, int Default, bool Required, string? Description,
@@ -239,7 +243,8 @@ public sealed partial class TemplateCatalog(IPulsarDbContext db, TemplateOptions
 
     internal static TemplateVariable Variable(VariableDefinition v) => new(v.Key, v.Label, v.Type,
         v.Default is { } value ? VariableValues.FromJson(value) : null, v.Required, v.Secret, v.UserEditable, v.Pattern, v.MaxLength, v.Min, v.Max,
-        [.. (v.Options ?? []).Select(o => new TemplateOption(o.Value, o.Label))], v.Description);
+        [.. (v.Options ?? []).Select(o => new TemplateOption(o.Value, o.Label))], v.Description,
+        v.Workshop is { } workshop ? new TemplateWorkshop(workshop.AppId, workshop.Separator) : null);
 
     /// <summary>Top-level manifest sections whose content differs (what an administrator should look at first).</summary>
     private static IReadOnlyList<string> ChangedSections(string before, string after)

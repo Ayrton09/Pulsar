@@ -118,6 +118,8 @@ Manifests and schemas are MIT licensed so communities and hosting companies can 
 
 Attributes: `secret` (strings only, no default; encrypted in the database, write-only in the API, masked in UI and logs, never placed in the environment where child processes would inherit it), `required`, `userEditable` (when `false`, only users with `server.settings.edit` can change it; whoever creates the server sets its first value).
 
+`workshop` (Phase 12): `{ "appId": 108600, "separator": ";" }` on a string variable that is not secret says it lists Steam Workshop items of that game (the game's app id, not its dedicated server's), separated by `;` (the default) or `,`. The panel then offers an editor that shows each item by name and adds items by id or link (a collection adds its items), looking them up on Steam's public Workshop API; the value is still the plain list, checked by the variable's `pattern`, and the game downloads the items itself. Project Zomboid's `workshopItems` uses it.
+
 Additional default validation for `string` values used as arguments: no leading whitespace, no control characters, and they **cannot start with `-` or `+`** (prevents a value from becoming a flag or a Source console command). Regexes are evaluated with `RegexOptions.NonBacktracking` and a timeout (no ReDoS from a manifest).
 
 ### Argument templates

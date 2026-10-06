@@ -361,6 +361,10 @@
     "insecureDescription": "Passwords and sessions travel in clear text. Use HTTPS outside a trusted network."
   },
   "errors": {
+    "workshop": {
+      "invalid": "Give 1 to 100 Workshop ids.",
+      "unavailable": "Steam could not be asked about these items. Try again later."
+    },
     "addon": {
       "not_found": "The server's game has no such mod.",
       "unsupported": "The node's agent cannot install mods: update the agent.",
@@ -801,6 +805,24 @@
       "unset": "Not set",
       "outOfRange": "Out of the allowed range.",
       "badFormat": "The format is not valid for this setting."
+    },
+    "workshop": {
+      "empty": "No Workshop items.",
+      "placeholder": "Id or Steam link of an item or collection",
+      "add": "Add",
+      "removeShort": "Remove",
+      "remove": "Remove {{name}}",
+      "invalid": "That is not a Workshop id or link.",
+      "duplicate": "That item is in the list already.",
+      "tooMany": "This setting cannot hold more items.",
+      "notFound": "Steam does not know it (removed, private or another id)",
+      "otherGame": "It is not in this game's Workshop",
+      "isCollection": "a collection: add its items instead",
+      "updated": "updated {{when}}",
+      "collection_one": "{{title}} is a collection of {{count}} item.",
+      "collection_other": "{{title}} is a collection of {{count}} items.",
+      "addCollection_one": "Add its item",
+      "addCollection_other": "Add its {{count}} items"
     },
     "stages": {
       "queued": "waiting for its turn",

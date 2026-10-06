@@ -2463,6 +2463,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workshop/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["WorkshopLookupRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WorkshopItemView"][];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/roles": {
         parameters: {
             query?: never;
@@ -9643,6 +9727,7 @@ export interface components {
             max: null | number;
             options: components["schemas"]["TemplateOption"][];
             description: null | string;
+            workshop?: null | components["schemas"]["TemplateWorkshop"];
         };
         TemplateView: {
             /** Format: uuid */
@@ -9653,6 +9738,11 @@ export interface components {
             description: null | string;
             isTestGame: boolean;
             source: components["schemas"]["TemplateSource"];
+        };
+        TemplateWorkshop: {
+            /** Format: int64 */
+            appId: number;
+            separator: string;
         };
         TwoFactorLoginRequest: {
             code: null | string;
@@ -9729,6 +9819,23 @@ export interface components {
         };
         /** @enum {unknown} */
         VariableType: "string" | "integer" | "boolean" | "enum";
+        WorkshopItemView: {
+            id: string;
+            found: boolean;
+            title: null | string;
+            otherGame: boolean;
+            /** Format: int64 */
+            size: null | number;
+            /** Format: date-time */
+            updatedAt: null | string;
+            isCollection: boolean;
+            items: string[];
+        };
+        WorkshopLookupRequest: {
+            /** Format: int64 */
+            appId: number;
+            ids: string[];
+        };
     };
     responses: never;
     parameters: never;

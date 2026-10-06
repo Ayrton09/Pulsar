@@ -21,7 +21,8 @@
       "description": "The Java heap. Keep it under the server's memory limit, if it has one." },
     { "key": "public", "label": "Listed in the server browser", "type": "boolean", "default": false },
     { "key": "workshopItems", "label": "Workshop items", "type": "string", "default": "", "maxLength": 2048, "pattern": "^([0-9]+(;[0-9]+)*)?$",
-      "description": "Steam Workshop item ids, separated by semicolons. The server downloads them when it starts." },
+      "description": "Steam Workshop item ids, separated by semicolons. The server downloads them when it starts.",
+      "workshop": { "appId": 108600 } },
     { "key": "mods", "label": "Mod ids", "type": "string", "default": "", "maxLength": 2048, "pattern": "^[A-Za-z0-9_ .;\\\\-]*$",
       "description": "The mods to load, by their mod id (not their Workshop id), separated by semicolons. Build 42 writes each as \\ModId." }
   ],

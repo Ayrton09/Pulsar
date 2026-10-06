@@ -1,0 +1,155 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { Schemas } from '../../api/client';
+import { initI18n } from '../../app/i18n';
+import { fakeApi, json } from '../../test/fakeApi';
+import type { TemplateVariable } from './api';
+import { VariableFields } from './VariableFields';
+import { parseWorkshopId } from './workshop';
+
+const variable: TemplateVariable = {
+  key: 'workshopItems',
+  label: 'Workshop items',
+  type: 'string',
+  default: '',
+  required: false,
+  secret: false,
+  userEditable: true,
+  pattern: '^([0-9]+(;[0-9]+)*)?$',
+  maxLength: 2048,
+  min: null,
+  max: null,
+  options: [],
+  description: null,
+  workshop: { appId: 108600, separator: ';' },
+};
+
+function item(id: string, changes: Partial<Schemas['WorkshopItemView']> = {}): Schemas['WorkshopItemView'] {
+  return {
+    id,
+    found: true,
+    title: `Mod ${id}`,
+    otherGame: false,
+    size: 2 * 1024 * 1024,
+    updatedAt: '2026-10-01T12:00:00Z',
+    isCollection: false,
+    items: [],
+    ...changes,
+  };
+}
+
+const steam: Record<string, Schemas['WorkshopItemView']> = {
+  '111': item('111', { title: 'True Water' }),
+  '222': item('222', { found: false, title: null, size: null, updatedAt: null }),
+  '333': item('333', { title: 'A hat', otherGame: true }),
+  '444': item('444', { title: 'Brita weapons' }),
+  '900': item('900', { title: 'Survival pack', isCollection: true, items: ['111', '501', '502'] }),
+};
+
+/** The editor as forms use it, keeping the value it reports. */
+function Editor({ initial, disabled = false, changes }: { initial: string; disabled?: boolean; changes: string[] }) {
+  const [value, setValue] = useState(initial);
+  return (
+    <VariableFields
+      variables={[variable]}
+      values={{ workshopItems: value }}
+      readOnly={() => disabled}
+      onChange={(_, next) => {
+        changes.push(next);
+        setValue(next);
+      }}
+    />
+  );
+}
+
+function renderEditor(initial: string, disabled = false) {
+  const changes: string[] = [];
+  const lookups: string[][] = [];
+  fakeApi({
+    'POST /api/v1/workshop/lookup': async (request) => {
+      const body = (await request.json()) as { appId: number; ids: string[] };
+      expect(body.appId).toBe(108600);
+      lookups.push(body.ids);
+      return json(body.ids.map((id) => steam[id] ?? item(id)));
+    },
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <Editor initial={initial} disabled={disabled} changes={changes} />
+    </QueryClientProvider>,
+  );
+  return { changes, lookups };
+}
+
+beforeAll(async () => {
+  await initI18n('en-US');
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe('workshop editor', () => {
+  it('reads ids and links', () => {
+    expect(parseWorkshopId(' 3806657188 ')).toBe('3806657188');
+    expect(parseWorkshopId('https://steamcommunity.com/sharedfiles/filedetails/?id=3806657188&searchtext=')).toBe(
+      '3806657188',
+    );
+    expect(parseWorkshopId('https://steamcommunity.com/workshop/filedetails/?l=english&id=42')).toBe('42');
+    expect(parseWorkshopId('0123')).toBeNull();
+    expect(parseWorkshopId('mod name')).toBeNull();
+  });
+
+  it('shows the items by name and removes them', async () => {
+    const { changes, lookups } = renderEditor('111;222;333');
+
+    const list = screen.getByRole('list', { name: 'Workshop items' });
+    expect(await within(list).findByRole('link', { name: 'True Water' })).toHaveAttribute(
+      'href',
+      'https://steamcommunity.com/sharedfiles/filedetails/?id=111',
+    );
+    expect(within(list).getAllByText(/2 MB/)).toHaveLength(2);
+    expect(within(list).getByText(/Steam does not know it/)).toBeInTheDocument();
+    expect(within(list).getByText(/It is not in this game's Workshop/)).toBeInTheDocument();
+    expect(lookups).toEqual([['111', '222', '333']]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove A hat' }));
+    expect(changes).toEqual(['111;222']);
+  });
+
+  it('adds items by id or link, and the items of a collection', async () => {
+    const { changes } = renderEditor('111');
+    const input = screen.getByRole('textbox', { name: 'Workshop items' });
+
+    await userEvent.type(input, 'not an id{Enter}');
+    expect(screen.getByRole('alert')).toHaveTextContent('That is not a Workshop id or link.');
+    await userEvent.clear(input);
+    await userEvent.type(input, '111{Enter}');
+    expect(screen.getByRole('alert')).toHaveTextContent('That item is in the list already.');
+
+    await userEvent.clear(input);
+    await userEvent.type(input, 'https://steamcommunity.com/sharedfiles/filedetails/?id=444');
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(changes).toEqual(['111;444']));
+    expect(input).toHaveValue('');
+
+    await userEvent.type(input, '900{Enter}');
+    const collection = await screen.findByRole('status');
+    expect(collection).toHaveTextContent('Survival pack is a collection of 3 items.');
+    await userEvent.click(within(collection).getByRole('button', { name: 'Add its 3 items' }));
+    expect(changes.at(-1)).toBe('111;444;501;502'); // 111 was there already
+  });
+
+  it('only shows the items when the user may not change them', async () => {
+    renderEditor('111', true);
+
+    expect(await screen.findByRole('link', { name: 'True Water' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument();
+  });
+});

@@ -361,6 +361,10 @@
     "insecureDescription": "Las contraseñas y la sesión viajan en texto plano. Usá HTTPS fuera de una red de confianza."
   },
   "errors": {
+    "workshop": {
+      "invalid": "Indicá entre 1 y 100 ids del Workshop.",
+      "unavailable": "No se pudo consultar a Steam por estos ítems. Probá más tarde."
+    },
     "addon": {
       "not_found": "El juego del servidor no tiene ese mod.",
       "unsupported": "El agente del nodo no puede instalar mods: actualizalo.",
@@ -801,6 +805,24 @@
       "unset": "Sin definir",
       "outOfRange": "Fuera del rango permitido.",
       "badFormat": "El formato no es válido para esta opción."
+    },
+    "workshop": {
+      "empty": "No hay ítems del Workshop.",
+      "placeholder": "Id o link de Steam de un ítem o una colección",
+      "add": "Agregar",
+      "removeShort": "Quitar",
+      "remove": "Quitar {{name}}",
+      "invalid": "Eso no es un id ni un link del Workshop.",
+      "duplicate": "Ese ítem ya está en la lista.",
+      "tooMany": "Esta opción no admite más ítems.",
+      "notFound": "Steam no lo conoce (borrado, privado u otro id)",
+      "otherGame": "No es del Workshop de este juego",
+      "isCollection": "es una colección: agregá sus ítems",
+      "updated": "actualizado el {{when}}",
+      "collection_one": "{{title}} es una colección de {{count}} ítem.",
+      "collection_other": "{{title}} es una colección de {{count}} ítems.",
+      "addCollection_one": "Agregar su ítem",
+      "addCollection_other": "Agregar sus {{count}} ítems"
     },
     "stages": {
       "queued": "esperando su turno",
