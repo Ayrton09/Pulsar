@@ -40,6 +40,9 @@ public sealed class ServerAddonTests(PulsarApiFactory factory) : IClassFixture<P
         await File.WriteAllTextAsync(gameInfo, GameInfo, Ct);
 
         Assert.True((await ServerApi.GetAsync(admin, server))!.HasAddons);
+        // Whoever imports a template sees where its addons come from.
+        Assert.Equal(["github.com/alliedmodders/metamod-source", "github.com/roflmuffin/CounterStrikeSharp"],
+            (await GameServerTests.TemplateAsync(admin, "cs2")).Capabilities.AddonSources);
         var listed = await ListAsync(admin, server);
         Assert.Equal(["metamod", "counterstrikesharp"], listed.Select(a => a.Key));
         Assert.All(listed, a => Assert.Null(a.InstalledRelease));

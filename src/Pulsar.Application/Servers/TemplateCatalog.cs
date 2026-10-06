@@ -72,7 +72,8 @@ public sealed record TemplateCapabilities(
     string Executable,
     IReadOnlyList<int> SteamAppIds,
     IReadOnlyList<string> ConfigFiles,
-    ManifestConsoleMode ConsoleMode);
+    ManifestConsoleMode ConsoleMode,
+    IReadOnlyList<string>? AddonSources = null);
 
 /// <summary>A manifest about to be imported: its errors, or what it is and how it differs from the latest version.</summary>
 public sealed record TemplateImportPreview(
@@ -238,7 +239,8 @@ public sealed partial class TemplateCatalog(IPulsarDbContext db, TemplateOptions
             [.. manifest.PortList.Select(p => new TemplatePort(p.Name, p.Label, p.Protocols, p.Default, p.Required, p.Description, p.Follows?.Port, p.Follows?.Offset))],
             runtime.AllowExtraArguments, manifest.Update is not null,
             new TemplateCapabilities(runtime.Executable, [.. steps.OfType<SteamCmdStep>().Select(s => s.AppId).Distinct()],
-                [.. manifest.ConfigFileList.Select(f => f.Path)], runtime.Console.Mode));
+                [.. manifest.ConfigFileList.Select(f => f.Path)], runtime.Console.Mode,
+                [.. manifest.AddonList.Select(a => a.Source is GitHubReleaseSource github ? $"github.com/{github.Repo}" : a.Key).Distinct()]));
     }
 
     internal static TemplateVariable Variable(VariableDefinition v) => new(v.Key, v.Label, v.Type,

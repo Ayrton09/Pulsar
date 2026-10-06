@@ -9663,6 +9663,7 @@ export interface components {
             steamAppIds: number[];
             configFiles: string[];
             consoleMode: components["schemas"]["ManifestConsoleMode"];
+            addonSources?: null | string[];
         };
         TemplateContentRequest: {
             content: string;

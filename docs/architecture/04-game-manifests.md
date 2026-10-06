@@ -13,7 +13,7 @@
 
 A manifest decides which executable is launched and what is downloaded. **Importing a manifest is equivalent to installing software on every node.** Therefore:
 
-- Only `template.manage` (global) can import; the UI shows a summary of "capabilities" (executables, download domains, ports) and the diff against the previous version.
+- Only `template.manage` (global) can import; the UI shows a summary of "capabilities" (executables, download domains, ports, the GitHub repositories of its addons) and the diff against the previous version.
 - Official manifests ship with the panel (`games/`) and are registered as `source = bundled`.
 - (Post-v1) optional signing of the official catalog and a per-node local policy that only accepts signed manifests.
 

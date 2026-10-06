@@ -83,7 +83,7 @@ function renderAt(path: string) {
 }
 
 function card(name: string): HTMLElement {
-  return screen.getByRole('heading', { name }).closest('div.flex-col') as HTMLElement;
+  return screen.getByRole('heading', { name }).closest('section') as HTMLElement;
 }
 
 beforeAll(async () => {
@@ -163,6 +163,23 @@ describe('mods tab', () => {
     await userEvent.click(within(card('Metamod:Source')).getByRole('button', { name: 'Remove' }));
 
     await waitFor(() => expect(calls).toEqual(['install counterstrikesharp', 'update metamod', 'remove metamod']));
+  });
+
+  it('names the addons a refusal is about, in the language of the user', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/addons`]: () =>
+        json([{ ...metamod, installedRelease: null, installedAt: null }, cssharp]),
+      [`POST /api/v1/servers/${serverId}/addons/counterstrikesharp`]: () =>
+        problem(409, 'addon.requires', 'CounterStrikeSharp needs Metamod:Source installed first.'),
+    });
+    renderAt(`/servers/${serverId}?tab=addons`);
+    await screen.findByRole('heading', { name: 'CounterStrikeSharp' });
+
+    await userEvent.click(within(card('CounterStrikeSharp')).getByRole('button', { name: 'Install' }));
+
+    expect(await screen.findByText('CounterStrikeSharp needs Metamod:Source: install it first.')).toBeInTheDocument();
   });
 
   it('waits for the server to stop', async () => {

@@ -959,6 +959,7 @@
     "unchanged": "No cambió nada además de la versión.",
     "executable": "Ejecuta",
     "steamApps": "Apps de Steam",
+    "addonSources": "Addons de",
     "configFiles": "Escribe",
     "ports": "Puertos",
     "variables": "Configuración",
@@ -1033,6 +1034,11 @@
     "install": "Instalar",
     "update": "Actualizar a la última",
     "remove": "Quitar",
+    "refused": {
+      "requires": "{{name}} necesita {{others}}: instalalo primero.",
+      "conflicts": "{{name}} no se puede instalar junto con {{others}}: quitalo primero.",
+      "required_by": "{{others}} necesita {{name}}: quitalo primero."
+    },
     "removeConfirm": "¿Quitar {{name}} de {{server}}? Se borran los archivos que instaló, aunque los hayas cambiado; los que agregaste vos se conservan."
   },
   "backups": {

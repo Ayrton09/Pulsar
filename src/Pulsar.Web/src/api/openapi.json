@@ -12371,6 +12371,15 @@
           },
           "consoleMode": {
             "$ref": "#/components/schemas/ManifestConsoleMode"
+          },
+          "addonSources": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

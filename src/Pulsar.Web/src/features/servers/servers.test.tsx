@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -8,6 +8,7 @@ import { App } from '../../app/App';
 import { initI18n } from '../../app/i18n';
 import { routes } from '../../app/routes';
 import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
+import { connections, openedConnection } from '../../test/fakeSignalR';
 import { serverActions, serverDisplayState } from './serverStatus';
 
 const operator = {
@@ -231,10 +232,14 @@ describe('servers page', () => {
       },
       [`GET /api/v1/servers/${installing.id}`]: () => json(details(installing, [installOperation])),
     });
+    const before = connections.length;
     const router = renderAt('/servers');
     const user = userEvent.setup();
+    const live = await openedConnection(before);
 
     await user.click(await screen.findByRole('button', { name: 'Create server' }));
+    // Nodes connecting or dropping while the dialog is open update its list.
+    await waitFor(() => expect(live.calls('WatchNodes')).toHaveLength(1));
     await user.type(screen.getByLabelText('Name'), 'Fresh');
     const nodes = screen.getByLabelText('Node');
     expect(within(nodes).queryByRole('option', { name: 'Offline box' })).not.toBeInTheDocument();

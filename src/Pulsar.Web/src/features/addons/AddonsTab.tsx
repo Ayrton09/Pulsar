@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { ApiError } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Badge, Card } from '../../components/ui/Display';
 import { errorMessage } from '../../lib/errors';
@@ -34,6 +35,31 @@ export function AddonsTab({ details }: { details: ServerDetails }) {
   const list = addons.data;
   const nameOf = (key: string) => list.find((addon) => addon.key === key)?.name ?? key;
   const error = install.error ?? remove.error;
+  const installed = new Set(list.filter((addon) => addon.installedRelease != null).map((addon) => addon.key));
+  // The panel's refusals name the addons in English: say it again with the names, in the user's language.
+  const refusal = (): string | null => {
+    const key = install.error ? install.variables : remove.variables;
+    const addon = list.find((a) => a.key === key);
+    if (!(error instanceof ApiError) || !addon) {
+      return null;
+    }
+    const others =
+      error.code === 'addon.requires'
+        ? addon.requires.filter((k) => !installed.has(k))
+        : error.code === 'addon.conflicts'
+          ? [...addon.conflicts, ...list.filter((a) => a.conflicts.includes(addon.key)).map((a) => a.key)].filter((k) =>
+              installed.has(k),
+            )
+          : error.code === 'addon.required_by'
+            ? list.filter((a) => installed.has(a.key) && a.requires.includes(addon.key)).map((a) => a.key)
+            : [];
+    return others.length === 0
+      ? null
+      : t(`addons.refused.${error.code.slice('addon.'.length)}`, {
+          name: addon.name,
+          others: [...new Set(others)].map(nameOf).join(', '),
+        });
+  };
   const removeAddon = (addon: AddonView) =>
     window.confirm(t('addons.removeConfirm', { name: addon.name, server: server.name })) && remove.mutate(addon.key);
 
@@ -41,7 +67,7 @@ export function AddonsTab({ details }: { details: ServerDetails }) {
     <div className="space-y-6">
       <p className="max-w-2xl text-sm text-muted">{t('addons.hint')}</p>
       {canChange && !changeable && <p className="text-sm text-muted">{t('addons.stopToChange')}</p>}
-      {error && <Alert>{errorMessage(t, error)}</Alert>}
+      {error && <Alert>{refusal() ?? errorMessage(t, error)}</Alert>}
       <div className="grid gap-4 xl:grid-cols-2">
         {list.map((addon) => (
           <AddonCard

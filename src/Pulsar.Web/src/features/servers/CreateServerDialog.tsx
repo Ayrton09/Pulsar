@@ -8,6 +8,7 @@ import { Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { canOnNode, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
+import { useWatchNodes } from '../live/hooks';
 import { useAllocations, useNodes } from '../nodes/api';
 import { useCreateServer, useTemplate, useTemplates, type TemplateDetails, type TemplateVariable } from './api';
 import { VariableFields } from './VariableFields';
@@ -28,6 +29,8 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const create = useCreateServer();
   const nodes = useNodes();
+  // Nodes that connect or drop while the dialog is open come and go from the list.
+  useWatchNodes();
   const templates = useTemplates();
   const [step, setStep] = useState<Step>('basics');
   const [name, setName] = useState('');

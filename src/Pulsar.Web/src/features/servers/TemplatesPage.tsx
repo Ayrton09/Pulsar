@@ -138,6 +138,12 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
                   ? details.capabilities.steamAppIds.join(', ')
                   : t('common.none')}
               </dd>
+              <dt className="text-muted">{t('templates.addonSources')}</dt>
+              <dd>
+                {details.capabilities.addonSources?.length
+                  ? details.capabilities.addonSources.join(', ')
+                  : t('common.none')}
+              </dd>
               <dt className="text-muted">{t('templates.configFiles')}</dt>
               <dd>
                 {details.capabilities.configFiles.length > 0

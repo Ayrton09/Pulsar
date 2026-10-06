@@ -959,6 +959,7 @@
     "unchanged": "Nothing changed besides the version.",
     "executable": "Runs",
     "steamApps": "Steam apps",
+    "addonSources": "Addons from",
     "configFiles": "Writes",
     "ports": "Ports",
     "variables": "Settings",
@@ -1033,6 +1034,11 @@
     "install": "Install",
     "update": "Update to latest",
     "remove": "Remove",
+    "refused": {
+      "requires": "{{name}} needs {{others}}: install it first.",
+      "conflicts": "{{name}} cannot be installed with {{others}}: remove it first.",
+      "required_by": "{{others}} needs {{name}}: remove it first."
+    },
     "removeConfirm": "Remove {{name}} from {{server}}? The files it installed are deleted, even if you changed them; files you added yourself are kept."
   },
   "backups": {
