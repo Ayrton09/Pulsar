@@ -65,6 +65,14 @@ public sealed class ServerAddonTests(PulsarApiFactory factory) : IClassFixture<P
         await ServerApi.CommandAsync(admin, server, "stop");
         await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Offline, "stopped");
 
+        // An update brought the game's own gameinfo.gi back: the next start puts the line in again.
+        await File.WriteAllTextAsync(gameInfo, GameInfo, Ct);
+        await ServerApi.CommandAsync(admin, server, "start");
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Running, "running again");
+        Assert.Contains("\tGame\tcsgo/addons/metamod\n", await File.ReadAllTextAsync(gameInfo, Ct), StringComparison.Ordinal);
+        await ServerApi.CommandAsync(admin, server, "stop");
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Offline, "stopped again");
+
         await RemoveAsync(admin, server, "counterstrikesharp");
         await RemoveAsync(admin, server, "metamod");
         Assert.False(Directory.Exists(Path.Combine(root, "game", "csgo", "addons", "metamod")));
@@ -84,7 +92,21 @@ public sealed class ServerAddonTests(PulsarApiFactory factory) : IClassFixture<P
 
         await InstallAsync(admin, server, "oxide", "2.0.7801");
         Assert.Equal("addon.conflicts", await ProblemAsync(admin.PostAsync($"/api/v1/servers/{server}/addons/carbon"), HttpStatusCode.Conflict));
-        Assert.Contains(github.Requested, u => u.EndsWith("/Oxide.Rust.zip", StringComparison.Ordinal));
+        Assert.Single(github.Requested, u => u.EndsWith("/Oxide.Rust.zip", StringComparison.Ordinal));
+
+        // A game update overwrites Oxide's files: the same operation installs its latest release again.
+        github.Release("OxideMod/Oxide.Rust/releases/latest", "2.0.7900", "Oxide.Rust.zip", list: false,
+            ("RustDedicated_Data/Managed/Oxide.Core.dll", "oxide, newer"));
+        using (var update = await admin.PostAsync($"/api/v1/servers/{server}/update", new UpdateGameRequest(Validate: false)))
+        {
+            await AccessScenario.EnsureSuccessAsync(update);
+        }
+
+        var updated = await ServerApi.WaitForAsync(admin, server, s => s.Server.ActiveOperation is null && s.RecentOperations[0].Type == OperationType.ServerUpdate,
+            "updated");
+        Assert.Equal(OperationStatus.Succeeded, updated.RecentOperations[0].Status);
+        Assert.Equal(2, github.Requested.Count(u => u.EndsWith("/Oxide.Rust.zip", StringComparison.Ordinal)));
+        Assert.Equal("2.0.7900", (await ListAsync(admin, server)).Single(a => a.Key == "oxide").InstalledRelease);
     }
 
     private async Task<InProcessAgent> ConnectedAgentAsync(PanelClient admin, FakeGitHub github)

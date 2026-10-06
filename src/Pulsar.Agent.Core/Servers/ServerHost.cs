@@ -502,9 +502,10 @@ public sealed partial class ServerHost(
                 return null;
             }
 
-            // Oxide and the like: the game's update put its own files back.
+            // Oxide and the like: the game's update put its own files back. What is installed is what this node recorded
+            // (the spec catches up only at the next start).
             var reinstalled = new List<AddonRelease>();
-            foreach (var addon in server.Manifest.AddonList.Where(a => a.ReinstallAfterUpdate && server.Spec.Addons?.Contains(a.Key) == true))
+            foreach (var addon in server.Manifest.AddonList.Where(a => a.ReinstallAfterUpdate && Addons.Read(directory, a.Key) is not null))
             {
                 var record = await Addons.InstallAsync(directory, addon, force: true, (stage, percent) => SendProgressAsync(operationId, stage, percent),
                     cancellationToken);

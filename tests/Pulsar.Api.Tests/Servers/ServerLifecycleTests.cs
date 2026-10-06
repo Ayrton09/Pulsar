@@ -3,11 +3,14 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Pulsar.Api.Auth;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Access;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
+using Pulsar.Domain.Access;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Servers;
 
@@ -210,6 +213,46 @@ public sealed class ServerLifecycleTests(PulsarApiFactory factory) : IClassFixtu
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Contains("server.template_unsupported", await response.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+    }
+
+    [DatabaseFact]
+    public async Task AKeyThatMayOnlyStartServersStartsOneAndNothingElseUntilRevoked()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "api-key");
+        var server = await InstalledServerAsync(admin, agent, "Started by a script");
+        CreatedApiKey key;
+        using (var created = await admin.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest("Start script", [Permissions.Server.Start], 1)))
+        {
+            await AccessScenario.EnsureSuccessAsync(created);
+            key = (await created.Content.ReadFromJsonAsync<CreatedApiKey>(AccessScenario.Json, Ct))!;
+        }
+
+        // A script: the key alone, no cookie and no antiforgery token, as curl sends it.
+        using var script = factory.CreateDefaultClient(new Uri("https://localhost"));
+        script.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key.Value);
+        using (var start = await script.PostAsync(new Uri($"/api/v1/servers/{server}/start", UriKind.Relative), null, Ct))
+        {
+            Assert.Equal(HttpStatusCode.OK, start.StatusCode);
+        }
+
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Running, "started by the key");
+        using (var stop = await script.PostAsync(new Uri($"/api/v1/servers/{server}/stop", UriKind.Relative), null, Ct))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, stop.StatusCode);
+        }
+
+        using (var revoked = await admin.DeleteAsync($"/api/v1/account/api-keys/{key.Key.Id}"))
+        {
+            await AccessScenario.EnsureSuccessAsync(revoked);
+        }
+
+        using (var again = await script.PostAsync(new Uri($"/api/v1/servers/{server}/start", UriKind.Relative), null, Ct))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, again.StatusCode);
+        }
+
+        Assert.Equal(AckStatus.Accepted, (await ServerApi.CommandAsync(admin, server, "stop")).Status);
     }
 
     private async Task<InProcessAgent> ConnectedAgentAsync(PanelClient admin, string name)
