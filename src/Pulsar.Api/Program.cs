@@ -99,8 +99,10 @@ try
     app.UsePanelHubOriginCheck();
 
     app.UseAuthentication();
-    app.UseAuthorization();
+    // Before authorization: requests with an API key count whether or not they are allowed.
+    app.UseApiKeyRateLimitPartition();
     app.UseRateLimiter();
+    app.UseAuthorization();
 
     // Liveness never touches dependencies; readiness includes the database.
     app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();

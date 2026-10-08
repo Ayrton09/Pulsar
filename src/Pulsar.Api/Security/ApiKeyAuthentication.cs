@@ -74,6 +74,32 @@ internal sealed class ApiKeyAuthenticationHandler(
     }
 }
 
+/// <summary>
+/// What a request with an API key counts against (docs/architecture/02, "API keys"): its key, or the client's address
+/// when the key does not work. Found before authorization, so refused requests count as well: each costs a key lookup.
+/// </summary>
+internal static class ApiKeyRateLimit
+{
+    private static readonly object s_partition = new();
+
+    public static IApplicationBuilder UseApiKeyRateLimitPartition(this IApplicationBuilder app) => app.Use(async (context, next) =>
+    {
+        if (UserSchemes.BearerValue(context.Request) is not null)
+        {
+            // The handler keeps its result for the request: authorization uses it without matching the key again.
+            var result = await context.AuthenticateAsync(ApiKeyAuthenticationHandler.Scheme);
+            context.Items[s_partition] = result.Succeeded && result.Principal.FindFirstValue(ApiKeyClaims.KeyId) is { } key
+                ? $"key:{key}"
+                : $"address:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+        }
+
+        await next(context);
+    });
+
+    /// <summary>The request's partition; null for requests without an API key (browsers have no budget).</summary>
+    public static string? Partition(HttpContext context) => context.Items.TryGetValue(s_partition, out var partition) ? partition as string : null;
+}
+
 /// <summary>Claims of a request made with an API key.</summary>
 public static class ApiKeyClaims
 {

@@ -21,6 +21,9 @@ public sealed class FakeSteam : HttpMessageHandler
 
     public HttpStatusCode? Failure { get; set; }
 
+    /// <summary>Answers every request instead of the fake's own answers.</summary>
+    public Func<HttpResponseMessage>? Answer { get; set; }
+
     public List<string> Requests { get; } = [];
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -34,6 +37,11 @@ public sealed class FakeSteam : HttpMessageHandler
         if (Failure is { } failure)
         {
             return new HttpResponseMessage(failure);
+        }
+
+        if (Answer is { } answer)
+        {
+            return answer();
         }
 
         var ids = form.Split('&').Where(p => p.StartsWith("publishedfileids", StringComparison.Ordinal)).Select(p => p.Split('=')[1]).ToList();
@@ -145,5 +153,162 @@ public sealed class WorkshopTests(WorkshopApiFactory factory) : IClassFixture<Wo
         {
             factory.Steam.Failure = null;
         }
+    }
+
+    [DatabaseFact]
+    public async Task SteamsAnswerIsReadWithinItsLimitsAndRedirectsAreNotFollowed()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        factory.Steam.Items["3806657188"] = FakeSteam.Item("3806657188", new string('x', 300), 108600);
+        using (var response = await admin.PostAsync("/api/v1/workshop/lookup", new WorkshopLookupRequest(108600, ["3806657188"])))
+        {
+            await AccessScenario.EnsureSuccessAsync(response);
+            var items = (await response.Content.ReadFromJsonAsync<List<WorkshopItemView>>(AccessScenario.Json, Ct))!;
+            Assert.Equal(new string('x', 128), items[0].Title);
+        }
+
+        // An endless answer without a length: read up to the cap, not buffered whole first.
+        var endless = new List<EndlessStream>();
+        factory.Steam.Answer = () =>
+        {
+            var stream = new EndlessStream();
+            lock (endless)
+            {
+                endless.Add(stream);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(stream) };
+        };
+        try
+        {
+            await AssertUnavailableAsync(admin);
+            Assert.NotEmpty(endless);
+            Assert.All(endless, s => Assert.True(s.BytesRead < 16 * 1024 * 1024, $"{s.BytesRead} bytes read"));
+
+            factory.Steam.Answer = () => new HttpResponseMessage(HttpStatusCode.Found) { Headers = { Location = new Uri("https://evil.example/details") } };
+            factory.Steam.Requests.Clear();
+            await AssertUnavailableAsync(admin);
+            Assert.All(factory.Steam.Requests, r => Assert.StartsWith("POST https://api.steampowered.com/", r, StringComparison.Ordinal));
+        }
+        finally
+        {
+            factory.Steam.Answer = null;
+        }
+    }
+
+    [DatabaseFact]
+    public async Task AnAnswerThatStallsEndsAtTheClientsTimeout()
+    {
+        // The client's timeout (15 s in production) covers reading the body too: one second here.
+        (await factory.CreateAdminClientAsync()).Dispose();
+        using var app = factory.WithWebHostBuilder(b => b.ConfigureTestServices(services =>
+            services.AddHttpClient(SteamWorkshopClient.ClientName).ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(1))));
+        using var admin = await PanelClient.CreateAsync(app);
+        using (var login = await admin.LoginAsync(PulsarApiFactory.AdminUserName, PulsarApiFactory.AdminPassword))
+        {
+            await AccessScenario.EnsureSuccessAsync(login);
+        }
+
+        await admin.GetSessionAsync();
+        factory.Steam.Answer = () => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StallingStream()) };
+        try
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            await AssertUnavailableAsync(admin).WaitAsync(TimeSpan.FromSeconds(10), Ct);
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            factory.Steam.Answer = null;
+        }
+    }
+
+    private static async Task AssertUnavailableAsync(PanelClient admin)
+    {
+        using var failed = await admin.PostAsync("/api/v1/workshop/lookup", new WorkshopLookupRequest(108600, ["3806657188"]));
+        Assert.Equal(HttpStatusCode.BadGateway, failed.StatusCode);
+        using var problem = JsonDocument.Parse(await failed.Content.ReadAsStringAsync(Ct));
+        Assert.Equal("workshop.unavailable", problem.RootElement.GetProperty("code").GetString());
+    }
+
+    /// <summary>A body that sends a few bytes, then nothing more until the reader gives up.</summary>
+    private sealed class StallingStream : Stream
+    {
+        private bool _sent;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException("Read asynchronously.");
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (!_sent)
+            {
+                _sent = true;
+                "{\"res"u8.CopyTo(buffer.Span);
+                return 5;
+            }
+
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    /// <summary>A body that never ends (up to 256 MiB) and has no length; counts what was read of it.</summary>
+    private sealed class EndlessStream : Stream
+    {
+        private const long End = 256L * 1024 * 1024;
+        private long _read;
+
+        public long BytesRead => Interlocked.Read(ref _read);
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var n = (int)Math.Min(count, End - _read);
+            buffer.AsSpan(offset, n).Fill((byte)' ');
+            Interlocked.Add(ref _read, n);
+            return n;
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }

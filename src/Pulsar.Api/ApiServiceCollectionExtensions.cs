@@ -176,10 +176,11 @@ internal static class ApiServiceCollectionExtensions
             options.AddPolicy(AgentEndpoints.AuthRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
                 context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
-            // Each API key has its own budget (a script in a loop must not slow the panel down); browsers have none.
+            // Each API key has its own budget (a script in a loop must not slow the panel down), keys that do not work
+            // share their client's; browsers have none. Refused requests count too (ApiKeyRateLimit).
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-                context.User.IsApiKey() && context.User.FindFirstValue(ApiKeyClaims.KeyId) is { } key
-                    ? RateLimitPartition.GetFixedWindowLimiter(key,
+                ApiKeyRateLimit.Partition(context) is { } partition
+                    ? RateLimitPartition.GetFixedWindowLimiter(partition,
                         _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.ApiKeyPermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
                     : RateLimitPartition.GetNoLimiter(""));
             options.OnRejected = (context, _) => new ValueTask(WriteProblemAsync(context.HttpContext,

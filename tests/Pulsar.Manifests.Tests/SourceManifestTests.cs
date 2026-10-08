@@ -211,6 +211,7 @@ public sealed class SourceManifestTests
     [InlineData("unreal-ini", null, null, "configFiles[0].section")]
     [InlineData("unreal-ini", "Pal]Settings", null, "configFiles[0].section")]
     [InlineData("unreal-ini", "/Script/Pal.PalGameWorldSettings", "Option Settings", "configFiles[0].struct")]
+    [InlineData("xml-properties", "ServerSettings\n", null, "configFiles[0].section")]
     public void UnrealFilesNameTheirSection(string format, string? section, string? structName, string path)
     {
         var errors = TestManifests.Errors(TestManifests.Change("css", m =>

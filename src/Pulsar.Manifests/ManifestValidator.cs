@@ -989,13 +989,14 @@ public static partial class ManifestValidator
     [GeneratedRegex("^[A-Za-z0-9_./:-]{1,128}$", RegexOptions.CultureInvariant)]
     private static partial Regex UnrealSectionPattern();
 
-    [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_.-]{0,63}$", RegexOptions.CultureInvariant)]
+    // \z, not $: '$' also matches before a final newline.
+    [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_.-]{0,63}\z", RegexOptions.CultureInvariant)]
     private static partial Regex XmlElementPattern();
 
-    [GeneratedRegex("^[a-z0-9][a-z0-9-]{1,31}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{1,31}\z", RegexOptions.CultureInvariant)]
     private static partial Regex AddonKeyPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}\z", RegexOptions.CultureInvariant)]
     private static partial Regex GitHubRepoPattern();
 
     [GeneratedRegex(@"^(CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])(\..*)?$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]

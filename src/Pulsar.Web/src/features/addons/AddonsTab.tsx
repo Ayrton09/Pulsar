@@ -60,8 +60,17 @@ export function AddonsTab({ details }: { details: ServerDetails }) {
           others: [...new Set(others)].map(nameOf).join(', '),
         });
   };
-  const removeAddon = (addon: AddonView) =>
-    window.confirm(t('addons.removeConfirm', { name: addon.name, server: server.name })) && remove.mutate(addon.key);
+  // Each change clears the other's error: the alert is about the last one.
+  const installAddon = (addon: AddonView) => {
+    remove.reset();
+    install.mutate(addon.key);
+  };
+  const removeAddon = (addon: AddonView) => {
+    if (window.confirm(t('addons.removeConfirm', { name: addon.name, server: server.name }))) {
+      install.reset();
+      remove.mutate(addon.key);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -78,7 +87,7 @@ export function AddonsTab({ details }: { details: ServerDetails }) {
             enabled={changeable && !install.isPending && !remove.isPending}
             installing={install.isPending && install.variables === addon.key}
             removing={remove.isPending && remove.variables === addon.key}
-            onInstall={() => install.mutate(addon.key)}
+            onInstall={() => installAddon(addon)}
             onRemove={() => removeAddon(addon)}
           />
         ))}

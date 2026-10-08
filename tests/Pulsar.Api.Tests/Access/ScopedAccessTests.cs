@@ -161,6 +161,38 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
         await AssertCodeAsync(scenario.Admin.DeleteAsync($"/api/v1/roles/{serverRole.Id}"), HttpStatusCode.Conflict, "role.in_use");
     }
 
+    [DatabaseFact]
+    public async Task OnlyRolesOnTheNodeOrEverywhereChangeAServersLimits()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(scenario.Admin, "limits");
+        var server = (await ServerApi.CreateAsync(scenario.Admin, agent.Config!.NodeId, "Limited")).Server.Id;
+
+        // The limits share the node's CPU and memory among its servers: no role on one server can hold the right.
+        await AssertCodeAsync(scenario.Admin.PostAsync("/api/v1/roles",
+                new CreateRoleRequest("srv-limits", null, PermissionScope.Server, [Permissions.Server.View, Permissions.Server.LimitsEdit])),
+            HttpStatusCode.BadRequest, "role.permission_not_grantable");
+        var serverRole = await CreateRoleAsync(scenario, "srv-tenant", PermissionScope.Server,
+            Permissions.Server.View, Permissions.Server.Start, Permissions.Server.Stop, Permissions.Server.Install);
+        var tenant = await scenario.CreateUserAsync("limits-tenant");
+        await GrantAsync(scenario.Admin, tenant.Id, "servers", server, serverRole.Id);
+        using (var client = await scenario.SignInAsync("limits-tenant"))
+        {
+            await AssertStatusAsync(client.PutAsync($"/api/v1/servers/{server}/limits", new ServerLimitsRequest(10, null)), HttpStatusCode.Forbidden);
+        }
+
+        var nodeRole = await CreateRoleAsync(scenario, "node-limits", PermissionScope.Node, Permissions.Server.View, Permissions.Server.LimitsEdit);
+        var host = await scenario.CreateUserAsync("limits-host");
+        await GrantAsync(scenario.Admin, host.Id, "nodes", agent.Config.NodeId, nodeRole.Id);
+        using (var client = await scenario.SignInAsync("limits-host"))
+        using (var changed = await client.PutAsync($"/api/v1/servers/{server}/limits", new ServerLimitsRequest(10, null)))
+        {
+            await AccessScenario.EnsureSuccessAsync(changed);
+        }
+
+        Assert.Equal(10, (await ServerApi.GetAsync(scenario.Admin, server))!.Limits.CpuPercent);
+    }
+
     private static async Task<Guid> InstalledAsync(PanelClient admin, Guid node, string name)
     {
         var created = await ServerApi.CreateAsync(admin, node, name);

@@ -206,7 +206,7 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
         var replacedBefore = new HashSet<string>(previous?.Replaced ?? [], StringComparer.OrdinalIgnoreCase);
         var added = new List<string>();
         var replaced = new List<string>();
-        foreach (var (entry, path) in entries)
+        foreach (var (_, path) in entries)
         {
             bool existed;
             using (var existing = files.OpenRead(serverDirectory, path))
@@ -222,7 +222,17 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
             {
                 added.Add(path);
             }
+        }
 
+        // Game files an older release replaced stay replaced when this one no longer ships them: they still hold its copy.
+        var replacing = replaced.Union(previous?.Replaced ?? [], StringComparer.OrdinalIgnoreCase).ToList();
+
+        // Recorded before the first file is written, so an unpacking that fails midway leaves a record a retry or a removal
+        // trusts: what this attempt adds stays the addon's. No asset: a retry never takes it as installed.
+        Write(serverDirectory, new AddonRecord(addon.Key, previous?.Release ?? "", "", "",
+            [.. ownedBefore.Union(added, StringComparer.OrdinalIgnoreCase).Except(replacing, StringComparer.OrdinalIgnoreCase)], replacing));
+        foreach (var (entry, path) in entries)
+        {
             using var content = entry.Open();
             files.Write(serverDirectory, path, content);
         }
@@ -234,7 +244,7 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
             Delete(serverDirectory, old);
         }
 
-        return new AddonRecord(addon.Key, release, asset, sha256.ToLowerInvariant(), added, replaced);
+        return new AddonRecord(addon.Key, release, asset, sha256.ToLowerInvariant(), added, replacing);
     }
 
     private void Write(string serverDirectory, AddonRecord record)

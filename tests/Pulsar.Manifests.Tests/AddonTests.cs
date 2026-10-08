@@ -37,6 +37,7 @@ public sealed class AddonTests
     [InlineData("url", "\"http://insecure.example\"", "addons[1].url")]
     [InlineData("target", "\"../outside\"", "addons[1].target")]
     [InlineData("key", "\"Bad Key\"", "addons[1].key")]
+    [InlineData("key", "\"counterstrikesharp\\n\"", "addons[1].key")]
     public void BadAddonsAreRefused(string property, string value, string path)
     {
         var errors = TestManifests.Errors(TestManifests.Change("cs2", m =>
@@ -51,6 +52,7 @@ public sealed class AddonTests
 
     [Theory]
     [InlineData("""{ "type": "githubRelease", "repo": "not a repo", "asset": "x" }""", "addons[0].source.repo")]
+    [InlineData("""{ "type": "githubRelease", "repo": "a/b\n", "asset": "x" }""", "addons[0].source.repo")]
     [InlineData("""{ "type": "githubRelease", "repo": "a/b", "asset": "(a+)+$\\1" }""", "addons[0].source.asset")]
     [InlineData("""{ "type": "githubRelease", "repo": "a/b", "asset": "x", "tag": "v1", "prerelease": true }""", "addons[0].source.tag")]
     public void BadSourcesAreRefused(string source, string path)

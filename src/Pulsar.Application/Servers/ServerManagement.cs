@@ -252,7 +252,10 @@ public sealed partial class ServerManagement(
     /// its values are checked against the new version (values of removed variables are dropped, new required ports get
     /// an allocation), then the server is provisioned and installed again with it, its files kept.
     /// </summary>
-    public async Task<Result<ServerDetails>> UpgradeTemplateAsync(ServerId id, Guid templateId, CancellationToken cancellationToken)
+    public Task<Result<ServerDetails>> UpgradeTemplateAsync(ServerId id, Guid templateId, CancellationToken cancellationToken) =>
+        UpgradeTemplateAsync(id, templateId, attempt: 0, cancellationToken);
+
+    private async Task<Result<ServerDetails>> UpgradeTemplateAsync(ServerId id, Guid templateId, int attempt, CancellationToken cancellationToken)
     {
         var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -304,8 +307,15 @@ public sealed partial class ServerManagement(
         {
             await db.SaveChangesAsync(cancellationToken);
         }
+        catch (DbUpdateConcurrencyException ex) when (attempt < 2 && ex.Entries.Any(e => e.Entity is Server))
+        {
+            // The agent reported a state change in between: upgrade the fresh row (its checks run again).
+            db.ChangeTracker.Clear();
+            return await UpgradeTemplateAsync(id, templateId, attempt + 1, cancellationToken);
+        }
         catch (DbUpdateException)
         {
+            // An allocation was taken by another server meanwhile (version check or unique index).
             return ServerErrors.AllocationUnavailable;
         }
 
@@ -729,7 +739,7 @@ public sealed partial class ServerManagement(
         var ports = manifest.PortList.Select(p => allocations.GetValueOrDefault(p.Name) is { } a
             ? new ServerPortView(p.Name, p.Label, p.Required, a.Id.Value, a.IpAddress, a.Port, p.Follows?.Port)
             : new ServerPortView(p.Name, p.Label, p.Required, null, null, null, p.Follows?.Port)).ToList();
-        var newer = (await db.GameTemplates.AsNoTracking().Where(t => t.Key == template.Key).ToListAsync(cancellationToken))
+        var newer = (await db.GameTemplates.AsNoTracking().Where(t => t.Key == template.Key).Select(t => new { t.Id, t.Version }).ToListAsync(cancellationToken))
             .Where(t => GameTemplate.CompareVersions(t.Version, template.Version) > 0)
             .OrderByDescending(t => t.Version, Comparer<string>.Create(GameTemplate.CompareVersions))
             .FirstOrDefault();

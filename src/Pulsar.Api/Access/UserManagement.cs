@@ -175,10 +175,6 @@ public sealed class UserManagement(
         return TypedResults.NoContent();
     }
 
-    /// <summary>
-    /// Turns off a user's two-factor authentication (a lost phone and no recovery codes left): the key and the codes
-    /// are forgotten and the user's sessions end. A role that requires it makes them set it up again at sign-in.
-    /// </summary>
     /// <summary>Revokes every API key of the user (after a leak, say); the user can create new ones.</summary>
     public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> RevokeApiKeysAsync(UserId id, CancellationToken ct)
     {
@@ -192,6 +188,10 @@ public sealed class UserManagement(
         return TypedResults.Ok(await DescribeAsync(user, ct));
     }
 
+    /// <summary>
+    /// Turns off a user's two-factor authentication (a lost phone and no recovery codes left): the key and the codes
+    /// are forgotten and the user's sessions end. A role that requires it makes them set it up again at sign-in.
+    /// </summary>
     public async Task<Results<NoContent, ProblemHttpResult>> ResetTwoFactorAsync(UserId id, CancellationToken ct)
     {
         var (user, problem) = await FindManageableAsync(id, ct);

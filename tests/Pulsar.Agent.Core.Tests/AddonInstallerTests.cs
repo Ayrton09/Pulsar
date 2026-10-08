@@ -90,6 +90,41 @@ public sealed class AddonInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task AGameFileAnOlderReleaseReplacedStaysReplacedWhenANewerOneNoLongerShipsIt()
+    {
+        await InstallAsync(s_oxide);
+
+        // The game's file still holds the older release's copy: only a validating update brings the game's back.
+        Release("2.0.7900", Zip(("RustDedicated_Data/Managed/Oxide.Core.dll", "core 2")));
+        var next = await InstallAsync(s_oxide);
+        Assert.Equal(["RustDedicated_Data/Managed/Assembly-CSharp.dll"], next.Replaced);
+        Assert.Equal(["RustDedicated_Data/Managed/Oxide.Core.dll"], next.Added);
+
+        Assert.Equal(["RustDedicated_Data/Managed/Assembly-CSharp.dll"], new AddonInstaller(new DirectServerFiles(), _http).Remove(_root, s_oxide));
+        Assert.True(File.Exists(Path.Combine(_root, "RustDedicated_Data", "Managed", "Assembly-CSharp.dll"))); // the game's, never deleted
+    }
+
+    [Fact]
+    public async Task AFirstInstallThatFailsMidwayStillKnowsTheFilesItAdded()
+    {
+        // The last entry cannot be written the first time (a locked file, a full disk): two files are already in place.
+        var files = new FailingServerFiles("oxide/config.json");
+        var installer = new AddonInstaller(files, _http);
+        var failed = await Assert.ThrowsAsync<GameProcessException>(() => installer.InstallAsync(_root, s_oxide, force: false, (_, _) => Task.CompletedTask,
+            TestContext.Current.CancellationToken));
+        Assert.Equal("addon.download_failed", failed.Code);
+        Assert.True(File.Exists(Path.Combine(_root, "RustDedicated_Data", "Managed", "Oxide.Core.dll")));
+
+        var record = await installer.InstallAsync(_root, s_oxide, force: false, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+        Assert.Equal(["RustDedicated_Data/Managed/Oxide.Core.dll", "oxide/config.json"], record.Added);
+        Assert.Equal(["RustDedicated_Data/Managed/Assembly-CSharp.dll"], record.Replaced);
+
+        Assert.Equal(["RustDedicated_Data/Managed/Assembly-CSharp.dll"], installer.Remove(_root, s_oxide));
+        Assert.False(File.Exists(Path.Combine(_root, "RustDedicated_Data", "Managed", "Oxide.Core.dll")));
+        Assert.False(Directory.Exists(Path.Combine(_root, "oxide")));
+    }
+
+    [Fact]
     public async Task APreReleaseSourceTakesTheNewestReleaseIntoItsFolderAndItsLineGoesAwayWithIt()
     {
         var zip = Zip(("addons/metamod/bin/win64/server.dll", "mm"), ("addons/metamod.vdf", "\"Plugin\" {}"));
@@ -204,6 +239,32 @@ public sealed class AddonInstallerTests : IDisposable
     private static HttpResponseMessage Ok(byte[] body) => new(HttpStatusCode.OK) { Content = new ByteArrayContent(body) };
 
     private static HttpResponseMessage Redirect(string location) => new(HttpStatusCode.Found) { Headers = { Location = new Uri(location) } };
+
+    /// <summary>Plain file access whose first write of one path fails.</summary>
+    private sealed class FailingServerFiles(string failing) : IServerFiles
+    {
+        private readonly DirectServerFiles _inner = new();
+        private bool _failed;
+
+        public Stream? OpenRead(string serverRoot, string relativePath) => _inner.OpenRead(serverRoot, relativePath);
+
+        public void Write(string serverRoot, string relativePath, Stream content)
+        {
+            if (!_failed && relativePath == failing)
+            {
+                _failed = true;
+                throw new IOException("The disk is full.");
+            }
+
+            _inner.Write(serverRoot, relativePath, content);
+        }
+
+        public void Delete(string serverRoot, string relativePath) => _inner.Delete(serverRoot, relativePath);
+
+        public void CreateDirectory(string serverRoot, string relativePath) => _inner.CreateDirectory(serverRoot, relativePath);
+
+        public bool DeleteEmptyDirectory(string serverRoot, string relativePath) => _inner.DeleteEmptyDirectory(serverRoot, relativePath);
+    }
 
     private sealed class FakeHttp : HttpMessageHandler
     {

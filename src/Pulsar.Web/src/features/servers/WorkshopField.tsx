@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, unwrap, type Schemas } from '../../api/client';
 import { Button } from '../../components/ui/Button';
@@ -32,26 +32,31 @@ interface WorkshopFieldProps {
 export function WorkshopField({ variable, value, disabled, onChange, control }: WorkshopFieldProps) {
   const { t } = useTranslation();
   const { appId, separator } = variable.workshop;
-  const ids = value
-    .split(separator)
-    .map((id) => id.trim())
-    .filter(Boolean);
+  const ids = split(value, separator);
+  // Only what the panel accepts as ids is looked up: one other token would make it refuse the whole batch.
+  const lookupIds = ids.filter((id) => parseWorkshopId(id) === id);
+  // The value when a lookup ends, not when it began: the list may have changed meanwhile.
+  const latest = useRef(value);
+  useLayoutEffect(() => {
+    latest.current = value;
+  }, [value]);
   const [text, setText] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const [collection, setCollection] = useState<WorkshopItem | null>(null);
 
   const details = useQuery({
-    queryKey: ['workshop', appId, ids],
+    queryKey: ['workshop', appId, lookupIds],
     queryFn: async () => {
       const found = new Map<string, WorkshopItem>();
-      for (let i = 0; i < ids.length; i += LOOKUP_LIMIT) {
-        for (const item of await lookup(appId, ids.slice(i, i + LOOKUP_LIMIT))) {
+      for (let i = 0; i < lookupIds.length; i += LOOKUP_LIMIT) {
+        for (const item of await lookup(appId, lookupIds.slice(i, i + LOOKUP_LIMIT))) {
           found.set(item.id, item);
         }
       }
       return found;
     },
-    enabled: ids.length > 0,
+    // Looking up needs the right to change the list: read-only, the ids are shown as they are.
+    enabled: lookupIds.length > 0 && !disabled,
     staleTime: 10 * 60 * 1000,
     retry: false,
   });
@@ -65,7 +70,16 @@ export function WorkshopField({ variable, value, disabled, onChange, control }: 
       return;
     }
     setProblem(null);
+    latest.current = joined;
     onChange(joined);
+  };
+
+  const append = (id: string) => {
+    const current = split(latest.current, separator);
+    if (!current.includes(id)) {
+      set([...current, id]);
+    }
+    setText('');
   };
 
   const submit = (event?: FormEvent) => {
@@ -87,14 +101,10 @@ export function WorkshopField({ variable, value, disabled, onChange, control }: 
           setCollection(item);
           return;
         }
-        set([...ids, id]);
-        setText('');
+        append(id);
       },
       // Steam could not be asked: the id still goes in, as typed.
-      onError: () => {
-        set([...ids, id]);
-        setText('');
-      },
+      onError: () => append(id),
     });
   };
 
@@ -157,6 +167,13 @@ export function WorkshopField({ variable, value, disabled, onChange, control }: 
       )}
     </div>
   );
+}
+
+function split(value: string, separator: string) {
+  return value
+    .split(separator)
+    .map((id) => id.trim())
+    .filter(Boolean);
 }
 
 function WorkshopRow({

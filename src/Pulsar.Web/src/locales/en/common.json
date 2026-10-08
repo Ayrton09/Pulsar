@@ -337,7 +337,9 @@
         "schedule_changed": "Changed a scheduled task",
         "schedule_deleted": "Deleted a scheduled task",
         "schedule_run_requested": "Ran a scheduled task now",
-        "backup_storage_changed": "Changed where backups are copied"
+        "backup_storage_changed": "Changed where backups are copied",
+        "addon_install_requested": "Asked to install a mod",
+        "addon_remove_requested": "Asked to remove a mod"
       },
       "template": {
         "imported": "Imported a game template"
@@ -463,7 +465,10 @@
       "no_free_allocation": "The node has no free allocation for one of the game's ports. Add allocations to the node.",
       "allocation_unavailable": "That allocation is not free on the server's node.",
       "invalid_settings": "Check the settings: {{detail}}",
-      "variable_protected": "You cannot change that setting: {{detail}}"
+      "variable_protected": "You cannot change that setting: {{detail}}",
+      "limits_unsupported": "The node's agent cannot limit a server's CPU and memory: update the agent.",
+      "limits_invalid": "A CPU limit goes from 1 to 100 %, a memory limit from 128 MiB to 1 TiB.",
+      "template_not_newer": "A server can only move to a newer version of its own game's template."
     },
     "template": {
       "version_exists": "That game version is already registered. Templates never change: give it a new version.",

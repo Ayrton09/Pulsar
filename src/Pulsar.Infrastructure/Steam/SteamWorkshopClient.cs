@@ -49,10 +49,14 @@ public sealed class SteamWorkshopClient(IHttpClientFactory clients) : ISteamWork
     {
         var form = new List<KeyValuePair<string, string>> { new(countName, ids.Count.ToString(CultureInfo.InvariantCulture)) };
         form.AddRange(ids.Select((id, i) => new KeyValuePair<string, string>($"publishedfileids[{i}]", id)));
+        // The client's timeout ends at the headers when the body is read separately: this deadline covers both.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(http.Timeout);
         try
         {
-            using var content = new FormUrlEncodedContent(form);
-            using var response = await http.PostAsync(new Uri(BaseAddress, path), content, cancellationToken);
+            // Headers first: the body is read below, up to the cap, whether or not Steam says its length.
+            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(BaseAddress, path)) { Content = new FormUrlEncodedContent(form) };
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             if (!response.IsSuccessStatusCode)
             {
                 throw new WorkshopUnavailableException($"Steam answered {(int)response.StatusCode}.");
@@ -63,11 +67,11 @@ public sealed class SteamWorkshopClient(IHttpClientFactory clients) : ISteamWork
                 throw new WorkshopUnavailableException("Steam's answer is larger than Pulsar reads.");
             }
 
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
             using var buffer = new MemoryStream();
             var chunk = new byte[81920];
             int read;
-            while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+            while ((read = await stream.ReadAsync(chunk, deadline.Token)) > 0)
             {
                 if (buffer.Length + read > MaxResponseBytes)
                 {
@@ -83,7 +87,7 @@ public sealed class SteamWorkshopClient(IHttpClientFactory clients) : ISteamWork
         {
             throw new WorkshopUnavailableException($"Steam could not be reached ({ex.HttpRequestError}).", ex);
         }
-        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             throw new WorkshopUnavailableException("Steam did not answer in time.", ex);
         }

@@ -65,7 +65,8 @@ function Editor({ initial, disabled = false, changes }: { initial: string; disab
   );
 }
 
-function renderEditor(initial: string, disabled = false) {
+/** `held`: lookups of that id are answered only once `release` resolves. */
+function renderEditor(initial: string, disabled = false, held?: { id: string; release: Promise<void> }) {
   const changes: string[] = [];
   const lookups: string[][] = [];
   fakeApi({
@@ -73,6 +74,9 @@ function renderEditor(initial: string, disabled = false) {
       const body = (await request.json()) as { appId: number; ids: string[] };
       expect(body.appId).toBe(108600);
       lookups.push(body.ids);
+      if (held && body.ids.includes(held.id)) {
+        await held.release;
+      }
       return json(body.ids.map((id) => steam[id] ?? item(id)));
     },
   });
@@ -145,11 +149,43 @@ describe('workshop editor', () => {
     expect(changes.at(-1)).toBe('111;444;501;502'); // 111 was there already
   });
 
-  it('only shows the items when the user may not change them', async () => {
-    renderEditor('111', true);
+  it('only shows the ids when the user may not change them, without asking Steam', async () => {
+    // Looking items up needs a right to change them: a viewer without it sees the ids, as links.
+    const { lookups } = renderEditor('111', true);
 
-    expect(await screen.findByRole('link', { name: 'True Water' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: '111' })).toHaveAttribute(
+      'href',
+      'https://steamcommunity.com/sharedfiles/filedetails/?id=111',
+    );
     expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument();
+    expect(lookups).toEqual([]);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('looks up only the tokens that are Workshop ids', async () => {
+    const { lookups } = renderEditor('111;abc;0123;222');
+
+    expect(await screen.findByRole('link', { name: 'True Water' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'abc' })).toBeInTheDocument();
+    expect(lookups).toEqual([['111', '222']]);
+  });
+
+  it('keeps a removal made while an added item is being looked up', async () => {
+    let release = () => {};
+    const { changes } = renderEditor('111;333', false, {
+      id: '444',
+      release: new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    });
+    await screen.findByRole('link', { name: 'A hat' });
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Workshop items' }), '444{Enter}');
+    await userEvent.click(screen.getByRole('button', { name: 'Remove A hat' }));
+    expect(changes).toEqual(['111']);
+    release();
+
+    await waitFor(() => expect(changes).toEqual(['111', '111;444']));
   });
 });

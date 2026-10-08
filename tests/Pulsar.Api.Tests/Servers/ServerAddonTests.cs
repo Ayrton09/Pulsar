@@ -4,9 +4,14 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
+using Pulsar.Application.Abstractions;
 using Pulsar.Application.Servers;
+using Pulsar.Contracts;
+using Pulsar.Domain.Common;
 using Pulsar.Domain.Servers;
 
 namespace Pulsar.Api.Tests.Servers;
@@ -107,6 +112,63 @@ public sealed class ServerAddonTests(PulsarApiFactory factory) : IClassFixture<P
         Assert.Equal(OperationStatus.Succeeded, updated.RecentOperations[0].Status);
         Assert.Equal(2, github.Requested.Count(u => u.EndsWith("/Oxide.Rust.zip", StringComparison.Ordinal)));
         Assert.Equal("2.0.7900", (await ListAsync(admin, server)).Single(a => a.Key == "oxide").InstalledRelease);
+    }
+
+    [DatabaseFact]
+    public async Task WhatAnAgentSaysIsInstalledIsCheckedBeforeItIsKept()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, new FakeGitHub());
+        await GameServerTests.AllocateAsync(admin, agent.Config!.NodeId, "0.0.0.0", "28015-28030");
+        var server = await InstalledAsync(admin, agent, "rust");
+        var node = new NodeId(agent.Config.NodeId);
+
+        // The same addon twice (the last one counts), addons the game does not have, a release that is no release.
+        await CompleteAsync(node, server, OperationType.AddonInstall, new AddonRelease("oxide", "1"), new AddonRelease("oxide", "2"),
+            new AddonRelease("sourcemod", "1"), new AddonRelease("", "1"), new AddonRelease("oxide/../x", "1"), new AddonRelease("carbon", ""),
+            new AddonRelease("carbon", "1"), new AddonRelease("carbon", ""));
+        Assert.Equal(["oxide"], await InstalledKeysAsync(server));
+        Assert.Equal("2", (await ListAsync(admin, server)).Single(a => a.Key == "oxide").InstalledRelease);
+
+        // Only addon operations and updates change what is installed.
+        await CompleteAsync(node, server, OperationType.ServerInstall, new AddonRelease("oxide", null));
+        await CompleteAsync(node, server, OperationType.BackupRestore, new AddonRelease("oxide", "3"));
+        Assert.Equal("2", (await ListAsync(admin, server)).Single(a => a.Key == "oxide").InstalledRelease);
+        await CompleteAsync(node, server, OperationType.ServerUpdate, new AddonRelease("oxide", "3"));
+        Assert.Equal("3", (await ListAsync(admin, server)).Single(a => a.Key == "oxide").InstalledRelease);
+        await CompleteAsync(node, server, OperationType.AddonRemove, new AddonRelease("oxide", null));
+        Assert.Empty(await InstalledKeysAsync(server));
+    }
+
+    /// <summary>An operation of the server that its node reports as succeeded with <paramref name="addons"/>.</summary>
+    private async Task CompleteAsync(NodeId node, Guid server, OperationType type, params AddonRelease[] addons)
+    {
+        var operation = Operation.Create(type, node, new ServerId(server), null, OperationRequester.System, DateTimeOffset.UtcNow);
+        operation.Started(DateTimeOffset.UtcNow);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            db.Operations.Add(operation);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<AgentServerEvents>().OperationCompletedAsync(node,
+                new OperationCompleted(operation.Id.Value, server, OperationOutcome.Succeeded, null, null, new AddonsResult(addons)), Ct);
+        }
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var stored = await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Operations.AsNoTracking().SingleAsync(o => o.Id == operation.Id, Ct);
+            Assert.Equal(OperationStatus.Succeeded, stored.Status);
+        }
+    }
+
+    private async Task<List<string>> InstalledKeysAsync(Guid server)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        return await ServerAddons.InstalledKeysAsync(scope.ServiceProvider.GetRequiredService<IPulsarDbContext>(), new ServerId(server), Ct);
     }
 
     private async Task<InProcessAgent> ConnectedAgentAsync(PanelClient admin, FakeGitHub github)

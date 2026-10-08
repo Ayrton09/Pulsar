@@ -141,7 +141,7 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                 // Addons installed, updated after a game update, or removed.
                 if (operation.Status == OperationStatus.Succeeded && completed.Result is AddonsResult addons)
                 {
-                    await ServerAddons.ApplyAsync(db, server.Id, addons, now, cancellationToken);
+                    await ServerAddons.ApplyAsync(db, server, operation.Type, addons, now, cancellationToken);
                 }
 
                 switch (operation.Type)

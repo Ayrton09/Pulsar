@@ -66,7 +66,11 @@ public static class DependencyInjection
         services.AddHostedService<NotificationSenderService>();
         // Steam's public Workshop API: one host, no redirects; nothing secret in the requests.
         services.AddScoped<ISteamWorkshop, SteamWorkshopClient>();
-        services.AddHttpClient(SteamWorkshopClient.ClientName, client => client.Timeout = TimeSpan.FromSeconds(15))
+        services.AddHttpClient(SteamWorkshopClient.ClientName, client =>
+            {
+                // Also the deadline for reading the body (SteamWorkshopClient reads it after the headers).
+                client.Timeout = TimeSpan.FromSeconds(15);
+            })
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
             .RemoveAllLoggers();
         services.AddHostedService<NodeWatchService>();

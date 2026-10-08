@@ -187,7 +187,7 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         await ServerApi.CommandAsync(admin, server, "stop");
     }
 
-    private static string GamePath(string game)
+    internal static string GamePath(string game)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Pulsar.slnx")))
@@ -388,7 +388,7 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         return agent;
     }
 
-    private static async Task<Guid> InstalledAsync(PanelClient admin, InProcessAgent agent, string game)
+    internal static async Task<Guid> InstalledAsync(PanelClient admin, InProcessAgent agent, string game)
     {
         var template = await TemplateAsync(admin, game);
         var created = await CreateAsync(admin, new CreateServerRequest(agent.Config!.NodeId, template.Template.Id, game, null));

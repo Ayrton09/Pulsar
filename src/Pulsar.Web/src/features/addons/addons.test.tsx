@@ -182,6 +182,37 @@ describe('mods tab', () => {
     expect(await screen.findByText('CounterStrikeSharp needs Metamod:Source: install it first.')).toBeInTheDocument();
   });
 
+  it('shows the error of the last change only', async () => {
+    let removals = 0;
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/addons`]: () => json([metamod, cssharp]),
+      [`POST /api/v1/servers/${serverId}/addons/counterstrikesharp`]: () =>
+        problem(409, 'addon.requires', 'CounterStrikeSharp needs Metamod:Source installed first.'),
+      [`DELETE /api/v1/servers/${serverId}/addons/metamod`]: () =>
+        ++removals === 1 ? problem(409, 'server.busy', 'The server is busy.') : json([metamod, cssharp]),
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderAt(`/servers/${serverId}?tab=addons`);
+    await screen.findByRole('heading', { name: 'Metamod:Source' });
+
+    await userEvent.click(within(card('CounterStrikeSharp')).getByRole('button', { name: 'Install' }));
+    expect(await screen.findByText('CounterStrikeSharp needs Metamod:Source installed first.')).toBeInTheDocument();
+
+    // A failed removal says its own error, not the install's.
+    await userEvent.click(within(card('Metamod:Source')).getByRole('button', { name: 'Remove' }));
+    await waitFor(() =>
+      expect(screen.queryByText('CounterStrikeSharp needs Metamod:Source installed first.')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    // A removal that works leaves no error at all.
+    await userEvent.click(within(card('Metamod:Source')).getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(removals).toBe(2);
+  });
+
   it('waits for the server to stop', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(manager),

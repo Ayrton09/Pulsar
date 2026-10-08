@@ -337,7 +337,9 @@
         "schedule_changed": "Cambió una tarea programada",
         "schedule_deleted": "Eliminó una tarea programada",
         "schedule_run_requested": "Ejecutó una tarea programada en el momento",
-        "backup_storage_changed": "Cambió adónde se copian los backups"
+        "backup_storage_changed": "Cambió adónde se copian los backups",
+        "addon_install_requested": "Pidió instalar un mod",
+        "addon_remove_requested": "Pidió quitar un mod"
       },
       "template": {
         "imported": "Importó una plantilla de juego"
@@ -463,7 +465,10 @@
       "no_free_allocation": "El nodo no tiene una asignación libre para alguno de los puertos del juego. Agregá asignaciones al nodo.",
       "allocation_unavailable": "Esa asignación no está libre en el nodo del servidor.",
       "invalid_settings": "Revisá la configuración: {{detail}}",
-      "variable_protected": "No podés cambiar esa opción: {{detail}}"
+      "variable_protected": "No podés cambiar esa opción: {{detail}}",
+      "limits_unsupported": "El agente del nodo no puede limitar la CPU y la memoria de un servidor: actualizá el agente.",
+      "limits_invalid": "Un límite de CPU va de 1 a 100 %; uno de memoria, de 128 MiB a 1 TiB.",
+      "template_not_newer": "Un servidor solo puede pasar a una versión más nueva de la plantilla de su propio juego."
     },
     "template": {
       "version_exists": "Esa versión del juego ya está registrada. Las plantillas no cambian nunca: dale una versión nueva.",

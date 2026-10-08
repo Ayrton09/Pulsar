@@ -50,26 +50,46 @@ public sealed class ServerAddons(
     public Task<Result<List<AddonView>>> RemoveAsync(ServerId id, string key, CancellationToken cancellationToken) =>
         ChangeAsync(id, key, install: false, cancellationToken);
 
-    /// <summary>An operation's result: the releases installed, and the addons removed (no release).</summary>
-    public static async Task ApplyAsync(IPulsarDbContext db, ServerId serverId, AddonsResult result, DateTimeOffset now,
+    /// <summary>
+    /// A succeeded operation's result: the releases installed, and the addons removed (no release). Only addon operations
+    /// and game updates change addons, and only the game's own addons are kept; for an addon named twice the last counts.
+    /// </summary>
+    public static async Task ApplyAsync(IPulsarDbContext db, Server server, OperationType operation, AddonsResult result, DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(result);
-        var installed = await db.ServerAddons.Where(a => a.ServerId == serverId).ToListAsync(cancellationToken);
+        if (operation is not (OperationType.AddonInstall or OperationType.AddonRemove or OperationType.ServerUpdate) || result.Addons is null)
+        {
+            return;
+        }
+
+        var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
+        var known = ServerSpecs.Parse(template).AddonList.Select(a => a.Key).ToHashSet(StringComparer.Ordinal);
+        var changes = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var change in result.Addons)
         {
-            var existing = installed.FirstOrDefault(a => a.Key == change.Key);
-            switch (change.Release, existing)
+            if (change?.Key is { } key && known.Contains(key))
+            {
+                changes[key] = change.Release;
+            }
+        }
+
+        var installed = await db.ServerAddons.Where(a => a.ServerId == server.Id).ToListAsync(cancellationToken);
+        foreach (var (key, release) in changes)
+        {
+            var existing = installed.FirstOrDefault(a => a.Key == key);
+            switch (release, existing)
             {
                 case (null, { } removed):
                     db.ServerAddons.Remove(removed);
                     break;
-                case ({ } release, null) when change.Key.Length <= ServerAddon.MaxKeyLength:
-                    db.ServerAddons.Add(ServerAddon.Installed(serverId, change.Key, release, now));
+                case ({ Length: > 0 } added, null):
+                    db.ServerAddons.Add(ServerAddon.Installed(server.Id, key, added, now));
                     break;
-                case ({ } release, { } updated):
-                    updated.Updated(release, now);
+                case ({ Length: > 0 } newer, { } updated):
+                    updated.Updated(newer, now);
                     break;
             }
         }
@@ -99,7 +119,7 @@ public sealed class ServerAddons(
             return NodeErrors.NotConnected;
         }
 
-        if (!agent.Capabilities.Contains(AgentCapabilities.InstallAddon))
+        if (!agent.Capabilities.Contains(install ? AgentCapabilities.InstallAddon : AgentCapabilities.RemoveAddon))
         {
             return ServerErrors.AddonsUnsupported;
         }
