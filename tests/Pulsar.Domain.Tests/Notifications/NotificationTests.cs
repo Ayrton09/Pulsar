@@ -132,6 +132,12 @@ public sealed class NotificationTests
         limited.AttemptFailed("429", retryable: true, retryAfter: TimeSpan.FromMinutes(5), s_now);
         Assert.Equal(s_now + TimeSpan.FromMinutes(5), limited.NextAttemptAt);
 
+        // A receiver cannot park a message for days (or past the end of time).
+        var parked = NotificationDelivery.Create(Discord(), NotificationEvent.ServerCrashed, "server:1", Message(), s_now);
+        parked.Taken(s_now);
+        parked.AttemptFailed("429", retryable: true, retryAfter: TimeSpan.MaxValue, s_now);
+        Assert.Equal(s_now + NotificationDelivery.MaxRetryAfter, parked.NextAttemptAt);
+
         var gone = NotificationDelivery.Create(Discord(), NotificationEvent.ServerCrashed, "server:1", Message(), s_now);
         gone.Taken(s_now);
         gone.AttemptFailed(new string('x', 600), retryable: false, retryAfter: null, s_now);
@@ -175,6 +181,55 @@ public sealed class NotificationTests
         Assert.True(settings.ChangeSmtp(null, 0, SmtpSecurity.StartTls, null, null, false, null, null, s_now).IsSuccess);
         Assert.False(settings.EmailConfigured);
         Assert.Null(settings.SmtpPasswordProtected);
+    }
+
+    [Theory]
+    [InlineData("https://discord.com/api/webhooks/1/abc", "https://discord.com/api/webhooks/1/abc?wait=true")]
+    [InlineData(" https://discord.com/api/webhooks/1/abc ", "https://discord.com/api/webhooks/1/abc?wait=true")]
+    [InlineData("https://discord.com/api/webhooks/1/abc?thread_id=123", "https://discord.com/api/webhooks/1/abc?thread_id=123&wait=true")]
+    public void AWebhookIsPostedToWithItsOwnQueryKept(string webhook, string expected)
+    {
+        Assert.True(NotificationChannel.IsDiscordWebhook(webhook));
+        Assert.Equal(expected, NotificationChannel.DiscordPostAddress(webhook));
+    }
+
+    [Fact]
+    public void TheSmtpPasswordIsNeverSentToAnotherServerOrAccount()
+    {
+        var settings = NotificationSettings.Default(s_now);
+        Assert.True(settings.ChangeSmtp("smtp.example.com", 587, SmtpSecurity.StartTls, "pulsar", [7], false, "pulsar@example.com", null, s_now).IsSuccess);
+
+        // Same server and account (the host's case does not matter): kept.
+        Assert.True(settings.ChangeSmtp("SMTP.example.com", 465, SmtpSecurity.Tls, "pulsar", null, false, "pulsar@example.com", null, s_now).IsSuccess);
+        Assert.Equal([7], settings.SmtpPasswordProtected);
+
+        // Another server, without a new password: forgotten, not sent to it.
+        Assert.True(settings.ChangeSmtp("smtp.other.example", 465, SmtpSecurity.Tls, "pulsar", null, false, "pulsar@example.com", null, s_now).IsSuccess);
+        Assert.Null(settings.SmtpPasswordProtected);
+
+        Assert.True(settings.ChangeSmtp("smtp.other.example", 465, SmtpSecurity.Tls, "pulsar", [8], false, "pulsar@example.com", null, s_now).IsSuccess);
+        Assert.True(settings.ChangeSmtp("smtp.other.example", 465, SmtpSecurity.Tls, "someone-else", null, false, "pulsar@example.com", null, s_now).IsSuccess);
+        Assert.Null(settings.SmtpPasswordProtected);
+
+        // A new password with the new server or account is taken.
+        Assert.True(settings.ChangeSmtp("smtp.example.com", 587, SmtpSecurity.StartTls, "pulsar", [9], false, "pulsar@example.com", null, s_now).IsSuccess);
+        Assert.Equal([9], settings.SmtpPasswordProtected);
+    }
+
+    [Fact]
+    public void CredentialsAreNotSentInClear()
+    {
+        var settings = NotificationSettings.Default(s_now);
+
+        Assert.Equal(NotificationErrors.SmtpCredentialsNeedTls,
+            settings.ChangeSmtp("smtp.example.com", 25, SmtpSecurity.None, "pulsar", [7], false, "pulsar@example.com", null, s_now).Error);
+        Assert.Null(settings.SmtpHost);
+
+        // A relay without signing in, or one on this machine, can go without encryption.
+        Assert.True(settings.ChangeSmtp("relay.example.com", 25, SmtpSecurity.None, null, null, false, "pulsar@example.com", null, s_now).IsSuccess);
+        Assert.True(settings.ChangeSmtp("localhost", 25, SmtpSecurity.None, "pulsar", [7], false, "pulsar@example.com", null, s_now).IsSuccess);
+        Assert.True(settings.ChangeSmtp("127.0.0.1", 25, SmtpSecurity.None, "pulsar", [7], false, "pulsar@example.com", null, s_now).IsSuccess);
+        Assert.True(settings.ChangeSmtp("::1", 25, SmtpSecurity.None, "pulsar", [7], false, "pulsar@example.com", null, s_now).IsSuccess);
     }
 
     [Fact]

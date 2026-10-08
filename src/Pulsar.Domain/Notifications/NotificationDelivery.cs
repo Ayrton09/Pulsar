@@ -36,6 +36,9 @@ public sealed class NotificationDelivery
     public static IReadOnlyList<TimeSpan> RetryDelays { get; } =
         [TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(30), TimeSpan.FromHours(1)];
 
+    /// <summary>The longest wait a receiver's Retry-After gets.</summary>
+    public static readonly TimeSpan MaxRetryAfter = TimeSpan.FromHours(1);
+
     /// <summary>How long a sender holds a delivery it took; another one may take it after that (the first one died).</summary>
     public static readonly TimeSpan Lease = TimeSpan.FromMinutes(2);
 
@@ -129,7 +132,8 @@ public sealed class NotificationDelivery
         }
 
         var delay = RetryDelays[Math.Max(Attempts, 1) - 1];
-        NextAttemptAt = now + (retryAfter > delay ? retryAfter.Value : delay);
+        // The receiver's Retry-After is followed up to an hour: it cannot park a message for days.
+        NextAttemptAt = now + (retryAfter > delay ? (retryAfter.Value > MaxRetryAfter ? MaxRetryAfter : retryAfter.Value) : delay);
     }
 
     private static string Truncate(string error)

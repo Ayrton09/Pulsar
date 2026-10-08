@@ -159,11 +159,11 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
                 break;
             case ScheduledAction.Backup:
                 var backup = await services.GetRequiredService<ServerBackups>().CreateAsync(server.Id, null, OperationRequester.Schedule, cancellationToken);
-                Dispatched(run, backup.IsSuccess ? backup.Value.OperationId : null, backup.Error);
+                await DispatchedAsync(db, run, backup.IsSuccess ? backup.Value.OperationId : null, backup.Error, cancellationToken);
                 break;
             case ScheduledAction.Update:
                 var update = await servers.RequestUpdateAsync(server.Id, task.Payload.Validate, OperationRequester.Schedule, cancellationToken);
-                Dispatched(run, update.IsSuccess ? update.Value.Operation.Id.Value : null, update.Error);
+                await DispatchedAsync(db, run, update.IsSuccess ? update.Value.Operation.Id.Value : null, update.Error, cancellationToken);
                 break;
             default:
                 throw new InvalidOperationException($"Unknown scheduled action {task.Action}.");
@@ -187,12 +187,18 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
         }
     }
 
-    /// <summary>The action started an operation: its outcome is the operation's (failed already when the node refused it).</summary>
-    private void Dispatched(ScheduledTaskRun run, Guid? operationId, DomainError? error)
+    /// <summary>
+    /// The action started an operation: its outcome is the operation's. An operation the node refused has failed
+    /// already: so does the run, which notifies like a refused start.
+    /// </summary>
+    private async Task DispatchedAsync(IPulsarDbContext db, ScheduledTaskRun run, Guid? operationId, DomainError? error, CancellationToken cancellationToken)
     {
         if (operationId is { } id)
         {
-            run.Dispatched(new OperationId(id), clock.GetUtcNow());
+            var operation = await db.Operations.AsNoTracking().SingleOrDefaultAsync(o => o.Id == new OperationId(id), cancellationToken);
+            var failed = operation is { Status: OperationStatus.Failed or OperationStatus.Cancelled };
+            run.Dispatched(new OperationId(id), clock.GetUtcNow(), failed ? operation!.ErrorCode ?? ServerErrors.CommandRejected.Code : null,
+                failed ? operation!.ErrorMessage : null);
         }
         else
         {

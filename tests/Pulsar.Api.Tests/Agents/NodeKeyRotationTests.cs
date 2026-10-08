@@ -109,6 +109,25 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
     }
 
     [DatabaseFact]
+    public async Task ReEnrollingRevokesAPendingKeyToo()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-then-reenroll");
+        var pending = await RegisterPendingKeyAsync(agent, enrolled);
+
+        using var tokenResponse = await admin.PostAsync($"/api/v1/nodes/{enrolled.NodeId}/enrollment-tokens");
+        await AccessScenario.EnsureSuccessAsync(tokenResponse);
+        var instructions = (await tokenResponse.Content.ReadFromJsonAsync<EnrollmentInstructions>(AccessScenario.Json, Ct))!;
+        var reenrolled = await agent.EnrollAsync(instructions.Token, instructions.PanelKeyFingerprint);
+
+        // Neither earlier key works any more: the pending one could otherwise sign in and supersede the new key.
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, enrolled.CredentialId, NodeCredentialStatus.Revoked);
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, pending.CredentialId, NodeCredentialStatus.Revoked);
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, reenrolled.CredentialId, NodeCredentialStatus.Active);
+    }
+
+    [DatabaseFact]
     public async Task TheNewKeyMustProveItselfAndTheRequestMustComeFromASession()
     {
         using var admin = await factory.CreateAdminClientAsync();

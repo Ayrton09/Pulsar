@@ -21,6 +21,10 @@
     <ProjectReference Include="..\Pulsar.Manifests\Pulsar.Manifests.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pulsar.Api.Tests" />
+  </ItemGroup>
+
   <!--
     The Vite build writes straight into wwwroot (see src/Pulsar.Web/vite.config.ts), so the SPA is picked up
     as regular static web assets (fingerprinting and compression via MapStaticAssets).

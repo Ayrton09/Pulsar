@@ -140,7 +140,7 @@ Cases:
 
 ## Implementation (Phase 8)
 
-- **Scheduled actions** (start, stop, restart, backup, update, console command) go through the same requests a user's do, with the same rules: a scheduled restart of a server busy with an install fails with `server.busy`, a scheduled backup can run while the server does, a console command needs it running. They are audited as the schedule's, with the task's name.
+- **Scheduled actions** (start, stop, restart, backup, update, console command) go through the same requests a user's do, with the same rules: a scheduled restart of a server busy with an install fails with `server.busy`, a scheduled backup can run while the server does, a console command needs it running. They are audited as the schedule's, with the task's name. A backup or update the node refuses fails the run at once with the node's reason (and notifies, like a refused start).
 - **Only while running.** Restarts and backups can be set to be skipped while the server is not running (a restart would otherwise start a stopped server); console commands are always skipped then.
 - **Updates** need the server stopped, as a user's do: a nightly update is a stop, the update and a start, scheduled a few minutes apart. Chaining them in one task is post-v1.
 - **Panel down.** Nothing runs. At the next start, each task's occurrences older than a minute are recorded as one skipped run saying how many were missed, and the task moves to its next occurrence; an occurrence less than a minute late still runs. A run the panel was doing when it stopped fails five minutes later (`schedules.interrupted`). An operation a task had started (a backup, an update) goes on in the agent, and the run shows the operation's outcome.

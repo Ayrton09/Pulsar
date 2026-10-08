@@ -26,7 +26,16 @@ public sealed record EnrollRequest(
     string KeyStorage,
     string AgentVersion,
     NodeInventory Inventory,
-    byte[] Proof);
+    byte[] Proof)
+{
+    // The enrollment token is a secret: it must never reach a log through ToString.
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture,
+            $"Token = ***, PublicKey = {PublicKey}, KeyStorage = {KeyStorage}, AgentVersion = {AgentVersion}, Inventory = {Inventory}, Proof = {Proof}");
+        return true;
+    }
+}
 
 /// <summary>
 /// Payload of the panel's answer to an enrollment, delivered as a <see cref="SignedMessage"/> so the agent can check
@@ -56,7 +65,15 @@ public sealed record ChallengeResponse(Guid ChallengeId, byte[] Nonce, string Pa
 public sealed record TokenRequest(Guid ChallengeId, byte[] Signature);
 
 /// <summary>A session for the agent hub only. It ends at <see cref="ExpiresAt"/>, on revocation, or on panel restart.</summary>
-public sealed record TokenResponse(string AccessToken, Guid SessionId, DateTimeOffset ExpiresAt);
+public sealed record TokenResponse(string AccessToken, Guid SessionId, DateTimeOffset ExpiresAt)
+{
+    // The session token is a secret: it must never reach a log through ToString.
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"AccessToken = ***, SessionId = {SessionId}, ExpiresAt = {ExpiresAt}");
+        return true;
+    }
+}
 
 /// <summary>Error body of the agent endpoints.</summary>
 public sealed record AgentError(string Code, string Message);

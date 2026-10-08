@@ -589,9 +589,15 @@ public sealed partial class ServerManagement(
     private async Task<Result> SyncSpecAsync(ServerId id, CancellationToken cancellationToken)
     {
         var server = await db.Servers.AsNoTracking().Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
-        if (server is null || server.InstallState == InstallState.NotInstalled || Connection(server.NodeId) is null)
+        if (server is null || server.InstallState == InstallState.NotInstalled || Connection(server.NodeId) is not { } agent)
         {
             return Result.Success(); // the command that follows reports what is wrong
+        }
+
+        // Limits set while the node was disconnected: an agent that cannot enforce them must not start the game uncapped.
+        if ((server.CpuLimitPercent is not null || server.MemoryLimitMb is not null) && !agent.Capabilities.Contains(AgentCapabilities.Limits))
+        {
+            return ServerErrors.LimitsUnsupported;
         }
 
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);

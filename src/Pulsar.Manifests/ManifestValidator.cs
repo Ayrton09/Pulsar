@@ -542,6 +542,12 @@ public static partial class ManifestValidator
         var console = runtime.Console;
         context.HasRcon = console.Rcon is not null;
         ValidateArguments($"{path}.arguments", runtime.ArgumentList, context, guardedPorts: s_noPorts);
+        if (runtime.Environment is { } environment && environment.Keys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != environment.Count)
+        {
+            // Windows environment names ignore case.
+            context.Error($"{path}.environment", "Names differ only by case.");
+        }
+
         foreach (var (name, value) in runtime.Environment ?? new Dictionary<string, string>())
         {
             if (s_reservedEnvironment.Contains(name) || !EnvironmentNamePattern().IsMatch(name))
@@ -665,9 +671,14 @@ public static partial class ManifestValidator
                     {
                         context.Error(path, $"Unknown variable '{key}'.");
                     }
-                    else if (rest is [var sub] && (variable.Type != VariableType.Enum || variable.Options!.Any(o => o.Map?.ContainsKey(sub) != true)))
+                    else if (rest is [var sub] && (variable.Type != VariableType.Enum || variable.Options is null || variable.Options.Any(o => o.Map?.ContainsKey(sub) != true)))
                     {
                         context.Error(path, $"'{key}.{sub}' is not a sub-value every option of the enum maps.");
+                    }
+                    else if (rest is [_] && !variable.Required && variable.Default is null)
+                    {
+                        // Unset, there would be no option to take the sub-value from.
+                        context.Error(path, $"Enum variable '{key}' is used with a sub-value, so it needs a default or to be required.");
                     }
                     else if (use != TemplateUse.Environment && variable.Type == VariableType.String && variable.Pattern is null)
                     {
@@ -956,40 +967,40 @@ public static partial class ManifestValidator
         public bool UsesRconPassword { get; set; }
     }
 
-    [GeneratedRegex("^[a-z0-9][a-z0-9-]{1,63}$", RegexOptions.CultureInvariant)]
+    // \z, not $, in every pattern: '$' also matches before a final newline ("hostname\n" would write a second line).
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{1,63}\z", RegexOptions.CultureInvariant)]
     private static partial Regex KeyPattern();
 
-    [GeneratedRegex(@"^\d{1,6}\.\d{1,6}\.\d{1,6}(-[0-9A-Za-z.-]{1,32})?$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^\d{1,6}\.\d{1,6}\.\d{1,6}(-[0-9A-Za-z.-]{1,32})?\z", RegexOptions.CultureInvariant)]
     private static partial Regex VersionPattern();
 
-    [GeneratedRegex("^[A-Za-z][A-Za-z0-9_]{0,63}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9_]{0,63}\z", RegexOptions.CultureInvariant)]
     private static partial Regex VariableKeyPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9_.-]{1,64}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z0-9_.-]{1,64}\z", RegexOptions.CultureInvariant)]
     private static partial Regex OptionValuePattern();
 
-    [GeneratedRegex("^[a-z][a-z0-9_]{0,31}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[a-z][a-z0-9_]{0,31}\z", RegexOptions.CultureInvariant)]
     private static partial Regex PortNamePattern();
 
-    [GeneratedRegex("^[A-Za-z0-9_.-]{1,64}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z0-9_.-]{1,64}\z", RegexOptions.CultureInvariant)]
     private static partial Regex BranchPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9_.]{1,64}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z0-9_.]{1,64}\z", RegexOptions.CultureInvariant)]
     private static partial Regex SourceCfgKeyPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9_.-]{1,128}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z0-9_.-]{1,128}\z", RegexOptions.CultureInvariant)]
     private static partial Regex PropertiesKeyPattern();
 
-    [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_]{0,127}\z", RegexOptions.CultureInvariant)]
     private static partial Regex EnvironmentNamePattern();
 
-    [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_]{0,127}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_]{0,127}\z", RegexOptions.CultureInvariant)]
     private static partial Regex UnrealKeyPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9_./:-]{1,128}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z0-9_./:-]{1,128}\z", RegexOptions.CultureInvariant)]
     private static partial Regex UnrealSectionPattern();
 
-    // \z, not $: '$' also matches before a final newline.
     [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_.-]{0,63}\z", RegexOptions.CultureInvariant)]
     private static partial Regex XmlElementPattern();
 
@@ -999,7 +1010,8 @@ public static partial class ManifestValidator
     [GeneratedRegex(@"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}\z", RegexOptions.CultureInvariant)]
     private static partial Regex GitHubRepoPattern();
 
-    [GeneratedRegex(@"^(CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])(\..*)?$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    // Device names (the console's CONIN$ and CONOUT$ too, as ServerFilePath has them), with or without an extension.
+    [GeneratedRegex(@"^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[0-9¹²³]|LPT[0-9¹²³])(\..*)?$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex ReservedName();
 }
 

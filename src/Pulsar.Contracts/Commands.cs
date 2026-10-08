@@ -218,6 +218,13 @@ public sealed record DeleteFileCommand(Guid ServerId, string Path) : AgentComman
 public sealed record SendFileCommand(Guid ServerId, string Path, string Ticket, long MaxSize) : AgentCommand
 {
     public const string Type = "server.files_send";
+
+    // The ticket is a secret: it must never reach a log through ToString.
+    protected override bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"ServerId = {ServerId}, Path = {Path}, Ticket = ***, MaxSize = {MaxSize}");
+        return true;
+    }
 }
 
 /// <summary>
@@ -234,6 +241,14 @@ public sealed record ReceiveFileCommand(Guid ServerId, string Path, string Ticke
     : AgentCommand
 {
     public const string Type = "server.files_receive";
+
+    // The ticket is a secret: it must never reach a log through ToString.
+    protected override bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture,
+            $"ServerId = {ServerId}, Path = {Path}, Ticket = ***, Size = {Size}, Overwrite = {Overwrite}, ExpectedVersion = {ExpectedVersion}");
+        return true;
+    }
 }
 
 /// <summary>
@@ -290,6 +305,13 @@ public sealed record DeleteBackupCommand(Guid ServerId, Guid BackupId, RemoteBac
 public sealed record SendBackupCommand(Guid ServerId, Guid BackupId, string Ticket, RemoteBackupTarget? Remote = null) : AgentCommand
 {
     public const string Type = "server.backup_send";
+
+    // The ticket is a secret: it must never reach a log through ToString.
+    protected override bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"ServerId = {ServerId}, BackupId = {BackupId}, Ticket = ***, Remote = {Remote}");
+        return true;
+    }
 }
 
 /// <summary>What a command (or an operation, in <see cref="OperationCompleted"/>) answers besides being accepted.</summary>

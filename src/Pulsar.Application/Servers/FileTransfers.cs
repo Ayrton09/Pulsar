@@ -14,6 +14,9 @@ public sealed class FileTransfers(TimeProvider clock)
 {
     public static readonly TimeSpan ClaimTimeout = TimeSpan.FromSeconds(60);
 
+    /// <summary>How long an upload the agent claimed may go without moving before the browser's request gives up.</summary>
+    public static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(2);
+
     private readonly ConcurrentDictionary<string, Transfer> _pending = new(StringComparer.Ordinal);
     private readonly TimeProvider _clock = clock;
 
@@ -117,6 +120,8 @@ public sealed class FileTransfers(TimeProvider clock)
             _owner.Forget(this);
         }
 
+        private protected TimeProvider Clock => _owner._clock;
+
         internal bool TryClaim()
         {
             if (Interlocked.CompareExchange(ref _state, 1, 0) != 0)
@@ -124,8 +129,13 @@ public sealed class FileTransfers(TimeProvider clock)
                 return false;
             }
 
+            Claimed();
             _claimed.TrySetResult();
             return true;
+        }
+
+        private protected virtual void Claimed()
+        {
         }
     }
 
@@ -134,6 +144,7 @@ public sealed class FileTransfers(TimeProvider clock)
     {
         private readonly TaskCompletionSource<TransferResult> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private long _lastProgress;
 
         internal Upload(FileTransfers owner, string ticket, NodeId node, Stream content, long size) : base(owner, ticket, node) =>
             (Content, Size) = (content, size);
@@ -150,6 +161,39 @@ public sealed class FileTransfers(TimeProvider clock)
 
         /// <summary>All of the content went to the agent.</summary>
         public void ContentSent() => _sent.TrySetResult();
+
+        /// <summary>Some more of the content went to the agent.</summary>
+        public void Progressed() => Interlocked.Exchange(ref _lastProgress, Clock.GetTimestamp());
+
+        /// <summary>
+        /// Completes when all of the content went to the agent or it reported; throws <see cref="TimeoutException"/> when
+        /// nothing moved for <see cref="IdleTimeout"/> (an agent that stopped reading). A slow upload that moves is waited
+        /// for however long it takes.
+        /// </summary>
+        public async Task WaitUntilSentAsync(CancellationToken cancellationToken)
+        {
+            var done = Task.WhenAny(Sent, Result);
+            while (true)
+            {
+                var idle = Clock.GetElapsedTime(Interlocked.Read(ref _lastProgress));
+                if (idle >= IdleTimeout)
+                {
+                    throw new TimeoutException("The upload stopped moving.");
+                }
+
+                try
+                {
+                    await done.WaitAsync(IdleTimeout - idle, Clock, cancellationToken);
+                    return;
+                }
+                catch (TimeoutException)
+                {
+                    // Checked again against the latest progress.
+                }
+            }
+        }
+
+        private protected override void Claimed() => Progressed();
 
         /// <summary>The agent could not take the content (the browser stopped sending, say): the transfer failed.</summary>
         public void Fail(string message) => _result.TrySetResult(new TransferResult(Ticket, FileErrors.TransferFailed, message, null));
@@ -176,6 +220,13 @@ public sealed class FileTransfers(TimeProvider clock)
 
         /// <summary>The agent's content and its length, once it sends them.</summary>
         public Task<(Stream Content, long Length)> Content => _content.Task;
+
+        /// <summary>
+        /// The agent's content, which comes with the request that claimed the transfer; throws
+        /// <see cref="TimeoutException"/> when an agent claimed it but sent nothing within <see cref="ClaimTimeout"/>.
+        /// </summary>
+        public Task<(Stream Content, long Length)> WaitForContentAsync(CancellationToken cancellationToken) =>
+            _content.Task.WaitAsync(ClaimTimeout, Clock, cancellationToken);
 
         /// <summary>
         /// Hands the agent's request body over and waits until the browser side is done with it: true when all of it

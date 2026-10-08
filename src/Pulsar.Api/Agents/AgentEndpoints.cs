@@ -67,6 +67,7 @@ internal static class AgentEndpoints
 
                 await http.Response.Body.WriteAsync(buffer.AsMemory(0, read), http.RequestAborted);
                 sent += read;
+                upload.Progressed();
             }
 
             if (sent < upload.Size)

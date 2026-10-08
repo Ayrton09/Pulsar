@@ -134,6 +134,12 @@ public sealed class NotificationSettings
             return NotificationErrors.SmtpUserInvalid;
         }
 
+        // Without encryption the password would travel in clear: only to a relay on this machine.
+        if (user is not null && security == SmtpSecurity.None && !IsLoopback(smtpHost))
+        {
+            return NotificationErrors.SmtpCredentialsNeedTls;
+        }
+
         var from = Clean(fromAddress);
         if (!NotificationChannel.IsEmailAddress(from))
         {
@@ -146,6 +152,8 @@ public sealed class NotificationSettings
             return NotificationErrors.FromInvalid;
         }
 
+        // The stored password belongs to one account on one server: never sent to another one.
+        var sameAccount = string.Equals(SmtpHost, smtpHost, StringComparison.OrdinalIgnoreCase) && string.Equals(SmtpUserName, user, StringComparison.Ordinal);
         SmtpHost = smtpHost;
         SmtpPort = port;
         SmtpSecurity = security;
@@ -158,12 +166,20 @@ public sealed class NotificationSettings
         {
             SmtpPasswordProtected = passwordProtected;
         }
+        else if (!sameAccount)
+        {
+            SmtpPasswordProtected = null;
+        }
 
         FromAddress = from;
         FromName = name;
         UpdatedAt = now;
         return Result.Success();
     }
+
+    private static bool IsLoopback(string host) =>
+        string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+        || (System.Net.IPAddress.TryParse(host.Trim('[', ']'), out var address) && System.Net.IPAddress.IsLoopback(address));
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

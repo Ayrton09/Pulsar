@@ -14,6 +14,7 @@ import { useCurrentUser } from '../auth/api';
 import { useLiveStatus, useServerConsole } from '../live/hooks';
 import type { ConsoleEntry } from '../live/types';
 import { useConsoleCommand, type ServerDetails } from './api';
+import { ConsoleFilter } from './consoleFilter';
 
 const SCROLLBACK = 5_000;
 const HISTORY = 50;
@@ -32,6 +33,7 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
   const container = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const search = useRef<SearchAddon | null>(null);
+  const filter = useRef(new ConsoleFilter());
   const [query, setQuery] = useState('');
 
   useEffect(() => {
@@ -73,7 +75,13 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
   const write = useCallback(
     (entries: ConsoleEntry[]) => {
       for (const entry of entries) {
-        terminal.current?.write(entry.isGap ? `\r\n\x1b[2m—— ${t('servers.console.gap')} ——\x1b[0m\r\n` : entry.text);
+        if (entry.isGap) {
+          filter.current.reset();
+        }
+        // Game output is filtered: only text, colours and links reach the terminal (no clearing or cursor moves).
+        terminal.current?.write(
+          entry.isGap ? `\r\n\x1b[2m—— ${t('servers.console.gap')} ——\x1b[0m\r\n` : filter.current.push(entry.text),
+        );
       }
     },
     [t],

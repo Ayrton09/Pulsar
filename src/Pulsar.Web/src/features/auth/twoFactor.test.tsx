@@ -114,7 +114,7 @@ describe('two-factor setup', () => {
           authenticatorUri: 'otpauth://totp/Pulsar:admin?secret=JBSWY3DPEHPK3PXP&issuer=Pulsar&digits=6',
         }),
       'POST /api/v1/auth/two-factor/enable': async (request) => {
-        expect(await body(request)).toEqual({ code: '123456' });
+        expect(await body(request)).toEqual({ code: '123456', password: 'my password here' });
         enabled = true;
         return json({ recoveryCodes: codes });
       },
@@ -130,6 +130,9 @@ describe('two-factor setup', () => {
     expect(screen.getByText('JBSW Y3DP EHPK 3PXP')).toBeInTheDocument();
 
     await user.type(screen.getByLabelText('Code from the app'), '123456');
+    // Turning it on also takes the password: a stolen session alone cannot do it.
+    expect(screen.getByRole('button', { name: 'Turn on' })).toBeDisabled();
+    await user.type(screen.getByLabelText('Current password'), 'my password here');
     await user.click(screen.getByRole('button', { name: 'Turn on' }));
 
     // The codes stay on screen until the user says they saved them.
@@ -152,7 +155,8 @@ describe('two-factor setup', () => {
           sharedKey: 'JBSW Y3DP EHPK 3PXP',
           authenticatorUri: 'otpauth://totp/Pulsar:admin?secret=JBSWY3DPEHPK3PXP&issuer=Pulsar&digits=6',
         }),
-      'POST /api/v1/auth/two-factor/enable': () => {
+      'POST /api/v1/auth/two-factor/enable': async (request) => {
+        expect(await body(request)).toEqual({ code: '123456', password: 'my password here' });
         enabled = true;
         return json({ recoveryCodes: codes });
       },
@@ -162,14 +166,21 @@ describe('two-factor setup', () => {
 
     // One click asks for a key.
     await user.click(await screen.findByRole('button', { name: 'Set up' }));
-    await user.type(await screen.findByLabelText('Code from the app'), '123456');
-    await user.click(screen.getByRole('button', { name: 'Turn on' }));
+    const appCode = await screen.findByLabelText('Code from the app');
+    const form = within(appCode.closest('form') as HTMLElement);
+    await user.type(appCode, '123456');
+    await user.type(form.getByLabelText('Current password'), 'my password here');
+    await user.click(form.getByRole('button', { name: 'Turn on' }));
 
     expect(await screen.findByText('ABCDE-FGHIJ')).toBeInTheDocument();
     // Turning it on closes the user's live channels; the reconnection fetches every visible query again.
     await queryClient.invalidateQueries();
     expect(await screen.findByText('5 recovery codes left.', {}, { timeout: 200 }).catch(() => null)).toBeNull();
     expect(screen.getByText('ABCDE-FGHIJ')).toBeInTheDocument();
+    // A browser that refuses the clipboard says so, instead of failing silently.
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+    await user.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('The browser did not allow copying.');
     await user.click(screen.getByRole('button', { name: 'I saved them' }));
     expect(await screen.findByText('5 recovery codes left.')).toBeInTheDocument();
   });

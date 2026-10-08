@@ -521,4 +521,36 @@ describe('node allocations', () => {
     await user.click(screen.getByRole('button', { name: 'Add' }));
     await vi.waitFor(() => expect(screen.getByLabelText('Ports')).toHaveValue(''));
   });
+
+  it('asks before deleting an allocation', async () => {
+    const deleted: string[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/nodes/${nodeId}/allocations`]: () => json(allocations),
+      [`DELETE /api/v1/nodes/${nodeId}/allocations/${allocationA}`]: () => {
+        deleted.push(allocationA);
+        return new Response(null, { status: 204 });
+      },
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const { AllocationsSection } = await import('../nodes/AllocationsSection');
+    const { QueryClientProvider } = await import('@tanstack/react-query');
+    const { MemoryRouter } = await import('react-router');
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <AllocationsSection nodeId={nodeId} canManage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    const row = (await screen.findByText('0.0.0.0:27015')).closest('tr') as HTMLElement;
+
+    await user.click(within(row).getByRole('button', { name: 'Delete' }));
+    expect(confirm).toHaveBeenLastCalledWith('Delete the allocation 0.0.0.0:27015?');
+    expect(deleted).toEqual([]);
+
+    await user.click(within(row).getByRole('button', { name: 'Delete' }));
+    await vi.waitFor(() => expect(deleted).toEqual([allocationA]));
+  });
 });

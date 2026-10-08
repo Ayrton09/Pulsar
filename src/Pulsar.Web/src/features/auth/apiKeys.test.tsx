@@ -77,6 +77,10 @@ describe('API keys', () => {
 
     expect(await within(dialog).findByLabelText('API key')).toHaveTextContent(value);
     expect(sent).toEqual({ name: 'Discord bot', permissions: ['audit.view'], expiresInDays: 90 });
+    // A browser that refuses the clipboard (plain HTTP, no permission) says so: the value is shown only now.
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+    await user.click(within(dialog).getByRole('button', { name: 'Copy' }));
+    expect(await within(dialog).findByRole('status')).toHaveTextContent('The browser did not allow copying.');
     await user.click(within(dialog).getByRole('button', { name: 'I copied it' }));
 
     const list = await screen.findByRole('list', { name: 'API keys' });

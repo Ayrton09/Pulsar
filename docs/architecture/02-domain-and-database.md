@@ -117,7 +117,7 @@ A user creates keys for scripts and tools from their account (`/api/v1/account/a
 
 ### Template upgrades (Phase 12)
 
-A server keeps the template version it was created with (templates never change). When a newer version of its game's template exists (same key, a higher semantic version, a pre-release before its release), the server's details say so and `PUT /api/v1/servers/{id}/template` (`server.install`) moves a stopped server, with nothing else running on it, to that version: values of variables the new version no longer has are dropped, the others (and the new defaults) must still be valid, new required ports get an allocation, and the server is provisioned and installed again with the new manifest, its files kept (install steps such as SteamCMD only check them). Audited as `server.template_changed`. Never back to an older version.
+A server keeps the template version it was created with (templates never change). When a newer version of its game's template exists (same key, a higher semantic version, a pre-release before its release, pre-releases by SemVer's rules: `beta.2` before `beta.10`), the server's details say so and `PUT /api/v1/servers/{id}/template` (`server.install`) moves a stopped server, with nothing else running on it, to that version: values of variables the new version no longer has are dropped, the others (and the new defaults) must still be valid, new required ports get an allocation, and the server is provisioned and installed again with the new manifest, its files kept (install steps such as SteamCMD only check them). Audited as `server.template_changed`. Never back to an older version.
 
 ### Addons (Phase 12)
 

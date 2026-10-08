@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Alert, Badge, Card } from '../../components/ui/Display';
 import { Dialog } from '../../components/ui/Dialog';
 import { Field, Input } from '../../components/ui/Form';
+import { copyText } from '../../lib/clipboard';
 import { errorMessage } from '../../lib/errors';
 import {
   useDisableTwoFactor,
@@ -46,9 +47,9 @@ export function QrCode({ value, label }: { value: string; label: string }) {
 /** Recovery codes, shown once; the user confirms they saved them. */
 function RecoveryCodes({ codes, onDone }: { codes: readonly string[]; onDone: () => void }) {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<boolean | null>(null);
   const copy = () => {
-    void navigator.clipboard?.writeText(codes.join('\n')).then(() => setCopied(true));
+    void copyText(codes.join('\n')).then(setCopied);
   };
   return (
     <div className="space-y-4">
@@ -67,6 +68,11 @@ function RecoveryCodes({ codes, onDone }: { codes: readonly string[]; onDone: ()
         </Button>
         <Button onClick={onDone}>{t('twoFactor.saved')}</Button>
       </div>
+      {copied === false && (
+        <p role="status" className="text-xs text-danger">
+          {t('twoFactor.copyFailed')}
+        </p>
+      )}
     </div>
   );
 }
@@ -81,6 +87,7 @@ export function TwoFactorSetup({ onStarted, onDone }: { onStarted?: () => void; 
   const setup = useTwoFactorSetup();
   const enable = useEnableTwoFactor();
   const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
 
   if (enable.data) {
     return <RecoveryCodes codes={enable.data.recoveryCodes} onDone={onDone} />;
@@ -106,7 +113,7 @@ export function TwoFactorSetup({ onStarted, onDone }: { onStarted?: () => void; 
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    enable.mutate({ code: code.replace(/[\s-]/g, '') });
+    enable.mutate({ code: code.replace(/[\s-]/g, ''), password });
   };
 
   return (
@@ -132,8 +139,23 @@ export function TwoFactorSetup({ onStarted, onDone }: { onStarted?: () => void; 
           />
         )}
       </Field>
+      <Field label={t('account.currentPassword')}>
+        {(ids) => (
+          <Input
+            {...ids}
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        )}
+      </Field>
       <div className="flex justify-end">
-        <Button type="submit" busy={enable.isPending} disabled={code.replace(/[\s-]/g, '').length !== 6}>
+        <Button
+          type="submit"
+          busy={enable.isPending}
+          disabled={code.replace(/[\s-]/g, '').length !== 6 || password.length === 0}
+        >
           {t('twoFactor.turnOn')}
         </Button>
       </div>

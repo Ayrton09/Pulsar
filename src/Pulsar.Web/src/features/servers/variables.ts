@@ -31,7 +31,8 @@ export function variableError(variable: TemplateVariable, value: string, secretI
   }
   if (variable.pattern) {
     try {
-      if (!new RegExp(variable.pattern, 'u').test(value)) {
+      // The whole value, as the panel matches it (anchored or not).
+      if (!new RegExp(`^(?:${variable.pattern})$`, 'u').test(value)) {
         return 'servers.variables.badFormat';
       }
     } catch {

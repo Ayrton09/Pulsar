@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap, type Schemas } from '../../api/client';
 import { adminKeys } from '../admin/api';
-import { serverKeys } from '../servers/api';
+import { invalidateServer } from '../servers/api';
 
 export type ScheduledTaskView = Schemas['ScheduledTaskView'];
 export type ScheduledRunView = Schemas['ScheduledRunView'];
@@ -56,7 +56,7 @@ function useSchedulesChanged(serverId: string) {
   return () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: scheduleKeys.list(serverId) }),
-      queryClient.invalidateQueries({ queryKey: serverKeys.detail(serverId) }),
+      invalidateServer(queryClient, serverId), // its lists too: they are under its key
       queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
     ]);
 }

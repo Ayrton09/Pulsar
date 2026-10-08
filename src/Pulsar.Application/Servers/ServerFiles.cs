@@ -132,7 +132,14 @@ public sealed class ServerFiles(
             }
 
             await download.WaitForClaimAsync(cancellationToken);
-            var (content, length) = await download.Content.WaitAsync(cancellationToken);
+            var (content, length) = await download.WaitForContentAsync(cancellationToken);
+            if (length > maxSize)
+            {
+                // The node was told the limit; the panel does not rely on it.
+                download.Dispose();
+                return ServerErrors.FileTooLarge;
+            }
+
             if (maxSize is null)
             {
                 audit.Record(AuditActions.Server.FileDownloaded, AuditOutcome.Success, new { path, size = length })
@@ -213,7 +220,7 @@ public sealed class ServerFiles(
             await upload.WaitForClaimAsync(cancellationToken);
 
             // The agent reports once it has all of the content (or as soon as it fails to get it).
-            await Task.WhenAny(upload.Sent, upload.Result).WaitAsync(cancellationToken);
+            await upload.WaitUntilSentAsync(cancellationToken);
             var outcome = await upload.Result.WaitAsync(s_resultTimeout, cancellationToken);
             return outcome is { ErrorCode: null, File: { } file }
                 ? new FileDetails(file.Entry, file.Version)

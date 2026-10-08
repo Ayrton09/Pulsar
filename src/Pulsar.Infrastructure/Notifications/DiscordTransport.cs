@@ -45,8 +45,8 @@ internal sealed class DiscordTransport(IHttpClientFactory clients, INotification
         HttpResponseMessage response;
         try
         {
-            // wait=true: Discord answers with the message, or with an error (not 204 before it is posted).
-            response = await clients.CreateClient(ClientName).PostAsJsonAsync(url.Trim() + "?wait=true", Payload(message), s_json, cancellationToken);
+            response = await clients.CreateClient(ClientName).PostAsJsonAsync(NotificationChannel.DiscordPostAddress(url), Payload(message), s_json,
+                cancellationToken);
         }
         catch (HttpRequestException ex)
         {

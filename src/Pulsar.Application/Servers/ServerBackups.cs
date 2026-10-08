@@ -283,7 +283,7 @@ public sealed partial class ServerBackups(
             }
 
             await download.WaitForClaimAsync(cancellationToken);
-            var (content, length) = await download.Content.WaitAsync(cancellationToken);
+            var (content, length) = await download.WaitForContentAsync(cancellationToken);
             audit.Record(AuditActions.Server.BackupDownloaded, AuditOutcome.Success, new { backup = backup.Id.Value, backup.Name, size = length })
                 .WithServer(server.Id, server.NodeId);
             await db.SaveChangesAsync(cancellationToken);

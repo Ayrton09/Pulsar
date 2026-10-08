@@ -190,7 +190,8 @@ public static partial class ConfigFileWriter
     /// <summary>
     /// The declared keys as <c>&lt;property name="Key" value="Value"/&gt;</c> elements: the first element (outside
     /// comments) for each key gets the new value and keeps the rest of its line (the game's comment), repeats and
-    /// empty values are removed, missing keys go before the root's closing tag. A missing file starts as an empty root.
+    /// empty values are removed (the rest of their line, a comment included, stays), missing keys go before the root's
+    /// closing tag. A missing file starts as an empty root.
     /// </summary>
     private static List<string> XmlProperties(RenderedConfigFile file, string? existing)
     {
@@ -227,9 +228,10 @@ public static partial class ConfigFileWriter
             {
                 output.Add(line[..match.Index] + XmlElement(entry) + line[(match.Index + match.Length)..]);
             }
-            else if (rest.Trim().Length > 0 && !rest.TrimStart().StartsWith("<!--", StringComparison.Ordinal))
+            else if (rest.Trim().Length > 0)
             {
-                output.Add(rest); // other elements on the same line stay
+                // Other elements and the comment on the same line stay (a comment may go on over the next lines).
+                output.Add(rest);
             }
         }
 

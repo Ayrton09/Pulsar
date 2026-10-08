@@ -206,6 +206,8 @@ describe('notifications page', () => {
     });
     // The password field is emptied, with a hint that the saved one is kept.
     expect(screen.getByLabelText('Password')).toHaveValue('');
-    expect(screen.getByText('Leave it empty to keep the saved password.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Leave it empty to keep the saved password (only while the server and user stay the same).'),
+    ).toBeInTheDocument();
   });
 });

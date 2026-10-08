@@ -111,16 +111,16 @@ Manifests and schemas are MIT licensed so communities and hosting companies can 
 
 | Type | Mandatory constraints |
 |---|---|
-| `string` | `pattern` is **mandatory** when used in `arguments` or `configFiles` (enforced by the validator); `maxLength`. |
+| `string` | `pattern` is **mandatory** when used in `arguments` or `configFiles` (enforced by the validator) and always matches the whole value (anchored or not); `maxLength`. |
 | `integer` | `min` and `max`. |
 | `boolean` | — |
-| `enum` | Closed `options`; each option can map sub-values (`{{var.gameMode.gameType}}`). |
+| `enum` | Closed `options`; each option can map sub-values (`{{var.gameMode.gameType}}`); an enum used with a sub-value needs a `default` or `required`. |
 
 Attributes: `secret` (strings only, no default; encrypted in the database, write-only in the API, masked in UI and logs, never placed in the environment where child processes would inherit it), `required`, `userEditable` (when `false`, only users with `server.settings.edit` can change it; whoever creates the server sets its first value).
 
 `workshop` (Phase 12): `{ "appId": 108600, "separator": ";" }` on a string variable that is not secret says it lists Steam Workshop items of that game (the game's app id, not its dedicated server's), separated by `;` (the default) or `,`. The panel then offers an editor that shows each item by name and adds items by id or link (a collection adds its items), looking them up on Steam's public Workshop API; the value is still the plain list, checked by the variable's `pattern`, and the game downloads the items itself. Project Zomboid's `workshopItems` uses it.
 
-Additional default validation for `string` values used as arguments: no leading whitespace, no control characters, and they **cannot start with `-` or `+`** (prevents a value from becoming a flag or a Source console command). Regexes are evaluated with `RegexOptions.NonBacktracking` and a timeout (no ReDoS from a manifest).
+Additional default validation for `string` values used as arguments: no leading whitespace, no control characters, and they **cannot start with `-` or `+`**, nor can any word in them (a `-` or `+` after whitespace and before a letter): a value is one argument, but a game may split it at spaces, so it never becomes a flag or a Source console command (`EU - 24/7` and `+1` stay text). Regexes are evaluated with `RegexOptions.NonBacktracking` and a timeout (no ReDoS from a manifest).
 
 ### Argument templates
 
@@ -128,7 +128,7 @@ Additional default validation for `string` values used as arguments: no leading 
 - **Every array element is exactly one argument (argv) after substitution.** A value is never split into several arguments.
 - A single conditional: `{ "if": "var.x", "then": [...] }` (true for boolean `true` or a non-empty string) or `{ "if": "port.x", "then": [...] }` (an optional port that has an allocation), with an optional `"else": [...]` for when it does not hold (Rust turns its companion app off with `+app.port -1` when that port has no allocation). Optional ports can only be used inside their own condition, never in its `else`.
 - The agent builds the Windows command line with the MSVCRT/`CommandLineToArgvW` quoting algorithm (quotes and backslashes escaped correctly) and passes it to `CreateProcessAsUser` with an explicit `lpApplicationName`. Never through `cmd.exe`.
-- `allowExtraArguments`: when `true`, users with `server.startup.edit` can add arguments (each one argv, with the same control-character validation). When `false`, they cannot.
+- `allowExtraArguments`: when `true`, users with `server.startup.edit` can add arguments (each one argv, with the same control-character validation). No word of an extra argument may set what the manifest sets (`-port=…` included) or start with a sensitive prefix of the console; where `+` arguments are console commands (`logfile+rcon`, or a manifest with `+` arguments of its own) `;` and anything about RCON are refused too. When `false`, they cannot.
 
 ### Ports
 
@@ -146,7 +146,7 @@ A port can `follow` another: `"follows": { "port": "game", "offset": 1 }` says t
 
 ### Environment
 
-`environment` sets variables with placeholders. Deny list: `PATH`, `PATHEXT`, `ComSpec`, `SystemRoot`, `windir`, `PSModulePath`, `TEMP`/`TMP` (set by the agent inside the server directory), `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`.
+`environment` sets variables with placeholders; names are unique ignoring case, as Windows reads them. Deny list: `PATH`, `PATHEXT`, `ComSpec`, `SystemRoot`, `windir`, `PSModulePath`, `TEMP`/`TMP` (set by the agent inside the server directory), `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`.
 
 ### Install/update steps (closed set)
 
@@ -173,7 +173,7 @@ There is no `run`/`exec`/`script` step. If a game needed its own installer, it w
 - `unreal-ini` rejects `"` and `\` (Unreal reads `\` as an escape inside quotes); its keys and `struct` are `^[A-Za-z_][A-Za-z0-9_]{0,127}$`, and `section` is `^[A-Za-z0-9_./:-]{1,128}$`.
 - `properties` writes each backslash as `\\`; `source-cfg` keys are `^[A-Za-z0-9_.]{1,64}$`, `properties` keys `^[A-Za-z0-9_.-]{1,128}$`.
 - Phase 12: `key-value` writes `Key=Value` lines as they are, without escapes (Project Zomboid's `.ini`, where Build 42 writes mods as `\ModId`); `#` and `!` start comments, and only `=` separates the key.
-- Phase 12: `xml-properties` sets `<property name="Key" value="Value"/>` elements (7 Days to Die's `serverconfig.xml`), with values XML-escaped. Patch mode only: the first element of each key outside comments gets the new value and keeps the rest of its line (the game's own comment), repeats and empty values are removed, and missing keys go before the closing tag of the root element named by `section` (a missing file starts as that empty root; a file without it stops the start). A commented-out element (`<!-- <property name="UserDataFolder" .../> -->`) is left as it is.
+- Phase 12: `xml-properties` sets `<property name="Key" value="Value"/>` elements (7 Days to Die's `serverconfig.xml`), with values XML-escaped. Patch mode only: the first element of each key outside comments gets the new value and keeps the rest of its line (the game's own comment), repeats and empty values are removed (anything else on their line, a comment included, stays: a comment may go on over the next lines), and missing keys go before the closing tag of the root element named by `section` (a missing file starts as that empty root; a file without it stops the start). A commented-out element (`<!-- <property name="UserDataFolder" .../> -->`) is left as it is.
 
 ### Console
 
@@ -269,7 +269,7 @@ string ConfigFileWriter.Apply(RenderedConfigFile file, string? existing);       
 
 `ServerBinding` carries the variable values, the port allocations, the extra arguments and the RCON password. The published JSON Schema (`schemas/manifest.v1.schema.json`, draft 2020-12) describes the shape for editors and community CI; Pulsar validates more than a schema can express.
 
-Semantic rules (beyond the schema): placeholders reference existing variables/ports; strings used in arguments have a `pattern` or are `enum`s; valid paths; `.exe` executable; no duplicate ports; regexes compile in NonBacktracking mode.
+Semantic rules (beyond the schema; every name pattern ends at `\z`, so a name with a final newline is refused): placeholders reference existing variables/ports; strings used in arguments have a `pattern` or are `enum`s; valid paths; `.exe` executable; no duplicate ports; regexes compile in NonBacktracking mode.
 
 Repository tests load **every** `games/*/manifest.json` and fail if any is invalid or does not match the schema, and check that the schema describes every part of the C# model (properties, required ones and enum values). Rendering tests include injection cases (`map = "de_dust2 +rcon_password x"`, values with quotes, `;`, line breaks, `-insecure`), and secret values never appear in error messages.
 

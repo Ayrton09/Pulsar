@@ -153,8 +153,9 @@ public static class TwoFactorEndpoints
     }
 
     /// <summary>
-    /// Turns two-factor authentication on with a code from the app, and returns the recovery codes (shown once). The
-    /// user's other sessions end.
+    /// Turns two-factor authentication on with a code from the app and the current password (a stolen session alone
+    /// must not lock the owner out and get the recovery codes), and returns the recovery codes (shown once). The user's
+    /// other sessions end.
     /// </summary>
     private static async Task<Results<Ok<RecoveryCodesResponse>, ProblemHttpResult, UnauthorizedHttpResult>> EnableAsync(
         EnableTwoFactorRequest request, HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn,
@@ -164,6 +165,11 @@ public static class TwoFactorEndpoints
         if (user is null)
         {
             return TypedResults.Unauthorized();
+        }
+
+        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, audit, AuditActions.Auth.TwoFactorEnabled, ct) is { } wrong)
+        {
+            return wrong;
         }
 
         if (user.TwoFactorEnabled)

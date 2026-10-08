@@ -46,7 +46,10 @@ public sealed record TwoFactorStatusResponse(bool Enabled, bool Required, int Re
 /// <summary>A new authenticator key, as text (in groups of four) and as the otpauth URI the QR code carries.</summary>
 public sealed record TwoFactorSetupResponse(string SharedKey, string AuthenticatorUri);
 
-public sealed record EnableTwoFactorRequest([property: Required, StringLength(16)] string Code);
+/// <summary>A code from the app and the current password: a stolen session alone cannot turn it on.</summary>
+public sealed record EnableTwoFactorRequest(
+    [property: Required, StringLength(16)] string Code,
+    [property: Required, StringLength(256)] string Password);
 
 /// <summary>Shown once: the panel keeps only their hashes.</summary>
 public sealed record RecoveryCodesResponse(IReadOnlyList<string> RecoveryCodes);

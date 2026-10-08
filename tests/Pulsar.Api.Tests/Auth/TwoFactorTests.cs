@@ -54,13 +54,22 @@ public sealed class TwoFactorTests(TwoFactorApiFactory factory) : IClassFixture<
         Assert.Contains("&issuer=Pulsar", setup.AuthenticatorUri, StringComparison.Ordinal);
         var key = setup.SharedKey.Replace(" ", string.Empty, StringComparison.Ordinal);
 
-        using (var wrong = await user.PostAsync("/api/v1/auth/two-factor/enable", new EnableTwoFactorRequest(WrongCode(key))))
+        using (var wrong = await user.PostAsync("/api/v1/auth/two-factor/enable", new EnableTwoFactorRequest(WrongCode(key), AccessScenario.Password)))
         {
             await SetupTests.AssertProblemAsync(wrong, HttpStatusCode.BadRequest, "auth.invalid_code");
         }
 
         var enableCode = Code(key);
-        using var enabled = await user.PostAsync("/api/v1/auth/two-factor/enable", new EnableTwoFactorRequest(enableCode));
+
+        // A stolen session cannot turn it on: that takes the password too.
+        using (var wrongPassword = await user.PostAsync("/api/v1/auth/two-factor/enable", new EnableTwoFactorRequest(enableCode, "not my password")))
+        {
+            await SetupTests.AssertProblemAsync(wrongPassword, HttpStatusCode.BadRequest, "auth.wrong_current_password");
+        }
+
+        Assert.False((await GetAsync<TwoFactorStatusResponse>(user, "/api/v1/auth/two-factor")).Enabled);
+
+        using var enabled = await user.PostAsync("/api/v1/auth/two-factor/enable", new EnableTwoFactorRequest(enableCode, AccessScenario.Password));
         await AccessScenario.EnsureSuccessAsync(enabled);
         var codes = (await enabled.Content.ReadFromJsonAsync<RecoveryCodesResponse>(Ct))!.RecoveryCodes;
         Assert.Equal(10, codes.Count);
@@ -252,7 +261,7 @@ public sealed class TwoFactorTests(TwoFactorApiFactory factory) : IClassFixture<
 
         var setup = await PostAsync<TwoFactorSetupResponse>(user, "/api/v1/auth/two-factor/setup");
         factory.Clock.Advance(TimeSpan.FromSeconds(30));
-        using (var enabled = await user.PostAsync("/api/v1/auth/two-factor/enable", new EnableTwoFactorRequest(Code(setup.SharedKey))))
+        using (var enabled = await user.PostAsync("/api/v1/auth/two-factor/enable", new EnableTwoFactorRequest(Code(setup.SharedKey), AccessScenario.Password)))
         {
             await AccessScenario.EnsureSuccessAsync(enabled);
         }
@@ -321,7 +330,7 @@ public sealed class TwoFactorTests(TwoFactorApiFactory factory) : IClassFixture<
         using var user = await scenario.SignInAsync(userName);
         var setup = await PostAsync<TwoFactorSetupResponse>(user, "/api/v1/auth/two-factor/setup");
         factory.Clock.Advance(TimeSpan.FromSeconds(30));
-        using var enabled = await user.PostAsync("/api/v1/auth/two-factor/enable", new EnableTwoFactorRequest(Code(setup.SharedKey)));
+        using var enabled = await user.PostAsync("/api/v1/auth/two-factor/enable", new EnableTwoFactorRequest(Code(setup.SharedKey), AccessScenario.Password));
         await AccessScenario.EnsureSuccessAsync(enabled);
         factory.Clock.Advance(TimeSpan.FromSeconds(30));
         return (setup.SharedKey, (await enabled.Content.ReadFromJsonAsync<RecoveryCodesResponse>(Ct))!.RecoveryCodes);

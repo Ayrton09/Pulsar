@@ -6,6 +6,7 @@ import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Card } from '../../components/ui/Display';
 import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
+import { copyText } from '../../lib/clipboard';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
 import { adminKeys, usePermissionCatalog } from '../admin/api';
@@ -250,7 +251,7 @@ function ApiKeyForm({
 /** The new key's value, this once; the user confirms they copied it. */
 function CreatedKey({ value, onDone }: { value: string; onDone: () => void }) {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<boolean | null>(null);
   return (
     <div className="space-y-4">
       <p className="text-sm">{t('apiKeys.createdIntro')}</p>
@@ -259,14 +260,16 @@ function CreatedKey({ value, onDone }: { value: string; onDone: () => void }) {
       </p>
       <p className="text-xs text-muted">{t('apiKeys.usage')}</p>
       <div className="flex flex-wrap justify-end gap-2">
-        <Button
-          variant="secondary"
-          onClick={() => void navigator.clipboard?.writeText(value).then(() => setCopied(true))}
-        >
+        <Button variant="secondary" onClick={() => void copyText(value).then(setCopied)}>
           {copied ? t('twoFactor.copied') : t('twoFactor.copy')}
         </Button>
         <Button onClick={onDone}>{t('apiKeys.done')}</Button>
       </div>
+      {copied === false && (
+        <p role="status" className="text-xs text-danger">
+          {t('twoFactor.copyFailed')}
+        </p>
+      )}
     </div>
   );
 }

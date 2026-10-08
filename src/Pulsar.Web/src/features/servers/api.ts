@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type Query, type QueryClient } from '@tanstack/react-query';
 import { api, unwrap, type Schemas } from '../../api/client';
 import { adminKeys } from '../admin/api';
 
@@ -67,12 +67,23 @@ export function useServerSettings(id: string) {
   });
 }
 
-/** Server changes show up in the list, the server page and the audit log. */
+/** A server's settings change only when someone saves them: refetching them would drop what an admin is editing. */
+const notSettings = (query: Query) => query.queryKey[2] !== 'settings';
+
+/**
+ * Refreshes the server's page and everything under it (its backups, addons, schedules…) but its settings, as live
+ * notices do (LiveProvider).
+ */
+export function invalidateServer(queryClient: QueryClient, id: string) {
+  return queryClient.invalidateQueries({ queryKey: serverKeys.detail(id), predicate: notSettings });
+}
+
+/** Server changes show up in the list, the server page and the audit log (not in the settings: see invalidateServer). */
 function useServersChanged() {
   const queryClient = useQueryClient();
   return () =>
     Promise.all([
-      queryClient.invalidateQueries({ queryKey: serverKeys.all }),
+      queryClient.invalidateQueries({ queryKey: serverKeys.all, predicate: notSettings }),
       queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
     ]);
 }
@@ -131,10 +142,13 @@ export function useUpdateServerSettings() {
 /** Moves a stopped server to a newer version of its game's template; it is installed again with it. */
 export function useUpgradeTemplate() {
   const changed = useServersChanged();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, templateId }: { id: string; templateId: string }) =>
       unwrap(api.PUT('/api/v1/servers/{id}/template', { params: { path: { id } }, body: { templateId } })),
-    onSuccess: changed,
+    // The new template can bring other variables.
+    onSuccess: (_, { id }) =>
+      Promise.all([changed(), queryClient.invalidateQueries({ queryKey: serverKeys.settings(id) })]),
   });
 }
 

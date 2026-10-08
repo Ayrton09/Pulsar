@@ -52,6 +52,7 @@ test('a role requires two-factor authentication and its user signs in with codes
   await page.screenshot({ path: 'test-results/screens/two-factor-setup.png', fullPage: true });
   let used = await freshTotp(key, timeStep() - 1);
   await page.getByLabel('Code from the app').fill(used.code);
+  await page.getByLabel('Current password').fill(operator.password);
   await page.getByRole('button', { name: 'Turn on' }).click();
 
   const codes = page.getByRole('list', { name: 'Recovery codes' }).getByRole('listitem');

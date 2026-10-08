@@ -76,8 +76,11 @@ public sealed partial class AgentAccess(
             return await RejectEnrollmentAsync(node.Id, "token_already_used", cancellationToken);
         }
 
-        // Re-enrollment (e.g. Windows reinstalled): the previous key stops working.
-        var previous = await db.NodeCredentials.Where(c => c.NodeId == node.Id && c.Status == NodeCredentialStatus.Active).ToListAsync(cancellationToken);
+        // Re-enrollment (e.g. Windows reinstalled): the previous key stops working, and so does a pending one from an
+        // unfinished rotation (it could still authenticate and supersede the new key).
+        var previous = await db.NodeCredentials
+            .Where(c => c.NodeId == node.Id && (c.Status == NodeCredentialStatus.Active || c.Status == NodeCredentialStatus.Pending))
+            .ToListAsync(cancellationToken);
         foreach (var old in previous)
         {
             old.Revoke(null, "Replaced by a new enrollment.", now);

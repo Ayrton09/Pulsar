@@ -10263,12 +10263,18 @@
       },
       "EnableTwoFactorRequest": {
         "required": [
-          "code"
+          "code",
+          "password"
         ],
         "type": "object",
         "properties": {
           "code": {
             "maxLength": 16,
+            "minLength": 0,
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 256,
             "minLength": 0,
             "type": "string"
           }

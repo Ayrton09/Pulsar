@@ -79,13 +79,16 @@ public sealed class ScheduledTaskRun
 
     public void Succeeded(DateTimeOffset now, string? message = null) => End(ScheduledRunStatus.Succeeded, null, message, now);
 
-    /// <summary>The action started an operation, which the node accepted.</summary>
-    public void Dispatched(OperationId operationId, DateTimeOffset now)
+    /// <summary>
+    /// The action started an operation, which the node accepted, or which failed already (<paramref name="failedCode"/>:
+    /// the node refused it).
+    /// </summary>
+    public void Dispatched(OperationId operationId, DateTimeOffset now, string? failedCode = null, string? failedMessage = null)
     {
         if (Status == ScheduledRunStatus.Running)
         {
             OperationId = operationId;
-            End(ScheduledRunStatus.Succeeded, null, null, now);
+            End(failedCode is null ? ScheduledRunStatus.Succeeded : ScheduledRunStatus.Failed, failedCode, failedMessage, now);
         }
     }
 

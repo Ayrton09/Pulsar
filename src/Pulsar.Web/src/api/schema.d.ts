@@ -9165,6 +9165,7 @@ export interface components {
         };
         EnableTwoFactorRequest: {
             code: string;
+            password: string;
         };
         EnrollmentInstructions: {
             token: string;

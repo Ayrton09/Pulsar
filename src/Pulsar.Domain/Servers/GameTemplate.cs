@@ -76,7 +76,8 @@ public sealed class GameTemplate
 
     /// <summary>
     /// Orders semantic versions (<c>1.2.3</c>, <c>1.2.3-beta.1</c>; manifests are validated to have one): by their
-    /// numbers, and a pre-release before its release. Below zero when <paramref name="left"/> is older.
+    /// numbers, a pre-release before its release, and pre-releases by SemVer's rules (<c>beta.2</c> before <c>beta.10</c>).
+    /// Below zero when <paramref name="left"/> is older.
     /// </summary>
     public static int CompareVersions(string left, string right)
     {
@@ -98,8 +99,35 @@ public sealed class GameTemplate
             (null, null) => 0,
             (null, _) => 1,
             (_, null) => -1,
-            _ => string.CompareOrdinal(leftPre, rightPre),
+            _ => ComparePreReleases(leftPre, rightPre),
         };
+
+        // SemVer: identifier by identifier, numeric ones as numbers and before alphanumeric ones, then the longer list.
+        static int ComparePreReleases(string left, string right)
+        {
+            var leftParts = left.Split('.');
+            var rightParts = right.Split('.');
+            for (var i = 0; i < leftParts.Length && i < rightParts.Length; i++)
+            {
+                var leftNumeric = ulong.TryParse(leftParts[i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture,
+                    out var leftNumber);
+                var rightNumeric = ulong.TryParse(rightParts[i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture,
+                    out var rightNumber);
+                var compared = (leftNumeric, rightNumeric) switch
+                {
+                    (true, true) => leftNumber.CompareTo(rightNumber),
+                    (true, false) => -1,
+                    (false, true) => 1,
+                    _ => string.CompareOrdinal(leftParts[i], rightParts[i]),
+                };
+                if (compared != 0)
+                {
+                    return compared;
+                }
+            }
+
+            return leftParts.Length.CompareTo(rightParts.Length);
+        }
 
         static (long[] Numbers, string? PreRelease) Split(string version)
         {

@@ -82,7 +82,8 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
     public async Task OperationProgressAsync(NodeId nodeId, OperationProgress progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(progress);
-        var percent = progress.Percent is { } p ? (decimal?)Math.Round((decimal)p, 2) : null;
+        // The agent's number is not trusted: not a number (or infinite) is left out, the rest kept within 0–100.
+        var percent = progress.Percent is { } p && double.IsFinite(p) ? (decimal?)Math.Round((decimal)Math.Clamp(p, 0, 100), 2) : null;
         var operation = await db.Operations.SingleOrDefaultAsync(o => o.Id == new OperationId(progress.OperationId) && o.NodeId == nodeId,
             cancellationToken);
         if (operation is not { IsActive: true })
@@ -209,7 +210,16 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         ArgumentNullException.ThrowIfNull(operationsInFlight);
         var now = clock.GetUtcNow();
         var servers = await db.Servers.Where(s => s.NodeId == nodeId).ToListAsync(cancellationToken);
-        var reported = snapshots.ToDictionary(s => s.ServerId);
+        var reported = new Dictionary<Guid, ServerSnapshot>();
+        foreach (var snapshot in snapshots)
+        {
+            // A server reported twice: the first counts (a duplicate must not keep the node from being reconciled).
+            if (!reported.TryAdd(snapshot.ServerId, snapshot))
+            {
+                LogDuplicateSnapshot(nodeId, snapshot.ServerId);
+            }
+        }
+
         foreach (var server in servers)
         {
             if (reported.Remove(server.Id.Value, out var snapshot))
@@ -234,6 +244,7 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         foreach (var operation in active.Where(o => !inFlight.Contains(o.Id) && (o.Status == OperationStatus.Running || now - o.CreatedAt > s_queuedGrace)))
         {
             operation.Complete(OperationStatus.Interrupted, "operation.interrupted", "The agent restarted or lost the operation.", now);
+            progressCache.Remove(operation.Id.Value);
             var server = servers.FirstOrDefault(s => s.Id == operation.ServerId);
             server?.OperationCompleted(operation, now);
             if (operation.Type == OperationType.BackupCreate)
@@ -267,6 +278,9 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
 
         switch (operation.Status)
         {
+            case OperationStatus.Succeeded when result is BackupResult made && !Plausible(made):
+                backup.Ended(BackupStatus.Failed, "The node reported a negative size or count for the archive.", now);
+                break;
             case OperationStatus.Succeeded when result is BackupResult made && Sha256(made.Sha256) is { } hash:
                 backup.Completed(made.Size, made.FileCount, made.SkippedFiles, hash, now);
                 if (backup.RemoteStatus == RemoteCopyStatus.Pending)
@@ -297,6 +311,9 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
 
         return false;
     }
+
+    // Skipped files are not in the archive, so they can outnumber the files in it.
+    private static bool Plausible(BackupResult made) => made is { Size: >= 0, FileCount: >= 0, SkippedFiles: >= 0 };
 
     private static byte[]? Sha256(string hex)
     {
@@ -360,6 +377,9 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Node {NodeId} runs server {ServerId}, which the panel does not know; it is left alone")]
     private partial void LogUnknownOnNode(NodeId nodeId, Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Node {NodeId} reported server {ServerId} more than once at Hello; the first report counts")]
+    private partial void LogDuplicateSnapshot(NodeId nodeId, Guid serverId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reconciling node {NodeId} conflicted with another change; it is retried at its next connection")]
     private partial void LogReconciliationConflict(NodeId nodeId);

@@ -132,6 +132,28 @@ public sealed class WorkshopTests(WorkshopApiFactory factory) : IClassFixture<Wo
     }
 
     [DatabaseFact]
+    public async Task AnUpdateTimeOutOfRangeIsLeftOut()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        factory.Steam.Items["3806657189"] = new
+        {
+            publishedfileid = "3806657189",
+            result = 1,
+            consumer_app_id = 108600,
+            title = "From the far future",
+            file_size = "1",
+            time_updated = 99_999_999_999_999,
+        };
+
+        using var response = await admin.PostAsync("/api/v1/workshop/lookup", new WorkshopLookupRequest(108600, ["3806657189"]));
+
+        await AccessScenario.EnsureSuccessAsync(response);
+        var item = Assert.Single((await response.Content.ReadFromJsonAsync<List<WorkshopItemView>>(AccessScenario.Json, Ct))!);
+        Assert.Equal("From the far future", item.Title);
+        Assert.Null(item.UpdatedAt);
+    }
+
+    [DatabaseFact]
     public async Task OnlyWorkshopIdsAreSentAndSteamFailuresAreSaid()
     {
         using var admin = await factory.CreateAdminClientAsync();

@@ -38,6 +38,9 @@ public static class NotificationErrors
 
     public static DomainError SmtpUserInvalid { get; } = new("notifications.smtp_user_invalid", "The SMTP user name is not valid.");
 
+    public static DomainError SmtpCredentialsNeedTls { get; } =
+        new("notifications.smtp_credentials_need_tls", "Signing in to an SMTP server needs STARTTLS or TLS, unless the server is on this machine.");
+
     public static DomainError FromInvalid { get; } = new("notifications.from_invalid", "The sender is one valid email address (and an optional short name).");
 
     public static DomainError EmailNotConfigured { get; } =

@@ -429,7 +429,7 @@
       "not_found": "The user does not exist."
     },
     "node": {
-      "name_invalid": "The node name must have between 1 and 64 characters.",
+      "name_invalid": "A node name is one line of up to 64 characters.",
       "description_too_long": "The description is too long.",
       "public_host_invalid": "The public address must be a host name or an IP address.",
       "name_taken": "Another node already has this name.",
@@ -450,7 +450,7 @@
       "not_found": "The panel key does not exist."
     },
     "server": {
-      "name_invalid": "The server name must have between 1 and 64 characters.",
+      "name_invalid": "A server name is one line of up to 64 characters.",
       "description_too_long": "The description is too long.",
       "not_found": "The server does not exist.",
       "template_not_found": "That game is not available.",
@@ -545,6 +545,7 @@
       "smtp_host_invalid": "That is not a host name or address.",
       "smtp_port_invalid": "The port is a number from 1 to 65535.",
       "smtp_user_invalid": "That user name is not valid.",
+      "smtp_credentials_need_tls": "Signing in needs STARTTLS or TLS: without encryption the password would travel in clear (except to a server on this machine).",
       "from_invalid": "The sender is one valid email address and an optional short name.",
       "email_not_configured": "Email is off: set the SMTP server in the settings first."
     },
@@ -939,7 +940,8 @@
     "portsLabel": "Ports",
     "portsHint": "A port, a range (27015-27030) or a list (27015, 27020).",
     "notesLabel": "Notes (optional)",
-    "addButton": "Add"
+    "addButton": "Add",
+    "deleteConfirm": "Delete the allocation {{address}}?"
   },
   "templates": {
     "title": "Games",
@@ -1022,7 +1024,8 @@
       "reload": "Reload",
       "overwrite": "Overwrite",
       "tooLarge": "This file is larger than 1 MB: download it instead.",
-      "binary": "This file is not text: download it instead."
+      "binary": "This file is not text: download it instead.",
+      "mixedEndings": "This file mixes Windows and Unix line endings, and saving it here would change them: it is shown read only. Download it to edit it."
     },
     "refresh": "Refresh"
   },
@@ -1232,6 +1235,7 @@
     "codesLabel": "Recovery codes",
     "copy": "Copy",
     "copied": "Copied",
+    "copyFailed": "The browser did not allow copying. Select the text and copy it by hand.",
     "saved": "I saved them",
     "codesLeft_one": "{{count}} recovery code left.",
     "codesLeft_other": "{{count}} recovery codes left.",
@@ -1314,11 +1318,11 @@
     "securities": {
       "startTls": "STARTTLS (usually 587)",
       "tls": "TLS (usually 465)",
-      "none": "None (a relay on this network only)"
+      "none": "None (a relay on this network without signing in, or on this machine)"
     },
     "smtpUser": "User name",
     "smtpPassword": "Password",
-    "smtpPasswordKeep": "Leave it empty to keep the saved password.",
+    "smtpPasswordKeep": "Leave it empty to keep the saved password (only while the server and user stay the same).",
     "clearPassword": "Remove the saved password",
     "fromAddress": "From address",
     "fromName": "From name",

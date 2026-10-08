@@ -70,7 +70,7 @@ public sealed class ManifestTests
     }
 
     [Theory]
-    [InlineData("de_dust2 +rcon_password x")] // stays one argument, and the pattern refuses it anyway
+    [InlineData("de_dust2 +rcon_password x")] // one argument, but a game may split it
     [InlineData("+rcon_password")]
     [InlineData("-insecure")]
     [InlineData(" de_dust2")]
@@ -83,13 +83,6 @@ public sealed class ManifestTests
             m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add("+map");
             m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add("{{var.map}}");
         }));
-
-        if (map.Contains(' ', StringComparison.Ordinal) && !map.StartsWith(' '))
-        {
-            var plan = Render(manifest, new Dictionary<string, string?> { ["map"] = map });
-            Assert.Equal(map, plan.Arguments[^1]);
-            return;
-        }
 
         Assert.Throws<LaunchPlanException>(() => Render(manifest, new Dictionary<string, string?> { ["map"] = map }));
     }
@@ -123,6 +116,35 @@ public sealed class ManifestTests
     {
         var error = Assert.Throws<LaunchPlanException>(() => RenderCs2(["-tickrate", "128", extra, "value"]));
         Assert.Contains(extra.Split(' ', ';')[0], error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Every word of an extra argument is checked, in every console mode: a game may split one argument at spaces.
+    [Theory]
+    [InlineData("-useperfthreads -AdminPassword=x")]
+    [InlineData("-useperfthreads -logformat=json")]
+    public void ExtraArgumentsAreCheckedWordByWord(string extra)
+    {
+        var binding = new ServerBinding("abcd1234", new Dictionary<string, string?>(),
+            new Dictionary<string, PortAssignment> { ["game"] = new(PortAssignment.AnyAddress, 8211), ["query"] = new(PortAssignment.AnyAddress, 27015) },
+            [extra], RconPassword: "generated");
+
+        Assert.NotNull(LaunchPlanRenderer.Check(TestManifests.Load("palworld"), ManifestValidator.WindowsX64, binding));
+        Assert.Null(LaunchPlanRenderer.Check(TestManifests.Load("palworld"), ManifestValidator.WindowsX64, binding with { ExtraArguments = ["-useperfthreads"] }));
+    }
+
+    [Fact]
+    public void ACommandSeparatorIsRefusedWhereverPlusArgumentsAreCommands()
+    {
+        // A pty game whose own arguments are console commands ('+map'): ';' would start another one there too.
+        var manifest = Parse(Manifest(m =>
+        {
+            m["runtime"]!["windows-x64"]!["allowExtraArguments"] = true;
+            m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add("+map");
+            m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add("de_dust2");
+        }));
+
+        Assert.Throws<LaunchPlanException>(() => Render(manifest, new Dictionary<string, string?>(), ["+sv_cheats 0;quit"]));
+        Assert.Equal("+sv_cheats 0", Render(manifest, new Dictionary<string, string?>(), ["+sv_cheats 0"]).Arguments[^1]);
     }
 
     [Fact]
@@ -176,6 +198,8 @@ public sealed class ManifestTests
     [InlineData("bin/game.exe:stream")]
     [InlineData("bin/CON.exe")]
     [InlineData("bin/nul")]
+    [InlineData("CONIN$/game.exe")]
+    [InlineData("bin/conout$.exe")]
     [InlineData("bin./game.exe")]
     [InlineData("bin/start.bat")]
     [InlineData("bin/setup.ps1")]
@@ -390,6 +414,156 @@ public sealed class ManifestTests
 
         Assert.Equal(ManifestParser.Parse(bytes).Sha256, ManifestParser.Parse(bytes).Sha256);
         Assert.NotEqual(ManifestParser.Parse(bytes).Sha256, ManifestParser.Parse(withSpace).Sha256);
+    }
+
+    [Fact]
+    public void AnEnumWithSubValuesAlwaysHasAValue()
+    {
+        var optional = new JsonObject
+        {
+            ["key"] = "mode",
+            ["label"] = "Mode",
+            ["type"] = "enum",
+            ["options"] = new JsonArray(new JsonObject { ["value"] = "a", ["label"] = "A", ["map"] = new JsonObject { ["flag"] = "1" } }),
+        };
+        var json = (JsonObject variable) => Manifest(m =>
+        {
+            m["variables"]!.AsArray().Add(variable);
+            m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add("--mode={{var.mode.flag}}");
+        });
+
+        // Unset, there would be no option to take the sub-value from.
+        Assert.Contains(TestManifests.Errors(json((JsonObject)optional.DeepClone())), e => e.Message.Contains("needs a default or to be required", StringComparison.Ordinal));
+
+        var withDefault = (JsonObject)optional.DeepClone();
+        withDefault["default"] = "a";
+        Assert.Equal("--mode=1", Render(Parse(json(withDefault)), new Dictionary<string, string?>()).Arguments[^1]);
+
+        var required = (JsonObject)optional.DeepClone();
+        required["required"] = true;
+        var manifest = Parse(json(required));
+        Assert.Equal("--mode=1", Render(manifest, new Dictionary<string, string?> { ["mode"] = "a" }).Arguments[^1]);
+        Assert.NotNull(LaunchPlanRenderer.Check(manifest, ManifestValidator.WindowsX64, new ServerBinding("abcd1234", new Dictionary<string, string?>())));
+    }
+
+    [Fact]
+    public void AnEnumWithoutOptionsIsAnErrorNotACrash()
+    {
+        var errors = Errors(m =>
+        {
+            m["variables"]!.AsArray().Add(new JsonObject { ["key"] = "mode", ["label"] = "Mode", ["type"] = "enum" });
+            m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add("--mode={{var.mode.flag}}");
+        });
+
+        Assert.Contains(errors, e => e.Path == "variables[3].options");
+    }
+
+    // '$' also matches before a final newline: "hostname\n" would write a second line (in a Source .cfg, a command).
+    [Theory]
+    [InlineData("key")]
+    [InlineData("version")]
+    [InlineData("variables[3].key")]
+    [InlineData("variables[3].options")]
+    [InlineData("ports[0].name")]
+    [InlineData("install.steps[2].beta")]
+    [InlineData("runtime.windows-x64.environment.FOO\n")]
+    [InlineData("configFiles[0].set.hostname\n")]
+    [InlineData("configFiles[1].set.motd\n")]
+    [InlineData("configFiles[2].section")]
+    [InlineData("configFiles[2].set.Name\n")]
+    public void NamesCannotEndInANewline(string path)
+    {
+        var errors = Errors(m =>
+        {
+            switch (path)
+            {
+                case "key":
+                    m["key"] = "pulsar-test\n";
+                    break;
+                case "version":
+                    m["version"] = "1.0.0\n";
+                    break;
+                case "variables[3].key":
+                    m["variables"]!.AsArray().Add(new JsonObject { ["key"] = "extra\n", ["label"] = "Extra", ["type"] = "boolean" });
+                    break;
+                case "variables[3].options":
+                    m["variables"]!.AsArray().Add(new JsonObject
+                    {
+                        ["key"] = "extra",
+                        ["label"] = "Extra",
+                        ["type"] = "enum",
+                        ["options"] = new JsonArray(new JsonObject { ["value"] = "a\n", ["label"] = "A" }),
+                    });
+                    break;
+                case "ports[0].name":
+                    m["ports"] = new JsonArray(new JsonObject { ["name"] = "game\n", ["label"] = "Game", ["protocols"] = new JsonArray("udp"), ["default"] = 2456 });
+                    break;
+                case "install.steps[2].beta":
+                    m["install"]!["steps"]!.AsArray().Add(new JsonObject { ["type"] = "steamcmd", ["appId"] = 258550, ["beta"] = "public\n" });
+                    break;
+                case "runtime.windows-x64.environment.FOO\n":
+                    m["runtime"]!["windows-x64"]!["environment"]!["FOO\n"] = "1";
+                    break;
+                default:
+                    m["configFiles"] = new JsonArray(
+                        new JsonObject { ["path"] = "server.cfg", ["format"] = "source-cfg", ["mode"] = "patch", ["set"] = new JsonObject { ["hostname\n"] = "quit" } },
+                        new JsonObject { ["path"] = "server.properties", ["format"] = "properties", ["mode"] = "patch", ["set"] = new JsonObject { ["motd\n"] = "x" } },
+                        new JsonObject
+                        {
+                            ["path"] = "Game.ini",
+                            ["format"] = "unreal-ini",
+                            ["mode"] = "patch",
+                            ["section"] = "ServerSettings\n",
+                            ["set"] = new JsonObject { ["Name\n"] = "x" },
+                        });
+                    break;
+            }
+        });
+
+        Assert.Contains(errors, e => e.Path == path);
+    }
+
+    [Theory]
+    [InlineData("Pulsar +rcon.password hunter2")]
+    [InlineData("Pulsar -insecure")]
+    [InlineData("Pulsar +quit")]
+    public void AStringArgumentValueCannotCarryAFlagOrCommandInside(string hostname)
+    {
+        var manifest = Parse(Manifest(m =>
+        {
+            m["variables"]!.AsArray().Add(new JsonObject { ["key"] = "hostname", ["label"] = "Name", ["type"] = "string", ["pattern"] = "^.{1,64}$" });
+            m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add("+hostname");
+            m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add("{{var.hostname}}");
+        }));
+
+        Assert.Throws<LaunchPlanException>(() => Render(manifest, new Dictionary<string, string?> { ["hostname"] = hostname }));
+        // A dash or plus on its own, or before a digit, is text: "EU - 24/7", "+1".
+        Assert.Equal("Pulsar - EU +1 -5", Render(manifest, new Dictionary<string, string?> { ["hostname"] = "Pulsar - EU +1 -5" }).Arguments[^1]);
+    }
+
+    [Fact]
+    public void EnvironmentNamesAreUniqueWhateverTheirCase()
+    {
+        var errors = Errors(m => m["runtime"]!["windows-x64"]!["environment"]!["pulsar_test_greeting"] = "again");
+
+        Assert.Contains(errors, e => e.Path.StartsWith("runtime.windows-x64.environment", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("ok\"; rcon_password x")]
+    [InlineData("ok;")]
+    public void AStringPatternMatchesTheWholeValue(string value)
+    {
+        // Not anchored: a substring search would accept anything with one matching character.
+        var manifest = Parse(Manifest(m =>
+        {
+            m["variables"]!.AsArray().Add(new JsonObject { ["key"] = "map", ["label"] = "Map", ["type"] = "string", ["pattern"] = "[A-Za-z0-9 ]+" });
+            m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add("{{var.map}}");
+        }));
+        var variable = manifest.VariableList.Single(v => v.Key == "map");
+
+        Assert.NotNull(VariableValues.Check(variable, value));
+        Assert.Null(VariableValues.Check(variable, "de dust2"));
     }
 
     private static LaunchPlan Render(GameManifest manifest, IReadOnlyDictionary<string, string?> values, IReadOnlyList<string>? extra = null) =>

@@ -81,6 +81,41 @@ public sealed class FileTransfersTests
     }
 
     [Fact]
+    public async Task AnAgentThatClaimsADownloadButSendsNothingIsNotWaitedForForever()
+    {
+        using var download = _transfers.BeginDownload(s_node);
+        Assert.NotNull(_transfers.ClaimDownload(download.Ticket, s_node));
+        var waiting = download.WaitForContentAsync(TestContext.Current.CancellationToken);
+
+        _clock.Advance(FileTransfers.ClaimTimeout + TimeSpan.FromSeconds(1));
+
+        await Assert.ThrowsAsync<TimeoutException>(() => waiting);
+    }
+
+    [Fact]
+    public async Task AnUploadWaitsWhileItMovesAndGivesUpWhenItStalls()
+    {
+        using var content = new MemoryStream([1, 2, 3]);
+        using var upload = _transfers.BeginUpload(s_node, content, 3);
+        Assert.NotNull(_transfers.ClaimUpload(upload.Ticket, s_node));
+        var waiting = upload.WaitUntilSentAsync(TestContext.Current.CancellationToken);
+
+        // A slow upload that keeps moving is waited for, however long it takes.
+        for (var i = 0; i < 3; i++)
+        {
+            _clock.Advance(FileTransfers.IdleTimeout - TimeSpan.FromSeconds(30));
+            upload.Progressed();
+            _clock.Advance(TimeSpan.FromSeconds(20));
+            await Task.Delay(100, TestContext.Current.CancellationToken); // a deadline that passed is checked against the progress
+            Assert.False(waiting.IsCompleted, waiting.Exception?.ToString() ?? $"iteration {i}");
+        }
+
+        // An agent that stops reading is not.
+        _clock.Advance(FileTransfers.IdleTimeout);
+        await Assert.ThrowsAsync<TimeoutException>(() => waiting);
+    }
+
+    [Fact]
     public async Task ABrowserThatLeavesReleasesTheAgent()
     {
         var download = _transfers.BeginDownload(s_node);

@@ -429,7 +429,7 @@
       "not_found": "El usuario no existe."
     },
     "node": {
-      "name_invalid": "El nombre del nodo debe tener entre 1 y 64 caracteres.",
+      "name_invalid": "El nombre de un nodo es una línea de hasta 64 caracteres.",
       "description_too_long": "La descripción es demasiado larga.",
       "public_host_invalid": "La dirección pública debe ser un nombre de host o una dirección IP.",
       "name_taken": "Ya hay otro nodo con este nombre.",
@@ -450,7 +450,7 @@
       "not_found": "La clave del panel no existe."
     },
     "server": {
-      "name_invalid": "El nombre del servidor debe tener entre 1 y 64 caracteres.",
+      "name_invalid": "El nombre de un servidor es una línea de hasta 64 caracteres.",
       "description_too_long": "La descripción es demasiado larga.",
       "not_found": "El servidor no existe.",
       "template_not_found": "Ese juego no está disponible.",
@@ -545,6 +545,7 @@
       "smtp_host_invalid": "Eso no es un nombre de host ni una dirección.",
       "smtp_port_invalid": "El puerto es un número de 1 a 65535.",
       "smtp_user_invalid": "Ese nombre de usuario no es válido.",
+      "smtp_credentials_need_tls": "Iniciar sesión necesita STARTTLS o TLS: sin cifrado la contraseña viajaría en claro (salvo a un servidor en esta misma máquina).",
       "from_invalid": "El remitente es una dirección de email válida y un nombre corto opcional.",
       "email_not_configured": "El email está apagado: primero configurá el servidor SMTP."
     },
@@ -939,7 +940,8 @@
     "portsLabel": "Puertos",
     "portsHint": "Un puerto, un rango (27015-27030) o una lista (27015, 27020).",
     "notesLabel": "Notas (opcional)",
-    "addButton": "Agregar"
+    "addButton": "Agregar",
+    "deleteConfirm": "¿Eliminar la asignación {{address}}?"
   },
   "templates": {
     "title": "Juegos",
@@ -1022,7 +1024,8 @@
       "reload": "Recargar",
       "overwrite": "Sobrescribir",
       "tooLarge": "Este archivo pesa más de 1 MB: descargalo.",
-      "binary": "Este archivo no es de texto: descargalo."
+      "binary": "Este archivo no es de texto: descargalo.",
+      "mixedEndings": "Este archivo mezcla finales de línea de Windows y de Unix, y guardarlo acá los cambiaría: se muestra solo para leer. Descargalo para editarlo."
     },
     "refresh": "Actualizar"
   },
@@ -1232,6 +1235,7 @@
     "codesLabel": "Códigos de recuperación",
     "copy": "Copiar",
     "copied": "Copiados",
+    "copyFailed": "El navegador no permitió copiar. Seleccioná el texto y copialo a mano.",
     "saved": "Ya los guardé",
     "codesLeft_one": "Te queda {{count}} código de recuperación.",
     "codesLeft_other": "Te quedan {{count}} códigos de recuperación.",
@@ -1314,11 +1318,11 @@
     "securities": {
       "startTls": "STARTTLS (normalmente 587)",
       "tls": "TLS (normalmente 465)",
-      "none": "Ninguna (solo un relay de esta red)"
+      "none": "Ninguna (un relay de esta red sin iniciar sesión, o en esta máquina)"
     },
     "smtpUser": "Usuario",
     "smtpPassword": "Contraseña",
-    "smtpPasswordKeep": "Dejala vacía para mantener la contraseña guardada.",
+    "smtpPasswordKeep": "Dejala vacía para mantener la contraseña guardada (solo mientras el servidor y el usuario sigan siendo los mismos).",
     "clearPassword": "Borrar la contraseña guardada",
     "fromAddress": "Dirección del remitente",
     "fromName": "Nombre del remitente",

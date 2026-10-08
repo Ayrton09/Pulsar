@@ -33,14 +33,26 @@ internal sealed partial class ConsoleMirrors(
     /// <summary>Adds the browser connection to the server's console and returns what it missed after <paramref name="fromSequence"/>.</summary>
     public async Task<ConsoleSnapshot> WatchAsync(string connectionId, ServerId server, NodeId node, long? fromSequence, CancellationToken cancellationToken)
     {
-        var mirror = _mirrors.GetOrAdd(server, _ => new Mirror(server, node));
+        Mirror mirror;
         bool subscribe;
-        lock (mirror.Sync)
+        while (true)
         {
-            mirror.Watchers.Add(connectionId);
-            mirror.Generation++; // a pending unsubscribe or removal is off
-            subscribe = !mirror.Subscribed;
-            mirror.Subscribed = true;
+            mirror = _mirrors.GetOrAdd(server, _ => new Mirror(server, node));
+            lock (mirror.Sync)
+            {
+                // An idle copy may have been removed (under its lock) since it was looked up: watching it would show a
+                // silent console, so take the registered one (or a new one) instead.
+                if (!_mirrors.TryGetValue(server, out var registered) || registered != mirror)
+                {
+                    continue;
+                }
+
+                mirror.Watchers.Add(connectionId);
+                mirror.Generation++; // a pending unsubscribe or removal is off
+                subscribe = !mirror.Subscribed;
+                mirror.Subscribed = true;
+                break;
+            }
         }
 
         _connections.GetOrAdd(connectionId, _ => new()).TryAdd(server, 0);
@@ -231,7 +243,7 @@ internal sealed partial class ConsoleMirrors(
     private partial void LogUnsubscribeFailed(Exception exception, ServerId serverId);
 
     /// <summary>One server's console copy. Every field is guarded by <see cref="Sync"/>.</summary>
-    private sealed class Mirror(ServerId server, NodeId node)
+    internal sealed class Mirror(ServerId server, NodeId node)
     {
         private readonly LinkedList<ConsoleEntry> _entries = new();
         private int _length;
@@ -258,9 +270,16 @@ internal sealed partial class ConsoleMirrors(
         {
             lock (Sync)
             {
-                var fresh = entries.Where(e => Last is not { } last || e.Sequence > last).ToList();
-                foreach (var entry in fresh)
+                // Against the newest kept so far, this batch included: a repeat or an older entry in it is dropped too.
+                var fresh = new List<ConsoleEntry>();
+                foreach (var entry in entries)
                 {
+                    if (Last is { } last && entry.Sequence <= last)
+                    {
+                        continue;
+                    }
+
+                    fresh.Add(entry);
                     _entries.AddLast(entry);
                     _length += entry.Text.Length;
                     Last = entry.Sequence;

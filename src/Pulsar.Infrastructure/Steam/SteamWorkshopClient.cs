@@ -40,9 +40,13 @@ public sealed class SteamWorkshopClient(IHttpClientFactory clients) : ISteamWork
             var children = collection?.Children!.OrderBy(c => c.SortOrder).Select(c => c.Id).OfType<string>().Where(WorkshopLookup.IsId)
                 .Distinct(StringComparer.Ordinal).Take(MaxChildren).ToList();
             return new WorkshopItem(id, true, Clean(detail.Title), detail.ConsumerAppId, Number(detail.FileSize),
-                detail.TimeUpdated is > 0 ? DateTimeOffset.FromUnixTimeSeconds(detail.TimeUpdated.Value) : null, children);
+                Time(detail.TimeUpdated), children);
         })];
     }
+
+    // A time DateTimeOffset cannot hold (Steam's answer is not trusted) is left out rather than failing the lookup.
+    private static DateTimeOffset? Time(long? seconds) =>
+        seconds is > 0 and <= 253_402_300_799 ? DateTimeOffset.FromUnixTimeSeconds(seconds.Value) : null;
 
     private static async Task<T> PostAsync<T>(HttpClient http, string path, string countName, IReadOnlyList<string> ids,
         CancellationToken cancellationToken)

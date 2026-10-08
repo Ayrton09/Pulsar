@@ -96,6 +96,17 @@ public sealed class NotificationChannel
     public DateTimeOffset UpdatedAt { get; private set; }
 
     /// <summary>
+    /// Where to post a message for <paramref name="webhook"/>: with <c>wait=true</c> (Discord answers with the message,
+    /// or an error, rather than 204 before it is posted), keeping the webhook's own query (<c>thread_id</c>).
+    /// </summary>
+    public static string DiscordPostAddress(string webhook)
+    {
+        ArgumentNullException.ThrowIfNull(webhook);
+        var url = webhook.Trim();
+        return url + (url.Contains('?', StringComparison.Ordinal) ? "&wait=true" : "?wait=true");
+    }
+
+    /// <summary>
     /// Only Discord's own webhook addresses over HTTPS: the panel never posts to an address an administrator typed
     /// that could point inside the network (server-side request forgery).
     /// </summary>

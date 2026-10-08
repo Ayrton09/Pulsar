@@ -12,7 +12,12 @@ public sealed class TemplateUpgradeTests
     [InlineData("1.10.0", "1.9.9", 1)]
     [InlineData("2.0.0", "10.0.0", -1)]
     [InlineData("1.2.3-beta.1", "1.2.3", -1)]
-    [InlineData("1.2.3-beta.2", "1.2.3-beta.10", 1)] // ordinal pre-release order, as documented
+    // Pre-releases by SemVer: numeric identifiers as numbers, before alphanumeric ones; more identifiers after fewer.
+    [InlineData("1.2.3-beta.2", "1.2.3-beta.10", -1)]
+    [InlineData("1.2.3-alpha", "1.2.3-beta", -1)]
+    [InlineData("1.2.3-1", "1.2.3-alpha", -1)]
+    [InlineData("1.2.3-alpha", "1.2.3-alpha.1", -1)]
+    [InlineData("1.2.3-rc.1", "1.2.3-rc.1", 0)]
     [InlineData("1.2.3+build.5", "1.2.3", 0)]
     public void VersionsAreOrderedByTheirNumbersThenPreReleases(string left, string right, int expected) =>
         Assert.Equal(expected, Math.Sign(GameTemplate.CompareVersions(left, right)));

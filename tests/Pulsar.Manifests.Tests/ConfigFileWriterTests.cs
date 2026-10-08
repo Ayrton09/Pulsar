@@ -194,11 +194,22 @@ public sealed class ConfigFileWriterTests
             	<!--
             	<property name="SaveGameFolder" value="old"/>
             	-->
+            		<!-- remove me -->
             	<property name="UserDataFolder" value="C:/servers/abcd/data"/>
             	<property name="SaveGameFolder" value="C:/servers/abcd/saves"/>
             </ServerSettings>
 
             """.Replace("\r\n", "\n", StringComparison.Ordinal), ConfigFileWriter.Apply(file, existing.Replace("\r\n", "\n", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void RemovingAnXmlPropertyKeepsTheCommentItsLineOpens()
+    {
+        // The comment goes on over the next lines: dropping its start would leave its end, and a broken file.
+        const string existing = "<ServerSettings>\n\t<property name=\"ServerPassword\" value=\"secret\"/> <!-- the password,\n\tif any -->\n</ServerSettings>\n";
+
+        Assert.Equal("<ServerSettings>\n\t <!-- the password,\n\tif any -->\n</ServerSettings>\n",
+            ConfigFileWriter.Apply(Xml(("ServerPassword", "")), existing));
     }
 
     [Fact]

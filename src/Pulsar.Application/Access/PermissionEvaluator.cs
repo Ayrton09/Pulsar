@@ -42,7 +42,9 @@ internal sealed class PermissionEvaluator(IPulsarDbContext db, IMemoryCache cach
 
     private async Task<EffectivePermissions> LoadAsync(UserId user, CancellationToken cancellationToken)
     {
-        var key = (nameof(PermissionEvaluator), user, version.Current);
+        // The user's generation is read before the database: an Invalidate while loading moves it on, so what was
+        // loaded is cached under a key nobody asks for anymore (never served stale).
+        var key = (nameof(PermissionEvaluator), user, version.Current, version.ForUser(user));
         if (cache.TryGetValue(key, out EffectivePermissions? cached) && cached is not null)
         {
             return cached;
@@ -82,17 +84,24 @@ internal sealed class PermissionEvaluator(IPulsarDbContext db, IMemoryCache cach
         return permissions;
     }
 
-    public void Invalidate(UserId user) => cache.Remove((nameof(PermissionEvaluator), user, version.Current));
+    public void Invalidate(UserId user) => version.IncrementUser(user);
 
     public void InvalidateAll() => version.Increment();
 }
 
-/// <summary>Bumping the version makes every cached entry unreachable; they expire on their own.</summary>
+/// <summary>
+/// Bumping the version makes every cached entry unreachable, bumping a user's makes theirs; they expire on their own.
+/// </summary>
 internal sealed class PermissionCacheVersion
 {
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<UserId, long> _users = new();
     private long _current;
 
     public long Current => Interlocked.Read(ref _current);
 
     public void Increment() => Interlocked.Increment(ref _current);
+
+    public long ForUser(UserId user) => _users.GetValueOrDefault(user);
+
+    public void IncrementUser(UserId user) => _users.AddOrUpdate(user, 1, (_, generation) => generation + 1);
 }

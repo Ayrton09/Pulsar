@@ -10,7 +10,7 @@ import { routes } from '../../app/routes';
 import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
 import { connections, openedConnection } from '../../test/fakeSignalR';
 import { breadcrumbs, nameProblem } from './paths';
-import { decodeText } from './text';
+import { decodeText, lineEndings } from './text';
 
 // CodeMirror needs a real layout: the tests type into a plain text area with the same contract.
 vi.mock('./CodeEditor', () => ({
@@ -372,6 +372,30 @@ describe('files tab', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Replace' }));
     await waitFor(() => expect(screen.getAllByText('Uploaded')).toHaveLength(2));
     expect(FakeXhr.sent[2]?.headers['If-None-Match']).toBeUndefined();
+  });
+
+  it('tells which line endings a file has', () => {
+    expect(lineEndings('a\r\nb\r\n')).toBe('\r\n');
+    expect(lineEndings('a\nb')).toBe('\n');
+    expect(lineEndings('a\rb\r')).toBe('\r');
+    expect(lineEndings('one line')).toBeNull();
+    expect(lineEndings('a\r\nb\nc')).toBe('mixed');
+    expect(lineEndings('a\rb\nc')).toBe('mixed');
+  });
+
+  it('does not save a file whose line endings it would change', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files/content`]: () =>
+        new Response('hostname "x"\r\nsv_cheats 0\n', { headers: { ETag: '"v1"' } }),
+    });
+    renderAt(`/servers/${serverId}?tab=files&file=server.cfg`);
+
+    // Windows and Unix line endings together: the editor would rewrite them all, so it only shows the file.
+    expect(await screen.findByLabelText('Contents of server.cfg')).toHaveAttribute('readonly');
+    expect(screen.getByText(/mixes Windows and Unix line endings/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
   });
 
   it('is read only for users who may only look at files', async () => {

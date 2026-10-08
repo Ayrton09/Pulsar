@@ -8,6 +8,19 @@ public sealed class ServerTests
 {
     private static readonly DateTimeOffset s_now = new(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);
 
+    // Names go into notification titles and email subjects: no line breaks or other control characters.
+    [Theory]
+    [InlineData("Retakes\nBcc: someone")]
+    [InlineData("Retakes\u0007")]
+    public void ServerAndNodeNamesHaveNoControlCharacters(string name)
+    {
+        Assert.Equal(ServerErrors.NameInvalid, Server.Create(NodeId.New(), TemplateId.New(), name, null, Server.NewShortId(), s_now).Error);
+        Assert.Equal(NodeErrors.NameInvalid, Node.Create(name, null, null, s_now).Error);
+
+        var node = Node.Create("Buenos Aires", null, null, s_now).Value!;
+        Assert.Equal(NodeErrors.NameInvalid, node.Update(name, null, null, s_now).Error);
+    }
+
     [Theory]
     [InlineData(OperationStatus.Succeeded, InstallState.Installed)]
     [InlineData(OperationStatus.Failed, InstallState.Failed)]

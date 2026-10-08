@@ -79,7 +79,11 @@ export function AllocationsSection({ nodeId, canManage }: { nodeId: string; canM
                       <Button
                         variant="secondary"
                         busy={remove.isPending && remove.variables.allocationId === allocation.id}
-                        onClick={() => remove.mutate({ nodeId, allocationId: allocation.id })}
+                        onClick={() =>
+                          window.confirm(
+                            t('allocations.deleteConfirm', { address: `${allocation.ipAddress}:${allocation.port}` }),
+                          ) && remove.mutate({ nodeId, allocationId: allocation.id })
+                        }
                       >
                         {t('actions.delete')}
                       </Button>

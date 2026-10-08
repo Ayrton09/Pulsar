@@ -6,7 +6,7 @@ import { Alert, Card } from '../../components/ui/Display';
 import { errorMessage } from '../../lib/errors';
 import { downloadUrl, readFile, writeFile, type OpenedFile } from './api';
 import { baseName } from './paths';
-import { decodeText } from './text';
+import { decodeText, lineEndings } from './text';
 
 // CodeMirror is loaded only when a file is opened.
 const CodeEditor = lazy(() => import('./CodeEditor'));
@@ -110,7 +110,7 @@ interface LoadedEditorProps extends FileEditorProps {
 function LoadedEditor({
   serverId,
   path,
-  canEdit,
+  canEdit: mayEdit,
   initial,
   bom,
   version: opened,
@@ -118,6 +118,9 @@ function LoadedEditor({
   onClose,
 }: LoadedEditorProps) {
   const { t } = useTranslation();
+  // The editor writes every line with one ending: a file that mixes them would be changed, so it is only shown.
+  const endings = lineEndings(initial);
+  const canEdit = mayEdit && endings !== 'mixed';
   const [text, setText] = useState(initial);
   const [saved, setSaved] = useState(initial);
   const [version, setVersion] = useState(opened);
@@ -203,13 +206,14 @@ function LoadedEditor({
           </div>
         </Alert>
       )}
+      {mayEdit && endings === 'mixed' && <Alert>{t('files.editor.mixedEndings')}</Alert>}
       {error !== null && <Alert>{errorMessage(t, error)}</Alert>}
       <Suspense fallback={<Spinner label={t('common.loading')} />}>
         <CodeEditor
           label={t('files.editor.label', { name: baseName(path) })}
           fileName={baseName(path)}
           initial={initial}
-          lineSeparator={initial.includes('\r\n') ? '\r\n' : undefined}
+          lineSeparator={endings === '\r\n' || endings === '\r' ? endings : undefined}
           readOnly={!canEdit}
           onChange={setText}
           onSave={() => void save()}

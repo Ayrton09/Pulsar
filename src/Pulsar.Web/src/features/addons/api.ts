@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap, type Schemas } from '../../api/client';
 import { adminKeys } from '../admin/api';
-import { serverKeys } from '../servers/api';
+import { invalidateServer } from '../servers/api';
 
 export type AddonView = Schemas['AddonView'];
 
@@ -22,7 +22,7 @@ function useAddonsChanged(serverId: string) {
   const queryClient = useQueryClient();
   return () =>
     Promise.all([
-      queryClient.invalidateQueries({ queryKey: serverKeys.detail(serverId) }),
+      invalidateServer(queryClient, serverId), // its lists too: they are under its key
       queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
     ]);
 }

@@ -47,7 +47,15 @@ public static class ManifestParser
             return new ManifestParseResult(null, [new ManifestError("$", "The manifest is empty.")], hash);
         }
 
-        return new ManifestParseResult(manifest, ManifestValidator.Validate(manifest), hash);
+        try
+        {
+            return new ManifestParseResult(manifest, ManifestValidator.Validate(manifest), hash);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or NullReferenceException or KeyNotFoundException)
+        {
+            // A combination the validator did not foresee: an invalid manifest (an imported one must not become a 500).
+            return new ManifestParseResult(null, [new ManifestError("$", $"The manifest could not be validated: {ex.Message}")], hash);
+        }
     }
 
     private static JsonSerializerOptions CreateOptions()

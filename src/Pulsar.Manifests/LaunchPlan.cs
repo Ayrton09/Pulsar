@@ -165,7 +165,8 @@ public static class VariableValues
                     return $"At most {variable.MaxLength ?? 256} characters.";
                 }
 
-                if (variable.Pattern is { } pattern && !Regex.IsMatch(value, pattern, RegexOptions.NonBacktracking | RegexOptions.CultureInvariant,
+                // The whole value, anchored or not: a substring match would accept anything with one matching character.
+                if (variable.Pattern is { } pattern && !Regex.IsMatch(value, $@"\A(?:{pattern})\z", RegexOptions.NonBacktracking | RegexOptions.CultureInvariant,
                         ManifestValidator.RegexTimeout))
                 {
                     return "Does not match the allowed format.";
@@ -220,7 +221,8 @@ public static class LaunchPlanRenderer
             ["server", "shortId"] => binding.ShortId,
             ["server", "dir"] => binding.Directory ?? throw new LaunchPlanException("The server folder is not known."),
             ["var", var key] => resolved[key] ?? "",
-            ["var", var key, var sub] => definitions[key].Options!.Single(o => o.Value == resolved[key]).Map![sub],
+            ["var", var key, var sub] => definitions[key].Options?.FirstOrDefault(o => o.Value == resolved[key])?.Map?.GetValueOrDefault(sub)
+                ?? throw new LaunchPlanException($"'{key}' has no value to take '{sub}' from."),
             ["port", var name] => ports.TryGetValue(name, out var port) ? port.Port.ToString(CultureInfo.InvariantCulture) : throw NoAllocation(name),
             ["port", var name, "ip"] => ports.TryGetValue(name, out var port) ? port.IpAddress : throw NoAllocation(name),
             ["rcon", "password"] => rcon?.Password ?? throw new LaunchPlanException("The manifest has no RCON console."),
@@ -408,8 +410,8 @@ public static class LaunchPlanRenderer
         {
             switch (template)
             {
-                case ArgumentText { Text: ['-' or '+', ..] text } when !text.Contains("{{", StringComparison.Ordinal):
-                    names.Add(text);
+                case ArgumentText { Text: ['-' or '+', ..] text } when !ArgumentName(text).Contains("{{", StringComparison.Ordinal):
+                    names.Add(ArgumentName(text));
                     break;
                 case ArgumentCondition condition:
                     names.UnionWith(ReservedArgumentNames(condition.Then));
@@ -427,32 +429,41 @@ public static class LaunchPlanRenderer
     /// </summary>
     private static void CheckExtraArgument(string extra, RuntimeDefinition runtime, HashSet<string> reserved)
     {
-        var rcon = runtime.Console.Mode == ManifestConsoleMode.LogfileRcon;
-        if (rcon && extra.Contains(';', StringComparison.Ordinal))
+        // Source-like command lines ('+' arguments are console commands): ';' starts another command, and RCON is Pulsar's.
+        var commands = runtime.Console.Mode == ManifestConsoleMode.LogfileRcon || reserved.Any(n => n.StartsWith('+'));
+        if (commands && extra.Contains(';', StringComparison.Ordinal))
         {
             throw new LaunchPlanException($"The extra argument '{extra}' has a ';', which starts another command.");
         }
 
-        if (extra is not ['-' or '+', ..])
+        // Every word: one argument may still be split at spaces by the game.
+        foreach (var word in extra.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
         {
-            return;
-        }
+            if (word is not ['-' or '+', ..])
+            {
+                continue;
+            }
 
-        var name = extra.Split(' ')[0];
-        var setting = name.TrimStart('-', '+');
-        if (reserved.Contains(name)
-            || (runtime.Console.SensitiveCommandPrefixes ?? []).Any(p => setting.StartsWith(p, StringComparison.OrdinalIgnoreCase))
-            || (rcon && setting.Contains("rcon", StringComparison.OrdinalIgnoreCase)))
-        {
-            throw new LaunchPlanException($"The extra argument '{name}' is set by Pulsar or by the game's settings.");
+            var name = ArgumentName(word);
+            var setting = name.TrimStart('-', '+');
+            if (reserved.Contains(name)
+                || (runtime.Console.SensitiveCommandPrefixes ?? []).Any(p => setting.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+                || (commands && setting.Contains("rcon", StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new LaunchPlanException($"The extra argument '{name}' is set by Pulsar or by the game's settings.");
+            }
         }
     }
+
+    // "-port=27015" and "-port 27015" set the same thing: the name is what comes before '=' or a space.
+    private static string ArgumentName(string text) => text.Split(' ', '=')[0];
 
     private static LaunchPlanException NoAllocation(string port) => new($"Port '{port}' has no allocation.");
 
     /// <summary>
     /// A string value placed in an argument never becomes a flag or a Source console command (docs/architecture/04),
-    /// whatever pattern the manifest declared.
+    /// whatever pattern the manifest declared: it is one argument, but a game may split it at spaces, so no word of it
+    /// may read as one either ('-' or '+' before a letter; "EU - 24/7" and "+1" stay text).
     /// </summary>
     private static void CheckArgumentValue(string value, bool secret)
     {
@@ -461,6 +472,16 @@ public static class LaunchPlanRenderer
             throw new LaunchPlanException(secret
                 ? "An argument value cannot start with '-', '+' or whitespace."
                 : $"An argument value cannot start with '-', '+' or whitespace: '{value}'.");
+        }
+
+        for (var i = 1; i < value.Length - 1; i++)
+        {
+            if (value[i] is '-' or '+' && char.IsWhiteSpace(value[i - 1]) && !char.IsWhiteSpace(value[i + 1]) && !char.IsAsciiDigit(value[i + 1]))
+            {
+                throw new LaunchPlanException(secret
+                    ? "No word of an argument value can start with '-' or '+'."
+                    : $"No word of an argument value can start with '-' or '+': '{value}'.");
+            }
         }
     }
 }
