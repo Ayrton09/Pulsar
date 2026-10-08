@@ -142,11 +142,12 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
         try
         {
             var record = JsonSerializer.Deserialize<AddonRecord>(text, s_json);
-            // The server's account can write this folder: only paths inside the server are ever touched.
+            // The server's account can write this folder: only paths an addon may own are ever touched (never SteamCMD
+            // or another addon's record under .pulsar).
             return record is null ? null : record with
             {
-                Added = [.. record.Added.Where(ManifestValidator.IsValidRelativePath)],
-                Replaced = [.. record.Replaced.Where(ManifestValidator.IsValidRelativePath)],
+                Added = [.. record.Added.Where(IsAddonPath)],
+                Replaced = [.. record.Replaced.Where(IsAddonPath)],
             };
         }
         catch (JsonException)
@@ -187,7 +188,7 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
             }
 
             var path = addon.Target.Length == 0 ? name : $"{addon.Target}/{name}";
-            if (!ManifestValidator.IsValidRelativePath(path) || path.Split('/')[0].Equals(".pulsar", StringComparison.OrdinalIgnoreCase))
+            if (!IsAddonPath(path))
             {
                 throw Failed("addon.bad_archive", $"{asset} has an entry Pulsar does not unpack: '{entry.FullName}'.");
             }
@@ -282,6 +283,10 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
     }
 
     private static string RecordPath(string key) => $"{RecordDirectory}/{key}.json";
+
+    /// <summary>A path an addon may own: inside the server directory, outside Pulsar's own files (<c>.pulsar</c>).</summary>
+    private static bool IsAddonPath(string path) =>
+        ManifestValidator.IsValidRelativePath(path) && !path.Split('/')[0].Equals(".pulsar", StringComparison.OrdinalIgnoreCase);
 
     private static IEnumerable<string> Parents(string path)
     {

@@ -90,6 +90,29 @@ public sealed class AddonInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task ARecordTheServerChangedCannotMakeRemovingTouchPulsarsOwnFiles()
+    {
+        // The server's account can write .pulsar/addons: its record may name SteamCMD or another addon's record.
+        await InstallAsync(s_oxide);
+        var recordFile = Path.Combine(_root, ".pulsar", "addons", "oxide.json");
+        var record = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(recordFile))!;
+        var added = record["added"]!.AsArray();
+        added.Add(".pulsar/steamcmd/steamcmd.exe");
+        added.Add(".PULSAR/addons/metamod.json");
+        File.WriteAllText(recordFile, record.ToJsonString());
+        Directory.CreateDirectory(Path.Combine(_root, ".pulsar", "steamcmd"));
+        File.WriteAllText(Path.Combine(_root, ".pulsar", "steamcmd", "steamcmd.exe"), "valve's");
+        File.WriteAllText(Path.Combine(_root, ".pulsar", "addons", "metamod.json"), "{}");
+
+        var installer = new AddonInstaller(new DirectServerFiles(), _http);
+        Assert.DoesNotContain(installer.Read(_root, "oxide")!.Added, p => p.StartsWith(".pulsar", StringComparison.OrdinalIgnoreCase));
+        installer.Remove(_root, s_oxide);
+
+        Assert.True(File.Exists(Path.Combine(_root, ".pulsar", "steamcmd", "steamcmd.exe")));
+        Assert.True(File.Exists(Path.Combine(_root, ".pulsar", "addons", "metamod.json")));
+    }
+
+    [Fact]
     public async Task AGameFileAnOlderReleaseReplacedStaysReplacedWhenANewerOneNoLongerShipsIt()
     {
         await InstallAsync(s_oxide);

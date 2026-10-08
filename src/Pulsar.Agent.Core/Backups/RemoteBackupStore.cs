@@ -123,6 +123,14 @@ public sealed class S3RemoteBackupStore : IRemoteBackupStore
         };
         if (target.Endpoint is { } endpoint)
         {
+            // Backups carry the servers' files (and the credentials sign requests): plain HTTP only to this machine.
+            if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)
+                || !(uri.Scheme == Uri.UriSchemeHttps || (uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback)))
+            {
+                throw new BackupException(BackupErrors.RemoteFailed,
+                    "Remote storage must be reached over HTTPS (plain HTTP is only accepted for storage on this machine).");
+            }
+
             config.ServiceURL = endpoint;
             config.AuthenticationRegion = target.Region;
         }

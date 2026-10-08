@@ -71,6 +71,23 @@ public sealed class MinecraftInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task VersionDetailsWithoutAChecksumAreRefused()
+    {
+        // The details name the server's download and its checksum: unverified, they could name anything.
+        _http.Routes[Manifest] = () => Ok(Json(new
+        {
+            latest = new { release = "26.3", snapshot = "26.4-snapshot-2" },
+            versions = new[] { new { id = "26.3", type = "release", url = Details } },
+        }));
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync("latest"));
+
+        Assert.Equal("minecraft.no_checksum", error.Code);
+        Assert.DoesNotContain(Details, _http.Requested);
+        Assert.False(File.Exists(Path.Combine(_root, "server.jar")));
+    }
+
+    [Fact]
     public async Task RedirectsLeaveThePublishersHostsOnlyOverHttpsToKnownHosts()
     {
         _http.Routes[Release] = () => Redirect("https://evil.example/jre.zip");

@@ -50,6 +50,20 @@ public sealed class InstallStepsTests : IDisposable
     }
 
     [WindowsFact]
+    public void ADanglingJunctionIsCaughtByThePortablePathCheck()
+    {
+        // A junction whose target does not exist (yet): a later write would create its target's folders through it.
+        // Directory.Exists looks at the junction itself, not its target, so the check still sees it.
+        var target = Path.Combine(_outside, "later");
+        Run("cmd.exe", "/c", "mklink", "/J", Path.Combine(_server, "bin"), target);
+
+        var error = Assert.Throws<GameProcessException>(() => InstallSteps.Resolve(_server, "bin/Pulsar.TestGameServer.exe"));
+
+        Assert.Equal("install.reparse_point", error.Code);
+        Assert.Equal(Path.Combine(_server, "missing", "file.txt"), InstallSteps.Resolve(_server, "missing/file.txt"));
+    }
+
+    [WindowsFact]
     public void AHardLinkToAnotherFileIsReplacedNotWrittenInto()
     {
         var precious = Path.Combine(_outside, "precious.dll");
