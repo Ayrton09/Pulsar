@@ -130,6 +130,85 @@ public sealed class WindowsAgentTests
         }
     }
 
+    [WindowsFact]
+    public void SecuringTheStateDirectoryAlsoResetsWhatIsAlreadyInIt()
+    {
+        // Someone created the folders first and gave themselves the configuration: the agent must not keep that.
+        var directory = Path.Combine(Path.GetTempPath(), "pulsar-agent-acl-" + Guid.NewGuid().ToString("N"));
+        var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
+        try
+        {
+            var config = Directory.CreateDirectory(Path.Combine(directory, "config"));
+            var file = new FileInfo(Path.Combine(config.FullName, "agent.json"));
+            File.WriteAllText(file.FullName, "{}");
+            var open = new FileSecurity();
+            open.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            open.AddAccessRule(new FileSystemAccessRule(everyone, FileSystemRights.FullControl, AccessControlType.Allow));
+            open.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.FullControl, AccessControlType.Allow));
+            file.SetAccessControl(open);
+
+            new WindowsDirectorySecurity().Secure(directory, development: true);
+
+            var security = file.GetAccessControl();
+            Assert.False(security.AreAccessRulesProtected);
+            var rules = security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToList();
+            Assert.All(rules, r => Assert.True(r.IsInherited));
+            Assert.DoesNotContain(rules, r => r.IdentityReference.Equals(everyone));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [WindowsFact]
+    public void AStateDirectoryHoldingAJunctionIsRefused()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "pulsar-agent-acl-" + Guid.NewGuid().ToString("N"));
+        var outside = Directory.CreateTempSubdirectory("pulsar-agent-outside-");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(directory, "state"));
+            Junction(Path.Combine(directory, "state", "servers"), outside.FullName);
+            var before = outside.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+
+            Assert.Throws<Core.Panel.AgentException>(() => new WindowsDirectorySecurity().Secure(directory, development: true));
+
+            Assert.Equal(before, outside.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+        }
+        finally
+        {
+            Directory.Delete(Path.Combine(directory, "state", "servers"));
+            Directory.Delete(directory, recursive: true);
+            outside.Delete(recursive: true);
+        }
+    }
+
+    [WindowsFact]
+    public void AProductionStateDirectoryInsideAFolderOthersCanReplaceIsRefused()
+    {
+        // The temp folder belongs to the current user, who could put another folder in the state directory's place.
+        var directory = Path.Combine(Path.GetTempPath(), "pulsar-agent-acl-" + Guid.NewGuid().ToString("N"), "Agent");
+
+        var refused = Assert.Throws<Core.Panel.AgentException>(() => new WindowsDirectorySecurity().Secure(directory, development: false));
+
+        Assert.Contains(Path.GetTempPath().TrimEnd('\\'), refused.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Directory.Exists(Path.GetDirectoryName(directory))); // nothing was created
+        Assert.Empty(WindowsDirectorySecurity.FindReplaceableAncestors(Path.Combine(Environment.SystemDirectory, "config")));
+    }
+
+    private static void Junction(string link, string target)
+    {
+        using var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", link, target])
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        })!;
+        mklink.WaitForExit();
+        Assert.Equal(0, mklink.ExitCode);
+    }
+
     private static CngProvider Provider(string storage) =>
         storage == NodeKeyStorage.Tpm ? new CngProvider("Microsoft Platform Crypto Provider") : CngProvider.MicrosoftSoftwareKeyStorageProvider;
 }

@@ -32,6 +32,8 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
     /// <summary>Pseudo console size: wide and fixed, never resized per viewer (docs/architecture/06).</summary>
     private static readonly COORD s_consoleSize = new() { X = 220, Y = 50 };
 
+    private static readonly WindowsServerFiles s_files = new();
+
     // Variables the server cannot override: the agent owns them (docs/architecture/04, "Environment").
     private static readonly HashSet<string> s_reserved = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -63,7 +65,8 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
 
         var workingDirectory = ServerPaths.ResolveDirectory(root, spec.WorkingDirectory);
         var temp = TempDirectory(root);
-        Directory.CreateDirectory(temp);
+        // The server's account controls .pulsar: created level by level without following a junction (doc 06).
+        s_files.CreateDirectory(root, ".pulsar/temp");
 
         var resources = new List<IDisposable>();
         try

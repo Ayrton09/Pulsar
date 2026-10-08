@@ -229,7 +229,32 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         return entry is null ? null : Result(path, Describe(entry.Handle));
     }
 
-    private static void DeleteTree(ServerRoot root, SafeFileHandle handle, string path, int depth)
+    /// <summary>
+    /// Deletes a directory tree an untrusted account controls (a server's), with the agent's own rights: as the file
+    /// manager deletes, every entry is opened without following a link, checked to still be below the directory's
+    /// parent, and deleted through that handle, so a folder swapped for a junction meanwhile never takes the deletion
+    /// outside. Links are removed themselves. Nothing to do when it does not exist.
+    /// </summary>
+    /// <param name="beforeListing">Tests: runs before each directory's entries are listed (to swap folders meanwhile).</param>
+    internal static void DeleteDirectoryTree(string directory, Action<string>? beforeListing = null)
+    {
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        var parent = Path.GetDirectoryName(full) ?? throw new ArgumentException("A drive root cannot be deleted.", nameof(directory));
+        if (!Directory.Exists(parent))
+        {
+            return;
+        }
+
+        using var root = ServerRoot.Open(parent);
+        var name = Path.GetFileName(full);
+        using var entry = root.TryOpen(name, DeleteAccess | ReadAttributes | Synchronize);
+        if (entry is not null)
+        {
+            DeleteTree(root, entry.Handle, name, 0, beforeListing);
+        }
+    }
+
+    private static void DeleteTree(ServerRoot root, SafeFileHandle handle, string path, int depth, Action<string>? beforeListing = null)
     {
         if (depth > MaxDepth)
         {
@@ -238,6 +263,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
 
         if (Describe(handle).Kind == FileEntryKind.Directory)
         {
+            beforeListing?.Invoke(path);
             // Deleting needs only the right to delete each entry; listing a folder also needs the right to read it.
             List<FileEntry> children;
             using (var listing = root.TryOpen(path, ListDirectory | Synchronize) ?? throw NotFound(path))
@@ -251,7 +277,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
                 using var entry = root.TryOpen(childPath, DeleteAccess | ReadAttributes | Synchronize);
                 if (entry is not null)
                 {
-                    DeleteTree(root, entry.Handle, childPath, depth + 1);
+                    DeleteTree(root, entry.Handle, childPath, depth + 1, beforeListing);
                 }
             }
         }
@@ -759,6 +785,40 @@ internal static unsafe partial class NtFile
 
     [LibraryImport("ntdll.dll")]
     public static partial uint RtlNtStatusToDosError(int status);
+
+    // NtCreateFile: dispositions, options and object attributes.
+    public const uint FileCreate = 2;
+    public const uint FileOpenIf = 3;
+    public const uint FileDirectoryFile = 0x1;
+    public const uint FileSynchronousIoNonAlert = 0x20;
+    public const uint FileNonDirectoryFile = 0x40;
+    public const uint FileOpenForBackupIntent = 0x4000;
+    public const uint FileOpenReparsePoint = 0x200000;
+    public const uint ObjCaseInsensitive = 0x40;
+
+    /// <summary>Opens or creates <paramref name="objectAttributes"/>'s name relative to its root directory handle.</summary>
+    [LibraryImport("ntdll.dll")]
+    public static partial int NtCreateFile(out SafeFileHandle fileHandle, uint desiredAccess, ObjectAttributes* objectAttributes, out IoStatusBlock ioStatusBlock,
+        long* allocationSize, uint fileAttributes, uint shareAccess, uint createDisposition, uint createOptions, void* eaBuffer, uint eaLength);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct UnicodeString
+    {
+        public ushort Length;
+        public ushort MaximumLength;
+        public char* Buffer;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ObjectAttributes
+    {
+        public uint Length;
+        public nint RootDirectory;
+        public UnicodeString* ObjectName;
+        public uint Attributes;
+        public void* SecurityDescriptor;
+        public void* SecurityQualityOfService;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct IoStatusBlock

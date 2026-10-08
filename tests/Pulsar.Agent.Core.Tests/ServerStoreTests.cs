@@ -42,4 +42,40 @@ public sealed class ServerStoreTests : IDisposable
         Assert.Empty(reopened.PendingResults());
         Assert.Null(reopened.Load(record.ServerId));
     }
+
+    [Fact]
+    public void AnUnreadableRecordIsSetAsideAndTheOthersStillLoad()
+    {
+        // Corrupt JSON, or a state folder copied to another machine (DPAPI cannot unprotect it there).
+        var store = new ServerStore(new AgentPaths(_root), new PlainStateProtector());
+        var spec = new ServerRuntimeSpec("abcd2345", "{}", new Dictionary<string, string?>(), [], AutoStart: false, RestartOnCrash: false);
+        var good = new ServerRecord(Guid.NewGuid(), spec, DesiredRunning: false, ResumeOnStart: false);
+        store.Save(good);
+        var corrupt = Guid.NewGuid();
+        File.WriteAllText(Path.Combine(_root, "state", "servers", $"{corrupt:N}.json"), "{ not json");
+        var foreign = Guid.NewGuid();
+        File.WriteAllText(Path.Combine(_root, "state", "servers", $"{foreign:N}.json"), """{ "protection": "dpapi-elsewhere", "data": "AAAA" }""");
+
+        var loaded = Assert.Single(store.LoadAll());
+
+        Assert.Equal(good.ServerId, loaded.ServerId);
+        Assert.True(File.Exists(Path.Combine(_root, "state", "servers", $"{corrupt:N}.json.unreadable")));
+        Assert.True(File.Exists(Path.Combine(_root, "state", "servers", $"{foreign:N}.json.unreadable")));
+        Assert.Null(store.Load(corrupt)); // set aside: provisioning that server again starts afresh
+        Assert.Single(store.LoadAll());
+    }
+
+    [Fact]
+    public void AnUnreadableResultIsSetAsideAndTheOthersAreStillPending()
+    {
+        var store = new ServerStore(new AgentPaths(_root), new PlainStateProtector());
+        var result = new OperationCompleted(Guid.NewGuid(), Guid.NewGuid(), OperationOutcome.Succeeded, null, null);
+        store.SaveResult(result);
+        var corrupt = Guid.NewGuid();
+        File.WriteAllText(Path.Combine(_root, "state", "outbox", $"{corrupt:N}.json"), "{ \"operationId\": ");
+
+        Assert.Equal(result, Assert.Single(store.PendingResults()));
+        Assert.True(File.Exists(Path.Combine(_root, "state", "outbox", $"{corrupt:N}.json.unreadable")));
+        Assert.Equal(result, Assert.Single(store.PendingResults()));
+    }
 }

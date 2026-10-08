@@ -71,6 +71,24 @@ public sealed class RemoteBackupStoreTests : IDisposable
         }
     }
 
+    [Theory]
+    [InlineData("http://s3.example.com")]
+    [InlineData("http://192.168.1.20:9000")]
+    [InlineData("ftp://s3.example.com")]
+    [InlineData("not a url")]
+    public async Task RemoteStorageIsReachedOnlyOverHttpsUnlessItIsOnThisMachine(string endpoint)
+    {
+        // Backups carry the servers' files: they never travel in clear. Checked before anything is sent.
+        var target = new RemoteBackupTarget(endpoint, "us-east-1", "bucket", "key.zip", "access", "secret", PathStyle: true);
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        var refused = await Assert.ThrowsAsync<BackupException>(() => new S3RemoteBackupStore().DeleteAsync(target, cancelled.Token));
+
+        Assert.Equal(BackupErrors.RemoteFailed, refused.Code);
+        Assert.Contains("HTTPS", refused.Message, StringComparison.Ordinal);
+    }
+
     [S3Fact]
     public async Task AnArchiveGoesToTheBucketAndComesBackTheSame()
     {

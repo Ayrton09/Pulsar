@@ -155,34 +155,42 @@ public sealed partial class ServerHost(
         }
 
         var resume = new List<ServerSupervisor>();
-        foreach (var record in store.LoadAll())
-        {
-            try
-            {
-                var supervisor = Add(record.ServerId, record.Spec, record.RconPassword);
-                if (record.Spec.AutoStart || record.ResumeOnStart)
-                {
-                    resume.Add(supervisor);
-                }
-            }
-            catch (Exception ex) when (ex is LaunchPlanException or GameProcessException or ArgumentException)
-            {
-                LogServerNotLoaded(ex, record.ServerId);
-            }
-        }
-
-        var serversRoot = _config.ServersRootOrDefault(configs.Paths);
-        LogLoaded(_servers.Count, serversRoot);
         try
         {
-            backups.CleanUp(BackupsRoot);
+            // An unreadable record is set aside by the store; one that cannot be loaded is skipped: neither may keep
+            // the other servers from loading, or the Hello from being sent.
+            foreach (var record in store.LoadAll())
+            {
+                try
+                {
+                    var supervisor = Add(record.ServerId, record.Spec, record.RconPassword);
+                    if (record.Spec.AutoStart || record.ResumeOnStart)
+                    {
+                        resume.Add(supervisor);
+                    }
+                }
+                catch (Exception ex) when (ex is LaunchPlanException or GameProcessException or ArgumentException)
+                {
+                    LogServerNotLoaded(ex, record.ServerId);
+                }
+            }
+
+            var serversRoot = _config.ServersRootOrDefault(configs.Paths);
+            LogLoaded(_servers.Count, serversRoot);
+            try
+            {
+                backups.CleanUp(BackupsRoot);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LogBackupsNotCleaned(ex.Message);
+            }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        finally
         {
-            LogBackupsNotCleaned(ex.Message);
+            _loaded.TrySetResult();
         }
 
-        _loaded.TrySetResult();
         _metrics = SendMetricsAsync(_stopping.Token);
         foreach (var supervisor in resume)
         {
@@ -615,6 +623,20 @@ public sealed partial class ServerHost(
 
         if (!_servers.TryGetValue(command.ServerId, out var server))
         {
+            ServerRecord? record;
+            lock (_recordLock)
+            {
+                record = store.Load(command.ServerId);
+            }
+
+            if (record is not null)
+            {
+                // An earlier delete stopped the server but failed to clean up (the account could not be deleted, say):
+                // its record is still here, so this retry finishes the job.
+                return RunOperation(envelope, command.ServerId, operationId, _ignored =>
+                    CleanUpDeletedAsync(command.ServerId, record.Spec.ShortId, [.. Parse(record.Spec).PortList.Select(p => p.Name)]));
+            }
+
             // Already gone (a retried delete): report success so the panel can finish.
             _ = CompleteAsync(new OperationCompleted(operationId, command.ServerId, OperationOutcome.Succeeded, null, null));
             return new CommandAck(envelope.CommandId, AckStatus.AlreadyInState, null, null);
@@ -628,20 +650,29 @@ public sealed partial class ServerHost(
             _servers.TryRemove(command.ServerId, out _);
             _relay.Unsubscribe(command.ServerId);
             await server.Supervisor.Console.DisposeAsync();
-            DeleteConsoleLogs(server.ShortId);
-            var root = _config!.ServersRootOrDefault(configs.Paths);
-            // Before the account goes: a process of a deleted account would keep running unnoticed.
-            TerminateStrays(command.ServerId, provisioner.Describe(root, server.ShortId).Identity);
-            firewall.Remove(server.ShortId, [.. server.Manifest.PortList.Select(p => p.Name)]);
-            await Task.Run(() => provisioner.Deprovision(root, server.ShortId), CancellationToken.None); // never left half done
-            DeleteBackups(server.ShortId);
-            lock (_recordLock)
-            {
-                store.Delete(command.ServerId);
-            }
-
-            LogDeleted(command.ServerId, server.ShortId);
+            await CleanUpDeletedAsync(command.ServerId, server.ShortId, [.. server.Manifest.PortList.Select(p => p.Name)]);
         });
+    }
+
+    /// <summary>
+    /// What a deleted server leaves on disk, its record last: until everything else is gone, the record lets a retry of
+    /// the delete (or the next start of the agent) find the server again.
+    /// </summary>
+    private async Task CleanUpDeletedAsync(Guid serverId, string shortId, IReadOnlyList<string> portNames)
+    {
+        DeleteConsoleLogs(shortId);
+        var root = _config!.ServersRootOrDefault(configs.Paths);
+        // Before the account goes: a process of a deleted account would keep running unnoticed.
+        TerminateStrays(serverId, provisioner.Describe(root, shortId).Identity);
+        firewall.Remove(shortId, portNames);
+        await Task.Run(() => provisioner.Deprovision(root, shortId), CancellationToken.None); // never left half done
+        DeleteBackups(shortId);
+        lock (_recordLock)
+        {
+            store.Delete(serverId);
+        }
+
+        LogDeleted(serverId, shortId);
     }
 
     /// <summary>A backup while the server keeps running (docs/architecture/05: starting, stopping and editing files stay allowed).</summary>
@@ -737,7 +768,23 @@ public sealed partial class ServerHost(
         try
         {
             var opened = await backups.OpenAsync(location, command.Remote, CancellationToken.None);
-            return fileCommands.Send(envelope, command.Ticket, $"backup {command.BackupId}", () => opened);
+            CommandAck ack;
+            try
+            {
+                ack = fileCommands.Send(envelope, command.Ticket, $"backup {command.BackupId}", () => opened);
+            }
+            catch
+            {
+                opened.Dispose();
+                throw;
+            }
+
+            if (ack.Status != AckStatus.Accepted)
+            {
+                opened.Dispose(); // refused before the transfer took it: the archive must not stay locked
+            }
+
+            return ack;
         }
         catch (BackupException ex)
         {

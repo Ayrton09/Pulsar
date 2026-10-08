@@ -64,6 +64,46 @@ public sealed class ServerFilesTests : IDisposable
     }
 
     [WindowsFact]
+    public void AFolderSwappedForAJunctionWhileWritingLeavesNothingOutside()
+    {
+        // The server's account swaps a folder the agent has just checked for a junction to somewhere else.
+        Directory.CreateDirectory(Path.Combine(_server, "game", "cfg"));
+        var files = new WindowsServerFiles
+        {
+            BeforeCreate = () =>
+            {
+                Directory.Move(Path.Combine(_server, "game", "cfg"), Path.Combine(_server, "game", "old"));
+                Run("mklink", "/J", Path.Combine(_server, "game", "cfg"), _outside);
+            },
+        };
+
+        try
+        {
+            files.Write(_server, "game/cfg/new.cfg", Content("x"));
+        }
+        catch (GameProcessException)
+        {
+            // Refusing is fine too; leaving a file outside is not.
+        }
+
+        Assert.Equal(["secret.cfg"], Directory.EnumerateFileSystemEntries(_outside).Select(Path.GetFileName));
+    }
+
+    [WindowsFact]
+    public void AServerDirectoryReachedThroughAJunctionWorks()
+    {
+        // An administrator's junction (the servers root on another drive, say) is followed; only what is below it counts.
+        var alias = Path.Combine(_root, "alias");
+        Run("mklink", "/J", alias, _server);
+
+        _files.Write(alias, "game/server.cfg", Content("x"));
+
+        using var stream = _files.OpenRead(alias, "game/server.cfg")!;
+        Assert.Equal("x", new StreamReader(stream).ReadToEnd());
+        Assert.True(File.Exists(Path.Combine(_server, "game", "server.cfg")));
+    }
+
+    [WindowsFact]
     public void AHardLinkIsReplacedNotWrittenInto()
     {
         Run("mklink", "/H", Path.Combine(_server, "server.cfg"), Path.Combine(_outside, "secret.cfg"));

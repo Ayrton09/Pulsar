@@ -534,10 +534,13 @@ function Install-Agent([string] $panel, [string] $token, [string] $panelKey) {
     if (Test-Service $AgentService) { throw 'The agent is already installed on this machine. Use -Update to update it, or -Uninstall first.' }
     Write-Step "Installing the agent in $AgentDir"
     Copy-Program (Join-Path $PSScriptRoot 'agent') $AgentDir
-    $arguments = @('enroll', '--panel', $panel, '--token', $token, '--panel-key', $panelKey)
+    # The token goes through the environment: the process list shows command lines.
+    $arguments = @('enroll', '--panel', $panel, '--panel-key', $panelKey)
     if ($ServersRoot) { $arguments += @('--servers-root', $ServersRoot) }
     Write-Step 'Enrolling this machine as a node (the agent installs and starts its service)'
-    $result = Invoke-Native (Join-Path $AgentDir 'PulsarAgent.exe') @arguments
+    $env:PULSAR_ENROLLMENT_TOKEN = $token
+    try { $result = Invoke-Native (Join-Path $AgentDir 'PulsarAgent.exe') @arguments }
+    finally { Remove-Item Env:PULSAR_ENROLLMENT_TOKEN -ErrorAction SilentlyContinue }
     Write-Host $result.Output
     if ($result.ExitCode -ne 0) { throw 'The agent could not enroll (see above).' }
 }

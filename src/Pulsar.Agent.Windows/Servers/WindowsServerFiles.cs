@@ -20,6 +20,13 @@ public sealed class WindowsServerFiles : IServerFiles
     private const uint ReadAttributesAccess = 0x00000080;
     private const uint GenericRead = 0x80000000;
     private const uint GenericWrite = 0x40000000;
+    private const uint SynchronizeAccess = 0x00100000;
+
+    // List, add files and folders, traverse, read attributes: what opening and creating below a folder needs.
+    private const uint DirectoryAccess = 0x1 | 0x2 | 0x4 | 0x20 | ReadAttributesAccess | SynchronizeAccess;
+
+    /// <summary>Tests: runs just before a written file is created (to swap folders in the meantime).</summary>
+    internal Action? BeforeCreate { get; init; }
 
     public Stream? OpenRead(string serverRoot, string relativePath)
     {
@@ -45,11 +52,27 @@ public sealed class WindowsServerFiles : IServerFiles
     public void Write(string serverRoot, string relativePath, Stream content)
     {
         ArgumentNullException.ThrowIfNull(content);
-        var (root, path) = Paths(serverRoot, relativePath);
-        CreateDirectories(root, Path.GetDirectoryName(path)!);
+        var (root, _) = Paths(serverRoot, relativePath);
+        var separator = relativePath.LastIndexOf('/');
+        using var directory = OpenDirectories(serverRoot, root, separator < 0 ? "" : relativePath[..separator]);
         Delete(serverRoot, relativePath);
-        using var handle = Open(path, GenericWrite, FILE_CREATION_DISPOSITION.CREATE_NEW, allowMissing: false)!;
-        Check(handle, root, relativePath);
+        BeforeCreate?.Invoke();
+
+        // Created through the handle of the folder just checked, not by its path: a folder on the path swapped for a
+        // junction since then is not followed. Should the file still end up elsewhere (the checked folder itself moved
+        // away), it is deleted through its own handle.
+        using var handle = OpenRelative(directory, relativePath[(separator + 1)..], GenericWrite | DeleteAccess | ReadAttributesAccess | SynchronizeAccess, NtFile.FileCreate,
+            NtFile.FileNonDirectoryFile | NtFile.FileSynchronousIoNonAlert | NtFile.FileOpenReparsePoint, relativePath);
+        try
+        {
+            Check(handle, root, relativePath);
+        }
+        catch
+        {
+            MarkDeleted(handle);
+            throw;
+        }
+
         using var stream = new FileStream(handle, FileAccess.Write);
         content.CopyTo(stream);
     }
@@ -116,8 +139,8 @@ public sealed class WindowsServerFiles : IServerFiles
 
     public void CreateDirectory(string serverRoot, string relativePath)
     {
-        var (root, path) = Paths(serverRoot, relativePath);
-        CreateDirectories(root, path);
+        var (root, _) = Paths(serverRoot, relativePath);
+        using var directory = OpenDirectories(serverRoot, root, relativePath);
     }
 
     private static (string Root, string Path) Paths(string serverRoot, string relativePath)
@@ -131,27 +154,102 @@ public sealed class WindowsServerFiles : IServerFiles
         return (FinalPath(root), Path.Combine(root, relativePath.Replace('/', '\\')));
     }
 
-    private static void CreateDirectories(string root, string directory)
+    /// <summary>
+    /// Opens the folders of <paramref name="relativeDirectory"/> one below the other, creating the missing ones, each
+    /// through the handle of the one above it and checked before going below it (a junction would take the next level
+    /// elsewhere). Returns the last one ("" is the server directory).
+    /// </summary>
+    private static SafeFileHandle OpenDirectories(string serverRoot, string root, string relativeDirectory)
     {
-        var relative = Path.GetRelativePath(root, directory);
-        if (relative == ".")
+        var current = OpenRoot(serverRoot);
+        try
         {
-            return;
-        }
-
-        var current = root;
-        foreach (var part in relative.Split('\\'))
-        {
-            current = Path.Combine(current, part);
-            if (!Directory.Exists(current))
+            var walked = "";
+            foreach (var part in relativeDirectory.Split('/', StringSplitOptions.RemoveEmptyEntries))
             {
-                Directory.CreateDirectory(current);
+                walked = walked.Length == 0 ? part : walked + "/" + part;
+                var next = OpenRelative(current, part, DirectoryAccess, NtFile.FileOpenIf,
+                    NtFile.FileDirectoryFile | NtFile.FileOpenForBackupIntent | NtFile.FileOpenReparsePoint, walked);
+                current.Dispose();
+                current = next;
+                Check(current, root, walked);
             }
 
-            // Each level is checked before going below it: a junction here would take the next level elsewhere.
-            using var handle = Open(current, 0, FILE_CREATION_DISPOSITION.OPEN_EXISTING, allowMissing: false, directory: true)!;
-            Check(handle, root, Path.GetRelativePath(root, current));
+            return current;
         }
+        catch
+        {
+            current.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>The server directory itself, following a junction an administrator may have put on its path.</summary>
+    private static unsafe SafeFileHandle OpenRoot(string serverRoot, uint access = DirectoryAccess)
+    {
+        var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(serverRoot));
+        var handle = PInvoke.CreateFile(path, access,
+            FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_DELETE, null,
+            FILE_CREATION_DISPOSITION.OPEN_EXISTING, FILE_FLAGS_AND_ATTRIBUTES.FILE_FLAG_BACKUP_SEMANTICS, null);
+        if (handle.IsInvalid)
+        {
+            var error = Marshal.GetLastPInvokeError();
+            handle.Dispose();
+            throw new GameProcessException("files.open_failed", $"Cannot open the server directory: {new Win32Exception(error).Message}");
+        }
+
+        return handle;
+    }
+
+    /// <summary>Opens or creates <paramref name="name"/> (one path segment) inside the directory <paramref name="directory"/> is.</summary>
+    private static unsafe SafeFileHandle OpenRelative(SafeFileHandle directory, string name, uint access, uint disposition, uint options, string relativePath)
+    {
+        var added = false;
+        directory.DangerousAddRef(ref added);
+        try
+        {
+            fixed (char* buffer = name)
+            {
+                var objectName = new NtFile.UnicodeString
+                {
+                    Length = (ushort)(name.Length * sizeof(char)),
+                    MaximumLength = (ushort)(name.Length * sizeof(char)),
+                    Buffer = buffer,
+                };
+                var attributes = new NtFile.ObjectAttributes
+                {
+                    Length = (uint)sizeof(NtFile.ObjectAttributes),
+                    RootDirectory = directory.DangerousGetHandle(),
+                    ObjectName = &objectName,
+                    Attributes = NtFile.ObjCaseInsensitive,
+                };
+                var status = NtFile.NtCreateFile(out var handle, access, &attributes, out _, null, (uint)FILE_FLAGS_AND_ATTRIBUTES.FILE_ATTRIBUTE_NORMAL,
+                    (uint)(FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_DELETE), disposition, options, null, 0);
+                if (status >= 0)
+                {
+                    return handle;
+                }
+
+                handle.Dispose();
+                var error = (int)NtFile.RtlNtStatusToDosError(status);
+                throw new GameProcessException("files.open_failed", $"Cannot open '{relativePath}': {new Win32Exception(error).Message}");
+            }
+        }
+        finally
+        {
+            if (added)
+            {
+                directory.DangerousRelease();
+            }
+        }
+    }
+
+    /// <summary>Deletes what the handle is, at once (the file a refused write had just created).</summary>
+    private static unsafe void MarkDeleted(SafeFileHandle handle)
+    {
+        var disposition = new FILE_DISPOSITION_INFO { DeleteFile = true };
+        _ = PInvoke.SetFileInformationByHandle((HANDLE)handle.DangerousGetHandle(), FILE_INFO_BY_HANDLE_CLASS.FileDispositionInfo, &disposition,
+            (uint)sizeof(FILE_DISPOSITION_INFO));
     }
 
     private static unsafe SafeFileHandle? Open(string path, uint access, FILE_CREATION_DISPOSITION disposition, bool allowMissing, bool directory = false)
@@ -202,9 +300,9 @@ public sealed class WindowsServerFiles : IServerFiles
 
     private static string FinalPath(string directory)
     {
-        using var handle = Open(directory, 0, FILE_CREATION_DISPOSITION.OPEN_EXISTING, allowMissing: false, directory: true)!;
         // The server directory itself may be reached through a junction an administrator set up (the servers root on
-        // another drive, say): only what lies below it is the server's.
+        // another drive, say): it is followed, and only what lies below where it leads is the server's.
+        using var handle = OpenRoot(directory, ReadAttributesAccess);
         return FinalPath(handle);
     }
 

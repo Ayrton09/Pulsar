@@ -55,7 +55,9 @@ public sealed class MinecraftInstaller(IServerFiles files, HttpMessageHandler ha
             var id = string.IsNullOrEmpty(version) || version == MinecraftServerStep.Latest ? versions.Latest?.Release : version;
             var entry = versions.Versions?.FirstOrDefault(v => v.Id == id && v.Url is not null)
                 ?? throw Failed("minecraft.unknown_version", $"Mojang does not list a Minecraft version '{id}'.");
-            var details = await GetJsonAsync<VersionDetails>(client, Https(entry.Url!), entry.Sha1, cancellationToken);
+            // The details name the server's download and its checksum: they are used only when they match Mojang's list.
+            var sha1 = entry.Sha1 ?? throw Failed("minecraft.no_checksum", $"Mojang lists no checksum for Minecraft {id}.");
+            var details = await GetJsonAsync<VersionDetails>(client, Https(entry.Url!), sha1, cancellationToken);
             var server = details.Downloads?.Server is { Url: not null, Sha1: not null } download
                 ? download
                 : throw Failed("minecraft.no_server", $"Minecraft {id} has no dedicated server download.");

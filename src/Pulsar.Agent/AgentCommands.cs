@@ -12,6 +12,9 @@ internal static class AgentCommands
 {
     public static IReadOnlySet<string> Flags { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "dev", "no-service", "check" };
 
+    /// <summary>Where <c>enroll</c> also takes its token from (the process list shows command lines, not environments).</summary>
+    public const string TokenVariable = "PULSAR_ENROLLMENT_TOKEN";
+
     public static int Help()
     {
         Console.WriteLine($"""
@@ -21,7 +24,8 @@ internal static class AgentCommands
               PulsarAgent enroll --panel <url> --token <token> --panel-key <fingerprint>
                                  [--servers-root <dir>] [--backups-root <dir>] [--no-service] [--dev] [--data-dir <dir>]
                   Pairs this machine with a panel (copy the command the panel shows), then installs and
-                  starts the PulsarAgent service. Run it from an elevated prompt.
+                  starts the PulsarAgent service. Run it from an elevated prompt. To keep the token out of
+                  the process list, pass --token - and paste it, or set {TokenVariable} instead.
               PulsarAgent status [--check] [--data-dir <dir>]
                   Shows the enrollment, the node key fingerprint and the service state; --check also
                   authenticates against the panel.
@@ -47,7 +51,13 @@ internal static class AgentCommands
         line.Allow("panel", "token", "panel-key", "servers-root", "backups-root", "no-service", "dev", "data-dir");
         var development = line.Has("dev");
         var installService = !development && !line.Has("no-service");
-        var request = new EnrollmentRequest(line.Required("panel"), line.Required("token"), line.Required("panel-key"),
+        if (line.Value("token") == "-" && !Console.IsInputRedirected)
+        {
+            await Console.Error.WriteAsync("Enrollment token: ");
+        }
+
+        var request = new EnrollmentRequest(line.Required("panel"),
+            EnrollmentToken(line, Environment.GetEnvironmentVariable(TokenVariable), Console.In), line.Required("panel-key"),
             line.Value("servers-root") is { } root ? Path.GetFullPath(root) : null, development,
             line.Value("backups-root") is { } backups ? Path.GetFullPath(backups) : null);
         if (!development && !WindowsDirectorySecurity.IsElevated())
@@ -113,6 +123,23 @@ internal static class AgentCommands
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// The single-use enrollment token: <c>--token &lt;token&gt;</c>, <c>--token -</c> (read from standard input) or the
+    /// <see cref="TokenVariable"/> environment variable. The last two keep it out of the process list.
+    /// </summary>
+    internal static string EnrollmentToken(CommandLine line, string? environment, TextReader input)
+    {
+        var token = line.Value("token") switch
+        {
+            "-" => input.ReadLine()?.Trim(),
+            { } value => value,
+            null => environment?.Trim(),
+        };
+        return token is { Length: > 0 }
+            ? token
+            : throw new UsageException($"--token is required (or pass '--token -' and type it, or set {TokenVariable}).");
     }
 
     public static async Task<int> StatusAsync(CommandLine line)
@@ -236,7 +263,7 @@ internal static class AgentCommands
         switch (line.Subcommand)
         {
             case "install":
-                if (!await CanHostServiceAsync())
+                if (!await CanHostServiceAsync() || !await CanRunAsServiceAsync(Paths(line)))
                 {
                     return 1;
                 }
@@ -249,6 +276,12 @@ internal static class AgentCommands
                 Console.WriteLine($"The {AgentService.Name} service is removed. The enrollment and the node key are kept.");
                 return 0;
             case "start":
+                // Checked again (rights change after an install); the service itself checks its executable when it runs.
+                if (!await CanHostServiceAsync() || !await CanRunAsServiceAsync(Paths(line)))
+                {
+                    return 1;
+                }
+
                 AgentService.Start();
                 Console.WriteLine($"The {AgentService.Name} service is starting.");
                 return 0;
@@ -264,17 +297,24 @@ internal static class AgentCommands
     /// <summary>The service runs this executable as SYSTEM: refuse when anyone else could replace it.</summary>
     private static async Task<bool> CanHostServiceAsync()
     {
-        var findings = ServiceBinarySecurity.FindUntrustedWriters(Environment.ProcessPath!);
-        if (findings.Count == 0)
+        if (ServiceChecks.ExecutableRefusal(Environment.ProcessPath!) is not { } refusal)
         {
             return true;
         }
 
-        await Console.Error.WriteLineAsync($"""
-            The service would run {Environment.ProcessPath} as SYSTEM, but other accounts could replace it:
-              {string.Join(Environment.NewLine + "  ", findings)}
-            Move the agent's folder to one only administrators can modify, such as C:\Program Files\Pulsar\Agent, and run it from there.
-            """);
+        await Console.Error.WriteLineAsync(refusal);
+        return false;
+    }
+
+    /// <summary>A development enrollment never runs as the service.</summary>
+    private static async Task<bool> CanRunAsServiceAsync(AgentPaths paths)
+    {
+        if (ServiceChecks.DevelopmentRefusal(paths) is not { } refusal)
+        {
+            return true;
+        }
+
+        await Console.Error.WriteLineAsync(refusal);
         return false;
     }
 

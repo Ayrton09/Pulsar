@@ -97,6 +97,44 @@ public sealed class ServerProvisioningTests : IDisposable
     }
 
     [WindowsFact]
+    public void AFolderSwappedForAJunctionWhileDeletingIsNotFollowed()
+    {
+        // The server's account swaps a folder the agent has just checked for a junction to somewhere else.
+        var server = Directory.CreateDirectory(Path.Combine(_root, "dev3test")).FullName;
+        var outside = Directory.CreateDirectory(Path.Combine(_root, "outside")).FullName;
+        File.WriteAllText(Path.Combine(outside, "precious.txt"), "keep me");
+        Directory.CreateDirectory(Path.Combine(server, "game"));
+        File.WriteAllText(Path.Combine(server, "game", "map.bsp"), "server data");
+        var swapped = false;
+
+        try
+        {
+            WindowsServerProvisioner.DeleteTree(server, beforeListing: directory =>
+            {
+                if (!swapped && directory.EndsWith("game", StringComparison.Ordinal))
+                {
+                    swapped = true;
+                    Directory.Move(Path.Combine(server, "game"), Path.Combine(server, "moved"));
+                    CreateJunction(Path.Combine(server, "game"), outside);
+                }
+            });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Core.Files.FileManagerException)
+        {
+            // Refusing is fine; deleting outside is not.
+            TestContext.Current.SendDiagnosticMessage($"Refused: {ex.Message}");
+        }
+
+        if (Directory.Exists(Path.Combine(server, "game")))
+        {
+            Directory.Delete(Path.Combine(server, "game")); // the junction itself, before the test folder goes
+        }
+
+        Assert.True(swapped);
+        Assert.Equal("keep me", File.ReadAllText(Path.Combine(outside, "precious.txt")));
+    }
+
+    [WindowsFact]
     public void ShortIdsThatCouldEscapeOrBreakAnAccountNameAreRefused()
     {
         var provisioner = Provisioner(development: true);
