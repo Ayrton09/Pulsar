@@ -332,6 +332,24 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AStartThatFailsUnexpectedlyStillLeavesTheServerCrashed()
+    {
+        // Anything else thrown while starting used to leave the server Starting with no process: stops never finished.
+        var supervisor = Supervisor();
+        _processes.FailNext = new InvalidOperationException("the window station is gone");
+
+        Assert.Equal(AckStatus.Accepted, await Started(supervisor));
+
+        var crashed = await _events.WaitForAsync(RuntimeState.Crashed, StateChangeReason.StartFailed);
+        Assert.Equal("process.start_failed", crashed.Detail);
+        Assert.False(_events.DesiredRunning);
+        Assert.Equal(AckStatus.AlreadyInState, await supervisor.StopAsync());
+        Assert.Equal(AckStatus.Accepted, await Started(supervisor)); // and it can be started again
+        _processes.Last.Print("Test server ready\r\n");
+        await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
+    }
+
+    [Fact]
     public async Task ChildrenThatOutliveTheMainProcessGetAGracePeriodThenDie()
     {
         var supervisor = await Running();

@@ -19,22 +19,30 @@ public sealed partial class ConsoleLines
         ArgumentNullException.ThrowIfNull(text);
         _pending.Append(text);
         var lines = new List<string>();
+        // One pass over the text: each search starts where the last line ended, and the next move found is kept until
+        // the lines before it are taken (the pattern has no anchors, so a later start cannot find an earlier match).
+        var pending = _pending.ToString();
+        var start = 0;
+        var move = RowStart().Match(pending);
         while (true)
         {
-            var newline = IndexOf(_pending, '\n');
-            var pending = _pending.ToString();
+            var newline = pending.IndexOf('\n', start);
+            if (move.Success && move.Index < start)
+            {
+                move = RowStart().Match(pending, start);
+            }
+
             // A pseudo console repaints lines written together with moves to the start of the next row instead of line
             // breaks: such a move ends a line that has text (a home on an empty line, the first repaint, adds nothing).
-            var move = RowStart().Match(pending);
             if (move.Success && (newline < 0 || move.Index < newline))
             {
-                var line = Clean(pending[..move.Index]);
+                var line = Clean(pending[start..move.Index]);
                 if (line.Length > 0)
                 {
                     lines.Add(line);
                 }
 
-                _pending.Remove(0, move.Index + move.Length);
+                start = move.Index + move.Length;
                 continue;
             }
 
@@ -43,9 +51,11 @@ public sealed partial class ConsoleLines
                 break;
             }
 
-            lines.Add(Clean(pending[..newline]));
-            _pending.Remove(0, newline + 1);
+            lines.Add(Clean(pending[start..newline]));
+            start = newline + 1;
         }
+
+        _pending.Remove(0, start);
 
         // A process that never ends its line still cannot grow this without bound.
         if (_pending.Length > MaxLineLength)
@@ -59,19 +69,6 @@ public sealed partial class ConsoleLines
 
     /// <summary>Removes VT escape sequences and carriage returns.</summary>
     public static string Clean(string text) => Escapes().Replace(text, "").Replace("\r", "", StringComparison.Ordinal);
-
-    private static int IndexOf(StringBuilder builder, char value)
-    {
-        for (var i = 0; i < builder.Length; i++)
-        {
-            if (builder[i] == value)
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
 
     // CSI (ESC [ ... final), OSC (ESC ] ... BEL or ESC \), and two-character escapes.
     [GeneratedRegex(@"\x1B\[[0-?]*[ -/]*[@-~]|\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)|\x1B[@-Z\\-_]", RegexOptions.CultureInvariant)]

@@ -1,4 +1,7 @@
+using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Contracts;
 
@@ -17,11 +20,15 @@ public sealed record ServerRecord(Guid ServerId, ServerRuntimeSpec Spec, bool De
 /// Server records and undelivered operation results, as JSON files in the agent's state directory (SYSTEM and
 /// Administrators only). Every write replaces the file atomically. Records hold secrets (secret variables, the RCON
 /// password), so they are stored encrypted (<see cref="IStateProtector"/>, DPAPI on Windows) inside a small envelope
-/// that names the protection; a record written before that (plain JSON) is still read.
+/// that names the protection; a record written before that (plain JSON) is still read. A file that cannot be read
+/// (corrupt, or protected on another machine) is set aside as <c>*.json.unreadable</c> and logged: it must not keep the
+/// other servers from loading, nor the agent from connecting.
 /// </summary>
-public sealed class ServerStore(AgentPaths paths, IStateProtector protector)
+public sealed partial class ServerStore(AgentPaths paths, IStateProtector protector, ILogger<ServerStore>? logger = null)
 {
     private static readonly JsonSerializerOptions s_options = new(ProtocolJson.Options) { WriteIndented = true };
+
+    private readonly ILogger _logger = logger ?? (ILogger)NullLogger.Instance;
 
     public IReadOnlyList<ServerRecord> LoadAll()
     {
@@ -30,7 +37,7 @@ public sealed class ServerStore(AgentPaths paths, IStateProtector protector)
             return [];
         }
 
-        return [.. Directory.EnumerateFiles(paths.ServersStateDirectory, "*.json").Select(ReadRecord).OfType<ServerRecord>()];
+        return [.. Directory.EnumerateFiles(paths.ServersStateDirectory, "*.json").Select(f => ReadOrSetAside(f, ReadRecord)).OfType<ServerRecord>()];
     }
 
     public ServerRecord? Load(Guid serverId)
@@ -55,7 +62,8 @@ public sealed class ServerStore(AgentPaths paths, IStateProtector protector)
             return [];
         }
 
-        return [.. Directory.EnumerateFiles(paths.OutboxDirectory, "*.json").Select(Read<OperationCompleted>).OfType<OperationCompleted>()];
+        return [.. Directory.EnumerateFiles(paths.OutboxDirectory, "*.json").Select(f => ReadOrSetAside(f, Read<OperationCompleted>))
+            .OfType<OperationCompleted>()];
     }
 
     public void SaveResult(OperationCompleted result)
@@ -65,6 +73,28 @@ public sealed class ServerStore(AgentPaths paths, IStateProtector protector)
     }
 
     public void DeleteResult(Guid operationId) => File.Delete(Path.Combine(paths.OutboxDirectory, $"{operationId:N}.json"));
+
+    private T? ReadOrSetAside<T>(string file, Func<string, T?> read) where T : class
+    {
+        try
+        {
+            return read(file);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException or CryptographicException or NotSupportedException)
+        {
+            LogUnreadable(Path.GetFileName(file), ex.Message);
+            try
+            {
+                File.Move(file, file + ".unreadable", overwrite: true);
+            }
+            catch (Exception moveFailed) when (moveFailed is IOException or UnauthorizedAccessException)
+            {
+                LogNotSetAside(Path.GetFileName(file), moveFailed.Message);
+            }
+
+            return null;
+        }
+    }
 
     private ServerRecord? ReadRecord(string file)
     {
@@ -99,4 +129,10 @@ public sealed class ServerStore(AgentPaths paths, IStateProtector protector)
         File.WriteAllBytes(temporary, JsonSerializer.SerializeToUtf8Bytes(value, s_options));
         File.Move(temporary, file, overwrite: true);
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "State file {File} cannot be read and is set aside (.unreadable): {Reason}")]
+    private partial void LogUnreadable(string file, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "State file {File} could not be set aside: {Reason}")]
+    private partial void LogNotSetAside(string file, string reason);
 }

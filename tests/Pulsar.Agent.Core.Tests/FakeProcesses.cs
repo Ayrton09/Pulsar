@@ -14,7 +14,7 @@ internal sealed class FakeProcessManager : IGameProcessManager
     public List<ProcessLaunchSpec> Specs { get; } = [];
 
     /// <summary>When set, the next start fails with this error.</summary>
-    public GameProcessException? FailNext { get; set; }
+    public Exception? FailNext { get; set; }
 
     /// <summary>When set, starts wait for it (a slow first logon, say).</summary>
     public TaskCompletionSource? Gate { get; set; }

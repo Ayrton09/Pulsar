@@ -322,7 +322,21 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             case StopTimeout timeout when timeout.Generation == _generation && _state == RuntimeState.Stopping:
                 LogStopTimedOut(ServerId);
                 _stopReason = StateChangeReason.StopTimedOut;
-                _process?.TerminateTree(1);
+                if (_process is { } stuck)
+                {
+                    stuck.TerminateTree(1);
+                }
+                else
+                {
+                    // No process whose exit could end the stop: it ends here.
+                    Transition(RuntimeState.Offline, StateChangeReason.StopTimedOut);
+                    if (_restartAfterStop)
+                    {
+                        _restartAfterStop = false;
+                        await LaunchAsync(StateChangeReason.Requested);
+                    }
+                }
+
                 break;
             case AutoRestart restart when restart.Timer == _restartTimer && _state == RuntimeState.Crashed && _desiredRunning:
                 _restarts.Enqueue(_clock.GetUtcNow());
@@ -463,6 +477,14 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             LogStartFailed(ServerId, ex.Code, ex.Message);
             SetDesired(false);
             Transition(RuntimeState.Crashed, StateChangeReason.StartFailed, detail: ex.Code);
+            return;
+        }
+        catch (Exception ex) when (ex is not (OperationCanceledException or OutOfMemoryException))
+        {
+            // Anything else must not leave the server Starting with no process (no exit would ever end a stop).
+            LogStartFailedUnexpectedly(ex, ServerId);
+            SetDesired(false);
+            Transition(RuntimeState.Crashed, StateChangeReason.StartFailed, detail: "process.start_failed");
             return;
         }
 
@@ -1190,6 +1212,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId} could not start: {Code} ({Reason})")]
     private partial void LogStartFailed(Guid serverId, string code, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Server {ServerId} could not start")]
+    private partial void LogStartFailedUnexpectedly(Exception exception, Guid serverId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId} crashed with exit code {ExitCode} ({Reason})")]
     private partial void LogCrashed(Guid serverId, int exitCode, StateChangeReason reason);
