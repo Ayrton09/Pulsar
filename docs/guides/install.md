@@ -105,7 +105,10 @@ extract the same ZIP, open PowerShell as administrator in its folder and run tha
 powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Mode Agent -PanelUrl https://panel:8443 -Token <token> -PanelKey sha256:<fingerprint>
 ```
 
-The command works once and for 30 minutes. With the panel's self-signed certificate, copy
+The command works once and for 30 minutes. The installer hands the token to the agent through the environment, not
+its command line. When you run `PulsarAgent enroll` yourself, prefer `--token -` (it asks for the token on standard
+input) or the `PULSAR_ENROLLMENT_TOKEN` environment variable to `--token <token>`: other programs on the machine can see
+command lines in the process list. With the panel's self-signed certificate, copy
 `C:\ProgramData\Pulsar\Panel\tls\panel.cer` from the panel's machine to the node first and add
 `-TrustCertificate .\panel.cer`: the node then trusts that certificate. The node appears as **Online** in the panel.
 

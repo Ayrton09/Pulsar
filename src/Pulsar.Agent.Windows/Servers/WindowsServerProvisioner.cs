@@ -75,45 +75,14 @@ public sealed partial class WindowsServerProvisioner(WindowsServerAccounts accou
     }
 
     /// <summary>
-    /// Deletes a directory tree that a server (an untrusted account) could have filled with junctions and symbolic links:
-    /// links are removed themselves, never descended into, so the agent (SYSTEM) cannot be tricked into deleting files
-    /// outside the server directory. Read-only attributes are cleared on the way.
+    /// Deletes a directory tree that a server (an untrusted account) could have filled with junctions and symbolic links,
+    /// or could swap folders in while it is deleted: every entry is opened by handle without following a link, checked to
+    /// still be inside, and deleted through that handle (links themselves, never their targets), so the agent (SYSTEM)
+    /// cannot be tricked into deleting files outside the server directory. Read-only files are deleted too.
     /// </summary>
-    internal static void DeleteTree(string directory)
-    {
-        var info = new DirectoryInfo(directory);
-        if (!info.Exists)
-        {
-            return;
-        }
-
-        if (info.Attributes.HasFlag(FileAttributes.ReparsePoint))
-        {
-            info.Delete();
-            return;
-        }
-
-        foreach (var entry in info.EnumerateFileSystemInfos("*", new EnumerationOptions { AttributesToSkip = 0, RecurseSubdirectories = false }))
-        {
-            if (entry.Attributes.HasFlag(FileAttributes.ReadOnly))
-            {
-                entry.Attributes &= ~FileAttributes.ReadOnly;
-            }
-
-            if (entry is DirectoryInfo child && !child.Attributes.HasFlag(FileAttributes.ReparsePoint))
-            {
-                DeleteTree(child.FullName);
-            }
-            else
-            {
-                // A file, or a link (to a directory or a file): RemoveDirectory/DeleteFile remove the link only.
-                entry.Delete();
-            }
-        }
-
-        info.Attributes &= ~FileAttributes.ReadOnly;
-        info.Delete();
-    }
+    /// <param name="beforeListing">Tests: runs before each directory's entries are listed.</param>
+    internal static void DeleteTree(string directory, Action<string>? beforeListing = null) =>
+        WindowsServerFileManager.DeleteDirectoryTree(directory, beforeListing);
 
     private static string Root(string serversRoot)
     {

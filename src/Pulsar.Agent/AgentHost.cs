@@ -105,6 +105,16 @@ internal static class AgentHost
             builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(30));
 
             using var host = builder.Build();
+            if (ServiceChecks.RunsAsService()
+                && (ServiceChecks.DevelopmentRefusal(paths) ?? ServiceChecks.ExecutableRefusal(Environment.ProcessPath!)) is { } refusal)
+            {
+                // As SYSTEM, a development enrollment would run game servers as SYSTEM, and a replaceable executable
+                // would hand SYSTEM to whoever replaces it. (The logging services first: the reason goes to the log file.)
+                _ = host.Services.GetRequiredService<ILoggerFactory>();
+                Log.Fatal("Pulsar Agent refuses to run as the service: {Reason}", refusal);
+                return 1;
+            }
+
             Log.Information("Pulsar Agent {Version} starting (protocol v{ProtocolVersion}, state in {DataDirectory})",
                 AgentInfo.Version, AgentProtocol.CurrentVersion, paths.Root);
             await host.RunAsync();

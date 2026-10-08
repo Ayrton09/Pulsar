@@ -286,6 +286,27 @@ public sealed class GameProcessTests : IDisposable
             (await Assert.ThrowsAsync<GameProcessException>(() => manager.StartAsync(throughJunction, TestContext.Current.CancellationToken))).Code);
     }
 
+    [WindowsFact]
+    public async Task AJunctionInPlaceOfThePulsarFolderIsNotFollowedForTheTemporaryDirectory()
+    {
+        // The server's account controls its directory: its .pulsar folder could be a junction to anywhere.
+        var outside = Directory.CreateTempSubdirectory("pulsar-outside-");
+        try
+        {
+            CreateJunction(Path.Combine(_server.Root, ".pulsar"), outside.FullName);
+
+            var refused = await Assert.ThrowsAsync<GameProcessException>(() =>
+                TestServerDirectory.Manager().StartAsync(_server.Spec(ConsoleMode.Pipes), TestContext.Current.CancellationToken));
+
+            Assert.Equal("files.reparse_point", refused.Code);
+            Assert.Empty(outside.EnumerateFileSystemInfos());
+        }
+        finally
+        {
+            outside.Delete(recursive: true);
+        }
+    }
+
     private Task<IGameProcess> Start(ConsoleMode mode, params string[] arguments) =>
         TestServerDirectory.Manager().StartAsync(_server.Spec(mode, ["--ready-after", "100", .. arguments]), TestContext.Current.CancellationToken);
 

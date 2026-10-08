@@ -16,6 +16,20 @@ public sealed class CommandLineTests
         Assert.False(line.Has("no-service"));
     }
 
+    [Fact]
+    public void TheEnrollmentTokenCanStayOffTheCommandLine()
+    {
+        // The process list shows command lines: the token can come from the environment or standard input instead.
+        var flags = AgentCommands.Flags;
+        var withoutToken = CommandLine.Parse(["enroll", "--panel", "https://p", "--panel-key", "sha256:k"], flags);
+
+        Assert.Equal("from-env", AgentCommands.EnrollmentToken(withoutToken, "from-env", new StringReader("")));
+        Assert.Equal("from-stdin", AgentCommands.EnrollmentToken(CommandLine.Parse(["enroll", "--token", "-"], flags), null, new StringReader("from-stdin\r\n")));
+        Assert.Equal("abc", AgentCommands.EnrollmentToken(CommandLine.Parse(["enroll", "--token", "abc"], flags), "from-env", new StringReader("")));
+        Assert.Throws<UsageException>(() => AgentCommands.EnrollmentToken(withoutToken, null, new StringReader("")));
+        Assert.Throws<UsageException>(() => AgentCommands.EnrollmentToken(CommandLine.Parse(["enroll", "--token", "-"], flags), null, new StringReader("")));
+    }
+
     [Theory]
     [InlineData("-O8TH4J_ei1EVnOlLB2Np0cfq1vAXfmMpechf3u3L0Y")]
     [InlineData("--8TH4J_ei1EVnOlLB2Np0cfq1vAXfmMpechf3u3L0Y")]

@@ -342,12 +342,13 @@ PulsarAgent service install|uninstall|start|stop [--data-dir <dir>]
 PulsarAgent unenroll [--data-dir <dir>]
 ```
 
-- The service runs the executable it was installed from as SYSTEM, so `enroll` and `service install` refuse when anyone other than SYSTEM, Administrators or TrustedInstaller could modify it or its folder, or rename a folder above it (a download folder, or a folder created directly under `C:\`, fails; `C:\Program Files\Pulsar\Agent` passes). The check runs before enrolling, so a refusal does not consume the token.
+- The service runs the executable it was installed from as SYSTEM, so `enroll` and `service install` refuse when anyone other than SYSTEM, Administrators or TrustedInstaller could modify it or its folder, or rename a folder above it (a download folder, or a folder created directly under `C:\`, fails; `C:\Program Files\Pulsar\Agent` passes). The check runs before enrolling, so a refusal does not consume the token. `service start` checks again, and so does the agent itself when it runs as the service (started by the service control manager, or as SYSTEM): it logs the reason and exits.
 - `enroll` must run elevated. It pins the panel key, creates the node key, enrolls, writes `config\agent.json`, and installs and starts the `PulsarAgent` service (LocalSystem, automatic start; the service control manager restarts it after 5 s, 15 s, then every 60 s, also when it stops itself with an error). Re-running it on an enrolled node stops the service first and deletes the old key once the new enrollment is saved.
 - `status` shows the enrollment and the node key fingerprint (the one the panel shows for the credential); `--check` also authenticates against the panel.
-- `--dev` is for development only: the key goes to the current user's store, the state directory also grants the current user, and no service is installed. The service runs as SYSTEM and could not open such a key.
+- `--dev` is for development only: the key goes to the current user's store, the state directory also grants the current user, and no service is installed. The service runs as SYSTEM and could not open such a key. A development enrollment never runs as the service either: `service install` and `service start` refuse it, and the agent refuses to run it as the service, where its servers (started as the current user) would run as SYSTEM.
 - `unenroll` removes the service, the node key and the configuration (logs stay). The node must also be deleted, or re-enrolled, in the panel.
 - The value after an option is always taken as its value: enrollment tokens are base64url and can start with `-`.
+- The process list shows command lines: `--token -` reads the token from standard input, and without `--token` it is taken from the `PULSAR_ENROLLMENT_TOKEN` environment variable.
 
 ### Panel address
 
@@ -355,7 +356,7 @@ The panel URL must be an origin (`https://panel.example.com[:port]`), without pa
 
 ### Node key
 
-ECDSA P-256 created through CNG with export policy *none*, in the TPM (Microsoft Platform Crypto Provider) when it can create the key, otherwise in the software key storage provider; the result is reported to the panel (`tpm`/`software`) and shown in the UI. Production keys are machine keys whose DACL grants only SYSTEM and Administrators. The state directory (`%ProgramData%\Pulsar\Agent` by default) gets a protected DACL with the same two principals and Administrators as owner.
+ECDSA P-256 created through CNG with export policy *none*, in the TPM (Microsoft Platform Crypto Provider) when it can create the key, otherwise in the software key storage provider; the result is reported to the panel (`tpm`/`software`) and shown in the UI. Production keys are machine keys whose DACL grants only SYSTEM and Administrators. The state directory (`%ProgramData%\Pulsar\Agent` by default) gets a protected DACL with the same two principals and Administrators as owner. What it already holds (a folder someone created before the agent) is reset to inherit that DACL, owned by Administrators; a junction or link in it is refused; and enrollment refuses a state directory (or backups folder) below a folder that an account other than SYSTEM, Administrators or TrustedInstaller owns or could rename or replace, before anything is written.
 
 ### Connection loop
 
