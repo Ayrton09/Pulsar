@@ -155,6 +155,30 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
         Assert.Single((await NodeApi.GetAsync(admin, enrolled.NodeId)).Credentials);
     }
 
+    [DatabaseFact]
+    public async Task ThePanelsAnswerNamesTheKeyItRegistered()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-bound");
+        using var current = agent.Keys.Open(enrolled.Key);
+        var session = await new PanelAuthenticator(Transport(agent)).AuthenticateAsync(enrolled, current, Ct);
+        using var newKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var publicKey = newKey.ExportSubjectPublicKeyInfo();
+        var proof = ProtocolCrypto.Sign(newKey, ProtocolCrypto.SignedData(AgentProtocol.Purposes.RotateCredential,
+            ProtocolCrypto.GuidBytes(enrolled.NodeId), ProtocolCrypto.GuidBytes(enrolled.CredentialId), ProtocolCrypto.GuidBytes(session.SessionId), publicKey));
+        using var http = factory.CreateDefaultClient(new Uri("https://localhost"));
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+
+        using var response = await http.PostAsJsonAsync(AgentProtocol.RotateCredentialPath, new RotateCredentialRequest(publicKey, "software", proof),
+            ProtocolJson.Options, Ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var signed = (await response.Content.ReadFromJsonAsync<SignedMessage>(ProtocolJson.Options, Ct))!;
+        var rotation = ProtocolJson.Deserialize<CredentialRotation>(signed.Payload);
+        Assert.Equal(ProtocolCrypto.Fingerprint(publicKey), rotation.KeyFingerprint);
+    }
+
     private static async Task AssertRotatedAsync(PanelClient admin, InProcessAgent agent, AgentConfig before, AgentConfig after)
     {
         var details = await NodeApi.GetAsync(admin, before.NodeId);

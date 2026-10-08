@@ -42,10 +42,10 @@ public sealed class AgentEnrollment(
                 $"The panel at {origin} does not hold the key {request.PanelKeyFingerprint}. Check the URL and copy the command from the panel again; " +
                 "if they are right, something between this machine and the panel is impersonating it.");
 
-        directorySecurity.Secure(configs.Paths.Root, request.Development);
+        directorySecurity.SecureState(configs.Paths.Root, configs.Paths.OwnFolders, request.Development);
         if (request.BackupsRoot is { } backups)
         {
-            directorySecurity.Secure(backups, request.Development);
+            directorySecurity.SecureFolder(backups, request.Development);
         }
 
         var previous = configs.Load();

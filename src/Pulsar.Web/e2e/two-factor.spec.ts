@@ -46,13 +46,14 @@ test('a role requires two-factor authentication and its user signs in with codes
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
   expect(await page.evaluate(async () => (await fetch('/api/v1/servers')).status)).toBe(403);
 
+  // A new key and turning it on take the password: a stolen session alone can do neither.
+  await page.getByLabel('Current password').fill(operator.password);
   await page.getByRole('button', { name: 'Set up' }).click();
   await expect(page.getByRole('img', { name: 'QR code for your authenticator app' })).toBeVisible();
   const key = (await page.getByText(/^[A-Z2-7]{4}( [A-Z2-7]{1,4})+$/).textContent()) ?? '';
   await page.screenshot({ path: 'test-results/screens/two-factor-setup.png', fullPage: true });
   let used = await freshTotp(key, timeStep() - 1);
   await page.getByLabel('Code from the app').fill(used.code);
-  await page.getByLabel('Current password').fill(operator.password);
   await page.getByRole('button', { name: 'Turn on' }).click();
 
   const codes = page.getByRole('list', { name: 'Recovery codes' }).getByRole('listitem');

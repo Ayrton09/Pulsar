@@ -21,6 +21,12 @@ describe('ConsoleFilter', () => {
     ).toBe('abcdefghijk');
   });
 
+  it('drops a lone escape without the character after it', () => {
+    const filter = new ConsoleFilter();
+
+    expect(filter.push(`foo${ESC}\nbar${ESC}\tbaz${ESC}(\rqux`)).toBe('foo\nbar\tbaz\rqux');
+  });
+
   it('turns a pseudo console moving to the next row into a line break', () => {
     const filter = new ConsoleFilter();
 

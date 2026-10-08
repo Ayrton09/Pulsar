@@ -241,7 +241,7 @@ public sealed partial class AgentAccess(
             .WithNode(nodeId).WithTarget("node", nodeId.ToString());
         await db.SaveChangesAsync(cancellationToken);
 
-        var result = new CredentialRotation(nodeId.Value, credential.Id);
+        var result = new CredentialRotation(nodeId.Value, credential.Id, fingerprint);
         return await keys.SignAsync(AgentProtocol.Purposes.RotationResult, ProtocolJson.Serialize(result), cancellationToken);
     }
 

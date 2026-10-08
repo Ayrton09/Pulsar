@@ -51,6 +51,35 @@ public sealed class BackupStorageTests
         Assert.Equal(BackupStorageErrors.AccessKeyInvalid, Create(accessKey: "AK ID").Error);
     }
 
+    [Theory]
+    [InlineData("https://8.8.8.8", true)]
+    [InlineData("http://127.0.0.1:9000", true)]
+    [InlineData("http://10.0.0.5:9000", true)]
+    [InlineData("http://172.16.0.1", true)]
+    [InlineData("http://172.31.255.254", true)]
+    [InlineData("http://192.168.1.20:9000", true)]
+    [InlineData("http://169.254.10.1", true)]
+    [InlineData("http://[::1]:9000", true)]
+    [InlineData("http://[fd12:3456::1]", true)]
+    [InlineData("http://[fe80::1]", true)]
+    [InlineData("http://[::ffff:192.168.1.20]", true)]
+    [InlineData("http://nas.home.lan:9000", true)] // a name: the node checks what it resolves to
+    [InlineData("http://8.8.8.8", false)]
+    [InlineData("http://172.32.0.1", false)]
+    [InlineData("http://11.0.0.1", false)]
+    [InlineData("http://[2001:db8::1]", false)]
+    [InlineData("http://[::ffff:8.8.8.8]", false)]
+    public void PlainHttpIsOnlyForPrivateAddresses(string endpoint, bool valid)
+    {
+        var result = Create(endpoint: endpoint);
+
+        Assert.Equal(valid, result.IsSuccess);
+        if (!valid)
+        {
+            Assert.Equal(BackupStorageErrors.EndpointNeedsHttps, result.Error);
+        }
+    }
+
     [Fact]
     public void ABackupsCopyIsPendingThenCopiedOrFailed()
     {

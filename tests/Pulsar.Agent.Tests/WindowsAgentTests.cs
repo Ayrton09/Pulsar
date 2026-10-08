@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
@@ -105,7 +106,7 @@ public sealed class WindowsAgentTests
         var directory = Path.Combine(Path.GetTempPath(), "pulsar-agent-acl-" + Guid.NewGuid().ToString("N"));
         try
         {
-            new WindowsDirectorySecurity().Secure(directory, development: true);
+            SecureState(directory, development: true);
 
             var security = new DirectoryInfo(directory).GetAccessControl();
             Assert.True(security.AreAccessRulesProtected);
@@ -147,7 +148,7 @@ public sealed class WindowsAgentTests
             open.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.FullControl, AccessControlType.Allow));
             file.SetAccessControl(open);
 
-            new WindowsDirectorySecurity().Secure(directory, development: true);
+            SecureState(directory, development: true);
 
             var security = file.GetAccessControl();
             Assert.False(security.AreAccessRulesProtected);
@@ -172,7 +173,7 @@ public sealed class WindowsAgentTests
             Junction(Path.Combine(directory, "state", "servers"), outside.FullName);
             var before = outside.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access);
 
-            Assert.Throws<Core.Panel.AgentException>(() => new WindowsDirectorySecurity().Secure(directory, development: true));
+            Assert.Throws<Core.Panel.AgentException>(() => SecureState(directory, development: true));
 
             Assert.Equal(before, outside.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access));
         }
@@ -190,11 +191,148 @@ public sealed class WindowsAgentTests
         // The temp folder belongs to the current user, who could put another folder in the state directory's place.
         var directory = Path.Combine(Path.GetTempPath(), "pulsar-agent-acl-" + Guid.NewGuid().ToString("N"), "Agent");
 
-        var refused = Assert.Throws<Core.Panel.AgentException>(() => new WindowsDirectorySecurity().Secure(directory, development: false));
+        var refused = Assert.Throws<Core.Panel.AgentException>(() => SecureState(directory, development: false));
 
         Assert.Contains(Path.GetTempPath().TrimEnd('\\'), refused.Message, StringComparison.OrdinalIgnoreCase);
         Assert.False(Directory.Exists(Path.GetDirectoryName(directory))); // nothing was created
         Assert.Empty(WindowsDirectorySecurity.FindReplaceableAncestors(Path.Combine(Environment.SystemDirectory, "config")));
+    }
+
+    [WindowsFact]
+    public void SecuringTheStateDirectoryLeavesWhatIsNotTheAgentsAsItWas()
+    {
+        // A development agent keeps its servers in the state directory; their folders have rules of their own.
+        var directory = Path.Combine(Path.GetTempPath(), "pulsar-agent-acl-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var server = Directory.CreateDirectory(Path.Combine(directory, "servers", "k3x7m2qa"));
+            var file = new FileInfo(Path.Combine(server.FullName, "server.cfg"));
+            File.WriteAllText(file.FullName, "hostname test");
+            file.SetAccessControl(Open());
+            var before = file.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+
+            SecureState(directory, development: true);
+
+            Assert.Equal(before, file.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [WindowsFact]
+    public void ABackupsRootHoldingSomeoneElsesFilesIsRefusedAndLeftAsItWas()
+    {
+        var directory = Directory.CreateTempSubdirectory("pulsar-backups-root-");
+        try
+        {
+            var file = new FileInfo(Path.Combine(directory.FullName, "photos.zip"));
+            File.WriteAllText(file.FullName, "the user's own");
+            var folderBefore = directory.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All);
+            var fileBefore = file.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All);
+
+            var refused = Assert.Throws<Core.Panel.AgentException>(() => new WindowsDirectorySecurity().SecureFolder(directory.FullName, development: true));
+
+            Assert.Contains(directory.FullName, refused.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(folderBefore, directory.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
+            Assert.Equal(fileBefore, file.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [WindowsFact]
+    public void AnEmptyBackupsRootIsSecuredAndStaysAcceptedOnceItHoldsBackups()
+    {
+        var directory = Directory.CreateTempSubdirectory("pulsar-backups-root-");
+        try
+        {
+            new WindowsDirectorySecurity().SecureFolder(directory.FullName, development: true);
+            Assert.True(directory.GetAccessControl().AreAccessRulesProtected);
+            Directory.CreateDirectory(Path.Combine(directory.FullName, "k3x7m2qa"));
+            File.WriteAllText(Path.Combine(directory.FullName, "k3x7m2qa", "backup.zip"), "zip");
+
+            // Enrolled again: the folder is already the agent's.
+            new WindowsDirectorySecurity().SecureFolder(directory.FullName, development: true);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [WindowsFact]
+    public void AReparsePointThatIsNotALinkIsAnOrdinaryFile()
+    {
+        // Deduplicated files and cloud placeholders are reparse points too, but they do not point elsewhere.
+        var directory = Path.Combine(Path.GetTempPath(), "pulsar-agent-acl-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var config = Directory.CreateDirectory(Path.Combine(directory, "config"));
+            var file = Path.Combine(config.FullName, "agent.json");
+            File.WriteAllText(file, "{}");
+            SetThirdPartyReparsePoint(file);
+            Assert.True(File.GetAttributes(file).HasFlag(FileAttributes.ReparsePoint));
+
+            SecureState(directory, development: true);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(0xA000000Cu, true)] // symbolic link
+    [InlineData(0xA0000003u, true)] // junction (mount point)
+    [InlineData(0x80000013u, false)] // deduplicated file
+    [InlineData(0x9000101Au, false)] // OneDrive placeholder
+    [InlineData(0x00001234u, false)] // a third party's
+    public void OnlyNameSurrogatesAreLinks(uint tag, bool link) =>
+        Assert.Equal(link, WindowsDirectorySecurity.IsLink((uint)FileAttributes.ReparsePoint, tag));
+
+    [WindowsFact]
+    public void TheRealProgramDataPassesTheAncestorCheckOfAProductionEnrollment()
+    {
+        // Read only: a production enrollment's state goes to %ProgramData%\Pulsar\Agent. A child that does not exist is
+        // used (an earlier run may have made %ProgramData%\Pulsar with other rights), so only %ProgramData% and its drive
+        // root are inspected, as they come on a stock Windows (Users may create folders there, not replace them).
+        var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+        var directory = Path.Combine(programData, "Pulsar-" + Guid.NewGuid().ToString("N"), "Agent");
+
+        Assert.Empty(WindowsDirectorySecurity.FindReplaceableAncestors(directory));
+        Assert.False(Directory.Exists(Path.GetDirectoryName(directory)));
+    }
+
+    private static void SecureState(string directory, bool development) =>
+        new WindowsDirectorySecurity().SecureState(directory, new Core.AgentPaths(directory).OwnFolders, development);
+
+    private static FileSecurity Open()
+    {
+        var open = new FileSecurity();
+        open.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        open.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null), FileSystemRights.FullControl,
+            AccessControlType.Allow));
+        open.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.FullControl, AccessControlType.Allow));
+        return open;
+    }
+
+    /// <summary>A reparse point with a made-up third-party tag (no name surrogate bit), as a filter driver would set.</summary>
+    private static void SetThirdPartyReparsePoint(string file)
+    {
+        const uint fsctlSetReparsePoint = 0x000900A4;
+        using var handle = NativeTest.CreateFileW(file, 0x40000000 /* GENERIC_WRITE */, 0, IntPtr.Zero, 3 /* OPEN_EXISTING */,
+            0x00200000 /* FILE_FLAG_OPEN_REPARSE_POINT */, IntPtr.Zero);
+        Assert.False(handle.IsInvalid);
+        var buffer = new byte[24 + 4];
+        BitConverter.TryWriteBytes(buffer.AsSpan(0), 0x00001234u); // ReparseTag
+        BitConverter.TryWriteBytes(buffer.AsSpan(4), (ushort)4); // ReparseDataLength
+        Guid.NewGuid().TryWriteBytes(buffer.AsSpan(8)); // ReparseGuid
+        Assert.True(NativeTest.DeviceIoControl(handle, fsctlSetReparsePoint, buffer, buffer.Length, IntPtr.Zero, 0, out _, IntPtr.Zero),
+            $"FSCTL_SET_REPARSE_POINT failed: {Marshal.GetLastPInvokeError()}");
     }
 
     private static void Junction(string link, string target)
@@ -299,4 +437,16 @@ public sealed class ServiceBinaryAclRulesTests
         Windows.ServiceBinarySecurity.Inspect(@"C:\Example", security, dangerous, findings);
         return findings;
     }
+}
+
+internal static partial class NativeTest
+{
+    [LibraryImport("kernel32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    public static partial Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string name, uint access, uint share, nint security, uint disposition,
+        uint flags, nint template);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DeviceIoControl(Microsoft.Win32.SafeHandles.SafeFileHandle device, uint code, byte[] input, int inputLength, nint output,
+        int outputLength, out int returned, nint overlapped);
 }

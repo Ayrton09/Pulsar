@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using Amazon;
 using Amazon.Runtime;
 using Amazon.S3;
@@ -36,12 +37,44 @@ public sealed class S3RemoteBackupStore : IRemoteBackupStore
 
     private const long PartSize = 16 * 1024 * 1024;
 
+    private readonly Func<string, CancellationToken, Task<IPAddress[]>> _resolve;
+
+    public S3RemoteBackupStore()
+        : this(Dns.GetHostAddressesAsync)
+    {
+    }
+
+    /// <summary>For tests: how host names are resolved.</summary>
+    internal S3RemoteBackupStore(Func<string, CancellationToken, Task<IPAddress[]>> resolve) => _resolve = resolve;
+
+    /// <summary>Loopback (127/8, ::1), private (10/8, 172.16/12, 192.168/16, fc00::/7) or link-local (169.254/16, fe80::/10).</summary>
+    public static bool IsPrivateAddress(IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (address.AddressFamily == AddressFamily.InterNetwork)
+        {
+            var b = address.GetAddressBytes();
+            return b[0] is 10 or 127
+                || (b[0] == 172 && b[1] is >= 16 and <= 31)
+                || (b[0] == 192 && b[1] == 168)
+                || (b[0] == 169 && b[1] == 254);
+        }
+
+        return address.AddressFamily == AddressFamily.InterNetworkV6
+            && (IPAddress.IsLoopback(address) || address.IsIPv6UniqueLocal || address.IsIPv6LinkLocal);
+    }
+
     public async Task UploadAsync(RemoteBackupTarget target, string file, string sha256, Func<double, Task> progress,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(progress);
-        using var client = Client(target);
+        using var client = await ClientAsync(target, cancellationToken);
         using var transfer = new TransferUtility(client, new TransferUtilityConfig { ConcurrentServiceRequests = 4 });
         var request = new TransferUtilityUploadRequest
         {
@@ -71,7 +104,7 @@ public sealed class S3RemoteBackupStore : IRemoteBackupStore
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(progress);
-        using var client = Client(target);
+        using var client = await ClientAsync(target, cancellationToken);
         using var response = await CallAsync(() => client.GetObjectAsync(target.Bucket, target.Key, cancellationToken), cancellationToken);
         var reported = -1;
         response.WriteObjectProgressEvent += (_, e) =>
@@ -89,7 +122,7 @@ public sealed class S3RemoteBackupStore : IRemoteBackupStore
     public async Task<RemoteBackup> OpenAsync(RemoteBackupTarget target, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
-        var client = Client(target);
+        var client = await ClientAsync(target, cancellationToken);
         try
         {
             var response = await CallAsync(() => client.GetObjectAsync(target.Bucket, target.Key, cancellationToken), cancellationToken);
@@ -106,11 +139,11 @@ public sealed class S3RemoteBackupStore : IRemoteBackupStore
     public async Task DeleteAsync(RemoteBackupTarget target, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
-        using var client = Client(target);
+        using var client = await ClientAsync(target, cancellationToken);
         await CallAsync(() => client.DeleteObjectAsync(target.Bucket, target.Key, cancellationToken), cancellationToken);
     }
 
-    private static AmazonS3Client Client(RemoteBackupTarget target)
+    private async Task<AmazonS3Client> ClientAsync(RemoteBackupTarget target, CancellationToken cancellationToken)
     {
         var config = new AmazonS3Config
         {
@@ -123,12 +156,33 @@ public sealed class S3RemoteBackupStore : IRemoteBackupStore
         };
         if (target.Endpoint is { } endpoint)
         {
-            // Backups carry the servers' files (and the credentials sign requests): plain HTTP only to this machine.
-            if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)
-                || !(uri.Scheme == Uri.UriSchemeHttps || (uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback)))
+            if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
             {
-                throw new BackupException(BackupErrors.RemoteFailed,
-                    "Remote storage must be reached over HTTPS (plain HTTP is only accepted for storage on this machine).");
+                throw new BackupException(BackupErrors.RemoteFailed, "Remote storage must be reached over HTTPS.");
+            }
+
+            if (uri.Scheme == Uri.UriSchemeHttp)
+            {
+                // Backups carry the servers' files (and the credentials sign requests): plain HTTP only to this machine or
+                // the local network (storage at home reached by its LAN address). A name is resolved once, every address
+                // must be private, and the client connects to those addresses only: a later answer cannot point it elsewhere.
+                if (uri.HostNameType is UriHostNameType.IPv4 or UriHostNameType.IPv6)
+                {
+                    if (!IPAddress.TryParse(uri.Host.Trim('[', ']'), out var address) || !IsPrivateAddress(address))
+                    {
+                        throw PublicHttp($"{uri.Host} is a public address");
+                    }
+                }
+                else
+                {
+                    var addresses = await ResolveAsync(uri.IdnHost, cancellationToken);
+                    if (addresses.FirstOrDefault(a => !IsPrivateAddress(a)) is { } open)
+                    {
+                        throw PublicHttp($"{uri.Host} resolves to a public address ({open})");
+                    }
+
+                    config.HttpClientFactory = new PinnedHttpClientFactory(addresses);
+                }
             }
 
             config.ServiceURL = endpoint;
@@ -140,6 +194,59 @@ public sealed class S3RemoteBackupStore : IRemoteBackupStore
         }
 
         return new AmazonS3Client(new BasicAWSCredentials(target.AccessKeyId, target.SecretAccessKey), config);
+    }
+
+    private static BackupException PublicHttp(string why) =>
+        new(BackupErrors.RemoteFailed,
+            $"Remote storage must be reached over HTTPS: plain HTTP is only accepted to this machine or the local network, and {why}.");
+
+    private async Task<IPAddress[]> ResolveAsync(string host, CancellationToken cancellationToken)
+    {
+        IPAddress[] addresses;
+        try
+        {
+            addresses = await _resolve(host, cancellationToken);
+        }
+        catch (SocketException ex)
+        {
+            throw new BackupException(BackupErrors.RemoteFailed, $"Remote storage could not be reached: {host} could not be resolved ({ex.Message}).", ex);
+        }
+
+        return addresses.Length > 0
+            ? addresses
+            : throw new BackupException(BackupErrors.RemoteFailed, $"Remote storage could not be reached: {host} could not be resolved.");
+    }
+
+    /// <summary>HTTP clients that connect only to the addresses checked when the S3 client was made.</summary>
+    private sealed class PinnedHttpClientFactory(IPAddress[] addresses) : HttpClientFactory
+    {
+        public override HttpClient CreateHttpClient(IClientConfig clientConfig)
+        {
+            var handler = new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                // The checked addresses are connected to directly: a proxy would make the callback dial its port instead.
+                UseProxy = false,
+                ConnectCallback = async (context, cancellationToken) =>
+                {
+                    var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                    try
+                    {
+                        await socket.ConnectAsync(addresses, context.DnsEndPoint.Port, cancellationToken);
+                        return new NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch
+                    {
+                        socket.Dispose();
+                        throw;
+                    }
+                },
+            };
+            return new HttpClient(handler) { Timeout = clientConfig.Timeout ?? TimeSpan.FromSeconds(100) };
+        }
+
+        // Cached with this S3 client only: another storage's client must not reuse these addresses.
+        public override string? GetConfigUniqueString(IClientConfig clientConfig) => null;
     }
 
     private static async Task CallAsync(Func<Task> call, CancellationToken cancellationToken) =>

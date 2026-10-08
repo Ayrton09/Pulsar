@@ -89,4 +89,8 @@ public sealed record RotateCredentialRequest(byte[] PublicKey, string KeyStorage
 /// Payload of the panel's answer to a rotation, delivered as a <see cref="SignedMessage"/>. The new credential is
 /// pending: it becomes active (and the current one is superseded) the first time the agent authenticates with it.
 /// </summary>
-public sealed record CredentialRotation(Guid NodeId, Guid CredentialId);
+/// <param name="KeyFingerprint">
+/// The fingerprint of the key the panel registered (<see cref="ProtocolCrypto.Fingerprint"/>), which binds the answer to
+/// the request: the agent refuses an answer for another key. Null from panels older than the field (additive).
+/// </param>
+public sealed record CredentialRotation(Guid NodeId, Guid CredentialId, string? KeyFingerprint = null);

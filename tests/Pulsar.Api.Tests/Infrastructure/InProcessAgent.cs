@@ -207,7 +207,9 @@ public sealed class InProcessAgent : IAsyncDisposable
 
     private sealed class NoDirectorySecurity : IAgentDirectorySecurity
     {
-        public void Secure(string directory, bool development) => Directory.CreateDirectory(directory);
+        public void SecureState(string directory, IReadOnlyCollection<string> ownFolders, bool development) => Directory.CreateDirectory(directory);
+
+        public void SecureFolder(string directory, bool development) => Directory.CreateDirectory(directory);
     }
 
     private sealed class StubLifetime : IHostApplicationLifetime

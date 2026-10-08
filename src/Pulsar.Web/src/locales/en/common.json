@@ -552,7 +552,8 @@
     "backup_storage": {
       "not_found": "That backup storage does not exist.",
       "name_invalid": "A storage name is one line of up to 64 characters.",
-      "endpoint_invalid": "The endpoint is the service's https address (like https://<account>.r2.cloudflarestorage.com), or empty for AWS S3.",
+      "endpoint_invalid": "The endpoint is the service's address (like https://<account>.r2.cloudflarestorage.com), or empty for AWS S3.",
+      "endpoint_needs_https": "Plain http is only for storage on this machine or your local network (a private address like 192.168.1.20): use https for a public address.",
       "region_invalid": "The region is a name like us-east-1 or auto.",
       "bucket_invalid": "A bucket name is 3 to 63 lowercase letters, digits, dots and hyphens.",
       "prefix_invalid": "The folder is made of letters, digits, dots, hyphens and underscores, separated by slashes.",
@@ -1353,7 +1354,7 @@
     "use": "In use",
     "aws": "AWS S3 ({{region}})",
     "endpoint": "Endpoint",
-    "endpointHint": "The service's address. Empty for AWS S3. Backblaze B2: https://s3.<region>.backblazeb2.com.",
+    "endpointHint": "The service's address. Empty for AWS S3. Backblaze B2: https://s3.<region>.backblazeb2.com. Plain http only on your local network.",
     "region": "Region",
     "regionHint": "auto for Cloudflare R2; the bucket's region for AWS and B2; us-east-1 for most others.",
     "bucket": "Bucket",

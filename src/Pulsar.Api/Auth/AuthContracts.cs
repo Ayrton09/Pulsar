@@ -54,7 +54,7 @@ public sealed record EnableTwoFactorRequest(
 /// <summary>Shown once: the panel keeps only their hashes.</summary>
 public sealed record RecoveryCodesResponse(IReadOnlyList<string> RecoveryCodes);
 
-/// <summary>The current password, to confirm turning two-factor authentication off or renewing the recovery codes.</summary>
+/// <summary>The current password, to confirm setting up or turning off two-factor authentication, or renewing the recovery codes.</summary>
 public sealed record PasswordConfirmationRequest([property: Required, StringLength(256)] string Password);
 
 public sealed record UpdateProfileRequest(

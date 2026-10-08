@@ -99,7 +99,8 @@ function parse(text: string, start: number): Sequence | null {
     i += 2;
     kind = next === '[' ? 'csi' : next === ']' ? 'osc' : 'PX^_'.includes(next) ? 'string' : 'escape';
     if (kind === 'escape') {
-      // ESC, intermediates (ESC ( B), then one final character (ESC c, ESC 7…).
+      // ESC, intermediates (ESC ( B), then one final character (ESC c, ESC 7…). Anything else ends it unfinished: the
+      // ESC (and intermediates) go, and that character is read again (a line break after a lone ESC stays).
       let j = i - 1;
       while (j < text.length && isIntermediate(text, j)) {
         j++;
@@ -107,7 +108,9 @@ function parse(text: string, start: number): Sequence | null {
       if (j >= text.length) {
         return null;
       }
-      return { length: j + 1 - start, kind: 'dropped' };
+      return inRange(text, j, 0x30, 0x7e)
+        ? { length: j + 1 - start, kind: 'dropped' }
+        : { length: j - start, kind: 'dropped' };
     }
   }
 

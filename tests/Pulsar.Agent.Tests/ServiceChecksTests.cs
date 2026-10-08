@@ -36,11 +36,14 @@ public sealed class ServiceChecksTests : IDisposable
     }
 
     [Theory]
-    [InlineData(true, false, false)]
-    [InlineData(false, false, true)]
-    [InlineData(true, true, true)]
-    public void TheServiceChecksApplyWhenTheAgentRunsAsTheService(bool interactive, bool system, bool asService) =>
-        Assert.Equal(asService, ServiceChecks.RunsAsService(interactive, system));
+    [InlineData(false, false, false)] // a console, or SSH, WinRM, a scheduled task, a CI runner: not interactive, still not the service
+    [InlineData(true, false, true)] // started by the service control manager
+    [InlineData(false, true, true)] // SYSTEM in any other way
+    public void TheServiceChecksApplyWhenTheAgentRunsAsTheService(bool windowsService, bool system, bool asService) =>
+        Assert.Equal(asService, ServiceChecks.RunsAsService(windowsService, system));
+
+    [Fact]
+    public void ATestRunIsNotTheService() => Assert.False(ServiceChecks.RunsAsService());
 
     [WindowsFact]
     public void AnExecutableOthersCanReplaceIsRefusedWithTheReason()

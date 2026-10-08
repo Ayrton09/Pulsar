@@ -360,7 +360,9 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
     [Fact]
     public async Task AGameThatLogsRconCommandsGetsNoSecondCopy()
     {
-        var supervisor = await RunningAsync(logsCommands: true);
+        // The log is written before the answer comes back, but the agent sees it at its next poll of the file: how long it
+        // waits for that is generous here (a busy machine); it stops waiting as soon as the line is seen.
+        var supervisor = await RunningAsync(logsCommands: true, loggedAnswerWait: TimeSpan.FromSeconds(10));
         _rcon.Answer = _ => "hostname: Pulsar\nplayers : 0 humans";
         _rcon.OnCommand = command => File.AppendAllText(Path.Combine(_root, "cstrike", "console.log"),
             $"rcon from \"127.0.0.1:50000\": command \"{command}\"\nhostname: Pulsar\nplayers : 0 humans\n");
@@ -427,10 +429,13 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         _rcon.Answer = command => command == "ShowPlayers" ? "name,playeruid,steamid" : "";
 
         _processes.Last.Print("Running Palworld dedicated server on :8211\r\n");
+        // The game's output is read on its own: once it is in, the command's lines cannot land in the middle of it.
+        await LogTailTests.Eventually(() => Text(supervisor).Contains("Running Palworld dedicated server on :8211", StringComparison.Ordinal),
+            () => Text(supervisor));
         Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("ShowPlayers"));
 
-        await EventuallyAsync(() => Text(supervisor).Contains("> ShowPlayers\nname,playeruid,steamid\n", StringComparison.Ordinal));
-        Assert.Contains("Running Palworld dedicated server on :8211", Text(supervisor), StringComparison.Ordinal);
+        await LogTailTests.Eventually(() => Text(supervisor).Contains("> ShowPlayers\nname,playeruid,steamid\n", StringComparison.Ordinal),
+            () => Text(supervisor));
         Assert.Equal(["ShowPlayers"], _rcon.Commands);
         Assert.Empty(_processes.Last.Input); // nothing typed into the game's console
     }
@@ -439,9 +444,10 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
 
     private static readonly TimeSpan s_loggedAnswerWait = TimeSpan.FromMilliseconds(300);
 
-    private async Task<ServerSupervisor> RunningAsync(bool logsCommands = false, ManifestConsoleMode mode = ManifestConsoleMode.LogfileRcon)
+    private async Task<ServerSupervisor> RunningAsync(bool logsCommands = false, ManifestConsoleMode mode = ManifestConsoleMode.LogfileRcon,
+        TimeSpan? loggedAnswerWait = null)
     {
-        var supervisor = Supervisor(new RconReadiness(60), logsCommands, mode);
+        var supervisor = Supervisor(new RconReadiness(60), logsCommands, mode, loggedAnswerWait);
         _rcon.Listening = true;
         await supervisor.StartAsync();
         await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
@@ -459,7 +465,8 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
 
     private static Task EventuallyAsync(Func<bool> condition) => LogTailTests.Eventually(condition, () => "condition not met");
 
-    private ServerSupervisor Supervisor(ReadinessDefinition readiness, bool logsCommands = false, ManifestConsoleMode mode = ManifestConsoleMode.LogfileRcon)
+    private ServerSupervisor Supervisor(ReadinessDefinition readiness, bool logsCommands = false, ManifestConsoleMode mode = ManifestConsoleMode.LogfileRcon,
+        TimeSpan? loggedAnswerWait = null)
     {
         var plan = new LaunchPlan("srcds.exe", "", ["-game", "cstrike"], new Dictionary<string, string>(),
             new ConsoleDefinition(mode, LogFile: mode == ManifestConsoleMode.LogfileRcon ? "cstrike/console.log" : null,
@@ -472,7 +479,7 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         };
         var definition = new ServerDefinition(Guid.NewGuid(), "abcd1234", _root, ProcessIdentity.CurrentUser, plan, AutoStart: false, RestartOnCrash: true);
         _supervisor = new ServerSupervisor(definition, _processes, _events, _clock,
-            new SupervisorOptions { LogPollInterval = TimeSpan.FromMilliseconds(20), LoggedAnswerWait = s_loggedAnswerWait }, NullLogger.Instance, new DirectServerFiles(), _rcon);
+            new SupervisorOptions { LogPollInterval = TimeSpan.FromMilliseconds(20), LoggedAnswerWait = loggedAnswerWait ?? s_loggedAnswerWait }, NullLogger.Instance, new DirectServerFiles(), _rcon);
         return _supervisor;
     }
 

@@ -37,7 +37,18 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
             return [];
         }
 
-        return [.. Directory.EnumerateFiles(paths.ServersStateDirectory, "*.json").Select(f => ReadOrSetAside(f, ReadRecord)).OfType<ServerRecord>()];
+        return [.. Directory.EnumerateFiles(paths.ServersStateDirectory, "*.json").Select(f => ReadOrSetAside(f, ReadRecord, serverRecord: true))
+            .OfType<ServerRecord>()];
+    }
+
+    /// <summary>
+    /// The record of <paramref name="serverId"/> set aside as unreadable, if there is one: the server's directory and
+    /// account are still on the node, but their names (from its short id) are inside the record.
+    /// </summary>
+    public string? SetAsideRecord(Guid serverId)
+    {
+        var file = Path.Combine(paths.ServersStateDirectory, $"{serverId:N}.json.unreadable");
+        return File.Exists(file) ? file : null;
     }
 
     public ServerRecord? Load(Guid serverId)
@@ -74,7 +85,7 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
 
     public void DeleteResult(Guid operationId) => File.Delete(Path.Combine(paths.OutboxDirectory, $"{operationId:N}.json"));
 
-    private T? ReadOrSetAside<T>(string file, Func<string, T?> read) where T : class
+    private T? ReadOrSetAside<T>(string file, Func<string, T?> read, bool serverRecord = false) where T : class
     {
         try
         {
@@ -83,6 +94,12 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
         catch (Exception ex) when (ex is JsonException or InvalidDataException or CryptographicException or NotSupportedException)
         {
             LogUnreadable(Path.GetFileName(file), ex.Message);
+            if (serverRecord && Guid.TryParseExact(Path.GetFileNameWithoutExtension(file), "N", out var serverId))
+            {
+                // The name is all that can be read: say which server is left behind, for whoever cleans up.
+                LogServerSetAside(serverId);
+            }
+
             try
             {
                 File.Move(file, file + ".unreadable", overwrite: true);
@@ -132,6 +149,10 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
 
     [LoggerMessage(Level = LogLevel.Error, Message = "State file {File} cannot be read and is set aside (.unreadable): {Reason}")]
     private partial void LogUnreadable(string file, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Server {ServerId} is not loaded: its record cannot be read, so its directory and account stay on the node until removed by hand")]
+    private partial void LogServerSetAside(Guid serverId);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "State file {File} could not be set aside: {Reason}")]
     private partial void LogNotSetAside(string file, string reason);

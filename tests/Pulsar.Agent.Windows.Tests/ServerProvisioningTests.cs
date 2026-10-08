@@ -135,6 +135,39 @@ public sealed class ServerProvisioningTests : IDisposable
     }
 
     [WindowsFact]
+    public void NamesWindowsPathsWouldChangeAreDeletedAndNothingOutside()
+    {
+        // A server's account can make "name." and "name " with \\?\ paths; as a path, Windows reads them as "name".
+        var server = Directory.CreateDirectory(Path.Combine(_root, "dev5test")).FullName;
+        var outside = Directory.CreateDirectory(Path.Combine(_root, "dev5test-outside")).FullName;
+        File.WriteAllText(Path.Combine(outside, "precious.txt"), "keep me");
+        Directory.CreateDirectory(Path.Combine(server, "name"));
+        File.WriteAllText(Path.Combine(server, "name", "keep.txt"), "server data");
+        Directory.CreateDirectory(@"\\?\" + Path.Combine(server, "name."));
+        File.WriteAllText(@"\\?\" + Path.Combine(server, "name.", "map. "), "server data");
+        File.WriteAllText(@"\\?\" + Path.Combine(server, "name "), "server data");
+        Directory.CreateDirectory(@"\\?\" + Path.Combine(server, "dots.."));
+
+        WindowsServerProvisioner.DeleteTree(server);
+
+        Assert.False(Directory.Exists(server));
+        Assert.Equal("keep me", File.ReadAllText(Path.Combine(outside, "precious.txt")));
+    }
+
+    [WindowsFact]
+    public void ADeepTreeIsDeleted()
+    {
+        var server = Directory.CreateDirectory(Path.Combine(_root, "dev6test")).FullName;
+        var deepest = @"\\?\" + server + string.Concat(Enumerable.Repeat(@"\d", 600));
+        Directory.CreateDirectory(deepest);
+        File.WriteAllText(Path.Combine(deepest, "bottom.txt"), "server data");
+
+        WindowsServerProvisioner.DeleteTree(server);
+
+        Assert.False(Directory.Exists(server));
+    }
+
+    [WindowsFact]
     public void ShortIdsThatCouldEscapeOrBreakAnAccountNameAreRefused()
     {
         var provisioner = Provisioner(development: true);

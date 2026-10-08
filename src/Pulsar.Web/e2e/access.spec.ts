@@ -63,10 +63,12 @@ test('administrator delegates audit access to a limited user', async ({ page }) 
 
   // Everyone manages their own password; afterwards only the new one works.
   await page.getByRole('link', { name: /My account/ }).click();
-  await page.getByLabel('Current password').fill(auditor.password);
-  await page.getByLabel('New password').fill(auditor.newPassword);
-  await page.getByLabel('Confirm password').fill(auditor.newPassword);
-  await page.getByRole('button', { name: 'Change password' }).click();
+  // Two-factor setup on the same page asks for the current password too.
+  const passwordForm = page.locator('form').filter({ has: page.getByRole('button', { name: 'Change password' }) });
+  await passwordForm.getByLabel('Current password').fill(auditor.password);
+  await passwordForm.getByLabel('New password').fill(auditor.newPassword);
+  await passwordForm.getByLabel('Confirm password').fill(auditor.newPassword);
+  await passwordForm.getByRole('button', { name: 'Change password' }).click();
   await expect(page.getByText(/^Password changed\./)).toBeVisible();
   await page.screenshot({ path: 'test-results/screens/account.png', fullPage: true });
 

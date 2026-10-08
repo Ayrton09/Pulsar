@@ -1,4 +1,5 @@
 using System.Security.Principal;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Pulsar.Agent.Core;
 using Pulsar.Agent.Windows;
 
@@ -10,10 +11,13 @@ namespace Pulsar.Agent;
 /// </summary>
 internal static class ServiceChecks
 {
-    /// <summary>The agent runs as the service: started by the service control manager, or as SYSTEM in any other way.</summary>
-    public static bool RunsAsService() => RunsAsService(Environment.UserInteractive, IsSystem());
+    /// <summary>
+    /// The agent runs as the service: started by the service control manager, or as SYSTEM in any other way. (Not "not
+    /// interactive": SSH, WinRM, scheduled tasks and CI runners are not interactive either.)
+    /// </summary>
+    public static bool RunsAsService() => RunsAsService(WindowsServiceHelpers.IsWindowsService(), IsSystem());
 
-    internal static bool RunsAsService(bool interactive, bool system) => !interactive || system;
+    internal static bool RunsAsService(bool windowsService, bool system) => windowsService || system;
 
     /// <summary>
     /// A development enrollment starts servers as the current user, which for the service is SYSTEM (ADR-0005), and its

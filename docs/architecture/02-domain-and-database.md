@@ -424,7 +424,7 @@ CREATE INDEX ix_backups_server ON backups (server_id, created_at DESC);
 CREATE TABLE backup_storages (
     id                 uuid PRIMARY KEY,
     name               varchar(64) NOT NULL,
-    endpoint           varchar(255),                 -- https://…; NULL for AWS S3
+    endpoint           varchar(255),                 -- https://… (http://… only to a private address); NULL for AWS S3
     region             varchar(64) NOT NULL,         -- 'auto' for R2
     bucket             varchar(63) NOT NULL,
     prefix             varchar(200) NOT NULL,        -- '' or 'folder/'

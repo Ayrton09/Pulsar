@@ -27,7 +27,7 @@ public static class TwoFactorEndpoints
 
         var twoFactor = auth.MapGroup("/two-factor");
         twoFactor.MapGet("/", GetStatusAsync).RequireSignedInUser().AllowWithoutTwoFactor();
-        twoFactor.MapPost("/setup", SetupAsync).RequireSignedInUser().AllowWithoutTwoFactor();
+        twoFactor.MapPost("/setup", SetupAsync).RequireSignedInUser().AllowWithoutTwoFactor().RequireRateLimiting(AuthEndpoints.RateLimitPolicy);
         twoFactor.MapPost("/enable", EnableAsync).RequireSignedInUser().AllowWithoutTwoFactor()
             .RequireRateLimiting(AuthEndpoints.RateLimitPolicy);
         twoFactor.MapPost("/disable", DisableAsync).RequireSignedInUser().RequireRateLimiting(AuthEndpoints.RateLimitPolicy);
@@ -128,15 +128,22 @@ public static class TwoFactorEndpoints
 
     /// <summary>
     /// A new authenticator key for the user's app. Nothing changes at sign-in until a code from the app turns two-factor
-    /// authentication on (<c>/enable</c>). Refused while it is on: turning it off comes first.
+    /// authentication on (<c>/enable</c>). Refused while it is on: turning it off comes first. Takes the current password:
+    /// a new key ends the user's other sessions, which a stolen session alone must not do.
     /// </summary>
     private static async Task<Results<Ok<TwoFactorSetupResponse>, ProblemHttpResult, UnauthorizedHttpResult>> SetupAsync(
-        HttpContext http, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn)
+        PasswordConfirmationRequest request, HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn,
+        IAuditLog audit, CancellationToken ct)
     {
         var user = await users.FindByIdAsync(http.User.GetRequiredUserId().ToString());
         if (user is null)
         {
             return TypedResults.Unauthorized();
+        }
+
+        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, audit, AuditActions.Auth.TwoFactorEnabled, ct) is { } wrong)
+        {
+            return wrong;
         }
 
         if (user.TwoFactorEnabled)

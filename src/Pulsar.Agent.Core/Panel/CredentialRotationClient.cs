@@ -6,7 +6,8 @@ namespace Pulsar.Agent.Core.Panel;
 
 /// <summary>
 /// Registers a new node key with the panel within the current session (docs/architecture/03, "Rotation"). The panel's
-/// answer is accepted only if a pinned panel key signed it for this node.
+/// answer is accepted only if a pinned panel key signed it for this node and, when it names one (panels since the field
+/// was added), for the key just registered.
 /// </summary>
 public sealed class CredentialRotationClient(PanelTransport transport)
 {
@@ -31,8 +32,15 @@ public sealed class CredentialRotationClient(PanelTransport transport)
         }
 
         var result = ProtocolJson.Deserialize<CredentialRotation>(signed.Payload);
-        return result.NodeId == config.NodeId
+        if (result.NodeId != config.NodeId)
+        {
+            throw new AgentException("The rotation answer is for another node; the new key is discarded.");
+        }
+
+        // An older panel names no key: its answer is still signed for this node, and a credential that is not this key's
+        // fails at its first sign-in (the agent then keeps its current key).
+        return result.KeyFingerprint is null || result.KeyFingerprint == ProtocolCrypto.Fingerprint(publicKey)
             ? result.CredentialId
-            : throw new AgentException("The rotation answer is for another node; the new key is discarded.");
+            : throw new AgentException("The rotation answer is for another key; the new key is discarded.");
     }
 }

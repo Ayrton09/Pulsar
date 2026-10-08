@@ -1,5 +1,9 @@
+using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Text;
 using Amazon.Runtime;
 using Amazon.S3;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -72,21 +76,101 @@ public sealed class RemoteBackupStoreTests : IDisposable
     }
 
     [Theory]
-    [InlineData("http://s3.example.com")]
-    [InlineData("http://192.168.1.20:9000")]
+    [InlineData("http://s3.example.com")] // resolves to a public address (below)
+    [InlineData("http://mixed.example.com")] // one private address, one public
+    [InlineData("http://8.8.8.8:9000")]
+    [InlineData("http://172.32.0.1")]
+    [InlineData("http://[2001:db8::1]:9000")]
     [InlineData("ftp://s3.example.com")]
     [InlineData("not a url")]
-    public async Task RemoteStorageIsReachedOnlyOverHttpsUnlessItIsOnThisMachine(string endpoint)
+    public async Task RemoteStorageIsReachedOverHttpsOrOnlyOnTheLocalNetwork(string endpoint)
     {
-        // Backups carry the servers' files: they never travel in clear. Checked before anything is sent.
+        // Backups carry the servers' files: they never travel in clear over the internet. Checked before anything is sent.
         var target = new RemoteBackupTarget(endpoint, "us-east-1", "bucket", "key.zip", "access", "secret", PathStyle: true);
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
 
-        var refused = await Assert.ThrowsAsync<BackupException>(() => new S3RemoteBackupStore().DeleteAsync(target, cancelled.Token));
+        var refused = await Assert.ThrowsAsync<BackupException>(() => new S3RemoteBackupStore(Resolve).DeleteAsync(target, cancelled.Token));
 
         Assert.Equal(BackupErrors.RemoteFailed, refused.Code);
         Assert.Contains("HTTPS", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ANameThatResolvesToNothingIsRefused()
+    {
+        var target = new RemoteBackupTarget("http://gone.example.com", "us-east-1", "bucket", "key.zip", "access", "secret", PathStyle: true);
+
+        var refused = await Assert.ThrowsAsync<BackupException>(() => new S3RemoteBackupStore(Resolve).DeleteAsync(target, Ct));
+
+        Assert.Equal(BackupErrors.RemoteFailed, refused.Code);
+        Assert.Contains("gone.example.com", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:{0}")]
+    [InlineData("http://nas.home.lan:{0}")] // resolved once, to 127.0.0.1, and connected to that address
+    public async Task PlainHttpReachesStorageOnTheLocalNetwork(string endpoint)
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var served = ServeOneNoContentAsync(listener);
+        var target = new RemoteBackupTarget(string.Format(CultureInfo.InvariantCulture, endpoint, port), "us-east-1", "bucket", "key.zip",
+            "access", "secret", PathStyle: true);
+
+        await new S3RemoteBackupStore(Resolve).DeleteAsync(target, Ct);
+
+        Assert.StartsWith("DELETE /bucket/key.zip ", await served, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("10.1.2.3", true)]
+    [InlineData("172.16.0.1", true)]
+    [InlineData("172.31.255.255", true)]
+    [InlineData("192.168.0.1", true)]
+    [InlineData("127.0.0.1", true)]
+    [InlineData("169.254.1.1", true)]
+    [InlineData("::1", true)]
+    [InlineData("fd00::1", true)]
+    [InlineData("fe80::1", true)]
+    [InlineData("::ffff:192.168.1.1", true)]
+    [InlineData("8.8.8.8", false)]
+    [InlineData("172.15.0.1", false)]
+    [InlineData("192.169.0.1", false)]
+    [InlineData("2001:db8::1", false)]
+    [InlineData("::ffff:8.8.8.8", false)]
+    public void PrivateAddressesAreTheLoopbackPrivateAndLinkLocalRanges(string address, bool expected) =>
+        Assert.Equal(expected, S3RemoteBackupStore.IsPrivateAddress(IPAddress.Parse(address)));
+
+    private static Task<IPAddress[]> Resolve(string host, CancellationToken cancellationToken) => Task.FromResult(host switch
+    {
+        "s3.example.com" => [IPAddress.Parse("93.184.216.34")],
+        "mixed.example.com" => [IPAddress.Parse("192.168.1.20"), IPAddress.Parse("93.184.216.34")],
+        "nas.home.lan" => [IPAddress.Loopback],
+        _ => Array.Empty<IPAddress>(),
+    });
+
+    /// <summary>Answers one request with 204 (what S3 says to a delete); returns the request line.</summary>
+    private static async Task<string> ServeOneNoContentAsync(TcpListener listener)
+    {
+        using var client = await listener.AcceptTcpClientAsync(Ct);
+        var stream = client.GetStream();
+        var request = new StringBuilder();
+        var buffer = new byte[4096];
+        while (!request.ToString().Contains("\r\n\r\n", StringComparison.Ordinal))
+        {
+            var read = await stream.ReadAsync(buffer, Ct);
+            if (read == 0)
+            {
+                break;
+            }
+
+            request.Append(Encoding.ASCII.GetString(buffer, 0, read));
+        }
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"), Ct);
+        return request.ToString();
     }
 
     [S3Fact]

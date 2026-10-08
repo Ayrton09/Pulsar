@@ -108,11 +108,13 @@ describe('two-factor setup', () => {
         }),
       'GET /api/v1/auth/two-factor': () => json({ enabled, required: true, recoveryCodesLeft: enabled ? 10 : 0 }),
       'GET /api/v1/account/api-keys': () => json([]),
-      'POST /api/v1/auth/two-factor/setup': () =>
-        json({
+      'POST /api/v1/auth/two-factor/setup': async (request) => {
+        expect(await body(request)).toEqual({ password: 'my password here' });
+        return json({
           sharedKey: 'JBSW Y3DP EHPK 3PXP',
           authenticatorUri: 'otpauth://totp/Pulsar:admin?secret=JBSWY3DPEHPK3PXP&issuer=Pulsar&digits=6',
-        }),
+        });
+      },
       'POST /api/v1/auth/two-factor/enable': async (request) => {
         expect(await body(request)).toEqual({ code: '123456', password: 'my password here' });
         enabled = true;
@@ -125,14 +127,15 @@ describe('two-factor setup', () => {
     expect(await screen.findByRole('heading', { name: 'Set up two-factor authentication' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument();
 
+    // Setting it up (a new key) and turning it on take the password: a stolen session alone can do neither.
+    expect(screen.getByRole('button', { name: 'Set up' })).toBeDisabled();
+    await user.type(screen.getByLabelText('Current password'), 'my password here');
     await user.click(screen.getByRole('button', { name: 'Set up' }));
     expect(await screen.findByRole('img', { name: 'QR code for your authenticator app' })).toBeInTheDocument();
     expect(screen.getByText('JBSW Y3DP EHPK 3PXP')).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Code from the app'), '123456');
-    // Turning it on also takes the password: a stolen session alone cannot do it.
     expect(screen.getByRole('button', { name: 'Turn on' })).toBeDisabled();
-    await user.type(screen.getByLabelText('Current password'), 'my password here');
+    await user.type(screen.getByLabelText('Code from the app'), '123456');
     await user.click(screen.getByRole('button', { name: 'Turn on' }));
 
     // The codes stay on screen until the user says they saved them.
@@ -150,11 +153,13 @@ describe('two-factor setup', () => {
         json({ setupRequired: false, user: { ...adminUser, twoFactorEnabled: enabled }, insecureConnection: false }),
       'GET /api/v1/auth/two-factor': () => json({ enabled, required: false, recoveryCodesLeft: enabled ? 5 : 0 }),
       'GET /api/v1/account/api-keys': () => json([]),
-      'POST /api/v1/auth/two-factor/setup': () =>
-        json({
+      'POST /api/v1/auth/two-factor/setup': async (request) => {
+        expect(await body(request)).toEqual({ password: 'my password here' });
+        return json({
           sharedKey: 'JBSW Y3DP EHPK 3PXP',
           authenticatorUri: 'otpauth://totp/Pulsar:admin?secret=JBSWY3DPEHPK3PXP&issuer=Pulsar&digits=6',
-        }),
+        });
+      },
       'POST /api/v1/auth/two-factor/enable': async (request) => {
         expect(await body(request)).toEqual({ code: '123456', password: 'my password here' });
         enabled = true;
@@ -164,13 +169,16 @@ describe('two-factor setup', () => {
     const { queryClient } = renderAt('/account');
     const user = userEvent.setup();
 
-    // One click asks for a key.
-    await user.click(await screen.findByRole('button', { name: 'Set up' }));
+    // The password asks for a key.
+    const setUp = await screen.findByRole('button', { name: 'Set up' });
+    await user.type(
+      within(setUp.closest('form') as HTMLElement).getByLabelText('Current password'),
+      'my password here',
+    );
+    await user.click(setUp);
     const appCode = await screen.findByLabelText('Code from the app');
-    const form = within(appCode.closest('form') as HTMLElement);
     await user.type(appCode, '123456');
-    await user.type(form.getByLabelText('Current password'), 'my password here');
-    await user.click(form.getByRole('button', { name: 'Turn on' }));
+    await user.click(within(appCode.closest('form') as HTMLElement).getByRole('button', { name: 'Turn on' }));
 
     expect(await screen.findByText('ABCDE-FGHIJ')).toBeInTheDocument();
     // Turning it on closes the user's live channels; the reconnection fetches every visible query again.

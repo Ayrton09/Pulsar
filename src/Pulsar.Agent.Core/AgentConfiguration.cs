@@ -35,6 +35,10 @@ public sealed class AgentPaths(string root)
 
     /// <summary>Backups, one folder per server, unless enrollment chose another place (<see cref="AgentConfig.BackupsRoot"/>).</summary>
     public string BackupsDirectory => Path.Combine(Root, "backups");
+
+    /// <summary>The folders the agent itself makes in <see cref="Root"/>: what securing it resets (nothing else in it).</summary>
+    public IReadOnlyList<string> OwnFolders =>
+        [ConfigDirectory, LogsDirectory, Path.Combine(Root, "state"), SteamCmdDirectory, ConsoleLogsDirectory, BackupsDirectory];
 }
 
 /// <summary>Everything the agent needs to reach and trust its panel, written at enrollment.</summary>
@@ -82,12 +86,25 @@ public sealed record AgentConfig(
 /// </summary>
 public sealed record PendingRotation(NodeKeyReference Key, Guid CredentialId, DateTimeOffset CreatedAt);
 
-/// <summary>Restricts the state directory to the accounts that run or administer the agent.</summary>
+/// <summary>Restricts the agent's folders to the accounts that run or administer the agent.</summary>
 public interface IAgentDirectorySecurity
 {
+    /// <summary>
+    /// The state directory: the folder itself, and the agent's own folders in it with everything they hold, are reset;
+    /// anything else in it (a development agent's servers folder) keeps its own rules.
+    /// </summary>
+    /// <param name="directory">Created if missing.</param>
+    /// <param name="ownFolders">The agent's folders in it (<see cref="AgentPaths.OwnFolders"/>).</param>
+    /// <param name="development">Also grants the current user (development installs run without elevation).</param>
+    void SecureState(string directory, IReadOnlyCollection<string> ownFolders, bool development);
+
+    /// <summary>
+    /// A folder only the agent uses, chosen at enrollment (a backups root). One that already holds something is refused
+    /// unless it is already restricted to the agent's accounts: someone else's files there are never rewritten.
+    /// </summary>
     /// <param name="directory">Created if missing.</param>
     /// <param name="development">Also grants the current user (development installs run without elevation).</param>
-    void Secure(string directory, bool development);
+    void SecureFolder(string directory, bool development);
 }
 
 /// <summary>Reads and atomically replaces <c>config\agent.json</c>.</summary>

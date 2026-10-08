@@ -93,21 +93,36 @@ export function TwoFactorSetup({ onStarted, onDone }: { onStarted?: () => void; 
     return <RecoveryCodes codes={enable.data.recoveryCodes} onDone={onDone} />;
   }
 
+  const passwordField = (
+    <Field label={t('account.currentPassword')}>
+      {(ids) => (
+        <Input
+          {...ids}
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      )}
+    </Field>
+  );
+
   if (!setup.data) {
+    // A new key ends the user's other sessions: it takes the password, kept here for turning it on as well.
+    const start = (event: FormEvent) => {
+      event.preventDefault();
+      onStarted?.();
+      setup.mutate({ password });
+    };
     return (
-      <div className="space-y-4">
+      <form onSubmit={start} className="space-y-4" noValidate>
         {setup.isError && <Alert>{errorMessage(t, setup.error)}</Alert>}
         <p className="text-sm text-muted">{t('twoFactor.intro')}</p>
-        <Button
-          onClick={() => {
-            onStarted?.();
-            setup.mutate();
-          }}
-          busy={setup.isPending}
-        >
+        {passwordField}
+        <Button type="submit" busy={setup.isPending} disabled={password.length === 0}>
           {t('twoFactor.setUp')}
         </Button>
-      </div>
+      </form>
     );
   }
 
@@ -136,17 +151,6 @@ export function TwoFactorSetup({ onStarted, onDone }: { onStarted?: () => void; 
             inputMode="numeric"
             autoComplete="one-time-code"
             maxLength={9}
-          />
-        )}
-      </Field>
-      <Field label={t('account.currentPassword')}>
-        {(ids) => (
-          <Input
-            {...ids}
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
           />
         )}
       </Field>

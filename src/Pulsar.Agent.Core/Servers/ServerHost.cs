@@ -637,6 +637,17 @@ public sealed partial class ServerHost(
                     CleanUpDeletedAsync(command.ServerId, record.Spec.ShortId, [.. Parse(record.Spec).PortList.Select(p => p.Name)]));
             }
 
+            if (store.SetAsideRecord(command.ServerId) is { } setAside)
+            {
+                // Its record could not be read and was set aside: the short id naming its directory and account is inside
+                // it, so nothing can be cleaned up safely. Said as a failure rather than "gone", with what is left.
+                return RunOperation(envelope, command.ServerId, operationId, _ignored => Task.FromException(new GameProcessException(
+                    "server.record_unreadable",
+                    $"The node could not read this server's record ({setAside}: corrupt, or protected on another machine), so it cannot tell which " +
+                    "folder and account were the server's: they are still on the node. Remove the server's folder (named after its short id, in the " +
+                    "servers root) and its local account by hand, delete that file, and delete the server again.")));
+            }
+
             // Already gone (a retried delete): report success so the panel can finish.
             _ = CompleteAsync(new OperationCompleted(operationId, command.ServerId, OperationOutcome.Succeeded, null, null));
             return new CommandAck(envelope.CommandId, AckStatus.AlreadyInState, null, null);

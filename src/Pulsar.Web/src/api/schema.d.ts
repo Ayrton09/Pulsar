@@ -756,7 +756,11 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasswordConfirmationRequest"];
+                };
+            };
             responses: {
                 /** @description OK */
                 200: {

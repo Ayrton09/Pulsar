@@ -31,7 +31,6 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
     private const uint GenericRead = 0x80000000;
     private const uint GenericWrite = 0x40000000;
     private const uint NameSurrogate = 0x20000000;
-    private const int MaxDepth = 256;
 
     public FileListResult List(ProvisionedServer server, string path)
     {
@@ -145,8 +144,8 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         ServerFileRules.Validate(path);
         Run(server, root =>
         {
-            using var entry = root.TryOpen(path, DeleteAccess | ReadAttributes | Synchronize) ?? throw NotFound(path);
-            DeleteTree(root, entry.Handle, path, 0);
+            var entry = root.TryOpen(path, DeleteAccess | ReadAttributes | Synchronize) ?? throw NotFound(path);
+            DeleteTree(entry.Detach(), path);
             return 0;
         });
     }
@@ -230,10 +229,12 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
     }
 
     /// <summary>
-    /// Deletes a directory tree an untrusted account controls (a server's), with the agent's own rights: as the file
-    /// manager deletes, every entry is opened without following a link, checked to still be below the directory's
-    /// parent, and deleted through that handle, so a folder swapped for a junction meanwhile never takes the deletion
-    /// outside. Links are removed themselves. Nothing to do when it does not exist.
+    /// Deletes a directory tree an untrusted account controls (a server's), with the agent's own rights. Each entry is
+    /// opened relative to the handle of the folder it was listed in, by the very name listed, without following a link,
+    /// and deleted through that handle: no path is ever looked up again, so a folder swapped for a junction meanwhile
+    /// never takes the deletion outside, and names a Windows path would change ("name.", "name ") are deleted as they
+    /// are. Links are removed themselves. Depth is not limited (the walk keeps its own stack). Nothing to do when it does
+    /// not exist.
     /// </summary>
     /// <param name="beforeListing">Tests: runs before each directory's entries are listed (to swap folders meanwhile).</param>
     internal static void DeleteDirectoryTree(string directory, Action<string>? beforeListing = null)
@@ -247,42 +248,127 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
 
         using var root = ServerRoot.Open(parent);
         var name = Path.GetFileName(full);
-        using var entry = root.TryOpen(name, DeleteAccess | ReadAttributes | Synchronize);
-        if (entry is not null)
+        if (OpenChild(root.Handle, name, DeleteAccess | ReadAttributes | Synchronize, name) is { } top)
         {
-            DeleteTree(root, entry.Handle, name, 0, beforeListing);
+            DeleteTree(top, name, beforeListing);
         }
     }
 
-    private static void DeleteTree(ServerRoot root, SafeFileHandle handle, string path, int depth, Action<string>? beforeListing = null)
+    /// <summary>
+    /// Deletes what <paramref name="top"/> is, and everything below it when it is a folder (its handle is taken over).
+    /// Each entry is opened relative to the folder it was listed in, by the name listed: see <see cref="DeleteDirectoryTree"/>.
+    /// </summary>
+    private static void DeleteTree(SafeFileHandle top, string path, Action<string>? beforeListing = null)
     {
-        if (depth > MaxDepth)
+        var stack = new Stack<Deleting>();
+        stack.Push(new Deleting(top, path));
+        try
         {
-            throw new FileManagerException(FileErrors.Failed, $"'{path}' is nested too deeply to delete.");
-        }
-
-        if (Describe(handle).Kind == FileEntryKind.Directory)
-        {
-            beforeListing?.Invoke(path);
-            // Deleting needs only the right to delete each entry; listing a folder also needs the right to read it.
-            List<FileEntry> children;
-            using (var listing = root.TryOpen(path, ListDirectory | Synchronize) ?? throw NotFound(path))
+            while (stack.TryPeek(out var current))
             {
-                children = Enumerate(listing.Handle, path);
-            }
-
-            foreach (var child in children)
-            {
-                var childPath = ServerFilePath.Join(path, child.Name);
-                using var entry = root.TryOpen(childPath, DeleteAccess | ReadAttributes | Synchronize);
-                if (entry is not null)
+                if (current.Children is null)
                 {
-                    DeleteTree(root, entry.Handle, childPath, depth + 1, beforeListing);
+                    if (Describe(current.Handle).Kind != FileEntryKind.Directory)
+                    {
+                        Finish(stack);
+                        continue;
+                    }
+
+                    beforeListing?.Invoke(current.Path);
+                    // Deleting needs only the right to delete each entry; listing a folder also needs the right to read
+                    // it: the same folder, opened again through its own handle.
+                    using var listing = OpenChild(current.Handle, string.Empty, ListDirectory | Synchronize, current.Path) ?? throw NotFound(current.Path);
+                    current.Children = Enumerate(listing, current.Path);
+                }
+
+                if (current.Next < current.Children.Count)
+                {
+                    var child = current.Children[current.Next++];
+                    var childPath = ServerFilePath.Join(current.Path, child.Name);
+                    if (OpenChild(current.Handle, child.Name, DeleteAccess | ReadAttributes | Synchronize, childPath) is { } handle)
+                    {
+                        stack.Push(new Deleting(handle, childPath));
+                    }
+                }
+                else
+                {
+                    Finish(stack);
                 }
             }
         }
+        finally
+        {
+            while (stack.TryPop(out var left))
+            {
+                left.Handle.Dispose();
+            }
+        }
 
-        MarkDeleted(handle, path);
+        static void Finish(Stack<Deleting> stack)
+        {
+            var done = stack.Peek();
+            MarkDeleted(done.Handle, done.Path);
+            stack.Pop().Handle.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Opens <paramref name="name"/> (one name, as listed; empty: the directory itself again) inside the directory
+    /// <paramref name="directory"/> is: never through a path, never following a link. Null when it is gone.
+    /// </summary>
+    private static unsafe SafeFileHandle? OpenChild(SafeFileHandle directory, string name, uint access, string path)
+    {
+        var added = false;
+        directory.DangerousAddRef(ref added);
+        try
+        {
+            fixed (char* buffer = name)
+            {
+                var objectName = new NtFile.UnicodeString
+                {
+                    Length = (ushort)(name.Length * sizeof(char)),
+                    MaximumLength = (ushort)(name.Length * sizeof(char)),
+                    Buffer = buffer,
+                };
+                var attributes = new NtFile.ObjectAttributes
+                {
+                    Length = (uint)sizeof(NtFile.ObjectAttributes),
+                    RootDirectory = directory.DangerousGetHandle(),
+                    ObjectName = &objectName,
+                    Attributes = NtFile.ObjCaseInsensitive,
+                };
+                var status = NtFile.NtCreateFile(out var handle, access, &attributes, out _, null, 0,
+                    (uint)(FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_DELETE), NtFile.FileOpen,
+                    NtFile.FileOpenReparsePoint | NtFile.FileOpenForBackupIntent | NtFile.FileSynchronousIoNonAlert, null, 0);
+                if (status >= 0)
+                {
+                    return handle;
+                }
+
+                handle.Dispose();
+                var error = (WIN32_ERROR)NtFile.RtlNtStatusToDosError(status);
+                return error is WIN32_ERROR.ERROR_FILE_NOT_FOUND or WIN32_ERROR.ERROR_PATH_NOT_FOUND ? null : throw Failure(path, error);
+            }
+        }
+        finally
+        {
+            if (added)
+            {
+                directory.DangerousRelease();
+            }
+        }
+    }
+
+    /// <summary>A folder being deleted: its handle, and its entries once listed.</summary>
+    private sealed class Deleting(SafeFileHandle handle, string path)
+    {
+        public SafeFileHandle Handle { get; } = handle;
+
+        public string Path { get; } = path;
+
+        public List<FileEntry>? Children { get; set; }
+
+        public int Next { get; set; }
     }
 
     /// <summary>Deletes what the handle is (a link, never its target) as soon as possible, read-only or not.</summary>
@@ -608,6 +694,9 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             }
         }
 
+        /// <summary>The directory's handle, for what is opened relative to it.</summary>
+        public SafeFileHandle Handle => _handle;
+
         public void Dispose() => _handle.Dispose();
 
         private void Check(SafeFileHandle handle, string path)
@@ -787,6 +876,7 @@ internal static unsafe partial class NtFile
     public static partial uint RtlNtStatusToDosError(int status);
 
     // NtCreateFile: dispositions, options and object attributes.
+    public const uint FileOpen = 1;
     public const uint FileCreate = 2;
     public const uint FileOpenIf = 3;
     public const uint FileDirectoryFile = 0x1;

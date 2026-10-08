@@ -493,10 +493,13 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _plan = plan;
         _snapshot = _snapshot with { StartedAt = process.StartedAt };
         _ = WatchExitAsync(process, generation);
+        // Linear-time matching; the timeout only guards against a pathological line. It is wall-clock time, first match
+        // included (the engine builds its states then): at 100 ms a busy machine tripped it on an ordinary line, and the
+        // server then stayed Starting until the readiness timeout.
         var readiness = plan.Readiness switch
         {
             LogPatternReadiness log => new Regex(log.Pattern, RegexOptions.NonBacktracking | RegexOptions.CultureInvariant | RegexOptions.Multiline,
-                TimeSpan.FromMilliseconds(100)),
+                TimeSpan.FromSeconds(1)),
             _ => null,
         };
         StopWatchers();

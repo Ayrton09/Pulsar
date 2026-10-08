@@ -60,9 +60,15 @@ export function useTwoFactorStatus() {
   return useQuery({ queryKey: twoFactorKey, queryFn: () => unwrap(api.GET('/api/v1/auth/two-factor')) });
 }
 
-/** A new key for the authenticator app. The session is renewed (new antiforgery token, read from the cookie). */
+/**
+ * A new key for the authenticator app; takes the current password. The session is renewed (new antiforgery token,
+ * read from the cookie).
+ */
 export function useTwoFactorSetup() {
-  return useMutation({ mutationFn: () => unwrap(api.POST('/api/v1/auth/two-factor/setup')) });
+  return useMutation({
+    mutationFn: (body: Schemas['PasswordConfirmationRequest']) =>
+      unwrap(api.POST('/api/v1/auth/two-factor/setup', { body })),
+  });
 }
 
 /**

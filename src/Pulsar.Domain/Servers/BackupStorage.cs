@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using Pulsar.Domain.Common;
 
 namespace Pulsar.Domain.Servers;
@@ -43,7 +45,7 @@ public sealed class BackupStorage
 
     public string Name { get; private set; }
 
-    /// <summary>The service's address (https://…); null for AWS S3 itself.</summary>
+    /// <summary>The service's address (https://…, or http://… on the local network); null for AWS S3 itself.</summary>
     public string? Endpoint { get; private set; }
 
     /// <summary>AWS region, or what the service asks for ("auto" for R2, "us-east-1" for most others).</summary>
@@ -92,6 +94,11 @@ public sealed class BackupStorage
         if (address is not null && !IsEndpoint(address))
         {
             return BackupStorageErrors.EndpointInvalid;
+        }
+
+        if (address is not null && !IsSafeEndpoint(address))
+        {
+            return BackupStorageErrors.EndpointNeedsHttps;
         }
 
         var zone = region?.Trim() ?? string.Empty;
@@ -145,6 +152,46 @@ public sealed class BackupStorage
         && uri.UserInfo.Length == 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0
         && uri.AbsolutePath == "/";
 
+    /// <summary>
+    /// Https, or plain http to a loopback, private or link-local address (storage on the same machine or the LAN). A host
+    /// name passes here: the panel cannot resolve it as the node would, so the node checks the addresses it resolves to.
+    /// </summary>
+    public static bool IsSafeEndpoint(string address)
+    {
+        if (!Uri.TryCreate(address, UriKind.Absolute, out var uri) || uri.Scheme == Uri.UriSchemeHttps)
+        {
+            return true;
+        }
+
+        if (uri.HostNameType is not (UriHostNameType.IPv4 or UriHostNameType.IPv6))
+        {
+            return true;
+        }
+
+        return IPAddress.TryParse(uri.Host.Trim('[', ']'), out var ip) && IsPrivateAddress(ip);
+    }
+
+    /// <summary>Loopback (127/8, ::1), private (10/8, 172.16/12, 192.168/16, fc00::/7) or link-local (169.254/16, fe80::/10).</summary>
+    public static bool IsPrivateAddress(IPAddress address)
+    {
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (address.AddressFamily == AddressFamily.InterNetwork)
+        {
+            var b = address.GetAddressBytes();
+            return b[0] is 10 or 127
+                || (b[0] == 172 && b[1] is >= 16 and <= 31)
+                || (b[0] == 192 && b[1] == 168)
+                || (b[0] == 169 && b[1] == 254);
+        }
+
+        return address.AddressFamily == AddressFamily.InterNetworkV6
+            && (IPAddress.IsLoopback(address) || address.IsIPv6UniqueLocal || address.IsIPv6LinkLocal);
+    }
+
     /// <summary>S3's naming rules: 3–63 lowercase letters, digits, dots and hyphens, starting and ending with a letter or digit.</summary>
     public static bool IsBucketName(string name) =>
         name.Length is >= 3 and <= 63
@@ -177,7 +224,11 @@ public static class BackupStorageErrors
         new("backup_storage.name_invalid", $"A storage name is one line of 1 to {BackupStorage.MaxNameLength} characters.");
 
     public static DomainError EndpointInvalid { get; } =
-        new("backup_storage.endpoint_invalid", "The endpoint is the service's https address (e.g. https://<account>.r2.cloudflarestorage.com), or empty for AWS S3.");
+        new("backup_storage.endpoint_invalid", "The endpoint is the service's address (e.g. https://<account>.r2.cloudflarestorage.com), or empty for AWS S3.");
+
+    public static DomainError EndpointNeedsHttps { get; } =
+        new("backup_storage.endpoint_needs_https",
+            "Plain http is only for storage on this machine or your local network (a private address): use https for a public address.");
 
     public static DomainError RegionInvalid { get; } = new("backup_storage.region_invalid", "The region is a name like us-east-1 or auto.");
 

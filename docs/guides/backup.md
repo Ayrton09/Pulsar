@@ -50,8 +50,12 @@ or your own MinIO or SeaweedFS):
 1. Create a bucket at the provider, and an access key that can read, write and delete in **that bucket only**.
 2. In the panel, **Administration → Backup storage → Add storage**:
    - **Endpoint:** empty for AWS S3; `https://<account>.r2.cloudflarestorage.com` for R2; `https://s3.<region>.backblazeb2.com` for B2;
-     your server's address otherwise. It must be `https://` (nodes refuse `http://` unless the storage runs on the node
-     itself, at `localhost` or `127.0.0.1`).
+     your server's address otherwise (MinIO on a machine at home: `http://192.168.1.20:9000`). It must be `https://`,
+     except for storage on the node itself or on your local network: plain `http://` is accepted only to a loopback,
+     private or link-local address (`127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`,
+     `::1`, `fc00::/7`, `fe80::/10`). The panel refuses `http://` to a public IP address; for a host name, the node
+     resolves it when it copies a backup and refuses it unless every address it resolves to is one of those (it then
+     connects only to those addresses).
    - **Region:** the bucket's (AWS, B2), `auto` (R2), `us-east-1` (most others).
    - **Bucket**, a **folder** in it, the **access key id** and **secret access key**; keep **Bucket in the path** on
      except for AWS S3.

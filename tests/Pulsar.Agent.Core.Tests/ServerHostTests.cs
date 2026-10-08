@@ -98,6 +98,35 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task DeletingAServerWhoseRecordWasSetAsideSaysWhatIsLeftInsteadOfGone()
+    {
+        // Its record could not be read (corrupt, or protected on another machine): the short id naming its directory and
+        // account is inside it.
+        var serverId = Guid.NewGuid();
+        Directory.CreateDirectory(_configs.Paths.ServersStateDirectory);
+        var record = Path.Combine(_configs.Paths.ServersStateDirectory, $"{serverId:N}.json");
+        File.WriteAllText(record, "{ corrupt");
+        var host = Host();
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        Assert.True(File.Exists(record + ".unreadable"));
+
+        var operation = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new DeleteServerCommand(serverId), operation))).Status);
+
+        var result = await ResultAsync(operation);
+        Assert.Equal(OperationOutcome.Failed, result.Outcome);
+        Assert.Equal("server.record_unreadable", result.ErrorCode);
+        Assert.Contains(record + ".unreadable", result.Message, StringComparison.Ordinal);
+        Assert.Equal(0, _provisioner.Deprovisions);
+
+        // Cleaned up by hand, the set-aside record with it: the delete then finishes.
+        File.Delete(record + ".unreadable");
+        var retry = Guid.NewGuid();
+        Assert.Equal(AckStatus.AlreadyInState, (await host.ExecuteAsync(Envelope(new DeleteServerCommand(serverId), retry))).Status);
+        Assert.Equal(OperationOutcome.Succeeded, (await ResultAsync(retry)).Outcome);
+    }
+
+    [Fact]
     public async Task ABackupSentWithAnUnusableTicketIsNotLeftOpen()
     {
         var serverId = Stored("abcd2345");
