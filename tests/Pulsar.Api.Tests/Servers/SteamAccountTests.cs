@@ -33,8 +33,36 @@ public sealed class SteamAccountTests(PulsarApiFactory factory) : IClassFixture<
             Assert.Equal(HttpStatusCode.BadRequest, spaced.StatusCode);
         }
 
+        // SteamCMD would read a password starting with + or - as a command or an option.
+        foreach (var password in new[] { "+quit", "-beta" })
+        {
+            using var option = await admin.PutAsync($"/api/v1/steam-accounts/{account.Id}", new SteamAccountRequest("Servers account", "pulsar_servers", password));
+            Assert.Equal(HttpStatusCode.BadRequest, option.StatusCode);
+        }
+
         var renamed = await PutAsync<SteamAccountView>(admin, $"/api/v1/steam-accounts/{account.Id}", new SteamAccountRequest("Renamed", "pulsar_servers", null));
         Assert.Equal("Renamed", renamed.Name);
+
+        // Names are unique: a name another account has is refused, with a code the page can show.
+        var other = await CreateAccountAsync(admin, "Other account", "pulsar_other");
+        using (var taken = await admin.PostAsync("/api/v1/steam-accounts", new SteamAccountRequest(" Renamed ", "pulsar_third", Password)))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, taken.StatusCode);
+            Assert.Contains("steam_account.name_taken", await taken.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        using (var takenByUpdate = await admin.PutAsync($"/api/v1/steam-accounts/{other.Id}", new SteamAccountRequest("Renamed", "pulsar_other", null)))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, takenByUpdate.StatusCode);
+            Assert.Contains("steam_account.name_taken", await takenByUpdate.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        Assert.Equal("Other", (await PutAsync<SteamAccountView>(admin, $"/api/v1/steam-accounts/{other.Id}", new SteamAccountRequest("Other", "pulsar_other", null))).Name);
+        Assert.Equal("Renamed", (await PutAsync<SteamAccountView>(admin, $"/api/v1/steam-accounts/{account.Id}", new SteamAccountRequest("Renamed", "pulsar_servers", null))).Name);
+        using (var otherDeleted = await admin.DeleteAsync($"/api/v1/steam-accounts/{other.Id}"))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, otherDeleted.StatusCode);
+        }
 
         using var operatorClient = await scenario.SignedInWithAsync("steam-operator", Permissions.Server.View, Permissions.Server.Install);
         Assert.Equal(HttpStatusCode.Forbidden, (await operatorClient.Http.GetAsync("/api/v1/steam-accounts", Ct)).StatusCode);
@@ -78,7 +106,7 @@ public sealed class SteamAccountTests(PulsarApiFactory factory) : IClassFixture<
         var failed = await ServerApi.WaitForAsync(admin, server, s => s.Server.ActiveOperation is null && s.RecentOperations.Any(o =>
             o.Type == OperationType.ServerInstall && o.Status == OperationStatus.Failed), "install refused");
         Assert.Equal("steamcmd.guard_required", failed.RecentOperations.First(o => o.Type == OperationType.ServerInstall).ErrorCode);
-        Assert.Null(agent.SteamLogins.Load(account.Id));
+        Assert.Null(agent.SteamLogins.Load(new Pulsar.Contracts.SteamLogin(account.Id, "pulsar_guarded", Password)));
         Assert.False(File.Exists(CachedLogin(agent, failed)));
 
         // With the code it signs in, and the agent keeps the login SteamCMD cached, out of the server's folder.
@@ -90,7 +118,7 @@ public sealed class SteamAccountTests(PulsarApiFactory factory) : IClassFixture<
         await PostAsync(admin, $"/api/v1/servers/{server}/install/steam-guard", new InstallRequest("f7k2q"));
         var installed = await ServerApi.WaitForAsync(admin, server, s => s.Server.ActiveOperation is null && s.RecentOperations.First(o =>
             o.Type == OperationType.ServerInstall).Status == OperationStatus.Succeeded, "installed with the code");
-        Assert.NotNull(agent.SteamLogins.Load(account.Id));
+        Assert.NotNull(agent.SteamLogins.Load(new Pulsar.Contracts.SteamLogin(account.Id, "pulsar_guarded", Password)));
         Assert.False(File.Exists(CachedLogin(agent, installed)));
 
         // The next update needs neither the password nor a code.

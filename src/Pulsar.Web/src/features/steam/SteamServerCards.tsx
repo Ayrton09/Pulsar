@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Alert, Badge, Card } from '../../components/ui/Display';
-import { Field, Input, Select } from '../../components/ui/Form';
+import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
@@ -85,6 +85,7 @@ export function SteamGuardPrompt({ details }: { details: ServerDetails }) {
   const me = useCurrentUser();
   const retry = useRetryWithSteamGuard();
   const [code, setCode] = useState('');
+  const [validate, setValidate] = useState(false);
   const { server } = details;
   const last = details.recentOperations.find((o) => o.type === 'serverInstall' || o.type === 'serverUpdate');
   if (
@@ -102,7 +103,10 @@ export function SteamGuardPrompt({ details }: { details: ServerDetails }) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (valid) {
-      retry.mutate({ id: server.id, kind, code: code.trim() }, { onSuccess: () => setCode('') });
+      retry.mutate(
+        { id: server.id, kind, code: code.trim(), validate: kind === 'update' && validate },
+        { onSuccess: () => setCode('') },
+      );
     }
   };
 
@@ -128,6 +132,13 @@ export function SteamGuardPrompt({ details }: { details: ServerDetails }) {
         <Button type="submit" disabled={!valid || !server.nodeConnected} busy={retry.isPending}>
           {kind === 'install' ? t('servers.steam.retryInstall') : t('servers.steam.retryUpdate')}
         </Button>
+        {kind === 'update' && (
+          <Checkbox
+            label={t('servers.validateFiles')}
+            checked={validate}
+            onChange={(e) => setValidate(e.target.checked)}
+          />
+        )}
       </form>
       {retry.isError && <Alert>{errorMessage(t, retry.error)}</Alert>}
     </section>

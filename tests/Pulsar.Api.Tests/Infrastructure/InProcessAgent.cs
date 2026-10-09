@@ -101,7 +101,7 @@ public sealed class InProcessAgent : IAsyncDisposable
         var channel = new PanelChannel();
         var install = Http is null ? new InstallOptions { TestGameDirectory = testGame } : new InstallOptions { TestGameDirectory = testGame, HttpHandler = Http };
         var files = new DirectServerFiles();
-        _steamCmd = new SteamCmdRunner(Processes, new ScriptedSteamCmdSource(Path.Combine(_root, "steamcmd.exe")), files, SteamLogins,
+        _steamCmd = new SteamCmdRunner(Processes, new ScriptedSteamCmdSource(Path.Combine(_root, "steamcmd.exe")), files, new DirectServerFileManager(), SteamLogins,
             new SteamCmdOptions { RetryDelays = [TimeSpan.Zero] }, _clock, NullLogger<SteamCmdRunner>.Instance);
         _servers = new ServerHost(Configs, new ServerStore(Configs.Paths, new PlainStateProtector()), Provisioner, Processes,
             new InstallSteps(install, files), _steamCmd, files, Rcon, new UnmanagedFirewall(),

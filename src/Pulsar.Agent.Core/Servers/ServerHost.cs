@@ -173,7 +173,10 @@ public sealed partial class ServerHost(
                 catch (Exception ex) when (ex is LaunchPlanException or GameProcessException or ArgumentException)
                 {
                     LogServerNotLoaded(ex, record.ServerId);
+                    continue;
                 }
+
+                DeleteLentSteamLogin(record.ServerId, record.Spec.ShortId);
             }
 
             var serversRoot = _config.ServersRootOrDefault(configs.Paths);
@@ -967,6 +970,22 @@ public sealed partial class ServerHost(
         return Path.Combine(configs.Paths.ConsoleLogsDirectory, shortId);
     }
 
+    /// <summary>
+    /// A Steam login lent to the server's SteamCMD is taken back when the run ends; should the agent have stopped during
+    /// one, it is still in the server's folder. No SteamCMD runs while the agent starts.
+    /// </summary>
+    private void DeleteLentSteamLogin(Guid serverId, string shortId)
+    {
+        try
+        {
+            files.Delete(provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), shortId).Directory, SteamCmdRunner.LentLogin);
+        }
+        catch (Exception ex) when (ex is GameProcessException or IOException or UnauthorizedAccessException)
+        {
+            LogSteamLoginNotDeleted(serverId, ex.Message);
+        }
+    }
+
     private void DeleteConsoleLogs(string shortId)
     {
         try
@@ -1069,6 +1088,9 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Unfinished backups could not be cleaned up: {Reason}")]
     private partial void LogBackupsNotCleaned(string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: a Steam login left in its folder could not be removed: {Reason}")]
+    private partial void LogSteamLoginNotDeleted(Guid serverId, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Operation {OperationId} on server {ServerId} cancelled")]
     private partial void LogOperationCancelled(Guid operationId, Guid serverId);

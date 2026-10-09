@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
+using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Servers;
 using Pulsar.Contracts;
@@ -44,14 +45,16 @@ public sealed record SteamCmdJob(Guid ServerId, string ServerRoot, ProcessIdenti
 /// SteamCMD runs as the server's account, under a pseudo console (live output), in the server's Job: it can write only
 /// where the server can, and a server can never tamper with another one's SteamCMD. The copy updates itself on its
 /// first run (exit code 7); transient failures are retried; cancelling kills its Job.
-/// With a Steam account, the login SteamCMD cached last time (<see cref="SteamLoginStore"/>) is put in the copy's
-/// <c>config</c> folder for the run and taken back afterwards; runs of one account wait for each other, so they never
-/// race on that login.
+/// With a Steam account, the copy is first rebuilt from the verified bootstrapper (the server's account could have
+/// changed it to catch the password), and the login SteamCMD cached last time (<see cref="SteamLoginStore"/>) is put in
+/// the copy's <c>config</c> folder for the run and taken back afterwards; runs of one account wait for each other, so
+/// they never race on that login.
 /// </summary>
 public sealed partial class SteamCmdRunner(
     IGameProcessManager processes,
     ISteamCmdSource source,
     IServerFiles files,
+    IServerFileManager fileManager,
     SteamLoginStore logins,
     SteamCmdOptions options,
     TimeProvider clock,
@@ -59,6 +62,9 @@ public sealed partial class SteamCmdRunner(
 {
     /// <summary>The server's SteamCMD, relative to its directory.</summary>
     public const string Executable = ".pulsar/steamcmd/steamcmd.exe";
+
+    /// <summary>Where a Steam account's cached login is while it is lent to the server's SteamCMD, relative to the server's directory.</summary>
+    public const string LentLogin = WorkingDirectory + "/" + SteamLoginStore.CachedLoginFile;
 
     private const string WorkingDirectory = ".pulsar/steamcmd";
     private const int SelfUpdateExitCode = 7;
@@ -114,38 +120,57 @@ public sealed partial class SteamCmdRunner(
     private async Task RunJobAsync(SteamCmdJob job, Func<string, double?, Task> progress, CancellationToken cancellationToken)
     {
         await progress(InstallStages.Preparing, null);
-        await EnsureCopyAsync(job, cancellationToken);
+        await PrepareCopyAsync(job, cancellationToken);
         var attempts = 0;
         var selfUpdates = 0;
         var reset = false;
+        var dropped = false;
         // A Steam Guard code answers a challenge: that run signs in afresh. Otherwise the cached login spares the password.
-        var cached = job.Login is { GuardCode: null } login ? logins.Load(login.AccountId) : null;
+        var cached = job.Login is { GuardCode: null } login ? logins.Load(login) : null;
         while (true)
         {
             var result = await RunOnceAsync(job, cached, progress, cancellationToken);
             if (result.Succeeded)
             {
+                Keep(job.Login, result.CachedLogin);
                 LogInstalled(job.ServerId, job.AppId, attempts + 1);
                 return;
             }
 
             if (result.SelfUpdated && selfUpdates++ < options.MaxSelfUpdates)
             {
+                // SteamCMD only updated itself and signed nobody in: the account's login stays as it was.
                 LogSelfUpdated(job.ServerId);
                 continue;
             }
 
             var (code, retry) = SteamCmdOutput.Classify(result.Error);
-            if (cached is not null && code is "steamcmd.login_failed" or "steamcmd.guard_required")
+            if (job.Login is { } account)
             {
-                // The cached login expired or was revoked: once more with the password (which may then ask for a code).
-                LogCachedLoginRefused(job.ServerId, job.Login!.UserName);
-                cached = null;
-                continue;
+                if (code is "steamcmd.login_failed" or "steamcmd.guard_required" || (cached is not null && !SteamCmdOutput.LeavesLoginValid(result.Error)))
+                {
+                    // Refused, or failing before the app: the cached login may have expired or been revoked. Dropped, and
+                    // once more with the password (which may then ask for a code).
+                    logins.Forget(account.AccountId);
+                    if (cached is not null && !dropped)
+                    {
+                        LogCachedLoginDropped(job.ServerId, account.UserName);
+                        cached = null;
+                        dropped = true;
+                        continue;
+                    }
+                }
+                else
+                {
+                    Keep(account, result.CachedLogin);
+                }
+
+                // What this run cached spares the password next time, and a Steam Guard code it already spent.
+                cached = logins.Load(account);
             }
 
             attempts++;
-            var message = result.Error ?? (result.Stalled
+            var message = result.Message ?? (result.Stalled
                 ? $"SteamCMD printed nothing for {options.StallTimeout.TotalMinutes:0} minutes."
                 : $"SteamCMD exited with code {result.ExitCode.ToString(CultureInfo.InvariantCulture)}.");
             LogAttemptFailed(job.ServerId, job.AppId, attempts, result.ExitCode, message, string.Join(" | ", result.Tail));
@@ -235,14 +260,38 @@ public sealed partial class SteamCmdRunner(
         return arguments;
     }
 
-    private async Task EnsureCopyAsync(SteamCmdJob job, CancellationToken cancellationToken)
+    /// <summary>
+    /// The server's SteamCMD. An anonymous run keeps the copy it finds (it keeps itself up to date; nothing secret is at
+    /// stake). A run with an account first deletes the whole folder, as the server's account and never through a link,
+    /// and starts again from the bootstrapper verified as Valve's: the server's account controls that folder, and a
+    /// steamcmd.exe it replaced or a DLL it planted beside it would get the password. The copy then updates itself again.
+    /// </summary>
+    private async Task PrepareCopyAsync(SteamCmdJob job, CancellationToken cancellationToken)
     {
-        using (var existing = files.OpenRead(job.ServerRoot, Executable))
+        if (job.Login is null)
         {
+            using var existing = files.OpenRead(job.ServerRoot, Executable);
             if (existing is not null)
             {
-                return; // it keeps itself up to date
+                return;
             }
+        }
+        else
+        {
+            try
+            {
+                fileManager.Delete(new ProvisionedServer(job.ServerRoot, job.Identity), WorkingDirectory);
+            }
+            catch (FileManagerException ex) when (ex.Code == FileErrors.NotFound)
+            {
+                // No copy yet.
+            }
+            catch (FileManagerException ex)
+            {
+                throw new GameProcessException("steamcmd.failed", $"The server's SteamCMD could not be replaced before signing in: {ex.Message}", ex);
+            }
+
+            LogCopyRebuilt(job.ServerId);
         }
 
         var bootstrapper = await source.GetAsync(cancellationToken);
@@ -253,30 +302,24 @@ public sealed partial class SteamCmdRunner(
     /// <param name="cached">The account's cached login, lent to this run; null signs in with the password (or anonymously).</param>
     private async Task<RunResult> RunOnceAsync(SteamCmdJob job, byte[]? cached, Func<string, double?, Task> progress, CancellationToken cancellationToken)
     {
-        if (job.Login is not null)
+        if (job.Login is null)
         {
-            Lend(job, cached);
+            return await RunProcessAsync(job, cachedLogin: false, progress, cancellationToken);
         }
 
+        Lend(job, cached);
+        RunResult result;
         try
         {
-            var result = await RunProcessAsync(job, cached is not null, progress, cancellationToken);
-            if (job.Login is { } login)
-            {
-                TakeBack(job, login, refused: SteamCmdOutput.Classify(result.Error).Code is "steamcmd.login_failed" or "steamcmd.guard_required");
-            }
-
-            return result;
+            result = await RunProcessAsync(job, cached is not null, progress, cancellationToken);
         }
         catch
         {
-            if (job.Login is { } login)
-            {
-                TakeBack(job, login, refused: false);
-            }
-
+            Keep(job.Login, TakeBack(job));
             throw;
         }
+
+        return result with { CachedLogin = TakeBack(job) };
     }
 
     private async Task<RunResult> RunProcessAsync(SteamCmdJob job, bool cachedLogin, Func<string, double?, Task> progress,
@@ -297,7 +340,7 @@ public sealed partial class SteamCmdRunner(
             await process.DisposeAsync();
             await pump;
             return new RunResult(output.Succeeded && exitCode == 0, exitCode == SelfUpdateExitCode && !output.Succeeded, exitCode, output.Error,
-                [.. output.Tail], Stalled: false);
+                output.Message, [.. output.Tail], Stalled: false);
         }
         catch (OperationCanceledException)
         {
@@ -311,31 +354,29 @@ public sealed partial class SteamCmdRunner(
             }
 
             // Stopped at a Steam Guard prompt, or printing nothing for too long.
-            return new RunResult(false, false, 1, output.Error, [.. output.Tail], Stalled: output.Error is null);
+            return new RunResult(false, false, 1, output.Error, output.Message, [.. output.Tail], Stalled: output.Error is null);
         }
     }
 
     /// <summary>Puts the account's cached login where SteamCMD reads it, or makes sure none is there (a full sign-in).</summary>
     private void Lend(SteamCmdJob job, byte[]? cached)
     {
-        var path = CopyPath(SteamLoginStore.CachedLoginFile);
-        files.Delete(job.ServerRoot, path);
+        files.Delete(job.ServerRoot, LentLogin);
         if (cached is not null)
         {
             using var content = new MemoryStream(cached, writable: false);
-            files.Write(job.ServerRoot, path, content);
+            files.Write(job.ServerRoot, LentLogin, content);
         }
     }
 
     /// <summary>
-    /// Takes the login SteamCMD cached out of the server's folder: kept for the account when the run signed in, forgotten
-    /// when Steam refused it. Read through the server's files (as any of the server's files), with a size limit.
+    /// Takes the login SteamCMD cached out of the server's folder; null when there is none (or something far too large
+    /// for one). Read through the server's files (as any of the server's files), with a size limit.
     /// </summary>
-    private void TakeBack(SteamCmdJob job, SteamLogin login, bool refused)
+    private byte[]? TakeBack(SteamCmdJob job)
     {
-        var path = CopyPath(SteamLoginStore.CachedLoginFile);
         byte[]? content = null;
-        using (var stream = files.OpenRead(job.ServerRoot, path))
+        using (var stream = files.OpenRead(job.ServerRoot, LentLogin))
         {
             if (stream is not null)
             {
@@ -351,18 +392,18 @@ public sealed partial class SteamCmdRunner(
             }
         }
 
-        files.Delete(job.ServerRoot, path);
-        if (refused)
-        {
-            logins.Forget(login.AccountId);
-        }
-        else if (content is { Length: > 0 })
-        {
-            logins.Save(login.AccountId, content);
-        }
+        files.Delete(job.ServerRoot, LentLogin);
+        return content is { Length: > 0 } ? content : null;
     }
 
-    private static string CopyPath(string relative) => $"{WorkingDirectory}/{relative}";
+    /// <summary>Keeps what a run that may have signed in cached, for the account with these credentials.</summary>
+    private void Keep(SteamLogin? login, byte[]? cached)
+    {
+        if (login is not null && cached is not null)
+        {
+            logins.Save(login, cached);
+        }
+    }
 
     private async Task PumpAsync(IGameProcess process, RunOutput output, CancellationTokenSource stall)
     {
@@ -388,26 +429,35 @@ public sealed partial class SteamCmdRunner(
         }
     }
 
-    /// <summary>What a run printed that matters (with the account's password and code, should SteamCMD echo them, blanked out).</summary>
+    /// <summary>
+    /// What a run printed that matters. Lines are read as printed (a one-letter password or a five-digit code also appears
+    /// in "Success!" or a progress line), and kept with the account's password and code, should SteamCMD echo them,
+    /// blanked out: <see cref="Tail"/> and <see cref="Message"/> are what gets logged and reported.
+    /// </summary>
     private sealed class RunOutput(ProgressReporter reporter, IReadOnlyList<string> secrets)
     {
+        private const int MaxMessageLength = 300;
+
         public Queue<string> Tail { get; } = new();
 
         public bool Succeeded { get; private set; }
 
+        /// <summary>The error as printed, to classify it: never logged or reported.</summary>
         public string? Error { get; private set; }
 
-        public void GuardRequested() => Error = "Steam asked for a Steam Guard code.";
+        /// <summary>The error with the secrets blanked out.</summary>
+        public string? Message { get; private set; }
 
-        public async Task AddAsync(string text)
+        public void GuardRequested() => Error = Message = "Steam asked for a Steam Guard code.";
+
+        public async Task AddAsync(string line)
         {
-            var line = secrets.Where(s => s.Length > 0).Aggregate(text, (current, secret) => current.Replace(secret, "***", StringComparison.Ordinal));
             if (line.Length == 0)
             {
                 return;
             }
 
-            Tail.Enqueue(line);
+            Tail.Enqueue(Redact(line));
             if (Tail.Count > 20)
             {
                 Tail.Dequeue();
@@ -425,16 +475,26 @@ public sealed partial class SteamCmdRunner(
                     Succeeded = true;
                     break;
                 case SteamCmdLine.Failure failure:
-                    Error = failure.Message;
+                    (Error, Message) = (failure.Message, Cut(Redact(line.Trim())));
                     break;
-                case SteamCmdLine.GuardRequested guard:
-                    Error ??= guard.Message;
+                case SteamCmdLine.GuardRequested guard when Error is null:
+                    (Error, Message) = (guard.Message, Cut(Redact(line.Trim())));
                     break;
             }
         }
+
+        // Blanked out before the line is cut: a secret across the cut would leave its first characters.
+        private string Redact(string text) =>
+            secrets.Where(s => s.Length > 0).Aggregate(text, (current, secret) => current.Replace(secret, "***", StringComparison.Ordinal));
+
+        private static string Cut(string text) => text.Length > MaxMessageLength ? text[..MaxMessageLength] : text;
     }
 
-    private sealed record RunResult(bool Succeeded, bool SelfUpdated, int ExitCode, string? Error, IReadOnlyList<string> Tail, bool Stalled);
+    /// <param name="Error">As printed, to classify the failure.</param>
+    /// <param name="Message">The error with the account's secrets blanked out, for logs and reports.</param>
+    /// <param name="CachedLogin">The login SteamCMD cached, taken out of the server's folder (runs with an account).</param>
+    private sealed record RunResult(bool Succeeded, bool SelfUpdated, int ExitCode, string? Error, string? Message, IReadOnlyList<string> Tail, bool Stalled,
+        byte[]? CachedLogin = null);
 
     /// <summary>Forwards progress when the stage changes, the percent moves by a point, or two seconds passed.</summary>
     private sealed class ProgressReporter(Func<string, double?, Task> progress, TimeProvider clock)
@@ -472,8 +532,11 @@ public sealed partial class SteamCmdRunner(
         Message = "Server {ServerId}: app {AppId} is stuck in state 0x6; its app manifest was removed and SteamCMD runs again validating every file")]
     private partial void LogReset(Guid serverId, int appId);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: Steam refused the cached login of {UserName}; signing in again")]
-    private partial void LogCachedLoginRefused(Guid serverId, string userName);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: SteamCMD failed with the cached login of {UserName}; signing in with the password")]
+    private partial void LogCachedLoginDropped(Guid serverId, string userName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: SteamCMD signs in with an account; its copy starts again from the verified bootstrapper")]
+    private partial void LogCopyRebuilt(Guid serverId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: SteamCMD for app {AppId} cancelled")]
     private partial void LogCancelled(Guid serverId, int appId);

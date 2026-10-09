@@ -36,11 +36,24 @@ export function useSetServerSteamAccount() {
   });
 }
 
-/** Runs the install or update Steam stopped again, with the Steam Guard code it asked for. */
+/**
+ * Runs the install or update Steam stopped again, with the Steam Guard code it asked for. The operation does not keep
+ * whether an update verified every file: the prompt asks again (`validate`).
+ */
 export function useRetryWithSteamGuard() {
   const changed = useServersChanged();
   return useMutation({
-    mutationFn: ({ id, kind, code }: { id: string; kind: 'install' | 'update'; code: string }) =>
+    mutationFn: ({
+      id,
+      kind,
+      code,
+      validate,
+    }: {
+      id: string;
+      kind: 'install' | 'update';
+      code: string;
+      validate: boolean;
+    }) =>
       kind === 'install'
         ? unwrap(
             api.POST('/api/v1/servers/{id}/install/steam-guard', {
@@ -51,7 +64,7 @@ export function useRetryWithSteamGuard() {
         : unwrap(
             api.POST('/api/v1/servers/{id}/update', {
               params: { path: { id } },
-              body: { validate: false, steamGuardCode: code },
+              body: { validate, steamGuardCode: code },
             }),
           ),
     onSuccess: changed,

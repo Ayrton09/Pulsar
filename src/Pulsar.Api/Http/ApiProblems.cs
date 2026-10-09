@@ -37,7 +37,7 @@ public static class ApiProblems
             or "api_key.too_many" or "addon.unsupported" or "addon.requires" or "addon.conflicts" or "addon.required_by"
             or "schedules.too_many" or "notifications.too_many" or "backup_storage.in_use" or "backup_storage.too_many"
             or "database_host.in_use" or "database_host.too_many" or "database.name_taken" or "database.limit_reached"
-            or "steam_account.in_use" or "steam_account.too_many" or "steam_account.unsupported" or "steamcmd.account_required"
+            or "steam_account.in_use" or "steam_account.too_many" or "steam_account.unsupported" or "steamcmd.account_required" or "steam_account.name_taken"
             => StatusCodes.Status409Conflict,
         "files.changed" => StatusCodes.Status412PreconditionFailed,
         "files.access_denied" or "files.outside_server" => StatusCodes.Status403Forbidden,

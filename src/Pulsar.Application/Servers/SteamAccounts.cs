@@ -63,6 +63,11 @@ public sealed class SteamAccounts(IPulsarDbContext db, ISteamAccountSecretProtec
         }
 
         var account = created.Value;
+        if (await db.SteamAccounts.AnyAsync(a => a.Name == account.Name, cancellationToken))
+        {
+            return SteamAccountErrors.NameTaken;
+        }
+
         db.SteamAccounts.Add(account);
         audit.Record(AuditActions.SteamAccount.Created, metadata: new { account.Name, account.UserName, passwordChanged = true })
             .WithTarget("steam_account", account.Id.ToString());
@@ -89,6 +94,11 @@ public sealed class SteamAccounts(IPulsarDbContext db, ISteamAccountSecretProtec
         if (!changed.IsSuccess)
         {
             return changed.Error!;
+        }
+
+        if (await db.SteamAccounts.AnyAsync(a => a.Name == account.Name && a.Id != account.Id, cancellationToken))
+        {
+            return SteamAccountErrors.NameTaken;
         }
 
         audit.Record(AuditActions.SteamAccount.Updated, metadata: new { account.Name, account.UserName, passwordChanged = password is not null })
@@ -182,9 +192,11 @@ public sealed class SteamAccounts(IPulsarDbContext db, ISteamAccountSecretProtec
         return value;
     }
 
-    // SteamCMD splits its own command line on spaces and quotes: such a password would not reach Steam whole.
+    // SteamCMD splits its own command line on spaces and quotes, and reads an argument starting with + or - as a command
+    // or an option: such a password would not reach Steam whole.
     private static Result Password(SteamAccountDefinition definition) =>
-        definition.Password is not { Length: > 0 } password || (password.Length <= 64 && !password.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c == '"'))
+        definition.Password is not { Length: > 0 } password
+            || (password.Length <= 64 && password[0] is not ('+' or '-') && !password.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c == '"'))
             ? Result.Success()
             : SteamAccountErrors.PasswordInvalid;
 
