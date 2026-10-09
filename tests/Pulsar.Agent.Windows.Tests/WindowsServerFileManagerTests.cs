@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core.Backups;
 using Pulsar.Agent.Core.Files;
@@ -14,7 +15,7 @@ namespace Pulsar.Agent.Windows.Tests;
 /// manager"): whatever a server plants in its directory, the file manager never reads, writes, renames or deletes
 /// anything outside it, and never follows a link.
 /// </summary>
-public sealed class WindowsServerFileManagerTests : ServerFileManagerContract
+public sealed partial class WindowsServerFileManagerTests : ServerFileManagerContract
 {
     private readonly string _outside;
 
@@ -64,6 +65,62 @@ public sealed class WindowsServerFileManagerTests : ServerFileManagerContract
         Assert.Equal(FileErrors.OutsideServer, Code(() => Files.Delete(Server, "game/csgo/cfg/secret.cfg")));
         Assert.Equal(FileErrors.OutsideServer, Code(() => Files.Delete(Server, "game/csgo/cfg/sub")));
         OutsideIsUntouched();
+    }
+
+    [WindowsFact]
+    public void TheLentSteamLoginIsOutOfReachThroughAShortName()
+    {
+        var config = Path.Combine(ServerDirectory, ".pulsar", "steamcmd", "config");
+        Directory.CreateDirectory(config);
+        File.WriteAllText(Path.Combine(config, "config.vdf"), "a cached login");
+        var alias = ShortName(Path.Combine(ServerDirectory, ".pulsar"));
+        if (alias.Equals(".pulsar", StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.Skip("The volume keeps no 8.3 names.");
+        }
+
+        // A server's account cannot list the folders above its own, so .NET cannot expand the short name to its long
+        // one either and the path passes as written: so here, with the test's account denied listing the test folder.
+        var account = "*" + System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value;
+        Run("icacls", Root, "/deny", account + ":(RD)");
+        try
+        {
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.OpenRead(Server, $"{alias}/steamcmd/config/config.vdf", 100)));
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.List(Server, $"{alias}/steamcmd/config")));
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Move(Server, $"{alias}/steamcmd/config/config.vdf", "mine.vdf")));
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Delete(Server, $"{alias}/steamcmd/config/config.vdf")));
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Create(Server, $"{alias}/steamcmd/config/config.vdf", 1, overwrite: true, expectedVersion: null)));
+        }
+        finally
+        {
+            Run("icacls", Root, "/remove:d", account);
+        }
+
+        Assert.Equal("a cached login", File.ReadAllText(Path.Combine(config, "config.vdf")));
+    }
+
+    [WindowsFact]
+    public void TheLentSteamLoginIsOutOfReachThroughAJunctionInsideTheServer()
+    {
+        var config = Path.Combine(ServerDirectory, ".pulsar", "steamcmd", "config");
+        Directory.CreateDirectory(config);
+        File.WriteAllText(Path.Combine(config, "config.vdf"), "a cached login");
+        File.WriteAllText(Path.Combine(ServerDirectory, "planted.vdf"), "x");
+        Link("/J", "login", config);
+        Link("/J", "pulsar", Path.Combine(ServerDirectory, ".pulsar"));
+
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.OpenRead(Server, "login/config.vdf", 100)));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.OpenRead(Server, "pulsar/steamcmd/config/config.vdf", 100)));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.List(Server, "pulsar/steamcmd/config")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Move(Server, "login/config.vdf", "mine.vdf")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Move(Server, "planted.vdf", "pulsar/steamcmd/config/planted.vdf")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Delete(Server, "login/config.vdf")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Create(Server, "pulsar/steamcmd/config/config.vdf", 1, overwrite: true, expectedVersion: null)));
+        Assert.Equal("a cached login", File.ReadAllText(Path.Combine(config, "config.vdf")));
+
+        // The junctions themselves are the server's: removed as links, the login behind them untouched.
+        Files.Delete(Server, "login");
+        Assert.Equal("a cached login", File.ReadAllText(Path.Combine(config, "config.vdf")));
     }
 
     [WindowsFact]
@@ -342,6 +399,18 @@ public sealed class WindowsServerFileManagerTests : ServerFileManagerContract
         Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(_outside, "sub")));
         Assert.Equal("rcon_password other-server", File.ReadAllText(Path.Combine(_outside, "secret.cfg")));
     }
+
+    /// <summary>The 8.3 name Windows gave the last segment of <paramref name="path"/> (its long name when it has none).</summary>
+    private static string ShortName(string path)
+    {
+        var buffer = new byte[1024];
+        var length = GetShortPathNameW(path, buffer, (uint)(buffer.Length / sizeof(char)));
+        Assert.True(length is > 0 and < 512, $"GetShortPathName failed ({Marshal.GetLastPInvokeError()}).");
+        return Path.GetFileName(System.Text.Encoding.Unicode.GetString(buffer, 0, (int)length * sizeof(char)));
+    }
+
+    [LibraryImport("kernel32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial uint GetShortPathNameW(string longPath, byte[] shortPath, uint length);
 
     private void Link(string kind, string path, string target) =>
         Run(["mklink", .. kind.Length == 0 ? Array.Empty<string>() : [kind], Path.Combine(ServerDirectory, path.Replace('/', '\\')), target]);

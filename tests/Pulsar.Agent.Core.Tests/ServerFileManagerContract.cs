@@ -301,6 +301,37 @@ public abstract class ServerFileManagerContract : IDisposable
         Assert.Equal(FileErrors.InvalidPath, Code(() => Files.EnsureDirectory(Server, "../x")));
     }
 
+    [ContractFact]
+    public void TheLentSteamLoginIsOutOfReachButTheRestOfSteamCmdsFolderIsNot()
+    {
+        var config = Path.Combine(ServerDirectory, ".pulsar", "steamcmd", "config");
+        Directory.CreateDirectory(config);
+        File.WriteAllText(Path.Combine(config, "config.vdf"), "a cached login");
+        File.WriteAllText(Path.Combine(ServerDirectory, ".pulsar", "steamcmd", "steamcmd.exe"), "Valve's");
+        File.WriteAllText(Path.Combine(ServerDirectory, "planted.vdf"), "x");
+
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.OpenRead(Server, ".pulsar/steamcmd/config/config.vdf", 100)));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.OpenRead(Server, ".PULSAR/SteamCMD/Config/config.vdf", 100)));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.List(Server, ".pulsar/steamcmd/config")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Move(Server, ".pulsar/steamcmd/config/config.vdf", "mine.vdf")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Move(Server, ".pulsar/steamcmd/config", "mine")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Move(Server, "planted.vdf", ".pulsar/steamcmd/config/planted.vdf")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Delete(Server, ".pulsar/steamcmd/config/config.vdf")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Delete(Server, ".pulsar/steamcmd/config")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Create(Server, ".pulsar/steamcmd/config/config.vdf", 1, overwrite: true, expectedVersion: null)));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.CreateDirectory(Server, ".pulsar/steamcmd/config/sub")));
+        Assert.Equal(FileErrors.AccessDenied, Code(() => Files.EnsureDirectory(Server, ".pulsar/steamcmd/config/sub")));
+        Assert.Equal("a cached login", File.ReadAllText(Path.Combine(config, "config.vdf")));
+
+        // The rest is Pulsar's to use: listed, walked (never into the login) and deleted whole when SteamCMD is rebuilt.
+        Assert.Contains(Files.List(Server, ".pulsar/steamcmd").Entries, e => e.Name == "config");
+        var walked = Files.Walk(Server).Select(e => e.Path).ToList();
+        Assert.Contains(".pulsar/steamcmd/steamcmd.exe", walked);
+        Assert.DoesNotContain(".pulsar/steamcmd/config/config.vdf", walked);
+        Files.Delete(Server, ".pulsar/steamcmd");
+        Assert.False(Directory.Exists(Path.Combine(ServerDirectory, ".pulsar", "steamcmd")));
+    }
+
     protected string Version(string path)
     {
         using var opened = Files.OpenRead(Server, path, long.MaxValue);

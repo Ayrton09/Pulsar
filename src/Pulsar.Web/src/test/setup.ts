@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 
 // The live channel and the terminal have stand-ins the tests drive (test/fakeSignalR.ts, test/fakeXterm.ts).
@@ -15,6 +15,10 @@ globalThis.ResizeObserver ??= class {
   unobserve() {}
   disconnect() {}
 };
+
+// A page's first render loads its lazy route and its translations: on a busy machine (the .NET suite running alongside)
+// that can take longer than findBy's default second.
+configure({ asyncUtilTimeout: 5000 });
 
 afterEach(() => {
   cleanup();

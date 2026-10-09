@@ -71,7 +71,16 @@ public sealed class SteamAccounts(IPulsarDbContext db, ISteamAccountSecretProtec
         db.SteamAccounts.Add(account);
         audit.Record(AuditActions.SteamAccount.Created, metadata: new { account.Name, account.UserName, passwordChanged = true })
             .WithTarget("steam_account", account.Id.ToString());
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex is not DbUpdateConcurrencyException)
+        {
+            // Someone took the name meanwhile (unique index).
+            return SteamAccountErrors.NameTaken;
+        }
+
         return View(account, 0);
     }
 
@@ -103,7 +112,15 @@ public sealed class SteamAccounts(IPulsarDbContext db, ISteamAccountSecretProtec
 
         audit.Record(AuditActions.SteamAccount.Updated, metadata: new { account.Name, account.UserName, passwordChanged = password is not null })
             .WithTarget("steam_account", account.Id.ToString());
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex is not DbUpdateConcurrencyException)
+        {
+            return SteamAccountErrors.NameTaken;
+        }
+
         return View(account, await db.Servers.CountAsync(s => s.SteamAccountId == account.Id, cancellationToken));
     }
 

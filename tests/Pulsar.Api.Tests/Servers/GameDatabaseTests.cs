@@ -343,13 +343,15 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
             Assert.Empty((await admin.Http.GetFromJsonAsync<ServerDatabaseList>($"/api/v1/servers/{server}/databases", AccessScenario.Json, Ct))!.Databases);
             await using (var root = await TestMySql.OpenAsync())
             {
+                // The user was someone else's: it stays.
+                Assert.Equal([taken], await TestMySql.ColumnAsync(root, $"SELECT user FROM mysql.user WHERE user = '{taken}'"));
                 await ExecuteAsync(root, $"DROP USER '{taken}'@'%'");
             }
 
             await CreateDatabaseAsync(admin, server, host.Id, "taken");
 
             // Given up (the request cancelled) after the database was made, while its user waits for the grant tables: the
-            // database goes again too.
+            // database goes again too, and so would the user had the server made it before the request was given up.
             var client = factory.Services.GetRequiredService<IDatabaseHostClient>();
             var settings = TestMySql.Settings;
             var connection = new DatabaseHostConnection(settings.Server, (int)settings.Port, settings.UserID, settings.Password, RequireTls: false);
@@ -360,8 +362,11 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
                 var create = client.CreateAsync(connection, cancelled, "%", ServerDatabase.NewPassword(), cancel.Token);
                 await InProcessAgent.EventuallyAsync(async () => (await HostDatabasesAsync()).Contains(cancelled), "database created");
                 await cancel.CancelAsync();
-                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => create);
+                await InProcessAgent.EventuallyAsync(async () => !(await HostDatabasesAsync()).Contains(cancelled), "database dropped");
+                // Dropping the user waits for the grant tables too.
                 await ExecuteAsync(root, "UNLOCK TABLES");
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => create);
+                Assert.Empty(await TestMySql.ColumnAsync(root, $"SELECT user FROM mysql.user WHERE user = '{cancelled}'"));
             }
 
             Assert.DoesNotContain(cancelled, await HostDatabasesAsync());

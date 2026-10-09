@@ -84,7 +84,7 @@ public sealed class DirectServerFileManager : IServerFileManager
             var entryPath = ServerFilePath.Join(path, entry.Name);
             entries.Add(new TreeEntry(entryPath, entry.Kind, entry.Size, entry.ModifiedAt));
             ServerFileRules.CheckWalk(entries.Count, depth);
-            if (entry.Kind == FileEntryKind.Directory)
+            if (entry.Kind == FileEntryKind.Directory && !ServerFileRules.IsSteamLoginFolder(entryPath))
             {
                 WalkInto(info.FullName, entryPath, entries, depth + 1);
             }
@@ -164,6 +164,13 @@ public sealed class DirectServerFileManager : IServerFileManager
     {
         ArgumentNullException.ThrowIfNull(server);
         ServerFileRules.Validate(path, allowRoot);
+
+        // By name only: these APIs cannot see where a short name leads (the Windows file manager checks its handles).
+        if (ServerFileRules.IsSteamLoginFolder(path))
+        {
+            throw ServerFileRules.SteamLoginRefused(path);
+        }
+
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(server.Directory));
         if (!Directory.Exists(root))
         {

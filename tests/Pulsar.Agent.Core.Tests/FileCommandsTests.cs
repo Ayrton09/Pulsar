@@ -68,7 +68,9 @@ public sealed class FileCommandsTests : IDisposable
         {
             new SendFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/config/config.vdf", TransferTicket.New(), 1024),
             new SendFileCommand(Guid.NewGuid(), ".PULSAR/SteamCMD/Config/config.vdf", TransferTicket.New(), 1024),
+            new SendFileCommand(Guid.NewGuid(), "PULSAR~1/steamcmd/config/config.vdf", TransferTicket.New(), 1024),
             new ListFilesCommand(Guid.NewGuid(), ".pulsar/steamcmd/config"),
+            new ListFilesCommand(Guid.NewGuid(), "pulsar~2/steamcmd/config"),
             new MoveFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/config/config.vdf", "mine.vdf"),
             new MoveFileCommand(Guid.NewGuid(), "planted.vdf", ".pulsar/steamcmd/config/config.vdf"),
             new DeleteFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/config/config.vdf"),
@@ -99,6 +101,8 @@ public sealed class FileCommandsTests : IDisposable
             new MoveFileCommand(Guid.NewGuid(), ".pulsar", "elsewhere"),
             new DeleteFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/steamcmd.exe"),
             new DeleteFileCommand(Guid.NewGuid(), ".Pulsar"),
+            new DeleteFileCommand(Guid.NewGuid(), "PULSAR~1/steamcmd/steamcmd.exe"),
+            new MoveFileCommand(Guid.NewGuid(), "version.dll", "PULSAR~1/steamcmd/version.dll"),
             new ReceiveFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/version.dll", TransferTicket.New(), 7, false, null),
             new ReceiveFileCommand(Guid.NewGuid(), ".PULSAR/SteamCMD/steamcmd.exe", TransferTicket.New(), 7, true, null),
         })
@@ -112,6 +116,23 @@ public sealed class FileCommandsTests : IDisposable
         Assert.Equal(AckStatus.Accepted, Execute(new ListFilesCommand(Guid.NewGuid(), ".pulsar/steamcmd")).Status);
         Assert.Equal(AckStatus.Accepted, Execute(new SendFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/steamcmd.exe", TransferTicket.New(), 1024)).Status);
         Assert.Equal(AckStatus.Accepted, Execute(new CreateDirectoryCommand(Guid.NewGuid(), ".pulsarx")).Status);
+    }
+
+    [Theory]
+    [InlineData("PULSAR~1", true)]
+    [InlineData("pulsar~12/steamcmd", true)]
+    [InlineData("AB~3/x.cfg", true)]
+    [InlineData("PULSAR~", false)]
+    [InlineData("~1", false)]
+    [InlineData("TOOLONG~1", false)]
+    [InlineData("a.b~1", false)]
+    [InlineData("cfg/PULSAR~1", false)]
+    public void ShortNamesCouldBePulsarsFolderAndAreTreatedAsIt(string path, bool pulsars)
+    {
+        // Windows names a folder ".pulsar" PULSAR~1 too (an 8.3 alias) on volumes that keep short names: whichever
+        // folder such a name stands for, the file manager cannot tell from the name alone.
+        Assert.Equal(pulsars, FileCommands.IsPulsarFolder(path));
+        Assert.Equal(pulsars, FileCommands.IsSteamLogin(ServerFilePath.Join(path.Split('/')[0], "steamcmd/config/config.vdf")));
     }
 
     [Fact]

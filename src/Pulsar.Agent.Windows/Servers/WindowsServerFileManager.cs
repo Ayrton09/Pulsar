@@ -14,11 +14,11 @@ namespace Pulsar.Agent.Windows.Servers;
 /// <summary>
 /// The file manager on Windows (docs/architecture/08, "File manager"). After the path rules (layer 1) and the prefix
 /// check of the full path (layer 2), every entry is opened without following a final link and the path the handle
-/// really has is checked against the server directory (layer 3); the operation then works on that handle: listing,
-/// reading, renaming and deleting never go back to a path a server could have swapped. Opening, creating, renaming
-/// and deleting run as the server's account (layer 4), so Windows itself refuses anything outside what that account
-/// may touch, whatever a hard link or a race points at. Reading and writing content happens on the opened handles,
-/// outside the impersonation.
+/// really has is checked against the server directory, and against the lent Steam login's folder (layer 3); the
+/// operation then works on that handle: listing, reading, renaming and deleting never go back to a path a server
+/// could have swapped. Opening, creating, renaming and deleting run as the server's account (layer 4), so Windows
+/// itself refuses anything outside what that account may touch, whatever a hard link or a race points at. Reading and
+/// writing content happens on the opened handles, outside the impersonation.
 /// </summary>
 public sealed class WindowsServerFileManager(IServerImpersonation impersonation) : IServerFileManager
 {
@@ -72,7 +72,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
 
             entries.Add(new TreeEntry(childPath, child.Kind, child.Size, child.ModifiedAt));
             ServerFileRules.CheckWalk(entries.Count, depth);
-            if (child.Kind == FileEntryKind.Directory)
+            if (child.Kind == FileEntryKind.Directory && !ServerFileRules.IsSteamLoginFolder(childPath))
             {
                 WalkInto(root, childPath, entries, depth + 1);
             }
@@ -702,11 +702,22 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         private void Check(SafeFileHandle handle, string path)
         {
             var final = FinalPath(handle);
-            if (!(final.Length > _final.Length + 1 && final.StartsWith(_final, StringComparison.OrdinalIgnoreCase) && final[_final.Length] == '\\'))
+            if (!Below(final, _final))
             {
                 throw new FileManagerException(FileErrors.OutsideServer, $"'{path}' resolves outside the server directory.");
             }
+
+            // The lent Steam login, told by where the handle is rather than by the name asked for: a short name
+            // (PULSAR~1) or a junction the server's account made inside the server leads there under another one.
+            var login = _final + "\\" + ServerFileRules.SteamLoginFolder.Replace('/', '\\');
+            if (final.Equals(login, StringComparison.OrdinalIgnoreCase) || Below(final, login))
+            {
+                throw ServerFileRules.SteamLoginRefused(path);
+            }
         }
+
+        private static bool Below(string path, string directory) =>
+            path.Length > directory.Length + 1 && path.StartsWith(directory, StringComparison.OrdinalIgnoreCase) && path[directory.Length] == '\\';
 
         private static string Long(string path) => path.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + path[2..] : @"\\?\" + path;
 

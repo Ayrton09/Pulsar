@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Processes;
@@ -98,22 +99,37 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         }
     }
 
-    /// <summary>Whether <paramref name="path"/> is in (or is) the server's SteamCMD <c>config</c> folder, whatever its case.</summary>
+    /// <summary>
+    /// Whether <paramref name="path"/> is in (or is) the server's SteamCMD <c>config</c> folder, whatever its case or
+    /// the short name it starts with (see <see cref="IsPulsarFolder"/>). A first check, by name: the file manager also
+    /// refuses whatever it opens there, by whichever name or link it got there.
+    /// </summary>
     public static bool IsSteamLogin(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
-        const string Folder = ".pulsar/steamcmd/config";
-        var normalized = path.Replace('\\', '/').Trim('/');
-        return normalized.Equals(Folder, StringComparison.OrdinalIgnoreCase)
-            || normalized.StartsWith(Folder + "/", StringComparison.OrdinalIgnoreCase);
+        var segments = path.Replace('\\', '/').Trim('/').Split('/');
+        if (ShortName().IsMatch(segments[0]))
+        {
+            segments[0] = ".pulsar";
+        }
+
+        return ServerFileRules.IsSteamLoginFolder(string.Join('/', segments));
     }
 
-    /// <summary>Whether <paramref name="path"/> is in (or is) the server's <c>.pulsar</c> folder, whatever its case.</summary>
+    /// <summary>
+    /// Whether <paramref name="path"/> is in (or is) the server's <c>.pulsar</c> folder, whatever its case. A first
+    /// segment shaped like an 8.3 short name (<c>PULSAR~1</c>) counts too: on volumes that keep short names it may be
+    /// <c>.pulsar</c>'s, and the name alone cannot tell.
+    /// </summary>
     public static bool IsPulsarFolder(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
-        return path.Replace('\\', '/').Trim('/').Split('/')[0].Equals(".pulsar", StringComparison.OrdinalIgnoreCase);
+        var first = path.Replace('\\', '/').Trim('/').Split('/')[0];
+        return first.Equals(".pulsar", StringComparison.OrdinalIgnoreCase) || ShortName().IsMatch(first);
     }
+
+    [GeneratedRegex("^[^.~]{1,6}~[0-9]+$", RegexOptions.CultureInvariant)]
+    private static partial Regex ShortName();
 
     private static IEnumerable<string> PathsOf(AgentCommand command) => command switch
     {

@@ -1,10 +1,16 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
+using Pulsar.Application.Abstractions;
+using Pulsar.Application.Audit;
 using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
+using Pulsar.Domain.Audit;
+using Pulsar.Domain.Common;
 using Pulsar.Domain.Servers;
 
 namespace Pulsar.Api.Tests.Servers;
@@ -78,6 +84,51 @@ public sealed class SteamAccountTests(PulsarApiFactory factory) : IClassFixture<
         {
             Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
         }
+    }
+
+    [DatabaseFact]
+    public async Task ANameTakenMeanwhileIsRefusedAsOneTakenBefore()
+    {
+        using var admin = (await AccessScenario.CreateAsync(factory)).Admin;
+        var existing = await CreateAccountAsync(admin, "Race " + Guid.NewGuid().ToString("N")[..8], "pulsar_race");
+
+        // Between the name check and the save, another request takes the name (the unique index decides).
+        async Task<DomainError?> RaceAsync(Func<SteamAccounts, Task<Result<SteamAccountView>>> action, string name)
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            var services = scope.ServiceProvider;
+            var protector = services.GetRequiredService<ISteamAccountSecretProtector>();
+            var audit = new RacingAuditLog(services.GetRequiredService<IAuditLog>(), () =>
+            {
+                using var other = factory.Services.CreateScope();
+                var db = other.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+                db.SteamAccounts.Add(SteamAccount.Create(name, "pulsar_other", protector.Protect(Password), DateTimeOffset.UtcNow).Value!);
+                db.SaveChangesAsync(Ct).GetAwaiter().GetResult();
+            });
+            var accounts = new SteamAccounts(services.GetRequiredService<IPulsarDbContext>(), protector, audit, TimeProvider.System);
+            return (await action(accounts)).Error;
+        }
+
+        var createdName = "Race " + Guid.NewGuid().ToString("N")[..8];
+        Assert.Equal(SteamAccountErrors.NameTaken, await RaceAsync(a => a.CreateAsync(new SteamAccountDefinition(createdName, "pulsar_mine", Password), Ct), createdName));
+        var renamedName = "Race " + Guid.NewGuid().ToString("N")[..8];
+        Assert.Equal(SteamAccountErrors.NameTaken, await RaceAsync(a => a.UpdateAsync(existing.Id, new SteamAccountDefinition(renamedName, "pulsar_race", null), Ct), renamedName));
+
+        await using var cleanup = factory.Services.CreateAsyncScope();
+        await cleanup.ServiceProvider.GetRequiredService<IPulsarDbContext>().SteamAccounts
+            .Where(a => a.Name == createdName || a.Name == renamedName || a.Id == new SteamAccountId(existing.Id)).ExecuteDeleteAsync(Ct);
+    }
+
+    /// <summary>Records through the panel's audit log, after running <paramref name="race"/> (just before the save).</summary>
+    private sealed class RacingAuditLog(IAuditLog inner, Action race) : IAuditLog
+    {
+        public AuditEntry Record(string action, AuditOutcome outcome = AuditOutcome.Success, object? metadata = null)
+        {
+            race();
+            return inner.Record(action, outcome, metadata);
+        }
+
+        public AuditEntry Record(string action, AuditOutcome outcome, AuditActor actor, object? metadata = null) => inner.Record(action, outcome, actor, metadata);
     }
 
     [DatabaseFact]

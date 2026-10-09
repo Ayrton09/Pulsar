@@ -98,6 +98,12 @@ public static class ServerFileRules
 
     public const int MaxWalkDepth = 256;
 
+    /// <summary>
+    /// Where SteamCMD finds the Steam login the agent lends it during an install (docs/architecture/06, "Steam
+    /// accounts"): no file manager operation reaches into it, whatever name or link leads there; a walk does not enter it.
+    /// </summary>
+    public const string SteamLoginFolder = ".pulsar/steamcmd/config";
+
     // A listing travels in one hub message: names are counted as if every character were escaped.
     private const int ListingBudget = (int)(AgentProtocol.MaximumMessageSize * 3 / 4);
 
@@ -108,6 +114,15 @@ public static class ServerFileRules
             throw new FileManagerException(FileErrors.InvalidPath, $"'{path}': {error}");
         }
     }
+
+    /// <summary>Whether <paramref name="path"/> (a <see cref="ServerFilePath"/>) is <see cref="SteamLoginFolder"/> or inside it, whatever its case.</summary>
+    public static bool IsSteamLoginFolder(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        return path.Equals(SteamLoginFolder, StringComparison.OrdinalIgnoreCase) || path.StartsWith(SteamLoginFolder + "/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static FileManagerException SteamLoginRefused(string path) => new(FileErrors.AccessDenied, $"'{path}': Pulsar keeps this folder to itself.");
 
     public static string TemporaryName() => TemporaryPrefix + Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8)) + ".tmp";
 

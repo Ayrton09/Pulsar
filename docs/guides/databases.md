@@ -30,10 +30,11 @@ run yourself; it does not install MySQL or MariaDB.
    - **Connections from**: where the databases' users may connect from. `%` is anywhere the database server can be
      reached; narrow it to your nodes' addresses (`10.0.0.%`) or keep the port closed to the internet in the firewall.
    - **Require TLS**: the panel connects only with TLS. Without it, the panel uses TLS when the database server
-     offers it and plain text otherwise, its account's password included. It is on by default unless the address is
-     this machine or your local network (`127.0.0.1`, `10.x`, `172.16.x`–`172.31.x`, `192.168.x`). Pulsar does not
-     check the server's certificate either way (home servers use self-signed ones), so a database server reached over
-     the internet should also sit behind a VPN or tunnel. MySQL 8 and MariaDB 11.4 or newer offer TLS out of the box.
+     offers it and plain text otherwise, its account's password included. It is on by default for new hosts unless the
+     address is this machine or your local network (`127.0.0.1`, `10.x`, `172.16.x`–`172.31.x`, `192.168.x`); hosts
+     added before Pulsar had this setting keep it off until you turn it on. Pulsar does not check the server's
+     certificate either way (home servers use self-signed ones), so a database server reached over the internet
+     should also sit behind a VPN or tunnel. MySQL 8 and MariaDB 11.4 or newer offer TLS out of the box.
    - **Nodes**: tick some to offer the host to their servers only.
 
 ## Databases of a server

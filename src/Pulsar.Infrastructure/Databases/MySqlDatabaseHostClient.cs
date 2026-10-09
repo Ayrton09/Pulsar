@@ -33,23 +33,31 @@ internal sealed partial class MySqlDatabaseHostClient : IDatabaseHostClient
         {
             // No IF NOT EXISTS: a database already there is someone's data, never adopted.
             await ExecuteAsync(connection, $"CREATE DATABASE {database}", cancellationToken);
-            // Whatever stops a later step (a refusal, the request given up), what was made goes again.
+            // Whatever stops a later step (a refusal, the request given up), what was made goes again: the user too when
+            // CREATE USER itself was interrupted (the server may have made it all the same), unless it was there before.
+            var someoneElses = false;
             try
             {
-                await ExecuteAsync(connection, $"CREATE USER {user} IDENTIFIED BY {secret}", cancellationToken);
                 try
                 {
-                    await ExecuteAsync(connection, $"GRANT ALL PRIVILEGES ON {grantDatabase}.* TO {user}", cancellationToken);
+                    await ExecuteAsync(connection, $"CREATE USER {user} IDENTIFIED BY {secret}", cancellationToken);
                 }
-                catch
+                catch (MySqlException ex) when (ex.ErrorCode == MySqlErrorCode.CannotUser)
                 {
-                    await ExecuteAsync(connection, $"DROP USER IF EXISTS {user}", CancellationToken.None);
+                    someoneElses = true;
                     throw;
                 }
+
+                await ExecuteAsync(connection, $"GRANT ALL PRIVILEGES ON {grantDatabase}.* TO {user}", cancellationToken);
             }
             catch
             {
                 await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {database}", CancellationToken.None);
+                if (!someoneElses)
+                {
+                    await ExecuteAsync(connection, $"DROP USER IF EXISTS {user}", CancellationToken.None);
+                }
+
                 throw;
             }
 
