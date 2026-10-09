@@ -9,6 +9,9 @@ const port = Number(process.env.PULSAR_E2E_PORT ?? 5190);
 const baseURL = `http://127.0.0.1:${port}`;
 const apiProject = fileURLToPath(new URL('../Pulsar.Api/Pulsar.Api.csproj', import.meta.url));
 const publishDir = fileURLToPath(new URL('../../artifacts/e2e-panel', import.meta.url));
+// Its own Data Protection key ring: never the machine's default folder (%ProgramData%), which a database kept from an
+// earlier run would no longer match once that folder changed.
+const keysDir = fileURLToPath(new URL('../../artifacts/e2e-panel-keys', import.meta.url));
 
 // The panel needs PostgreSQL: a connection string to a database used only by these tests (its content is disposable).
 const connectionString = process.env.PULSAR_E2E_POSTGRES;
@@ -35,6 +38,7 @@ export default defineConfig({
     // Plain HTTP on 127.0.0.1 (Security:AllowInsecureHttp); the HTTPS cookie mode is covered by the API tests.
     env: {
       ConnectionStrings__Pulsar: connectionString,
+      DataProtection__KeysPath: keysDir,
       InitialSetup__Token: E2E_SETUP_TOKEN,
       Security__AllowInsecureHttp: 'true',
       // Offers Pulsar's test game, which e2e/servers.spec.ts runs on a real agent.
