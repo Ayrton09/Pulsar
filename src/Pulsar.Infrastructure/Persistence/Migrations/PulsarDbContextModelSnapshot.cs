@@ -458,6 +458,118 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Metrics.NodeMetricBucket", b =>
+                {
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<short>("Resolution")
+                        .HasColumnType("smallint")
+                        .HasColumnName("resolution");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<double>("CpuMax")
+                        .HasColumnType("double precision")
+                        .HasColumnName("cpu_max");
+
+                    b.Property<double>("CpuSum")
+                        .HasColumnType("double precision")
+                        .HasColumnName("cpu_sum");
+
+                    b.Property<long>("MemoryTotal")
+                        .HasColumnType("bigint")
+                        .HasColumnName("memory_total");
+
+                    b.Property<long>("MemoryUsedMax")
+                        .HasColumnType("bigint")
+                        .HasColumnName("memory_used_max");
+
+                    b.Property<long>("MemoryUsedSum")
+                        .HasColumnType("bigint")
+                        .HasColumnName("memory_used_sum");
+
+                    b.Property<int>("Samples")
+                        .HasColumnType("integer")
+                        .HasColumnName("samples");
+
+                    b.HasKey("NodeId", "Resolution", "At")
+                        .HasName("pk_node_metrics");
+
+                    b.HasIndex("Resolution", "At")
+                        .HasDatabaseName("ix_node_metrics_resolution_at");
+
+                    b.ToTable("node_metrics", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_node_metrics_resolution", "resolution IN (1, 60)");
+
+                            t.HasCheckConstraint("ck_node_metrics_samples", "samples > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Metrics.ServerMetricBucket", b =>
+                {
+                    b.Property<Guid>("ServerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("server_id");
+
+                    b.Property<short>("Resolution")
+                        .HasColumnType("smallint")
+                        .HasColumnName("resolution");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<double>("CpuMax")
+                        .HasColumnType("double precision")
+                        .HasColumnName("cpu_max");
+
+                    b.Property<double>("CpuSum")
+                        .HasColumnType("double precision")
+                        .HasColumnName("cpu_sum");
+
+                    b.Property<long>("MemoryMax")
+                        .HasColumnType("bigint")
+                        .HasColumnName("memory_max");
+
+                    b.Property<long>("MemorySum")
+                        .HasColumnType("bigint")
+                        .HasColumnName("memory_sum");
+
+                    b.Property<int>("PlayerSamples")
+                        .HasColumnType("integer")
+                        .HasColumnName("player_samples");
+
+                    b.Property<int?>("PlayersMax")
+                        .HasColumnType("integer")
+                        .HasColumnName("players_max");
+
+                    b.Property<long>("PlayersSum")
+                        .HasColumnType("bigint")
+                        .HasColumnName("players_sum");
+
+                    b.Property<int>("Samples")
+                        .HasColumnType("integer")
+                        .HasColumnName("samples");
+
+                    b.HasKey("ServerId", "Resolution", "At")
+                        .HasName("pk_server_metrics");
+
+                    b.HasIndex("Resolution", "At")
+                        .HasDatabaseName("ix_server_metrics_resolution_at");
+
+                    b.ToTable("server_metrics", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_server_metrics_resolution", "resolution IN (1, 60)");
+
+                            t.HasCheckConstraint("ck_server_metrics_samples", "samples > 0 AND player_samples BETWEEN 0 AND samples");
+                        });
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Nodes.Node", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2022,6 +2134,26 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_user_roles_roles_role_id_role_scope");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Metrics.NodeMetricBucket", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Nodes.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_metrics_nodes_node_id");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Metrics.ServerMetricBucket", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Servers.Server", null)
+                        .WithMany()
+                        .HasForeignKey("ServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_server_metrics_servers_server_id");
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Nodes.Node", b =>

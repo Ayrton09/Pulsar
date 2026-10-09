@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
+using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Notifications;
 using Pulsar.Application.Realtime;
@@ -53,6 +54,7 @@ public static class DependencyInjection
         services.AddSingleton<NotificationSignal>();
         services.AddSingleton<NotificationDispatcher>();
         services.AddSingleton<NodeWatch>();
+        services.AddSingleton<MetricHistory>();
         services.TryAddSingleton<IRealtimeNotifier, NoRealtimeNotifier>();
         return services;
     }

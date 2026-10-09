@@ -13,6 +13,7 @@ import { useFormatDate, useFormatGigabytes, useFormatUptime } from '../../lib/fo
 import { canOnNode, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useWatchNodes } from '../live/hooks';
+import { NodeUsageHistory } from '../metrics/UsageHistory';
 import {
   useCreateEnrollmentToken,
   useDeleteNode,
@@ -79,6 +80,7 @@ export function NodePage() {
         <MachineCard node={node} />
         <UsageCard node={node} />
       </div>
+      <NodeUsageHistory nodeId={node.id} />
       <AllocationsSection nodeId={node.id} canManage={canManage} />
       <CredentialsSection nodeId={node.id} credentials={credentials} canManage={canManageCredentials} />
       {(canManage || canManageCredentials) && (

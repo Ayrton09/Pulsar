@@ -33,8 +33,14 @@ export const adminUser: Schemas['CurrentUserResponse'] = {
 export function fakeApi(routes: Record<string, Handler>) {
   const mock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(input, init);
-    const key = `${request.method} ${new URL(request.url).pathname}`;
-    const handler = routes[key];
+    const url = new URL(request.url);
+    const key = `${request.method} ${url.pathname}`;
+    // Server and node pages show a usage history; tests about something else get an empty one.
+    const handler =
+      routes[key] ??
+      (request.method === 'GET' && /^\/api\/v1\/(servers|nodes)\/[^/]+\/metrics$/.test(url.pathname)
+        ? () => json(emptyHistory(url.searchParams.get('range')))
+        : undefined);
     if (!handler) {
       throw new Error(`Unexpected request in test: ${key}`);
     }
@@ -46,4 +52,14 @@ export function fakeApi(routes: Record<string, Handler>) {
 
 export function session(user: Schemas['CurrentUserResponse'] | null, setupRequired = false): Handler {
   return () => json({ setupRequired, user, insecureConnection: false });
+}
+
+function emptyHistory(range: string | null) {
+  return {
+    range: range ?? 'hour',
+    from: '2026-10-09T10:00:00Z',
+    to: '2026-10-09T11:00:00Z',
+    stepSeconds: 60,
+    points: [],
+  };
 }

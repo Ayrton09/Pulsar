@@ -14,6 +14,7 @@ import { BackupsTab } from '../backups/BackupsTab';
 import { FilesTab } from '../files/FilesTab';
 import { SchedulesTab } from '../schedules/SchedulesTab';
 import { useServerMetrics, useWatchServers } from '../live/hooks';
+import { ServerUsageHistory } from '../metrics/UsageHistory';
 import type { ServerMetrics, ServerQuery } from '../live/types';
 import {
   useDeleteServer,
@@ -122,6 +123,7 @@ export function ServerPage() {
               {server.runtimeState === 'running' && metrics?.query && <PlayersCard query={metrics.query} />}
               <OperationsCard operations={details.data.recentOperations} />
             </div>
+            <ServerUsageHistory serverId={server.id} />
             <AdministrationSection details={details.data} />
           </>
         )}

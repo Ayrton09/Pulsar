@@ -5,6 +5,7 @@ using Pulsar.Application.Abstractions;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Metrics;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Notifications;
 using Pulsar.Domain.Scheduling;
@@ -60,6 +61,10 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
     public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
 
     public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
+
+    internal DbSet<ServerMetricBucket> ServerMetrics => Set<ServerMetricBucket>();
+
+    internal DbSet<NodeMetricBucket> NodeMetrics => Set<NodeMetricBucket>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {

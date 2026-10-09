@@ -3365,6 +3365,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    range?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NodeMetricHistory"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/disable": {
         parameters: {
             query?: never;
@@ -5037,6 +5119,88 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/servers/{id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    range?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ServerMetricHistory"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9230,6 +9394,8 @@ export interface components {
             path: string;
             message: string;
         };
+        /** @enum {unknown} */
+        MetricRange: "hour" | "day" | "week" | "month";
         MoveFileRequest: {
             path: string;
             destination: string;
@@ -9272,6 +9438,30 @@ export interface components {
         };
         /** @enum {unknown} */
         NodeKeyStorage: "tpm" | "software";
+        NodeMetricHistory: {
+            range: components["schemas"]["MetricRange"];
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            /** Format: int32 */
+            stepSeconds: number;
+            points: components["schemas"]["NodeMetricPoint"][];
+        };
+        NodeMetricPoint: {
+            /** Format: date-time */
+            at: string;
+            /** Format: double */
+            cpuAverage: number;
+            /** Format: double */
+            cpuPeak: number;
+            /** Format: int64 */
+            memoryUsedAverage: number;
+            /** Format: int64 */
+            memoryUsedPeak: number;
+            /** Format: int64 */
+            memoryTotal: number;
+        };
         NodeMetricsView: {
             /** Format: date-time */
             at: string;
@@ -9579,6 +9769,32 @@ export interface components {
             cpuPercent: null | number;
             /** Format: int32 */
             memoryMb: null | number;
+        };
+        ServerMetricHistory: {
+            range: components["schemas"]["MetricRange"];
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            /** Format: int32 */
+            stepSeconds: number;
+            points: components["schemas"]["ServerMetricPoint"][];
+        };
+        ServerMetricPoint: {
+            /** Format: date-time */
+            at: string;
+            /** Format: double */
+            cpuAverage: number;
+            /** Format: double */
+            cpuPeak: number;
+            /** Format: int64 */
+            memoryAverage: number;
+            /** Format: int64 */
+            memoryPeak: number;
+            /** Format: double */
+            playersAverage: null | number;
+            /** Format: int32 */
+            playersPeak: null | number;
         };
         ServerPortView: {
             name: string;

@@ -1,7 +1,10 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Http;
 using Pulsar.Api.Security;
+using Pulsar.Application.Abstractions;
+using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
@@ -65,6 +68,12 @@ public static class ServerEndpoints
             .RequirePermission(Permissions.Server.Install);
         servers.MapDelete("/{id:guid}", (Guid id, ServerManagement m, CancellationToken ct) => DetailsAsync(m.DeleteAsync(new ServerId(id), ct)))
             .RequirePermission(Permissions.Server.Delete);
+        servers.MapGet("/{id:guid}/metrics", async Task<Results<Ok<ServerMetricHistory>, ProblemHttpResult, NotFound>> (Guid id, IPulsarDbContext db,
+                MetricHistory history, CancellationToken ct, string range = "hour") =>
+                MetricHistory.ParseRange(range) is not { } span ? ApiProblems.Create(StatusCodes.Status400BadRequest, "metrics.invalid_range", "The range must be hour, day, week or month.")
+                : await db.Servers.AnyAsync(s => s.Id == new ServerId(id), ct) ? TypedResults.Ok(await history.ReadServerAsync(new ServerId(id), span, ct))
+                : TypedResults.NotFound())
+            .RequirePermission(Permissions.Server.View);
         servers.MapGet("/{id:guid}/settings", async (Guid id, ServerManagement m, CancellationToken ct) => (await m.GetSettingsAsync(new ServerId(id), ct)).ToHttp())
             .RequirePermission(Permissions.Server.View);
         servers.MapPut("/{id:guid}/settings", async (Guid id, UpdateServerSettingsRequest request, ServerManagement m, CancellationToken ct) =>

@@ -3,11 +3,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Notifications;
 using Pulsar.Application.Scheduling;
 using Pulsar.Application.Servers;
 using Pulsar.Infrastructure.Identity;
+using Pulsar.Infrastructure.Metrics;
 using Pulsar.Infrastructure.Nodes;
 using Pulsar.Infrastructure.Notifications;
 using Pulsar.Infrastructure.Persistence;
@@ -74,6 +76,12 @@ public static class DependencyInjection
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
             .RemoveAllLoggers();
         services.AddHostedService<NodeWatchService>();
+        services.AddOptions<MetricHistoryOptions>().Bind(configuration.GetSection(MetricHistoryOptions.SectionName))
+            .Validate(o => o.MinuteRetention >= TimeSpan.FromDays(1) && o.HourRetention >= TimeSpan.FromDays(1),
+                "MetricHistory: MinuteRetention and HourRetention must be at least a day (the 24-hour chart reads minutes).")
+            .ValidateOnStart();
+        services.AddScoped<IMetricHistoryStore, MetricHistoryStore>();
+        services.AddHostedService<MetricHistoryService>();
 
         services.AddIdentityCore<PulsarUser>(options =>
             {

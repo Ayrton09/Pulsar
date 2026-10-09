@@ -1370,5 +1370,24 @@
     "servers_other": "{{count}} servidores",
     "copies_one": "{{count}} copia",
     "copies_other": "{{count}} copias"
+  },
+  "history": {
+    "title": "Historial de uso",
+    "range": "Período",
+    "ranges": {
+      "hour": "1 h",
+      "day": "24 h",
+      "week": "7 d",
+      "month": "30 d"
+    },
+    "empty": "Todavía no hay uso registrado en este período. Se registra mientras el servidor está en marcha.",
+    "emptyNode": "Todavía no hay uso registrado en este período. Se registra mientras el nodo está conectado.",
+    "readout": "{{time}} · promedio {{average}}, pico {{peak}}",
+    "chartLabel": "{{chart}} en el tiempo; usá las flechas para leer cada punto",
+    "tableLabel": "{{chart}} por hora",
+    "time": "Hora",
+    "average": "Promedio",
+    "peak": "Pico",
+    "playersValue": "{{value, number(maximumFractionDigits: 1)}}"
   }
 }

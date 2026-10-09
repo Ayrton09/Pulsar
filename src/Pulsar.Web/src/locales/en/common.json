@@ -1370,5 +1370,24 @@
     "servers_other": "{{count}} servers",
     "copies_one": "{{count}} copy",
     "copies_other": "{{count}} copies"
+  },
+  "history": {
+    "title": "Usage history",
+    "range": "Period",
+    "ranges": {
+      "hour": "1 h",
+      "day": "24 h",
+      "week": "7 d",
+      "month": "30 d"
+    },
+    "empty": "No usage recorded in this period yet. It is recorded while the server runs.",
+    "emptyNode": "No usage recorded in this period yet. It is recorded while the node is connected.",
+    "readout": "{{time}} · average {{average}}, peak {{peak}}",
+    "chartLabel": "{{chart}} over time; use the arrow keys to read each point",
+    "tableLabel": "{{chart}} by time",
+    "time": "Time",
+    "average": "Average",
+    "peak": "Peak",
+    "playersValue": "{{value, number(maximumFractionDigits: 1)}}"
   }
 }

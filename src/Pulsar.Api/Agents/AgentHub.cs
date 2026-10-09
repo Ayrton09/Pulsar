@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Realtime;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Realtime;
 using Pulsar.Application.Servers;
@@ -22,6 +23,7 @@ internal sealed partial class AgentHub(
     AgentServerEvents servers,
     ConsoleMirrors consoles,
     LiveMetrics liveMetrics,
+    MetricHistory history,
     FileTransfers transfers,
     IRealtimeNotifier notifier,
     IHubContext<PanelHub, IPanelClient> browsers,
@@ -154,6 +156,7 @@ internal sealed partial class AgentHub(
         }
 
         connections.UpdateMetrics(nodeId, Context.ConnectionId, metrics);
+        history.RecordNode(nodeId, metrics.CpuPercent, metrics.MemoryUsedBytes, metrics.MemoryTotalBytes);
         var update = new NodeMetricsUpdate(nodeId.Value, NodeMetricsView.From(metrics));
         await browsers.Clients.Groups(PanelHub.NodesGroup, PanelHub.NodeGroup(nodeId)).NodeMetrics(update);
         var now = clock.GetUtcNow();
@@ -240,6 +243,7 @@ internal sealed partial class AgentHub(
             var view = new ServerMetricsView(sample.ServerId, batch.At, sample.CpuPercent, sample.MemoryBytes, sample.ProcessCount, sample.Uptime.TotalSeconds,
                 ServerQueryView.From(sample.Query), sample.CommittedBytes);
             liveMetrics.Update(view);
+            history.RecordServer(new ServerId(sample.ServerId), view.CpuPercent, view.MemoryBytes, view.Query?.Players);
             await browsers.Clients.Group(PanelHub.ServerGroup(new ServerId(sample.ServerId))).ServerMetrics(view);
         }
     }

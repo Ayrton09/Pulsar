@@ -3424,6 +3424,87 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/metrics": {
+      "get": {
+        "tags": [
+          "Nodes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "range",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "hour"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeMetricHistory"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/disable": {
       "post": {
         "tags": [
@@ -5105,6 +5186,87 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ServerDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/servers/{id}/metrics": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "range",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "hour"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerMetricHistory"
                 }
               }
             }
@@ -10520,6 +10682,14 @@
           }
         }
       },
+      "MetricRange": {
+        "enum": [
+          "hour",
+          "day",
+          "week",
+          "month"
+        ]
+      },
       "MoveFileRequest": {
         "required": [
           "path",
@@ -10682,6 +10852,76 @@
           "tpm",
           "software"
         ]
+      },
+      "NodeMetricHistory": {
+        "required": [
+          "range",
+          "from",
+          "to",
+          "stepSeconds",
+          "points"
+        ],
+        "type": "object",
+        "properties": {
+          "range": {
+            "$ref": "#/components/schemas/MetricRange"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stepSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeMetricPoint"
+            }
+          }
+        }
+      },
+      "NodeMetricPoint": {
+        "required": [
+          "at",
+          "cpuAverage",
+          "cpuPeak",
+          "memoryUsedAverage",
+          "memoryUsedPeak",
+          "memoryTotal"
+        ],
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cpuAverage": {
+            "type": "number",
+            "format": "double"
+          },
+          "cpuPeak": {
+            "type": "number",
+            "format": "double"
+          },
+          "memoryUsedAverage": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memoryUsedPeak": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memoryTotal": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
       },
       "NodeMetricsView": {
         "required": [
@@ -11972,6 +12212,87 @@
             "format": "int32"
           },
           "memoryMb": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ServerMetricHistory": {
+        "required": [
+          "range",
+          "from",
+          "to",
+          "stepSeconds",
+          "points"
+        ],
+        "type": "object",
+        "properties": {
+          "range": {
+            "$ref": "#/components/schemas/MetricRange"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stepSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServerMetricPoint"
+            }
+          }
+        }
+      },
+      "ServerMetricPoint": {
+        "required": [
+          "at",
+          "cpuAverage",
+          "cpuPeak",
+          "memoryAverage",
+          "memoryPeak",
+          "playersAverage",
+          "playersPeak"
+        ],
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cpuAverage": {
+            "type": "number",
+            "format": "double"
+          },
+          "cpuPeak": {
+            "type": "number",
+            "format": "double"
+          },
+          "memoryAverage": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memoryPeak": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "playersAverage": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "playersPeak": {
             "type": [
               "null",
               "integer"

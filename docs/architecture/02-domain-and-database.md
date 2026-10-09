@@ -20,12 +20,14 @@
 | Scheduling | **ScheduledTask**, ScheduledTaskRun | Typed action + cron + IANA time zone. |
 | Notifications | **NotificationChannel**, NotificationSettings, NotificationDelivery | Where messages go (Discord webhook, email), the SMTP server, and an outbox of messages with their attempts (Phase 10). |
 | Audit | **AuditEntry** | Append-only, no foreign keys (survives deletions). |
+| Metric history | ServerMetricBucket, NodeMetricBucket | Usage per minute and per hour, written by the panel from the samples agents send (Phase 13). |
 | Settings | SystemSetting, PanelSigningKey | Configuration and the panel's signing key. |
 
 ### Volatile (panel memory, never in PostgreSQL)
 
 - `NodeConnection`: connected node, connection id, session, protocol version.
-- `LiveServerMetrics` / `LiveNodeMetrics`: last sample + a short window (~1 h at one sample per minute) for sparklines. (Phase 5 keeps the last sample only; the window arrives with sparklines.)
+- `LiveServerMetrics` / `LiveNodeMetrics`: the last sample of each running server and connected node. Longer windows come from the metric history.
+- The metric history's minute in progress (written when the minute is over, or when the panel stops).
 - `ConsoleSubscription`: how many browsers watch each server's console.
 
 When the panel restarts, all of this is rebuilt within seconds from each node's `AgentHello`.
@@ -118,6 +120,16 @@ A user creates keys for scripts and tools from their account (`/api/v1/account/a
 ### Template upgrades (Phase 12)
 
 A server keeps the template version it was created with (templates never change). When a newer version of its game's template exists (same key, a higher semantic version, a pre-release before its release, pre-releases by SemVer's rules: `beta.2` before `beta.10`), the server's details say so and `PUT /api/v1/servers/{id}/template` (`server.install`) moves a stopped server, with nothing else running on it, to that version: values of variables the new version no longer has are dropped, the others (and the new defaults) must still be valid, new required ports get an allocation, and the server is provisioned and installed again with the new manifest, its files kept (install steps such as SteamCMD only check them). Audited as `server.template_changed`. Never back to an older version.
+
+### Metric history (Phase 13)
+
+The panel keeps how servers and nodes did over time without changing the agent or the protocol. `MetricHistory` (a singleton) folds every sample the agents already send (servers every 5 s, nodes every 15 s) into one-minute buckets in memory, keyed by the **panel's** clock (a node's clock is not trusted, and buckets must line up across nodes). `MetricHistoryService` writes the buckets whose minute is over every 20 s, recomputes the hour buckets of the last three hours (the current one included) every 5 minutes, and prunes once an hour; stopping writes the minute in progress too, so a crash loses at most that minute. A write that fails keeps its buckets for the next one for up to 30 minutes.
+
+Buckets hold **sums and counts** (samples, CPU sum and peak, memory sum and peak, the samples that carried a query answer and their players' sum and peak), never averages: a minute written twice (a panel restarting within it) merges by adding (`ON CONFLICT … DO UPDATE`), and the roll-up is a plain `GROUP BY`. Players are averaged over the samples that had a query answer only, so a game that does not answer leaves them empty instead of zero. Nodes keep CPU and memory used (and the machine's memory at the last sample); disks are not kept.
+
+Retention (`MetricHistory:MinuteRetention`, `MetricHistory:HourRetention`; at least a day each): minute buckets 2 days, hour buckets 90 days. With one row per server per minute that is about 2,900 rows per server for the minutes and 2,200 for the hours. Deleting a server or a node deletes its history (cascade); samples of a server deleted meanwhile are dropped when written.
+
+Charts (`GET /servers/{id}/metrics?range=` with `server.view`, `GET /nodes/{id}/metrics?range=` with `node.view` or `node.manage`): `hour` reads minutes one by one, `day` minutes in groups of five, `week` hours, `month` hours in groups of four, grouped by PostgreSQL with `date_bin` from a UTC origin (never the session time zone). A missing point means nothing was recorded then (the server stopped, the node was away).
 
 ### Addons (Phase 12)
 
@@ -548,6 +560,25 @@ CREATE INDEX ix_audit_server ON audit_logs (server_id, occurred_at DESC) WHERE s
 CREATE INDEX ix_audit_actor  ON audit_logs (actor_user_id, occurred_at DESC) WHERE actor_user_id IS NOT NULL;
 -- Configurable retention (365 days by default). Monthly partitioning if volume requires it (post-v1).
 
+-- ===================== Metric history (Phase 13) =====================
+CREATE TABLE server_metrics (
+    server_id       uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    resolution      smallint NOT NULL CHECK (resolution IN (1, 60)),   -- minutes per bucket
+    at              timestamptz NOT NULL,                              -- start of the bucket (UTC)
+    samples         integer NOT NULL,
+    cpu_sum         double precision NOT NULL,
+    cpu_max         double precision NOT NULL,
+    memory_sum      bigint NOT NULL,
+    memory_max      bigint NOT NULL,
+    player_samples  integer NOT NULL,                                  -- samples with a query answer
+    players_sum     bigint NOT NULL,
+    players_max     integer,
+    PRIMARY KEY (server_id, resolution, at),
+    CHECK (samples > 0 AND player_samples BETWEEN 0 AND samples)
+);
+CREATE INDEX ix_server_metrics_resolution_at ON server_metrics (resolution, at);  -- pruning
+-- node_metrics: the same per node, with memory_used_sum/max and memory_total instead of memory and players.
+
 -- ===================== Settings =====================
 CREATE TABLE system_settings (
     key         varchar(128) PRIMARY KEY,
@@ -569,7 +600,7 @@ CREATE TABLE panel_signing_keys (
 
 ### What is deliberately NOT in PostgreSQL
 
-- Per-second metrics (memory only; aggregated history is post-v1).
+- Individual samples (memory only; the metric history keeps one-minute and one-hour aggregates).
 - Console output (ring buffers and rotated log files on the node).
 - Backup archives (on the node).
 - MySQL/MariaDB databases for games: a future, independent module (`GameDatabases`) with its own *metadata* tables (host, user, assigned server). Game data never touches Pulsar's database.
