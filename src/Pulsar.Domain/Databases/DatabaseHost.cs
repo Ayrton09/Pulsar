@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using Pulsar.Domain.Common;
 
@@ -62,12 +64,19 @@ public sealed partial class DatabaseHost
     /// <summary>The nodes whose servers may use it; empty: every node.</summary>
     public List<Guid> NodeIds { get; private set; }
 
+    /// <summary>
+    /// The panel refuses to connect without TLS. Off: TLS when the server offers it, plain text otherwise (and the
+    /// account's password with it). Neither checks the server's certificate.
+    /// </summary>
+    public bool RequireTls { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    /// <param name="requireTls">Null: required unless <paramref name="host"/> is on this machine or a private network.</param>
     public static Result<DatabaseHost> Create(string name, string host, int port, string userName, byte[]? passwordProtected, string? serverAddress,
-        int? serverPort, string? userHost, IReadOnlyCollection<Guid> nodeIds, DateTimeOffset now)
+        int? serverPort, string? userHost, IReadOnlyCollection<Guid> nodeIds, DateTimeOffset now, bool? requireTls = null)
     {
         if (passwordProtected is null)
         {
@@ -75,13 +84,17 @@ public sealed partial class DatabaseHost
         }
 
         var created = new DatabaseHost(now);
-        var set = created.Change(name, host, port, userName, passwordProtected, serverAddress, serverPort, userHost, nodeIds, now);
+        var set = created.Change(name, host, port, userName, passwordProtected, serverAddress, serverPort, userHost, nodeIds, now,
+            requireTls ?? !IsLocalAddress(host?.Trim() ?? string.Empty));
         return set.IsSuccess ? created : set.Error!;
     }
 
-    /// <summary>Replaces the settings; a null <paramref name="passwordProtected"/> keeps the current password.</summary>
+    /// <summary>
+    /// Replaces the settings; a null <paramref name="passwordProtected"/> keeps the current password, a null
+    /// <paramref name="requireTls"/> the current choice.
+    /// </summary>
     public Result Change(string name, string host, int port, string userName, byte[]? passwordProtected, string? serverAddress, int? serverPort,
-        string? userHost, IReadOnlyCollection<Guid> nodeIds, DateTimeOffset now)
+        string? userHost, IReadOnlyCollection<Guid> nodeIds, DateTimeOffset now, bool? requireTls = null)
     {
         ArgumentNullException.ThrowIfNull(nodeIds);
         var trimmed = name?.Trim() ?? string.Empty;
@@ -127,6 +140,7 @@ public sealed partial class DatabaseHost
         ServerPort = serverPort;
         UserHost = from;
         NodeIds = [.. nodeIds.Distinct()];
+        RequireTls = requireTls ?? RequireTls;
         UpdatedAt = now;
         return Result.Success();
     }
@@ -141,6 +155,42 @@ public sealed partial class DatabaseHost
     public static bool IsAddress(string value) =>
         value.Length is > 0 and <= MaxHostLength
         && (Uri.CheckHostName(value) is UriHostNameType.Dns or UriHostNameType.IPv4 or UriHostNameType.IPv6);
+
+    /// <summary>
+    /// <c>localhost</c>, or a loopback, private (10/8, 172.16/12, 192.168/16, fc00::/7), or link-local address: where a
+    /// home or LAN setup keeps its database, often without TLS. Host names other than localhost are not resolved.
+    /// </summary>
+    public static bool IsLocalAddress(string value)
+    {
+        if (string.Equals(value, "localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!IPAddress.TryParse(value, out var address))
+        {
+            return false;
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (IPAddress.IsLoopback(address))
+        {
+            return true;
+        }
+
+        if (address.AddressFamily == AddressFamily.InterNetwork)
+        {
+            var bytes = address.GetAddressBytes();
+            return bytes[0] == 10 || (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) || (bytes[0] == 192 && bytes[1] == 168)
+                || (bytes[0] == 169 && bytes[1] == 254);
+        }
+
+        return address.IsIPv6UniqueLocal || address.IsIPv6LinkLocal;
+    }
 
     // %, an IPv4 or IPv6 address or pattern, or a host name: letters, digits, dots, colons, hyphens, % and _ only.
     [GeneratedRegex("^[A-Za-z0-9.:%_-]{1,255}$", RegexOptions.CultureInvariant)]
@@ -175,9 +225,15 @@ public static class DatabaseErrors
     public static DomainError HostPasswordUnreadable { get; } =
         new("database_host.password_unreadable", "The host's password cannot be read with this panel's keys: set it again.");
 
+    public static DomainError HostNameTaken { get; } = new("database_host.name_taken", "Another database host already has this name.");
+
     /// <summary>The host did not answer, or refused what the panel asked (<paramref name="reason"/> is what it said).</summary>
     public static DomainError Unreachable(string reason) =>
         new("database_host.unreachable", $"The panel could not work with the database host: {reason}");
+
+    /// <summary>The same for a server's databases: what the host said stays in the panel's log.</summary>
+    public static DomainError HostUnreachable { get; } =
+        new("database.host_unreachable", "The panel could not work with the database host. An administrator finds why in the panel's log.");
 
     public static DomainError NotFound { get; } = new("database.not_found", "The database does not exist.");
 

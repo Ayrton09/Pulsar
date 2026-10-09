@@ -8,7 +8,13 @@ import { Alert, PageHeader, Table, Td, Th } from '../../components/ui/Display';
 import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useNodes } from '../nodes/api';
-import { useDatabaseHosts, useDatabaseHostsChanged, type DatabaseHost, type DatabaseHostRequest } from './api';
+import {
+  isLocalAddress,
+  useDatabaseHosts,
+  useDatabaseHostsChanged,
+  type DatabaseHost,
+  type DatabaseHostRequest,
+} from './api';
 
 /** MySQL/MariaDB servers game databases are created on (settings.manage); servers create theirs in their Databases tab. */
 export function DatabaseHostsPage() {
@@ -63,6 +69,7 @@ export function DatabaseHostsPage() {
                       })}
                     </p>
                   )}
+                  {host.requireTls && <p className="text-xs text-muted">{t('databaseHosts.tlsRequired')}</p>}
                 </Td>
                 <Td>
                   <p>{t('databaseHosts.databases', { count: host.databases })}</p>
@@ -121,6 +128,8 @@ function HostDialog({ host, onClose }: { host: DatabaseHost | null; onClose: () 
   const [serverPort, setServerPort] = useState(host?.serverPort?.toString() ?? '');
   const [userHost, setUserHost] = useState(host?.userHost ?? '%');
   const [nodeIds, setNodeIds] = useState<string[]>(host?.nodeIds ?? []);
+  // Untouched on a new host: the panel's default, shown as the address is typed.
+  const [requireTls, setRequireTls] = useState<boolean | null>(host ? host.requireTls : null);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -134,6 +143,7 @@ function HostDialog({ host, onClose }: { host: DatabaseHost | null; onClose: () 
       serverPort: serverPort.trim() === '' ? null : Number(serverPort),
       userHost: userHost.trim() || null,
       nodeIds,
+      requireTls,
     });
   };
 
@@ -212,6 +222,17 @@ function HostDialog({ host, onClose }: { host: DatabaseHost | null; onClose: () 
         <Field label={t('databaseHosts.userHost')} hint={t('databaseHosts.userHostHint')}>
           {(control) => <Input {...control} value={userHost} onChange={(e) => setUserHost(e.target.value)} />}
         </Field>
+        <div className="space-y-1">
+          <Checkbox
+            label={t('databaseHosts.requireTls')}
+            aria-describedby="database-host-tls-hint"
+            checked={requireTls ?? (address.trim() !== '' && !isLocalAddress(address))}
+            onChange={(e) => setRequireTls(e.target.checked)}
+          />
+          <p id="database-host-tls-hint" className="text-xs text-muted">
+            {t('databaseHosts.requireTlsHint')}
+          </p>
+        </div>
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">{t('databaseHosts.nodes')}</legend>
           <p className="text-xs text-muted">{t('databaseHosts.nodesHint')}</p>

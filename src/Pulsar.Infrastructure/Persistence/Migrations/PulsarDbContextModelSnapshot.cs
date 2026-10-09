@@ -495,6 +495,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("port");
 
+                    b.Property<bool>("RequireTls")
+                        .HasColumnType("boolean")
+                        .HasColumnName("require_tls");
+
                     b.Property<string>("ServerAddress")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")

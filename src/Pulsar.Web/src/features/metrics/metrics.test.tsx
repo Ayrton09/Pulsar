@@ -152,6 +152,66 @@ describe('usage history', () => {
   });
 });
 
+describe('node usage history', () => {
+  const nodeId = '0192f1a0-0000-7000-8000-0000000000a1';
+  const node: Schemas['NodeSummary'] = {
+    id: nodeId,
+    name: 'Buenos Aires 1',
+    description: null,
+    publicHost: null,
+    status: 'active',
+    connected: true,
+    lastSeenAt: '2026-10-09T10:00:00Z',
+    inventory: null,
+    metrics: null,
+    createdAt: '2026-09-01T12:00:00Z',
+    panelKeyTrust: 'current',
+  };
+  const nodeViewer = { ...adminUser, permissions: ['node.view'] };
+
+  function nodePoint(at: string, cpu: number, usedGb: number): Schemas['NodeMetricPoint'] {
+    return {
+      at,
+      cpuAverage: cpu,
+      cpuPeak: cpu * 2,
+      memoryUsedAverage: usedGb * 1024 ** 3,
+      memoryUsedPeak: (usedGb + 1) * 1024 ** 3,
+      memoryTotal: 64 * 1024 ** 3,
+    };
+  }
+
+  function renderNode(points: Schemas['NodeMetricPoint'][]) {
+    fakeApi({
+      'GET /api/v1/auth/session': session(nodeViewer),
+      [`GET /api/v1/nodes/${nodeId}`]: () => json({ node, credentials: [] }),
+      [`GET /api/v1/nodes/${nodeId}/allocations`]: () => json([]),
+      [`GET /api/v1/nodes/${nodeId}/metrics`]: () =>
+        json({ range: 'hour', from: '2026-10-09T10:00:00Z', to: '2026-10-09T11:00:00Z', stepSeconds: 60, points }),
+    });
+    renderAt(`/nodes/${nodeId}`);
+  }
+
+  it('charts CPU and memory, with the machine’s whole memory as the top', async () => {
+    renderNode([nodePoint('2026-10-09T10:00:00Z', 10, 12), nodePoint('2026-10-09T10:01:00Z', 30, 16)]);
+
+    await screen.findByRole('group', { name: /^CPU over time/ });
+    const memory = within(historyCard()).getByRole('group', { name: /^Memory over time/ });
+    // 64 GB, not a round number above 16 GB.
+    const axis = (memory.closest('figure') as HTMLElement).querySelector('.flex-col') as HTMLElement;
+    expect(axis).toHaveTextContent(/^64 GB32 GB0 GB$/);
+    expect(within(historyCard()).getByRole('table', { name: 'CPU by time' })).toHaveTextContent('30 %');
+  });
+
+  it('says when nothing was recorded', async () => {
+    renderNode([]);
+
+    expect(
+      await screen.findByText('No usage recorded in this period yet. It is recorded while the node is connected.'),
+    ).toBeInTheDocument();
+    expect(within(historyCard()).queryByRole('group', { name: /over time/ })).not.toBeInTheDocument();
+  });
+});
+
 describe('chart math', () => {
   it('rounds the axis up to 1, 2, 2.5 or 5 times a power of ten', () => {
     expect([0, 0.3, 1, 1.2, 2.2, 4, 7, 99, 101].map(niceMax)).toEqual([1, 0.5, 1, 2, 2.5, 5, 10, 100, 200]);

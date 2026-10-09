@@ -6,7 +6,7 @@ namespace Pulsar.Infrastructure.Metrics;
 
 /// <summary>
 /// Writes <see cref="MetricHistory"/>'s finished minutes every <see cref="Interval"/>, rolls the last hours up every few
-/// minutes and prunes once an hour. Stopping writes the minute in progress too.
+/// minutes and prunes once an hour. Stopping writes the minute in progress too, and rolls the last hours up.
 /// </summary>
 internal sealed partial class MetricHistoryService(MetricHistory history, TimeProvider clock, ILogger<MetricHistoryService> logger) : BackgroundService
 {
@@ -66,7 +66,15 @@ internal sealed partial class MetricHistoryService(MetricHistory history, TimePr
         deadline.CancelAfter(s_finalFlushBudget);
         try
         {
-            await history.FlushAsync(includeCurrentMinute: true, deadline.Token);
+            // Into their hour too: the next start may be too late for its first roll-up to reach them.
+            if (await history.FlushAsync(includeCurrentMinute: true, deadline.Token))
+            {
+                await history.RollUpAsync(deadline.Token);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // The host disposed its services without waiting for this (test hosts do): nothing more can be written.
         }
         catch (Exception ex)
         {

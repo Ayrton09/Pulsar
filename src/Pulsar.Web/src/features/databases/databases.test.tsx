@@ -210,6 +210,7 @@ describe('database hosts page', () => {
             serverPort: null,
             userHost: '%',
             nodeIds: [],
+            requireTls: false,
             databases: 0,
             createdAt: '2026-10-09T12:00:00Z',
             updatedAt: '2026-10-09T12:00:00Z',
@@ -244,10 +245,60 @@ describe('database hosts page', () => {
         serverPort: null,
         userHost: '%',
         nodeIds: [],
+        requireTls: null,
       },
     ]);
 
     await user.click(within(table).getByRole('button', { name: 'Test' }));
     expect(await screen.findByText('Connected: 12.3.3-MariaDB.')).toBeInTheDocument();
+  });
+
+  it('requires TLS by default outside the local network, and sends a choice made', async () => {
+    const bodies: unknown[] = [];
+    const host: Schemas['DatabaseHostView'] = {
+      id: hostId,
+      name: 'Cloud MySQL',
+      host: 'db.example.com',
+      port: 3306,
+      userName: 'pulsar',
+      serverAddress: null,
+      serverPort: null,
+      userHost: '%',
+      nodeIds: [],
+      requireTls: true,
+      databases: 0,
+      createdAt: '2026-10-09T12:00:00Z',
+      updatedAt: '2026-10-09T12:00:00Z',
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['settings.manage'] }),
+      'GET /api/v1/nodes': () => json([]),
+      'GET /api/v1/database-hosts': () => json({ hosts: [host] }),
+      [`PUT /api/v1/database-hosts/${hostId}`]: async (request) => {
+        bodies.push(await request.json());
+        return json(host);
+      },
+    });
+    renderAt('/admin/database-hosts');
+    const user = userEvent.setup();
+
+    expect(await screen.findByRole('table', { name: 'Database hosts' })).toHaveTextContent('TLS required');
+    await user.click(screen.getByRole('button', { name: 'Add database host' }));
+    let dialog = screen.getByRole('dialog', { name: 'Add database host' });
+    const tls = within(dialog).getByRole('checkbox', { name: 'Require TLS' });
+    expect(tls).not.toBeChecked();
+    await user.type(within(dialog).getByLabelText('Address'), 'db.example.com');
+    expect(tls).toBeChecked();
+    await user.clear(within(dialog).getByLabelText('Address'));
+    await user.type(within(dialog).getByLabelText('Address'), '192.168.1.20');
+    expect(tls).not.toBeChecked();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    dialog = screen.getByRole('dialog', { name: 'Edit database host' });
+    expect(within(dialog).getByRole('checkbox', { name: 'Require TLS' })).toBeChecked();
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Require TLS' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await vi.waitFor(() => expect(bodies).toMatchObject([{ host: 'db.example.com', requireTls: false }]));
   });
 });

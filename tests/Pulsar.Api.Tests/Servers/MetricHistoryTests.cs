@@ -1,13 +1,17 @@
+using System.Data.Common;
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Pulsar.Api.Tests.Infrastructure;
+using Pulsar.Application.Abstractions;
 using Pulsar.Application.Metrics;
 using Pulsar.Contracts;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Metrics;
 using Pulsar.Domain.Servers;
 
 namespace Pulsar.Api.Tests.Servers;
@@ -137,6 +141,89 @@ public sealed class MetricHistoryTests(PulsarApiFactory factory) : IClassFixture
     }
 
     [DatabaseFact]
+    public async Task AWriteKeepsAllItsBucketsOrNone()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "atomic");
+        var server = new ServerId(await InstalledServerAsync(admin, agent, "history-atomic"));
+        var node = new NodeId(agent.Config!.NodeId);
+        var minute = s_start.AddHours(10);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var store = scope.ServiceProvider.GetRequiredService<IMetricHistoryStore>();
+        var full = new NodeMetricBucket(node, MetricResolution.Minute, minute) { Samples = 1, MemoryUsedSum = long.MaxValue, MemoryUsedMax = 1, MemoryTotal = 1 };
+        await store.AddAsync([], [full], Ct);
+
+        // The node's statement fails after the server's ran (its sum leaves bigint): the server's samples are not kept
+        // either, so the retry that follows adds them once.
+        var bucket = new ServerMetricBucket(server, MetricResolution.Minute, minute) { Samples = 1, CpuSum = 10, CpuMax = 10, MemorySum = 100, MemoryMax = 100 };
+        await Assert.ThrowsAnyAsync<DbException>(() => store.AddAsync([bucket], [full], Ct));
+        await store.AddAsync([bucket], [], Ct);
+
+        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+        Assert.Equal(1, await db.Database.SqlQuery<int>($"""
+            SELECT samples AS "Value" FROM server_metrics WHERE server_id = {server.Value} AND resolution = 1
+            """).SingleAsync(Ct));
+    }
+
+    [DatabaseFact]
+    public async Task MinutesWrittenBeforeAStopReachTheirHourAfterTheNextStart()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "restart");
+        var server = new ServerId(await InstalledServerAsync(admin, agent, "history-restart"));
+        var stopped = NewHistory(new FakeTimeProvider(s_start.AddHours(2).AddSeconds(5)));
+        stopped.RecordServer(server, 40, 400, null);
+        await stopped.FlushAsync(includeCurrentMinute: true, Ct);
+
+        // The panel starts again five hours later: its first roll-up reaches back past the usual three hours.
+        var started = NewHistory(new FakeTimeProvider(s_start.AddHours(7)));
+        await started.RollUpAsync(Ct);
+        var hour = Assert.Single((await started.ReadServerAsync(server, MetricRange.Week, Ct)).Points);
+        Assert.Equal(s_start.AddHours(2), hour.At);
+        Assert.Equal(40, hour.CpuAverage, 3);
+    }
+
+    [DatabaseFact]
+    public async Task ImpossibleMemoryIsCappedRatherThanBreakingTheWrites()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "huge");
+        var server = new ServerId(await InstalledServerAsync(admin, agent, "history-huge"));
+        var node = new NodeId(agent.Config!.NodeId);
+        var history = NewHistory(new FakeTimeProvider(s_start.AddHours(11).AddSeconds(5)));
+
+        // A buggy or hostile agent: two samples of the same minute, written apart (merged by the database).
+        for (var i = 0; i < 2; i++)
+        {
+            history.RecordServer(server, 10, long.MaxValue, null);
+            history.RecordServer(server, 10, long.MaxValue, null);
+            history.RecordNode(node, 10, long.MaxValue, long.MaxValue);
+            await history.FlushAsync(includeCurrentMinute: true, Ct);
+        }
+
+        await history.RollUpAsync(Ct);
+        var point = Assert.Single((await history.ReadServerAsync(server, MetricRange.Hour, Ct)).Points);
+        Assert.Equal(MetricHistory.MaxMemoryBytes, point.MemoryAverage);
+        Assert.Equal(MetricHistory.MaxMemoryBytes, point.MemoryPeak);
+        var nodePoint = Assert.Single((await history.ReadNodeAsync(node, MetricRange.Week, Ct)).Points);
+        Assert.Equal(MetricHistory.MaxMemoryBytes, nodePoint.MemoryUsedPeak);
+        Assert.Equal(MetricHistory.MaxMemoryBytes, nodePoint.MemoryTotal);
+
+        // A flood of samples: a minute keeps as many as it may.
+        var flooded = new ServerId(await InstalledServerAsync(admin, agent, "history-flood"));
+        for (var i = 0; i < MetricHistory.MaxSamplesPerMinute + 100; i++)
+        {
+            history.RecordServer(flooded, 10, long.MaxValue, null);
+        }
+
+        await history.FlushAsync(includeCurrentMinute: true, Ct);
+        await using var scope = factory.Services.CreateAsyncScope();
+        Assert.Equal(MetricHistory.MaxSamplesPerMinute, await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Database.SqlQuery<int>($"""
+            SELECT samples AS "Value" FROM server_metrics WHERE server_id = {flooded.Value} AND resolution = 1
+            """).SingleAsync(Ct));
+    }
+
+    [DatabaseFact]
     public async Task ARunningServersUsageReachesItsChartForThoseWhoMaySeeIt()
     {
         var scenario = await AccessScenario.CreateAsync(factory);
@@ -162,7 +249,17 @@ public sealed class MetricHistoryTests(PulsarApiFactory factory) : IClassFixture
         Assert.Equal(300, nodeChart!.StepSeconds);
 
         Assert.Equal(HttpStatusCode.BadRequest, (await admin.Http.GetAsync($"/api/v1/servers/{server}/metrics?range=year", Ct)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await admin.Http.GetAsync($"/api/v1/servers/{Guid.CreateVersion7()}/metrics", Ct)).StatusCode);
+        using (var missing = await admin.Http.GetAsync($"/api/v1/servers/{Guid.CreateVersion7()}/metrics", Ct))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+            Assert.Contains("server.not_found", await missing.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        using (var missing = await admin.Http.GetAsync($"/api/v1/nodes/{Guid.CreateVersion7()}/metrics", Ct))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+            Assert.Contains("node.not_found", await missing.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
 
         // Seeing the server is what reading its chart takes.
         using var stranger = await scenario.SignedInWithAsync("history-stranger");

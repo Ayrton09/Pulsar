@@ -84,6 +84,7 @@ public static class AuditActions
         public const string DatabaseCreated = "server.database_created";
         public const string DatabaseDeleted = "server.database_deleted";
         public const string DatabasePasswordRotated = "server.database_password_rotated";
+        public const string DatabasePasswordViewed = "server.database_password_viewed";
         public const string BackupStorageChanged = "server.backup_storage_changed";
         public const string ScheduleCreated = "server.schedule_created";
         public const string ScheduleChanged = "server.schedule_changed";

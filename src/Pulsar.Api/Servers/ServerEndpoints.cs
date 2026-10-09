@@ -54,9 +54,9 @@ public sealed record SteamAccountRequest(
 /// <param name="TemplateId">A newer version of the server's game template.</param>
 public sealed record UpgradeTemplateRequest(Guid TemplateId);
 
-/// <param name="CpuPercent">Share of the node's CPU, 1–100; null: no cap.</param>
+/// <param name="CpuPercent">Share of the node's CPU, 1–100; null: no cap. Both caps are replaced by every request.</param>
 /// <param name="MemoryMb">Memory the server's processes may commit, in MiB; null: no cap.</param>
-/// <param name="Databases">How many databases the server may have; null keeps the current limit.</param>
+/// <param name="Databases">How many databases the server may have, 0–50; null or left out keeps the current limit.</param>
 public sealed record ServerLimitsRequest(
     [property: Range(1, 100)] int? CpuPercent,
     [property: Range(Server.MinMemoryLimitMb, Server.MaxMemoryLimitMb)] int? MemoryMb,
@@ -90,11 +90,11 @@ public static class ServerEndpoints
             .RequirePermission(Permissions.Server.Install);
         servers.MapDelete("/{id:guid}", (Guid id, ServerManagement m, CancellationToken ct) => DetailsAsync(m.DeleteAsync(new ServerId(id), ct)))
             .RequirePermission(Permissions.Server.Delete);
-        servers.MapGet("/{id:guid}/metrics", async Task<Results<Ok<ServerMetricHistory>, ProblemHttpResult, NotFound>> (Guid id, IPulsarDbContext db,
+        servers.MapGet("/{id:guid}/metrics", async Task<Results<Ok<ServerMetricHistory>, ProblemHttpResult>> (Guid id, IPulsarDbContext db,
                 MetricHistory history, CancellationToken ct, string range = "hour") =>
                 MetricHistory.ParseRange(range) is not { } span ? ApiProblems.Create(StatusCodes.Status400BadRequest, "metrics.invalid_range", "The range must be hour, day, week or month.")
                 : await db.Servers.AnyAsync(s => s.Id == new ServerId(id), ct) ? TypedResults.Ok(await history.ReadServerAsync(new ServerId(id), span, ct))
-                : TypedResults.NotFound())
+                : ApiProblems.FromDomainError(ServerErrors.NotFound))
             .RequirePermission(Permissions.Server.View);
         servers.MapGet("/{id:guid}/settings", async (Guid id, ServerManagement m, CancellationToken ct) => (await m.GetSettingsAsync(new ServerId(id), ct)).ToHttp())
             .RequirePermission(Permissions.Server.View);

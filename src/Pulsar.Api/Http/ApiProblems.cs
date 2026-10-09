@@ -36,7 +36,7 @@ public static class ApiProblems
             or "backups.unsupported" or "server.limits_unsupported" or "backups.not_completed" or "backups.locked" or "backups.in_use" or "backups.corrupt"
             or "api_key.too_many" or "addon.unsupported" or "addon.requires" or "addon.conflicts" or "addon.required_by"
             or "schedules.too_many" or "notifications.too_many" or "backup_storage.in_use" or "backup_storage.too_many"
-            or "database_host.in_use" or "database_host.too_many" or "database.name_taken" or "database.limit_reached"
+            or "database_host.in_use" or "database_host.too_many" or "database_host.name_taken" or "database.name_taken" or "database.limit_reached"
             or "steam_account.in_use" or "steam_account.too_many" or "steam_account.unsupported" or "steamcmd.account_required"
             => StatusCodes.Status409Conflict,
         "files.changed" => StatusCodes.Status412PreconditionFailed,
@@ -44,7 +44,8 @@ public static class ApiProblems
         "files.too_large" => StatusCodes.Status413PayloadTooLarge,
         "files.length_required" => StatusCodes.Status411LengthRequired,
         "files.disk_full" => StatusCodes.Status507InsufficientStorage,
-        "files.transfer_failed" or "files.failed" or "workshop.unavailable" or "database_host.unreachable" => StatusCodes.Status502BadGateway,
+        "files.transfer_failed" or "files.failed" or "workshop.unavailable" or "database_host.unreachable" or "database.host_unreachable"
+            => StatusCodes.Status502BadGateway,
         _ => StatusCodes.Status400BadRequest,
     };
 

@@ -73,6 +73,25 @@ export function useDeleteDatabase(serverId: string) {
   });
 }
 
+/**
+ * Whether the panel leaves TLS optional for a new host at this address by default (DatabaseHost.IsLocalAddress):
+ * localhost, loopback, private and link-local addresses. Host names other than localhost count as remote.
+ */
+export function isLocalAddress(address: string): boolean {
+  const value = address.trim().toLowerCase();
+  if (value === 'localhost' || value === '::1') {
+    return true;
+  }
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(value);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return (
+      a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254)
+    );
+  }
+  return /^f[cd][0-9a-f]{2}:/.test(value) || /^fe[89ab][0-9a-f]:/.test(value);
+}
+
 export function useDatabaseHosts() {
   return useQuery({ queryKey: databaseKeys.hosts, queryFn: () => unwrap(api.GET('/api/v1/database-hosts')) });
 }

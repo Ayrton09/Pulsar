@@ -369,6 +369,38 @@ describe('a game server page', () => {
     expect(body).toEqual({ cpuPercent: 25, memoryMb: 2048, databases: 4 });
   });
 
+  it('keeps the database limit when its field is empty and checks it before saving', async () => {
+    const bodies: unknown[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...operator,
+        permissions: [...operator.permissions, 'server.limits.edit'],
+      }),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/settings`]: () =>
+        json({ variables: [], extraArguments: [], allowExtraArguments: false, autoStart: false, restartOnCrash: true }),
+      [`PUT /api/v1/servers/${serverId}/limits`]: async (request) => {
+        bodies.push(await request.json());
+        return json(details());
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=settings`);
+    const user = userEvent.setup();
+    const resources = await screen.findByRole('region', { name: 'Resources' });
+
+    await user.clear(screen.getByLabelText('Databases'));
+    await user.type(screen.getByLabelText('Databases'), '51');
+    await user.click(within(resources).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('From 0 to 50.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Databases')).toHaveAttribute('aria-invalid', 'true');
+    expect(bodies).toEqual([]);
+
+    await user.clear(screen.getByLabelText('Databases'));
+    await user.click(within(resources).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Limits saved.')).toBeInTheDocument();
+    expect(bodies).toEqual([{ cpuPercent: null, memoryMb: null }]);
+  });
+
   it('moves a stopped server to a newer version of its template', async () => {
     let body: unknown;
     const newer = '0192f1a0-0000-7000-8000-0000000000f3';

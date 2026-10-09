@@ -67,12 +67,23 @@ public interface IMetricHistoryStore
 /// </summary>
 public sealed class MetricHistory(IServiceScopeFactory scopes, TimeProvider clock, IOptions<MetricHistoryOptions> options)
 {
+    /// <summary>
+    /// Memory beyond this (64 TiB) is counted as this, and a minute keeps at most <see cref="MaxSamplesPerMinute"/>
+    /// samples (agents send one every 5 or 15 s): a buggy or hostile agent sending long.MaxValue, or flooding samples,
+    /// would otherwise overflow the sums (bigint) and fail every write. An hour of full minutes, each written up
+    /// to three times (restarts), still fits.
+    /// </summary>
+    public const long MaxMemoryBytes = 1L << 46;
+
+    public const int MaxSamplesPerMinute = 600;
+
     /// <summary>Buckets a failed write keeps for the next one; older ones are given up.</summary>
     private static readonly TimeSpan s_keepUnwritten = TimeSpan.FromMinutes(30);
 
     private readonly Lock _lock = new();
     private readonly Dictionary<(ServerId, DateTimeOffset), ServerMetricBucket> _servers = [];
     private readonly Dictionary<(NodeId, DateTimeOffset), NodeMetricBucket> _nodes = [];
+    private bool _rolledUp;
 
     public MetricHistoryOptions Options => options.Value;
 
@@ -80,13 +91,17 @@ public sealed class MetricHistory(IServiceScopeFactory scopes, TimeProvider cloc
     {
         var minute = MinuteOf(clock.GetUtcNow());
         var cpu = double.IsFinite(cpuPercent) ? Math.Clamp(cpuPercent, 0, 100) : 0;
-        var memory = Math.Max(0, memoryBytes);
+        var memory = Math.Clamp(memoryBytes, 0, MaxMemoryBytes);
         lock (_lock)
         {
             if (!_servers.TryGetValue((server, minute), out var bucket))
             {
                 bucket = new ServerMetricBucket(server, MetricResolution.Minute, minute);
                 _servers.Add((server, minute), bucket);
+            }
+            else if (bucket.Samples >= MaxSamplesPerMinute)
+            {
+                return;
             }
 
             bucket.Samples++;
@@ -108,7 +123,7 @@ public sealed class MetricHistory(IServiceScopeFactory scopes, TimeProvider cloc
     {
         var minute = MinuteOf(clock.GetUtcNow());
         var cpu = double.IsFinite(cpuPercent) ? Math.Clamp(cpuPercent, 0, 100) : 0;
-        var used = Math.Max(0, memoryUsedBytes);
+        var used = Math.Clamp(memoryUsedBytes, 0, MaxMemoryBytes);
         lock (_lock)
         {
             if (!_nodes.TryGetValue((node, minute), out var bucket))
@@ -116,18 +131,23 @@ public sealed class MetricHistory(IServiceScopeFactory scopes, TimeProvider cloc
                 bucket = new NodeMetricBucket(node, MetricResolution.Minute, minute);
                 _nodes.Add((node, minute), bucket);
             }
+            else if (bucket.Samples >= MaxSamplesPerMinute)
+            {
+                return;
+            }
 
             bucket.Samples++;
             bucket.CpuSum += cpu;
             bucket.CpuMax = Math.Max(bucket.CpuMax, cpu);
             bucket.MemoryUsedSum += used;
             bucket.MemoryUsedMax = Math.Max(bucket.MemoryUsedMax, used);
-            bucket.MemoryTotal = Math.Max(0, memoryTotalBytes);
+            bucket.MemoryTotal = Math.Clamp(memoryTotalBytes, 0, MaxMemoryBytes);
         }
     }
 
     /// <summary>Writes the buckets whose minute is over, or all of them (the panel stopping).</summary>
-    public async Task FlushAsync(bool includeCurrentMinute, CancellationToken cancellationToken)
+    /// <returns>Whether there was anything to write.</returns>
+    public async Task<bool> FlushAsync(bool includeCurrentMinute, CancellationToken cancellationToken)
     {
         var current = MinuteOf(clock.GetUtcNow());
         List<ServerMetricBucket> servers;
@@ -149,7 +169,7 @@ public sealed class MetricHistory(IServiceScopeFactory scopes, TimeProvider cloc
 
         if (servers.Count == 0 && nodes.Count == 0)
         {
-            return;
+            return false;
         }
 
         try
@@ -162,14 +182,24 @@ public sealed class MetricHistory(IServiceScopeFactory scopes, TimeProvider cloc
             Restore(servers, nodes, current - s_keepUnwritten);
             throw;
         }
+
+        return true;
     }
 
-    /// <summary>Recomputes the hour buckets of the last hours, the current one included (it grows until it is over).</summary>
+    /// <summary>
+    /// Recomputes the hour buckets of the last hours, the current one included (it grows until it is over). The first
+    /// one since the panel started reaches back to every hour whose minutes are all still kept: minutes written
+    /// before the panel stopped (or crashed) and not rolled up yet then reach their hour, however long it was down
+    /// (within the minute retention). An hour some of whose minutes were pruned is never recomputed from the rest.
+    /// </summary>
     public async Task RollUpAsync(CancellationToken cancellationToken)
     {
-        var hour = HourOf(clock.GetUtcNow());
+        var now = clock.GetUtcNow();
+        var hour = HourOf(now);
+        var start = Volatile.Read(ref _rolledUp) ? hour.AddHours(-3) : HourOf(now - Options.MinuteRetention).AddHours(1);
         await using var scope = scopes.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<IMetricHistoryStore>().RollUpAsync(hour.AddHours(-3), hour.AddHours(1), cancellationToken);
+        await scope.ServiceProvider.GetRequiredService<IMetricHistoryStore>().RollUpAsync(start, hour.AddHours(1), cancellationToken);
+        Volatile.Write(ref _rolledUp, true);
     }
 
     public async Task PruneAsync(CancellationToken cancellationToken)

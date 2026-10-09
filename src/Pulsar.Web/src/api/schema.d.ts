@@ -10596,6 +10596,7 @@ export interface components {
             serverPort: null | number;
             userHost: null | string;
             nodeIds: null | string[];
+            requireTls?: null | boolean;
         };
         DatabaseHostView: {
             /** Format: uuid */
@@ -10610,6 +10611,7 @@ export interface components {
             serverPort: null | number;
             userHost: string;
             nodeIds: string[];
+            requireTls: boolean;
             /** Format: int32 */
             databases: number;
             /** Format: date-time */

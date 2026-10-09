@@ -7,7 +7,8 @@ namespace Pulsar.Infrastructure.Databases;
 /// <summary>
 /// MySQL/MariaDB through MySqlConnector. DDL takes no parameters, so every name, user host and password is checked
 /// against a strict pattern here (whatever the caller checked before) and only then quoted into the statement. Each
-/// call opens its own connection (no pool: hosts are few and calls rare) with TLS when the server offers it.
+/// call opens its own connection (no pool: hosts are few and calls rare) with TLS when the server offers it, or only
+/// with TLS when the host requires it.
 /// </summary>
 internal sealed partial class MySqlDatabaseHostClient : IDatabaseHostClient
 {
@@ -25,24 +26,28 @@ internal sealed partial class MySqlDatabaseHostClient : IDatabaseHostClient
         var database = Identifier(name);
         var user = Account(name, userHost);
         var secret = Secret(password);
+        // "_" is a wildcard in a grant's database (as is "%", which names never hold): escaped, the user gets this
+        // database alone, not look-alikes it could then create (s…_main would also match s…1main).
+        var grantDatabase = database.Replace("_", @"\_", StringComparison.Ordinal);
         await RunAsync(host, async connection =>
         {
             // No IF NOT EXISTS: a database already there is someone's data, never adopted.
             await ExecuteAsync(connection, $"CREATE DATABASE {database}", cancellationToken);
+            // Whatever stops a later step (a refusal, the request given up), what was made goes again.
             try
             {
                 await ExecuteAsync(connection, $"CREATE USER {user} IDENTIFIED BY {secret}", cancellationToken);
                 try
                 {
-                    await ExecuteAsync(connection, $"GRANT ALL PRIVILEGES ON {database}.* TO {user}", cancellationToken);
+                    await ExecuteAsync(connection, $"GRANT ALL PRIVILEGES ON {grantDatabase}.* TO {user}", cancellationToken);
                 }
-                catch (MySqlException)
+                catch
                 {
                     await ExecuteAsync(connection, $"DROP USER IF EXISTS {user}", CancellationToken.None);
                     throw;
                 }
             }
-            catch (MySqlException)
+            catch
             {
                 await ExecuteAsync(connection, $"DROP DATABASE IF EXISTS {database}", CancellationToken.None);
                 throw;
@@ -84,7 +89,8 @@ internal sealed partial class MySqlDatabaseHostClient : IDatabaseHostClient
             Port = (uint)host.Port,
             UserID = host.UserName,
             Password = host.Password,
-            SslMode = MySqlSslMode.Preferred,
+            // Neither checks the certificate (self-signed ones are the rule); Required at least never falls back to plain text.
+            SslMode = host.RequireTls ? MySqlSslMode.Required : MySqlSslMode.Preferred,
             Pooling = false,
             ConnectionTimeout = (uint)s_timeout.TotalSeconds,
             DefaultCommandTimeout = (uint)s_timeout.TotalSeconds,
@@ -103,8 +109,9 @@ internal sealed partial class MySqlDatabaseHostClient : IDatabaseHostClient
             // it never holds the password.
             throw new DatabaseHostException(ex.Message, ex);
         }
-        catch (Exception ex) when (ex is System.Net.Sockets.SocketException or TimeoutException or IOException)
+        catch (Exception ex) when (ex is not (OperationCanceledException or DatabaseHostException))
         {
+            // Anything else the connector or the network throws: the host could not be worked with all the same.
             throw new DatabaseHostException(ex.Message, ex);
         }
     }

@@ -108,6 +108,7 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
   const [cpu, setCpu] = useState(limits.cpuPercent?.toString() ?? '');
   const [memory, setMemory] = useState(limits.memoryMb?.toString() ?? '');
   const [databases, setDatabases] = useState(limits.databases.toString());
+  const [databasesInvalid, setDatabasesInvalid] = useState(false);
   const number = (text: string) => (text.trim() === '' ? null : Number(text));
 
   return (
@@ -128,11 +129,25 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
         {canEdit ? (
           <form
             className="space-y-4"
+            noValidate
             onSubmit={(e) => {
               e.preventDefault();
+              // Empty CPU and memory remove their caps; an empty database limit keeps the current one.
+              const databaseLimit = number(databases);
+              const invalid =
+                databaseLimit != null &&
+                !(Number.isInteger(databaseLimit) && databaseLimit >= 0 && databaseLimit <= 50);
+              setDatabasesInvalid(invalid);
+              if (invalid) {
+                return;
+              }
               save.mutate({
                 id: server.id,
-                body: { cpuPercent: number(cpu), memoryMb: number(memory), databases: number(databases) ?? 0 },
+                body: {
+                  cpuPercent: number(cpu),
+                  memoryMb: number(memory),
+                  ...(databaseLimit == null ? {} : { databases: databaseLimit }),
+                },
               });
             }}
           >
@@ -163,7 +178,10 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
                   />
                 )}
               </Field>
-              <Field label={t('servers.limits.databases')}>
+              <Field
+                label={t('servers.limits.databases')}
+                error={databasesInvalid ? t('servers.limits.databasesInvalid') : undefined}
+              >
                 {(ids) => (
                   <Input
                     {...ids}

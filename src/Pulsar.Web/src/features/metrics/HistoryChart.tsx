@@ -120,7 +120,7 @@ export function HistoryChart({
           <svg
             viewBox={`0 0 ${width} ${height}`}
             preserveAspectRatio="none"
-            className="block h-36 w-full touch-none"
+            className="block h-36 w-full touch-pan-y"
             aria-hidden="true"
             onPointerMove={nearest}
             onPointerLeave={() => setActive(null)}

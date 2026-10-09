@@ -126,13 +126,13 @@ A server keeps the template version it was created with (templates never change)
 
 ### Metric history (Phase 13)
 
-The panel keeps how servers and nodes did over time without changing the agent or the protocol. `MetricHistory` (a singleton) folds every sample the agents already send (servers every 5 s, nodes every 15 s) into one-minute buckets in memory, keyed by the **panel's** clock (a node's clock is not trusted, and buckets must line up across nodes). `MetricHistoryService` writes the buckets whose minute is over every 20 s, recomputes the hour buckets of the last three hours (the current one included) every 5 minutes, and prunes once an hour; stopping writes the minute in progress too, so a crash loses at most that minute. A write that fails keeps its buckets for the next one for up to 30 minutes.
+The panel keeps how servers and nodes did over time without changing the agent or the protocol. `MetricHistory` (a singleton) folds every sample the agents already send (servers every 5 s, nodes every 15 s) into one-minute buckets in memory, keyed by the **panel's** clock (a node's clock is not trusted, and buckets must line up across nodes). `MetricHistoryService` writes the buckets whose minute is over every 20 s (servers' and nodes' in one transaction), recomputes the hour buckets of the last three hours (the current one included) every 5 minutes, and prunes once an hour; stopping writes the minute in progress and rolls the last hours up, so a crash loses at most that minute. The first roll-up after a start reaches back to every hour whose minutes are all still kept (from the hour after the minute retention's cutoff), so minutes written before the panel stopped or crashed reach their hour however long it was down, within the minute retention; an hour some of whose minutes were already pruned is never recomputed from the rest. A write that fails keeps its buckets for the next one for up to 30 minutes, and is retried whole (the transaction kept none of it), so nothing is counted twice. A sample's memory is capped at 64 TiB and a minute keeps at most 600 samples per server or node (agents send one every 5 or 15 s): a buggy or hostile agent cannot overflow the sums and stop every write.
 
 Buckets hold **sums and counts** (samples, CPU sum and peak, memory sum and peak, the samples that carried a query answer and their players' sum and peak), never averages: a minute written twice (a panel restarting within it) merges by adding (`ON CONFLICT … DO UPDATE`), and the roll-up is a plain `GROUP BY`. Players are averaged over the samples that had a query answer only, so a game that does not answer leaves them empty instead of zero. Nodes keep CPU and memory used (and the machine's memory at the last sample); disks are not kept.
 
 Retention (`MetricHistory:MinuteRetention`, `MetricHistory:HourRetention`; at least a day each): minute buckets 2 days, hour buckets 90 days. With one row per server per minute that is about 2,900 rows per server for the minutes and 2,200 for the hours. Deleting a server or a node deletes its history (cascade); samples of a server deleted meanwhile are dropped when written.
 
-Charts (`GET /servers/{id}/metrics?range=` with `server.view`, `GET /nodes/{id}/metrics?range=` with `node.view` or `node.manage`): `hour` reads minutes one by one, `day` minutes in groups of five, `week` hours, `month` hours in groups of four, grouped by PostgreSQL with `date_bin` from a UTC origin (never the session time zone). A missing point means nothing was recorded then (the server stopped, the node was away).
+Charts (`GET /servers/{id}/metrics?range=` with `server.view`, `GET /nodes/{id}/metrics?range=` with `node.view` or `node.manage`): `hour` reads minutes one by one, `day` minutes in groups of five, `week` hours, `month` hours in groups of four, grouped by PostgreSQL with `date_bin` from a UTC origin (never the session time zone). A missing point means nothing was recorded then (the server stopped, the node was away). A server or node that does not exist answers 404 with `server.not_found` or `node.not_found`, as its other routes do.
 
 ### Addons (Phase 12)
 
@@ -474,6 +474,7 @@ CREATE TABLE database_hosts (
     server_port         integer CHECK (server_port BETWEEN 1 AND 65535),
     user_host           varchar(255) NOT NULL,        -- the users' host part: '%' or an address/pattern
     node_ids            uuid[] NOT NULL,              -- nodes whose servers may use it; empty: all
+    require_tls         boolean NOT NULL,             -- refuse to connect without TLS (else TLS when offered)
     created_at          timestamptz NOT NULL,
     updated_at          timestamptz NOT NULL
 );

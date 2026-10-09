@@ -29,6 +29,11 @@ run yourself; it does not install MySQL or MariaDB.
      node is `127.0.0.1` for that node's games.
    - **Connections from**: where the databases' users may connect from. `%` is anywhere the database server can be
      reached; narrow it to your nodes' addresses (`10.0.0.%`) or keep the port closed to the internet in the firewall.
+   - **Require TLS**: the panel connects only with TLS. Without it, the panel uses TLS when the database server
+     offers it and plain text otherwise, its account's password included. It is on by default unless the address is
+     this machine or your local network (`127.0.0.1`, `10.x`, `172.16.x`–`172.31.x`, `192.168.x`). Pulsar does not
+     check the server's certificate either way (home servers use self-signed ones), so a database server reached over
+     the internet should also sit behind a VPN or tunnel. MySQL 8 and MariaDB 11.4 or newer offer TLS out of the box.
    - **Nodes**: tick some to offer the host to their servers only.
 
 ## Databases of a server
@@ -36,9 +41,13 @@ run yourself; it does not install MySQL or MariaDB.
 The server's **Databases** tab lists them. With `server.databases.manage` you create one (its name is
 `s<short id>_<what you type>`, which is also its user), see its password, change it and delete it. Give the plugin the
 address, name, user and password shown there. Changing the password stops the game from connecting until its
-configuration has the new one.
+configuration has the new one. Showing a password is recorded in the audit log.
 
-A server may have two databases unless an administrator with `server.limits.edit` changes its limit (Settings, Resources).
+If the database server refuses or does not answer, the server's page only says so; what it said is in the panel's
+log, and an administrator sees it when testing the host under **Database hosts**.
+
+A server may have two databases unless an administrator with `server.limits.edit` changes its limit (Settings,
+Resources; from 0 to 50, and an empty field keeps the current limit).
 Deleting a server drops its databases; if their host cannot be reached then, the audit log says which database was left
 behind, to drop by hand.
 

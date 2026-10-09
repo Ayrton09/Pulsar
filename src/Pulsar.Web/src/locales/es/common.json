@@ -349,6 +349,7 @@
         "database_created": "Creó una base de datos",
         "database_deleted": "Borró una base de datos",
         "database_password_rotated": "Cambió la contraseña de una base de datos",
+        "database_password_viewed": "Vio la contraseña de una base de datos",
         "steam_account_changed": "Cambió la cuenta de Steam de un servidor"
       },
       "template": {
@@ -594,6 +595,7 @@
       "password_unreadable": "La contraseña del servidor no se puede leer con las claves de este panel: cargala de nuevo.",
       "in_use": "Hay servidores con bases en este host: borralas primero.",
       "too_many": "El panel tiene como máximo 20 servidores de bases de datos.",
+      "name_taken": "Ya hay otro servidor de bases de datos con ese nombre.",
       "unreachable": "{{detail}}"
     },
     "database": {
@@ -602,6 +604,7 @@
       "name_taken": "El servidor ya tiene una base de datos con ese nombre.",
       "limit_reached": "El servidor ya tiene todas las bases de datos que puede tener.",
       "host_not_allowed": "El nodo de este servidor no puede usar ese servidor de bases de datos.",
+      "host_unreachable": "El panel no pudo trabajar con el servidor de bases de datos. Un administrador puede ver por qué en el registro del panel.",
       "password_unreadable": "La contraseña no se puede leer con las claves de este panel: cambiala para obtener una nueva."
     },
     "steamcmd": {
@@ -923,7 +926,8 @@
       "saved": "Límites guardados.",
       "databases": "Bases de datos",
       "databasesValue_one": "Bases de datos: hasta {{count, number}}",
-      "databasesValue_other": "Bases de datos: hasta {{count, number}}"
+      "databasesValue_other": "Bases de datos: hasta {{count, number}}",
+      "databasesInvalid": "De 0 a 50."
     },
     "network": {
       "title": "Puertos",
@@ -1459,7 +1463,7 @@
     "emptyNode": "Todavía no hay uso registrado en este período. Se registra mientras el nodo está conectado.",
     "readout": "{{time}} · promedio {{average}}, pico {{peak}}",
     "chartLabel": "{{chart}} en el tiempo; usá las flechas para leer cada punto",
-    "tableLabel": "{{chart}} por hora",
+    "tableLabel": "{{chart}} en el tiempo",
     "time": "Hora",
     "average": "Promedio",
     "peak": "Pico",
@@ -1523,6 +1527,9 @@
     "userHostHint": "Desde dónde se pueden conectar los usuarios de las bases: % para cualquier lado, o una dirección o patrón como 10.0.0.%.",
     "nodes": "Nodos",
     "nodesHint": "Los servidores de estos nodos pueden usarlo. Ninguno marcado: todos los nodos.",
+    "requireTls": "Exigir TLS",
+    "requireTlsHint": "El panel se conecta solo con TLS (no verifica el certificado). Apagado, usa TLS si el servidor lo ofrece y texto plano si no, contraseña de su cuenta incluida. Prendido por defecto salvo que la dirección sea esta máquina o tu red local.",
+    "tlsRequired": "Exige TLS",
     "deleteConfirm": "¿Borrar el servidor de bases de datos {{name}}?"
   },
   "steamAccounts": {

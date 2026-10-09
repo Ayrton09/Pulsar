@@ -18,7 +18,8 @@ public interface IDatabaseSecretProtector
 }
 
 /// <summary>How the panel reaches a database host (the password in clear, for this call only).</summary>
-public sealed record DatabaseHostConnection(string Host, int Port, string UserName, string Password)
+/// <param name="RequireTls">Refuse to connect without TLS (otherwise TLS when the server offers it).</param>
+public sealed record DatabaseHostConnection(string Host, int Port, string UserName, string Password, bool RequireTls)
 {
     // Never in logs or exception messages.
     public override string ToString() => $"{UserName}@{Host}:{Port}";
@@ -51,6 +52,7 @@ public interface IDatabaseHostClient
 
 /// <param name="Password">Null on an update keeps the current password.</param>
 /// <param name="NodeIds">The nodes whose servers may use it; empty: every node.</param>
+/// <param name="RequireTls">Null: on a new host, required unless its address is local or private; on an update, unchanged.</param>
 public sealed record DatabaseHostDefinition(
     string Name,
     string Host,
@@ -60,7 +62,8 @@ public sealed record DatabaseHostDefinition(
     string? ServerAddress,
     int? ServerPort,
     string? UserHost,
-    IReadOnlyList<Guid> NodeIds);
+    IReadOnlyList<Guid> NodeIds,
+    bool? RequireTls = null);
 
 /// <param name="Databases">Databases servers have on it.</param>
 public sealed record DatabaseHostView(
@@ -73,6 +76,7 @@ public sealed record DatabaseHostView(
     int? ServerPort,
     string UserHost,
     IReadOnlyList<Guid> NodeIds,
+    bool RequireTls,
     int Databases,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
@@ -108,21 +112,35 @@ public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector 
         var password = Password(definition);
         var created = DatabaseHost.Create(definition.Name, definition.Host, definition.Port, definition.UserName,
             password is null ? null : secrets.Protect(password), definition.ServerAddress, definition.ServerPort, definition.UserHost,
-            definition.NodeIds ?? [], clock.GetUtcNow());
+            definition.NodeIds ?? [], clock.GetUtcNow(), definition.RequireTls);
         if (!created.IsSuccess)
         {
             return created.Error!;
         }
 
         var host = created.Value;
-        if (await CheckAsync(new DatabaseHostConnection(host.Host, host.Port, host.UserName, password!), cancellationToken) is { } refused)
+        if (await NameTakenAsync(host.Name, except: null, cancellationToken))
+        {
+            return DatabaseErrors.HostNameTaken;
+        }
+
+        if (await CheckAsync(new DatabaseHostConnection(host.Host, host.Port, host.UserName, password!, host.RequireTls), cancellationToken) is { } refused)
         {
             return refused;
         }
 
         db.DatabaseHosts.Add(host);
         audit.Record(AuditActions.DatabaseHost.Created, metadata: Metadata(host, passwordChanged: true)).WithTarget("database_host", host.Id.ToString());
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // Someone took the name meanwhile (unique index).
+            return DatabaseErrors.HostNameTaken;
+        }
+
         return View(host, 0);
     }
 
@@ -143,10 +161,15 @@ public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector 
 
         var changed = host.Change(definition.Name, definition.Host, definition.Port, definition.UserName,
             password is null ? null : secrets.Protect(password), definition.ServerAddress, definition.ServerPort, definition.UserHost,
-            definition.NodeIds ?? [], clock.GetUtcNow());
+            definition.NodeIds ?? [], clock.GetUtcNow(), definition.RequireTls);
         if (!changed.IsSuccess)
         {
             return changed.Error!;
+        }
+
+        if (await NameTakenAsync(host.Name, except: host.Id, cancellationToken))
+        {
+            return DatabaseErrors.HostNameTaken;
         }
 
         if (await CheckAsync(Connection(host)!, cancellationToken) is { } refused)
@@ -155,7 +178,15 @@ public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector 
         }
 
         audit.Record(AuditActions.DatabaseHost.Updated, metadata: Metadata(host, password is not null)).WithTarget("database_host", host.Id.ToString());
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex is not DbUpdateConcurrencyException)
+        {
+            return DatabaseErrors.HostNameTaken;
+        }
+
         return View(host, await db.ServerDatabases.CountAsync(d => d.HostId == host.Id, cancellationToken));
     }
 
@@ -209,7 +240,7 @@ public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector 
         ArgumentNullException.ThrowIfNull(host);
         try
         {
-            return new DatabaseHostConnection(host.Host, host.Port, host.UserName, secrets.Unprotect(host.PasswordProtected));
+            return new DatabaseHostConnection(host.Host, host.Port, host.UserName, secrets.Unprotect(host.PasswordProtected), host.RequireTls);
         }
         catch (CryptographicException)
         {
@@ -230,11 +261,15 @@ public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector 
         }
     }
 
+    /// <summary>Checked before connecting: a host's name is unique (exactly, as the index has it).</summary>
+    private Task<bool> NameTakenAsync(string name, DatabaseHostId? except, CancellationToken cancellationToken) =>
+        db.DatabaseHosts.AnyAsync(h => h.Name == name && h.Id != except, cancellationToken);
+
     private static string? Password(DatabaseHostDefinition definition) => string.IsNullOrEmpty(definition.Password) ? null : definition.Password;
 
     private static object Metadata(DatabaseHost host, bool passwordChanged) =>
-        new { host.Name, host.Host, host.Port, host.UserName, host.ServerAddress, host.ServerPort, host.UserHost, host.NodeIds, passwordChanged };
+        new { host.Name, host.Host, host.Port, host.UserName, host.ServerAddress, host.ServerPort, host.UserHost, host.NodeIds, host.RequireTls, passwordChanged };
 
     private static DatabaseHostView View(DatabaseHost host, int databases) => new(host.Id.Value, host.Name, host.Host, host.Port, host.UserName,
-        host.ServerAddress, host.ServerPort, host.UserHost, host.NodeIds, databases, host.CreatedAt, host.UpdatedAt);
+        host.ServerAddress, host.ServerPort, host.UserHost, host.NodeIds, host.RequireTls, databases, host.CreatedAt, host.UpdatedAt);
 }

@@ -104,7 +104,7 @@ public sealed partial class ServerDatabases(
             return refused;
         }
 
-        // Reserved: the host now. A failure gives the place back.
+        // Reserved: the host now. Any failure (the request given up included) gives the place back.
         try
         {
             await client.CreateAsync(connection, database.Name, database.UserHost, password, cancellationToken);
@@ -112,9 +112,9 @@ public sealed partial class ServerDatabases(
         catch (DatabaseHostException ex)
         {
             await ReleaseAsync(database);
-            return DatabaseErrors.Unreachable(ex.Message);
+            return HostFailed(host, ex);
         }
-        catch (OperationCanceledException)
+        catch
         {
             await ReleaseAsync(database);
             throw;
@@ -125,6 +125,7 @@ public sealed partial class ServerDatabases(
         return new ServerDatabaseCredentials(View(database, host), password);
     }
 
+    /// <summary>Audited (who read which database's password, never the password).</summary>
     public async Task<Result<ServerDatabaseCredentials>> PasswordAsync(ServerId serverId, Guid databaseId, CancellationToken cancellationToken)
     {
         var (database, host) = await FindAsync(serverId, databaseId, tracking: false, cancellationToken);
@@ -133,14 +134,20 @@ public sealed partial class ServerDatabases(
             return DatabaseErrors.NotFound;
         }
 
+        string password;
         try
         {
-            return new ServerDatabaseCredentials(View(database, host), secrets.Unprotect(database.PasswordProtected));
+            password = secrets.Unprotect(database.PasswordProtected);
         }
         catch (CryptographicException)
         {
             return DatabaseErrors.PasswordUnreadable;
         }
+
+        audit.Record(AuditActions.Server.DatabasePasswordViewed, metadata: new { database.Name, Host = host.Name })
+            .WithServer(serverId, await NodeOfAsync(serverId, cancellationToken));
+        await db.SaveChangesAsync(CancellationToken.None);
+        return new ServerDatabaseCredentials(View(database, host), password);
     }
 
     public async Task<Result<ServerDatabaseCredentials>> RotatePasswordAsync(ServerId serverId, Guid databaseId, CancellationToken cancellationToken)
@@ -163,7 +170,7 @@ public sealed partial class ServerDatabases(
         }
         catch (DatabaseHostException ex)
         {
-            return DatabaseErrors.Unreachable(ex.Message);
+            return HostFailed(host, ex);
         }
 
         database.PasswordChanged(secrets.Protect(password), clock.GetUtcNow());
@@ -193,7 +200,7 @@ public sealed partial class ServerDatabases(
         }
         catch (DatabaseHostException ex)
         {
-            return DatabaseErrors.Unreachable(ex.Message);
+            return HostFailed(host, ex);
         }
 
         db.ServerDatabases.Remove(database);
@@ -206,29 +213,34 @@ public sealed partial class ServerDatabases(
     /// <summary>
     /// Drops every database of a server its node has just deleted, before the server's row goes (saved by the caller,
     /// with it). A host that cannot be reached does not hold the deletion up: Pulsar forgets the database anyway and the
-    /// audit log names what was left on the host, to remove by hand. Dropping is idempotent, so a retried save is fine.
+    /// audit log names what was left on the host, to remove by hand. A host that failed once is not tried again for the
+    /// server's other databases on it: each attempt may wait for a connection timeout, and the node's events wait with
+    /// it. Dropping is idempotent, so a retried save is fine.
     /// </summary>
     public async Task DropAllAsync(Server server, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(server);
         var databases = await db.ServerDatabases.Where(d => d.ServerId == server.Id).ToListAsync(cancellationToken);
+        var failed = new Dictionary<DatabaseHostId, string>();
         foreach (var database in databases)
         {
             var host = await db.DatabaseHosts.AsNoTracking().SingleAsync(h => h.Id == database.HostId, cancellationToken);
-            string? leftBecause = null;
-            if (hosts.Connection(host) is not { } connection)
+            if (!failed.TryGetValue(host.Id, out var leftBecause))
             {
-                leftBecause = DatabaseErrors.HostPasswordUnreadable.Message;
-            }
-            else
-            {
-                try
+                if (hosts.Connection(host) is not { } connection)
                 {
-                    await client.DropAsync(connection, database.Name, database.UserHost, cancellationToken);
+                    leftBecause = failed[host.Id] = DatabaseErrors.HostPasswordUnreadable.Message;
                 }
-                catch (DatabaseHostException ex)
+                else
                 {
-                    leftBecause = ex.Message;
+                    try
+                    {
+                        await client.DropAsync(connection, database.Name, database.UserHost, cancellationToken);
+                    }
+                    catch (DatabaseHostException ex)
+                    {
+                        leftBecause = failed[host.Id] = ex.Message;
+                    }
                 }
             }
 
@@ -296,12 +308,25 @@ public sealed partial class ServerDatabases(
     private async Task<NodeId> NodeOfAsync(ServerId serverId, CancellationToken cancellationToken) =>
         await db.Servers.AsNoTracking().Where(s => s.Id == serverId).Select(s => s.NodeId).SingleAsync(cancellationToken);
 
+    /// <summary>
+    /// What a server's managers are told when the host fails: not what it said, which names the panel's account and
+    /// addresses (settings managers see that when they test the host, and the log has it).
+    /// </summary>
+    private DomainError HostFailed(DatabaseHost host, DatabaseHostException exception)
+    {
+        LogHostFailed(host.Name, exception.Message);
+        return DatabaseErrors.HostUnreachable;
+    }
+
     private static ServerDatabaseView View(ServerDatabase database, DatabaseHost host)
     {
         var (address, port) = host.AddressForServers;
         return new ServerDatabaseView(database.Id.Value, database.Name, database.Name, host.Id.Value, host.Name, address, port, database.UserHost,
             database.CreatedAt, database.PasswordChangedAt);
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The database host {Host} failed a server's request: {Reason}")]
+    private partial void LogHostFailed(string host, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The database {Database} was left on the host {Host} when its server was deleted: {Reason}")]
     private partial void LogDatabaseLeft(string database, string host, string reason);

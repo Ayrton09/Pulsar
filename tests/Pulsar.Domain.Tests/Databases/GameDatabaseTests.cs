@@ -42,6 +42,32 @@ public sealed class GameDatabaseTests
     }
 
     [Theory]
+    [InlineData("127.0.0.1", false)]
+    [InlineData("localhost", false)]
+    [InlineData("10.0.0.5", false)]
+    [InlineData("172.20.1.1", false)]
+    [InlineData("192.168.1.20", false)]
+    [InlineData("169.254.10.1", false)]
+    [InlineData("::1", false)]
+    [InlineData("fd12:3456::1", false)]
+    [InlineData("172.32.0.1", true)]
+    [InlineData("203.0.113.7", true)]
+    [InlineData("db.example.com", true)]
+    public void TlsIsRequiredByDefaultOutsideTheLocalNetwork(string address, bool required)
+    {
+        var host = DatabaseHost.Create("Main", address, 3306, "root", s_password, null, null, null, [], s_now).Value;
+        Assert.Equal(required, host.RequireTls);
+
+        // Chosen explicitly, it is kept; an update that does not say keeps the current choice.
+        host = DatabaseHost.Create("Main", address, 3306, "root", s_password, null, null, null, [], s_now, requireTls: !required).Value;
+        Assert.Equal(!required, host.RequireTls);
+        Assert.True(host.Change("Main", "203.0.113.8", 3306, "root", null, null, null, null, [], s_now).IsSuccess);
+        Assert.Equal(!required, host.RequireTls);
+        Assert.True(host.Change("Main", "203.0.113.8", 3306, "root", null, null, null, null, [], s_now, requireTls: required).IsSuccess);
+        Assert.Equal(required, host.RequireTls);
+    }
+
+    [Theory]
     [InlineData("main", "sk3x7m2qa_main")]
     [InlineData("logs_2026", "sk3x7m2qa_logs_2026")]
     [InlineData("Main", null)]

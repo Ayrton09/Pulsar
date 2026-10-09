@@ -37,11 +37,11 @@ public static class NodeEndpoints
         var nodes = api.MapGroup("/nodes").WithTags("Nodes");
         nodes.MapGet("/", ListAsync).RequirePermissionAnywhere(Permissions.Node.View, Permissions.Node.Manage, Permissions.Server.Create);
         nodes.MapGet("/{id:guid}", GetAsync).RequirePermission(Permissions.Node.View, Permissions.Node.Manage);
-        nodes.MapGet("/{id:guid}/metrics", async Task<Results<Ok<NodeMetricHistory>, ProblemHttpResult, NotFound>> (Guid id, IPulsarDbContext db,
+        nodes.MapGet("/{id:guid}/metrics", async Task<Results<Ok<NodeMetricHistory>, ProblemHttpResult>> (Guid id, IPulsarDbContext db,
                 MetricHistory history, CancellationToken ct, string range = "hour") =>
                 MetricHistory.ParseRange(range) is not { } span ? ApiProblems.Create(StatusCodes.Status400BadRequest, "metrics.invalid_range", "The range must be hour, day, week or month.")
                 : await db.Nodes.AnyAsync(n => n.Id == new NodeId(id), ct) ? TypedResults.Ok(await history.ReadNodeAsync(new NodeId(id), span, ct))
-                : TypedResults.NotFound())
+                : ApiProblems.FromDomainError(NodeErrors.NotFound))
             .RequirePermission(Permissions.Node.View, Permissions.Node.Manage);
         nodes.MapPost("/", CreateAsync).RequirePermission(Permissions.Node.Manage);
         nodes.MapPut("/{id:guid}", UpdateAsync).RequirePermission(Permissions.Node.Manage);

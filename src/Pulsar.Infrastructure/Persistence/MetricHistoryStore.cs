@@ -14,6 +14,8 @@ internal sealed class MetricHistoryStore(PulsarDbContext db) : IMetricHistorySto
 {
     public async Task AddAsync(IReadOnlyCollection<ServerMetricBucket> servers, IReadOnlyCollection<NodeMetricBucket> nodes, CancellationToken cancellationToken)
     {
+        // Both statements or neither: a failed write is retried whole, and a half kept would be added twice.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         if (servers.Count > 0)
         {
             var ids = servers.Select(b => b.ServerId.Value).ToArray();
@@ -70,6 +72,8 @@ internal sealed class MetricHistoryStore(PulsarDbContext db) : IMetricHistorySto
                     memory_total = excluded.memory_total
                 """, cancellationToken);
         }
+
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task RollUpAsync(DateTimeOffset start, DateTimeOffset until, CancellationToken cancellationToken)
