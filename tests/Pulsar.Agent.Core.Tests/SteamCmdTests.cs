@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
+using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Agent.Core.Steam;
@@ -73,6 +74,19 @@ public sealed class SteamCmdOutputTests
         Assert.IsType<SteamCmdLine.GuardRequested>(SteamCmdOutput.Parse("Steam Guard code:"));
         Assert.IsType<SteamCmdLine.GuardRequested>(SteamCmdOutput.Parse("Two-factor code:"));
         Assert.Null(SteamCmdOutput.Parse("Logging in user 'servers' [U:1:1234] to Steam Public...OK"));
+    }
+
+    [Theory]
+    [InlineData("ERROR! Failed to install app '232330' (Missing configuration)", true)]
+    [InlineData("Error! App '730' state is 0x202 after update job.", true)]
+    [InlineData("ERROR! Timed out waiting for AppInfo update.", true)]
+    [InlineData("FAILED (Rate Limit Exceeded)", true)]
+    [InlineData("Logging in user 'servers' to Steam Public...FAILED (Expired)", false)]
+    [InlineData("Login Failure: Invalid Password", false)]
+    [InlineData(null, false)]
+    public void OnlyFailuresPastTheLoginLeaveACachedLoginValid(string? error, bool valid)
+    {
+        Assert.Equal(valid, SteamCmdOutput.LeavesLoginValid(error));
     }
 
     [Theory]
@@ -337,6 +351,32 @@ public sealed class SteamCmdRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task ARunWithAnAccountRebuildsTheServersCopyFromTheBootstrapper()
+    {
+        // The server's account controls its copy: a replaced steamcmd.exe or a DLL planted beside it would get the password.
+        var folder = Path.Combine(_root, "server", ".pulsar", "steamcmd");
+        Directory.CreateDirectory(Path.Combine(folder, "package"));
+        File.WriteAllText(Path.Combine(folder, "steamcmd.exe"), "planted");
+        File.WriteAllText(Path.Combine(folder, "version.dll"), "planted");
+        File.WriteAllText(Path.Combine(folder, "package", "steam_cmd_win32.zip"), "planted");
+        var seen = new List<string>();
+        _processes.OnStarted = (process, _) =>
+        {
+            seen.Add(string.Join(",", Directory.EnumerateFileSystemEntries(folder).Select(e => Path.GetFileName(e)).Order(StringComparer.Ordinal)));
+            seen.Add(File.ReadAllText(Path.Combine(folder, "steamcmd.exe")));
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        await runner.RunAsync(Job() with { Login = new SteamLogin(Guid.NewGuid(), "servers", "hunter2-password") }, Report,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(["steamcmd.exe", "bootstrapper"], seen);
+        Assert.Equal(1, _source.Calls);
+    }
+
+    [Fact]
     public void AnAccountSignsInWithItsPasswordOrItsCachedLogin()
     {
         var login = new SteamLogin(Guid.NewGuid(), "servers", "hunter2-password", "F7K2Q");
@@ -368,14 +408,14 @@ public sealed class SteamCmdRunnerTests : IDisposable
 
         await runner.RunAsync(Job() with { Login = login }, Report, TestContext.Current.CancellationToken);
         Assert.False(File.Exists(CachedLogin)); // never left in the server's folder
-        Assert.Equal("token-1", System.Text.Encoding.UTF8.GetString(_logins.Load(account)!));
+        Assert.Equal("token-1", Cached(account));
 
         await runner.RunAsync(Job() with { Login = login }, Report, TestContext.Current.CancellationToken);
 
         Assert.Equal([null, "token-1"], seen);
         Assert.Contains("hunter2-password", _processes.Specs[0].Arguments);
         Assert.DoesNotContain("hunter2-password", _processes.Specs[1].Arguments); // the cached login spares the password
-        Assert.Equal("token-2", System.Text.Encoding.UTF8.GetString(_logins.Load(account)!));
+        Assert.Equal("token-2", Cached(account));
         Assert.False(File.Exists(CachedLogin));
     }
 
@@ -383,7 +423,7 @@ public sealed class SteamCmdRunnerTests : IDisposable
     public async Task ACachedLoginSteamRefusesIsForgottenAndThePasswordUsed()
     {
         var account = Guid.NewGuid();
-        _logins.Save(account, "expired"u8.ToArray());
+        _logins.Save(new SteamLogin(account, "servers", "hunter2-password"), "expired"u8.ToArray());
         _processes.OnStarted = (process, spec) =>
         {
             if (!spec.Arguments.Contains("hunter2-password"))
@@ -402,7 +442,149 @@ public sealed class SteamCmdRunnerTests : IDisposable
         await runner.RunAsync(Job() with { Login = new SteamLogin(account, "servers", "hunter2-password") }, Report, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, _processes.Started.Count);
-        Assert.Equal("fresh", System.Text.Encoding.UTF8.GetString(_logins.Load(account)!));
+        Assert.Equal("fresh", Cached(account));
+    }
+
+    [Fact]
+    public async Task ACachedLoginThatFailsBeforeTheAppIsDroppedAndThePasswordUsedOnce()
+    {
+        // An expired cache does not always say so: anything but an error about the app drops it, once.
+        var account = Guid.NewGuid();
+        var login = new SteamLogin(account, "servers", "hunter2-password");
+        using (var runner = Runner())
+        {
+            _processes.OnStarted = (process, _) =>
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(CachedLogin)!);
+                File.WriteAllText(CachedLogin, "first");
+                process.Print("Success! App '232330' fully installed.\r\n");
+                process.Exit(0);
+            };
+            await runner.RunAsync(Job() with { Login = login }, Report, TestContext.Current.CancellationToken);
+
+            _processes.OnStarted = (process, spec) =>
+            {
+                if (!spec.Arguments.Contains("hunter2-password"))
+                {
+                    process.Exit(8);
+                    return;
+                }
+
+                File.WriteAllText(CachedLogin, "fresh");
+                process.Print("Success! App '232330' fully installed.\r\n");
+                process.Exit(0);
+            };
+            await runner.RunAsync(Job() with { Login = login }, Report, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(3, _processes.Started.Count);
+        Assert.Contains("hunter2-password", _processes.Specs[2].Arguments);
+        Assert.Equal("fresh", Cached(account));
+    }
+
+    [Fact]
+    public async Task AnErrorAboutTheAppKeepsTheCachedLogin()
+    {
+        var account = Guid.NewGuid();
+        var login = new SteamLogin(account, "servers", "hunter2-password");
+        _processes.OnStarted = (process, _) =>
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(CachedLogin)!);
+            File.WriteAllText(CachedLogin, "token");
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+        await runner.RunAsync(Job() with { Login = login }, Report, TestContext.Current.CancellationToken);
+        _processes.OnStarted = (process, _) =>
+        {
+            if (_processes.Started.Count == 2)
+            {
+                process.Print("ERROR! Failed to install app '232330' (Missing configuration)\r\n");
+                process.Exit(8);
+                return;
+            }
+
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+
+        await runner.RunAsync(Job() with { Login = login }, Report, TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, _processes.Started.Count);
+        Assert.All(_processes.Specs.Skip(1), spec => Assert.DoesNotContain("hunter2-password", spec.Arguments));
+    }
+
+    [Fact]
+    public async Task ACachedLoginIsNotUsedOnceTheAccountsPasswordChanged()
+    {
+        var account = Guid.NewGuid();
+        var seen = new List<string?>();
+        _processes.OnStarted = (process, _) =>
+        {
+            seen.Add(File.Exists(CachedLogin) ? File.ReadAllText(CachedLogin) : null);
+            Directory.CreateDirectory(Path.GetDirectoryName(CachedLogin)!);
+            File.WriteAllText(CachedLogin, $"token-{_processes.Started.Count}");
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        await runner.RunAsync(Job() with { Login = new SteamLogin(account, "servers", "hunter2-password") }, Report, TestContext.Current.CancellationToken);
+        await runner.RunAsync(Job() with { Login = new SteamLogin(account, "servers", "new-password") }, Report, TestContext.Current.CancellationToken);
+        await runner.RunAsync(Job() with { Login = new SteamLogin(account, "renamed", "new-password") }, Report, TestContext.Current.CancellationToken);
+
+        Assert.Equal([null, null, null], seen);
+        Assert.Contains("new-password", _processes.Specs[1].Arguments);
+        Assert.Contains("new-password", _processes.Specs[2].Arguments);
+    }
+
+    [Fact]
+    public async Task ARetryAfterSigningInWithACodeUsesTheLoginItCached()
+    {
+        // The code is spent: the retry signs in with what the first run cached.
+        var account = Guid.NewGuid();
+        var seen = new List<string?>();
+        _processes.OnStarted = (process, _) =>
+        {
+            seen.Add(File.Exists(CachedLogin) ? File.ReadAllText(CachedLogin) : null);
+            Directory.CreateDirectory(Path.GetDirectoryName(CachedLogin)!);
+            File.WriteAllText(CachedLogin, $"token-{_processes.Started.Count}");
+            if (_processes.Started.Count == 1)
+            {
+                process.Print("ERROR! Failed to install app '232330' (Missing configuration)\r\n");
+                process.Exit(8);
+                return;
+            }
+
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        await runner.RunAsync(Job() with { Login = new SteamLogin(account, "servers", "hunter2-password", "F7K2Q") }, Report,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal([null, "token-1"], seen);
+        Assert.Equal(["+login", "servers", "+app_update"], _processes.Specs[1].Arguments.SkipWhile(a => a != "+login").Take(3));
+        Assert.Equal("token-2", Cached(account));
+    }
+
+    [Fact]
+    public async Task OutputIsReadBeforeTheSecretsAreBlankedOut()
+    {
+        // A one-letter password and a five-digit code also appear in what SteamCMD prints for other reasons.
+        _processes.OnStarted = (process, _) =>
+        {
+            process.Print(" Update state (0x61) downloading, progress: 10.00 (10000 / 100000)\r\nSuccess! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        await runner.RunAsync(Job() with { Login = new SteamLogin(Guid.NewGuid(), "servers", "e", "10000") }, Report, TestContext.Current.CancellationToken);
+
+        Assert.Single(_processes.Started);
+        Assert.Contains(("downloading", 10), _progress);
     }
 
     [Fact]
@@ -423,7 +605,7 @@ public sealed class SteamCmdRunnerTests : IDisposable
 
         Assert.Equal("steamcmd.guard_required", error.Code);
         Assert.Equal(1, Assert.Single(_processes.Started).TerminatedWith);
-        Assert.Null(_logins.Load(account));
+        Assert.Null(Cached(account));
         Assert.False(File.Exists(CachedLogin));
     }
 
@@ -475,7 +657,11 @@ public sealed class SteamCmdRunnerTests : IDisposable
 
     private string CachedLogin => Path.Combine(_root, "server", ".pulsar", "steamcmd", "config", "config.vdf");
 
-    private SteamCmdRunner Runner(TimeProvider? clock = null) => new(_processes, _source, new DirectServerFiles(), _logins,
+    /// <summary>The login the agent keeps for the account, while its password is still hunter2-password.</summary>
+    private string? Cached(Guid account) =>
+        _logins.Load(new SteamLogin(account, "servers", "hunter2-password")) is { } login ? System.Text.Encoding.UTF8.GetString(login) : null;
+
+    private SteamCmdRunner Runner(TimeProvider? clock = null) => new(_processes, _source, new DirectServerFiles(), new DirectServerFileManager(), _logins,
         new SteamCmdOptions { RetryDelays = clock is null ? [TimeSpan.Zero] : [TimeSpan.FromSeconds(10)] }, clock ?? TimeProvider.System,
         NullLogger<SteamCmdRunner>.Instance);
 

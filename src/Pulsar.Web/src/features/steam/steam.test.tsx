@@ -163,6 +163,30 @@ describe('steam accounts', () => {
     await vi.waitFor(() => expect(body).toEqual({ steamGuardCode: 'F7K2Q' }));
   });
 
+  it('runs an update Steam stopped again with the code, verifying the files when asked', async () => {
+    let body: unknown;
+    fakeApi({
+      'GET /api/v1/auth/session': session(owner),
+      [`GET /api/v1/servers/${serverId}`]: () =>
+        json(
+          details({ required: true, accountId, accountName: 'Servers account' }, [operation({ type: 'serverUpdate' })]),
+        ),
+      [`POST /api/v1/servers/${serverId}/update`]: async (request) => {
+        body = await request.json();
+        return json(details({ required: true, accountId, accountName: 'Servers account' }));
+      },
+    });
+    renderAt(`/servers/${serverId}`);
+    const user = userEvent.setup();
+
+    const prompt = await screen.findByRole('region', { name: 'Steam Guard' });
+    await user.type(within(prompt).getByLabelText('Steam Guard code'), 'F7K2Q');
+    await user.click(within(prompt).getByLabelText(/Also verify every installed file/));
+    await user.click(within(prompt).getByRole('button', { name: 'Update again with the code' }));
+
+    await vi.waitFor(() => expect(body).toEqual({ validate: true, steamGuardCode: 'F7K2Q' }));
+  });
+
   it('does not ask for a code after another failure, or for an update it can ask with the update', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(owner),

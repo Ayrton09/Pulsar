@@ -319,6 +319,28 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ASteamLoginLeftInTheServersFolderIsDeletedBeforeTheGameStarts()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "pulsar-supervisor-tests", Guid.NewGuid().ToString("N"));
+        var lent = Path.Combine(directory, ".pulsar", "steamcmd", "config", "config.vdf");
+        Directory.CreateDirectory(Path.GetDirectoryName(lent)!);
+        File.WriteAllText(lent, "a cached login");
+        try
+        {
+            var supervisor = Supervisor(directory: directory);
+
+            await Started(supervisor);
+
+            Assert.Single(_processes.Started);
+            Assert.False(File.Exists(lent));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task AStartThatFailsLeavesTheServerCrashedWithTheReason()
     {
         var supervisor = Supervisor();
@@ -501,13 +523,13 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     }
 
     private ServerSupervisor Supervisor(Func<LaunchPlan, LaunchPlan>? change = null, bool restartOnCrash = true, IServerQuery? query = null,
-        ProcessLimits? limits = null)
+        ProcessLimits? limits = null, string directory = @"C:\servers\abcd1234")
     {
         var plan = new LaunchPlan("bin/game.exe", "", ["--ready-after", "0"], new Dictionary<string, string>(),
             new ConsoleDefinition(ManifestConsoleMode.Pty, InputNewline: "\r\n"),
             new LogPatternReadiness("^Test server ready", 60),
             new StopDefinition([new ConsoleCommandStop("quit")], 15));
-        var definition = new ServerDefinition(Guid.NewGuid(), "abcd1234", @"C:\servers\abcd1234", ProcessIdentity.CurrentUser,
+        var definition = new ServerDefinition(Guid.NewGuid(), "abcd1234", directory, ProcessIdentity.CurrentUser,
             change?.Invoke(plan) ?? plan, AutoStart: false, RestartOnCrash: restartOnCrash, limits);
         _definition = definition;
         _supervisor = new ServerSupervisor(definition, _processes, _events, _clock, new SupervisorOptions(), NullLogger.Instance, query: query);

@@ -95,7 +95,9 @@ public static class SteamAccountErrors
     public static DomainError PasswordRequired { get; } = new("steam_account.password_required", "The password is needed.");
 
     public static DomainError PasswordInvalid { get; } =
-        new("steam_account.password_invalid", "A Steam password is 1 to 64 characters, without spaces or quotes.");
+        new("steam_account.password_invalid", "A Steam password is 1 to 64 characters, without spaces or quotes, and does not start with + or -.");
+
+    public static DomainError NameTaken { get; } = new("steam_account.name_taken", "Another Steam account already has this name.");
 
     public static DomainError PasswordUnreadable { get; } =
         new("steam_account.password_unreadable", "The account's password cannot be read with this panel's keys: set it again.");

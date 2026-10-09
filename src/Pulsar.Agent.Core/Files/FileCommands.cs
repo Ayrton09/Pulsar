@@ -58,6 +58,12 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
             return Rejected(envelope, FileErrors.AccessDenied, "Pulsar keeps this folder to itself.");
         }
 
+        // Pulsar's own folder (the server's SteamCMD, addon records): readable, changed by Pulsar only.
+        if (command is not (ListFilesCommand or SendFileCommand) && PathsOf(command).Any(IsPulsarFolder))
+        {
+            return Rejected(envelope, FileErrors.AccessDenied, "Only Pulsar changes this folder.");
+        }
+
         if (busy && command is not (ListFilesCommand or SendFileCommand))
         {
             return new CommandAck(envelope.CommandId, AckStatus.Busy, "server.busy", "An operation is changing the server's files; try again when it ends.");
@@ -100,6 +106,13 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         var normalized = path.Replace('\\', '/').Trim('/');
         return normalized.Equals(Folder, StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith(Folder + "/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Whether <paramref name="path"/> is in (or is) the server's <c>.pulsar</c> folder, whatever its case.</summary>
+    public static bool IsPulsarFolder(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        return path.Replace('\\', '/').Trim('/').Split('/')[0].Equals(".pulsar", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IEnumerable<string> PathsOf(AgentCommand command) => command switch

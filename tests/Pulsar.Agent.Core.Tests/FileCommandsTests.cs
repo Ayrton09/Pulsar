@@ -78,9 +78,40 @@ public sealed class FileCommandsTests : IDisposable
             Assert.Equal((AckStatus.Rejected, FileErrors.AccessDenied), (ack.Status, ack.ErrorCode));
         }
 
-        // The rest of SteamCMD's folder is the server's like any other.
+        // The rest of SteamCMD's folder can be read.
         Assert.Equal(AckStatus.Accepted, Execute(new ListFilesCommand(Guid.NewGuid(), ".pulsar/steamcmd")).Status);
         Assert.False(FileCommands.IsSteamLogin(".pulsar/steamcmd/configs"));
+    }
+
+    [Fact]
+    public void PulsarsOwnFolderCanBeReadButNotChanged()
+    {
+        var steamCmd = Path.Combine(_root, ".pulsar", "steamcmd");
+        Directory.CreateDirectory(steamCmd);
+        File.WriteAllText(Path.Combine(steamCmd, "steamcmd.exe"), "Valve's");
+        File.WriteAllText(Path.Combine(_root, "version.dll"), "planted");
+
+        foreach (var command in new AgentCommand[]
+        {
+            new CreateDirectoryCommand(Guid.NewGuid(), ".pulsar/steamcmd/package"),
+            new MoveFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/steamcmd.exe", "steamcmd.exe"),
+            new MoveFileCommand(Guid.NewGuid(), "version.dll", ".pulsar/steamcmd/version.dll"),
+            new MoveFileCommand(Guid.NewGuid(), ".pulsar", "elsewhere"),
+            new DeleteFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/steamcmd.exe"),
+            new DeleteFileCommand(Guid.NewGuid(), ".Pulsar"),
+            new ReceiveFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/version.dll", TransferTicket.New(), 7, false, null),
+            new ReceiveFileCommand(Guid.NewGuid(), ".PULSAR/SteamCMD/steamcmd.exe", TransferTicket.New(), 7, true, null),
+        })
+        {
+            var ack = Execute(command);
+            Assert.Equal((AckStatus.Rejected, FileErrors.AccessDenied), (ack.Status, ack.ErrorCode));
+        }
+
+        Assert.Equal("Valve's", File.ReadAllText(Path.Combine(steamCmd, "steamcmd.exe")));
+        Assert.False(File.Exists(Path.Combine(steamCmd, "version.dll")));
+        Assert.Equal(AckStatus.Accepted, Execute(new ListFilesCommand(Guid.NewGuid(), ".pulsar/steamcmd")).Status);
+        Assert.Equal(AckStatus.Accepted, Execute(new SendFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/steamcmd.exe", TransferTicket.New(), 1024)).Status);
+        Assert.Equal(AckStatus.Accepted, Execute(new CreateDirectoryCommand(Guid.NewGuid(), ".pulsarx")).Status);
     }
 
     [Fact]

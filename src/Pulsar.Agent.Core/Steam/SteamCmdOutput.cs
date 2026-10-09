@@ -129,6 +129,15 @@ public static partial class SteamCmdOutput
     /// </summary>
     public static bool NeedsReset(string? error) => error is not null && StuckState().IsMatch(error);
 
+    /// <summary>
+    /// Whether a failure says nothing against the cached login the run signed in with: SteamCMD got as far as the app (an
+    /// error about it, its state or the disk; <c>app_update</c> runs only once signed in, the first failed command ending
+    /// the run), or Steam limits sign-ins (another one with the password would only make it worse). Anything else, an
+    /// exit with no error included, may be the login itself.
+    /// </summary>
+    public static bool LeavesLoginValid(string? error) =>
+        error is not null && (AppError().IsMatch(error) || Classify(error).Code is "steamcmd.disk" or "steamcmd.app_unavailable" or "steamcmd.rate_limited");
+
     /// <summary>Whether SteamCMD stopped at (or failed on) a Steam Guard code.</summary>
     public static bool IsGuardPrompt(string text) =>
         text.Contains("Steam Guard", StringComparison.OrdinalIgnoreCase) || text.Contains("Two-factor", StringComparison.OrdinalIgnoreCase)
@@ -146,6 +155,9 @@ public static partial class SteamCmdOutput
 
     [GeneratedRegex(@"result code (\d{1,4})\b", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex ResultCode();
+
+    [GeneratedRegex(@"\bapp '\d+'|\bAppInfo\b", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex AppError();
 
     [GeneratedRegex(@"state is 0x0*6 after update job", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex StuckState();
