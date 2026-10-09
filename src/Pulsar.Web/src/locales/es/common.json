@@ -29,7 +29,8 @@
     "templates": "Juegos",
     "notifications": "Notificaciones",
     "backupStorage": "Almacenamiento de backups",
-    "databaseHosts": "Servidores de bases de datos"
+    "databaseHosts": "Servidores de bases de datos",
+    "steamAccounts": "Cuentas de Steam"
   },
   "auth": {
     "userName": "Usuario",
@@ -347,7 +348,8 @@
         "addon_remove_requested": "Pidió quitar un mod",
         "database_created": "Creó una base de datos",
         "database_deleted": "Borró una base de datos",
-        "database_password_rotated": "Cambió la contraseña de una base de datos"
+        "database_password_rotated": "Cambió la contraseña de una base de datos",
+        "steam_account_changed": "Cambió la cuenta de Steam de un servidor"
       },
       "template": {
         "imported": "Importó una plantilla de juego"
@@ -368,6 +370,11 @@
         "created": "Agregó un servidor de bases de datos",
         "updated": "Cambió un servidor de bases de datos",
         "deleted": "Borró un servidor de bases de datos"
+      },
+      "steam_account": {
+        "created": "Agregó una cuenta de Steam",
+        "updated": "Cambió una cuenta de Steam",
+        "deleted": "Borró una cuenta de Steam"
       }
     }
   },
@@ -596,6 +603,21 @@
       "limit_reached": "El servidor ya tiene todas las bases de datos que puede tener.",
       "host_not_allowed": "El nodo de este servidor no puede usar ese servidor de bases de datos.",
       "password_unreadable": "La contraseña no se puede leer con las claves de este panel: cambiala para obtener una nueva."
+    },
+    "steamcmd": {
+      "account_required": "Solo una cuenta de Steam que tenga el servidor dedicado de este juego puede descargarlo: elegí una en la configuración del servidor."
+    },
+    "steam_account": {
+      "not_found": "Esa cuenta de Steam no existe.",
+      "name_invalid": "El nombre es una línea de hasta 64 caracteres.",
+      "user_name_invalid": "El nombre de una cuenta de Steam tiene de 3 a 64 letras, dígitos y guiones bajos.",
+      "password_required": "Falta la contraseña.",
+      "password_invalid": "La contraseña de Steam acá tiene hasta 64 caracteres, sin espacios ni comillas dobles.",
+      "password_unreadable": "La contraseña de la cuenta no se puede leer con las claves de este panel: cargala de nuevo.",
+      "in_use": "Hay servidores que usan esta cuenta de Steam: elegiles otra primero.",
+      "too_many": "El panel tiene como máximo 20 cuentas de Steam.",
+      "unsupported": "El agente del nodo no puede iniciar SteamCMD con una cuenta de Steam (actualizá el agente).",
+      "guard_code_invalid": "Un código de Steam Guard tiene 5 letras o dígitos."
     }
   },
   "account": {
@@ -947,6 +969,20 @@
       "time": "Tiempo en el servidor",
       "empty": "No hay nadie jugando.",
       "notListed": "El juego no lista a sus jugadores."
+    },
+    "steam": {
+      "title": "Cuenta de Steam",
+      "hint": "La cuenta con la que SteamCMD inicia sesión para instalar y actualizar el juego. Con la anónima alcanza para la mayoría de los servidores dedicados.",
+      "requiredHint": "El servidor dedicado de este juego solo se puede descargar con una cuenta de Steam que lo tenga.",
+      "required": "Necesita cuenta",
+      "account": "Cuenta",
+      "anonymous": "Anónima",
+      "saved": "Cuenta de Steam guardada. Se usa desde el próximo install o update.",
+      "guardTitle": "Steam Guard",
+      "guardHint": "Steam pidió un código de Steam Guard para iniciar sesión: llegó por mail, o lo muestra la app móvil de Steam. Escribilo y corrélo de nuevo (los códigos de la app cambian cada 30 segundos).",
+      "guardCode": "Código de Steam Guard",
+      "retryInstall": "Instalar de nuevo con el código",
+      "retryUpdate": "Actualizar de nuevo con el código"
     }
   },
   "panelKeys": {
@@ -1488,5 +1524,23 @@
     "nodes": "Nodos",
     "nodesHint": "Los servidores de estos nodos pueden usarlo. Ninguno marcado: todos los nodos.",
     "deleteConfirm": "¿Borrar el servidor de bases de datos {{name}}?"
+  },
+  "steamAccounts": {
+    "title": "Cuentas de Steam",
+    "description": "Cuentas con las que SteamCMD inicia sesión, para servidores dedicados que solo puede descargar una cuenta que tenga el juego.",
+    "add": "Agregar cuenta de Steam",
+    "edit": "Editar cuenta de Steam",
+    "empty": "Todavía no hay cuentas de Steam: SteamCMD inicia sesión de forma anónima.",
+    "name": "Nombre",
+    "nameHint": "Cómo la llama el panel.",
+    "userName": "Nombre de la cuenta de Steam",
+    "password": "Contraseña",
+    "passwordKeep": "Dejala vacía para mantener la actual.",
+    "use": "Uso",
+    "servers_one": "{{count, number}} servidor",
+    "servers_other": "{{count, number}} servidores",
+    "secondary": "Usá una cuenta propia para los servidores, no la personal: Steam puede pedir un código de Steam Guard, y los agentes guardan el inicio de sesión que cachea SteamCMD (cifrado, nunca en los archivos de un servidor).",
+    "hint": "El primer install o update con una cuenta puede frenar por un código de Steam Guard (por mail, o desde la app móvil de Steam): la página del servidor lo pide. Después, el nodo inicia sesión con lo que guardó.",
+    "deleteConfirm": "¿Borrar la cuenta de Steam {{name}}?"
   }
 }

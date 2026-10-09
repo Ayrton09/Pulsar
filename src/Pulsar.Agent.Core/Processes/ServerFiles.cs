@@ -48,7 +48,15 @@ public sealed class DirectServerFiles : IServerFiles
         content.CopyTo(file);
     }
 
-    public void Delete(string serverRoot, string relativePath) => File.Delete(InstallSteps.Resolve(serverRoot, relativePath));
+    public void Delete(string serverRoot, string relativePath)
+    {
+        // A missing folder means a missing file (as on Windows), not an error.
+        var path = InstallSteps.Resolve(serverRoot, relativePath);
+        if (Directory.Exists(Path.GetDirectoryName(path)))
+        {
+            File.Delete(path);
+        }
+    }
 
     public void CreateDirectory(string serverRoot, string relativePath) => Directory.CreateDirectory(InstallSteps.Resolve(serverRoot, relativePath));
 

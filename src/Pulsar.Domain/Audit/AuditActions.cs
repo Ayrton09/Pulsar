@@ -80,6 +80,7 @@ public static class AuditActions
         public const string BackupUnlocked = "server.backup_unlocked";
         public const string BackupLimitChanged = "server.backup_limit_changed";
         public const string LimitsChanged = "server.limits_changed";
+        public const string SteamAccountChanged = "server.steam_account_changed";
         public const string DatabaseCreated = "server.database_created";
         public const string DatabaseDeleted = "server.database_deleted";
         public const string DatabasePasswordRotated = "server.database_password_rotated";
@@ -106,6 +107,13 @@ public static class AuditActions
         public const string Created = "backup_storage.created";
         public const string Updated = "backup_storage.updated";
         public const string Deleted = "backup_storage.deleted";
+    }
+
+    public static class SteamAccount
+    {
+        public const string Created = "steam_account.created";
+        public const string Updated = "steam_account.updated";
+        public const string Deleted = "steam_account.deleted";
     }
 
     public static class DatabaseHost

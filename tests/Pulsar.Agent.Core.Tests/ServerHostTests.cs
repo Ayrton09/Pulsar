@@ -160,7 +160,7 @@ public sealed class ServerHostTests : IAsyncDisposable
         var files = new DirectServerFiles();
         var processes = new FakeProcessManager();
         var install = new InstallOptions();
-        _steamCmd = new SteamCmdRunner(processes, new NoSteamCmd(), files, new SteamCmdOptions(), TimeProvider.System, NullLogger<SteamCmdRunner>.Instance);
+        _steamCmd = new SteamCmdRunner(processes, new NoSteamCmd(), files, new SteamLoginStore(_configs.Paths, new PlainStateProtector()), new SteamCmdOptions(), TimeProvider.System, NullLogger<SteamCmdRunner>.Instance);
         _fileCommands = new FileCommands(new DirectServerFileManager(), channel, new FileCommandOptions(), NullLogger<FileCommands>.Instance);
         _host = new ServerHost(_configs, _store, _provisioner, processes, new InstallSteps(install, files), _steamCmd, files, new NoRcon(),
             new UnmanagedFirewall(), _fileCommands, new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance), install,

@@ -1904,6 +1904,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("state_sequence");
 
+                    b.Property<Guid?>("SteamAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("steam_account_id");
+
                     b.Property<Guid>("TemplateId")
                         .HasColumnType("uuid")
                         .HasColumnName("template_id");
@@ -1933,6 +1937,9 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.HasIndex("ShortId")
                         .IsUnique()
                         .HasDatabaseName("ix_servers_short_id");
+
+                    b.HasIndex("SteamAccountId")
+                        .HasDatabaseName("ix_servers_steam_account_id");
 
                     b.HasIndex("TemplateId")
                         .HasDatabaseName("ix_servers_template_id");
@@ -2028,6 +2035,53 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_server_variables_one_value", "(value IS NULL) <> (protected_value IS NULL)");
                         });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Servers.SteamAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("name");
+
+                    b.Property<byte[]>("PasswordProtected")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("password_protected");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("user_name");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_steam_accounts");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_steam_accounts_name");
+
+                    b.ToTable("steam_accounts", (string)null);
                 });
 
             modelBuilder.Entity("Pulsar.Infrastructure.Identity.PulsarUser", b =>
@@ -2555,6 +2609,12 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_servers_nodes_node_id");
+
+                    b.HasOne("Pulsar.Domain.Servers.SteamAccount", null)
+                        .WithMany()
+                        .HasForeignKey("SteamAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_servers_steam_accounts_steam_account_id");
 
                     b.HasOne("Pulsar.Domain.Servers.GameTemplate", null)
                         .WithMany()

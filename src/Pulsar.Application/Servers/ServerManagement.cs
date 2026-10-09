@@ -62,7 +62,13 @@ public sealed record ServerDetails(
     IReadOnlyList<OperationView> RecentOperations,
     ServerLimitsView Limits,
     TemplateUpgradeView? TemplateUpgrade = null,
-    bool HasAddons = false);
+    bool HasAddons = false,
+    ServerSteamView? Steam = null);
+
+/// <summary>The Steam account a server's SteamCMD signs in with (Phase 13).</summary>
+/// <param name="Required">Its game's dedicated server can only be downloaded with an account.</param>
+/// <param name="AccountId">Null: anonymous.</param>
+public sealed record ServerSteamView(bool Required, Guid? AccountId, string? AccountName);
 
 /// <summary>The newest version of the server's game template, when it is newer than the one the server runs.</summary>
 public sealed record TemplateUpgradeView(Guid TemplateId, string Version);
@@ -90,6 +96,8 @@ public sealed partial class ServerManagement(
     TemplateCatalog templates,
     ServerSpecs specs,
     ServerOperations operations,
+    SteamAccounts steamAccounts,
+    SteamGuardCodes guardCodes,
     OperationProgressCache progress,
     IPermissionEvaluator permissions,
     VisibleResources visible,
@@ -216,8 +224,15 @@ public sealed partial class ServerManagement(
     }
 
     /// <summary>Provisions and installs again (repairs a failed install; Phase 4 adds game updates).</summary>
-    public async Task<Result<ServerDetails>> ReinstallAsync(ServerId id, CancellationToken cancellationToken)
+    /// <param name="steamGuardCode">The code Steam asked for when the last install signed in (Phase 13).</param>
+    public async Task<Result<ServerDetails>> ReinstallAsync(ServerId id, CancellationToken cancellationToken, string? steamGuardCode = null)
     {
+        var code = SteamAccounts.GuardCode(steamGuardCode);
+        if (!code.IsSuccess)
+        {
+            return code.Error!;
+        }
+
         var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
         {
@@ -235,11 +250,23 @@ public sealed partial class ServerManagement(
         }
 
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
+        // The install follows the provisioning: what it would refuse is refused now, while someone is there to read it.
+        if (await steamAccounts.LoginForAsync(server, ServerSpecs.Parse(template), Connection(server.NodeId), null, cancellationToken) is { IsSuccess: false } login)
+        {
+            return login.Error!;
+        }
+
+        if (code.Value is { } guard)
+        {
+            guardCodes.Hold(server.Id, guard);
+        }
+
         var result = await RunOperationAsync(server, OperationType.ServerProvision,
             new ProvisionServerCommand(server.Id.Value, await specs.BuildAsync(server, template, cancellationToken)), request.UserId,
             OperationRequester.User, cancellationToken);
         if (!result.IsSuccess)
         {
+            guardCodes.Take(server.Id);
             return result.Error!;
         }
 
@@ -276,6 +303,11 @@ public sealed partial class ServerManagement(
         }
 
         var manifest = ServerSpecs.Parse(next);
+        if (await steamAccounts.LoginForAsync(server, manifest, Connection(server.NodeId), null, cancellationToken) is { IsSuccess: false } login)
+        {
+            return login.Error!;
+        }
+
         var now = clock.GetUtcNow();
         var changed = server.ChangeTemplate(current, next, [.. manifest.VariableList.Select(v => v.Key)], now);
         if (!changed.IsSuccess)
@@ -330,11 +362,24 @@ public sealed partial class ServerManagement(
     public async Task ContinueInstallAsync(ServerId id, UserId? requestedBy, CancellationToken cancellationToken)
     {
         var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
-        if (server is not null)
+        if (server is null)
         {
-            await RunOperationAsync(server, OperationType.ServerInstall, new InstallServerCommand(server.Id.Value), requestedBy,
-                OperationRequester.System, cancellationToken);
+            return;
         }
+
+        var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
+        var login = await steamAccounts.LoginForAsync(server, ServerSpecs.Parse(template), Connection(server.NodeId), guardCodes.Take(server.Id),
+            cancellationToken);
+        if (!login.IsSuccess)
+        {
+            // Nobody waits for this one: the failed install says why on the server's page (a new server's game needs an account).
+            await operations.FailAsync(server, Operation.Create(OperationType.ServerInstall, server.NodeId, server.Id, requestedBy, OperationRequester.System,
+                clock.GetUtcNow()), login.Error!, cancellationToken);
+            return;
+        }
+
+        await RunOperationAsync(server, OperationType.ServerInstall, new InstallServerCommand(server.Id.Value, login.Value), requestedBy,
+            OperationRequester.System, cancellationToken);
     }
 
     public async Task<Result<AgentCommandResult>> StartAsync(ServerId id, CancellationToken cancellationToken) =>
@@ -454,6 +499,44 @@ public sealed partial class ServerManagement(
         return await DetailsAsync(server, cancellationToken);
     }
 
+    /// <summary>The Steam account the server's SteamCMD signs in with from its next install or update; null: anonymous.</summary>
+    public async Task<Result<ServerDetails>> SetSteamAccountAsync(ServerId id, Guid? accountId, CancellationToken cancellationToken)
+    {
+        var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
+        if (server is null)
+        {
+            return ServerErrors.NotFound;
+        }
+
+        SteamAccount? account = null;
+        if (accountId is { } wanted)
+        {
+            account = await db.SteamAccounts.AsNoTracking().SingleOrDefaultAsync(a => a.Id == new SteamAccountId(wanted), cancellationToken);
+            if (account is null)
+            {
+                return SteamAccountErrors.NotFound;
+            }
+        }
+
+        audit.Record(AuditActions.Server.SteamAccountChanged, metadata: new { account = account?.Name }).WithServer(server.Id, server.NodeId);
+        for (var attempt = 0; ; attempt++)
+        {
+            server.SetSteamAccount(account?.Id, clock.GetUtcNow());
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < 2)
+            {
+                // The agent reported a state change in between: set it again on the fresh row.
+                await db.Entry(server).ReloadAsync(cancellationToken);
+            }
+        }
+
+        return await DetailsAsync(server, cancellationToken);
+    }
+
     /// <summary>Gives the server other allocations of its node (stopped servers only: the game listens on them).</summary>
     public async Task<Result<ServerDetails>> UpdatePortsAsync(ServerId id, IReadOnlyDictionary<string, Guid?> ports, CancellationToken cancellationToken)
     {
@@ -500,15 +583,22 @@ public sealed partial class ServerManagement(
     }
 
     /// <summary>Updates the game (the manifest's update steps: SteamCMD), optionally verifying every file.</summary>
-    public async Task<Result<ServerDetails>> UpdateGameAsync(ServerId id, bool validate, CancellationToken cancellationToken)
+    /// <param name="steamGuardCode">The code Steam asked for when the last update signed in (Phase 13).</param>
+    public async Task<Result<ServerDetails>> UpdateGameAsync(ServerId id, bool validate, CancellationToken cancellationToken, string? steamGuardCode = null)
     {
-        var requested = await RequestUpdateAsync(id, validate, OperationRequester.User, cancellationToken);
+        var code = SteamAccounts.GuardCode(steamGuardCode);
+        if (!code.IsSuccess)
+        {
+            return code.Error!;
+        }
+
+        var requested = await RequestUpdateAsync(id, validate, OperationRequester.User, cancellationToken, code.Value);
         return requested.IsSuccess ? await DetailsAsync(requested.Value.Server, cancellationToken) : requested.Error!;
     }
 
     /// <summary>Starts the update operation; the scheduler follows the operation it returns (failed already when the node refused it).</summary>
     public async Task<Result<(Server Server, Operation Operation)>> RequestUpdateAsync(ServerId id, bool validate, OperationRequester via,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? steamGuardCode = null)
     {
         var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -516,19 +606,26 @@ public sealed partial class ServerManagement(
             return ServerErrors.NotFound;
         }
 
-        if (ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken)).Update is null)
+        var manifest = ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken));
+        if (manifest.Update is null)
         {
             return ServerErrors.UpdateUnsupported;
         }
 
-        if (Connection(server.NodeId) is null)
+        if (Connection(server.NodeId) is not { } agent)
         {
             return NodeErrors.NotConnected;
         }
 
+        var login = await steamAccounts.LoginForAsync(server, manifest, agent, steamGuardCode, cancellationToken);
+        if (!login.IsSuccess)
+        {
+            return login.Error!;
+        }
+
         var operation = Operation.Create(OperationType.ServerUpdate, server.NodeId, server.Id, via == OperationRequester.User ? request.UserId : null,
             via, clock.GetUtcNow());
-        var run = await operations.RunAsync(server, operation, new UpdateServerCommand(server.Id.Value, validate), beforeSave: null, cancellationToken);
+        var run = await operations.RunAsync(server, operation, new UpdateServerCommand(server.Id.Value, validate, login.Value), beforeSave: null, cancellationToken);
         if (!run.IsSuccess)
         {
             return run.Error!;
@@ -760,7 +857,10 @@ public sealed partial class ServerManagement(
             .FirstOrDefault();
         return new ServerDetails(summary, server.Description, server.AutoStart, server.RestartOnCrash, template.Key, template.Version,
             manifest.Update is not null, ports, [.. operations.Select(View)], new ServerLimitsView(server.CpuLimitPercent, server.MemoryLimitMb, server.DatabaseLimit),
-            newer is null ? null : new TemplateUpgradeView(newer.Id.Value, newer.Version), manifest.AddonList.Count > 0);
+            newer is null ? null : new TemplateUpgradeView(newer.Id.Value, newer.Version), manifest.AddonList.Count > 0,
+            new ServerSteamView(SteamAccounts.NeedsAccount(manifest), server.SteamAccountId?.Value, server.SteamAccountId is { } account
+                ? await db.SteamAccounts.AsNoTracking().Where(a => a.Id == account).Select(a => a.Name).SingleOrDefaultAsync(cancellationToken)
+                : null));
     }
 
     private async Task<IReadOnlyList<ServerSummary>> SummariesAsync(IReadOnlyList<Server> servers, CancellationToken cancellationToken)

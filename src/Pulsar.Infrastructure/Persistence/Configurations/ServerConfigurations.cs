@@ -56,6 +56,7 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         // Existing servers get the default; 0 (no databases) is a value of its own, not "unset".
         builder.Property(s => s.DatabaseLimit).HasDefaultValue(Server.DefaultDatabaseLimit).HasSentinel(-1);
         builder.HasIndex(s => s.NodeId);
+        builder.HasOne<SteamAccount>().WithMany().HasForeignKey(s => s.SteamAccountId).OnDelete(DeleteBehavior.Restrict);
         builder.Property(s => s.ExtraArguments).HasColumnType("text[]").HasDefaultValueSql("'{}'");
         builder.HasMany(s => s.Variables).WithOne().HasForeignKey(v => v.ServerId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(s => s.Variables).HasField("_variables").UsePropertyAccessMode(PropertyAccessMode.Field);
@@ -199,5 +200,19 @@ internal sealed class ServerAddonConfiguration : IEntityTypeConfiguration<Server
         builder.Property(a => a.Key).HasMaxLength(ServerAddon.MaxKeyLength);
         builder.Property(a => a.Release).HasMaxLength(ServerAddon.MaxReleaseLength);
         builder.HasOne<Server>().WithMany().HasForeignKey(a => a.ServerId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+internal sealed class SteamAccountConfiguration : IEntityTypeConfiguration<SteamAccount>
+{
+    public void Configure(EntityTypeBuilder<SteamAccount> builder)
+    {
+        builder.ToTable("steam_accounts");
+        builder.HasKey(a => a.Id);
+        builder.Property(a => a.Id).ValueGeneratedNever();
+        builder.Property(a => a.Name).HasMaxLength(SteamAccount.MaxNameLength);
+        builder.HasIndex(a => a.Name).IsUnique();
+        builder.Property(a => a.UserName).HasMaxLength(SteamAccount.MaxUserNameLength);
+        builder.Property<uint>("Version").IsRowVersion();
     }
 }

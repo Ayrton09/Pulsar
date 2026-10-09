@@ -138,6 +138,9 @@ public sealed class Server
     /// <summary>Cap on the memory the server's processes commit, in MiB; null: none.</summary>
     public int? MemoryLimitMb { get; private set; }
 
+    /// <summary>The Steam account SteamCMD signs in with for this server (Phase 13); null: anonymous.</summary>
+    public SteamAccountId? SteamAccountId { get; private set; }
+
     /// <summary>How many MySQL/MariaDB databases the server may have (Phase 13); 0: none.</summary>
     public int DatabaseLimit { get; private set; } = DefaultDatabaseLimit;
 
@@ -390,6 +393,13 @@ public sealed class Server
         MemoryLimitMb = memoryMb;
         UpdatedAt = now;
         return Result.Success();
+    }
+
+    /// <summary>The Steam account SteamCMD signs in with from the next install or update; null: anonymous.</summary>
+    public void SetSteamAccount(SteamAccountId? account, DateTimeOffset now)
+    {
+        SteamAccountId = account;
+        UpdatedAt = now;
     }
 
     /// <summary>How many databases the server may have; lowering it keeps the ones it has.</summary>

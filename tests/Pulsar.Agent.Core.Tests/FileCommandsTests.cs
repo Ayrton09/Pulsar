@@ -58,6 +58,32 @@ public sealed class FileCommandsTests : IDisposable
     }
 
     [Fact]
+    public void TheSteamLoginSteamCmdIsLentIsNobodysToReadOrChange()
+    {
+        var config = Path.Combine(_root, ".pulsar", "steamcmd", "config");
+        Directory.CreateDirectory(config);
+        File.WriteAllText(Path.Combine(config, "config.vdf"), "a cached login");
+
+        foreach (var command in new AgentCommand[]
+        {
+            new SendFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/config/config.vdf", TransferTicket.New(), 1024),
+            new SendFileCommand(Guid.NewGuid(), ".PULSAR/SteamCMD/Config/config.vdf", TransferTicket.New(), 1024),
+            new ListFilesCommand(Guid.NewGuid(), ".pulsar/steamcmd/config"),
+            new MoveFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/config/config.vdf", "mine.vdf"),
+            new MoveFileCommand(Guid.NewGuid(), "planted.vdf", ".pulsar/steamcmd/config/config.vdf"),
+            new DeleteFileCommand(Guid.NewGuid(), ".pulsar/steamcmd/config/config.vdf"),
+        })
+        {
+            var ack = Execute(command, busy: true);
+            Assert.Equal((AckStatus.Rejected, FileErrors.AccessDenied), (ack.Status, ack.ErrorCode));
+        }
+
+        // The rest of SteamCMD's folder is the server's like any other.
+        Assert.Equal(AckStatus.Accepted, Execute(new ListFilesCommand(Guid.NewGuid(), ".pulsar/steamcmd")).Status);
+        Assert.False(FileCommands.IsSteamLogin(".pulsar/steamcmd/configs"));
+    }
+
+    [Fact]
     public void ATransferStartsOnlyWhenTheAgentCanDoWhatItAsks()
     {
         File.WriteAllText(Path.Combine(_root, "server.cfg"), "hostname x");

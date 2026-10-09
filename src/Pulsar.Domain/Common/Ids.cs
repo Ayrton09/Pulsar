@@ -93,6 +93,13 @@ public readonly record struct BackupStorageId(Guid Value)
     public override string ToString() => Value.ToString();
 }
 
+public readonly record struct SteamAccountId(Guid Value)
+{
+    public static SteamAccountId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString();
+}
+
 public readonly record struct DatabaseHostId(Guid Value)
 {
     public static DatabaseHostId New() => new(Guid.CreateVersion7());

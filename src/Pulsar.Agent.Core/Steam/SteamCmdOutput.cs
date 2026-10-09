@@ -31,6 +31,9 @@ public abstract record SteamCmdLine
     public sealed record Success : SteamCmdLine;
 
     public sealed record Failure(string Message) : SteamCmdLine;
+
+    /// <summary>Steam asks for a Steam Guard code (by mail or from the mobile app): nobody is there to type it.</summary>
+    public sealed record GuardRequested(string Message) : SteamCmdLine;
 }
 
 /// <summary>
@@ -62,9 +65,16 @@ public static partial class SteamCmdOutput
             return new SteamCmdLine.Success();
         }
 
-        if (text.StartsWith("ERROR!", StringComparison.OrdinalIgnoreCase) || StateError().IsMatch(text))
+        if (IsGuardPrompt(text))
         {
-            return new SteamCmdLine.Failure(text.Length > 300 ? text[..300] : text);
+            return new SteamCmdLine.GuardRequested(Cut(text));
+        }
+
+        // "Login Failure: Invalid Password", "...FAILED (Rate Limit Exceeded)", "FAILED with result code 5": a login.
+        if (text.StartsWith("ERROR!", StringComparison.OrdinalIgnoreCase) || StateError().IsMatch(text)
+            || text.Contains("Login Failure", StringComparison.OrdinalIgnoreCase) || LoginFailed().IsMatch(text))
+        {
+            return new SteamCmdLine.Failure(Cut(text));
         }
 
         // "[ 45%] Downloading update (12,345 of 67,890 KB)..." (localized): SteamCMD updating itself.
@@ -77,6 +87,24 @@ public static partial class SteamCmdOutput
         if (error is null)
         {
             return ("steamcmd.failed", true);
+        }
+
+        // A login Steam refused: trying again the same way fails the same way, and too many tries lock the account out.
+        var result = ResultCode().Match(error) is { Success: true } match ? int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) : (int?)null;
+        if (result == 84 || error.Contains("Rate Limit", StringComparison.OrdinalIgnoreCase))
+        {
+            return ("steamcmd.rate_limited", false);
+        }
+
+        if (result is 63 or 65 or 85 or 88 || IsGuardPrompt(error) || error.Contains("Login Auth Code", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("Account Logon Denied", StringComparison.OrdinalIgnoreCase) || error.Contains("code mismatch", StringComparison.OrdinalIgnoreCase))
+        {
+            return ("steamcmd.guard_required", false);
+        }
+
+        if (result is 5 or 18 || (IsLogin(error) && error.Contains("Invalid Password", StringComparison.OrdinalIgnoreCase)))
+        {
+            return ("steamcmd.login_failed", false);
         }
 
         // "state is 0x202 after update job" is how SteamCMD reports a full disk.
@@ -100,6 +128,24 @@ public static partial class SteamCmdOutput
     /// fails the same way; forgetting the app's state and validating every file recovers.
     /// </summary>
     public static bool NeedsReset(string? error) => error is not null && StuckState().IsMatch(error);
+
+    /// <summary>Whether SteamCMD stopped at (or failed on) a Steam Guard code.</summary>
+    public static bool IsGuardPrompt(string text) =>
+        text.Contains("Steam Guard", StringComparison.OrdinalIgnoreCase) || text.Contains("Two-factor", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("two factor", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Whether an error is about signing in (rather than an app's beta password, say).</summary>
+    public static bool IsLogin(string error) =>
+        error.Contains("Login Failure", StringComparison.OrdinalIgnoreCase) || error.Contains("Logging in", StringComparison.OrdinalIgnoreCase)
+        || LoginFailed().IsMatch(error);
+
+    private static string Cut(string text) => text.Length > 300 ? text[..300] : text;
+
+    [GeneratedRegex(@"FAILED\s*(\(|with result code)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex LoginFailed();
+
+    [GeneratedRegex(@"result code (\d{1,4})\b", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex ResultCode();
 
     [GeneratedRegex(@"state is 0x0*6 after update job", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex StuckState();

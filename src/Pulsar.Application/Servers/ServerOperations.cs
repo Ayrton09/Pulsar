@@ -63,6 +63,27 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
         return operation;
     }
 
+    /// <summary>
+    /// An operation the panel could not even send (what it needs is missing): recorded as failed with why, so the server's
+    /// page says so. Nothing is recorded when the server is busy with another one.
+    /// </summary>
+    public async Task FailAsync(Server server, Operation operation, DomainError error, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(operation);
+        ArgumentNullException.ThrowIfNull(error);
+        var now = clock.GetUtcNow();
+        if (!server.BeginOperation(operation, now).IsSuccess)
+        {
+            return;
+        }
+
+        db.Operations.Add(operation);
+        operation.Complete(OperationStatus.Failed, error.Code, error.Message, now);
+        server.OperationCompleted(operation, now);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     [LoggerMessage(Level = LogLevel.Debug, Message = "Operation {OperationId} finished before its start was saved")]
     private partial void LogOperationAlreadyReported(OperationId operationId);
 

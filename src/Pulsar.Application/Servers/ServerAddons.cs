@@ -33,6 +33,7 @@ public sealed class ServerAddons(
     IAgentConnections connections,
     AgentSessionStore sessions,
     ServerOperations operations,
+    SteamAccounts steamAccounts,
     IAuditLog audit,
     IRequestContext request,
     TimeProvider clock)
@@ -147,7 +148,23 @@ public sealed class ServerAddons(
             OperationRequester.User, clock.GetUtcNow());
         audit.Record(install ? AuditActions.Server.AddonInstallRequested : AuditActions.Server.AddonRemoveRequested, metadata: new { addon = addon.Key })
             .WithServer(server.Id, server.NodeId);
-        AgentCommand command = install ? new InstallAddonCommand(server.Id.Value, addon.Key) : new RemoveAddonCommand(server.Id.Value, addon.Key);
+        SteamLogin? login = null;
+        if (!install)
+        {
+            // Game files it replaced come back with a validating update: SteamCMD signs in as for any update.
+            var signIn = await steamAccounts.LoginForAsync(server, ServerSpecs.Parse(await db.GameTemplates.AsNoTracking()
+                .SingleAsync(t => t.Id == server.TemplateId, cancellationToken)), agent, null, cancellationToken);
+            if (!signIn.IsSuccess)
+            {
+                return signIn.Error!;
+            }
+
+            login = signIn.Value;
+        }
+
+        AgentCommand command = install
+            ? new InstallAddonCommand(server.Id.Value, addon.Key)
+            : new RemoveAddonCommand(server.Id.Value, addon.Key, login);
         var run = await operations.RunAsync(server, operation, command, beforeSave: null, cancellationToken);
         return run.IsSuccess ? await ViewsAsync(server, cancellationToken) : run.Error!;
     }

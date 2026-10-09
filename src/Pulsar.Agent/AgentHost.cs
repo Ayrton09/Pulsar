@@ -93,6 +93,7 @@ internal static class AgentHost
             builder.Services.AddSingleton<InstallSteps>();
             builder.Services.AddSingleton<ISteamCmdSource, SteamCmdBootstrapper>();
             builder.Services.AddSingleton(new SteamCmdOptions());
+            builder.Services.AddSingleton<SteamLoginStore>();
             builder.Services.AddSingleton<SteamCmdRunner>();
             builder.Services.AddSingleton(new SupervisorOptions());
             builder.Services.AddSingleton(new ServerHostOptions());

@@ -102,6 +102,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.SendBackup;
             yield return AgentCapabilities.RemoteBackups;
             yield return AgentCapabilities.Limits;
+            yield return AgentCapabilities.SteamAccounts;
             yield return AgentCapabilities.InstallAddon;
             yield return AgentCapabilities.RemoveAddon;
             if (installOptions.TestGameAvailable)
@@ -418,12 +419,12 @@ public sealed partial class ServerHost(
     }
 
     private CommandAck Install(CommandEnvelope envelope, InstallServerCommand command) =>
-        RunSteps(envelope, command.ServerId, s => s.Manifest.Install?.Steps ?? [], validate: null, update: false);
+        RunSteps(envelope, command.ServerId, s => s.Manifest.Install?.Steps ?? [], validate: null, update: false, command.Login);
 
     private CommandAck Update(CommandEnvelope envelope, UpdateServerCommand command) =>
         _servers.TryGetValue(command.ServerId, out var server) && server.Manifest.Update is null
             ? Rejected(envelope, "server.update_unsupported", "This game has no update steps.")
-            : RunSteps(envelope, command.ServerId, s => s.Manifest.Update!.Steps, command.Validate ? true : null, update: true);
+            : RunSteps(envelope, command.ServerId, s => s.Manifest.Update!.Steps, command.Validate ? true : null, update: true, command.Login);
 
     private AddonInstaller Addons => new(files, installOptions.HttpHandler);
 
@@ -444,7 +445,7 @@ public sealed partial class ServerHost(
             var replaced = Addons.Remove(directory, addon);
             if (replaced.Count > 0 && server.Manifest.Update is { } update)
             {
-                await RunStepsAsync(server, operationId, update.Steps, validate: true, cancellationToken);
+                await RunStepsAsync(server, operationId, update.Steps, validate: true, command.Login, cancellationToken);
             }
 
             LogAddonRemoved(command.ServerId, addon.Key, replaced.Count);
@@ -484,7 +485,8 @@ public sealed partial class ServerHost(
 
     /// <summary>Install or update: the manifest's steps, SteamCMD ones as the server's account, the others by the agent.</summary>
     /// <param name="update">An update: the installed addons the game's update overwrites are installed again afterwards.</param>
-    private CommandAck RunSteps(CommandEnvelope envelope, Guid serverId, Func<Server, IReadOnlyList<InstallStep>> steps, bool? validate, bool update)
+    private CommandAck RunSteps(CommandEnvelope envelope, Guid serverId, Func<Server, IReadOnlyList<InstallStep>> steps, bool? validate, bool update,
+        SteamLogin? login)
     {
         if (envelope.OperationId is not { } operationId)
         {
@@ -503,7 +505,7 @@ public sealed partial class ServerHost(
 
         return RunOperation(envelope, serverId, operationId, exclusive: true, async cancellationToken =>
         {
-            var directory = await RunStepsAsync(server, operationId, steps(server), validate, cancellationToken);
+            var directory = await RunStepsAsync(server, operationId, steps(server), validate, login, cancellationToken);
             LogInstalled(serverId);
             if (!update)
             {
@@ -526,7 +528,8 @@ public sealed partial class ServerHost(
     }
 
     /// <summary>Runs install or update steps; returns the server's folder.</summary>
-    private async Task<string> RunStepsAsync(Server server, Guid operationId, IReadOnlyList<InstallStep> steps, bool? validate,
+    /// <param name="login">The Steam account SteamCMD signs in with; null: anonymous.</param>
+    private async Task<string> RunStepsAsync(Server server, Guid operationId, IReadOnlyList<InstallStep> steps, bool? validate, SteamLogin? login,
         CancellationToken cancellationToken)
     {
         var serverId = server.Supervisor.ServerId;
@@ -536,9 +539,14 @@ public sealed partial class ServerHost(
         {
             if (step is SteamCmdStep steam)
             {
+                if (steam.NeedsAccount && login is null)
+                {
+                    throw new GameProcessException("steamcmd.account_required", "Only a Steam account that owns this game's dedicated server may download it.");
+                }
+
                 var betaPassword = steam.BetaPasswordVar is { } key ? server.Spec.Variables.GetValueOrDefault(key) : null;
                 var job = new SteamCmdJob(serverId, provisioned.Directory, provisioned.Identity, steam.AppId, steam.Beta, betaPassword,
-                    validate ?? steam.Validate);
+                    validate ?? steam.Validate, login);
                 await steamCmd.RunAsync(job, (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
             }
             else

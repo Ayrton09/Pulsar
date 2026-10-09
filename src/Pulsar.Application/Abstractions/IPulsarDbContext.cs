@@ -55,6 +55,8 @@ public interface IPulsarDbContext
 
     DbSet<BackupStorage> BackupStorages { get; }
 
+    DbSet<SteamAccount> SteamAccounts { get; }
+
     DbSet<DatabaseHost> DatabaseHosts { get; }
 
     DbSet<ServerDatabase> ServerDatabases { get; }

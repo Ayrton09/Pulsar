@@ -125,9 +125,13 @@ public sealed record InstallDefinition(IReadOnlyList<InstallStep> Steps);
 public abstract record InstallStep;
 
 /// <summary>
-/// Installs or updates a Steam app into the server directory with SteamCMD (anonymous login only). Run by the agent
-/// as the server's own account.
+/// Installs or updates a Steam app into the server directory with SteamCMD. Run by the agent as the server's own
+/// account.
 /// </summary>
+/// <param name="Login">
+/// <c>anonymous</c>, or <c>account</c> for a dedicated server only an account that owns it may download: such a server
+/// cannot be installed without a Steam account (Phase 13). A server with an account logs in with it either way.
+/// </param>
 /// <param name="Beta">A beta branch (<c>-beta</c>).</param>
 /// <param name="BetaPasswordVar">Secret string variable holding the branch password (<c>-betapassword</c>).</param>
 /// <param name="Validate">Verify every file against Steam on every run (slow); an update operation can ask for it too.</param>
@@ -139,6 +143,9 @@ public sealed record SteamCmdStep(
     bool Validate = false) : InstallStep
 {
     public const string AnonymousLogin = "anonymous";
+    public const string AccountLogin = "account";
+
+    public bool NeedsAccount => Login == AccountLogin;
 }
 
 /// <summary>Creates a directory (relative to the server directory) if it does not exist.</summary>

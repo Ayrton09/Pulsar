@@ -56,6 +56,7 @@ public static class DependencyInjection
         services.AddSingleton<IPanelKeyRing, PanelKeyRing>();
         services.AddSingleton<IVariableProtector, DataProtectionVariableProtector>();
         services.AddSingleton<IBackupStorageSecretProtector, DataProtectionBackupStorageSecretProtector>();
+        services.AddSingleton<ISteamAccountSecretProtector, DataProtectionSteamAccountSecretProtector>();
         services.AddSingleton<IDatabaseSecretProtector, DataProtectionDatabaseSecretProtector>();
         services.AddSingleton<IDatabaseHostClient, MySqlDatabaseHostClient>();
         services.AddScoped<IServerLocks, ServerLocks>();

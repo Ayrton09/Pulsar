@@ -29,7 +29,8 @@
     "templates": "Games",
     "notifications": "Notifications",
     "backupStorage": "Backup storage",
-    "databaseHosts": "Database hosts"
+    "databaseHosts": "Database hosts",
+    "steamAccounts": "Steam accounts"
   },
   "auth": {
     "userName": "User name",
@@ -347,7 +348,8 @@
         "addon_remove_requested": "Asked to remove a mod",
         "database_created": "Created a database",
         "database_deleted": "Deleted a database",
-        "database_password_rotated": "Changed a database's password"
+        "database_password_rotated": "Changed a database's password",
+        "steam_account_changed": "Changed a server's Steam account"
       },
       "template": {
         "imported": "Imported a game template"
@@ -368,6 +370,11 @@
         "created": "Added a database host",
         "updated": "Changed a database host",
         "deleted": "Deleted a database host"
+      },
+      "steam_account": {
+        "created": "Added a Steam account",
+        "updated": "Changed a Steam account",
+        "deleted": "Deleted a Steam account"
       }
     }
   },
@@ -596,6 +603,21 @@
       "limit_reached": "The server has as many databases as it may have.",
       "host_not_allowed": "This server's node cannot use that database host.",
       "password_unreadable": "The password cannot be read with this panel's keys: change it to get a new one."
+    },
+    "steamcmd": {
+      "account_required": "Only a Steam account that owns this game's dedicated server may download it: choose one in the server's settings."
+    },
+    "steam_account": {
+      "not_found": "That Steam account does not exist.",
+      "name_invalid": "A name is one line of up to 64 characters.",
+      "user_name_invalid": "A Steam account name is 3 to 64 letters, digits and underscores.",
+      "password_required": "The password is needed.",
+      "password_invalid": "A Steam password here is up to 64 characters, without spaces or double quotes.",
+      "password_unreadable": "The account's password cannot be read with this panel's keys: set it again.",
+      "in_use": "Servers use this Steam account: choose another one for them first.",
+      "too_many": "The panel has at most 20 Steam accounts.",
+      "unsupported": "The node's agent cannot sign SteamCMD in with a Steam account (update the agent).",
+      "guard_code_invalid": "A Steam Guard code is 5 letters or digits."
     }
   },
   "account": {
@@ -947,6 +969,20 @@
       "time": "Time on the server",
       "empty": "Nobody is playing.",
       "notListed": "The game does not list its players."
+    },
+    "steam": {
+      "title": "Steam account",
+      "hint": "The account SteamCMD signs in with to install and update the game. Anonymous is enough for most dedicated servers.",
+      "requiredHint": "This game's dedicated server can only be downloaded with a Steam account that owns it.",
+      "required": "Account needed",
+      "account": "Account",
+      "anonymous": "Anonymous",
+      "saved": "Steam account saved. It is used from the next install or update.",
+      "guardTitle": "Steam Guard",
+      "guardHint": "Steam asked for a Steam Guard code to sign in: it was sent by mail, or the Steam mobile app shows it. Type it and run it again (mobile codes change every 30 seconds).",
+      "guardCode": "Steam Guard code",
+      "retryInstall": "Install again with the code",
+      "retryUpdate": "Update again with the code"
     }
   },
   "panelKeys": {
@@ -1488,5 +1524,23 @@
     "nodes": "Nodes",
     "nodesHint": "Servers of these nodes may use it. None ticked: every node.",
     "deleteConfirm": "Delete the database host {{name}}?"
+  },
+  "steamAccounts": {
+    "title": "Steam accounts",
+    "description": "Accounts SteamCMD signs in with, for dedicated servers only an account that owns the game may download.",
+    "add": "Add Steam account",
+    "edit": "Edit Steam account",
+    "empty": "No Steam accounts yet: SteamCMD signs in anonymously.",
+    "name": "Name",
+    "nameHint": "What the panel calls it.",
+    "userName": "Steam account name",
+    "password": "Password",
+    "passwordKeep": "Leave it empty to keep the current one.",
+    "use": "Use",
+    "servers_one": "{{count, number}} server",
+    "servers_other": "{{count, number}} servers",
+    "secondary": "Use an account of its own for servers, not your personal one: Steam may ask for a Steam Guard code, and the agents keep the login SteamCMD caches (encrypted, never in a server's files).",
+    "hint": "The first install or update with an account may stop for a Steam Guard code (by mail, or from the Steam mobile app): the server's page asks for it. After that the node signs in with the login it keeps.",
+    "deleteConfirm": "Delete the Steam account {{name}}?"
   }
 }

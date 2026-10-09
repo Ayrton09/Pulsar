@@ -17,6 +17,7 @@
 | Servers | **Server**, ServerVariable, ServerAddon | Desired state, observed state, variables (secrets encrypted), installed addons (Phase 12). |
 | Operations | **Operation** | Long-running work executed by an agent (install, update, backup…). |
 | Backups | **Backup**, BackupStorage | Metadata; the archive lives on the node, and a copy in S3-compatible storage when its server chose one (Phase 10). |
+| Steam accounts | **SteamAccount** | Accounts SteamCMD signs in with for servers whose game needs one (Phase 13); a server points at one or none. |
 | Game databases | **DatabaseHost**, ServerDatabase | MySQL/MariaDB servers the panel creates databases on, and each server's databases (Phase 13). Game data never touches Pulsar's database. |
 | Scheduling | **ScheduledTask**, ScheduledTaskRun | Typed action + cron + IANA time zone. |
 | Notifications | **NotificationChannel**, NotificationSettings, NotificationDelivery | Where messages go (Discord webhook, email), the SMTP server, and an outbox of messages with their attempts (Phase 10). |
@@ -75,7 +76,7 @@ public sealed class Server
 | `server.startup.edit` (startup variables and arguments) | server, node, global |
 | `server.settings.edit` (name, auto-restart, …) | server, node, global |
 | `server.install` (install/update/reinstall) | server, node, global |
-| `server.limits.edit` (CPU and memory caps, Phase 12; the database limit, Phase 13) | node, global |
+| `server.limits.edit` (CPU and memory caps, Phase 12; the database limit and the Steam account, Phase 13) | node, global |
 | `server.create` `server.delete` `server.transfer` (future) | node, global |
 | `node.view` `node.manage` `node.credentials.manage` | node, global |
 | `template.view` `template.manage` | global |
@@ -449,6 +450,17 @@ CREATE TABLE backup_storages (
     updated_at         timestamptz NOT NULL
 );
 -- A storage that servers use or backups have copies in cannot be deleted.
+
+-- ===================== Steam accounts (Phase 13) =====================
+CREATE TABLE steam_accounts (
+    id                  uuid PRIMARY KEY,
+    name                varchar(64) NOT NULL UNIQUE,
+    user_name           varchar(64) NOT NULL,        -- the Steam account name
+    password_protected  bytea NOT NULL,              -- Data Protection; sent to nodes only inside install/update commands
+    created_at          timestamptz NOT NULL,
+    updated_at          timestamptz NOT NULL
+);
+-- servers.steam_account_id uuid REFERENCES steam_accounts(id) ON DELETE RESTRICT: NULL signs in anonymously.
 
 -- ===================== Game databases (Phase 13) =====================
 CREATE TABLE database_hosts (

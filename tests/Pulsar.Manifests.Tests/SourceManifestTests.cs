@@ -177,6 +177,16 @@ public sealed class SourceManifestTests
         Assert.Contains(errors, e => e.Message.Contains("Port 'tv' is optional", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void ASteamCmdStepMaySayItNeedsAnAccount()
+    {
+        var json = TestManifests.Change("css", m => m["install"]!["steps"]![0]!["login"] = "account");
+
+        Assert.Empty(ManifestParser.Parse(System.Text.Encoding.UTF8.GetBytes(json)).Errors);
+        Assert.True(Assert.IsType<SteamCmdStep>(TestManifests.Parse(json).Install!.Steps[0]).NeedsAccount);
+        Assert.False(Assert.IsType<SteamCmdStep>(TestManifests.Load("css").Install!.Steps[0]).NeedsAccount);
+    }
+
     [Theory]
     [InlineData("""{"type": "steamcmd", "appId": 232330, "login": "someone"}""", "install.steps[1].login")]
     [InlineData("""{"type": "steamcmd", "appId": 0}""", "install.steps[1].appId")]

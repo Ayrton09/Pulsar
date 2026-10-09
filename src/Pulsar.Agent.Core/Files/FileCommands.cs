@@ -52,6 +52,12 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
     {
         ArgumentNullException.ThrowIfNull(envelope);
         var command = envelope.Command;
+        // Where SteamCMD finds the Steam login the agent lends it during an install: never anyone's to read (Phase 13).
+        if (PathsOf(command).Any(IsSteamLogin))
+        {
+            return Rejected(envelope, FileErrors.AccessDenied, "Pulsar keeps this folder to itself.");
+        }
+
         if (busy && command is not (ListFilesCommand or SendFileCommand))
         {
             return new CommandAck(envelope.CommandId, AckStatus.Busy, "server.busy", "An operation is changing the server's files; try again when it ends.");
@@ -85,6 +91,27 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
             return Rejected(envelope, ex.Code, ex.Message);
         }
     }
+
+    /// <summary>Whether <paramref name="path"/> is in (or is) the server's SteamCMD <c>config</c> folder, whatever its case.</summary>
+    public static bool IsSteamLogin(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        const string Folder = ".pulsar/steamcmd/config";
+        var normalized = path.Replace('\\', '/').Trim('/');
+        return normalized.Equals(Folder, StringComparison.OrdinalIgnoreCase)
+            || normalized.StartsWith(Folder + "/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<string> PathsOf(AgentCommand command) => command switch
+    {
+        ListFilesCommand c => [c.Path],
+        CreateDirectoryCommand c => [c.Path],
+        MoveFileCommand c => [c.Path, c.Destination],
+        DeleteFileCommand c => [c.Path],
+        SendFileCommand c => [c.Path],
+        ReceiveFileCommand c => [c.Path],
+        _ => [],
+    };
 
     public void Dispose() => _stopping.Dispose();
 

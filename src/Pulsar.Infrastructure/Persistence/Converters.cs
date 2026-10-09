@@ -29,6 +29,8 @@ internal sealed class ApiKeyIdConverter() : ValueConverter<ApiKeyId, Guid>(id =>
 
 internal sealed class BackupStorageIdConverter() : ValueConverter<BackupStorageId, Guid>(id => id.Value, value => new BackupStorageId(value));
 
+internal sealed class SteamAccountIdConverter() : ValueConverter<SteamAccountId, Guid>(id => id.Value, value => new SteamAccountId(value));
+
 internal sealed class DatabaseHostIdConverter() : ValueConverter<DatabaseHostId, Guid>(id => id.Value, value => new DatabaseHostId(value));
 
 internal sealed class ServerDatabaseIdConverter() : ValueConverter<ServerDatabaseId, Guid>(id => id.Value, value => new ServerDatabaseId(value));

@@ -33,7 +33,23 @@ public sealed record UpdateServerSettingsRequest(
 /// <param name="Ports">Allocation per template port; null leaves an optional port without one.</param>
 public sealed record UpdateServerPortsRequest([property: Required] Dictionary<string, Guid?> Ports);
 
-public sealed record UpdateGameRequest(bool Validate);
+/// <param name="SteamGuardCode">The code Steam asked for when the last update signed in with the server's account.</param>
+public sealed record UpdateGameRequest(bool Validate, [property: StringLength(16)] string? SteamGuardCode = null);
+
+/// <param name="SteamGuardCode">The code Steam asked for when the last install signed in with the server's account.</param>
+public sealed record InstallRequest([property: Required, StringLength(16)] string SteamGuardCode);
+
+/// <param name="SteamAccountId">The Steam account SteamCMD signs in with; null: anonymous.</param>
+public sealed record ServerSteamAccountRequest(Guid? SteamAccountId);
+
+/// <param name="Password">Required to create; leave it out on an update to keep the current one.</param>
+public sealed record SteamAccountRequest(
+    [property: Required, StringLength(SteamAccount.MaxNameLength)] string Name,
+    [property: Required, StringLength(SteamAccount.MaxUserNameLength)] string UserName,
+    [property: StringLength(64)] string? Password)
+{
+    internal SteamAccountDefinition ToDefinition() => new(Name, UserName, Password);
+}
 
 /// <param name="TemplateId">A newer version of the server's game template.</param>
 public sealed record UpgradeTemplateRequest(Guid TemplateId);
@@ -68,6 +84,10 @@ public static class ServerEndpoints
             .RequirePermission(Permissions.Server.Kill);
         servers.MapPost("/{id:guid}/install", (Guid id, ServerManagement m, CancellationToken ct) => DetailsAsync(m.ReinstallAsync(new ServerId(id), ct)))
             .RequirePermission(Permissions.Server.Install);
+        // The same, answering the Steam Guard code Steam asked for when the last install signed in.
+        servers.MapPost("/{id:guid}/install/steam-guard", (Guid id, InstallRequest request, ServerManagement m, CancellationToken ct) =>
+                DetailsAsync(m.ReinstallAsync(new ServerId(id), ct, request.SteamGuardCode)))
+            .RequirePermission(Permissions.Server.Install);
         servers.MapDelete("/{id:guid}", (Guid id, ServerManagement m, CancellationToken ct) => DetailsAsync(m.DeleteAsync(new ServerId(id), ct)))
             .RequirePermission(Permissions.Server.Delete);
         servers.MapGet("/{id:guid}/metrics", async Task<Results<Ok<ServerMetricHistory>, ProblemHttpResult, NotFound>> (Guid id, IPulsarDbContext db,
@@ -91,8 +111,12 @@ public static class ServerEndpoints
                 DetailsAsync(m.SetLimitsAsync(new ServerId(id), request.CpuPercent, request.MemoryMb, request.Databases, ct)))
             .RequirePermission(Permissions.Server.LimitsEdit);
         servers.MapPost("/{id:guid}/update", (Guid id, UpdateGameRequest request, ServerManagement m, CancellationToken ct) =>
-                DetailsAsync(m.UpdateGameAsync(new ServerId(id), request.Validate, ct)))
+                DetailsAsync(m.UpdateGameAsync(new ServerId(id), request.Validate, ct, request.SteamGuardCode)))
             .RequirePermission(Permissions.Server.Install);
+        // Whoever hosts the server chooses whose Steam account downloads its game, as with its caps.
+        servers.MapPut("/{id:guid}/steam-account", (Guid id, ServerSteamAccountRequest request, ServerManagement m, CancellationToken ct) =>
+                DetailsAsync(m.SetSteamAccountAsync(new ServerId(id), request.SteamAccountId, ct)))
+            .RequirePermission(Permissions.Server.LimitsEdit);
         servers.MapPost("/{id:guid}/console", (Guid id, ConsoleCommandRequest request, ConsoleCommands console, CancellationToken ct) =>
                 CommandAsync(console.SendAsync(new ServerId(id), request.Command, ct)))
             .RequirePermission(Permissions.Server.ConsoleWrite);
@@ -100,6 +124,18 @@ public static class ServerEndpoints
         servers.MapPost("/{id:guid}/operations/{operationId:guid}/cancel", (Guid id, Guid operationId, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.CancelOperationAsync(new ServerId(id), operationId, ct)))
             .RequirePermission(Permissions.Server.Install, Permissions.Server.BackupsCreate);
+
+        // The accounts themselves: panel settings (their passwords are the panel's).
+        var steamAccounts = api.MapGroup("/steam-accounts").WithTags("Servers");
+        // Listed (never with a password) for whoever chooses a server's account too.
+        steamAccounts.MapGet("/", async (SteamAccounts a, CancellationToken ct) => TypedResults.Ok(await a.ListAsync(ct)))
+            .RequirePermissionAnywhere(Permissions.Settings.Manage, Permissions.Server.LimitsEdit);
+        steamAccounts.MapPost("/", CreateSteamAccountAsync).RequirePermission(Permissions.Settings.Manage);
+        steamAccounts.MapPut("/{accountId:guid}", async (Guid accountId, SteamAccountRequest request, SteamAccounts a, CancellationToken ct) =>
+                (await a.UpdateAsync(accountId, request.ToDefinition(), ct)).ToHttp())
+            .RequirePermission(Permissions.Settings.Manage);
+        steamAccounts.MapDelete("/{accountId:guid}", async (Guid accountId, SteamAccounts a, CancellationToken ct) => (await a.DeleteAsync(accountId, ct)).ToHttp())
+            .RequirePermission(Permissions.Settings.Manage);
 
         var templates = api.MapGroup("/templates").WithTags("Templates");
         templates.MapGet("/", async (TemplateCatalog catalog, CancellationToken ct) => TypedResults.Ok(await catalog.ListAsync(ct)))
@@ -111,6 +147,15 @@ public static class ServerEndpoints
             .RequirePermission(Permissions.Template.Manage);
         templates.MapPost("/", ImportTemplateAsync).RequirePermission(Permissions.Template.Manage);
         return api;
+    }
+
+    private static async Task<Results<Created<SteamAccountView>, ProblemHttpResult>> CreateSteamAccountAsync(SteamAccountRequest request,
+        SteamAccounts accounts, CancellationToken ct)
+    {
+        var result = await accounts.CreateAsync(request.ToDefinition(), ct);
+        return result.IsSuccess
+            ? TypedResults.Created($"/api/v1/steam-accounts/{result.Value.Id}", result.Value)
+            : ApiProblems.FromDomainError(result.Error!);
     }
 
     private static async Task<Ok<IReadOnlyList<ServerSummary>>> ListAsync(Guid? nodeId, ServerManagement servers, CancellationToken ct) =>

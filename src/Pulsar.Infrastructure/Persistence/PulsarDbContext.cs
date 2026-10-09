@@ -57,6 +57,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<BackupStorage> BackupStorages => Set<BackupStorage>();
 
+    public DbSet<SteamAccount> SteamAccounts => Set<SteamAccount>();
+
     public DbSet<DatabaseHost> DatabaseHosts => Set<DatabaseHost>();
 
     public DbSet<ServerDatabase> ServerDatabases => Set<ServerDatabase>();
@@ -85,6 +87,7 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
         configurationBuilder.Properties<ScheduledRunId>().HaveConversion<ScheduledRunIdConverter>();
         configurationBuilder.Properties<BackupStorageId>().HaveConversion<BackupStorageIdConverter>();
         configurationBuilder.Properties<ApiKeyId>().HaveConversion<ApiKeyIdConverter>();
+        configurationBuilder.Properties<SteamAccountId>().HaveConversion<SteamAccountIdConverter>();
         configurationBuilder.Properties<DatabaseHostId>().HaveConversion<DatabaseHostIdConverter>();
         configurationBuilder.Properties<ServerDatabaseId>().HaveConversion<ServerDatabaseIdConverter>();
         configurationBuilder.Properties<NotificationChannelId>().HaveConversion<NotificationChannelIdConverter>();

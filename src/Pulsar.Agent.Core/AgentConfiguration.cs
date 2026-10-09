@@ -27,6 +27,9 @@ public sealed class AgentPaths(string root)
     /// <summary>Operation results the panel has not received yet.</summary>
     public string OutboxDirectory => Path.Combine(Root, "state", "outbox");
 
+    /// <summary>The logins SteamCMD cached for each Steam account (Phase 13), encrypted.</summary>
+    public string SteamLoginsDirectory => Path.Combine(Root, "state", "steam-logins");
+
     /// <summary>The verified SteamCMD bootstrapper each server gets a copy of.</summary>
     public string SteamCmdDirectory => Path.Combine(Root, "steamcmd");
 

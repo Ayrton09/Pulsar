@@ -12,6 +12,10 @@ public sealed class SecretPrintingTests
         new SendBackupCommand(Guid.Empty, Guid.Empty, Secret),
         new EnrollRequest(Secret, [1, 2], "software", "1.0.0", new NodeInventory("host", "Windows", "26100", null, 8, 1, null), [3]),
         new TokenResponse(Secret, Guid.Empty, DateTimeOffset.UnixEpoch),
+        new SteamLogin(Guid.Empty, "servers_account", Secret),
+        new InstallServerCommand(Guid.Empty, new SteamLogin(Guid.Empty, "servers_account", Secret, "GUARD")),
+        new UpdateServerCommand(Guid.Empty, false, new SteamLogin(Guid.Empty, "servers_account", "pw", Secret)),
+        new RemoveAddonCommand(Guid.Empty, "oxide", new SteamLogin(Guid.Empty, "servers_account", Secret)),
     ];
 
     [Theory]

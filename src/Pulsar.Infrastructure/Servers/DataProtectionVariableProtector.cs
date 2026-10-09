@@ -27,3 +27,15 @@ internal sealed class DataProtectionBackupStorageSecretProtector(IDataProtection
 
     public string Unprotect(byte[] protectedValue) => Encoding.UTF8.GetString(_protector.Unprotect(protectedValue));
 }
+
+/// <summary>Steam account passwords encrypted with the panel's Data Protection key ring (ADR-0011).</summary>
+internal sealed class DataProtectionSteamAccountSecretProtector(IDataProtectionProvider provider) : ISteamAccountSecretProtector
+{
+    private const string Purpose = "Pulsar.SteamAccounts.v1";
+
+    private readonly IDataProtector _protector = provider.CreateProtector(Purpose);
+
+    public byte[] Protect(string value) => _protector.Protect(Encoding.UTF8.GetBytes(value));
+
+    public string Unprotect(byte[] protectedValue) => Encoding.UTF8.GetString(_protector.Unprotect(protectedValue));
+}

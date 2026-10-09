@@ -182,7 +182,11 @@
       "properties": {
         "type": { "const": "steamcmd" },
         "appId": { "type": "integer", "minimum": 1 },
-        "login": { "const": "anonymous", "default": "anonymous" },
+        "login": {
+          "enum": ["anonymous", "account"],
+          "default": "anonymous",
+          "description": "'account': only a Steam account that owns the dedicated server may download it; the server needs one set in the panel."
+        },
         "beta": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$" },
         "betaPasswordVar": { "type": "string", "description": "A secret variable holding the beta branch password." },
         "validate": { "type": "boolean", "default": false }

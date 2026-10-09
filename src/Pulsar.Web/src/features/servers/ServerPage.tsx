@@ -12,6 +12,7 @@ import { useCurrentUser } from '../auth/api';
 import { AddonsTab } from '../addons/AddonsTab';
 import { BackupsTab } from '../backups/BackupsTab';
 import { DatabasesTab } from '../databases/DatabasesTab';
+import { SteamGuardPrompt } from '../steam/SteamServerCards';
 import { FilesTab } from '../files/FilesTab';
 import { SchedulesTab } from '../schedules/SchedulesTab';
 import { useServerMetrics, useWatchServers } from '../live/hooks';
@@ -113,6 +114,7 @@ export function ServerPage() {
           <OperationProgress server={server} operation={server.activeOperation} />
         </div>
       )}
+      <SteamGuardPrompt details={details.data} />
       <div role="tablist" aria-label={t('servers.tabs.label')} className="mt-6 flex gap-1 border-b border-border">
         {tabs.map((name) => (
           <button

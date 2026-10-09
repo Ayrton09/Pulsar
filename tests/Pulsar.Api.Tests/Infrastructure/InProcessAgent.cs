@@ -72,6 +72,9 @@ public sealed class InProcessAgent : IAsyncDisposable
     public ServerHost? Servers => _servers;
 
     /// <summary>What the scripted game servers answer to their manifest's query.</summary>
+    /// <summary>The logins SteamCMD cached per Steam account (in this agent's state directory).</summary>
+    public SteamLoginStore SteamLogins => field ??= new SteamLoginStore(Configs.Paths, new PlainStateProtector());
+
     public ScriptedQuery Query => field ??= new ScriptedQuery(_clock);
 
     /// <summary>The agent's downloads (addons, Minecraft): set before <see cref="StartAsync"/> to fake the sites; null for the real ones.</summary>
@@ -98,7 +101,7 @@ public sealed class InProcessAgent : IAsyncDisposable
         var channel = new PanelChannel();
         var install = Http is null ? new InstallOptions { TestGameDirectory = testGame } : new InstallOptions { TestGameDirectory = testGame, HttpHandler = Http };
         var files = new DirectServerFiles();
-        _steamCmd = new SteamCmdRunner(Processes, new ScriptedSteamCmdSource(Path.Combine(_root, "steamcmd.exe")), files,
+        _steamCmd = new SteamCmdRunner(Processes, new ScriptedSteamCmdSource(Path.Combine(_root, "steamcmd.exe")), files, SteamLogins,
             new SteamCmdOptions { RetryDelays = [TimeSpan.Zero] }, _clock, NullLogger<SteamCmdRunner>.Instance);
         _servers = new ServerHost(Configs, new ServerStore(Configs.Paths, new PlainStateProtector()), Provisioner, Processes,
             new InstallSteps(install, files), _steamCmd, files, Rcon, new UnmanagedFirewall(),

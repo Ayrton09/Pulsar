@@ -20,6 +20,7 @@ import {
 } from './api';
 import { VariableFields } from './VariableFields';
 import { initialValue, variableError, type VariableValues } from './variables';
+import { SteamAccountCard } from '../steam/SteamServerCards';
 
 /** The running operation: its stage, a progress bar when the agent reports one, and Cancel for installs and updates. */
 export function OperationProgress({ server, operation }: { server: ServerRef; operation: OperationView }) {
@@ -89,6 +90,7 @@ export function SettingsTab({ details }: { details: ServerDetails }) {
     <div className="space-y-6">
       <SettingsForm key={JSON.stringify(settings.data)} server={details.server} settings={settings.data} save={save} />
       <LimitsCard key={JSON.stringify(details.limits)} details={details} save={saveLimits} />
+      <SteamAccountCard key={details.steam?.accountId ?? 'anonymous'} details={details} />
     </div>
   );
 }

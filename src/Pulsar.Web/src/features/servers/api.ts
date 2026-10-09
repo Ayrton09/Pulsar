@@ -79,7 +79,7 @@ export function invalidateServer(queryClient: QueryClient, id: string) {
 }
 
 /** Server changes show up in the list, the server page and the audit log (not in the settings: see invalidateServer). */
-function useServersChanged() {
+export function useServersChanged() {
   const queryClient = useQueryClient();
   return () =>
     Promise.all([

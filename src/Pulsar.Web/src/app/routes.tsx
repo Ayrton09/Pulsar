@@ -152,6 +152,19 @@ export const routes: RouteObject[] = [
             },
           },
           {
+            path: 'admin/steam-accounts',
+            lazy: async () => {
+              const { SteamAccountsPage } = await import('../features/steam/SteamAccountsPage');
+              return {
+                element: (
+                  <RequirePermission anyOf={[Permission.SettingsManage]}>
+                    <SteamAccountsPage />
+                  </RequirePermission>
+                ),
+              };
+            },
+          },
+          {
             path: 'admin/database-hosts',
             lazy: async () => {
               const { DatabaseHostsPage } = await import('../features/databases/DatabaseHostsPage');

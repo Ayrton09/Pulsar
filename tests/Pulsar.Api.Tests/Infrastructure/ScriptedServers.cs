@@ -42,6 +42,15 @@ public sealed class ScriptedProcessManager : IGameProcessManager
     /// <summary>Started SteamCMD runs.</summary>
     public int SteamCmdRuns => _started.Count(p => p.IsSteamCmd);
 
+    /// <summary>
+    /// The Steam Guard code a scripted Steam asks for when an account signs in with its password; null asks for none. A
+    /// sign-in without the password works only with the login a previous one cached (as SteamCMD's config.vdf).
+    /// </summary>
+    public string? SteamGuardCode { get; set; }
+
+    /// <summary>How each SteamCMD run signed in: "anonymous", "user", "user+password" or "user+password+code".</summary>
+    public ConcurrentQueue<string> SteamSignIns { get; } = new();
+
     /// <summary>The executables a scripted SteamCMD "installs" per Steam app.</summary>
     public static IReadOnlyDictionary<string, string> AppExecutables { get; } = new Dictionary<string, string>
     {
@@ -49,9 +58,49 @@ public sealed class ScriptedProcessManager : IGameProcessManager
         ["730"] = "game/bin/win64/cs2.exe",
     };
 
+    /// <summary>Steam's side of "+login": false when the run stops here (refused, or waiting for a Steam Guard code).</summary>
+    private async Task<bool> SignInAsync(ScriptedProcess process, ProcessLaunchSpec spec)
+    {
+        var arguments = spec.Arguments.ToList();
+        var login = arguments.SkipWhile(a => a != "+login").Skip(1).TakeWhile(a => !a.StartsWith('+')).ToList();
+        if (login is ["anonymous"])
+        {
+            SteamSignIns.Enqueue("anonymous");
+            process.Print("Connecting anonymously to Steam Public...OK\r\n");
+            return true;
+        }
+
+        var cache = Path.Combine(spec.ServerRoot, ".pulsar", "steamcmd", "config", "config.vdf");
+        SteamSignIns.Enqueue(login.Count switch { 1 => "user", 2 => "user+password", _ => "user+password+code" });
+        if (login.Count == 1)
+        {
+            if (!File.Exists(cache) || await File.ReadAllTextAsync(cache) != $"login of {login[0]}")
+            {
+                process.Print($"Logging in user '{login[0]}' to Steam Public...FAILED (Invalid Password)\r\n");
+                process.Exit(5);
+                return false;
+            }
+        }
+        else if (SteamGuardCode is { } code && (login.Count < 3 || login[2] != code))
+        {
+            process.Print("This computer has not been authenticated for your account using Steam Guard.\r\nSteam Guard code:");
+            return false; // SteamCMD waits for the code: the runner has to stop it
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(cache)!);
+        await File.WriteAllTextAsync(cache, $"login of {login[0]}");
+        process.Print($"Logging in user '{login[0]}' to Steam Public...OK\r\n");
+        return true;
+    }
+
     private async Task PlaySteamCmdAsync(ScriptedProcess process, ProcessLaunchSpec spec)
     {
         process.IsSteamCmd = true;
+        if (!await SignInAsync(process, spec))
+        {
+            return;
+        }
+
         var app = spec.Arguments[spec.Arguments.ToList().IndexOf("+app_update") + 1];
         if (AppExecutables.TryGetValue(app, out var executable))
         {
@@ -60,7 +109,6 @@ public sealed class ScriptedProcessManager : IGameProcessManager
             await File.WriteAllTextAsync(path, $"app {app}");
         }
 
-        process.Print("Connecting anonymously to Steam Public...OK\r\n");
         process.Print(" Update state (0x61) downloading, progress: 45.00 (450 / 1000)\r\n");
         if (SteamCmdGate is { } gate)
         {

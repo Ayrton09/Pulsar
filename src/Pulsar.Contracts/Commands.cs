@@ -87,7 +87,8 @@ public sealed record ProvisionServerCommand(Guid ServerId, ServerRuntimeSpec Spe
 }
 
 /// <summary>Operation: runs the manifest's install steps.</summary>
-public sealed record InstallServerCommand(Guid ServerId) : AgentCommand
+/// <param name="Login">The Steam account SteamCMD logs in with (Phase 13); null: anonymous.</param>
+public sealed record InstallServerCommand(Guid ServerId, SteamLogin? Login = null) : AgentCommand
 {
     public const string Type = "server.install";
 }
@@ -123,7 +124,8 @@ public sealed record DeleteServerCommand(Guid ServerId) : AgentCommand
 
 /// <summary>Operation: runs the manifest's update steps (a game update through SteamCMD).</summary>
 /// <param name="Validate">Also verify every installed file against Steam (slow; repairs a damaged install).</param>
-public sealed record UpdateServerCommand(Guid ServerId, bool Validate) : AgentCommand
+/// <param name="Login">The Steam account SteamCMD logs in with (Phase 13); null: anonymous.</param>
+public sealed record UpdateServerCommand(Guid ServerId, bool Validate, SteamLogin? Login = null) : AgentCommand
 {
     public const string Type = "server.update";
 }
@@ -150,7 +152,8 @@ public sealed record InstallAddonCommand(Guid ServerId, string AddonKey) : Agent
 /// Operation: removes an addon: the files it added and its lines; game files it replaced are restored by a validating
 /// update. Completes with an <see cref="AddonsResult"/> naming it without a release.
 /// </summary>
-public sealed record RemoveAddonCommand(Guid ServerId, string AddonKey) : AgentCommand
+/// <param name="Login">For the validating update, as in <see cref="UpdateServerCommand"/>.</param>
+public sealed record RemoveAddonCommand(Guid ServerId, string AddonKey, SteamLogin? Login = null) : AgentCommand
 {
     public const string Type = "server.addon_remove";
 }
@@ -265,6 +268,23 @@ public sealed record RemoteBackupTarget(string? Endpoint, string Region, string 
     private bool PrintMembers(System.Text.StringBuilder builder)
     {
         builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"Endpoint = {Endpoint}, Region = {Region}, Bucket = {Bucket}, Key = {Key}, AccessKeyId = {AccessKeyId}, PathStyle = {PathStyle}");
+        return true;
+    }
+}
+
+/// <summary>
+/// A Steam account for SteamCMD (Phase 13), sent with each install and update that needs it and never stored by the
+/// agent; only the login SteamCMD caches is kept, encrypted, per <paramref name="AccountId"/>.
+/// </summary>
+/// <param name="AccountId">The panel's id for the account: the agent keeps its cached login under it.</param>
+/// <param name="GuardCode">A Steam Guard code (from the mail or the mobile app) when Steam asked for one.</param>
+public sealed record SteamLogin(Guid AccountId, string UserName, string Password, string? GuardCode = null)
+{
+    // Records print every member: the password and the code must never reach a log through ToString.
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture,
+            $"AccountId = {AccountId}, UserName = {UserName}, Password = ***, GuardCode = {(GuardCode is null ? "null" : "***")}");
         return true;
     }
 }
@@ -401,6 +421,9 @@ public static class AgentCapabilities
 
     /// <summary>Not a command: the agent enforces <see cref="ServerRuntimeSpec.Limits"/> (CPU and memory caps of a server's Job).</summary>
     public const string Limits = "server.limits";
+
+    /// <summary>Not a command: the agent logs SteamCMD in with a <see cref="Contracts.SteamLogin"/> (Phase 13).</summary>
+    public const string SteamAccounts = "steam.login";
 
     /// <summary>The capability an agent must announce to receive <paramref name="command"/>.</summary>
     public static string Of(AgentCommand command) => command switch

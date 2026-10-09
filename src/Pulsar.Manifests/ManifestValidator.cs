@@ -471,9 +471,9 @@ public static partial class ManifestValidator
                         context.Error($"{path}.appId", "A Steam app id.");
                     }
 
-                    if (steam.Login != SteamCmdStep.AnonymousLogin)
+                    if (steam.Login is not (SteamCmdStep.AnonymousLogin or SteamCmdStep.AccountLogin))
                     {
-                        context.Error($"{path}.login", "Only 'anonymous' is supported.");
+                        context.Error($"{path}.login", "'anonymous', or 'account' for a server only an account that owns it may download.");
                     }
 
                     if (steam.Beta is { } beta && !BranchPattern().IsMatch(beta))
