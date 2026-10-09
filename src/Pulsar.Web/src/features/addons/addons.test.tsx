@@ -44,7 +44,7 @@ function details(changes: Partial<Schemas['ServerSummary']> = {}, hasAddons = tr
     canUpdate: true,
     ports: [],
     recentOperations: [],
-    limits: { cpuPercent: null, memoryMb: null },
+    limits: { cpuPercent: null, memoryMb: null, databases: 2 },
     hasAddons,
   };
 }

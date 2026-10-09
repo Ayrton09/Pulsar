@@ -11,6 +11,7 @@ import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { AddonsTab } from '../addons/AddonsTab';
 import { BackupsTab } from '../backups/BackupsTab';
+import { DatabasesTab } from '../databases/DatabasesTab';
 import { FilesTab } from '../files/FilesTab';
 import { SchedulesTab } from '../schedules/SchedulesTab';
 import { useServerMetrics, useWatchServers } from '../live/hooks';
@@ -32,7 +33,17 @@ import { ConsoleTab } from './ConsoleTab';
 import { NetworkTab, OperationProgress, SettingsTab } from './ServerTabs';
 import { serverActions } from './serverStatus';
 
-const allTabs = ['overview', 'console', 'files', 'addons', 'backups', 'schedules', 'settings', 'network'] as const;
+const allTabs = [
+  'overview',
+  'console',
+  'files',
+  'addons',
+  'backups',
+  'databases',
+  'schedules',
+  'settings',
+  'network',
+] as const;
 type Tab = (typeof allTabs)[number];
 
 /** One server: its state and live usage, the lifecycle actions, its console and its recent operations. */
@@ -53,6 +64,7 @@ export function ServerPage() {
       // Only for games whose template has addons.
       (name !== 'addons' || details.data?.hasAddons === true) &&
       (name !== 'backups' || canOnServer(me, target, Permission.ServerBackupsView)) &&
+      (name !== 'databases' || canOnServer(me, target, Permission.ServerDatabasesView)) &&
       (name !== 'schedules' || canOnServer(me, target, Permission.ServerSchedulesView)),
   );
   const requested = search.get('tab');
@@ -131,6 +143,7 @@ export function ServerPage() {
         {tab === 'files' && <FilesTab details={details.data} />}
         {tab === 'addons' && <AddonsTab details={details.data} />}
         {tab === 'backups' && <BackupsTab details={details.data} />}
+        {tab === 'databases' && <DatabasesTab details={details.data} />}
         {tab === 'schedules' && <SchedulesTab details={details.data} />}
         {tab === 'settings' && <SettingsTab details={details.data} />}
         {tab === 'network' && <NetworkTab details={details.data} />}

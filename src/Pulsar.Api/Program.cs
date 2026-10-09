@@ -7,6 +7,7 @@ using Pulsar.Api;
 using Pulsar.Api.Access;
 using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
+using Pulsar.Api.Databases;
 using Pulsar.Api.Nodes;
 using Pulsar.Api.Notifications;
 using Pulsar.Api.Realtime;
@@ -136,6 +137,7 @@ try
     api.MapServerBackupEndpoints();
     api.MapServerAddonEndpoints();
     api.MapWorkshopEndpoints();
+    api.MapDatabaseEndpoints();
     api.MapServerScheduleEndpoints();
     api.MapNotificationEndpoints();
 

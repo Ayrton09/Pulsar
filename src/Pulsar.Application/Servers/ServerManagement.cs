@@ -68,7 +68,8 @@ public sealed record ServerDetails(
 public sealed record TemplateUpgradeView(Guid TemplateId, string Version);
 
 /// <summary>Caps on the server's CPU (share of its node, %) and memory (MiB); null fields are not capped.</summary>
-public sealed record ServerLimitsView(int? CpuPercent, int? MemoryMb);
+/// <param name="Databases">How many MySQL/MariaDB databases the server may have.</param>
+public sealed record ServerLimitsView(int? CpuPercent, int? MemoryMb, int Databases);
 
 /// <summary>A variable of the server: its definition and value. Secret values are never returned, only whether one is set.</summary>
 public sealed record ServerVariableView(TemplateVariable Definition, string? Value, bool HasValue);
@@ -408,7 +409,9 @@ public sealed partial class ServerManagement(
     /// Sets the caps on the server's CPU and memory (null removes one). They reach a running game at once through its
     /// agent, and every later start; an agent that cannot enforce them refuses nothing silently: the change is refused.
     /// </summary>
-    public async Task<Result<ServerDetails>> SetLimitsAsync(ServerId id, int? cpuPercent, int? memoryMb, CancellationToken cancellationToken)
+    /// <param name="databaseLimit">Null keeps the current database limit.</param>
+    public async Task<Result<ServerDetails>> SetLimitsAsync(ServerId id, int? cpuPercent, int? memoryMb, int? databaseLimit,
+        CancellationToken cancellationToken)
     {
         var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (server is null)
@@ -422,13 +425,19 @@ public sealed partial class ServerManagement(
             return ServerErrors.LimitsUnsupported;
         }
 
-        var changed = server.SetLimits(cpuPercent, memoryMb, clock.GetUtcNow());
+        Result Apply(Server target)
+        {
+            var set = target.SetLimits(cpuPercent, memoryMb, clock.GetUtcNow());
+            return !set.IsSuccess || databaseLimit is not { } limit ? set : target.SetDatabaseLimit(limit, clock.GetUtcNow());
+        }
+
+        var changed = Apply(server);
         if (!changed.IsSuccess)
         {
             return changed.Error!;
         }
 
-        audit.Record(AuditActions.Server.LimitsChanged, metadata: new { cpuPercent, memoryMb }).WithServer(server.Id, server.NodeId);
+        audit.Record(AuditActions.Server.LimitsChanged, metadata: new { cpuPercent, memoryMb, databaseLimit }).WithServer(server.Id, server.NodeId);
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -437,7 +446,7 @@ public sealed partial class ServerManagement(
         {
             // The agent reported a state change in between: set the limits again on the fresh row.
             await db.Entry(server).ReloadAsync(cancellationToken);
-            server.SetLimits(cpuPercent, memoryMb, clock.GetUtcNow());
+            Apply(server);
             await db.SaveChangesAsync(cancellationToken);
         }
 
@@ -750,7 +759,7 @@ public sealed partial class ServerManagement(
             .OrderByDescending(t => t.Version, Comparer<string>.Create(GameTemplate.CompareVersions))
             .FirstOrDefault();
         return new ServerDetails(summary, server.Description, server.AutoStart, server.RestartOnCrash, template.Key, template.Version,
-            manifest.Update is not null, ports, [.. operations.Select(View)], new ServerLimitsView(server.CpuLimitPercent, server.MemoryLimitMb),
+            manifest.Update is not null, ports, [.. operations.Select(View)], new ServerLimitsView(server.CpuLimitPercent, server.MemoryLimitMb, server.DatabaseLimit),
             newer is null ? null : new TemplateUpgradeView(newer.Id.Value, newer.Version), manifest.AddonList.Count > 0);
     }
 

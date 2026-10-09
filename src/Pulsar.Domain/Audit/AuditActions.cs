@@ -80,6 +80,9 @@ public static class AuditActions
         public const string BackupUnlocked = "server.backup_unlocked";
         public const string BackupLimitChanged = "server.backup_limit_changed";
         public const string LimitsChanged = "server.limits_changed";
+        public const string DatabaseCreated = "server.database_created";
+        public const string DatabaseDeleted = "server.database_deleted";
+        public const string DatabasePasswordRotated = "server.database_password_rotated";
         public const string BackupStorageChanged = "server.backup_storage_changed";
         public const string ScheduleCreated = "server.schedule_created";
         public const string ScheduleChanged = "server.schedule_changed";
@@ -103,6 +106,13 @@ public static class AuditActions
         public const string Created = "backup_storage.created";
         public const string Updated = "backup_storage.updated";
         public const string Deleted = "backup_storage.deleted";
+    }
+
+    public static class DatabaseHost
+    {
+        public const string Created = "database_host.created";
+        public const string Updated = "database_host.updated";
+        public const string Deleted = "database_host.deleted";
     }
 
     public static class Notification

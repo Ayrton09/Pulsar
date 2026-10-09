@@ -65,6 +65,8 @@ public sealed class Server
     public const int MaxBackupLimit = 1000;
     public const int MinMemoryLimitMb = 128;
     public const int MaxMemoryLimitMb = 1024 * 1024; // 1 TiB
+    public const int DefaultDatabaseLimit = 2;
+    public const int MaxDatabaseLimit = 50;
 
     private const string ShortIdAlphabet = "abcdefghijklmnopqrstuvwxyz234567";
 
@@ -135,6 +137,9 @@ public sealed class Server
 
     /// <summary>Cap on the memory the server's processes commit, in MiB; null: none.</summary>
     public int? MemoryLimitMb { get; private set; }
+
+    /// <summary>How many MySQL/MariaDB databases the server may have (Phase 13); 0: none.</summary>
+    public int DatabaseLimit { get; private set; } = DefaultDatabaseLimit;
 
     public bool AutoStart { get; private set; }
 
@@ -383,6 +388,19 @@ public sealed class Server
 
         CpuLimitPercent = cpuPercent;
         MemoryLimitMb = memoryMb;
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
+    /// <summary>How many databases the server may have; lowering it keeps the ones it has.</summary>
+    public Result SetDatabaseLimit(int limit, DateTimeOffset now)
+    {
+        if (limit is < 0 or > MaxDatabaseLimit)
+        {
+            return ServerErrors.DatabaseLimitInvalid;
+        }
+
+        DatabaseLimit = limit;
         UpdatedAt = now;
         return Result.Success();
     }

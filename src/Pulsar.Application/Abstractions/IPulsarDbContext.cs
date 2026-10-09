@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
+using Pulsar.Domain.Databases;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Notifications;
 using Pulsar.Domain.Scheduling;
@@ -53,6 +54,10 @@ public interface IPulsarDbContext
     DbSet<ScheduledTaskRun> ScheduledTaskRuns { get; }
 
     DbSet<BackupStorage> BackupStorages { get; }
+
+    DbSet<DatabaseHost> DatabaseHosts { get; }
+
+    DbSet<ServerDatabase> ServerDatabases { get; }
 
     DbSet<NotificationChannel> NotificationChannels { get; }
 

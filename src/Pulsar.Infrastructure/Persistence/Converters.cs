@@ -29,6 +29,10 @@ internal sealed class ApiKeyIdConverter() : ValueConverter<ApiKeyId, Guid>(id =>
 
 internal sealed class BackupStorageIdConverter() : ValueConverter<BackupStorageId, Guid>(id => id.Value, value => new BackupStorageId(value));
 
+internal sealed class DatabaseHostIdConverter() : ValueConverter<DatabaseHostId, Guid>(id => id.Value, value => new DatabaseHostId(value));
+
+internal sealed class ServerDatabaseIdConverter() : ValueConverter<ServerDatabaseId, Guid>(id => id.Value, value => new ServerDatabaseId(value));
+
 internal sealed class NotificationChannelIdConverter() : ValueConverter<NotificationChannelId, Guid>(id => id.Value, value => new NotificationChannelId(value));
 
 internal sealed class NotificationDeliveryIdConverter() : ValueConverter<NotificationDeliveryId, Guid>(id => id.Value, value => new NotificationDeliveryId(value));

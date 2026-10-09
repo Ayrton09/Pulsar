@@ -13,6 +13,8 @@
     <PackageVersion Include="MailKit" Version="4.18.1" />
     <!-- Remote backups to S3-compatible storage, used by the agent (Apache-2.0; Phase 10). -->
     <PackageVersion Include="AWSSDK.S3" Version="4.0.104.1" />
+    <!-- Game databases: the panel creates MySQL/MariaDB databases and users (MIT; Phase 13). -->
+    <PackageVersion Include="MySqlConnector" Version="2.6.2" />
   </ItemGroup>
 
   <ItemGroup Label="Hosting and logging">

@@ -5,6 +5,7 @@ using Pulsar.Application.Abstractions;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
+using Pulsar.Domain.Databases;
 using Pulsar.Domain.Metrics;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Notifications;
@@ -56,6 +57,10 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<BackupStorage> BackupStorages => Set<BackupStorage>();
 
+    public DbSet<DatabaseHost> DatabaseHosts => Set<DatabaseHost>();
+
+    public DbSet<ServerDatabase> ServerDatabases => Set<ServerDatabase>();
+
     public DbSet<NotificationChannel> NotificationChannels => Set<NotificationChannel>();
 
     public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
@@ -80,6 +85,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
         configurationBuilder.Properties<ScheduledRunId>().HaveConversion<ScheduledRunIdConverter>();
         configurationBuilder.Properties<BackupStorageId>().HaveConversion<BackupStorageIdConverter>();
         configurationBuilder.Properties<ApiKeyId>().HaveConversion<ApiKeyIdConverter>();
+        configurationBuilder.Properties<DatabaseHostId>().HaveConversion<DatabaseHostIdConverter>();
+        configurationBuilder.Properties<ServerDatabaseId>().HaveConversion<ServerDatabaseIdConverter>();
         configurationBuilder.Properties<NotificationChannelId>().HaveConversion<NotificationChannelIdConverter>();
         configurationBuilder.Properties<NotificationDeliveryId>().HaveConversion<NotificationDeliveryIdConverter>();
     }

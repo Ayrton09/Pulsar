@@ -28,7 +28,8 @@
     "servers": "Servidores",
     "templates": "Juegos",
     "notifications": "Notificaciones",
-    "backupStorage": "Almacenamiento de backups"
+    "backupStorage": "Almacenamiento de backups",
+    "databaseHosts": "Servidores de bases de datos"
   },
   "auth": {
     "userName": "Usuario",
@@ -205,7 +206,11 @@
         "edit": "Poner límites de CPU y memoria"
       },
       "create": "Crear servidores",
-      "delete": "Eliminar servidores"
+      "delete": "Eliminar servidores",
+      "databases": {
+        "view": "Ver bases de datos",
+        "manage": "Administrar bases de datos y leer sus contraseñas"
+      }
     },
     "node": {
       "view": "Ver nodos",
@@ -339,7 +344,10 @@
         "schedule_run_requested": "Ejecutó una tarea programada en el momento",
         "backup_storage_changed": "Cambió adónde se copian los backups",
         "addon_install_requested": "Pidió instalar un mod",
-        "addon_remove_requested": "Pidió quitar un mod"
+        "addon_remove_requested": "Pidió quitar un mod",
+        "database_created": "Creó una base de datos",
+        "database_deleted": "Borró una base de datos",
+        "database_password_rotated": "Cambió la contraseña de una base de datos"
       },
       "template": {
         "imported": "Importó una plantilla de juego"
@@ -355,6 +363,11 @@
         "created": "Agregó un almacenamiento de backups",
         "updated": "Cambió un almacenamiento de backups",
         "deleted": "Borró un almacenamiento de backups"
+      },
+      "database_host": {
+        "created": "Agregó un servidor de bases de datos",
+        "updated": "Cambió un servidor de bases de datos",
+        "deleted": "Borró un servidor de bases de datos"
       }
     }
   },
@@ -468,7 +481,8 @@
       "variable_protected": "No podés cambiar esa opción: {{detail}}",
       "limits_unsupported": "El agente del nodo no puede limitar la CPU y la memoria de un servidor: actualizá el agente.",
       "limits_invalid": "Un límite de CPU va de 1 a 100 %; uno de memoria, de 128 MiB a 1 TiB.",
-      "template_not_newer": "Un servidor solo puede pasar a una versión más nueva de la plantilla de su propio juego."
+      "template_not_newer": "Un servidor solo puede pasar a una versión más nueva de la plantilla de su propio juego.",
+      "database_limit_invalid": "El límite de bases de datos es un número de 0 a 50."
     },
     "template": {
       "version_exists": "Esa versión del juego ya está registrada. Las plantillas no cambian nunca: dale una versión nueva.",
@@ -561,6 +575,27 @@
       "secret_required": "Escribí la secret access key.",
       "in_use": "Hay servidores o backups que usan este almacenamiento: primero elegí otro para esos servidores, o borrá sus backups.",
       "too_many": "El panel ya tiene todos los almacenamientos que puede (20)."
+    },
+    "database_host": {
+      "not_found": "Ese servidor de bases de datos no existe.",
+      "name_invalid": "El nombre es una línea de hasta 64 caracteres.",
+      "address_invalid": "La dirección es un nombre de host o una IP, sin puerto.",
+      "port_invalid": "El puerto es un número de 1 a 65535.",
+      "user_invalid": "El usuario tiene de 1 a 80 caracteres, sin comillas ni barras invertidas.",
+      "user_host_invalid": "Conexiones desde es %, una dirección o un patrón como 10.0.0.% (letras, dígitos, . : - _ %).",
+      "password_required": "Falta la contraseña.",
+      "password_unreadable": "La contraseña del servidor no se puede leer con las claves de este panel: cargala de nuevo.",
+      "in_use": "Hay servidores con bases en este host: borralas primero.",
+      "too_many": "El panel tiene como máximo 20 servidores de bases de datos.",
+      "unreachable": "{{detail}}"
+    },
+    "database": {
+      "not_found": "Esa base de datos no existe.",
+      "name_invalid": "El nombre tiene de 1 a 20 letras minúsculas, dígitos y guiones bajos.",
+      "name_taken": "El servidor ya tiene una base de datos con ese nombre.",
+      "limit_reached": "El servidor ya tiene todas las bases de datos que puede tener.",
+      "host_not_allowed": "El nodo de este servidor no puede usar ese servidor de bases de datos.",
+      "password_unreadable": "La contraseña no se puede leer con las claves de este panel: cambiala para obtener una nueva."
     }
   },
   "account": {
@@ -786,7 +821,8 @@
       "files": "Archivos",
       "addons": "Mods",
       "backups": "Backups",
-      "schedules": "Programación"
+      "schedules": "Programación",
+      "databases": "Bases de datos"
     },
     "wizard": {
       "steps": "Pasos",
@@ -862,7 +898,10 @@
       "noneSet": "Sin límites: el servidor puede usar todo el nodo.",
       "cpuValue": "CPU: hasta {{value, number}} % del nodo",
       "memoryValue": "Memoria: hasta {{value}}",
-      "saved": "Límites guardados."
+      "saved": "Límites guardados.",
+      "databases": "Bases de datos",
+      "databasesValue_one": "Bases de datos: hasta {{count, number}}",
+      "databasesValue_other": "Bases de datos: hasta {{count, number}}"
     },
     "network": {
       "title": "Puertos",
@@ -1389,5 +1428,65 @@
     "average": "Promedio",
     "peak": "Pico",
     "playersValue": "{{value, number(maximumFractionDigits: 1)}}"
+  },
+  "databases": {
+    "title": "Bases de datos",
+    "hint": "Bases MySQL/MariaDB para el juego y sus plugins. Cada una tiene su propio usuario, que solo puede usarla; poné la dirección, el nombre, el usuario y la contraseña en la configuración del plugin.",
+    "usage_one": "{{used, number}} de {{count, number}} base de datos",
+    "usage_other": "{{used, number}} de {{count, number}} bases de datos",
+    "create": "Crear base de datos",
+    "noHosts": "No hay servidores de bases de datos disponibles para el nodo de este servidor: un administrador los agrega en Servidores de bases de datos.",
+    "full": "El servidor ya tiene todas las bases de datos que puede tener.",
+    "empty": "Todavía no hay bases de datos.",
+    "name": "Nombre",
+    "nameHint": "La base (y su usuario) se va a llamar {{name}}.",
+    "nameInvalid": "De 1 a 20 letras minúsculas, dígitos y guiones bajos.",
+    "host": "Servidor",
+    "address": "Dirección",
+    "created": "Creada",
+    "user": "Usuario {{user}}",
+    "userName": "Usuario",
+    "password": "Contraseña",
+    "onHost": "En {{host}} · conexiones desde {{from}}",
+    "showPassword": "Ver contraseña",
+    "rotate": "Cambiar contraseña",
+    "rotateConfirm": "¿Darle una contraseña nueva a {{name}}? El juego deja de conectarse hasta que su configuración tenga la nueva.",
+    "deleteConfirm": "¿Borrar {{name}} y todo lo que tiene? No se puede deshacer.",
+    "credentials": "Datos de conexión de {{name}}",
+    "copyPassword": "Copiar contraseña",
+    "copied": "Copiada."
+  },
+  "databaseHosts": {
+    "title": "Servidores de bases de datos",
+    "description": "Servidores MySQL o MariaDB donde los servidores de juego tienen sus bases. El panel se conecta con una cuenta que puede crear bases y usuarios.",
+    "add": "Agregar servidor de bases de datos",
+    "edit": "Editar servidor de bases de datos",
+    "empty": "Todavía no hay servidores de bases de datos.",
+    "name": "Nombre",
+    "where": "Conexión",
+    "use": "Uso",
+    "forServers": "Los servidores de juego se conectan a {{address}}",
+    "databases_one": "{{count, number}} base de datos",
+    "databases_other": "{{count, number}} bases de datos",
+    "allNodes": "Todos los nodos",
+    "someNodes_one": "{{count, number}} nodo",
+    "someNodes_other": "{{count, number}} nodos",
+    "test": "Probar",
+    "tested": "Conectado: {{version}}.",
+    "address": "Dirección",
+    "addressHint": "Dónde el panel llega al servidor de bases: un nombre de host o una IP.",
+    "port": "Puerto",
+    "userName": "Usuario",
+    "userNameHint": "Una cuenta que pueda crear bases y usuarios (y darles permisos).",
+    "password": "Contraseña",
+    "passwordKeep": "Dejala vacía para mantener la actual.",
+    "serverAddress": "Dirección para los servidores de juego",
+    "serverAddressHint": "Si los servidores de juego llegan por otra dirección (127.0.0.1 si corre en su nodo). Vacía: la misma.",
+    "serverPort": "Puerto para los servidores de juego",
+    "userHost": "Conexiones desde",
+    "userHostHint": "Desde dónde se pueden conectar los usuarios de las bases: % para cualquier lado, o una dirección o patrón como 10.0.0.%.",
+    "nodes": "Nodos",
+    "nodesHint": "Los servidores de estos nodos pueden usarlo. Ninguno marcado: todos los nodos.",
+    "deleteConfirm": "¿Borrar el servidor de bases de datos {{name}}?"
   }
 }

@@ -53,6 +53,11 @@ The remote backup tests need an S3-compatible server: set `PULSAR_TEST_S3` to `e
 example a local SeaweedFS, `weed server -s3 -s3.config=<identities.json>`, which CI runs in Docker). Without it they are
 skipped.
 
+The game database tests need MySQL or MariaDB: set `PULSAR_TEST_MYSQL` to a connection string whose user may create
+databases and users (for example a portable MariaDB from mariadb.org, initialized with `mariadb-install-db --password=…
+--port=3307`: `Server=127.0.0.1;Port=3307;User ID=root;Password=…`). Every test's databases carry a random server id, so
+runs never collide. Without it they are skipped.
+
 Backend:
 
 ```bash

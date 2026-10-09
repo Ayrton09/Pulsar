@@ -40,9 +40,11 @@ public sealed record UpgradeTemplateRequest(Guid TemplateId);
 
 /// <param name="CpuPercent">Share of the node's CPU, 1–100; null: no cap.</param>
 /// <param name="MemoryMb">Memory the server's processes may commit, in MiB; null: no cap.</param>
+/// <param name="Databases">How many databases the server may have; null keeps the current limit.</param>
 public sealed record ServerLimitsRequest(
     [property: Range(1, 100)] int? CpuPercent,
-    [property: Range(Server.MinMemoryLimitMb, Server.MaxMemoryLimitMb)] int? MemoryMb);
+    [property: Range(Server.MinMemoryLimitMb, Server.MaxMemoryLimitMb)] int? MemoryMb,
+    [property: Range(0, Server.MaxDatabaseLimit)] int? Databases = null);
 
 public sealed record ConsoleCommandRequest([property: Required, StringLength(Pulsar.Contracts.ConsoleInput.MaxLength, MinimumLength = 1)] string Command);
 
@@ -86,7 +88,7 @@ public static class ServerEndpoints
                 DetailsAsync(m.UpgradeTemplateAsync(new ServerId(id), request.TemplateId, ct)))
             .RequirePermission(Permissions.Server.Install);
         servers.MapPut("/{id:guid}/limits", (Guid id, ServerLimitsRequest request, ServerManagement m, CancellationToken ct) =>
-                DetailsAsync(m.SetLimitsAsync(new ServerId(id), request.CpuPercent, request.MemoryMb, ct)))
+                DetailsAsync(m.SetLimitsAsync(new ServerId(id), request.CpuPercent, request.MemoryMb, request.Databases, ct)))
             .RequirePermission(Permissions.Server.LimitsEdit);
         servers.MapPost("/{id:guid}/update", (Guid id, UpdateGameRequest request, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.UpdateGameAsync(new ServerId(id), request.Validate, ct)))

@@ -94,7 +94,7 @@ export function SettingsTab({ details }: { details: ServerDetails }) {
 }
 
 /**
- * CPU and memory caps (docs/architecture/06, "Resource limits"). Everyone who sees the server sees them; changing them
+ * CPU and memory caps (docs/architecture/06, "Resource limits") and how many databases the server may have. Everyone who sees the server sees them; changing them
  * takes server.limits.edit, which is given on a node or globally only (a server's owner does not raise their own).
  */
 function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnType<typeof useSetServerLimits> }) {
@@ -105,6 +105,7 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
   const canEdit = canOnServer(me, server, Permission.ServerLimitsEdit);
   const [cpu, setCpu] = useState(limits.cpuPercent?.toString() ?? '');
   const [memory, setMemory] = useState(limits.memoryMb?.toString() ?? '');
+  const [databases, setDatabases] = useState(limits.databases.toString());
   const number = (text: string) => (text.trim() === '' ? null : Number(text));
 
   return (
@@ -127,10 +128,13 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              save.mutate({ id: server.id, body: { cpuPercent: number(cpu), memoryMb: number(memory) } });
+              save.mutate({
+                id: server.id,
+                body: { cpuPercent: number(cpu), memoryMb: number(memory), databases: number(databases) ?? 0 },
+              });
             }}
           >
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <Field label={t('servers.limits.cpu')}>
                 {(ids) => (
                   <Input
@@ -157,6 +161,18 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
                   />
                 )}
               </Field>
+              <Field label={t('servers.limits.databases')}>
+                {(ids) => (
+                  <Input
+                    {...ids}
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={databases}
+                    onChange={(e) => setDatabases(e.target.value)}
+                  />
+                )}
+              </Field>
             </div>
             <div className="flex justify-end">
               <Button type="submit" busy={save.isPending}>
@@ -164,14 +180,16 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
               </Button>
             </div>
           </form>
-        ) : limits.cpuPercent == null && limits.memoryMb == null ? (
-          <p className="text-sm text-muted">{t('servers.limits.noneSet')}</p>
         ) : (
           <ul className="space-y-1 text-sm">
+            {limits.cpuPercent == null && limits.memoryMb == null && (
+              <li className="text-muted">{t('servers.limits.noneSet')}</li>
+            )}
             {limits.cpuPercent != null && <li>{t('servers.limits.cpuValue', { value: limits.cpuPercent })}</li>}
             {limits.memoryMb != null && (
               <li>{t('servers.limits.memoryValue', { value: formatBytes(limits.memoryMb * 1024 * 1024) })}</li>
             )}
+            <li>{t('servers.limits.databasesValue', { count: limits.databases })}</li>
           </ul>
         )}
       </div>

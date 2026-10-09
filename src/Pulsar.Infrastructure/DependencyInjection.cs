@@ -3,11 +3,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Databases;
 using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Notifications;
 using Pulsar.Application.Scheduling;
 using Pulsar.Application.Servers;
+using Pulsar.Infrastructure.Databases;
 using Pulsar.Infrastructure.Identity;
 using Pulsar.Infrastructure.Metrics;
 using Pulsar.Infrastructure.Nodes;
@@ -54,6 +56,9 @@ public static class DependencyInjection
         services.AddSingleton<IPanelKeyRing, PanelKeyRing>();
         services.AddSingleton<IVariableProtector, DataProtectionVariableProtector>();
         services.AddSingleton<IBackupStorageSecretProtector, DataProtectionBackupStorageSecretProtector>();
+        services.AddSingleton<IDatabaseSecretProtector, DataProtectionDatabaseSecretProtector>();
+        services.AddSingleton<IDatabaseHostClient, MySqlDatabaseHostClient>();
+        services.AddScoped<IServerLocks, ServerLocks>();
         services.AddScoped<IScheduledTaskClaims, ScheduledTaskClaims>();
         services.AddHostedService<SchedulerService>();
 

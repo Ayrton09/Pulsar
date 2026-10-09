@@ -38,6 +38,7 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
             t.HasCheckConstraint("ck_servers_backup_limit", $"backup_limit BETWEEN 1 AND {Server.MaxBackupLimit}");
             t.HasCheckConstraint("ck_servers_cpu_limit_percent", "cpu_limit_percent BETWEEN 1 AND 100");
             t.HasCheckConstraint("ck_servers_memory_limit_mb", $"memory_limit_mb BETWEEN {Server.MinMemoryLimitMb} AND {Server.MaxMemoryLimitMb}");
+            t.HasCheckConstraint("ck_servers_database_limit", $"database_limit BETWEEN 0 AND {Server.MaxDatabaseLimit}");
         });
 
         builder.HasKey(s => s.Id);
@@ -52,6 +53,8 @@ internal sealed class ServerConfiguration : IEntityTypeConfiguration<Server>
         builder.Property(s => s.LastStateReason).HasConversion<SnakeCaseEnumConverter<ServerStateReason>>();
         builder.Property(s => s.ActiveOperationType).HasConversion<SnakeCaseEnumConverter<OperationType>>();
         builder.Property<uint>("Version").IsRowVersion();
+        // Existing servers get the default; 0 (no databases) is a value of its own, not "unset".
+        builder.Property(s => s.DatabaseLimit).HasDefaultValue(Server.DefaultDatabaseLimit).HasSentinel(-1);
         builder.HasIndex(s => s.NodeId);
         builder.Property(s => s.ExtraArguments).HasColumnType("text[]").HasDefaultValueSql("'{}'");
         builder.HasMany(s => s.Variables).WithOne().HasForeignKey(v => v.ServerId).OnDelete(DeleteBehavior.Cascade);

@@ -101,7 +101,7 @@ function details(
     canUpdate: false,
     ports: [],
     recentOperations: operations,
-    limits: { cpuPercent: null, memoryMb: null },
+    limits: { cpuPercent: null, memoryMb: null, databases: 2 },
     hasAddons: false,
   };
 }

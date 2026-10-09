@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
+using Pulsar.Application.Databases;
 using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Notifications;
@@ -37,6 +38,8 @@ public static class DependencyInjection
         services.AddScoped<ServerAddons>();
         services.AddScoped<WorkshopLookup>();
         services.AddScoped<BackupStorages>();
+        services.AddScoped<DatabaseHosts>();
+        services.AddScoped<ServerDatabases>();
         services.AddScoped<ConsoleCommands>();
         services.AddScoped<ServerFiles>();
         services.AddSingleton<FileTransfers>();

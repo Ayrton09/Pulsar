@@ -80,6 +80,7 @@ function Shell() {
     { to: '/admin/audit', label: t('nav.audit'), anyOf: [Permission.AuditView] },
     { to: '/admin/notifications', label: t('nav.notifications'), anyOf: [Permission.SettingsManage] },
     { to: '/admin/backup-storage', label: t('nav.backupStorage'), anyOf: [Permission.SettingsManage] },
+    { to: '/admin/database-hosts', label: t('nav.databaseHosts'), anyOf: [Permission.SettingsManage] },
   ]);
 
   return (

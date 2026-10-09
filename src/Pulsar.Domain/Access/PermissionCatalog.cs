@@ -33,6 +33,8 @@ public static class PermissionCatalog
         new(Permissions.Server.BackupsCreate, s_serverNodeGlobal),
         new(Permissions.Server.BackupsRestore, s_serverNodeGlobal),
         new(Permissions.Server.BackupsDelete, s_serverNodeGlobal),
+        new(Permissions.Server.DatabasesView, s_serverNodeGlobal),
+        new(Permissions.Server.DatabasesManage, s_serverNodeGlobal),
         new(Permissions.Server.SchedulesView, s_serverNodeGlobal),
         new(Permissions.Server.SchedulesEdit, s_serverNodeGlobal),
         new(Permissions.Server.StartupEdit, s_serverNodeGlobal),

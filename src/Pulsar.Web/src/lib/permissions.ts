@@ -26,6 +26,8 @@ export const Permission = {
   ServerBackupsCreate: 'server.backups.create',
   ServerBackupsRestore: 'server.backups.restore',
   ServerBackupsDelete: 'server.backups.delete',
+  ServerDatabasesView: 'server.databases.view',
+  ServerDatabasesManage: 'server.databases.manage',
   ServerSchedulesView: 'server.schedules.view',
   ServerSchedulesEdit: 'server.schedules.edit',
   ServerInstall: 'server.install',

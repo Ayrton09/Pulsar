@@ -14,6 +14,7 @@ internal sealed partial class MetricHistoryService(MetricHistory history, TimePr
 
     private static readonly TimeSpan s_rollUpEvery = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan s_pruneEvery = TimeSpan.FromHours(1);
+    private static readonly TimeSpan s_finalFlushBudget = TimeSpan.FromSeconds(5);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -60,9 +61,12 @@ internal sealed partial class MetricHistoryService(MetricHistory history, TimePr
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         await base.StopAsync(cancellationToken);
+        // A database that is down must not hold the panel's shutdown for a connection timeout.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(s_finalFlushBudget);
         try
         {
-            await history.FlushAsync(includeCurrentMinute: true, cancellationToken);
+            await history.FlushAsync(includeCurrentMinute: true, deadline.Token);
         }
         catch (Exception ex)
         {

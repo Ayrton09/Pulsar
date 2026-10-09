@@ -36,13 +36,14 @@ public static class ApiProblems
             or "backups.unsupported" or "server.limits_unsupported" or "backups.not_completed" or "backups.locked" or "backups.in_use" or "backups.corrupt"
             or "api_key.too_many" or "addon.unsupported" or "addon.requires" or "addon.conflicts" or "addon.required_by"
             or "schedules.too_many" or "notifications.too_many" or "backup_storage.in_use" or "backup_storage.too_many"
+            or "database_host.in_use" or "database_host.too_many" or "database.name_taken" or "database.limit_reached"
             => StatusCodes.Status409Conflict,
         "files.changed" => StatusCodes.Status412PreconditionFailed,
         "files.access_denied" or "files.outside_server" => StatusCodes.Status403Forbidden,
         "files.too_large" => StatusCodes.Status413PayloadTooLarge,
         "files.length_required" => StatusCodes.Status411LengthRequired,
         "files.disk_full" => StatusCodes.Status507InsufficientStorage,
-        "files.transfer_failed" or "files.failed" or "workshop.unavailable" => StatusCodes.Status502BadGateway,
+        "files.transfer_failed" or "files.failed" or "workshop.unavailable" or "database_host.unreachable" => StatusCodes.Status502BadGateway,
         _ => StatusCodes.Status400BadRequest,
     };
 

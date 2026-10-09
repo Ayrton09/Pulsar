@@ -93,6 +93,20 @@ public readonly record struct BackupStorageId(Guid Value)
     public override string ToString() => Value.ToString();
 }
 
+public readonly record struct DatabaseHostId(Guid Value)
+{
+    public static DatabaseHostId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString();
+}
+
+public readonly record struct ServerDatabaseId(Guid Value)
+{
+    public static ServerDatabaseId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString();
+}
+
 public readonly record struct NotificationChannelId(Guid Value)
 {
     public static NotificationChannelId New() => new(Guid.CreateVersion7());

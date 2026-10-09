@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
+using Pulsar.Application.Databases;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Notifications;
 using Pulsar.Application.Realtime;
@@ -30,7 +31,7 @@ public sealed record ServerFollowUp(ServerId ServerId, UserId? RequestedBy, Serv
 /// reporting node: an agent can only speak about its own servers and operations.
 /// </summary>
 public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog audit, OperationProgressCache progressCache, IRealtimeNotifier notifier,
-    Notifier notifications, TimeProvider clock, ILogger<AgentServerEvents> logger)
+    Notifier notifications, ServerDatabases databases, TimeProvider clock, ILogger<AgentServerEvents> logger)
 {
     private static readonly TimeSpan s_queuedGrace = TimeSpan.FromMinutes(1);
 
@@ -164,6 +165,8 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                             allocation.Release();
                         }
 
+                        // Its databases go with it, dropped on their hosts first (no new one can come while it is being deleted).
+                        await databases.DropAllAsync(server, cancellationToken);
                         db.Servers.Remove(server);
                         // The node did it (the user's request has its own entry, server.delete_requested).
                         var node = await db.Nodes.AsNoTracking().SingleAsync(n => n.Id == nodeId, cancellationToken);

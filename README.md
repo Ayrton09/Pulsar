@@ -18,7 +18,8 @@ Games in 1.0: Counter-Strike 2 and Counter-Strike: Source. More can be added wit
 
 Download the release ZIP, install PostgreSQL, and run `Install-Pulsar.ps1` as administrator: it installs the panel and
 an agent on one PC, or each on its own machines. Step by step: [docs/guides/install.md](docs/guides/install.md).
-Updating and backups: [update.md](docs/guides/update.md), [backup.md](docs/guides/backup.md).
+Updating and backups: [update.md](docs/guides/update.md), [backup.md](docs/guides/backup.md). MySQL/MariaDB databases for game
+plugins: [databases.md](docs/guides/databases.md).
 
 ## Architecture in short
 

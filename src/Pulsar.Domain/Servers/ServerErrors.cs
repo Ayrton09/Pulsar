@@ -89,6 +89,9 @@ public static class ServerErrors
     public static DomainError LimitsUnsupported { get; } =
         new("server.limits_unsupported", "The node's agent cannot limit a server's CPU and memory (update the agent).");
 
+    public static DomainError DatabaseLimitInvalid { get; } =
+        new("server.database_limit_invalid", $"The database limit is a number from 0 to {Server.MaxDatabaseLimit}.");
+
     public static DomainError BackupLimitInvalid { get; } =
         new("backups.limit_invalid", $"Keep between 1 and {Server.MaxBackupLimit} backups, or set no limit.");
 

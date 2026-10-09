@@ -21,13 +21,20 @@ public static class Permissions
         public const string BackupsCreate = "server.backups.create";
         public const string BackupsRestore = "server.backups.restore";
         public const string BackupsDelete = "server.backups.delete";
+        public const string DatabasesView = "server.databases.view";
+
+        /// <summary>Create, delete and rotate the server's databases, and read their passwords.</summary>
+        public const string DatabasesManage = "server.databases.manage";
         public const string SchedulesView = "server.schedules.view";
         public const string SchedulesEdit = "server.schedules.edit";
         public const string StartupEdit = "server.startup.edit";
         public const string SettingsEdit = "server.settings.edit";
         public const string Install = "server.install";
 
-        /// <summary>CPU and memory caps: grantable on a node or globally only, so a server's owner cannot raise their own.</summary>
+        /// <summary>
+        /// CPU and memory caps, the database limit and the Steam account: grantable on a node or globally only, so a
+        /// server's owner cannot raise their own.
+        /// </summary>
         public const string LimitsEdit = "server.limits.edit";
         public const string Create = "server.create";
         public const string Delete = "server.delete";

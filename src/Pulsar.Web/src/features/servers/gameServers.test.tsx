@@ -140,7 +140,7 @@ function details(server: Schemas['ServerSummary'] = summary): Schemas['ServerDet
       { name: 'tv', label: 'SourceTV', required: false, allocationId: null, ipAddress: null, port: null },
     ],
     recentOperations: [],
-    limits: { cpuPercent: null, memoryMb: null },
+    limits: { cpuPercent: null, memoryMb: null, databases: 2 },
     hasAddons: false,
   };
 }
@@ -333,9 +333,9 @@ describe('a game server page', () => {
     });
   });
 
-  it('sets CPU and memory limits, which others only see', async () => {
+  it('sets CPU, memory and database limits, which others only see', async () => {
     let body: unknown;
-    let limits: Schemas['ServerLimitsView'] = { cpuPercent: null, memoryMb: null };
+    let limits: Schemas['ServerLimitsView'] = { cpuPercent: null, memoryMb: null, databases: 2 };
     const settings: Schemas['ServerSettings'] = {
       variables: [],
       extraArguments: [],
@@ -352,7 +352,7 @@ describe('a game server page', () => {
       [`GET /api/v1/servers/${serverId}/settings`]: () => json(settings),
       [`PUT /api/v1/servers/${serverId}/limits`]: async (request) => {
         body = await request.json();
-        limits = { cpuPercent: 25, memoryMb: 2048 };
+        limits = { cpuPercent: 25, memoryMb: 2048, databases: 4 };
         return json({ ...details(), limits });
       },
     });
@@ -361,10 +361,12 @@ describe('a game server page', () => {
 
     await user.type(await screen.findByLabelText('CPU limit (% of the node)'), '25');
     await user.type(screen.getByLabelText('Memory limit (MiB)'), '2048');
+    await user.clear(screen.getByLabelText('Databases'));
+    await user.type(screen.getByLabelText('Databases'), '4');
     await user.click(within(screen.getByRole('region', { name: 'Resources' })).getByRole('button', { name: 'Save' }));
 
     expect(await screen.findByText('Limits saved.')).toBeInTheDocument();
-    expect(body).toEqual({ cpuPercent: 25, memoryMb: 2048 });
+    expect(body).toEqual({ cpuPercent: 25, memoryMb: 2048, databases: 4 });
   });
 
   it('moves a stopped server to a newer version of its template', async () => {
@@ -394,7 +396,8 @@ describe('a game server page', () => {
   it('shows limits read-only to who cannot change them', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
-      [`GET /api/v1/servers/${serverId}`]: () => json({ ...details(), limits: { cpuPercent: 50, memoryMb: 1024 } }),
+      [`GET /api/v1/servers/${serverId}`]: () =>
+        json({ ...details(), limits: { cpuPercent: 50, memoryMb: 1024, databases: 2 } }),
       [`GET /api/v1/servers/${serverId}/settings`]: () =>
         json({ variables: [], extraArguments: [], allowExtraArguments: false, autoStart: false, restartOnCrash: true }),
     });

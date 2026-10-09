@@ -119,7 +119,7 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         var server = await InstalledAsync(admin, agent, "css");
 
         var limited = await PutAsync<ServerDetails>(admin, $"/api/v1/servers/{server}/limits", new ServerLimitsRequest(25, 1024));
-        Assert.Equal(new ServerLimitsView(25, 1024), limited.Limits);
+        Assert.Equal(new ServerLimitsView(25, 1024, Server.DefaultDatabaseLimit), limited.Limits);
         using (var invalid = await PutResponseAsync(admin, $"/api/v1/servers/{server}/limits", new ServerLimitsRequest(0, 64)))
         {
             Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);

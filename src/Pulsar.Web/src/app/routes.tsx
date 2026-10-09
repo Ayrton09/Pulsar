@@ -151,6 +151,19 @@ export const routes: RouteObject[] = [
               };
             },
           },
+          {
+            path: 'admin/database-hosts',
+            lazy: async () => {
+              const { DatabaseHostsPage } = await import('../features/databases/DatabaseHostsPage');
+              return {
+                element: (
+                  <RequirePermission anyOf={[Permission.SettingsManage]}>
+                    <DatabaseHostsPage />
+                  </RequirePermission>
+                ),
+              };
+            },
+          },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

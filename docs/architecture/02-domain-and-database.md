@@ -17,6 +17,7 @@
 | Servers | **Server**, ServerVariable, ServerAddon | Desired state, observed state, variables (secrets encrypted), installed addons (Phase 12). |
 | Operations | **Operation** | Long-running work executed by an agent (install, update, backup…). |
 | Backups | **Backup**, BackupStorage | Metadata; the archive lives on the node, and a copy in S3-compatible storage when its server chose one (Phase 10). |
+| Game databases | **DatabaseHost**, ServerDatabase | MySQL/MariaDB servers the panel creates databases on, and each server's databases (Phase 13). Game data never touches Pulsar's database. |
 | Scheduling | **ScheduledTask**, ScheduledTaskRun | Typed action + cron + IANA time zone. |
 | Notifications | **NotificationChannel**, NotificationSettings, NotificationDelivery | Where messages go (Discord webhook, email), the SMTP server, and an outbox of messages with their attempts (Phase 10). |
 | Audit | **AuditEntry** | Append-only, no foreign keys (survives deletions). |
@@ -70,10 +71,11 @@ public sealed class Server
 | `server.files.view` `server.files.edit` | server, node, global |
 | `server.backups.view` `server.backups.create` `server.backups.restore` `server.backups.delete` | server, node, global |
 | `server.schedules.view` `server.schedules.edit` | server, node, global |
+| `server.databases.view` `server.databases.manage` (create, delete, rotate and read passwords; Phase 13) | server, node, global |
 | `server.startup.edit` (startup variables and arguments) | server, node, global |
 | `server.settings.edit` (name, auto-restart, …) | server, node, global |
 | `server.install` (install/update/reinstall) | server, node, global |
-| `server.limits.edit` (CPU and memory caps, Phase 12) | node, global |
+| `server.limits.edit` (CPU and memory caps, Phase 12; the database limit, Phase 13) | node, global |
 | `server.create` `server.delete` `server.transfer` (future) | node, global |
 | `node.view` `node.manage` `node.credentials.manage` | node, global |
 | `template.view` `template.manage` | global |
@@ -447,6 +449,36 @@ CREATE TABLE backup_storages (
     updated_at         timestamptz NOT NULL
 );
 -- A storage that servers use or backups have copies in cannot be deleted.
+
+-- ===================== Game databases (Phase 13) =====================
+CREATE TABLE database_hosts (
+    id                  uuid PRIMARY KEY,
+    name                varchar(64) NOT NULL UNIQUE,
+    host                varchar(255) NOT NULL,        -- where the panel connects
+    port                integer NOT NULL CHECK (port BETWEEN 1 AND 65535),
+    user_name           varchar(80) NOT NULL,         -- may create databases and users
+    password_protected  bytea NOT NULL,               -- Data Protection; never returned
+    server_address      varchar(255),                 -- where game servers connect, when not host
+    server_port         integer CHECK (server_port BETWEEN 1 AND 65535),
+    user_host           varchar(255) NOT NULL,        -- the users' host part: '%' or an address/pattern
+    node_ids            uuid[] NOT NULL,              -- nodes whose servers may use it; empty: all
+    created_at          timestamptz NOT NULL,
+    updated_at          timestamptz NOT NULL
+);
+CREATE TABLE server_databases (
+    id                   uuid PRIMARY KEY,
+    server_id            uuid NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    host_id              uuid NOT NULL REFERENCES database_hosts(id) ON DELETE RESTRICT,
+    name                 varchar(64) NOT NULL,        -- s{short id}_{suffix}; also its user's name
+    user_host            varchar(255) NOT NULL,       -- the host's setting when it was created
+    password_protected   bytea NOT NULL,
+    created_at           timestamptz NOT NULL,
+    password_changed_at  timestamptz NOT NULL,
+    UNIQUE (host_id, name)
+);
+-- servers.database_limit integer NOT NULL DEFAULT 2 CHECK (database_limit BETWEEN 0 AND 50).
+-- A row is written (with the server's row locked) before the database is created on its host, and removed again if that fails.
+-- A server's databases are dropped on their hosts when its node confirms its deletion, before its row goes.
 -- A backup row is written with its operation; the operation's result completes it (an interrupted one fails it).
 -- Deleting a server deletes its rows (and the node its archives).
 
@@ -603,4 +635,4 @@ CREATE TABLE panel_signing_keys (
 - Individual samples (memory only; the metric history keeps one-minute and one-hour aggregates).
 - Console output (ring buffers and rotated log files on the node).
 - Backup archives (on the node).
-- MySQL/MariaDB databases for games: a future, independent module (`GameDatabases`) with its own *metadata* tables (host, user, assigned server). Game data never touches Pulsar's database.
+- The game databases themselves (on their MySQL/MariaDB hosts): Pulsar keeps only their names, hosts and encrypted passwords.

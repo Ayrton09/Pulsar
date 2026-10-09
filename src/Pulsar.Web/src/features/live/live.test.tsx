@@ -54,7 +54,7 @@ const details: Schemas['ServerDetails'] = {
   canUpdate: false,
   ports: [],
   recentOperations: [],
-  limits: { cpuPercent: null, memoryMb: null },
+  limits: { cpuPercent: null, memoryMb: null, databases: 2 },
   hasAddons: false,
 };
 
