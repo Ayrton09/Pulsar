@@ -3480,7 +3480,14 @@
             }
           },
           "404": {
-            "description": "Not Found"
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           },
           "409": {
             "description": "Conflict",
@@ -5339,7 +5346,14 @@
             }
           },
           "404": {
-            "description": "Not Found"
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           },
           "409": {
             "description": "Conflict",
@@ -11831,6 +11845,12 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          "requireTls": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },
@@ -11845,6 +11865,7 @@
           "serverPort",
           "userHost",
           "nodeIds",
+          "requireTls",
           "databases",
           "createdAt",
           "updatedAt"
@@ -11890,6 +11911,9 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          "requireTls": {
+            "type": "boolean"
           },
           "databases": {
             "type": "integer",
