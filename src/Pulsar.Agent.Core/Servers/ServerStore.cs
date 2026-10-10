@@ -148,6 +148,11 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
         {
             return read(file);
         }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            // Deleted between the listing and the read (a result delivered, a host forgotten): there is nothing to load.
+            return null;
+        }
         catch (Exception ex) when (ex is JsonException or InvalidDataException or CryptographicException or NotSupportedException)
         {
             LogUnreadable(Path.GetFileName(file), ex.Message);
@@ -172,7 +177,14 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
 
     private ServerRecord? ReadRecord(string file)
     {
-        using var document = JsonDocument.Parse(File.ReadAllBytes(file));
+        byte[] content;
+        using (var stream = OpenShared(file))
+        {
+            content = new byte[stream.Length];
+            stream.ReadExactly(content);
+        }
+
+        using var document = JsonDocument.Parse(content);
         if (!document.RootElement.TryGetProperty("protection", out _))
         {
             return document.RootElement.Deserialize<ServerRecord>(s_options); // written before records were encrypted
@@ -191,8 +203,30 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
 
     private static T? Read<T>(string file)
     {
-        using var stream = File.OpenRead(file);
+        using var stream = OpenShared(file);
         return JsonSerializer.Deserialize<T>(stream, s_options);
+    }
+
+    // Writes replace a file while it may be read (an operation's result saved while results are delivered). The reader
+    // shares everything, and each side retries for a moment: Windows refuses to replace a file another handle has open,
+    // and to open one that is being replaced.
+    private static FileStream OpenShared(string file) =>
+        Transient(() => new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
+
+    private static T Transient<T>(Func<T> action)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return action();
+            }
+            catch (Exception ex) when (attempt < 20 && ex is UnauthorizedAccessException or IOException
+                && ex is not (FileNotFoundException or DirectoryNotFoundException))
+            {
+                Thread.Sleep(10 * attempt);
+            }
+        }
     }
 
     private static void Write<T>(string directory, Guid id, T value)
@@ -201,7 +235,11 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
         var file = Path.Combine(directory, $"{id:N}.json");
         var temporary = file + ".tmp";
         File.WriteAllBytes(temporary, JsonSerializer.SerializeToUtf8Bytes(value, s_options));
-        File.Move(temporary, file, overwrite: true);
+        Transient(() =>
+        {
+            File.Move(temporary, file, overwrite: true);
+            return true;
+        });
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "State file {File} cannot be read and is set aside (.unreadable): {Reason}")]

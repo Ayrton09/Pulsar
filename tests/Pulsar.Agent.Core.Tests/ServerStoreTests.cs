@@ -78,4 +78,32 @@ public sealed class ServerStoreTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_root, "state", "outbox", $"{corrupt:N}.json.unreadable")));
         Assert.Equal(result, Assert.Single(store.PendingResults()));
     }
+
+    [Fact]
+    public async Task ResultsAreReadWhileTheyAreWrittenAndDeleted()
+    {
+        // An operation saves its result while the results are delivered (read, then deleted): neither side may fail.
+        var store = new ServerStore(new AgentPaths(_root), new PlainStateProtector());
+        var kept = new OperationCompleted(Guid.NewGuid(), Guid.NewGuid(), OperationOutcome.Succeeded, null, null);
+        store.SaveResult(kept);
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var writer = Task.Run(() =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                var passing = new OperationCompleted(Guid.NewGuid(), Guid.NewGuid(), OperationOutcome.Failed, "x", "y");
+                store.SaveResult(passing);
+                store.SaveResult(kept); // replaced while it may be read
+                store.DeleteResult(passing.OperationId);
+            }
+        }, TestContext.Current.CancellationToken);
+
+        while (!stop.IsCancellationRequested)
+        {
+            Assert.Contains(kept, store.PendingResults());
+        }
+
+        await writer;
+        Assert.Empty(Directory.EnumerateFiles(Path.Combine(_root, "state", "outbox"), "*.unreadable"));
+    }
 }
