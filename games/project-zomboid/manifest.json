@@ -79,6 +79,7 @@
   },
 
   "backup": {
-    "include": ["zomboid/Saves/**", "zomboid/Server/**", "zomboid/db/**"]
+    "include": ["zomboid/Saves/**", "zomboid/Server/**", "zomboid/db/**"],
+    "save": { "commands": ["save"], "waitSeconds": 10 }
   }
 }

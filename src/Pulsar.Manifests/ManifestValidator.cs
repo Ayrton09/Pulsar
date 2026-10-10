@@ -130,6 +130,10 @@ public static partial class ManifestValidator
         {
             ValidateGlobs("backup.include", backup.Include ?? [], Error);
             ValidateGlobs("backup.exclude", backup.Exclude ?? [], Error);
+            if (backup.Save is { } save)
+            {
+                ValidateSave(save, Error);
+            }
         }
 
         ValidateAddons(manifest.AddonList, Error);
@@ -928,8 +932,49 @@ public static partial class ManifestValidator
             }
         }
 
-        static bool IsCommand(string command) => !string.IsNullOrWhiteSpace(command) && command.Length <= 256 && !command.Any(char.IsControl);
     }
+
+    /// <summary>Every console (pseudo console, pipes or RCON) takes commands, so only the commands and waits are checked.</summary>
+    private static void ValidateSave(GameSaveDefinition save, Action<string, string> error)
+    {
+        if (save.Commands.Count is < 1 or > 4)
+        {
+            error("backup.save.commands", "Between 1 and 4 commands.");
+        }
+
+        if ((save.Resume?.Count ?? 0) > 4)
+        {
+            error("backup.save.resume", "At most 4 commands.");
+        }
+
+        foreach (var (list, name) in new[] { (save.Commands, "commands"), (save.Resume ?? [], "resume") })
+        {
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (!IsCommand(list[i]))
+                {
+                    error($"backup.save.{name}[{i}]", "A single line of up to 256 characters.");
+                }
+            }
+        }
+
+        if (save.Confirmation is { } confirmation && CompileError(confirmation) is { } patternError)
+        {
+            error("backup.save.confirmation", patternError);
+        }
+
+        if (save.WaitSeconds is < 0 or > 60)
+        {
+            error("backup.save.waitSeconds", "Between 0 and 60.");
+        }
+
+        if (save.TimeoutSeconds is < 1 or > 300)
+        {
+            error("backup.save.timeoutSeconds", "Between 1 and 300.");
+        }
+    }
+
+    private static bool IsCommand(string command) => !string.IsNullOrWhiteSpace(command) && command.Length <= 256 && !command.Any(char.IsControl);
 
     internal static string? CompileError(string pattern)
     {

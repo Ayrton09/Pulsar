@@ -73,7 +73,8 @@
 
   "backup": {
     "include": ["server/pulsar/**", "oxide/config/**", "oxide/data/**", "oxide/plugins/**", "carbon/configs/**", "carbon/data/**", "carbon/plugins/**"],
-    "exclude": ["**/*.log", "server/pulsar/*.tmp"]
+    "exclude": ["**/*.log", "server/pulsar/*.tmp"],
+    "save": { "commands": ["server.save"], "confirmation": "Saved [0-9,]+ ents, cache\\(", "timeoutSeconds": 120 }
   },
 
   "addons": [

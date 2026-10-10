@@ -88,6 +88,7 @@
   },
 
   "backup": {
-    "include": ["world/**", "world_nether/**", "world_the_end/**", "server.properties", "*.json"]
+    "include": ["world/**", "world_nether/**", "world_the_end/**", "server.properties", "*.json"],
+    "save": { "commands": ["save-off", "save-all flush"], "confirmation": "INFO\\]: Saved the game\\r?$", "timeoutSeconds": 120, "resume": ["save-on"] }
   }
 }

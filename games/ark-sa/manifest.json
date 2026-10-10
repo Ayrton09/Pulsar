@@ -72,6 +72,7 @@
 
   "backup": {
     "include": ["ShooterGame/Saved/SavedArks/**", "ShooterGame/Saved/Config/WindowsServer/*.ini"],
-    "exclude": ["**/*.log"]
+    "exclude": ["**/*.log"],
+    "save": { "commands": ["SaveWorld"], "waitSeconds": 10 }
   }
 }

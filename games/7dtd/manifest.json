@@ -92,6 +92,7 @@
   },
 
   "backup": {
-    "include": ["UserData/Saves/**", "UserData/GeneratedWorlds/**", "pulsar-serverconfig.xml"]
+    "include": ["UserData/Saves/**", "UserData/GeneratedWorlds/**", "pulsar-serverconfig.xml"],
+    "save": { "commands": ["saveworld"], "waitSeconds": 10 }
   }
 }

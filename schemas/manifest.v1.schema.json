@@ -399,7 +399,21 @@
       "additionalProperties": false,
       "properties": {
         "include": { "type": "array", "items": { "type": "string" }, "description": "Globs relative to the server directory. Without them, everything is included." },
-        "exclude": { "type": "array", "items": { "type": "string" } }
+        "exclude": { "type": "array", "items": { "type": "string" } },
+        "save": { "$ref": "#/$defs/GameSaveDefinition" }
+      }
+    },
+    "GameSaveDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commands"],
+      "description": "Console commands that make a running game save before a backup captures its files.",
+      "properties": {
+        "commands": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "type": "string", "minLength": 1, "maxLength": 256 }, "description": "Sent in order through the server's console (RCON when the console uses it)." },
+        "confirmation": { "type": "string", "maxLength": 1024, "description": "Non-backtracking regular expression: the console line that says the save ended." },
+        "waitSeconds": { "type": "integer", "minimum": 0, "maximum": 60, "description": "How long to wait after the commands when there is no confirmation." },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 300, "description": "How long to wait for the confirmation (default 60)." },
+        "resume": { "type": "array", "maxItems": 4, "items": { "type": "string", "minLength": 1, "maxLength": 256 }, "description": "Sent once the files are captured, to undo what the commands paused." }
       }
     },
     "RelativePath": {

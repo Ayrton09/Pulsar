@@ -73,6 +73,7 @@
   },
 
   "backup": {
-    "include": ["Pal/Saved/SaveGames/**", "Pal/Saved/Config/WindowsServer/PalWorldSettings.ini"]
+    "include": ["Pal/Saved/SaveGames/**", "Pal/Saved/Config/WindowsServer/PalWorldSettings.ini"],
+    "save": { "commands": ["Save"], "waitSeconds": 5 }
   }
 }

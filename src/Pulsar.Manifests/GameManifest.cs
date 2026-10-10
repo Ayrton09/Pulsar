@@ -356,5 +356,18 @@ public enum ConfigFileMode
 public sealed record ConfigFileDefinition(string Path, ConfigFileFormat Format, ConfigFileMode Mode, IReadOnlyDictionary<string, string> Set,
     string? Section = null, string? Struct = null);
 
-/// <summary>What a backup contains: globs relative to the server directory (Phase 7).</summary>
-public sealed record BackupDefinition(IReadOnlyList<string>? Include = null, IReadOnlyList<string>? Exclude = null);
+/// <summary>
+/// What a backup contains: globs relative to the server directory (Phase 7); and how a running game is asked to write
+/// its world to disk first (<see cref="Save"/>, Phase 15).
+/// </summary>
+public sealed record BackupDefinition(IReadOnlyList<string>? Include = null, IReadOnlyList<string>? Exclude = null, GameSaveDefinition? Save = null);
+
+/// <summary>
+/// Console commands that make a running game save before a backup captures its files (docs/architecture/04, "Backups").
+/// The <see cref="Commands"/> go through the server's console (RCON when the console uses it); the backup then waits for
+/// a console line matching <see cref="Confirmation"/>, at most <see cref="TimeoutSeconds"/>, or, without one, for
+/// <see cref="WaitSeconds"/>. Once the files are captured, <see cref="Resume"/> undoes what the commands paused
+/// (Minecraft's <c>save-on</c>).
+/// </summary>
+public sealed record GameSaveDefinition(IReadOnlyList<string> Commands, string? Confirmation = null, int WaitSeconds = 0, int TimeoutSeconds = 60,
+    IReadOnlyList<string>? Resume = null);
