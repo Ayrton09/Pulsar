@@ -546,7 +546,7 @@ function Install-Agent([string] $panel, [string] $token, [string] $panelKey) {
 }
 
 function Update-Agent {
-    Write-Step 'Updating the agent (its game servers stop and start again with it)'
+    Write-Step 'Updating the agent (its game servers keep running in their host processes)'
     Stop-Service $AgentService
     Copy-Program (Join-Path $PSScriptRoot 'agent') $AgentDir
     Start-Service $AgentService

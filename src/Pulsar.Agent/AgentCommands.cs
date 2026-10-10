@@ -26,9 +26,12 @@ internal static class AgentCommands
             Usage:
               PulsarAgent enroll --panel <url> --token <token> --panel-key <fingerprint>
                                  [--servers-root <dir>] [--backups-root <dir>] [--no-service] [--dev] [--data-dir <dir>]
+                                 [--log-file <file>]
                   Pairs this machine with a panel (copy the command the panel shows), then installs and
                   starts the PulsarAgent service. Run it from an elevated prompt. To keep the token out of
-                  the process list, pass --token - and paste it, or set {TokenVariable} instead.
+                  the process list, pass --token - and paste it, or set {TokenVariable} instead. A reusable
+                  token (pulsar_enroll_...) enrolls each machine as a new node. --log-file also writes what it
+                  prints to a file (the agent MSI does).
               PulsarAgent status [--check] [--data-dir <dir>]
                   Shows the enrollment, the node key fingerprint and the service state; --check also
                   authenticates against the panel.
@@ -54,7 +57,8 @@ internal static class AgentCommands
 
     public static async Task<int> EnrollAsync(CommandLine line)
     {
-        line.Allow("panel", "token", "panel-key", "servers-root", "backups-root", "no-service", "dev", "data-dir");
+        line.Allow("panel", "token", "panel-key", "servers-root", "backups-root", "no-service", "dev", "data-dir", "log-file");
+        using var log = CommandLog.Open(line.Value("log-file"), "enroll");
         var development = line.Has("dev");
         var installService = !development && !line.Has("no-service");
         if (line.Value("token") == "-" && !Console.IsInputRedirected)
@@ -262,6 +266,18 @@ internal static class AgentCommands
         }
 
         File.Delete(paths.StopServersMarker);
+        // No host runs anymore: the copies of the program they ran from can go.
+        try
+        {
+            if (Directory.Exists(paths.HostProgramsDirectory))
+            {
+                Directory.Delete(paths.HostProgramsDirectory, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await Console.Error.WriteLineAsync($"{paths.HostProgramsDirectory} could not be deleted ({ex.Message}); delete it by hand.");
+        }
 
         new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance).Delete(config.Key);
         File.Delete(paths.ConfigFile);

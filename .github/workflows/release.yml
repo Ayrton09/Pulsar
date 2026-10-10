@@ -35,13 +35,15 @@ jobs:
           cache: npm
           cache-dependency-path: src/Pulsar.Web/package-lock.json
 
-      - name: Build the release ZIP
+      - name: Build the release ZIP and the agent MSI
         shell: pwsh
         run: ./scripts/release/Build-Release.ps1 -Version $env:GITHUB_REF_NAME.Substring(1)
 
       - uses: actions/attest-build-provenance@v4
         with:
-          subject-path: artifacts/release/*.zip
+          subject-path: |
+            artifacts/release/*.zip
+            artifacts/release/*.msi
 
       - name: Create the draft release
         shell: pwsh
@@ -50,4 +52,5 @@ jobs:
         run: |
           $version = $env:GITHUB_REF_NAME.Substring(1)
           gh release create $env:GITHUB_REF_NAME artifacts/release/pulsar-$version-windows-x64.zip artifacts/release/pulsar-$version-windows-x64.zip.sha256 `
+            artifacts/release/pulsar-agent-$version-windows-x64.msi artifacts/release/pulsar-agent-$version-windows-x64.msi.sha256 `
             --draft --title "Pulsar $version" --generate-notes

@@ -21,6 +21,11 @@ dotnet publish (Join-Path $repo 'src\Pulsar.Api') -c Release -r win-x64 --self-c
 if ($LASTEXITCODE -ne 0) { throw 'publish panel failed' }
 dotnet publish (Join-Path $repo 'src\Pulsar.Agent') -c Release -r win-x64 --self-contained -o (Join-Path $bundle 'agent')
 if ($LASTEXITCODE -ne 0) { throw 'publish agent failed' }
+# The agent MSI (Phase 14), twice: the check upgrades the first with the second while a game runs.
+foreach ($version in '1.0.0', '1.0.1') {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'scripts\release\Build-AgentMsi.ps1') -AgentDir (Join-Path $bundle 'agent') -Version $version -Output (Join-Path $bundle 'msi')
+    if ($LASTEXITCODE -ne 0) { throw 'agent MSI failed' }
+}
 # The test game server runs as a server account, which has no .NET runtime to find either.
 dotnet publish (Join-Path $repo 'tests\Pulsar.TestGameServer') -c Release -r win-x64 --self-contained -o (Join-Path $bundle 'testgame')
 if ($LASTEXITCODE -ne 0) { throw 'publish test game server failed' }

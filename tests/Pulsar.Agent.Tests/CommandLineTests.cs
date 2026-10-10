@@ -73,6 +73,50 @@ public sealed class CommandLineTests
         Assert.Contains("--data-dri", error.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ALogFileGetsWhatACommandPrintsToo()
+    {
+        // The agent MSI runs enroll as a custom action, which has no console.
+        var folder = Directory.CreateTempSubdirectory("pulsar-command-log-").FullName;
+        var path = Path.Combine(folder, "logs", "enroll.log");
+        var console = new StringWriter();
+        var errors = new StringWriter();
+        var (originalOut, originalError) = (Console.Out, Console.Error);
+        Console.SetOut(console);
+        Console.SetError(errors);
+        try
+        {
+            using (CommandLog.Open(path, "enroll"))
+            {
+                Console.WriteLine("Enrolled.");
+                Console.Error.WriteLine("A warning.");
+            }
+
+            using (CommandLog.Open(path, "enroll"))
+            {
+                Console.WriteLine("Again.");
+            }
+
+            Console.WriteLine("Not logged.");
+            Assert.Null(CommandLog.Open(null, "enroll"));
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
+        }
+
+        var log = File.ReadAllText(path);
+        Assert.Contains("PulsarAgent enroll", log, StringComparison.Ordinal);
+        Assert.Contains("Enrolled.", log, StringComparison.Ordinal);
+        Assert.Contains("A warning.", log, StringComparison.Ordinal);
+        Assert.Contains("Again.", log, StringComparison.Ordinal); // appended
+        Assert.DoesNotContain("Not logged.", log, StringComparison.Ordinal);
+        Assert.Contains("Enrolled.", console.ToString(), StringComparison.Ordinal); // still on the console
+        Assert.Contains("A warning.", errors.ToString(), StringComparison.Ordinal);
+        Directory.Delete(folder, recursive: true);
+    }
+
     [Theory]
     [InlineData(new string[0], "help")]
     [InlineData(new[] { "--help" }, "help")]

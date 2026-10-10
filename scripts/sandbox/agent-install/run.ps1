@@ -224,14 +224,31 @@ try {
     $owner = if ($game.Count -eq 1) { Invoke-CimMethod -InputObject $game[0] -MethodName GetOwner } else { $null }
     Check 'server process runs as its own account' ($game.Count -eq 1 -and $owner.User -eq $account) "$($owner.Domain)\$($owner.User), session $($game[0].SessionId), $($game[0].CommandLine)"
 
-    # An orderly service stop stops the server, and the server starts again with the service.
+    # --- The server's own host process keeps it running while the agent restarts (docs/architecture/06, "Server hosts") ---
     $before = $game[0].ProcessId
+    $hostProcess = @(Get-CimInstance Win32_Process -Filter "Name = 'PulsarAgent.exe'" | Where-Object { $_.CommandLine -match ' host ' })
+    $hostOwner = if ($hostProcess.Count -eq 1) { Invoke-CimMethod -InputObject $hostProcess[0] -MethodName GetOwner } else { $null }
+    Check 'server runs under its own host process (SYSTEM, from a copy of the program)' ($hostProcess.Count -eq 1 -and $hostOwner.User -eq 'SYSTEM' -and $hostProcess[0].ExecutablePath -like "$dataDir\host-programs\*") "$($hostOwner.User) $($hostProcess[0].ExecutablePath)"
+    function Same-Game { $now = @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'"); $now.Count -eq 1 -and $now[0].ProcessId -eq $before }
+    function Back-Online { (Api GET "/api/v1/nodes/$nodeId").node.connected -and (Server).runtimeState -eq 'running' }
+
     Restart-Service PulsarAgent
+    Check 'server keeps running through a service restart (same process)' (Wait-Until { (Back-Online) -and (Same-Game) } 90) "reason: $((Server).lastStateReason)"
+
+    # The agent crashes: Windows restarts the service (5 s) and it takes the game over again.
+    $agentProcess = (Get-CimInstance Win32_Service -Filter "Name='PulsarAgent'").ProcessId
+    Stop-Process -Id $agentProcess -Force
+    Check 'server keeps running through an agent crash (same process)' (Wait-Until { (Get-CimInstance Win32_Service -Filter "Name='PulsarAgent'").ProcessId -notin 0, $agentProcess -and (Back-Online) -and (Same-Game) } 120)
+
+    # Asked to, the service stops its servers with it; they start again with it.
+    $stopped = Invoke-Native $agentExe service stop --stop-servers
+    Check 'service stop --stop-servers stops the game' ($LASTEXITCODE -eq 0 -and @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'").Count -eq 0) ($stopped.Trim() -replace '\s+', ' ')
+    Start-Service PulsarAgent
     $resumed = Wait-Until {
         $now = @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'")
         (Server).runtimeState -eq 'running' -and $now.Count -eq 1 -and $now[0].ProcessId -ne $before
     } 90
-    Check 'server resumes after a service restart' $resumed "reason: $((Server).lastStateReason)"
+    Check 'server resumes when the service starts again' $resumed "reason: $((Server).lastStateReason)"
 
     $null = Api POST "/api/v1/servers/$serverId/kill"
     Check 'kill stops the server and leaves no process' (Wait-Until { (Server).runtimeState -eq 'offline' -and @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'").Count -eq 0 } 30)
@@ -317,6 +334,54 @@ try {
     $serviceGone = $null -eq (Get-Service PulsarAgent -ErrorAction SilentlyContinue)
     $keyGone = -not [Security.Cryptography.CngKey]::Exists($config.key.name, $provider, [Security.Cryptography.CngKeyOpenOptions]::MachineKey)
     Check 'unenroll removes service, key and configuration' ($LASTEXITCODE -eq 0 -and $serviceGone -and $keyGone -and -not (Test-Path (Join-Path $dataDir 'config\agent.json'))) ($removed.Trim() -replace '\s+', ' ')
+
+    # --- The agent MSI with a reusable token (Phase 14): install, approval, an upgrade with a game running, uninstall ---
+    Remove-Item $installDir -Recurse -Force # the copy installed by hand above
+    $reusable = Api POST '/api/v1/enrollment-tokens' @{ name = 'sandbox-msi'; maxUses = 2; lifetimeHours = 24; requireApproval = $true }
+    $first = Get-ChildItem (Join-Path $Bundle 'msi') -Filter 'pulsar-agent-1.0.0-*.msi'
+    $second = Get-ChildItem (Join-Path $Bundle 'msi') -Filter 'pulsar-agent-1.0.1-*.msi'
+    function Invoke-Msi([string[]] $arguments) { (Start-Process msiexec.exe -ArgumentList $arguments -Wait -PassThru).ExitCode }
+    $exit = Invoke-Msi @('/i', "`"$($first.FullName)`"", '/qn', '/l*v', "`"$(Join-Path $report 'msi-install.log')`"", "PANELURL=$panel",
+        "TOKEN=$($reusable.value)", "PANELKEY=$($reusable.panelKeyFingerprint)", 'SERVERSROOT=C:\PulsarServers')
+    Check 'msi: installed silently' ($exit -eq 0) "exit $exit"
+    $service = Get-CimInstance Win32_Service -Filter "Name='PulsarAgent'"
+    Check 'msi: the service runs from Program Files' ($service.State -eq 'Running' -and $service.PathName -like "*$installDir\PulsarAgent.exe*") "$($service.State) $($service.PathName)"
+    $msiNode = $null
+    foreach ($candidate in (Api GET '/api/v1/nodes')) { if ($candidate.name -eq $env:COMPUTERNAME) { $msiNode = $candidate } }
+    Check 'msi: the token created a node named after the machine, waiting for approval' ($null -ne $msiNode -and $msiNode.status -eq 'pendingApproval') "$($msiNode.name) $($msiNode.status)"
+    $enrollLog = Join-Path $dataDir 'logs\enroll.log'
+    Check 'msi: enroll log written' ((Test-Path $enrollLog) -and (Get-Content $enrollLog -Raw) -match 'Enrolled with') ((Get-Content $enrollLog -Raw -ErrorAction SilentlyContinue) -replace '\s+', ' ')
+    $leaked = @(Select-String -Path (Join-Path $report 'msi-install.log'), $enrollLog -SimpleMatch $reusable.value)
+    Check 'msi: the token is in no log' ($leaked.Count -eq 0) "$($leaked.Count) lines"
+    $null = Api POST "/api/v1/nodes/$($msiNode.id)/approve"
+    Check 'msi: node online once approved' (Wait-Until { (Api GET "/api/v1/nodes/$($msiNode.id)").node.connected } 120)
+
+    # A test game on the new node, running while the package is upgraded.
+    @{ Pulsar = @{ TestGameDirectory = $testGameDir } } | ConvertTo-Json | Set-Content (Join-Path $installDir 'appsettings.Production.json')
+    Restart-Service PulsarAgent
+    $null = Wait-Until { (Api GET "/api/v1/nodes/$($msiNode.id)").node.connected } 60
+    $msiServer = (Api POST '/api/v1/servers' @{ nodeId = $msiNode.id; templateId = $template.id; name = 'sandbox-msi-server'; description = $null }).server
+    function MsiServer { (Api GET "/api/v1/servers/$($msiServer.id)").server }
+    $null = Wait-Until { $s = MsiServer; $s.installState -eq 'installed' -and $null -eq $s.activeOperation } 60
+    $null = Api POST "/api/v1/servers/$($msiServer.id)/start"
+    Check 'msi: server running on the node' (Wait-Until { (MsiServer).runtimeState -eq 'running' } 60)
+    $before = @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'")[0].ProcessId
+
+    $exit = Invoke-Msi @('/i', "`"$($second.FullName)`"", '/qn', '/l*v', "`"$(Join-Path $report 'msi-upgrade.log')`"")
+    Check 'msi: upgraded silently (no values needed)' ($exit -eq 0) "exit $exit"
+    $products = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.PSObject.Properties['DisplayName'] -and $_.DisplayName -eq 'Pulsar Agent' })
+    Check 'msi: one product left, the new version' ($products.Count -eq 1 -and $products[0].DisplayVersion -eq '1.0.1') (($products | ForEach-Object DisplayVersion) -join ', ')
+    Check 'msi: the game kept running through the upgrade (same process)' (Wait-Until {
+            $now = @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'")
+            (Api GET "/api/v1/nodes/$($msiNode.id)").node.connected -and (MsiServer).runtimeState -eq 'running' -and $now.Count -eq 1 -and $now[0].ProcessId -eq $before
+        } 120)
+    Check 'msi: enrollment kept' (Test-Path (Join-Path $dataDir 'config\agent.json'))
+
+    $exit = Invoke-Msi @('/x', "`"$($second.FullName)`"", '/qn', '/l*v', "`"$(Join-Path $report 'msi-uninstall.log')`"")
+    Check 'msi: uninstalled silently' ($exit -eq 0) "exit $exit"
+    Check 'msi: uninstall stopped the game and removed the service and the enrollment' (@(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'").Count -eq 0 -and $null -eq (Get-Service PulsarAgent -ErrorAction SilentlyContinue) -and -not (Test-Path (Join-Path $dataDir 'config\agent.json')))
+    Check 'msi: program removed' (-not (Test-Path $agentExe))
+    Check 'msi: no host process left' (@(Get-CimInstance Win32_Process -Filter "Name = 'PulsarAgent.exe'").Count -eq 0)
 }
 catch {
     Check 'script' $false ($_ | Out-String).Trim()
