@@ -37,6 +37,9 @@ public sealed partial class GameHostService(
     ILogger<GameHostService> logger,
     Func<string, NamedPipeServerStream>? createPipe = null) : IDisposable
 {
+    // A pipe that keeps breaking (a client connecting and leaving in a loop) must not keep the host busy.
+    private static readonly TimeSpan s_brokenPipePause = TimeSpan.FromMilliseconds(100);
+
     private readonly Lock _lock = new();
     private readonly OutputRing _output = new(options.OutputCapacity);
     private readonly CancellationTokenSource _released = new();
@@ -74,6 +77,7 @@ public sealed partial class GameHostService(
                     wait.CancelAfter(options.FirstConnectionTimeout);
                 }
 
+                var broken = false;
                 try
                 {
                     await server.WaitForConnectionAsync(wait.Token).ConfigureAwait(false);
@@ -87,25 +91,51 @@ public sealed partial class GameHostService(
                 {
                     break;
                 }
-
-                await ServeAsync(server, stopping.Token).ConfigureAwait(false);
-                if (server.IsConnected)
+                catch (IOException ex)
                 {
+                    // A client that connected and left before the wait returned: the pipe is broken, not the host.
+                    LogBrokenConnection(serverId, ex.Message);
+                    broken = true;
+                }
+
+                if (broken)
+                {
+                    Reset(server);
                     try
                     {
-                        server.Disconnect();
+                        await Task.Delay(s_brokenPipePause, clock, stopping.Token).ConfigureAwait(false);
                     }
-                    catch (IOException)
+                    catch (OperationCanceledException)
                     {
-                        // Already gone.
+                        break;
                     }
+
+                    continue;
                 }
+
+                await ServeAsync(server, stopping.Token).ConfigureAwait(false);
+                // Also when the client already left (the pipe is broken, not connected): until it is disconnected, the
+                // next wait for a connection fails, which would end the host and its game.
+                Reset(server);
             }
         }
 
         await EndGameAsync().ConfigureAwait(false);
         LogEnded(serverId);
         return 0;
+    }
+
+    /// <summary>Readies the pipe for the next connection, whatever state the last one left it in.</summary>
+    private static void Reset(NamedPipeServerStream server)
+    {
+        try
+        {
+            server.Disconnect();
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            // Never connected, or already disconnected.
+        }
     }
 
     private async Task ServeAsync(NamedPipeServerStream stream, CancellationToken cancellationToken)
@@ -528,6 +558,9 @@ public sealed partial class GameHostService(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Host of server {ServerId}: no agent connected in time; ending")]
     private partial void LogNobodyCame(Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Host of server {ServerId}: a connection broke before it was served ({Reason}); waiting for the next")]
+    private partial void LogBrokenConnection(Guid serverId, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Host of server {ServerId}: agent connected")]
     private partial void LogConnected(Guid serverId);

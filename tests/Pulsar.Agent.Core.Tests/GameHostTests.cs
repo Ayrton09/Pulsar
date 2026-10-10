@@ -303,6 +303,27 @@ public sealed class GameHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AClientThatConnectsAndLeavesAtOnceDoesNotEndTheHost()
+    {
+        // Seen under load: the pipe broke before the host served it, and the next wait for a connection failed.
+        var process = (IHostedGameProcess)await _hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
+        var game = _games.Last;
+        await process.DetachAsync();
+
+        for (var i = 0; i < 3; i++)
+        {
+            await using var gone = new System.IO.Pipes.NamedPipeClientStream(".", process.Host.Pipe, System.IO.Pipes.PipeDirection.InOut,
+                System.IO.Pipes.PipeOptions.Asynchronous);
+            await gone.ConnectAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
+
+        var again = await _hosts.ReattachAsync(process.Host, 0, TestContext.Current.CancellationToken);
+        Assert.NotNull(again);
+        Assert.False(game.Disposed);
+        await again.DisposeAsync();
+    }
+
+    [Fact]
     public async Task AHostThatAcceptsTheConnectionButNeverAnswersIsKilled()
     {
         await using var launcher = new ScriptedHostLauncher(_ => null);
