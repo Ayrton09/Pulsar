@@ -65,14 +65,18 @@ open are left out. The usual reasons:
 - **The Volume Shadow Copy service is not running**: its startup type must be *Manual* (the default) or *Automatic*.
 - **Snapshots are turned off on this node**: `"Pulsar": { "BackupSnapshots": false }` in the agent's
   `appsettings.Production.json` (next to `PulsarAgent.exe`) turns them off; remove it to turn them on again.
+- **The server started while its files were copied**: the backup began with the server stopped, and the game started
+  (and may have written files) before the copy ended. Make the backup again, stopped or running.
 
 ### Restoring clean
 
 Restoring writes the backup's files over the current ones and keeps the files the backup does not have. Tick **Delete
 the files made after this backup** to delete those first: for a game world, regions explored after the backup would
-otherwise stay next to the restored ones. Only files the backup's rules would have taken are deleted; the installed
-game, logs and other files outside them stay. A backup that left out files the game held open cannot be restored
-clean (it would delete them).
+otherwise stay next to the restored ones. Only files the backup's rules would have taken are deleted (the rules it was
+made with, even when the game's template changed them since); the installed game, logs and other files outside them
+stay. A backup that left out files the game held open cannot be restored clean (it would delete them). A file that
+cannot be deleted (another program holds it open) is left where it is: the backup's files are still restored, and the
+restore is reported as failed, naming that file.
 
 Through the API: `POST /api/v1/servers/{id}/backups/{backupId}/restore?clean=true`.
 

@@ -38,7 +38,8 @@ Per-server backups with create/list/download/restore/delete, without blocking th
 - When no snapshot can be taken (a development agent without administrator rights, a FAT or network volume, the service
   off or out of shadow storage, `Pulsar:BackupSnapshots=false`), the files are read live as before, and the backup
   records why. The UI shows how each backup was read, and whether the game confirmed its save.
-- A restore can be clean: it first deletes the files the manifest's backup rules select that the backup does not have
-  (map regions explored after it, say). Files outside the rules (the installed game, logs) and Pulsar's own stay. A
+- A restore can be clean: it first deletes the files the backup's rules select that the backup does not have (map
+  regions explored after it, say). The rules are the ones the backup was made with, which the archive records in its
+  zip comment; an archive made before this amendment is cleaned by the manifest's current rules. Files outside the rules (the installed game, logs) and Pulsar's own stay. A
   backup that left files out because the game held them open cannot be restored clean, since those files would go too.
 - The consequence above ("can capture half-written files") now holds only for live copies.

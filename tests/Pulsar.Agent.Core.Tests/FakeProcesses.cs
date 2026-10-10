@@ -113,6 +113,11 @@ internal sealed class FakeGameProcess(int processId) : IGameProcess
             throw new InvalidOperationException("The process has exited.");
         }
 
+        if (InputError is { } error)
+        {
+            throw error;
+        }
+
         _input.Enqueue(text);
         if (text.StartsWith("quit", StringComparison.Ordinal) && !IgnoreQuit)
         {
@@ -122,6 +127,9 @@ internal sealed class FakeGameProcess(int processId) : IGameProcess
         OnInput?.Invoke(text);
         return ValueTask.CompletedTask;
     }
+
+    /// <summary>When set, writing input fails with this error (a console that broke).</summary>
+    public Exception? InputError { get; set; }
 
     /// <summary>How the game answers what it is sent (a save command's confirmation).</summary>
     public Action<string>? OnInput { get; set; }

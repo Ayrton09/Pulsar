@@ -47,15 +47,21 @@ public static class GameSave
         return GameSaveOutcome.Waited;
     }
 
-    /// <summary>Sends the commands that undo what the save paused; a game that stopped meanwhile starts saving again by itself.</summary>
-    public static async Task ResumeAsync(ServerSupervisor server, IReadOnlyList<string> commands)
+    /// <summary>
+    /// Sends the commands that undo what the save paused; a game that stopped meanwhile starts saving again by itself.
+    /// False when one was not accepted (the game was stopping, or the agent no longer holds its console).
+    /// </summary>
+    public static async Task<bool> ResumeAsync(ServerSupervisor server, IReadOnlyList<string> commands)
     {
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(commands);
+        var accepted = true;
         foreach (var command in commands)
         {
-            _ = await server.SendInputAsync(command);
+            accepted &= await server.SendInputAsync(command) == AckStatus.Accepted;
         }
+
+        return accepted;
     }
 
     /// <summary>Whether a console line after <paramref name="after"/> matches <paramref name="pattern"/> within <paramref name="timeout"/>.</summary>

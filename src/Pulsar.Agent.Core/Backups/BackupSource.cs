@@ -11,19 +11,22 @@ namespace Pulsar.Agent.Core.Backups;
 /// its directory is read as it is. A running one is first asked to save (the manifest's <c>backup.save</c>), then its
 /// volume is snapshotted and the snapshot is read; when no snapshot can be taken, the directory is read live and the
 /// capture says why. Disposing the source resumes what the save paused, if the snapshot did not let it resume already,
-/// and deletes the snapshot.
+/// and deletes the snapshot. A pause the game may still be in (it could not be told to resume) stays noted for the
+/// agent's next run.
 /// </summary>
 public sealed partial class BackupSource : IAsyncDisposable
 {
     private readonly ServerSupervisor _server;
     private readonly ServerStore _store;
     private readonly ILogger _logger;
+    private readonly ServerSnapshot _opened; // the server as the backup found it
     private IReadOnlyList<string>? _resume;
     private IVolumeSnapshot? _snapshot;
 
     private BackupSource(ServerSupervisor server, ServerStore store, ProvisionedServer files, ILogger logger)
     {
         (_server, _store, _logger) = (server, store, logger);
+        _opened = server.Snapshot;
         Files = files;
         Capture = new BackupCapture(BackupCaptureMode.Stopped);
     }
@@ -42,7 +45,7 @@ public sealed partial class BackupSource : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(files);
         ArgumentNullException.ThrowIfNull(progress);
         var source = new BackupSource(server, store, files, logger);
-        var state = server.Snapshot.State;
+        var state = source._opened.State;
         if (state is not (RuntimeState.Starting or RuntimeState.Running or RuntimeState.Stopping))
         {
             return source;
@@ -106,7 +109,8 @@ public sealed partial class BackupSource : IAsyncDisposable
 
     /// <summary>
     /// Resumes the games a backup paused before an earlier run of the agent ended (their records in the state directory);
-    /// a game that is no longer running starts saving again by itself.
+    /// a game that is no longer running starts saving again by itself. A game that cannot be told now keeps its record,
+    /// for the next run: it never keeps the others from being resumed, nor the agent from starting.
     /// </summary>
     public static async Task ResumePausedAsync(ServerStore store, Func<Guid, ServerSupervisor?> servers, ILogger logger)
     {
@@ -116,7 +120,11 @@ public sealed partial class BackupSource : IAsyncDisposable
         {
             if (servers(paused.ServerId) is { Snapshot.State: RuntimeState.Running } server)
             {
-                await GameSave.ResumeAsync(server, paused.Resume);
+                if (!await TryResumeAsync(server, paused.Resume, logger))
+                {
+                    continue;
+                }
+
                 LogResumedAfterRestart(logger, paused.ServerId);
             }
 
@@ -133,8 +141,57 @@ public sealed partial class BackupSource : IAsyncDisposable
         }
 
         _resume = null;
-        await GameSave.ResumeAsync(_server, resume);
-        Forget(_store, _server.ServerId, _logger);
+        if (await TryResumeAsync(_server, resume, _logger))
+        {
+            Forget(_store, _server.ServerId, _logger);
+        }
+    }
+
+    /// <summary>
+    /// How the files were read, checked again once they were: a backup does not keep the server from starting, and a game
+    /// that started while its directory was read as stopped may have written some of the files meanwhile.
+    /// </summary>
+    public BackupCapture CaptureAfterReading()
+    {
+        var now = _server.Snapshot;
+        if (Capture.Mode == BackupCaptureMode.Stopped
+            && (now.State is RuntimeState.Starting or RuntimeState.Running or RuntimeState.Stopping || now.StateSequence != _opened.StateSequence))
+        {
+            LogStartedWhileRead(_logger, _server.ServerId);
+            return new BackupCapture(BackupCaptureMode.Live, BackupSnapshotErrors.GameStarted);
+        }
+
+        return Capture;
+    }
+
+    /// <summary>
+    /// Sends the resume commands. False when the game may still be paused: a command was refused or failed while the game
+    /// was starting, running or stopping (its record then stays, and the agent's next run tries again).
+    /// </summary>
+    private static async Task<bool> TryResumeAsync(ServerSupervisor server, IReadOnlyList<string> resume, ILogger logger)
+    {
+        string reason;
+        try
+        {
+            if (await GameSave.ResumeAsync(server, resume))
+            {
+                return true;
+            }
+
+            reason = "a command was not accepted";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            reason = ex.Message;
+        }
+
+        if (server.Snapshot.State is not (RuntimeState.Starting or RuntimeState.Running or RuntimeState.Stopping))
+        {
+            return true; // it stopped: it saves again by itself
+        }
+
+        LogNotResumed(logger, server.ServerId, reason);
+        return false;
     }
 
     public async ValueTask DisposeAsync()
@@ -176,6 +233,12 @@ public sealed partial class BackupSource : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId} was told to resume saving: a backup had paused it before the agent stopped")]
     private static partial void LogResumedAfterRestart(ILogger logger, Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId} could not be told to resume saving after a backup ({Reason}): the agent tries again when it next starts")]
+    private static partial void LogNotResumed(ILogger logger, Guid serverId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId} started while a backup read its files: they may not all be from the same moment")]
+    private static partial void LogStartedWhileRead(ILogger logger, Guid serverId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The paused save of server {ServerId} could not be forgotten: {Reason}")]
     private static partial void LogNotForgotten(ILogger logger, Guid serverId, string reason);

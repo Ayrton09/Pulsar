@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Files;
@@ -35,11 +37,15 @@ public delegate Task BackupProgress(string stage, double? percent);
 
 public sealed class BackupException(string code, string message, Exception? inner = null) : Exception(message, inner)
 {
-    /// <summary>One of <see cref="BackupErrors"/>.</summary>
+    /// <summary>One of <see cref="BackupErrors"/>, or the <see cref="FileErrors"/> code of a file a clean restore could not delete.</summary>
     public string Code { get; } = code;
 }
 
-/// <summary>A restore that first deletes the files the rules (the manifest's <c>backup</c>) select that the backup does not have.</summary>
+/// <summary>
+/// A restore that first deletes the files the backup's rules select that the backup does not have. The rules are the
+/// ones the archive records (those it was made with); <paramref name="Rules"/>, the server's current ones (the
+/// manifest's <c>backup</c>), only serve an archive that records none (made before Phase 15).
+/// </summary>
 public sealed record CleanRestore(BackupDefinition? Rules);
 
 /// <summary>Where a backup lives on the node: <c>&lt;backups root&gt;\&lt;shortId&gt;\&lt;backupId&gt;.zip</c>.</summary>
@@ -65,7 +71,10 @@ public sealed record BackupLocation(string Root, string ShortId, Guid BackupId)
 /// <summary>
 /// Zip backups of server directories, kept on the node (ADR-0012; docs/architecture/08, "Backups and restore"). Server
 /// files are read and written only through the <see cref="IServerFileManager"/>: never through a link, and on Windows as
-/// the server's account. The archives themselves live in the agent's own directory, out of the servers' reach.
+/// the server's account. The archives themselves live in the agent's own directory, out of the servers' reach. Each
+/// archive records the rules it was made with in its zip comment (a small JSON object, covered by its SHA-256): a clean
+/// restore deletes by those, so rules widened since never reach files the backup could not have held. An archive
+/// without a readable record (made before Phase 15) is cleaned by the server's current rules.
 /// </summary>
 public sealed partial class BackupStore(IServerFileManager files, ILogger<BackupStore> logger, IRemoteBackupStore? remote = null)
 {
@@ -76,6 +85,11 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     private const int SampleSize = 256 * 1024;
     private const int MaxLoggedSkips = 20;
     private static readonly TimeSpan s_progressInterval = TimeSpan.FromMilliseconds(500);
+
+    // The rules an archive records in its zip comment (whose limit is 64 KiB).
+    private const int RulesVersion = 1;
+    private const int MaxCommentBytes = 16 * 1024;
+    private static readonly JsonSerializerOptions s_commentJson = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, MaxDepth = 4 };
 
     private static readonly string[] s_alwaysExcluded = [PulsarDirectory + "/**", "**/" + ServerFileRules.TemporaryPrefix + "*"];
 
@@ -152,6 +166,14 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
                 meter.Complete();
                 await meter.ReportAsync(force: true);
+                if (RulesComment(rules) is { } comment)
+                {
+                    archive.Comment = comment;
+                }
+                else
+                {
+                    LogRulesNotRecorded(location.ShortId, location.BackupId);
+                }
             }
 
             await progress(BackupStages.Checking, null);
@@ -169,10 +191,11 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
     /// <summary>
     /// Writes the backup's files back into the server directory, each replacing the file it had. Files the backup does
-    /// not have stay, unless the restore is <paramref name="clean"/>: then the files its rules select that the backup
-    /// does not have are deleted first. The archive must still hash to <paramref name="sha256"/>, and every entry must
-    /// be a plain path inside the server directory outside Pulsar's own files: anything else refuses the whole archive
-    /// before a file is deleted or written.
+    /// not have stay, unless the restore is <paramref name="clean"/>: then the files the backup's rules select that the
+    /// backup does not have are deleted first. The archive must still hash to <paramref name="sha256"/>, and every entry
+    /// must be a plain path inside the server directory outside Pulsar's own files: anything else refuses the whole
+    /// archive before a file is deleted or written. A file the clean part cannot delete (held open, say) is left and
+    /// the backup's files are still written; the restore then fails, saying so.
     /// </summary>
     public async Task RestoreAsync(BackupLocation location, ProvisionedServer server, string sha256, CleanRestore? clean, BackupProgress progress,
         CancellationToken cancellationToken)
@@ -192,10 +215,12 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         {
             await using var archive = await ZipArchive.CreateAsync(input, ZipArchiveMode.Read, leaveOpen: true, entryNameEncoding: null, cancellationToken);
             var entries = Check(archive);
+            var undeleted = new List<(string Path, FileManagerException Error)>();
             if (clean is not null)
             {
                 await progress(BackupStages.Cleaning, null);
-                DeleteNewer(location, server, clean.Rules, entries.Where(e => !e.Directory).Select(e => e.Path), cancellationToken);
+                var rules = RecordedRules(archive.Comment) ?? clean.Rules;
+                undeleted = DeleteNewer(location, server, rules, entries.Where(e => !e.Directory).Select(e => e.Path), cancellationToken);
             }
 
             var meter = new ProgressMeter(BackupStages.Restoring, entries.Sum(e => e.Entry.Length), progress);
@@ -245,6 +270,11 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
             meter.Complete();
             await meter.ReportAsync(force: true);
             LogRestored(location.ShortId, location.BackupId, entries.Count);
+            if (undeleted is [var (first, error), ..])
+            {
+                throw new BackupException(error.Code,
+                    $"The backup's files were restored, but {undeleted.Count} newer files could not be deleted (first: {first}: {error.Message}).", error);
+            }
         }
         catch (InvalidDataException ex)
         {
@@ -407,13 +437,15 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
     /// <summary>
     /// The clean part of a restore: deletes the files the rules select that the backup does not have (made after it).
-    /// What the rules leave out (the installed game, logs, Pulsar's own files) and links are never touched.
+    /// What the rules leave out (the installed game, logs, Pulsar's own files) and links are never touched. A file that
+    /// cannot be deleted does not stop the others; those are returned.
     /// </summary>
-    private void DeleteNewer(BackupLocation location, ProvisionedServer server, BackupDefinition? rules, IEnumerable<string> kept,
-        CancellationToken cancellationToken)
+    private List<(string Path, FileManagerException Error)> DeleteNewer(BackupLocation location, ProvisionedServer server, BackupDefinition? rules,
+        IEnumerable<string> kept, CancellationToken cancellationToken)
     {
         var keep = kept.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var deleted = 0;
+        var failed = new List<(string, FileManagerException)>();
         foreach (var file in Select(files.Walk(server), rules))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -431,9 +463,50 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
             {
                 // Gone meanwhile.
             }
+            catch (FileManagerException ex)
+            {
+                // Held open, or refused: the backup's files are still worth writing back.
+                if (failed.Count < MaxLoggedSkips)
+                {
+                    LogNotCleaned(location.ShortId, file.Path, ex.Code);
+                }
+
+                failed.Add((file.Path, ex));
+            }
         }
 
         LogCleaned(location.ShortId, location.BackupId, deleted);
+        return failed;
+    }
+
+    /// <summary>The rules a backup is made with, as its archive records them; null when too large to record.</summary>
+    private static string? RulesComment(BackupDefinition? rules)
+    {
+        var comment = JsonSerializer.Serialize(new RecordedRulesComment(RulesVersion, rules?.Include, rules?.Exclude), s_commentJson);
+        return Encoding.UTF8.GetByteCount(comment) <= MaxCommentBytes ? comment : null;
+    }
+
+    /// <summary>The rules an archive records; null when it records none Pulsar can read (made before Phase 15, or not Pulsar's).</summary>
+    private static BackupDefinition? RecordedRules(string? comment)
+    {
+        if (string.IsNullOrEmpty(comment) || Encoding.UTF8.GetByteCount(comment) > MaxCommentBytes)
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<RecordedRulesComment>(comment, s_commentJson) is { Pulsar: RulesVersion } recorded
+                && Valid(recorded.Include) && Valid(recorded.Exclude)
+                ? new BackupDefinition(recorded.Include, recorded.Exclude)
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        static bool Valid(IReadOnlyList<string>? globs) => globs is null || globs.All(g => !string.IsNullOrEmpty(g));
     }
 
     /// <summary>Whether deflate makes <paramref name="sample"/> at least a tenth smaller (small files are always compressed).</summary>
@@ -549,6 +622,12 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     [LoggerMessage(Level = LogLevel.Information, Message = "Clean restore of backup {BackupId} into {ShortId}: {Files} newer files deleted first")]
     private partial void LogCleaned(string shortId, Guid backupId, int files);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Clean restore into {ShortId}: {Path} could not be deleted ({Code})")]
+    private partial void LogNotCleaned(string shortId, string path, string code);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Backup {BackupId} of {ShortId} does not record its rules (too many): a clean restore of it uses the server's rules then")]
+    private partial void LogRulesNotRecorded(string shortId, Guid backupId);
+
     [LoggerMessage(Level = LogLevel.Debug, Message = "Backup {BackupId} of {ShortId} opened to be sent")]
     private partial void LogOpened(string shortId, Guid backupId);
 
@@ -563,6 +642,9 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete {Path}: {Reason}")]
     private partial void LogNotDeleted(string path, string reason);
+
+    /// <summary>The archive comment: <c>{"pulsar":1,"include":[…]|null,"exclude":[…]|null}</c>.</summary>
+    private sealed record RecordedRulesComment(int Pulsar, IReadOnlyList<string>? Include, IReadOnlyList<string>? Exclude);
 
     /// <summary>Counts what is written to it, and keeps nothing.</summary>
     private sealed class CountingStream : Stream

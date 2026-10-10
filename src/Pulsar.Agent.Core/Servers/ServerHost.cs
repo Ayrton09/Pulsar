@@ -14,7 +14,10 @@ namespace Pulsar.Agent.Core.Servers;
 
 public sealed class ServerHostOptions
 {
-    /// <summary>How long servers get to stop gracefully when the agent stops (the service control manager waits ~30 s).</summary>
+    /// <summary>
+    /// How long the agent's stop may take (the service control manager waits ~30 s): operations in flight are cancelled
+    /// and get up to a quarter of it to end, then servers get the rest to stop gracefully.
+    /// </summary>
     public TimeSpan ShutdownBudget { get; set; } = TimeSpan.FromSeconds(20);
 
     /// <summary>How often the usage of running servers is sent to the panel.</summary>
@@ -99,6 +102,7 @@ public sealed partial class ServerHost(
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _cancellations = new(); // operation → its cancellation
     private readonly TaskCompletionSource _loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _stopping = new();
+    private readonly CancellationTokenSource _endingOperations = new(); // the agent stops: operations end first
     private readonly Lock _recordLock = new();
     private readonly Lock _hostLock = new();
     private readonly ConcurrentDictionary<Guid, GameHostRecord> _savedHosts = new(); // host records as last written
@@ -168,6 +172,7 @@ public sealed partial class ServerHost(
     {
         _relay.Dispose();
         _stopping.Dispose();
+        _endingOperations.Dispose();
     }
 
     public IReadOnlyList<ServerSnapshot> Snapshots() => [.. _servers.Values.Select(s => s.Supervisor.Snapshot)];
@@ -313,6 +318,11 @@ public sealed partial class ServerHost(
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         await fileCommands.StopAsync();
+        // Operations end while the servers are still attached (a backup that paused its game's saving resumes it), in at
+        // most a quarter of the shutdown budget; the servers get what is left.
+        var ending = System.Diagnostics.Stopwatch.StartNew();
+        await EndOperationsAsync(options.ShutdownBudget / 4);
+        var remaining = options.ShutdownBudget > ending.Elapsed ? options.ShutdownBudget - ending.Elapsed : TimeSpan.Zero;
         var servers = _servers.Values.ToList();
         var marker = configs.Paths.StopServersMarker;
         var keepRunning = Hosts is not null && shutdown?.StopServers != true && !File.Exists(marker);
@@ -331,7 +341,7 @@ public sealed partial class ServerHost(
             LogLeftRunning(left);
         }
 
-        var results = await Task.WhenAll(servers.Select((s, i) => detached[i] ? Task.FromResult(false) : s.Supervisor.ShutdownAsync(options.ShutdownBudget)));
+        var results = await Task.WhenAll(servers.Select((s, i) => detached[i] ? Task.FromResult(false) : s.Supervisor.ShutdownAsync(remaining)));
         for (var i = 0; i < servers.Count; i++)
         {
             if (results[i])
@@ -1036,7 +1046,10 @@ public sealed partial class ServerHost(
             await using (var source = await BackupSource.OpenAsync(server.Supervisor, provisioned, server.Manifest.Backup?.Save,
                 options.BackupSnapshots ? snapshots ?? s_noSnapshots : null, store, progress, clock, _logger, cancellationToken))
             {
-                made = await backups.CreateAsync(location, source.Files, server.Manifest.Backup, progress, cancellationToken) with { Capture = source.Capture };
+                made = await backups.CreateAsync(location, source.Files, server.Manifest.Backup, progress, cancellationToken) with
+                {
+                    Capture = source.CaptureAfterReading(),
+                };
             }
 
             return command.Remote is { } remote ? await backups.CopyToRemoteAsync(location, made, remote, progress, cancellationToken) : made;
@@ -1214,7 +1227,7 @@ public sealed partial class ServerHost(
             return new CommandAck(envelope.CommandId, AckStatus.Busy, "server.busy", "Another operation is running on this server.");
         }
 
-        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_endingOperations.Token);
         _cancellations[operationId] = cancellation;
         _ = Task.Run(async () =>
         {
@@ -1228,7 +1241,7 @@ public sealed partial class ServerHost(
             {
                 LogOperationCancelled(operationId, serverId);
                 result = new OperationCompleted(operationId, serverId, OperationOutcome.Cancelled, "operation.cancelled",
-                    _stopping.IsCancellationRequested ? "The agent stopped." : "Cancelled.");
+                    _endingOperations.IsCancellationRequested ? "The agent stopped." : "Cancelled.");
             }
             catch (Exception ex)
             {
@@ -1248,11 +1261,27 @@ public sealed partial class ServerHost(
                 _cancellations.TryRemove(operationId, out _);
                 cancellation.Dispose();
                 _operations.TryRemove(new KeyValuePair<Guid, RunningOperation>(serverId, running));
+                running.Ended.TrySetResult();
             }
 
             await CompleteAsync(result);
         });
         return new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null);
+    }
+
+    /// <summary>The agent is stopping: cancels the operations in flight and waits for them to end, at most <paramref name="limit"/>.</summary>
+    private async Task EndOperationsAsync(TimeSpan limit)
+    {
+        await _endingOperations.CancelAsync();
+        var ending = _operations.Values.Select(o => o.Ended.Task).ToList();
+        try
+        {
+            await Task.WhenAll(ending).WaitAsync(limit, clock);
+        }
+        catch (TimeoutException)
+        {
+            LogOperationsLeft(ending.Count(t => !t.IsCompleted));
+        }
     }
 
     private async Task CompleteAsync(OperationCompleted result)
@@ -1391,7 +1420,11 @@ public sealed partial class ServerHost(
     private static CommandAck Rejected(CommandEnvelope envelope, string code, string message) =>
         new(envelope.CommandId, AckStatus.Rejected, code, message);
 
-    private sealed record RunningOperation(Guid Id, bool Exclusive);
+    private sealed record RunningOperation(Guid Id, bool Exclusive)
+    {
+        /// <summary>Completes once the operation's work has ended, whatever its outcome.</summary>
+        public TaskCompletionSource Ended { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
 
     private sealed record Server(string ShortId, GameManifest Manifest, ServerRuntimeSpec Spec, string? RconPassword, ServerSupervisor Supervisor)
     {
@@ -1469,6 +1502,9 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Operation {OperationId} on server {ServerId} cancelled")]
     private partial void LogOperationCancelled(Guid operationId, Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Agent stopping: {Count} operations had not ended when their time was up; the agent stops without waiting for them")]
+    private partial void LogOperationsLeft(int count);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Operation {OperationId} on server {ServerId} failed")]
     private partial void LogOperationFailed(Exception exception, Guid operationId, Guid serverId);

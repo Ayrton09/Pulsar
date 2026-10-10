@@ -31,6 +31,7 @@ public sealed class ServerHostTests : IAsyncDisposable
     private FileCommands? _fileCommands;
     private SteamCmdRunner? _steamCmd;
     private readonly FakeProcessManager _games = new();
+    private readonly HookedServerFileManager _backupFiles = new(new DirectServerFileManager()); // what backups read and write through
     private InProcessHostLauncher? _launcher;
 
     public ServerHostTests()
@@ -610,6 +611,184 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AGameWithoutASaveConfirmationIsGivenItsWaitBeforeTheCopy()
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest.Replace("\"confirmation\": \"^Saved the game\", \"timeoutSeconds\": 30",
+            "\"waitSeconds\": 1", StringComparison.Ordinal));
+        WriteServerFile("world/level.dat", "the world");
+        var host = Host(hosted: true, snapshots: new CopySnapshots());
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var game = await RunningAsync(host, serverId);
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+
+        var made = await BackupAsync(host, serverId);
+
+        Assert.Equal(new BackupCapture(BackupCaptureMode.Snapshot, null, GameSaveOutcome.Waited), made.Capture);
+        Assert.True(waited.Elapsed >= TimeSpan.FromSeconds(0.9), $"{waited.Elapsed}");
+        Assert.Equal(["save-off\r\n", "save-all\r\n", "save-on\r\n"], game.Input);
+    }
+
+    [Fact]
+    public async Task ABackupThatFailsWhileTheGameIsPausedStillLetsItSaveAgain()
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest);
+        WriteServerFile("world/level.dat", "the world");
+        var host = Host(hosted: true, snapshots: new NoVolumeSnapshots());
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var game = await RunningAsync(host, serverId);
+        game.OnInput = text =>
+        {
+            if (text == "save-all\r\n")
+            {
+                game.Print("Saved the game\n");
+            }
+        };
+        IReadOnlyList<string>? whileReading = null;
+        _backupFiles.OnRead = _ =>
+        {
+            whileReading = game.Input;
+            throw new IOException("The disk went away.");
+        };
+
+        var result = await BackupResultAsync(host, serverId);
+
+        Assert.Equal(OperationOutcome.Failed, result.Outcome);
+        Assert.Equal(["save-off\r\n", "save-all\r\n"], whileReading); // read live, so still paused
+        Assert.Equal(["save-off\r\n", "save-all\r\n", "save-on\r\n"], game.Input);
+        Assert.Empty(_store.LoadPausedSaves());
+    }
+
+    [Fact]
+    public async Task ABackupThatFailsWhileReadingItsSnapshotStillDeletesIt()
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest);
+        WriteServerFile("world/level.dat", "the world");
+        var snapshots = new CopySnapshots();
+        var host = Host(hosted: true, snapshots: snapshots);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var game = await RunningAsync(host, serverId);
+        game.OnInput = text =>
+        {
+            if (text == "save-all\r\n")
+            {
+                game.Print("Saved the game\n");
+            }
+        };
+        _backupFiles.OnRead = _ => throw new IOException("The snapshot went away.");
+
+        var result = await BackupResultAsync(host, serverId);
+
+        Assert.Equal(OperationOutcome.Failed, result.Outcome);
+        Assert.Equal(1, snapshots.Deleted);
+        Assert.Equal(["save-off\r\n", "save-all\r\n", "save-on\r\n"], game.Input); // resumed once, when the snapshot was taken
+        Assert.Empty(_store.LoadPausedSaves());
+    }
+
+    [Fact]
+    public async Task ABackupCancelledWhileItsSnapshotIsTakenStillLetsTheGameSaveAgain()
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest);
+        var snapshots = new PendingSnapshots();
+        var host = Host(hosted: true, snapshots: snapshots);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var game = await RunningAsync(host, serverId);
+        game.OnInput = text =>
+        {
+            if (text == "save-all\r\n")
+            {
+                game.Print("Saved the game\n");
+            }
+        };
+        var operation = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new CreateBackupCommand(serverId, Guid.NewGuid()), operation))).Status);
+        await snapshots.Taking.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Single(_store.LoadPausedSaves());
+
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new CancelOperationCommand(operation), null))).Status);
+
+        Assert.Equal(OperationOutcome.Cancelled, (await ResultAsync(operation)).Outcome);
+        Assert.Equal(["save-off\r\n", "save-all\r\n", "save-on\r\n"], game.Input);
+        Assert.Empty(_store.LoadPausedSaves());
+    }
+
+    [Fact]
+    public async Task AnAgentStoppingDuringABackupLetsTheGameSaveAgainBeforeLeavingItRunning()
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest);
+        WriteServerFile("world/level.dat", "the world");
+        var host = Host(hosted: true, snapshots: new CopySnapshots());
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var game = await RunningAsync(host, serverId);
+        var operation = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new CreateBackupCommand(serverId, Guid.NewGuid()), operation))).Status);
+        await WaitUntilAsync(() => game.Input.Contains("save-all\r\n")); // the game never confirms: the backup waits for it
+
+        await RestartAgentAsync();
+
+        Assert.Equal(["save-off\r\n", "save-all\r\n", "save-on\r\n"], game.Input);
+        Assert.Empty(_store.LoadPausedSaves());
+        Assert.False(game.Disposed);
+        var result = await ResultAsync(operation);
+        Assert.Equal((OperationOutcome.Cancelled, "The agent stopped."), (result.Outcome, result.Message));
+    }
+
+    [Fact]
+    public async Task AGameThatCouldNotBeToldToResumeKeepsItsPausedSaveForTheNextRun()
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest);
+        var host = Host(hosted: true, snapshots: new CopySnapshots());
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var game = await RunningAsync(host, serverId);
+        game.IgnoreQuit = true;
+        var operation = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new CreateBackupCommand(serverId, Guid.NewGuid()), operation))).Status);
+        await WaitUntilAsync(() => game.Input.Contains("save-all\r\n"));
+        // Stopping: the game takes no more commands, yet it still runs (and may not save until it ends).
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new StopServerCommand(serverId), null))).Status);
+        await WaitForAsync(host, serverId, RuntimeState.Stopping);
+
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new CancelOperationCommand(operation), null))).Status);
+
+        Assert.Equal(OperationOutcome.Cancelled, (await ResultAsync(operation)).Outcome);
+        Assert.DoesNotContain("save-on\r\n", game.Input);
+        Assert.Equal(serverId, Assert.Single(_store.LoadPausedSaves()).ServerId);
+        game.Exit(0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AServerThatStartsWhileItsFilesAreReadIsNotCalledStopped(bool stoppedAgain)
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest);
+        WriteServerFile("world/level.dat", "the world");
+        var host = Host();
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var started = false;
+        _backupFiles.OnRead = path =>
+        {
+            if (started)
+            {
+                return;
+            }
+
+            // A backup is not exclusive: the server may start while its files are read.
+            started = true;
+            _ = host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+            Assert.True(SpinWait.SpinUntil(() => State(host, serverId) == RuntimeState.Starting, TimeSpan.FromSeconds(10)));
+            if (stoppedAgain)
+            {
+                _ = host.ExecuteAsync(Envelope(new KillServerCommand(serverId), null));
+                Assert.True(SpinWait.SpinUntil(() => State(host, serverId) is RuntimeState.Offline or RuntimeState.Crashed, TimeSpan.FromSeconds(10)));
+            }
+        };
+
+        var made = await BackupAsync(host, serverId);
+
+        Assert.Equal(new BackupCapture(BackupCaptureMode.Live, BackupSnapshotErrors.GameStarted), made.Capture);
+    }
+
+    [Fact]
     public async Task ACleanRestoreDeletesTheFilesMadeAfterTheBackup()
     {
         var serverId = Stored("abcd2345", manifest: SavingManifest);
@@ -672,12 +851,19 @@ public sealed class ServerHostTests : IAsyncDisposable
 
     private async Task<BackupResult> BackupAsync(ServerHost host, Guid serverId, Guid backupId)
     {
-        var operation = Guid.NewGuid();
-        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new CreateBackupCommand(serverId, backupId), operation))).Status);
-        var result = await ResultAsync(operation);
+        var result = await BackupResultAsync(host, serverId, backupId);
         Assert.True(result.Outcome == OperationOutcome.Succeeded, result.Message);
         return Assert.IsType<BackupResult>(result.Result);
     }
+
+    private async Task<OperationCompleted> BackupResultAsync(ServerHost host, Guid serverId, Guid? backupId = null)
+    {
+        var operation = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new CreateBackupCommand(serverId, backupId ?? Guid.NewGuid()), operation))).Status);
+        return await ResultAsync(operation);
+    }
+
+    private static RuntimeState State(ServerHost host, Guid serverId) => host.Snapshots().Single(s => s.ServerId == serverId).State;
 
     private static List<string> Entries(string archive)
     {
@@ -742,7 +928,7 @@ public sealed class ServerHostTests : IAsyncDisposable
         _steamCmd = new SteamCmdRunner(processes, new NoSteamCmd(), files, new DirectServerFileManager(), new SteamLoginStore(_configs.Paths, new PlainStateProtector()), new SteamCmdOptions(), TimeProvider.System, NullLogger<SteamCmdRunner>.Instance);
         _fileCommands = new FileCommands(new DirectServerFileManager(), channel, new FileCommandOptions(), NullLogger<FileCommands>.Instance);
         _host = new ServerHost(_configs, _store, _provisioner, processes, new InstallSteps(install, files), _steamCmd, files, new NoRcon(),
-            new UnmanagedFirewall(), _fileCommands, new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance), install,
+            new UnmanagedFirewall(), _fileCommands, new BackupStore(_backupFiles, NullLogger<BackupStore>.Instance), install,
             channel, new SupervisorOptions(), options ?? new ServerHostOptions { ConsoleLog = null }, TimeProvider.System, NullLoggerFactory.Instance,
             hosts: hosts, snapshots: snapshots);
         return _host;
@@ -752,6 +938,19 @@ public sealed class ServerHostTests : IAsyncDisposable
     {
         public Task<IVolumeSnapshot> TakeAsync(string directory, CancellationToken cancellationToken) =>
             throw new InvalidCastException("A COM interface that is not there.");
+    }
+
+    /// <summary>Snapshots that take until the backup is cancelled.</summary>
+    private sealed class PendingSnapshots : IVolumeSnapshots
+    {
+        public TaskCompletionSource Taking { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<IVolumeSnapshot> TakeAsync(string directory, CancellationToken cancellationToken)
+        {
+            Taking.TrySetResult();
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new InvalidOperationException("Never taken.");
+        }
     }
 
     /// <summary>"Snapshots" that copy the directory, with a file of their own to show the backup read the copy.</summary>
