@@ -44,6 +44,38 @@ installation of the same or a later major version) with `-PostgresBin`.
 Each server's **Backups** tab makes backups on its node (and schedules can make them every night). They are kept in
 `C:\ProgramData\Pulsar\Agent\backups` on that node. Restoring one is done from the same tab.
 
+### While the server runs
+
+A backup does not need the server stopped. When the game runs, Pulsar first asks it to save its world (for the games
+whose template says how: Minecraft, Rust, ARK, Palworld, 7 Days to Die and Project Zomboid), then takes a snapshot of
+the disk with Windows' Volume Shadow Copy service and copies the files from it: every file as it was at the same
+moment, including the ones the game keeps open. The snapshot lasts only while the backup reads it; the commands appear
+in the server's console, and Minecraft is told to save again (`save-on`) right after the snapshot.
+
+Each backup says how it was made: *Copied from a snapshot of the disk*, or *Copied while the game ran, without a
+snapshot* with the reason. Without a snapshot, files the game wrote meanwhile may be half written and files it held
+open are left out. The usual reasons:
+
+- **The agent is not running as an administrator**: a development agent. The installed service runs as SYSTEM and can.
+- **This disk cannot have snapshots**: the servers' folder is on a FAT or exFAT drive or a network share. Move it to an
+  NTFS or ReFS volume.
+- **The disk has no room for the snapshot**: Windows keeps a snapshot's changes in the volume's *shadow storage*. Check
+  it with `vssadmin list shadowstorage` and, as administrator, give it more room, for example
+  `vssadmin resize shadowstorage /for=D: /on=D: /maxsize=10%`.
+- **The Volume Shadow Copy service is not running**: its startup type must be *Manual* (the default) or *Automatic*.
+- **Snapshots are turned off on this node**: `"Pulsar": { "BackupSnapshots": false }` in the agent's
+  `appsettings.Production.json` (next to `PulsarAgent.exe`) turns them off; remove it to turn them on again.
+
+### Restoring clean
+
+Restoring writes the backup's files over the current ones and keeps the files the backup does not have. Tick **Delete
+the files made after this backup** to delete those first: for a game world, regions explored after the backup would
+otherwise stay next to the restored ones. Only files the backup's rules would have taken are deleted; the installed
+game, logs and other files outside them stay. A backup that left out files the game held open cannot be restored
+clean (it would delete them).
+
+Through the API: `POST /api/v1/servers/{id}/backups/{backupId}/restore?clean=true`.
+
 To keep them safe from the loss of the node, copy them to S3-compatible storage (AWS S3, Cloudflare R2, Backblaze B2,
 or your own MinIO or SeaweedFS):
 

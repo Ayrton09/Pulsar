@@ -172,9 +172,17 @@ The next two post-v1 items: game servers that keep running while the agent resta
   - The Windows Sandbox logs showed Windows Installer's Restart Manager stopping the service before the uninstall's unenroll could stop the games gracefully. It is disabled in the package.
 - *Tests:* the .NET suite (1343 tests; one older file-manager test failed once under full parallel load and passed in every rerun), vitest (196) and the E2E suite (8) passed.
 
+## Phase 15 — Backups of running games · *in progress*
+
+The next post-v1 item: a backup made while the game runs that holds every file as it was at one moment, and a restore that can leave nothing newer behind.
+
+- Game saves: a running game whose manifest has `backup.save` is asked to save through its console first; the backup waits for the line that confirms it, or a fixed time for games that print none, and records how the game answered. Minecraft pauses its autosave around the snapshot (`save-off`, `save-all flush`, `save-on`); an agent that stops in between resumes it at its next start. Bundled for Minecraft, Rust, ARK, Palworld, 7 Days to Die and Project Zomboid. *Done (doc 04, "Backups").*
+- Snapshots: the agent reads a running game's files from a Volume Shadow Copy snapshot of their volume (no writers, deleted after the backup), files the game holds open included; without one (a development agent, a FAT or network volume, no shadow storage, turned off) it reads them live as before and the backup says why. *Done (docs 03, 05, 06, 08).*
+- Clean restores: a restore can first delete the files the backup's rules select that it does not have; refused for a backup that left files out. *Done (docs 02, 05, 07, backup guide).*
+
 ## Post-v1 (tentative order)
 
-Optional mTLS mode → VSS backups → Linux agent. (Server hosts and bulk enrollment: Phase 14.)
+Optional mTLS mode → Linux agent. (Server hosts and bulk enrollment: Phase 14; backups of running games: Phase 15.)
 
 ## Before the first public release
 

@@ -215,6 +215,17 @@ The Job already exists per server, so limits are configuration of it. A server h
 - Changes reach a running server at once (`ApplyServerSpecCommand` → `IGameProcess.ApplyLimits`); SteamCMD runs are never capped.
 - Not done: network rate (`JobObjectNetRateControlInformation`) and I/O priority.
 
+## Backup snapshots (Phase 15)
+
+A backup of a running game reads its files from a Volume Shadow Copy snapshot (`WindowsVolumeSnapshots`, the VSS requester API through CsWin32: `IVssBackupComponents`, no library):
+
+- The volume is the one the server directory is on after any junction to it: `GetFinalPathNameByHandle(VOLUME_NAME_GUID)` gives `\\?\Volume{guid}\` and the directory's path on it. A path without a volume name (a network share) has no snapshot.
+- `InitializeForBackup`, `SetContext(VSS_CTX_FILE_SHARE_BACKUP)` (non-persistent, auto-release, **without writers**: games are not VSS writers, their own save comes through the console first), `SetBackupState` as a copy backup (other backup programs' history is left alone), `StartSnapshotSet`, `AddToSnapshotSet`, `PrepareForBackup`, `DoSnapshotSet`, then `GetSnapshotProperties` for the device (`\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopyN`). The backup reads `<device>\<path on the volume>`. Windows holds the volume's writes for a moment while it takes the snapshot.
+- The snapshot is deleted when the backup has read it (`DeleteSnapshots`, then the requester is released); an auto-release snapshot also goes when its requester's process ends, so an agent that crashes leaves none behind. One snapshot set is created at a time; another program's set in progress is waited for (up to 2 minutes, then `snapshot.busy`). The blocking calls run on a thread of their own.
+- The snapshot is read through the file manager as the server's account, like the live directory (doc 08, "Backups and restore"): the reads open the root read-only (a snapshot is a read-only volume), accept the `\\?\` form, and compare final paths by device name (`VOLUME_NAME_NT`) when the volume has no drive letter. Junctions and symbolic links in the snapshot are listed, never followed, and a hard link keeps its target's ACL, so the server's account still reads nothing it could not read live.
+- Failures fall back to a live copy with a reason: `E_ACCESSDENIED` (a development agent without administrator rights) → `snapshot.not_permitted`; `VSS_E_VOLUME_NOT_SUPPORTED(_BY_PROVIDER)` → `snapshot.unsupported`; `VSS_E_INSUFFICIENT_STORAGE`, `VSS_E_MAXIMUM_NUMBER_OF_SNAPSHOTS_REACHED`, `VSS_E_MAXIMUM_DIFFAREA_ASSOCIATIONS_REACHED` → `snapshot.no_space`; the service disabled or not answering → `snapshot.unavailable`; anything else → `snapshot.failed` (the agent logs Windows' answer). `Pulsar:BackupSnapshots=false` turns snapshots off (`snapshot.disabled`).
+- Client Windows supports the requester API (only `vssadmin create shadow` is limited to Server editions). Checked in Windows Sandbox with the agent service as SYSTEM: a file the test game held open with no sharing was in the backup, the snapshot was gone afterwards.
+
 ## Tests
 
 `Pulsar.TestGameServer` is a test executable driven by arguments: it prints output, reads stdin, spawns children and grandchildren, ignores `quit`, crashes with a given code, writes through the console API, tries to create a junction. `Pulsar.Agent.Windows.Tests` (Windows runners only) verifies:

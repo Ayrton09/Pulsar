@@ -68,7 +68,10 @@ Then:
    for Source and most Steam games (often on the game port, sometimes on a separate query port), `minecraft` for the
    Server List Ping. Check that the game answers before adding it: Steam's server browser (View, Game Servers,
    Favorites, add the address and query port) shows whether it does.
-10. **Backups**: which folders a backup includes and excludes.
+10. **Backups**: which folders a backup includes and excludes, and, for a game that keeps a world, how to make it save
+   before a backup while it runs (`save`: its console commands, the line that says the save ended or a time to wait,
+   and the commands that undo a pause such as Minecraft's `save-off`). Without a confirmation line, the backup waits
+   `waitSeconds`; check the game's answer in its console before giving one.
 11. **Addons** (optional): mods and mod frameworks users can install from the server's Mods tab, from the GitHub
    releases of their authors (`cs2` and `rust` show how). The release's asset must be a zip and GitHub must list its
    SHA-256 (the `digest` of the asset in its API); give the folder it unpacks into, what it needs and

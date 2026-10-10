@@ -449,6 +449,9 @@ CREATE TABLE backups (
     remote_key     varchar(512),                     -- {prefix}{server}/{backup}.zip
     remote_status  text NOT NULL DEFAULT 'none' CHECK (remote_status IN ('none','pending','copied','failed')),
     remote_error   varchar(1024),                    -- a failed copy: the backup is on the node only
+    copy_mode      text CHECK (copy_mode IN ('stopped','snapshot','live')), -- how the node read the files (Phase 15; null before)
+    snapshot_error varchar(64),                      -- live copy of a running game: why no snapshot (snapshot.*)
+    game_save      text CHECK (game_save IN ('confirmed','waited','unconfirmed')), -- the game asked to save first
     created_at     timestamptz NOT NULL
 );
 CREATE INDEX ix_backups_server ON backups (server_id, created_at DESC);
