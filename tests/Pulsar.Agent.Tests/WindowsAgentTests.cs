@@ -4,6 +4,7 @@ using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using Microsoft.Extensions.Logging.Abstractions;
+using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Agent.Windows;
 using Pulsar.Contracts;
@@ -65,6 +66,38 @@ public sealed class WindowsAgentTests
 
         Assert.ThrowsAny<CryptographicException>(() => store.Open(reference));
         store.Delete(reference); // deleting a missing key is a no-op
+    }
+
+    [WindowsFact]
+    public async Task ADevelopmentAgentThatNeverHadAServerUnenrolls()
+    {
+        // Its state directory has no state folder: unenroll must not trip over the files it looks for there.
+        var store = new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance);
+        var root = Directory.CreateTempSubdirectory("pulsar-unenroll-").FullName;
+        try
+        {
+            var paths = new AgentPaths(root);
+            NodeKeyReference key;
+            using (var created = store.Create($"PulsarAgentTest-{Guid.NewGuid():N}", NodeKeyScope.User))
+            {
+                key = created.Reference;
+            }
+
+            new AgentConfigStore(paths).Save(new AgentConfig(new Uri("https://panel.example.com/"), Guid.NewGuid(), Guid.NewGuid(), key, [], null,
+                DateTimeOffset.UtcNow, Development: true));
+            Directory.CreateDirectory(Path.Combine(paths.HostProgramsDirectory, "0123456789abcdef"));
+
+            var exit = await AgentCommands.UnenrollAsync(CommandLine.Parse(["unenroll", "--data-dir", root], AgentCommands.Flags));
+
+            Assert.Equal(0, exit);
+            Assert.False(File.Exists(paths.ConfigFile));
+            Assert.False(Directory.Exists(paths.HostProgramsDirectory));
+            Assert.ThrowsAny<CryptographicException>(() => store.Open(key));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [WindowsFact]

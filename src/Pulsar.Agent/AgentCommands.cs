@@ -265,7 +265,12 @@ internal static class AgentCommands
             Console.WriteLine($"Ended {ended} game server(s) the agent had left running (it was not running to stop them).");
         }
 
-        File.Delete(paths.StopServersMarker);
+        // (File.Delete fails when the folder is missing: an agent that never had a server has no state folder.)
+        if (File.Exists(paths.StopServersMarker))
+        {
+            File.Delete(paths.StopServersMarker);
+        }
+
         // No host runs anymore: the copies of the program they ran from can go.
         try
         {
