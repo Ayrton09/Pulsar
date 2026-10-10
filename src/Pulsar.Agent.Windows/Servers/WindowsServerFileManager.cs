@@ -620,6 +620,9 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             var relative = path.Replace('/', '\\');
             var full = Path.Join(_path, relative);
             // GetFullPath leaves a path in the \\?\ form (a snapshot's) as it is: then the relative part is checked alone.
+            // Defence in depth, untested on purpose: every path reaching here passed ServerFilePath (Validate, or Walk's
+            // IsValid), which already refuses all GetFullPath would change ('.', '..', empty segments, trailing dots and
+            // spaces, '\', ':', device names), so no input reaches either branch's refusal.
             var normalized = _path.StartsWith(@"\\?\", StringComparison.Ordinal)
                 ? string.Equals(Path.GetFullPath(Path.Join(@"C:\pulsar", relative)), Path.Join(@"C:\pulsar", relative), StringComparison.Ordinal)
                 : string.Equals(Path.GetFullPath(full), full, StringComparison.Ordinal);

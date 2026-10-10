@@ -151,6 +151,88 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task ACleanRestoreDeletesByTheRulesTheBackupWasMadeWithNotTodaysOnes()
+    {
+        Write("cfg/server.cfg", "hostname old");
+        var location = Location();
+        var backup = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        Write("cfg/new.cfg", "made later");
+        Write("game/update.dll", "outside the rules the backup was made with");
+        var wider = new BackupDefinition(["**/*"]); // a template update widened them since
+
+        await _store.RestoreAsync(location, _server, backup.Sha256, new CleanRestore(wider), Progress, TestContext.Current.CancellationToken);
+
+        Assert.False(File.Exists(Path.Combine(_serverDirectory, "cfg", "new.cfg")));
+        Assert.Equal("outside the rules the backup was made with", ReadServer("game/update.dll"));
+        Assert.Equal("hostname old", ReadServer("cfg/server.cfg"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("not json")]
+    [InlineData("""{"pulsar":2,"include":["**/*"]}""")]
+    [InlineData("""{"pulsar":1,"include":["**/*",null]}""")]
+    [InlineData("""{"pulsar":1,"include":"**/*"}""")]
+    public async Task ACleanRestoreOfAnArchiveThatRecordsNoRulesUsesTheServersCurrentOnes(string? comment)
+    {
+        // Made before Phase 15 (no comment), or a comment that is not Pulsar's.
+        var location = Location();
+        Directory.CreateDirectory(location.Directory);
+        await using (var stream = File.Create(location.Archive))
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+        {
+            await using (var entry = await archive.CreateEntry("cfg/server.cfg").OpenAsync(TestContext.Current.CancellationToken))
+            {
+                await entry.WriteAsync("hostname old"u8.ToArray(), TestContext.Current.CancellationToken);
+            }
+
+            if (comment is not null)
+            {
+                archive.Comment = comment;
+            }
+        }
+
+        Write("cfg/new.cfg", "made later");
+        Write("game/update.dll", "outside the current rules");
+
+        await _store.RestoreAsync(location, _server, Hash(location.Archive), new CleanRestore(s_rules), Progress,
+            TestContext.Current.CancellationToken);
+
+        Assert.False(File.Exists(Path.Combine(_serverDirectory, "cfg", "new.cfg")));
+        Assert.Equal("outside the current rules", ReadServer("game/update.dll"));
+        Assert.Equal("hostname old", ReadServer("cfg/server.cfg"));
+    }
+
+    [Fact]
+    public async Task AFileACleanRestoreCannotDeleteDoesNotKeepTheBackupFromBeingRestored()
+    {
+        Write("cfg/server.cfg", "hostname old");
+        var files = new HookedServerFileManager(new DirectServerFileManager());
+        var store = new BackupStore(files, NullLogger<BackupStore>.Instance);
+        var location = Location();
+        var backup = await store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        Write("cfg/server.cfg", "hostname changed");
+        Write("cfg/held.cfg", "held open by something");
+        Write("cfg/new.cfg", "made later");
+        files.OnDelete = path =>
+        {
+            if (path == "cfg/held.cfg")
+            {
+                throw new FileManagerException(FileErrors.InUse, $"'{path}' is open in another program.");
+            }
+        };
+
+        var error = await Assert.ThrowsAsync<BackupException>(() =>
+            store.RestoreAsync(location, _server, backup.Sha256, new CleanRestore(s_rules), Progress, TestContext.Current.CancellationToken));
+
+        Assert.Equal(FileErrors.InUse, error.Code);
+        Assert.Contains("1 newer files could not be deleted (first: cfg/held.cfg:", error.Message, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(_serverDirectory, "cfg", "new.cfg")));
+        Assert.Equal("held open by something", ReadServer("cfg/held.cfg"));
+        Assert.Equal("hostname old", ReadServer("cfg/server.cfg"));
+    }
+
+    [Fact]
     public async Task ACleanRestoreOfAnArchiveThatChangedDeletesNothing()
     {
         Write("cfg/server.cfg", "hostname old");

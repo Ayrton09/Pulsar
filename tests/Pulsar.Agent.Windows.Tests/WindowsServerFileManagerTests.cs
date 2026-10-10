@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core.Backups;
 using Pulsar.Agent.Core.Files;
@@ -318,6 +320,37 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
 
         Assert.Equal("x", File.ReadAllText(Path.Combine(ServerDirectory, "cfg", "server.cfg")));
         Assert.Equal(["cfg"], Files.List(server, ServerFilePath.Root).Entries.Select(e => e.Name));
+    }
+
+    [WindowsFact]
+    public void AServerDirectoryThatCanOnlyBeReadIsStillListedWalkedAndRead()
+    {
+        // What a snapshot is (a read-only volume): reads must not ask for the right to create in the server directory.
+        var directory = new DirectoryInfo(Path.Combine(Root, "read-only"));
+        directory.Create();
+        Directory.CreateDirectory(Path.Combine(directory.FullName, "world"));
+        File.WriteAllText(Path.Combine(directory.FullName, "world", "level.dat"), "the world");
+        var readOnly = new DirectorySecurity();
+        readOnly.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        readOnly.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize,
+            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+        directory.SetAccessControl(readOnly);
+        try
+        {
+            var server = new ProvisionedServer(directory.FullName, ProcessIdentity.CurrentUser);
+
+            Assert.Equal(["world"], Files.List(server, ServerFilePath.Root).Entries.Select(e => e.Name));
+            Assert.Contains(Files.Walk(server), e => e.Path == "world/level.dat");
+            Assert.Equal("the world", Text(Files.OpenRead(server, "world/level.dat", 100)));
+            Assert.Equal(FileErrors.AccessDenied, Code(() => Files.Create(server, "world/new.dat", 1, overwrite: false, expectedVersion: null)));
+        }
+        finally
+        {
+            // Back to what it inherits, its children with it (the owner may always change it).
+            var inherited = new DirectorySecurity();
+            inherited.SetAccessRuleProtection(isProtected: false, preserveInheritance: false);
+            directory.SetAccessControl(inherited);
+        }
     }
 
     [WindowsFact]

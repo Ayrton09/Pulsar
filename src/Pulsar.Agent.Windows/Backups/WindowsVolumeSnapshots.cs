@@ -152,10 +152,11 @@ public sealed partial class WindowsVolumeSnapshots(ILogger<WindowsVolumeSnapshot
                 PInvoke.VssFreeSnapshotPropertiesInternal(in properties);
             }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not (OperationCanceledException or DllNotFoundException or EntryPointNotFoundException))
         {
             Release(backup);
-            // Which step failed tells more than the code alone (the agent logs it).
+            // Which step failed tells more than the code alone (the agent logs it). A Windows without the service's
+            // library is not a failed step: TakeAsync says it has no snapshots.
             throw new VssFailure(step, ex);
         }
         catch
@@ -257,8 +258,10 @@ public sealed partial class WindowsVolumeSnapshots(ILogger<WindowsVolumeSnapshot
                     taken.Backup.DeleteSnapshots(taken.SnapshotId, VSS_OBJECT_TYPE.VSS_OBJECT_SNAPSHOT, true, in deleted, in kept);
                     LogDeleted(logger, taken.Device);
                 }
-                catch (COMException ex)
+                catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
+                    // Best effort, never a failed backup: interop throws mapped types (UnauthorizedAccessException…), and
+                    // an auto-release snapshot goes with its requester anyway.
                     LogNotDeleted(logger, taken.Device, ex.Message);
                 }
                 finally

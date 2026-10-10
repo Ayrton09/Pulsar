@@ -202,7 +202,7 @@ public static class BackupErrors
     public const string RemoteFailed = "backups.remote_failed";
 }
 
-/// <summary>Why a backup of a running game read its files live instead of from a snapshot (<see cref="BackupCapture.SnapshotError"/>).</summary>
+/// <summary>Why a backup read a running game's files live instead of from a snapshot (<see cref="BackupCapture.SnapshotError"/>).</summary>
 public static class BackupSnapshotErrors
 {
     /// <summary>The agent's administrator turned snapshots off.</summary>
@@ -225,6 +225,9 @@ public static class BackupSnapshotErrors
 
     /// <summary>Anything else; the agent's log says what Windows answered.</summary>
     public const string Failed = "snapshot.failed";
+
+    /// <summary>The game started while its files were read: some may have been written meanwhile.</summary>
+    public const string GameStarted = "snapshot.game_started";
 }
 
 /// <summary>A directory's entries: directories first, then files and links, each by name.</summary>

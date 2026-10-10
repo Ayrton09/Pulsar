@@ -42,8 +42,9 @@ public sealed class VolumeSnapshotTests : IDisposable
         var (volume, relative) = WindowsVolumeSnapshots.Locate(_root);
 
         Assert.Matches(@"^\\\\\?\\Volume\{[0-9a-fA-F-]{36}\}\\\z", volume);
-        Assert.EndsWith(Path.GetFileName(_root), relative, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(Path.GetFullPath(_root)[3..], relative, StringComparer.OrdinalIgnoreCase); // below the drive's root
+        // The path on the volume is the long one: TEMP may be in 8.3 form (C:\Users\RUNNER~1), the two last names are not.
+        Assert.EndsWith(Path.Join("pulsar-snapshot-tests", Path.GetFileName(_root)), relative, StringComparison.OrdinalIgnoreCase);
+        Assert.True(Directory.Exists(Path.Join(Path.GetPathRoot(_root), relative)), relative); // below the drive's root
     }
 
     [WindowsFact]
@@ -58,7 +59,7 @@ public sealed class VolumeSnapshotTests : IDisposable
     }
 
     [WindowsFact]
-    public async Task ADirectoryThatIsNotOnALocalVolumeHasNone()
+    public async Task AMissingDirectoryHasNoSnapshot()
     {
         var refused = await Assert.ThrowsAsync<SnapshotException>(() =>
             _snapshots.TakeAsync(Path.Combine(_root, "missing"), TestContext.Current.CancellationToken));

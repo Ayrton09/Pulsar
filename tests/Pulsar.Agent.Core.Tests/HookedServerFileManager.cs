@@ -1,0 +1,40 @@
+using Pulsar.Agent.Core.Files;
+using Pulsar.Agent.Core.Processes;
+using Pulsar.Contracts;
+
+namespace Pulsar.Agent.Core.Tests;
+
+/// <summary>A file manager that runs what the test says before passing a read or a delete on (a failure, a server that starts).</summary>
+internal sealed class HookedServerFileManager(IServerFileManager inner) : IServerFileManager
+{
+    /// <summary>Called with the path of each file opened for reading.</summary>
+    public Action<string>? OnRead { get; set; }
+
+    /// <summary>Called with the path of each entry about to be deleted; throwing keeps it.</summary>
+    public Action<string>? OnDelete { get; set; }
+
+    public FileListResult List(ProvisionedServer server, string path) => inner.List(server, path);
+
+    public void CreateDirectory(ProvisionedServer server, string path) => inner.CreateDirectory(server, path);
+
+    public void EnsureDirectory(ProvisionedServer server, string path) => inner.EnsureDirectory(server, path);
+
+    public IReadOnlyList<TreeEntry> Walk(ProvisionedServer server) => inner.Walk(server);
+
+    public void Move(ProvisionedServer server, string path, string destination) => inner.Move(server, path, destination);
+
+    public void Delete(ProvisionedServer server, string path)
+    {
+        OnDelete?.Invoke(path);
+        inner.Delete(server, path);
+    }
+
+    public OpenedFile OpenRead(ProvisionedServer server, string path, long maxSize)
+    {
+        OnRead?.Invoke(path);
+        return inner.OpenRead(server, path, maxSize);
+    }
+
+    public PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion) =>
+        inner.Create(server, path, size, overwrite, expectedVersion);
+}
