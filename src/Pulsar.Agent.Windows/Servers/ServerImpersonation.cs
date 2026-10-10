@@ -20,7 +20,7 @@ public interface IServerImpersonation
 /// kept for a minute after its last use so browsing a folder does not log the account on at every click. A development
 /// agent's servers run as the agent's own user: their actions run as they are.
 /// </summary>
-public sealed class ServerImpersonation(TimeProvider clock) : IServerImpersonation, IDisposable
+public sealed class ServerImpersonation(WindowsServerAccounts accounts, TimeProvider clock) : IServerImpersonation, IDisposable
 {
     private static readonly TimeSpan s_keep = TimeSpan.FromMinutes(1);
 
@@ -84,7 +84,7 @@ public sealed class ServerImpersonation(TimeProvider clock) : IServerImpersonati
 
             if (!_tokens.TryGetValue(name, out var token))
             {
-                token = new CachedToken(WindowsServerAccounts.LogOnForImpersonation(name));
+                token = new CachedToken(accounts.LogOnForImpersonation(name));
                 _tokens[name] = token;
             }
 

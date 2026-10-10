@@ -31,13 +31,13 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
     /// <summary>The exit code reported when the host itself went away (and took the game with it).</summary>
     public const int HostLostExitCode = -1;
 
-    private static readonly TimeSpan s_requestTimeout = TimeSpan.FromSeconds(10);
-
     private readonly NamedPipeClientStream _pipe;
+    private readonly GameHostManager _manager;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<int, TaskCompletionSource<HostReply>> _pending = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly CancellationTokenSource _closing = new();
+    private readonly CancellationTokenSource _unread = new(); // cancelled once output nobody may read must not wait for room
     private readonly TaskCompletionSource<int> _exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Channel<ConsoleChunk> _output = Channel.CreateBounded<ConsoleChunk>(
         new BoundedChannelOptions(OutputCapacity) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
@@ -45,14 +45,16 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
     private GameHostStatus _status = null!;
     private int _nextId;
     private int _closed; // 1 once detached or released: the connection ending is expected
+    private int _disconnected; // 1 once the connection is closed and its resources disposed
     private volatile bool _reachedMemoryLimit;
     private volatile int _remainingAtExit;
 
-    private HostedGameProcess(GameHostReference host, NamedPipeClientStream pipe, ILogger logger)
+    private HostedGameProcess(GameHostReference host, NamedPipeClientStream pipe, GameHostManager manager)
     {
         Host = host;
         _pipe = pipe;
-        _logger = logger;
+        _manager = manager;
+        _logger = manager.Logger;
     }
 
     public GameHostReference Host { get; }
@@ -75,12 +77,16 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
     public bool ReachedMemoryLimit => _reachedMemoryLimit;
 
     /// <summary>
-    /// Connects to a host and greets it. <paramref name="verify"/> checks that the pipe is served by the expected
-    /// process (the pipe's own security already limits it to the agent's account).
+    /// Connects to a host and greets it: within <paramref name="connectTimeout"/> for its pipe, then within
+    /// <paramref name="answerTimeout"/> for its answer. The manager checks that the pipe is served by the expected process
+    /// (the pipe's own security already limits it to the agent's account).
     /// </summary>
-    /// <exception cref="GameProcessException">The host cannot be reached or does not speak this protocol.</exception>
-    internal static async Task<HostedGameProcess> ConnectAsync(GameHostReference host, Func<PipeStream, GameHostReference, bool> verify,
-        TimeSpan timeout, ILogger logger, CancellationToken cancellationToken)
+    /// <exception cref="GameProcessException">
+    /// The host cannot be reached or does not answer (<c>host.unreachable</c>), is not the process that should serve the
+    /// pipe (<c>host.unexpected</c>), or runs another version of the agent's protocol (<c>host.incompatible</c>).
+    /// </exception>
+    internal static async Task<HostedGameProcess> ConnectAsync(GameHostManager manager, GameHostReference host, TimeSpan connectTimeout,
+        TimeSpan answerTimeout, CancellationToken cancellationToken)
     {
         var pipe = GameHostPipes.CreateClient(host.Pipe);
         HostedGameProcess? process = null;
@@ -88,7 +94,7 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
         {
             using (var connecting = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
-                connecting.CancelAfter(timeout);
+                connecting.CancelAfter(connectTimeout);
                 try
                 {
                     await pipe.ConnectAsync(connecting.Token).ConfigureAwait(false);
@@ -99,14 +105,32 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
                 }
             }
 
-            if (!verify(pipe, host))
+            if (!manager.Serves(pipe, host))
             {
                 throw new GameProcessException("host.unexpected", "The server's pipe is not served by its host process.");
             }
 
-            process = new HostedGameProcess(host, pipe, logger);
+            process = new HostedGameProcess(host, pipe, manager);
             process._reader = process.ReadAsync();
-            var reply = await process.RequestAsync(id => new HostHello(id, GameHostProtocol.Version), cancellationToken).ConfigureAwait(false);
+            HostReply reply;
+            using (var answering = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                // A host that accepts the connection but never answers must not hold up the agent's start.
+                answering.CancelAfter(answerTimeout);
+                try
+                {
+                    reply = await process.RequestAsync(id => new HostHello(id, GameHostProtocol.Version), answering.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw new GameProcessException("host.unreachable", "The server's host process does not answer.");
+                }
+                catch (GameProcessException ex) when (ex.Code == "host.protocol")
+                {
+                    throw new GameProcessException("host.incompatible", $"The server's host process runs another version of the agent: {ex.Message}", ex);
+                }
+            }
+
             process._status = reply.Status ?? throw new GameProcessException("host.protocol", "The host did not say how its game is.");
             if (process._status.ExitCode is { } code)
             {
@@ -150,8 +174,18 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
     }
 
     /// <summary>Output from <paramref name="from"/> on (0 for everything the host still has).</summary>
-    internal Task SubscribeAsync(long from, CancellationToken cancellationToken) =>
-        RequestAsync(id => new HostSubscribe(id, from), cancellationToken);
+    internal async Task SubscribeAsync(long from, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await RequestAsync(id => new HostSubscribe(id, from), cancellationToken).WaitAsync(_manager.RequestTimeout, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException ex)
+        {
+            throw new GameProcessException("host.unreachable", "The server's host process does not answer.", ex);
+        }
+    }
 
     public async ValueTask WriteInputAsync(string text, CancellationToken cancellationToken)
     {
@@ -181,7 +215,7 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
 
         try
         {
-            var reply = RequestAsync(id => new HostSample(id), CancellationToken.None).WaitAsync(s_requestTimeout).GetAwaiter().GetResult();
+            var reply = RequestAsync(id => new HostSample(id), CancellationToken.None).WaitAsync(_manager.RequestTimeout).GetAwaiter().GetResult();
             return reply.Usage ?? new ProcessUsage(TimeSpan.Zero, 0, 0);
         }
         catch (Exception ex) when (ex is GameProcessException or TimeoutException or OperationCanceledException)
@@ -200,7 +234,7 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
 
         try
         {
-            RequestAsync(id => new HostTerminate(id, exitCode), CancellationToken.None).WaitAsync(s_requestTimeout).GetAwaiter().GetResult();
+            RequestAsync(id => new HostTerminate(id, exitCode), CancellationToken.None).WaitAsync(_manager.RequestTimeout).GetAwaiter().GetResult();
         }
         catch (Exception ex) when (ex is GameProcessException or TimeoutException or OperationCanceledException)
         {
@@ -217,7 +251,7 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
 
         try
         {
-            RequestAsync(id => new HostLimits(id, limits), CancellationToken.None).WaitAsync(s_requestTimeout).GetAwaiter().GetResult();
+            RequestAsync(id => new HostLimits(id, limits), CancellationToken.None).WaitAsync(_manager.RequestTimeout).GetAwaiter().GetResult();
         }
         catch (TimeoutException ex)
         {
@@ -237,7 +271,10 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
         await CloseAsync().ConfigureAwait(false);
     }
 
-    /// <summary>Releases the host: whatever is left of the game's tree is killed and the host ends.</summary>
+    /// <summary>
+    /// Releases the host: whatever is left of the game's tree is killed and the host ends. The output stays open until
+    /// the host answers, since it sends the last of the game's output first (what a pseudo console shows as it closes).
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _closed, 1) == 1)
@@ -245,16 +282,20 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
             return;
         }
 
-        // Output nobody reads anymore must not hold up the host's answer behind it.
-        _output.Writer.TryComplete();
+        // Output nobody may read anymore must not hold up the host's answer behind it: it is dropped when there is no room.
+        await _unread.CancelAsync().ConfigureAwait(false);
         try
         {
-            await RequestAsync(id => new HostRelease(id), CancellationToken.None).WaitAsync(s_requestTimeout).ConfigureAwait(false);
+            await RequestAsync(id => new HostRelease(id), CancellationToken.None).WaitAsync(_manager.RequestTimeout).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is GameProcessException or TimeoutException or OperationCanceledException)
         {
-            // A host that is gone released everything already.
-            LogReleaseFailed(ServerId, ex.Message);
+            // A host that is gone released everything already; one that is stuck is ended, its game with it, rather
+            // than left running with nobody to watch it.
+            if (_manager.Kill(Host))
+            {
+                LogReleaseFailed(ServerId, Host.ProcessId, ex.Message);
+            }
         }
 
         await CloseAsync().ConfigureAwait(false);
@@ -262,15 +303,21 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
 
     private async Task CloseAsync()
     {
+        if (Interlocked.Exchange(ref _disconnected, 1) == 1)
+        {
+            return;
+        }
+
         await _closing.CancelAsync().ConfigureAwait(false);
+        await _unread.CancelAsync().ConfigureAwait(false);
         await _pipe.DisposeAsync().ConfigureAwait(false);
         try
         {
             await _reader.ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is IOException or ObjectDisposedException or OperationCanceledException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // Closed.
+            // Closed (the reader already reported anything unexpected).
         }
 
         _output.Writer.TryComplete();
@@ -278,6 +325,11 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
         {
             pending.TrySetException(new GameProcessException("host.unreachable", "The connection to the server's host is closed."));
         }
+
+        // Requests made from other threads meanwhile fail as an unreachable host (RequestAsync).
+        _writeLock.Dispose();
+        _closing.Dispose();
+        _unread.Dispose();
     }
 
     private async Task ControlAsync(Func<int, HostRequest> create, CancellationToken cancellationToken)
@@ -376,6 +428,11 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
                 LogProtocolError(Host.ProcessId, ex.Message);
             }
         }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Never left to fault the reader: the connection counts as broken.
+            LogProtocolError(Host.ProcessId, ex.Message);
+        }
         finally
         {
             expected |= Volatile.Read(ref _closed) == 1;
@@ -394,13 +451,24 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
         }
     }
 
-    /// <summary>Waits while the consumer is behind (back-pressure on the pipe); drops once the output was closed.</summary>
+    /// <summary>
+    /// Waits while the consumer is behind (back-pressure on the pipe); drops once the output was closed, or when there is
+    /// no room once the host is being released (the consumer may be gone).
+    /// </summary>
     private async Task PublishAsync(ConsoleChunk chunk)
     {
         while (!_output.Writer.TryWrite(chunk))
         {
-            if (!await _output.Writer.WaitToWriteAsync(_closing.Token).ConfigureAwait(false))
+            try
             {
+                if (!await _output.Writer.WaitToWriteAsync(_unread.Token).ConfigureAwait(false))
+                {
+                    return;
+                }
+            }
+            catch (OperationCanceledException) when (_unread.IsCancellationRequested)
+            {
+                _ = _output.Writer.TryWrite(chunk);
                 return;
             }
         }
@@ -418,6 +486,6 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: its host could not kill its processes: {Reason}")]
     private partial void LogTerminateFailed(Guid serverId, string reason);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Server {ServerId}: its host was not released cleanly: {Reason}")]
-    private partial void LogReleaseFailed(Guid serverId, string reason);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: its host process {HostProcessId} did not end when released ({Reason}); killed it")]
+    private partial void LogReleaseFailed(Guid serverId, int hostProcessId, string reason);
 }

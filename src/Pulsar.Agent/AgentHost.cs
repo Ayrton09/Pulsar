@@ -76,18 +76,22 @@ internal static class AgentHost
             builder.Services.AddSingleton<PanelChannel>();
 
             // Game servers (docs/architecture/05 and 06).
-            builder.Services.AddSingleton<WindowsServerAccounts>();
+            builder.Services.AddSingleton(services => new WindowsServerAccounts(services.GetRequiredService<ILogger<WindowsServerAccounts>>(),
+                paths.LogonLocksDirectory));
             builder.Services.AddSingleton<IGameProcessManager, WindowsGameProcessManager>();
             // Each game in a host process of its own, so games outlive the agent (docs/architecture/06, "Server hosts").
-            // Pulsar:ServerHosts false runs them inside the agent, as before Phase 14 (they then stop with it).
-            if (builder.Configuration.GetValue("Pulsar:ServerHosts", true))
-            {
-                builder.Services.AddSingleton<IGameHostLauncher>(services => new WindowsGameHostLauncher(
-                    GameHostProgram.Prepare(AppContext.BaseDirectory, Path.GetFileName(Environment.ProcessPath!), paths.HostProgramsDirectory),
-                    paths.Root, paths.HostProgramsDirectory, services.GetRequiredService<ILogger<WindowsGameHostLauncher>>()));
-                builder.Services.AddSingleton(services => new GameHostManager(services.GetRequiredService<IGameProcessManager>(),
-                    services.GetRequiredService<IGameHostLauncher>(), services.GetRequiredService<ILogger<GameHostManager>>()));
-            }
+            // Pulsar:ServerHosts false runs them inside the agent, as before Phase 14 (they then stop with it); the hosts
+            // an earlier run left are still ended.
+            var serverHosts = builder.Configuration.GetValue("Pulsar:ServerHosts", true);
+            // The agent's own executable, also when it was started as "dotnet PulsarAgent.dll".
+            var executable = typeof(AgentHost).Assembly.GetName().Name + ".exe";
+            builder.Services.AddSingleton<IGameHostLauncher>(services => new WindowsGameHostLauncher(
+                () => serverHosts
+                    ? GameHostProgram.Prepare(AppContext.BaseDirectory, executable, paths.HostProgramsDirectory)
+                    : Path.Combine(AppContext.BaseDirectory, executable),
+                paths.Root, paths.HostProgramsDirectory, services.GetRequiredService<ILogger<WindowsGameHostLauncher>>()));
+            builder.Services.AddSingleton(services => new GameHostManager(services.GetRequiredService<IGameProcessManager>(),
+                services.GetRequiredService<IGameHostLauncher>(), services.GetRequiredService<ILogger<GameHostManager>>()));
 
             builder.Services.AddSingleton<IServerProvisioner>(services => new WindowsServerProvisioner(
                 services.GetRequiredService<WindowsServerAccounts>(),
@@ -115,7 +119,7 @@ internal static class AgentHost
             builder.Services.AddSingleton<SteamLoginStore>();
             builder.Services.AddSingleton<SteamCmdRunner>();
             builder.Services.AddSingleton(new SupervisorOptions());
-            builder.Services.AddSingleton(new ServerHostOptions());
+            builder.Services.AddSingleton(new ServerHostOptions { GamesInHosts = serverHosts });
             builder.Services.AddSingleton<ServerHost>();
 
             // Started in this order and stopped in reverse: the connection waits for the servers to load before its Hello,

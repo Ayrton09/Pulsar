@@ -48,8 +48,17 @@ public sealed class AgentPaths(string root)
     /// </summary>
     public string HostProgramsDirectory => Path.Combine(Root, "host-programs");
 
-    /// <summary>Asks the agent to stop its game servers when it stops next (written by <c>unenroll</c>), instead of leaving them running.</summary>
+    /// <summary>
+    /// Asks the running agent to stop its game servers when it stops next (written by <c>unenroll</c> and <c>service stop
+    /// --stop-servers</c>), instead of leaving them running. One older than the agent's run is deleted when it starts.
+    /// </summary>
     public string StopServersMarker => Path.Combine(Root, "state", "stop-servers");
+
+    /// <summary>
+    /// One lock file per server account, held while its password is set and it logs on (by the agent and its host
+    /// processes): out of the server accounts' reach (docs/architecture/06, "Server hosts").
+    /// </summary>
+    public string LogonLocksDirectory => Path.Combine(Root, "state", "logon-locks");
 
     /// <summary>The folders the agent itself makes in <see cref="Root"/>: what securing it resets (nothing else in it).</summary>
     public IReadOnlyList<string> OwnFolders =>

@@ -22,7 +22,8 @@ public sealed record ServerRecord(Guid ServerId, ServerRuntimeSpec Spec, bool De
 /// console: its output offset in the host, and its position in the game's log file (<c>logfile+rcon</c>).
 /// </summary>
 /// <param name="Ready">The game had passed its readiness check.</param>
-public sealed record GameHostRecord(Guid ServerId, GameHostReference Host, long ConsoleOffset, long LogPosition, bool Ready);
+/// <param name="Stopping">The game was being stopped.</param>
+public sealed record GameHostRecord(Guid ServerId, GameHostReference Host, long ConsoleOffset, long LogPosition, bool Ready, bool Stopping = false);
 
 /// <summary>
 /// Server records and undelivered operation results, as JSON files in the agent's state directory (SYSTEM and
@@ -57,6 +58,13 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
     {
         var file = Path.Combine(paths.ServersStateDirectory, $"{serverId:N}.json.unreadable");
         return File.Exists(file) ? file : null;
+    }
+
+    /// <summary>Whether the node has a record of <paramref name="serverId"/>, readable or set aside.</summary>
+    public bool Exists(Guid serverId)
+    {
+        var file = Path.Combine(paths.ServersStateDirectory, $"{serverId:N}.json");
+        return File.Exists(file) || File.Exists(file + ".unreadable");
     }
 
     public ServerRecord? Load(Guid serverId)

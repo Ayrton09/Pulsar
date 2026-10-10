@@ -39,7 +39,8 @@ public interface IServerEventSink
 /// <param name="ConsoleOffset">The host's output offset after the last text written to the console.</param>
 /// <param name="LogPosition">The position in the game's log file read so far (<c>logfile+rcon</c>).</param>
 /// <param name="Ready">The game passed its readiness check.</param>
-public sealed record GameHostState(GameHostReference Host, long ConsoleOffset, long LogPosition, bool Ready);
+/// <param name="Stopping">The game was being stopped.</param>
+public sealed record GameHostState(GameHostReference Host, long ConsoleOffset, long LogPosition, bool Ready, bool Stopping = false);
 
 public sealed class SupervisorOptions
 {
@@ -152,7 +153,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     /// <summary>The host process of the running game and how far its console was read; null when none runs in a host.</summary>
     public GameHostState? HostState => _hosted is { } hosted
-        ? new GameHostState(hosted.Host, Interlocked.Read(ref _consoleEnd), Interlocked.Read(ref _logPosition), _snapshot.State == RuntimeState.Running)
+        ? new GameHostState(hosted.Host, Interlocked.Read(ref _consoleEnd), Interlocked.Read(ref _logPosition), _snapshot.State == RuntimeState.Running,
+            _snapshot.State == RuntimeState.Stopping)
         : null;
 
     /// <summary>
@@ -631,11 +633,22 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         Interlocked.Exchange(ref _logPosition, attach.State.LogPosition);
 
         // Reported by the next Hello's snapshot, which the panel always takes: no change to send.
-        _state = attach.State.Ready ? RuntimeState.Running : RuntimeState.Starting;
+        _state = attach.State.Stopping ? RuntimeState.Stopping : attach.State.Ready ? RuntimeState.Running : RuntimeState.Starting;
         _snapshot = new ServerSnapshot(ServerId, _state, ++_sequence, null, attach.Process.StartedAt);
         LogAttached(ServerId, attach.Process.ProcessId, _state);
 
         _ = WatchExitAsync(attach.Process, generation);
+        if (attach.State.Stopping)
+        {
+            // The previous run was stopping it when it died: its exit ends that stop (not a crash), and the stop's
+            // timeout runs again in case the game does not exit. A server that should run (a restart) starts again.
+            _stopReason = StateChangeReason.Requested;
+            _restartAfterStop = attach.DesiredRunning;
+            PostLater(StopTimeLimit(null), new StopTimeout(generation));
+            Watch(attach.Process, plan, generation, readinessCheck: null, attach.State.LogPosition);
+            return true;
+        }
+
         // A game that was still starting is checked again (a log line it printed already is not seen again: it is then
         // considered running when its readiness times out).
         Watch(attach.Process, plan, generation, attach.State.Ready ? null : plan.Readiness, attach.State.LogPosition);
@@ -1093,14 +1106,15 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         // The exit that follows reports the same reason (unless the stop times out or a kill overtakes it).
         _stopReason = reason;
         Transition(RuntimeState.Stopping, reason);
-        var timeout = TimeSpan.FromSeconds((_plan ?? _definition.Plan).Stop.TimeoutSeconds);
-        if (budget is { } limit && limit < timeout)
-        {
-            timeout = limit;
-        }
-
-        PostLater(timeout, new StopTimeout(_generation));
+        PostLater(StopTimeLimit(budget), new StopTimeout(_generation));
         _mailbox.Writer.TryWrite(new NextStopStep(_generation, 0));
+    }
+
+    /// <summary>How long a stop may take before the tree is killed: the manifest's timeout, within <paramref name="budget"/>.</summary>
+    private TimeSpan StopTimeLimit(TimeSpan? budget)
+    {
+        var timeout = TimeSpan.FromSeconds((_plan ?? _definition.Plan).Stop.TimeoutSeconds);
+        return budget is { } limit && limit < timeout ? limit : timeout;
     }
 
     private async Task RunStopStepsAsync(int index)

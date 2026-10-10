@@ -25,6 +25,19 @@ public interface IGameHostLauncher
 }
 
 /// <summary>
+/// Where the agent keeps its host records (docs/architecture/06, "Server hosts"): a host is recorded as soon as it is
+/// started, before its game, so an agent that dies meanwhile leaves no game its next run cannot find.
+/// </summary>
+public interface IGameHostRecords
+{
+    /// <summary>A host was started for <paramref name="serverId"/>; its game is not started yet.</summary>
+    void HostLaunched(Guid serverId, GameHostReference host);
+
+    /// <summary>The host was ended because its game could not be started.</summary>
+    void HostAbandoned(Guid serverId, GameHostReference host);
+}
+
+/// <summary>
 /// Game processes that outlive the agent (docs/architecture/06, "Server hosts"): each one is started by a host process
 /// of its own, and found again after the agent restarts. What has nothing to do with the game's process (killing the
 /// server account's stray processes) is done by the local manager.
@@ -32,14 +45,22 @@ public interface IGameHostLauncher
 public sealed partial class GameHostManager(IGameProcessManager local, IGameHostLauncher launcher, ILogger<GameHostManager> logger)
     : IGameProcessManager
 {
-    /// <summary>How long a new host gets to open its pipe.</summary>
+    /// <summary>How long a new host gets to open its pipe and answer.</summary>
     public TimeSpan StartTimeout { get; init; } = TimeSpan.FromSeconds(15);
 
     /// <summary>
-    /// How long an existing host gets to answer when the agent comes back. Generous: one that does not answer is killed
-    /// with its game, and a machine that is starting can be slow.
+    /// How long an existing host gets to open its pipe, and then to answer, when the agent comes back. Generous: one that
+    /// does not answer is killed with its game, and a machine that is starting can be slow.
     /// </summary>
     public TimeSpan ReattachTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long a request to a running host may take (a release waits for the game's tree to end).</summary>
+    public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>Told about each host as soon as it is started (set by the agent's server host).</summary>
+    public IGameHostRecords? Records { get; set; }
+
+    internal ILogger Logger => logger;
 
     public async Task<IGameProcess> StartAsync(ProcessLaunchSpec spec, CancellationToken cancellationToken)
     {
@@ -54,6 +75,9 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
             throw new GameProcessException("host.start_failed", $"The server's host process could not be started: {ex.Message}", ex);
         }
 
+        // Before the game: starting it can take seconds (an account's first logon), and an agent that dies meanwhile
+        // must find the host, and the game it may have started, when it comes back.
+        Records?.HostLaunched(spec.ServerId, host);
         HostedGameProcess? process = null;
         try
         {
@@ -66,13 +90,14 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
         {
             if (process is not null)
             {
-                await process.DisposeAsync().ConfigureAwait(false);
+                await process.DisposeAsync().ConfigureAwait(false); // released (killed when it does not answer)
             }
             else
             {
                 launcher.Kill(host);
             }
 
+            Records?.HostAbandoned(spec.ServerId, host);
             throw;
         }
     }
@@ -82,6 +107,10 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
     /// null when it is gone or has no game. A host that is alive but does not answer is killed (with its game): it must
     /// never run beside a new start of the same server.
     /// </summary>
+    /// <exception cref="GameProcessException">
+    /// <c>host.incompatible</c>: the host runs another version of the protocol (an update changed it). It is left running
+    /// with its game: killing it would end every game on the node, and the caller must not start the server beside it.
+    /// </exception>
     public async Task<IHostedGameProcess?> ReattachAsync(GameHostReference host, long outputFrom, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(host);
@@ -93,7 +122,7 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
         HostedGameProcess? process = null;
         try
         {
-            process = await HostedGameProcess.ConnectAsync(host, launcher.Serves, ReattachTimeout, logger, cancellationToken).ConfigureAwait(false);
+            process = await HostedGameProcess.ConnectAsync(this, host, ReattachTimeout, ReattachTimeout, cancellationToken).ConfigureAwait(false);
             if (process.Status.ProcessId is null)
             {
                 await process.DisposeAsync().ConfigureAwait(false);
@@ -103,6 +132,11 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
             await process.SubscribeAsync(outputFrom, cancellationToken).ConfigureAwait(false);
             LogReattached(process.ServerId, host.ProcessId, process.ProcessId);
             return process;
+        }
+        catch (GameProcessException ex) when (ex.Code == "host.incompatible")
+        {
+            LogIncompatible(host.ProcessId, ex.Message);
+            throw;
         }
         catch (GameProcessException ex)
         {
@@ -122,15 +156,20 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
     /// <summary>Once the hosts of a previous run are taken over: older copies of the program nobody runs from can go.</summary>
     public void CleanUpPrograms(IEnumerable<GameHostReference> running) => launcher.CleanUpPrograms(running);
 
-    /// <summary>Kills a host nobody will take over (its server is gone); its game dies with it.</summary>
-    public void Kill(GameHostReference host)
+    /// <summary>Kills a host nobody will take over (its server is gone, say); its game dies with it. False when it was gone already.</summary>
+    public bool Kill(GameHostReference host)
     {
         ArgumentNullException.ThrowIfNull(host);
-        if (launcher.IsAlive(host))
+        if (!launcher.IsAlive(host))
         {
-            launcher.Kill(host);
+            return false;
         }
+
+        launcher.Kill(host);
+        return true;
     }
+
+    internal bool Serves(PipeStream pipe, GameHostReference host) => launcher.Serves(pipe, host);
 
     /// <summary>A host just started: its pipe appears once it is up.</summary>
     private async Task<HostedGameProcess> ConnectNewAsync(GameHostReference host, CancellationToken cancellationToken)
@@ -140,17 +179,17 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
         {
             try
             {
-                return await HostedGameProcess.ConnectAsync(host, launcher.Serves, TimeSpan.FromMilliseconds(500), logger, cancellationToken)
+                return await HostedGameProcess.ConnectAsync(this, host, TimeSpan.FromMilliseconds(500), StartTimeout, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (GameProcessException ex) when (ex.Code == "host.unreachable" && DateTimeOffset.UtcNow < deadline && launcher.IsAlive(host))
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken).ConfigureAwait(false);
             }
-            catch (GameProcessException ex) when (ex.Code == "host.unreachable")
+            catch (GameProcessException ex) when (ex.Code is "host.unreachable" or "host.incompatible")
             {
                 throw new GameProcessException("host.start_failed", launcher.IsAlive(host)
-                    ? "The server's host process did not open its pipe in time."
+                    ? "The server's host process did not open its pipe or answer in time."
                     : "The server's host process ended right after it started (see the agent's logs folder).", ex);
             }
         }
@@ -161,4 +200,8 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The host process {HostProcessId} of a server does not answer ({Code}: {Reason}); killing it")]
     private partial void LogReattachFailed(int hostProcessId, string code, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "The host process {HostProcessId} of a server runs another version of the agent ({Reason}): left running with its game, which this agent cannot manage")]
+    private partial void LogIncompatible(int hostProcessId, string reason);
 }

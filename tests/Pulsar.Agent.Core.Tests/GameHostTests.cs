@@ -182,6 +182,171 @@ public sealed class GameHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task FramesTheHostCannotReadEndTheConnectionNotTheHost()
+    {
+        var process = (IHostedGameProcess)await _hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
+        var game = _games.Last;
+        await process.DetachAsync();
+
+        // No kind (System.Text.Json fails on the abstract type with NotSupportedException), then a kind nobody knows.
+        foreach (var frame in new[] { """{"id":1}""", """{"kind":"nonsense","id":1}""" })
+        {
+            await using var client = await ConnectAsync(process.Host);
+            await WriteRawAsync(client, frame);
+            Assert.Null(await GameHostProtocol.ReadAsync(client, TestContext.Current.CancellationToken));
+            Assert.True(_launcher.IsAlive(process.Host));
+        }
+
+        // A request whose handling fails (input without text) is answered as failed.
+        await using (var client = await ConnectAsync(process.Host))
+        {
+            await GameHostProtocol.WriteAsync(client, new HostHello(1, GameHostProtocol.Version), TestContext.Current.CancellationToken);
+            Assert.Null(Assert.IsType<HostReply>(await GameHostProtocol.ReadAsync(client, TestContext.Current.CancellationToken)).ErrorCode);
+            await WriteRawAsync(client, """{"kind":"input","id":2,"text":null}""");
+            var reply = Assert.IsType<HostReply>(await GameHostProtocol.ReadAsync(client, TestContext.Current.CancellationToken));
+            Assert.Equal((2, "host.request_failed"), (reply.Id, reply.ErrorCode));
+        }
+
+        Assert.True(_launcher.IsAlive(process.Host));
+        Assert.False(game.Disposed);
+        var again = await _hosts.ReattachAsync(process.Host, 0, TestContext.Current.CancellationToken);
+        Assert.NotNull(again);
+        await again.DisposeAsync();
+        Assert.Equal(0, await _launcher.RunOf(process.Host).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public void AFrameWithoutAKindIsNotAFrame()
+    {
+        using var stream = new MemoryStream();
+        var json = """{"id":1}"""u8.ToArray();
+        stream.Write(BitConverter.GetBytes(json.Length));
+        stream.Write(json);
+        stream.Position = 0;
+
+        Assert.Throws<InvalidDataException>(() => GameHostProtocol.ReadAsync(stream, TestContext.Current.CancellationToken).GetAwaiter().GetResult());
+    }
+
+    [Fact]
+    public async Task TheLastOutputOfAGameReachesTheAgentWhenItsHostIsReleased()
+    {
+        // A pseudo console shows its final screen as it closes, after the game's exit was reported.
+        _games.OnStarted = (game, _) => game.LastScreen = "Server shut down.\r\n";
+        var process = await _hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
+        _games.Last.Exit(0);
+        Assert.Equal(0, await process.Exited.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+        await process.DisposeAsync();
+
+        var text = new StringBuilder();
+        await foreach (var chunk in process.Output.ReadAllAsync(TestContext.Current.CancellationToken))
+        {
+            text.Append(chunk.Text);
+        }
+
+        Assert.Equal("Server shut down.\r\n", text.ToString());
+    }
+
+    [Fact]
+    public async Task ReleasingAHostEndsTheChildrenItsGameLeft()
+    {
+        var process = await _hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
+        var game = _games.Last;
+        game.Children = 2;
+
+        await process.DisposeAsync();
+
+        Assert.Equal(1, game.TerminatedWith);
+        Assert.True(game.Disposed);
+        await _launcher.WaitEndedAsync(((IHostedGameProcess)process).Host);
+    }
+
+    [Fact]
+    public async Task AHostWithNobodyToDecideEndsTheChildrenOfAnExitedGameAfterTheGrace()
+    {
+        await using var launcher = new InProcessHostLauncher(_games, new GameHostOptions { TreeGrace = TimeSpan.FromMilliseconds(100) });
+        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance);
+        var process = (IHostedGameProcess)await hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
+        var game = _games.Last;
+        await process.DetachAsync();
+
+        game.Children = 1; // a crash handler, say
+        game.Exit(3);
+
+        await WaitUntilAsync(() => game.TerminatedWith == 1);
+        Assert.True(launcher.IsAlive(process.Host)); // it keeps the exit code for the next agent
+        Assert.Equal(3, InProcessHostLauncher.Status(process.Host)?.ExitCode);
+    }
+
+    [Fact]
+    public async Task AHostNobodyConnectsToEnds()
+    {
+        using var service = new GameHostService(_games, Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()),
+            new GameHostOptions { FirstConnectionTimeout = TimeSpan.FromMilliseconds(200) }, TimeProvider.System, NullLogger<GameHostService>.Instance);
+
+        Assert.Equal(0, await service.RunAsync(TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        Assert.Empty(_games.Started);
+    }
+
+    [Fact]
+    public async Task AHostThatIsNotTheProcessServingThePipeIsKilledRatherThanTrusted()
+    {
+        var process = (IHostedGameProcess)await _hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
+        var game = _games.Last;
+        await process.DetachAsync();
+        _launcher.Trusted = false;
+
+        Assert.Null(await _hosts.ReattachAsync(process.Host, 0, TestContext.Current.CancellationToken));
+
+        await _launcher.WaitEndedAsync(process.Host);
+        Assert.True(game.Disposed);
+    }
+
+    [Fact]
+    public async Task AHostThatAcceptsTheConnectionButNeverAnswersIsKilled()
+    {
+        await using var launcher = new ScriptedHostLauncher(_ => null);
+        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance) { ReattachTimeout = TimeSpan.FromMilliseconds(300) };
+        var host = launcher.Launch(Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()));
+
+        Assert.Null(await hosts.ReattachAsync(host, 0, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        Assert.True(launcher.Killed);
+    }
+
+    [Fact]
+    public async Task AHostOfAnotherProtocolVersionIsLeftRunning()
+    {
+        // An update of the agent that changed the protocol: killing the host would end its game.
+        await using var launcher = new InProcessHostLauncher(_games, new GameHostOptions { Protocol = GameHostProtocol.Version + 1 });
+        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance);
+        var host = launcher.Launch(Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()));
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => hosts.ReattachAsync(host, 0, TestContext.Current.CancellationToken));
+
+        Assert.Equal("host.incompatible", error.Code);
+        Assert.True(launcher.IsAlive(host));
+    }
+
+    [Fact]
+    public async Task AHostThatDoesNotAnswerItsReleaseIsKilled()
+    {
+        await using var launcher = new ScriptedHostLauncher(request => request switch
+        {
+            HostHello hello => new HostReply(hello.Id, Status: new GameHostStatus(Guid.NewGuid(), 4242, DateTimeOffset.UtcNow, null, false, true, 0, 0)),
+            HostSubscribe subscribe => new HostReply(subscribe.Id),
+            _ => null, // stuck
+        });
+        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance) { RequestTimeout = TimeSpan.FromMilliseconds(300) };
+        var host = launcher.Launch(Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()));
+        var process = await hosts.ReattachAsync(host, 0, TestContext.Current.CancellationToken);
+        Assert.NotNull(process);
+
+        await process.DisposeAsync();
+
+        Assert.True(launcher.Killed);
+    }
+
+    [Fact]
     public void TheRingKeepsTheNewestOutputAndReadsFromAnyOffset()
     {
         var ring = new OutputRing(1024);
@@ -251,6 +416,21 @@ public sealed class GameHostTests : IAsyncDisposable
             new Dictionary<string, string> { ["GAME_MODE"] = "casual" }, ConsoleMode.Pty, ConsoleEncoding.Utf8, ProcessIdentity.Account("pulsar_abc"),
             new ProcessLimits(null, 512 * 1024 * 1024));
 
+    private static async Task<NamedPipeClientStream> ConnectAsync(GameHostReference host)
+    {
+        var client = GameHostPipes.CreateClient(host.Pipe);
+        await client.ConnectAsync(5000, TestContext.Current.CancellationToken);
+        return client;
+    }
+
+    private static async Task WriteRawAsync(Stream stream, string json)
+    {
+        var bytes = Encoding.UTF8.GetBytes(json);
+        await stream.WriteAsync(BitConverter.GetBytes(bytes.Length), TestContext.Current.CancellationToken);
+        await stream.WriteAsync(bytes, TestContext.Current.CancellationToken);
+        await stream.FlushAsync(TestContext.Current.CancellationToken);
+    }
+
     private static async Task<ConsoleChunk> NextAsync(IGameProcess process)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
@@ -277,6 +457,9 @@ internal sealed class InProcessHostLauncher(IGameProcessManager games, GameHostO
 
     public IEnumerable<GameHostReference> Launched => _hosts.Values.Select(h => h.Reference);
 
+    /// <summary>False: every pipe looks served by another process than its host's.</summary>
+    public bool Trusted { get; set; } = true;
+
     public GameHostReference Launch(Guid serverId, string pipe)
     {
         var service = new GameHostService(games, serverId, pipe, options ?? new GameHostOptions(), TimeProvider.System,
@@ -297,7 +480,7 @@ internal sealed class InProcessHostLauncher(IGameProcessManager games, GameHostO
         }
     }
 
-    public bool Serves(PipeStream pipe, GameHostReference host) => _hosts.ContainsKey(host.Pipe);
+    public bool Serves(PipeStream pipe, GameHostReference host) => Trusted && _hosts.ContainsKey(host.Pipe);
 
     /// <summary>What the host would tell an agent now (read through a connection of its own).</summary>
     public static GameHostStatus? Status(GameHostReference host)
@@ -319,6 +502,9 @@ internal sealed class InProcessHostLauncher(IGameProcessManager games, GameHostO
     public async Task WaitEndedAsync(GameHostReference host) =>
         await _hosts[host.Pipe].Run.WaitAsync(TimeSpan.FromSeconds(10));
 
+    /// <summary>The host's own result: it fails when the host crashed rather than ended.</summary>
+    public Task<int> RunOf(GameHostReference host) => _hosts[host.Pipe].Run;
+
     public async ValueTask DisposeAsync()
     {
         foreach (var host in _hosts.Values)
@@ -339,4 +525,59 @@ internal sealed class InProcessHostLauncher(IGameProcessManager games, GameHostO
     }
 
     private sealed record Host(GameHostReference Reference, GameHostService Service, Task<int> Run, CancellationTokenSource Kill);
+}
+
+/// <summary>A host that answers each request as the test says (null: never), for hosts that misbehave.</summary>
+internal sealed class ScriptedHostLauncher(Func<HostRequest, HostReply?> answer) : IGameHostLauncher, IAsyncDisposable
+{
+    private readonly CancellationTokenSource _stop = new();
+    private Task _serving = Task.CompletedTask;
+
+    public bool Killed { get; private set; }
+
+    public GameHostReference Launch(Guid serverId, string pipe)
+    {
+        var server = GameHostPipes.CreateServer(pipe);
+        _serving = ServeAsync(server);
+        return new GameHostReference(pipe, 41000, DateTimeOffset.UtcNow);
+    }
+
+    public bool IsAlive(GameHostReference host) => !Killed;
+
+    public void Kill(GameHostReference host)
+    {
+        Killed = true;
+        _stop.Cancel();
+    }
+
+    public bool Serves(PipeStream pipe, GameHostReference host) => true;
+
+    public async ValueTask DisposeAsync()
+    {
+        await _stop.CancelAsync();
+        await _serving;
+        _stop.Dispose();
+    }
+
+    private async Task ServeAsync(NamedPipeServerStream server)
+    {
+        await using (server)
+        {
+            try
+            {
+                await server.WaitForConnectionAsync(_stop.Token);
+                while (await GameHostProtocol.ReadAsync(server, _stop.Token) is HostRequest request)
+                {
+                    if (answer(request) is { } reply)
+                    {
+                        await GameHostProtocol.WriteAsync(server, reply, _stop.Token);
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or IOException or InvalidDataException)
+            {
+                // Killed, or the agent went away.
+            }
+        }
+    }
 }

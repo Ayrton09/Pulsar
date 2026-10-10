@@ -89,12 +89,21 @@ internal sealed class FakeGameProcess(int processId) : IGameProcess
 
     public IReadOnlyList<string> Input => [.. _input];
 
+    /// <summary>
+    /// When set, the output stays open after the exit and this is its last text, written when the process is disposed:
+    /// a pseudo console shows its final screen as it closes.
+    /// </summary>
+    public string? LastScreen { get; set; }
+
     public void Print(string text) => _output.Writer.TryWrite(new ConsoleChunk(DateTimeOffset.UtcNow, text));
 
     public void Exit(int code)
     {
         _exited.TrySetResult(code);
-        _output.Writer.TryComplete();
+        if (LastScreen is null)
+        {
+            _output.Writer.TryComplete();
+        }
     }
 
     public ValueTask WriteInputAsync(string text, CancellationToken cancellationToken)
@@ -144,8 +153,54 @@ internal sealed class FakeGameProcess(int processId) : IGameProcess
     {
         Disposed = true;
         Exit(1);
+        if (LastScreen is { } last)
+        {
+            Print(last);
+        }
+
+        _output.Writer.TryComplete();
         return ValueTask.CompletedTask;
     }
+}
+
+/// <summary>A fake game as if it ran in a host process (the supervisor keeps its host's state for the next agent).</summary>
+internal sealed class FakeHostedProcess(FakeGameProcess game, GameHostReference host) : IHostedGameProcess
+{
+    public GameHostReference Host { get; } = host;
+
+    public bool Detached { get; private set; }
+
+    public int ProcessId => game.ProcessId;
+
+    public DateTimeOffset StartedAt => game.StartedAt;
+
+    public Task<int> Exited => game.Exited;
+
+    public ChannelReader<ConsoleChunk> Output => game.Output;
+
+    public bool SupportsInterrupt => game.SupportsInterrupt;
+
+    public bool ReachedMemoryLimit => game.ReachedMemoryLimit;
+
+    public ValueTask WriteInputAsync(string text, CancellationToken cancellationToken) => game.WriteInputAsync(text, cancellationToken);
+
+    public ValueTask SendInterruptAsync(CancellationToken cancellationToken) => game.SendInterruptAsync(cancellationToken);
+
+    public int CountProcesses() => game.CountProcesses();
+
+    public ProcessUsage SampleUsage() => game.SampleUsage();
+
+    public void TerminateTree(int exitCode) => game.TerminateTree(exitCode);
+
+    public void ApplyLimits(ProcessLimits? limits) => game.ApplyLimits(limits);
+
+    public ValueTask DetachAsync()
+    {
+        Detached = true;
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask DisposeAsync() => game.DisposeAsync();
 }
 
 /// <summary>Collects a supervisor's events and waits for them.</summary>

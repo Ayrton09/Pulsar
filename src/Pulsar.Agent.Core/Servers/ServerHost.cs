@@ -28,9 +28,16 @@ public sealed class ServerHostOptions
 
     /// <summary>
     /// How often the agent notes how far it read the consoles of games in host processes: after a crash of the agent,
-    /// its next run shows again at most this much of their output (an orderly stop notes it exactly).
+    /// its next run shows again at most this much of their output (an orderly stop notes it exactly). The console log on
+    /// disk is written about as often, in the background, so it can miss up to that much from right before a crash.
     /// </summary>
     public TimeSpan HostCheckpointInterval { get; set; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Whether games run in host processes (<c>Pulsar:ServerHosts</c>), given a <see cref="GameHostManager"/>. When off,
+    /// the manager only ends the hosts an earlier run of the agent left: a game started here would run beside them.
+    /// </summary>
+    public bool GamesInHosts { get; set; } = true;
 }
 
 /// <summary>
@@ -70,7 +77,7 @@ public sealed partial class ServerHost(
     ILoggerFactory loggerFactory,
     IServerQuery? query = null,
     GameHostManager? hosts = null,
-    AgentShutdown? shutdown = null) : IHostedService, IServerEventSink, IDisposable
+    AgentShutdown? shutdown = null) : IHostedService, IServerEventSink, IGameHostRecords, IDisposable
 {
     // The panel waits for the ack: deleting a remote copy gets a bounded time.
     private static readonly TimeSpan s_remoteDeleteTimeout = TimeSpan.FromSeconds(20);
@@ -86,6 +93,7 @@ public sealed partial class ServerHost(
     private readonly Lock _recordLock = new();
     private readonly Lock _hostLock = new();
     private readonly ConcurrentDictionary<Guid, GameHostRecord> _savedHosts = new(); // host records as last written
+    private readonly ConcurrentDictionary<Guid, GameHostRecord> _strandedHosts = new(); // hosts of another protocol version, left running
     private readonly ConsoleRelay _relay = new(panel, clock);
     private AgentConfig? _config;
     private Task _metrics = Task.CompletedTask;
@@ -93,6 +101,9 @@ public sealed partial class ServerHost(
 
     /// <summary>Completes once the stored servers are loaded (the Hello waits for it).</summary>
     public Task Loaded => _loaded.Task;
+
+    /// <summary>What starts and takes over games in host processes; null when games run in the agent.</summary>
+    private GameHostManager? Hosts => options.GamesInHosts ? hosts : null;
 
     /// <summary>Capabilities this host adds to the agent's Hello.</summary>
     public IEnumerable<string> Capabilities
@@ -136,7 +147,7 @@ public sealed partial class ServerHost(
                 yield return AgentCapabilities.Firewall;
             }
 
-            if (hosts is not null)
+            if (Hosts is not null)
             {
                 yield return AgentCapabilities.ServerHosts;
             }
@@ -184,12 +195,29 @@ public sealed partial class ServerHost(
             return;
         }
 
+        DeleteStaleStopServersMarker();
         var resume = new List<ServerSupervisor>();
         try
         {
             // Games a previous run of the agent left running in their hosts are taken over before the first Hello, which
             // then reports them running.
             var running = hosts is null ? [] : store.LoadHosts().ToDictionary(h => h.ServerId);
+            if (Hosts is { } manager)
+            {
+                manager.Records = this;
+            }
+            else
+            {
+                // Games run in the agent now (Pulsar:ServerHosts is off): one left in its host would run beside them.
+                foreach (var left in running.Values)
+                {
+                    LogLeftHostEnded(left.ServerId, left.Host.ProcessId);
+                    hosts!.Kill(left.Host);
+                    ForgetHost(left.ServerId);
+                }
+
+                running.Clear();
+            }
 
             // An unreadable record is set aside by the store; one that cannot be loaded is skipped: neither may keep
             // the other servers from loading, or the Hello from being sent.
@@ -210,20 +238,29 @@ public sealed partial class ServerHost(
             }
 
             // All at once: a host slow to answer (a machine busy starting) does not hold up the others.
-            var attached = await Task.WhenAll(loaded.Select(l => running.Remove(l.Record.ServerId, out var host)
+            var occupied = await Task.WhenAll(loaded.Select(l => running.Remove(l.Record.ServerId, out var host)
                 ? ReattachAsync(l.Supervisor, l.Record, host, cancellationToken)
                 : Task.FromResult(false)));
             for (var i = 0; i < loaded.Count; i++)
             {
-                if (!attached[i] && (loaded[i].Record.Spec.AutoStart || loaded[i].Record.ResumeOnStart))
+                if (!occupied[i] && (loaded[i].Record.Spec.AutoStart || loaded[i].Record.ResumeOnStart))
                 {
                     resume.Add(loaded[i].Supervisor);
                 }
             }
 
-            // Hosts of servers this node no longer has: nothing may keep running unwatched.
             foreach (var orphan in running.Values)
             {
+                if (store.Exists(orphan.ServerId))
+                {
+                    // The server is still the node's, but its record could not be loaded (or read, and was set aside):
+                    // its game is left running, and its host record kept, for whoever repairs it.
+                    LogHostOfUnloadedServer(orphan.ServerId, orphan.Host.ProcessId);
+                    _savedHosts[orphan.ServerId] = orphan;
+                    continue;
+                }
+
+                // Hosts of servers this node no longer has: nothing may keep running unwatched.
                 LogOrphanHost(orphan.ServerId, orphan.Host.ProcessId);
                 hosts!.Kill(orphan.Host);
                 ForgetHost(orphan.ServerId);
@@ -248,7 +285,7 @@ public sealed partial class ServerHost(
         }
 
         _metrics = SendMetricsAsync(_stopping.Token);
-        if (hosts is not null)
+        if (Hosts is not null)
         {
             _checkpoints = SaveHostCheckpointsAsync(_stopping.Token);
         }
@@ -265,7 +302,7 @@ public sealed partial class ServerHost(
         await fileCommands.StopAsync();
         var servers = _servers.Values.ToList();
         var marker = configs.Paths.StopServersMarker;
-        var keepRunning = hosts is not null && shutdown?.StopServers != true && !File.Exists(marker);
+        var keepRunning = Hosts is not null && shutdown?.StopServers != true && !File.Exists(marker);
         var detached = keepRunning ? await Task.WhenAll(servers.Select(s => s.Supervisor.DetachAsync())) : new bool[servers.Count];
         for (var i = 0; i < servers.Count; i++)
         {
@@ -318,19 +355,56 @@ public sealed partial class ServerHost(
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // Read again next time: the servers stop once more, which is what was asked.
+                // Deleted when the agent starts next (it is older than that run): only this stop was asked to stop them.
             }
         }
     }
 
-    /// <summary>Takes over a game the previous run of the agent left in its host; false when the host is gone.</summary>
+    /// <summary>
+    /// A stop-servers marker older than this run of the agent was left by an earlier one (which could not delete it):
+    /// it was meant for that run's stop. A marker written while this run goes on is for this run's stop.
+    /// </summary>
+    private void DeleteStaleStopServersMarker()
+    {
+        var marker = configs.Paths.StopServersMarker;
+        try
+        {
+            if (File.Exists(marker) && File.GetLastWriteTimeUtc(marker) < System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime())
+            {
+                File.Delete(marker);
+                LogStaleStopServersMarker();
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogStopServersMarkerNotDeleted(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Takes over a game the previous run of the agent left in its host. False when the host is gone, so the server may
+    /// start; true when its game runs, taken over or in a host of another protocol version this agent leaves alone.
+    /// </summary>
     private async Task<bool> ReattachAsync(ServerSupervisor supervisor, ServerRecord record, GameHostRecord host, CancellationToken cancellationToken)
     {
-        var process = await hosts!.ReattachAsync(host.Host, host.ConsoleOffset, cancellationToken);
+        IHostedGameProcess? process;
+        try
+        {
+            process = await Hosts!.ReattachAsync(host.Host, host.ConsoleOffset, cancellationToken);
+        }
+        catch (GameProcessException ex) when (ex.Code == "host.incompatible")
+        {
+            // Its record stays for an agent that speaks its protocol; the server must not start beside it meanwhile.
+            _savedHosts[record.ServerId] = host;
+            _strandedHosts[record.ServerId] = host;
+            return true;
+        }
+
         if (process is not null)
         {
             _savedHosts[record.ServerId] = host;
-            if (await supervisor.AttachAsync(process, new GameHostState(host.Host, host.ConsoleOffset, host.LogPosition, host.Ready), record.DesiredRunning))
+            var state = new GameHostState(host.Host, host.ConsoleOffset, host.LogPosition, host.Ready, host.Stopping);
+            if (await supervisor.AttachAsync(process, state, record.DesiredRunning))
             {
                 return true;
             }
@@ -352,17 +426,24 @@ public sealed partial class ServerHost(
             return;
         }
 
-        var state = server.Supervisor.HostState;
-        if (state is null)
-        {
-            ForgetHost(serverId);
-            return;
-        }
-
-        var record = new GameHostRecord(serverId, state.Host, state.ConsoleOffset, state.LogPosition, state.Ready);
+        // Read under the lock: a checkpoint must not write what it read before the host was released (or replaced).
         lock (_hostLock)
         {
-            if (_savedHosts.TryGetValue(serverId, out var saved) && saved == record)
+            if (server.Supervisor.HostState is not { } state)
+            {
+                ForgetHost(serverId);
+                return;
+            }
+
+            SaveHost(new GameHostRecord(serverId, state.Host, state.ConsoleOffset, state.LogPosition, state.Ready, state.Stopping));
+        }
+    }
+
+    private void SaveHost(GameHostRecord record)
+    {
+        lock (_hostLock)
+        {
+            if (_savedHosts.TryGetValue(record.ServerId, out var saved) && saved == record)
             {
                 return;
             }
@@ -370,13 +451,41 @@ public sealed partial class ServerHost(
             try
             {
                 store.SaveHost(record);
-                _savedHosts[serverId] = record;
+                _savedHosts[record.ServerId] = record;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogHostNotSaved(serverId, ex.Message);
+                LogHostNotSaved(record.ServerId, ex.Message);
             }
         }
+    }
+
+    void IGameHostRecords.HostLaunched(Guid serverId, GameHostReference host) =>
+        SaveHost(new GameHostRecord(serverId, host, ConsoleOffset: 0, LogPosition: 0, Ready: false));
+
+    void IGameHostRecords.HostAbandoned(Guid serverId, GameHostReference host)
+    {
+        lock (_hostLock)
+        {
+            if (_savedHosts.TryGetValue(serverId, out var saved) && saved.Host == host)
+            {
+                ForgetHost(serverId);
+            }
+        }
+    }
+
+    /// <summary>Ends the host of another protocol version a server's game was left in (a stop, kill or delete of the server).</summary>
+    private bool EndStrandedHost(Guid serverId)
+    {
+        if (!_strandedHosts.TryRemove(serverId, out var stranded))
+        {
+            return false;
+        }
+
+        LogStrandedHostEnded(serverId, stranded.Host.ProcessId);
+        hosts!.Kill(stranded.Host);
+        ForgetHost(serverId);
+        return true;
     }
 
     private void ForgetHost(Guid serverId)
@@ -862,6 +971,7 @@ public sealed partial class ServerHost(
     /// </summary>
     private async Task CleanUpDeletedAsync(Guid serverId, string shortId, IReadOnlyList<string> portNames)
     {
+        EndStrandedHost(serverId);
         DeleteConsoleLogs(shortId);
         var root = _config!.ServersRootOrDefault(configs.Paths);
         // Before the account goes: a process of a deleted account would keep running unnoticed.
@@ -1028,6 +1138,20 @@ public sealed partial class ServerHost(
             return new CommandAck(envelope.CommandId, AckStatus.Busy, "server.busy", "An operation is running on this server.");
         }
 
+        if (_strandedHosts.ContainsKey(serverId))
+        {
+            // Its game still runs in a host this agent cannot drive: a stop or kill ends that host (and the game), and
+            // the server can start again afterwards; a start would run a second copy beside it.
+            if (envelope.Command is StopServerCommand or KillServerCommand)
+            {
+                return new CommandAck(envelope.CommandId, EndStrandedHost(serverId) ? AckStatus.Accepted : AckStatus.AlreadyInState, null, null);
+            }
+
+            return Rejected(envelope, "server.host_incompatible",
+                "The server's game still runs in a host process of another version of the agent, which this agent cannot manage. Stop the server " +
+                "to end it, then start it again.");
+        }
+
         var status = await action(server.Supervisor);
         return new CommandAck(envelope.CommandId, status, null, null);
     }
@@ -1140,7 +1264,7 @@ public sealed partial class ServerHost(
             : null;
         var console = new ServerConsole(new ConsoleBuffer(clock, options.ConsoleBufferCapacity), log);
         // Games run in host processes when the agent has them; installs keep running SteamCMD itself (doc 06).
-        var supervisor = new ServerSupervisor(definition, (IGameProcessManager?)hosts ?? processes, this, clock, supervisorOptions,
+        var supervisor = new ServerSupervisor(definition, (IGameProcessManager?)Hosts ?? processes, this, clock, supervisorOptions,
             loggerFactory.CreateLogger<ServerSupervisor>(), files, rcon, firewall, console, query);
         _servers[serverId] = new Server(spec.ShortId, Parse(spec), spec, rconPassword, supervisor);
         return supervisor;
@@ -1243,6 +1367,23 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId} is not on this node anymore: killing its host process {HostProcessId}")]
     private partial void LogOrphanHost(Guid serverId, int hostProcessId);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Server {ServerId} is not loaded, but its game still runs in its host process {HostProcessId}: left running, and its host record kept")]
+    private partial void LogHostOfUnloadedServer(Guid serverId, int hostProcessId);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Server {ServerId}: games run in the agent now (Pulsar:ServerHosts is off); ending the host process {HostProcessId} an earlier run left")]
+    private partial void LogLeftHostEnded(Guid serverId, int hostProcessId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: ending its host process {HostProcessId} of another version of the agent, and its game")]
+    private partial void LogStrandedHostEnded(Guid serverId, int hostProcessId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted a request to stop the game servers left by an earlier run of the agent")]
+    private partial void LogStaleStopServersMarker();
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete an old request to stop the game servers: {Reason}")]
+    private partial void LogStopServersMarkerNotDeleted(string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: where its game runs could not be saved: {Reason}")]
     private partial void LogHostNotSaved(Guid serverId, string reason);

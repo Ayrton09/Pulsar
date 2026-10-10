@@ -1,4 +1,6 @@
 using System.IO.Pipes;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Microsoft.Extensions.Logging;
 
 namespace Pulsar.Agent.Core.Processes;
@@ -13,6 +15,9 @@ public sealed class GameHostOptions
 
     /// <summary>How long children may outlive the game's main process while no agent is connected to decide.</summary>
     public TimeSpan TreeGrace { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>The protocol this host speaks (tests play a host of another version of the agent).</summary>
+    internal int Protocol { get; set; } = GameHostProtocol.Version;
 }
 
 /// <summary>
@@ -40,6 +45,7 @@ public sealed partial class GameHostService(
     private bool _reachedMemoryLimit;
     private Session? _session;
     private Task _pump = Task.CompletedTask;
+    private Task? _ending;
 
     /// <summary>Serves agents until one releases the host (or none came at all). Returns the process's exit code.</summary>
     public async Task<int> RunAsync(CancellationToken cancellationToken)
@@ -231,11 +237,19 @@ public sealed partial class GameHostService(
         }
     }
 
-    private async Task EndGameAsync()
+    /// <summary>
+    /// Disposes the game (once): its job is terminated, so whatever is left of the tree ends, and its console closes, so
+    /// the last of its output (a pseudo console's final screen comes as it closes) reaches the ring, which completes.
+    /// </summary>
+    private Task EndGameAsync()
     {
-        if (Volatile.Read(ref _game) is { } game)
+        lock (_lock)
         {
-            // Disposing terminates the job: whatever is left of the tree ends with the host.
+            return _ending ??= _game is { } game ? Task.Run(() => EndAsync(game)) : Task.CompletedTask;
+        }
+
+        async Task EndAsync(IGameProcess game)
+        {
             await game.DisposeAsync().ConfigureAwait(false);
             await _pump.ConfigureAwait(false);
         }
@@ -244,6 +258,10 @@ public sealed partial class GameHostService(
     /// <summary>One agent's connection.</summary>
     private sealed class Session(GameHostService host, NamedPipeServerStream stream, CancellationToken stopping) : IAsyncDisposable
     {
+        // Within the agent's wait for the answer to a release (HostedGameProcess).
+        private static readonly TimeSpan s_releaseGameWait = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan s_releaseOutputWait = TimeSpan.FromSeconds(2);
+
         private readonly SemaphoreSlim _writeLock = new(1, 1);
         private readonly CancellationTokenSource _closed = CancellationTokenSource.CreateLinkedTokenSource(stopping);
         private Task _forwarding = Task.CompletedTask;
@@ -288,15 +306,38 @@ public sealed partial class GameHostService(
                     host.LogUnexpectedFrame(host.ServerId, ex.Message);
                 }
             }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Whatever goes wrong with one connection ends it, never the host: the game would die with it.
+                host.LogSessionFailed(ex, host.ServerId);
+            }
         }
 
+        /// <summary>The answer to a request; a request that fails in any way is answered as failed, never left to end the host.</summary>
         private async Task<HostReply> HandleAsync(HostRequest request)
+        {
+            try
+            {
+                return await HandleCoreAsync(request).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (_closed.IsCancellationRequested)
+            {
+                throw; // the connection is going away
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                host.LogRequestFailed(ex, host.ServerId, request.GetType().Name);
+                return new HostReply(request.Id, "host.request_failed", ex.Message);
+            }
+        }
+
+        private async Task<HostReply> HandleCoreAsync(HostRequest request)
         {
             if (request is HostHello hello)
             {
-                if (hello.Protocol != GameHostProtocol.Version)
+                if (hello.Protocol != host.Protocol)
                 {
-                    return new HostReply(hello.Id, "host.protocol", $"This host speaks protocol {GameHostProtocol.Version}, not {hello.Protocol}.");
+                    return new HostReply(hello.Id, "host.protocol", $"This host speaks protocol {host.Protocol}, not {hello.Protocol}.");
                 }
 
                 _greeted = true;
@@ -316,18 +357,14 @@ public sealed partial class GameHostService(
             if (request is HostRelease)
             {
                 // Answered once the tree is gone, as disposing a local process returns: the agent may delete the
-                // server's files right after.
+                // server's files right after. The game is disposed first, so its last output (what a pseudo console
+                // shows as it closes) is forwarded before the answer, which the agent waits for before it closes the
+                // console. Both waits are bounded: the agent's own wait for the answer is longer.
                 if (Volatile.Read(ref host._game) is { } running)
                 {
                     running.TerminateTree(1);
-                    try
-                    {
-                        await running.Exited.WaitAsync(TimeSpan.FromSeconds(5), host.Clock).ConfigureAwait(false);
-                    }
-                    catch (TimeoutException)
-                    {
-                        // Reported as released anyway; the host ends right after and the job dies with it.
-                    }
+                    await WithinAsync(host.EndGameAsync(), s_releaseGameWait).ConfigureAwait(false);
+                    await WithinAsync(_forwarding, s_releaseOutputWait).ConfigureAwait(false);
                 }
 
                 return new HostReply(request.Id);
@@ -426,6 +463,18 @@ public sealed partial class GameHostService(
             }
         }
 
+        private async Task WithinAsync(Task task, TimeSpan timeout)
+        {
+            try
+            {
+                await task.WaitAsync(timeout, host.Clock).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                // Released anyway: the host ends right after, and the job (with what is left in it) with it.
+            }
+        }
+
         /// <summary>False once the connection is gone.</summary>
         public async Task<bool> SendAsync(HostFrame frame)
         {
@@ -469,6 +518,8 @@ public sealed partial class GameHostService(
 
     private TimeProvider Clock => clock;
 
+    private int Protocol => options.Protocol;
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Host of server {ServerId} listening on pipe {Pipe}")]
     private partial void LogListening(Guid serverId, string pipe);
 
@@ -499,6 +550,12 @@ public sealed partial class GameHostService(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Host of server {ServerId}: unexpected frame from the agent ({Frame})")]
     private partial void LogUnexpectedFrame(Guid serverId, string frame);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Host of server {ServerId}: a {Request} from the agent failed")]
+    private partial void LogRequestFailed(Exception exception, Guid serverId, string request);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Host of server {ServerId}: the agent's connection failed; waiting for the next one")]
+    private partial void LogSessionFailed(Exception exception, Guid serverId);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Host of server {ServerId}: released; ending")]
     private partial void LogEnded(Guid serverId);
 }
@@ -510,11 +567,28 @@ public static class GameHostPipes
     /// The host's end: open only to the account the host runs as (SYSTEM for the agent's service, the developer in
     /// development), and refused when the name exists already, so nobody can serve it first.
     /// </summary>
-    public static NamedPipeServerStream CreateServer(string name) =>
-        new(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly | PipeOptions.FirstPipeInstance);
+    public static NamedPipeServerStream CreateServer(string name)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly | PipeOptions.FirstPipeInstance);
+        }
 
-    /// <summary>The agent's end: it connects only to a pipe served by its own account.</summary>
+        // Not PipeOptions.CurrentUserOnly: it grants the token's default owner, which for SYSTEM is the Administrators
+        // group. The access goes to the account itself; the owner stays the default one, which the agent's end checks.
+        using var identity = WindowsIdentity.GetCurrent();
+        var security = new PipeSecurity();
+        security.AddAccessRule(new PipeAccessRule(identity.User!, PipeAccessRights.FullControl, AccessControlType.Allow));
+        security.SetOwner(identity.Owner!);
+        return NamedPipeServerStreamAcl.Create(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.FirstPipeInstance, 0, 0, security);
+    }
+
+    /// <summary>
+    /// The agent's end: it connects only to a pipe owned by its account's default owner (for SYSTEM, the Administrators
+    /// group); <see cref="IGameHostLauncher.Serves"/> then checks that the process serving it is the host it started.
+    /// </summary>
     public static NamedPipeClientStream CreateClient(string name) =>
         new(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 }

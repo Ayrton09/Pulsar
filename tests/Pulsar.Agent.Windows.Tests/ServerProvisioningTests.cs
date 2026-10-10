@@ -205,7 +205,7 @@ public sealed class ServerProvisioningTests : IDisposable
     [AccountFact]
     public void TheAccountLogsOnWithItsOwnProfileAndNoPrivilegesButChangeNotify()
     {
-        var accounts = new WindowsServerAccounts(NullLogger<WindowsServerAccounts>.Instance);
+        var accounts = TestAccounts.Create();
         var shortId = NewShortId();
         Provisioner(development: false).Provision(_root, shortId);
 
@@ -245,7 +245,7 @@ public sealed class ServerProvisioningTests : IDisposable
         Assert.Equal(0, await process.Exited.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
     }
 
-    private static WindowsServerProvisioner Provisioner(bool development) => new(new WindowsServerAccounts(NullLogger<WindowsServerAccounts>.Instance),
+    private static WindowsServerProvisioner Provisioner(bool development) => new(TestAccounts.Create(),
         development, NullLogger<WindowsServerProvisioner>.Instance);
 
     private string NewShortId()

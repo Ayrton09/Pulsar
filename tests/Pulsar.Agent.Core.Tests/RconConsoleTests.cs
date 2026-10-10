@@ -204,6 +204,51 @@ public sealed class LogTailTests : IDisposable
     }
 
     [Fact]
+    public async Task StartsWhereAnEarlierReaderStoppedAndSaysHowFarItRead()
+    {
+        var path = Path.Combine(_root, "console.log");
+        await File.WriteAllTextAsync(path, "old line\nnew line\n", TestContext.Current.CancellationToken);
+        var tail = new LogTail(new DirectServerFiles(), _root, "console.log", Encoding.UTF8, TimeSpan.FromMilliseconds(20), start: 9);
+
+        Assert.Equal("new line\n", await FirstAsync(tail));
+        Assert.Equal(18, tail.Position);
+    }
+
+    [Fact]
+    public async Task APositionNeverFallsInsideACharacter()
+    {
+        // The game wrote the first byte of "€" (three in UTF-8) when the agent read: the next reader starts before it.
+        var path = Path.Combine(_root, "console.log");
+        var euro = Encoding.UTF8.GetBytes("€");
+        await File.WriteAllBytesAsync(path, [.. "price "u8.ToArray(), euro[0]], TestContext.Current.CancellationToken);
+        var first = new LogTail(new DirectServerFiles(), _root, "console.log", Encoding.UTF8, TimeSpan.FromMilliseconds(20));
+        Assert.Equal("price ", await FirstAsync(first));
+        Assert.Equal(6, first.Position);
+
+        await using (var game = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
+        {
+            await game.WriteAsync(euro.AsMemory(1), TestContext.Current.CancellationToken);
+            await game.WriteAsync("\n"u8.ToArray(), TestContext.Current.CancellationToken);
+        }
+
+        var next = new LogTail(new DirectServerFiles(), _root, "console.log", Encoding.UTF8, TimeSpan.FromMilliseconds(20), first.Position);
+        Assert.Equal("€\n", await FirstAsync(next));
+        Assert.Equal(10, next.Position);
+    }
+
+    private static async Task<string> FirstAsync(LogTail tail)
+    {
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancel.CancelAfter(TimeSpan.FromSeconds(5));
+        await foreach (var chunk in tail.ReadAsync(cancel.Token))
+        {
+            return chunk;
+        }
+
+        throw new TimeoutException("Nothing was read.");
+    }
+
+    [Fact]
     public async Task WaitsForTheFileToAppear()
     {
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
@@ -419,6 +464,26 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         await _events.WaitForAsync(RuntimeState.Offline);
 
         await EventuallyAsync(supervisor, "Shutting down\n");
+    }
+
+    [Fact]
+    public async Task AGameTakenOverFromItsHostContinuesItsLogWhereThePreviousAgentStopped()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "cstrike"));
+        await AppendLogAsync("Server is hibernating\nPlayer connected\n");
+        var read = "Server is hibernating\n".Length; // what the previous run of the agent had shown
+        var supervisor = Supervisor(new RconReadiness(60));
+        var game = new FakeGameProcess(5000);
+        var host = new GameHostReference("pulsar-host-test", 4000, DateTimeOffset.UtcNow);
+
+        Assert.True(await supervisor.AttachAsync(new FakeHostedProcess(game, host), new GameHostState(host, 0, read, Ready: true), desiredRunning: true));
+
+        await EventuallyAsync(supervisor, "Player connected\n");
+        await AppendLogAsync("Player disconnected\n");
+        await EventuallyAsync(supervisor, "Player connected\nPlayer disconnected\n");
+        var length = new FileInfo(Path.Combine(_root, "cstrike", "console.log")).Length;
+        await EventuallyAsync(() => supervisor.HostState?.LogPosition == length); // where the next agent goes on
+        Assert.Equal(RuntimeState.Running, supervisor.Snapshot.State);
     }
 
     [Fact]

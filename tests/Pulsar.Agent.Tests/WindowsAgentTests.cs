@@ -5,8 +5,11 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core;
+using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Security;
+using Pulsar.Agent.Core.Servers;
 using Pulsar.Agent.Windows;
+using Pulsar.Agent.Windows.Processes;
 using Pulsar.Contracts;
 
 namespace Pulsar.Agent.Tests;
@@ -97,6 +100,52 @@ public sealed class WindowsAgentTests
         finally
         {
             Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [WindowsFact]
+    public async Task UnenrollEndsTheGameServersTheAgentLeftRunning()
+    {
+        // The agent is not running to stop them: their hosts are ended (a host with nobody connected also ends on its own
+        // within a minute, so an aborted test leaves nothing behind for long).
+        var store = new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance);
+        var root = Directory.CreateTempSubdirectory("pulsar-unenroll-").FullName;
+        var paths = new AgentPaths(root);
+        var launcher = new WindowsGameHostLauncher(Path.Combine(AppContext.BaseDirectory, "PulsarAgent.exe"), root, null,
+            NullLogger<WindowsGameHostLauncher>.Instance);
+        var serverId = Guid.NewGuid();
+        var host = launcher.Launch(serverId, GameHostProtocol.NewPipeName(serverId));
+        try
+        {
+            NodeKeyReference key;
+            using (var created = store.Create($"PulsarAgentTest-{Guid.NewGuid():N}", NodeKeyScope.User))
+            {
+                key = created.Reference;
+            }
+
+            new AgentConfigStore(paths).Save(new AgentConfig(new Uri("https://panel.example.com/"), Guid.NewGuid(), Guid.NewGuid(), key, [], null,
+                DateTimeOffset.UtcNow, Development: true));
+            var servers = new ServerStore(paths, new DpapiStateProtector());
+            servers.SaveHost(new GameHostRecord(serverId, host, 0, 0, Ready: true));
+            Assert.True(launcher.IsAlive(host));
+
+            var exit = await AgentCommands.UnenrollAsync(CommandLine.Parse(["unenroll", "--data-dir", root], AgentCommands.Flags));
+
+            Assert.Equal(0, exit);
+            Assert.False(launcher.IsAlive(host));
+            Assert.Empty(servers.LoadHosts());
+        }
+        finally
+        {
+            launcher.Kill(host);
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch (IOException)
+            {
+                // The host's log file closes a moment after it ends.
+            }
         }
     }
 

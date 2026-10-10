@@ -51,9 +51,10 @@ public static class GameHostProgram
         }
 
         var keep = new HashSet<string>(inUse.Append(current).Select(p => Path.GetFullPath(Path.GetDirectoryName(p)!)), StringComparer.OrdinalIgnoreCase);
+        var executable = Path.GetFileName(current);
         foreach (var directory in Directory.EnumerateDirectories(hostProgramsDirectory))
         {
-            if (keep.Contains(Path.GetFullPath(directory)))
+            if (keep.Contains(Path.GetFullPath(directory)) || Running(Path.Combine(directory, executable)))
             {
                 continue;
             }
@@ -66,6 +67,28 @@ public static class GameHostProgram
             {
                 // Still held by a process that is not a host of this agent: tried again next time.
             }
+        }
+    }
+
+    /// <summary>
+    /// Whether a process may still run from the copy whose main executable is <paramref name="executable"/>, though no
+    /// recorded host is known to: a recursive delete would remove its files up to the first one held open, and leave a
+    /// host with half its program. A running image cannot be opened for writing.
+    /// </summary>
+    private static bool Running(string executable)
+    {
+        try
+        {
+            using var exclusive = new FileStream(executable, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            return false;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return false; // an interrupted copy
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true;
         }
     }
 

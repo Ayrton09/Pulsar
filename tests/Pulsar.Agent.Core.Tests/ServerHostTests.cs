@@ -44,6 +44,7 @@ public sealed class ServerHostTests : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _games.Gate?.TrySetResult(); // a test that failed while a start waited
         if (_host is not null)
         {
             await _host.StopAsync(CancellationToken.None);
@@ -237,6 +238,198 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AHostIsRecordedBeforeItsGameStarts()
+    {
+        // Starting the game can take seconds (an account's first logon): an agent that dies meanwhile must find the host.
+        var serverId = Stored("abcd2345");
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        _games.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+
+        await WaitUntilAsync(() => _store.LoadHosts().Count == 1);
+        var record = Assert.Single(_store.LoadHosts());
+        Assert.Equal((serverId, false, 0L), (record.ServerId, record.Ready, record.ConsoleOffset));
+        Assert.Empty(_games.Started);
+        Assert.True(_launcher!.IsAlive(record.Host));
+
+        _games.Gate.SetResult();
+        var game = await StartedAsync();
+        game.Print("ready\n");
+        await WaitForAsync(host, serverId, RuntimeState.Running);
+        Assert.Equal(record.Host, Assert.Single(_store.LoadHosts()).Host);
+    }
+
+    [Fact]
+    public async Task AHostWhoseGameCouldNotStartIsNotRecorded()
+    {
+        var serverId = Stored("abcd2345");
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        _games.FailNext = new GameProcessException("process.invalid_executable", "Only .exe files can be started.");
+
+        await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+
+        await WaitForAsync(host, serverId, RuntimeState.Crashed);
+        Assert.Empty(_store.LoadHosts());
+        await WaitUntilAsync(() => _launcher!.Launched.All(h => !_launcher.IsAlive(h)));
+    }
+
+    [Fact]
+    public async Task AServerThatCannotBeLoadedKeepsTheGameItsHostRuns()
+    {
+        _launcher = new InProcessHostLauncher(_games);
+        // One whose record names a manifest this agent cannot use, one whose record cannot be read at all.
+        var unloadable = Stored("abcd2345", manifest: "{}");
+        var unreadable = Guid.NewGuid();
+        File.WriteAllText(Path.Combine(_configs.Paths.ServersStateDirectory, $"{unreadable:N}.json"), "{ corrupt");
+        var hostsOf = new Dictionary<Guid, GameHostReference>();
+        foreach (var serverId in new[] { unloadable, unreadable })
+        {
+            hostsOf[serverId] = _launcher.Launch(serverId, GameHostProtocol.NewPipeName(serverId));
+            _store.SaveHost(new GameHostRecord(serverId, hostsOf[serverId], 0, 0, Ready: true));
+        }
+
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(host.Snapshots());
+        Assert.All(hostsOf.Values, h => Assert.True(_launcher.IsAlive(h)));
+        Assert.Equal(2, _store.LoadHosts().Count);
+    }
+
+    [Fact]
+    public async Task AGameStillStartingWhenTheAgentStoppedIsCheckedForReadinessAgain()
+    {
+        var serverId = Stored("abcd2345");
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+        var game = await StartedAsync();
+        await WaitForAsync(host, serverId, RuntimeState.Starting);
+
+        await RestartAgentAsync();
+        Assert.False(Assert.Single(_store.LoadHosts()).Ready);
+
+        host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(RuntimeState.Starting, Assert.Single(host.Snapshots()).State);
+        game.Print("ready\n");
+        await WaitForAsync(host, serverId, RuntimeState.Running);
+        await WaitUntilAsync(() => _store.LoadHosts().SingleOrDefault()?.Ready == true);
+        Assert.Single(_games.Started);
+    }
+
+    [Fact]
+    public async Task AfterACrashOfTheAgentTheConsoleRepeatsAtMostWhatCameSinceTheLastCheckpoint()
+    {
+        var options = new ServerHostOptions { ConsoleLog = null, HostCheckpointInterval = TimeSpan.FromMilliseconds(50) };
+        var serverId = Stored("abcd2345");
+        var host = Host(hosted: true, options);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+        var game = await StartedAsync();
+        game.Print("ready\n");
+        game.Print("line 1\n");
+        await WaitUntilAsync(() => Text(host, serverId).Contains("line 1", StringComparison.Ordinal));
+
+        // Noted while the agent runs, without any stop.
+        await WaitUntilAsync(() => _store.LoadHosts().SingleOrDefault()?.ConsoleOffset == 13);
+        var checkpoint = Assert.Single(_store.LoadHosts());
+        game.Print("line 2\n");
+        await WaitUntilAsync(() => Text(host, serverId).Contains("line 2", StringComparison.Ordinal));
+
+        // The agent dies right after that checkpoint: its next run finds what it had noted then.
+        await RestartAgentAsync();
+        _store.SaveHost(checkpoint);
+        host = Host(hosted: true, options);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        await WaitUntilAsync(() => Text(host, serverId).Contains("line 2", StringComparison.Ordinal));
+        Assert.DoesNotContain("line 1", Text(host, serverId), StringComparison.Ordinal);
+        Assert.Equal(RuntimeState.Running, Assert.Single(host.Snapshots()).State);
+    }
+
+    [Fact]
+    public async Task AServerStoppingWhenTheAgentStopsFinishesItsStopInsteadOfBeingLeft()
+    {
+        var serverId = Stored("abcd2345", manifest: Manifest.Replace("\"timeoutSeconds\": 15", "\"timeoutSeconds\": 1", StringComparison.Ordinal));
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+        var game = await StartedAsync();
+        game.IgnoreQuit = true;
+        game.Print("ready\n");
+        await WaitForAsync(host, serverId, RuntimeState.Running);
+        await host.ExecuteAsync(Envelope(new StopServerCommand(serverId), null));
+        await WaitForAsync(host, serverId, RuntimeState.Stopping);
+        await WaitUntilAsync(() => _store.LoadHosts().SingleOrDefault()?.Stopping == true); // for an agent that dies now
+
+        await RestartAgentAsync();
+
+        Assert.Equal(1, game.TerminatedWith); // its stop timed out
+        await WaitUntilAsync(() => game.Disposed);
+        Assert.Empty(_store.LoadHosts());
+    }
+
+    [Fact]
+    public async Task AGameInAHostOfAnotherProtocolVersionIsLeftRunningUntilTheServerIsStopped()
+    {
+        _launcher = new InProcessHostLauncher(_games, new GameHostOptions { Protocol = GameHostProtocol.Version + 1 });
+        var serverId = Stored("abcd2345", autoStart: true);
+        var stranded = _launcher.Launch(serverId, GameHostProtocol.NewPipeName(serverId));
+        _store.SaveHost(new GameHostRecord(serverId, stranded, 0, 0, Ready: true));
+
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(_launcher.IsAlive(stranded));
+        Assert.Equal(stranded, Assert.Single(_store.LoadHosts()).Host); // for an agent that speaks its protocol
+        Assert.Equal(RuntimeState.Offline, Assert.Single(host.Snapshots()).State);
+        Assert.Empty(_games.Started); // not started beside it, although it starts with the agent
+        var start = await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+        Assert.Equal((AckStatus.Rejected, "server.host_incompatible"), (start.Status, start.ErrorCode));
+
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new StopServerCommand(serverId), null))).Status);
+
+        await _launcher.WaitEndedAsync(stranded);
+        Assert.Empty(_store.LoadHosts());
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null))).Status);
+    }
+
+    [Fact]
+    public async Task HostsAnEarlierRunLeftAreEndedWhenGamesRunInTheAgent()
+    {
+        _launcher = new InProcessHostLauncher(_games);
+        var serverId = Stored("abcd2345", autoStart: true);
+        var left = _launcher.Launch(serverId, GameHostProtocol.NewPipeName(serverId));
+        _store.SaveHost(new GameHostRecord(serverId, left, 0, 0, Ready: true));
+
+        var host = Host(hosted: true, new ServerHostOptions { ConsoleLog = null, GamesInHosts = false });
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        await _launcher.WaitEndedAsync(left);
+        Assert.Empty(_store.LoadHosts());
+        await StartedAsync(); // started again, in the agent: not beside the old one
+        Assert.Single(_games.Started);
+        Assert.DoesNotContain(AgentCapabilities.ServerHosts, host.Capabilities);
+    }
+
+    [Fact]
+    public async Task ARequestToStopTheServersLeftByAnEarlierRunIsDeleted()
+    {
+        Stored("abcd2345");
+        Directory.CreateDirectory(Path.GetDirectoryName(_configs.Paths.StopServersMarker)!);
+        File.WriteAllText(_configs.Paths.StopServersMarker, "");
+        File.SetLastWriteTimeUtc(_configs.Paths.StopServersMarker, DateTime.UtcNow.AddDays(-1)); // before this process started
+
+        await Host(hosted: true).StartAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(File.Exists(_configs.Paths.StopServersMarker));
+    }
+
+    [Fact]
     public async Task ABackupSentWithAnUnusableTicketIsNotLeftOpen()
     {
         var serverId = Stored("abcd2345");
@@ -255,11 +448,11 @@ public sealed class ServerHostTests : IAsyncDisposable
         Assert.False(File.Exists(archive));
     }
 
-    private Guid Stored(string shortId)
+    private Guid Stored(string shortId, string manifest = Manifest, bool autoStart = false)
     {
         var serverId = Guid.NewGuid();
         Directory.CreateDirectory(_configs.Paths.OutboxDirectory);
-        _store.Save(new ServerRecord(serverId, new ServerRuntimeSpec(shortId, Manifest, new Dictionary<string, string?>(), [], AutoStart: false,
+        _store.Save(new ServerRecord(serverId, new ServerRuntimeSpec(shortId, manifest, new Dictionary<string, string?>(), [], AutoStart: autoStart,
             RestartOnCrash: false), DesiredRunning: false, ResumeOnStart: false));
         return serverId;
     }
@@ -296,7 +489,7 @@ public sealed class ServerHostTests : IAsyncDisposable
         }
     }
 
-    private ServerHost Host(bool hosted = false)
+    private ServerHost Host(bool hosted = false, ServerHostOptions? options = null)
     {
         var channel = new PanelChannel();
         var files = new DirectServerFiles();
@@ -313,7 +506,7 @@ public sealed class ServerHostTests : IAsyncDisposable
         _fileCommands = new FileCommands(new DirectServerFileManager(), channel, new FileCommandOptions(), NullLogger<FileCommands>.Instance);
         _host = new ServerHost(_configs, _store, _provisioner, processes, new InstallSteps(install, files), _steamCmd, files, new NoRcon(),
             new UnmanagedFirewall(), _fileCommands, new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance), install,
-            channel, new SupervisorOptions(), new ServerHostOptions { ConsoleLog = null }, TimeProvider.System, NullLoggerFactory.Instance,
+            channel, new SupervisorOptions(), options ?? new ServerHostOptions { ConsoleLog = null }, TimeProvider.System, NullLoggerFactory.Instance,
             hosts: hosts);
         return _host;
     }

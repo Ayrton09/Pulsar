@@ -19,7 +19,8 @@ namespace Pulsar.Agent.Windows.Servers;
 /// as a batch job and denied every interactive, remote desktop and network logon. Its password is never stored: a new
 /// random one is set right before every logon (<see cref="LogOn"/>), so there is no secret at rest to steal or lose.
 /// </summary>
-public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts> logger)
+/// <param name="logonLocks">Where the logon locks are (<see cref="LogonLock"/>): <c>AgentPaths.LogonLocksDirectory</c>.</param>
+public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts> logger, string logonLocks)
 {
     public const string Prefix = "pulsar_";
 
@@ -117,6 +118,15 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
         }
 
         LogAccountDeleted(name);
+        try
+        {
+            File.Delete(Path.Combine(logonLocks, name + ".lock"));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // An empty file: left for the next time.
+        }
+
         return true;
     }
 
@@ -187,7 +197,7 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
     /// logged on as a batch job with a freshly set password and stripped of its privileges like the server's processes.
     /// No profile is loaded. The caller owns the handle.
     /// </summary>
-    public static unsafe SafeAccessTokenHandle LogOnForImpersonation(string name)
+    public unsafe SafeAccessTokenHandle LogOnForImpersonation(string name)
     {
         var token = LogOnBatch(name);
         try
@@ -206,29 +216,15 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
         }
     }
 
-    private static unsafe HANDLE LogOnBatch(string name)
+    private unsafe HANDLE LogOnBatch(string name)
     {
         ValidateName(name);
         var password = NewPassword();
 
         // Setting a password and logging on with it is one step: another logon in between (a server starting in its host
         // process while the agent's file manager acts as its account) would set its own password and make this one fail.
-        // Hence a lock shared by the agent and the hosts: a named mutex per account, in the global namespace, which a
-        // server's account cannot create (no SeCreateGlobalPrivilege) nor open (SYSTEM's default security).
-        using var mutex = new Mutex(false, $@"Global\Pulsar-Logon-{name}");
-        try
-        {
-            if (!mutex.WaitOne(TimeSpan.FromSeconds(30)))
-            {
-                throw new Win32Exception((int)WIN32_ERROR.ERROR_TIMEOUT, $"Another logon of {name} did not finish in time.");
-            }
-        }
-        catch (AbandonedMutexException)
-        {
-            // A process died holding it: the lock is ours now.
-        }
-
-        try
+        // Hence a lock shared by the agent and the hosts, which no server account can reach (LogonLock).
+        using (LogonLock.Acquire(logonLocks, name, TimeSpan.FromSeconds(30)))
         {
             fixed (char* namePtr = name)
             fixed (char* passwordPtr = password)
@@ -253,10 +249,6 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
             }
 
             return token;
-        }
-        finally
-        {
-            mutex.ReleaseMutex();
         }
     }
 

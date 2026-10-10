@@ -55,20 +55,42 @@ public static class AgentService
         Configure(service);
     }
 
-    public static void Uninstall()
+    /// <summary>
+    /// How long a stop is waited for: an agent asked to stop its game servers gives each one a graceful stop first
+    /// (within its 30 s shutdown), and the service control manager needs a moment around that.
+    /// </summary>
+    public static TimeSpan StopTimeout { get; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Stops the service and removes it. False when it was still stopping after <see cref="StopTimeout"/>: it is removed
+    /// anyway, and Windows deletes it once it has stopped.
+    /// </summary>
+    public static bool Uninstall()
     {
-        Stop(TimeSpan.FromSeconds(30));
+        var stopped = true;
+        try
+        {
+            Stop(StopTimeout);
+        }
+        catch (TimeoutException)
+        {
+            stopped = false;
+        }
+
         using var manager = OpenManager();
         using var service = PInvoke.OpenService(manager, Name, PInvoke.SERVICE_ALL_ACCESS);
         if (service.IsInvalid)
         {
-            return;
+            return stopped;
         }
 
-        if (!PInvoke.DeleteService(service))
+        // Marks a service that is still stopping for deletion (ERROR_SERVICE_MARKED_FOR_DELETE when it already is).
+        if (!PInvoke.DeleteService(service) && (WIN32_ERROR)Marshal.GetLastPInvokeError() != WIN32_ERROR.ERROR_SERVICE_MARKED_FOR_DELETE)
         {
             throw new Win32Exception();
         }
+
+        return stopped;
     }
 
     public static void Start()
@@ -87,12 +109,14 @@ public static class AgentService
     {
         using var manager = OpenManager();
         using var service = PInvoke.OpenService(manager, Name, PInvoke.SERVICE_ALL_ACCESS);
-        if (service.IsInvalid || State(service) == AgentServiceState.Stopped)
+        var state = service.IsInvalid ? AgentServiceState.NotInstalled : State(service);
+        if (state is AgentServiceState.NotInstalled or AgentServiceState.Stopped)
         {
             return;
         }
 
-        if (!PInvoke.ControlService(service, PInvoke.SERVICE_CONTROL_STOP, out _)
+        // A stop already under way is waited for (the service accepts no control meanwhile).
+        if (state != AgentServiceState.StopPending && !PInvoke.ControlService(service, PInvoke.SERVICE_CONTROL_STOP, out _)
             && (WIN32_ERROR)Marshal.GetLastPInvokeError() != WIN32_ERROR.ERROR_SERVICE_NOT_ACTIVE)
         {
             throw new Win32Exception();

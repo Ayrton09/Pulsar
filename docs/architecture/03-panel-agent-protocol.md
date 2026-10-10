@@ -332,6 +332,10 @@ At any interruption one of the two keys works: before step 3 the current credent
   config\agent.json                 panel URL, nodeId, credentialId, pinned panel keys
   state\servers\{id}.json           per-server spec, RCON password and whether it should run, encrypted with DPAPI (machine scope)
   state\outbox\                     OperationCompleted results awaiting ack
+  state\hosts\{id}.json             the host process a server's game runs in, and how far its console was read (doc 06, "Server hosts")
+  state\logon-locks\{account}.lock  held while a server account's password is set and it logs on (doc 06, "Server hosts")
+  state\stop-servers                asks the running agent to stop its games when it stops (unenroll, service stop --stop-servers)
+  host-programs\{fingerprint}\      the copies of the agent's program host processes run from
   steamcmd\steamcmd.exe             the verified SteamCMD bootstrapper (each server runs its own copy, doc 06)
   console-logs\{shortId}\           rotated console logs (outside the server directory)
   backups\{shortId}\{backupId}.zip  backups (another folder with enroll --backups-root)
@@ -352,7 +356,7 @@ PulsarAgent enroll --panel <url> --token <token> --panel-key <fingerprint> [--se
 PulsarAgent status [--check] [--data-dir <dir>]
 PulsarAgent run [--data-dir <dir>]
 PulsarAgent service install|uninstall|start|stop [--stop-servers] [--data-dir <dir>]
-PulsarAgent unenroll [--data-dir <dir>]
+PulsarAgent unenroll [--data-dir <dir>] [--log-file <file>]
 PulsarAgent host --server <id> --pipe <name> [--data-dir <dir>]   (started by the agent, not listed by help)
 ```
 
@@ -360,9 +364,10 @@ PulsarAgent host --server <id> --pipe <name> [--data-dir <dir>]   (started by th
 - `enroll` must run elevated. It pins the panel key, creates the node key, enrolls, writes `config\agent.json`, and installs and starts the `PulsarAgent` service (LocalSystem, automatic start; the service control manager restarts it after 5 s, 15 s, then every 60 s, also when it stops itself with an error). Re-running it on an enrolled node stops the service first and deletes the old key once the new enrollment is saved.
 - `status` shows the enrollment and the node key fingerprint (the one the panel shows for the credential); `--check` also authenticates against the panel.
 - `--dev` is for development only: the key goes to the current user's store, the state directory also grants the current user, and no service is installed. The service runs as SYSTEM and could not open such a key. A development enrollment never runs as the service either: `service install` and `service start` refuse it, and the agent refuses to run it as the service, where its servers (started as the current user) would run as SYSTEM.
-- `unenroll` removes the service, the node key and the configuration (logs stay). The node must also be deleted, or re-enrolled, in the panel. Since Phase 14 it stops the node's game servers first (they would otherwise keep running in their host processes); hosts the service was not running to stop are ended.
-- `service stop` leaves the game servers running in their hosts (Phase 14, doc 06 "Server hosts"); `--stop-servers` stops them with the service, and they start again with it.
-- `enroll --log-file` also writes what it prints to a file: the agent MSI runs it as a custom action, which has no console.
+- `unenroll` removes the service, the node key and the configuration (logs stay). The node must also be deleted, or re-enrolled, in the panel. Since Phase 14 it stops the node's game servers first (they would otherwise keep running in their host processes); hosts the service was not running to stop are ended. It waits up to 60 s for the service to stop its games gracefully; a service still stopping after that is removed anyway (Windows deletes it once it stops), the games left are ended, and the rest (key, configuration) is removed, with a message saying so.
+- `service stop` leaves the game servers running in their hosts (Phase 14, doc 06 "Server hosts"); `--stop-servers` stops them with the service, and they start again with it; when the service is not running, it ends the game servers the service left running instead. Both wait up to 60 s for the service.
+- `enroll --log-file` and `unenroll --log-file` also write what they print to a file: the agent MSI runs them as custom actions, which have no console. A log file that cannot be opened is reported, and the command goes on without it.
+- `--servers-root` and `--backups-root` are made full paths. A quoted folder ending in a backslash (`"D:\PulsarServers\"`) reaches the program with a quote at its end, since Windows reads `\"` as an escaped quote: that quote is dropped.
 - `host` is the process a game server runs under (doc 06, "Server hosts"); its log is `logs\hosts\host-<server>-<date>.log`.
 - The value after an option is always taken as its value: enrollment tokens are base64url and can start with `-`.
 - The process list shows command lines: `--token -` reads the token from standard input, and without `--token` it is taken from the `PULSAR_ENROLLMENT_TOKEN` environment variable.

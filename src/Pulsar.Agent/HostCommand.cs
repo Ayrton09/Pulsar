@@ -42,8 +42,9 @@ internal static class HostCommand
         using var loggers = new SerilogLoggerFactory(log, dispose: true);
         try
         {
-            var processes = new WindowsGameProcessManager(new WindowsServerAccounts(loggers.CreateLogger<WindowsServerAccounts>()), TimeProvider.System,
-                loggers.CreateLogger<WindowsGameProcessManager>());
+            // The agent's own lock files: its logons of the server's account and this host's never overlap.
+            var accounts = new WindowsServerAccounts(loggers.CreateLogger<WindowsServerAccounts>(), paths.LogonLocksDirectory);
+            var processes = new WindowsGameProcessManager(accounts, TimeProvider.System, loggers.CreateLogger<WindowsGameProcessManager>());
             using var service = new GameHostService(processes, serverId, pipe, new GameHostOptions(), TimeProvider.System,
                 loggers.CreateLogger<GameHostService>());
             return await service.RunAsync(CancellationToken.None);

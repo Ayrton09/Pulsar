@@ -123,7 +123,10 @@ public sealed record HostExited(int ExitCode, bool ReachedMemoryLimit, int Remai
 
 public static class GameHostProtocol
 {
-    /// <summary>Raised when the frames or their meaning change: an agent refuses a host it cannot talk to.</summary>
+    /// <summary>
+    /// Raised when the frames or their meaning change: a host refuses an agent of another version, which then leaves
+    /// that host (and its game) running rather than end every game on the node (docs/architecture/06, "Server hosts").
+    /// </summary>
     public const int Version = 1;
 
     /// <summary>No frame is larger (output travels in pieces far smaller than this).</summary>
@@ -181,8 +184,9 @@ public static class GameHostProtocol
         {
             return JsonSerializer.Deserialize<HostFrame>(json, s_options) ?? throw new InvalidDataException("An empty frame.");
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
+            // A frame without a kind fails as NotSupportedException (an abstract type): as invalid as bad JSON.
             throw new InvalidDataException($"A frame is not valid: {ex.Message}", ex);
         }
     }

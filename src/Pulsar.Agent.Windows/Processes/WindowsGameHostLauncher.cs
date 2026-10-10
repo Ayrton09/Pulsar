@@ -18,9 +18,13 @@ namespace Pulsar.Agent.Windows.Processes;
 /// inheriting no handle. Administrators may end one (an unenroll does when the agent is not running); nobody else may
 /// touch it. A host is identified by its process id and start time, so a reused process id is never mistaken for it.
 /// </summary>
-/// <param name="executable"><c>PulsarAgent.exe</c>, in a copy made by <see cref="GameHostProgram.Prepare"/> when it is the service's.</param>
+/// <param name="program">
+/// <c>PulsarAgent.exe</c>, in a copy made by <see cref="GameHostProgram.Prepare"/> when it is the service's. Asked for
+/// when first needed, and again at each start while it fails (a full disk, say): until then, starts fail with the reason
+/// and the hosts that run are still found, watched and ended.
+/// </param>
 /// <param name="hostPrograms">Where those copies are (null: the executable is not a copy, as in tests).</param>
-public sealed partial class WindowsGameHostLauncher(string executable, string dataDirectory, string? hostPrograms, ILogger<WindowsGameHostLauncher> logger)
+public sealed partial class WindowsGameHostLauncher(Func<string> program, string dataDirectory, string? hostPrograms, ILogger<WindowsGameHostLauncher> logger)
     : IGameHostLauncher
 {
     private const uint SddlRevision1 = 1;
@@ -30,9 +34,41 @@ public sealed partial class WindowsGameHostLauncher(string executable, string da
     private static readonly string s_processSddl =
         $"D:P(A;;GA;;;SY)(A;;GA;;;{WindowsIdentity.GetCurrent().User!.Value})(A;;0x00101001;;;BA)";
 
+    private readonly Lock _lock = new();
     private bool _breakawayRefused;
+    private string? _executable;
 
-    public string Executable { get; } = Path.GetFullPath(executable);
+    public WindowsGameHostLauncher(string executable, string dataDirectory, string? hostPrograms, ILogger<WindowsGameHostLauncher> logger)
+        : this(() => executable, dataDirectory, hostPrograms, logger)
+    {
+    }
+
+    /// <summary>The program hosts start from.</summary>
+    /// <exception cref="IOException">Its copy could not be made.</exception>
+    /// <exception cref="UnauthorizedAccessException">Its copy could not be made.</exception>
+    public string Executable
+    {
+        get
+        {
+            lock (_lock)
+            {
+                if (_executable is null)
+                {
+                    try
+                    {
+                        _executable = Path.GetFullPath(program());
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        LogProgramUnavailable(ex.Message);
+                        throw;
+                    }
+                }
+
+                return _executable;
+            }
+        }
+    }
 
     public unsafe GameHostReference Launch(Guid serverId, string pipe)
     {
@@ -41,7 +77,8 @@ public sealed partial class WindowsGameHostLauncher(string executable, string da
             throw new ArgumentException("Not a host pipe name.", nameof(pipe));
         }
 
-        var commandLine = WindowsCommandLine.Build(Executable, ["host", "--server", serverId.ToString("D"), "--pipe", pipe, "--data-dir", dataDirectory]);
+        var executable = Executable;
+        var commandLine = WindowsCommandLine.Build(executable, ["host", "--server", serverId.ToString("D"), "--pipe", pipe, "--data-dir", dataDirectory]);
         PSECURITY_DESCRIPTOR descriptor;
         fixed (char* sddl = s_processSddl)
         {
@@ -60,7 +97,7 @@ public sealed partial class WindowsGameHostLauncher(string executable, string da
                 flags |= PROCESS_CREATION_FLAGS.CREATE_BREAKAWAY_FROM_JOB;
             }
 
-            if (!TryCreate(Executable, commandLine, flags, &security, out var info, out var error))
+            if (!TryCreate(executable, commandLine, flags, &security, out var info, out var error))
             {
                 if (error != (int)WIN32_ERROR.ERROR_ACCESS_DENIED || !flags.HasFlag(PROCESS_CREATION_FLAGS.CREATE_BREAKAWAY_FROM_JOB))
                 {
@@ -72,7 +109,7 @@ public sealed partial class WindowsGameHostLauncher(string executable, string da
                 _breakawayRefused = true;
                 LogNoBreakaway();
                 flags &= ~PROCESS_CREATION_FLAGS.CREATE_BREAKAWAY_FROM_JOB;
-                if (!TryCreate(Executable, commandLine, flags, &security, out info, out error))
+                if (!TryCreate(executable, commandLine, flags, &security, out info, out error))
                 {
                     throw new Win32Exception(error, "CreateProcess(host) failed.");
                 }
@@ -124,10 +161,22 @@ public sealed partial class WindowsGameHostLauncher(string executable, string da
     public void CleanUpPrograms(IEnumerable<GameHostReference> running)
     {
         ArgumentNullException.ThrowIfNull(running);
-        if (hostPrograms is not null)
+        if (hostPrograms is null)
         {
-            GameHostProgram.CleanUp(hostPrograms, Executable, running.Select(ProgramOf).OfType<string>().ToList());
+            return;
         }
+
+        string current;
+        try
+        {
+            current = Executable;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return; // logged; the copies wait for the next start of the agent
+        }
+
+        GameHostProgram.CleanUp(hostPrograms, current, running.Select(ProgramOf).OfType<string>().ToList());
     }
 
     /// <summary>The program a running host was started from (null when it is gone).</summary>
@@ -198,6 +247,10 @@ public sealed partial class WindowsGameHostLauncher(string executable, string da
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: started its host process {HostProcessId}")]
     private partial void LogLaunched(Guid serverId, int hostProcessId);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "The copy of the agent's program that host processes run from could not be made ({Reason}): game servers cannot start until it can")]
+    private partial void LogProgramUnavailable(string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Killing the host process {HostProcessId}")]
     private partial void LogKilled(int hostProcessId);

@@ -24,7 +24,7 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
         _outside = Directory.CreateDirectory(Path.Combine(Root, "outside")).FullName;
         File.WriteAllText(Path.Combine(_outside, "secret.cfg"), "rcon_password other-server");
         Directory.CreateDirectory(Path.Combine(_outside, "sub"));
-        Files = new WindowsServerFileManager(new ServerImpersonation(TimeProvider.System));
+        Files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System));
     }
 
     protected override IServerFileManager Files { get; }
@@ -337,7 +337,7 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
     [AccountFact]
     public async Task AsTheServersAccountAnotherServersFileStaysUnreadable()
     {
-        var provisioner = new WindowsServerProvisioner(new WindowsServerAccounts(NullLogger<WindowsServerAccounts>.Instance),
+        var provisioner = new WindowsServerProvisioner(TestAccounts.Create(),
             development: false, NullLogger<WindowsServerProvisioner>.Instance);
         var serversRoot = Path.Combine(Root, "servers");
         string[] shortIds = ["t" + Guid.NewGuid().ToString("N")[..9], "t" + Guid.NewGuid().ToString("N")[..9]];
@@ -347,7 +347,7 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
             var b = provisioner.Provision(serversRoot, shortIds[1]);
             File.WriteAllText(Path.Combine(b.Directory, "secret.cfg"), "server b");
             Run("mklink", "/H", Path.Combine(a.Directory, "stolen.cfg"), Path.Combine(b.Directory, "secret.cfg"));
-            using var impersonation = new ServerImpersonation(TimeProvider.System);
+            using var impersonation = new ServerImpersonation(TestAccounts.Create(), TimeProvider.System);
             var files = new WindowsServerFileManager(impersonation);
 
             Assert.Equal(FileErrors.AccessDenied, Code(() => files.OpenRead(a, "stolen.cfg", 100)));

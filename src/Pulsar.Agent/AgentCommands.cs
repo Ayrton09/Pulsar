@@ -39,10 +39,11 @@ internal static class AgentCommands
                   Runs the agent in this console (the service runs this command).
               PulsarAgent service install|uninstall|start|stop [--stop-servers] [--data-dir <dir>]
                   Game servers keep running while the service stops, restarts or is updated (each runs in a
-                  host process of its own); --stop-servers stops them with it. Windows shutting down stops them.
-              PulsarAgent unenroll [--data-dir <dir>]
+                  host process of its own); --stop-servers stops them with it (or, when the service is not
+                  running, ends those it left running). Windows shutting down stops them.
+              PulsarAgent unenroll [--data-dir <dir>] [--log-file <file>]
                   Removes this machine from Pulsar: stops its game servers, removes the service, the node key
-                  and the configuration.
+                  and the configuration. --log-file also writes what it prints to a file (the agent MSI does).
 
             Options:
               --dev        Development install: key in the current user's store, no administrator rights,
@@ -68,8 +69,7 @@ internal static class AgentCommands
 
         var request = new EnrollmentRequest(line.Required("panel"),
             EnrollmentToken(line, Environment.GetEnvironmentVariable(TokenVariable), Console.In), line.Required("panel-key"),
-            line.Value("servers-root") is { } root ? Path.GetFullPath(root) : null, development,
-            line.Value("backups-root") is { } backups ? Path.GetFullPath(backups) : null);
+            DirectoryOption(line, "servers-root"), development, DirectoryOption(line, "backups-root"));
         if (!development && !WindowsDirectorySecurity.IsElevated())
         {
             await Console.Error.WriteLineAsync("Enrollment creates a machine key and a protected state directory: run it from an elevated prompt (Run as administrator).");
@@ -157,6 +157,21 @@ internal static class AgentCommands
             : throw new UsageException($"--token is required (or pass '--token -' and type it, or set {TokenVariable}).");
     }
 
+    /// <summary>
+    /// A folder option as a full path. A quoted folder that ends in a backslash ("D:\PulsarServers\", as an installer
+    /// writes it) reaches the program with a quote at its end, since the backslash escapes the closing quote: dropped.
+    /// </summary>
+    internal static string? DirectoryOption(CommandLine line, string name)
+    {
+        if (line.Value(name) is not { } value)
+        {
+            return null;
+        }
+
+        var folder = value.TrimEnd('"');
+        return folder.Length > 0 ? Path.GetFullPath(folder) : throw new UsageException($"--{name} must be a folder.");
+    }
+
     public static async Task<int> StatusAsync(CommandLine line)
     {
         line.Allow("check", "data-dir");
@@ -226,7 +241,8 @@ internal static class AgentCommands
     /// <summary>Removes this machine from Pulsar: service, node key and configuration (logs are kept).</summary>
     public static async Task<int> UnenrollAsync(CommandLine line)
     {
-        line.Allow("data-dir");
+        line.Allow("data-dir", "log-file");
+        using var log = CommandLog.Open(line.Value("log-file"), "unenroll");
         var paths = Paths(line);
         var configs = new AgentConfigStore(paths);
         AgentConfig? config;
@@ -255,21 +271,27 @@ internal static class AgentCommands
             }
 
             // The service stops its game servers on the way out instead of leaving them running in their hosts.
-            AskToStopServers(paths);
-            AgentService.Uninstall();
+            Console.WriteLine($"Stopping the {AgentService.Name} service and its game servers...");
+            if (AgentService.QueryState() is AgentServiceState.Running or AgentServiceState.StartPending)
+            {
+                AskToStopServers(paths);
+            }
+
+            if (!AgentService.Uninstall())
+            {
+                // Removing the rest must not stop halfway: the service goes once it has stopped.
+                await Console.Error.WriteLineAsync($"The {AgentService.Name} service did not stop within {AgentService.StopTimeout.TotalSeconds:0} s " +
+                    "(its game servers were still stopping). It is removed once it stops; the game servers still running are ended now.");
+            }
         }
 
         var ended = EndHosts(paths);
         if (ended > 0)
         {
-            Console.WriteLine($"Ended {ended} game server(s) the agent had left running (it was not running to stop them).");
+            Console.WriteLine($"Ended {ended} game server(s) the agent had left running.");
         }
 
-        // (File.Delete fails when the folder is missing: an agent that never had a server has no state folder.)
-        if (File.Exists(paths.StopServersMarker))
-        {
-            File.Delete(paths.StopServersMarker);
-        }
+        DeleteStopServersMarker(paths);
 
         // No host runs anymore: the copies of the program they ran from can go.
         try
@@ -314,8 +336,9 @@ internal static class AgentCommands
                 Console.WriteLine($"The {AgentService.Name} service is installed (automatic start). Start it with 'PulsarAgent service start'.");
                 return 0;
             case "uninstall":
-                AgentService.Uninstall();
-                Console.WriteLine($"The {AgentService.Name} service is removed. The enrollment and the node key are kept.");
+                Console.WriteLine(AgentService.Uninstall()
+                    ? $"The {AgentService.Name} service is removed. The enrollment and the node key are kept."
+                    : $"The {AgentService.Name} service is still stopping: it is removed once it stops. The enrollment and the node key are kept.");
                 return 0;
             case "start":
                 // Checked again (rights change after an install); the service itself checks its executable when it runs.
@@ -328,20 +351,71 @@ internal static class AgentCommands
                 Console.WriteLine($"The {AgentService.Name} service is starting.");
                 return 0;
             case "stop":
-                var stopServers = line.Has("stop-servers");
-                if (stopServers)
-                {
-                    AskToStopServers(Paths(line));
-                }
-
-                AgentService.Stop(TimeSpan.FromSeconds(60));
-                Console.WriteLine(stopServers
-                    ? $"The {AgentService.Name} service and its game servers are stopped."
-                    : $"The {AgentService.Name} service is stopped; its game servers keep running and it takes them over when it starts.");
-                return 0;
+                return line.Has("stop-servers") ? await StopWithServersAsync(Paths(line)) : await StopAsync();
             default:
                 throw new UsageException("Use 'PulsarAgent service install|uninstall|start|stop'.");
         }
+    }
+
+    private static async Task<int> StopAsync()
+    {
+        try
+        {
+            AgentService.Stop(AgentService.StopTimeout);
+        }
+        catch (TimeoutException ex)
+        {
+            await Console.Error.WriteLineAsync($"{ex.Message} It goes on stopping; check with 'PulsarAgent status'.");
+            return 1;
+        }
+
+        Console.WriteLine($"The {AgentService.Name} service is stopped; its game servers keep running and it takes them over when it starts.");
+        return 0;
+    }
+
+    /// <summary>
+    /// <c>service stop --stop-servers</c>: a running service is asked to stop its game servers gracefully on its way out;
+    /// when it is not running, nobody would read that request, so the games it left running in their hosts are ended.
+    /// </summary>
+    private static async Task<int> StopWithServersAsync(AgentPaths paths)
+    {
+        if (AgentService.QueryState() is not (AgentServiceState.Running or AgentServiceState.StartPending))
+        {
+            try
+            {
+                AgentService.Stop(AgentService.StopTimeout); // a stop already under way finishes first
+            }
+            catch (TimeoutException ex)
+            {
+                await Console.Error.WriteLineAsync($"{ex.Message} Run this again once it has stopped.");
+                return 1;
+            }
+
+            var ended = EndHosts(paths);
+            Console.WriteLine(ended > 0
+                ? $"The {AgentService.Name} service was not running; ended the {ended} game server(s) it had left running."
+                : $"The {AgentService.Name} service was not running, and no game server was left running.");
+            return 0;
+        }
+
+        AskToStopServers(paths);
+        try
+        {
+            AgentService.Stop(AgentService.StopTimeout);
+        }
+        catch (TimeoutException ex)
+        {
+            await Console.Error.WriteLineAsync($"{ex.Message} It goes on stopping its game servers; check with 'PulsarAgent status'.");
+            return 1;
+        }
+
+        // A host the service let go of anyway (it was stopping already when asked) is ended too.
+        var left = EndHosts(paths);
+        DeleteStopServersMarker(paths);
+        Console.WriteLine(left > 0
+            ? $"The {AgentService.Name} service and its game servers are stopped ({left} ended after the service stopped)."
+            : $"The {AgentService.Name} service and its game servers are stopped.");
+        return 0;
     }
 
     /// <summary>The next stop of the agent stops its game servers too (docs/architecture/06, "Server hosts").</summary>
@@ -351,8 +425,17 @@ internal static class AgentCommands
         File.WriteAllText(paths.StopServersMarker, string.Empty);
     }
 
+    private static void DeleteStopServersMarker(AgentPaths paths)
+    {
+        // (File.Delete fails when the folder is missing: an agent that never had a server has no state folder.)
+        if (File.Exists(paths.StopServersMarker))
+        {
+            File.Delete(paths.StopServersMarker);
+        }
+    }
+
     /// <summary>Ends the host processes of games the agent is not there to stop; their games end with them.</summary>
-    private static int EndHosts(AgentPaths paths)
+    internal static int EndHosts(AgentPaths paths)
     {
         var store = new ServerStore(paths, new DpapiStateProtector());
         var launcher = new WindowsGameHostLauncher(Environment.ProcessPath!, paths.Root, null, NullLogger<WindowsGameHostLauncher>.Instance);

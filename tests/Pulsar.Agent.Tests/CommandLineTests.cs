@@ -117,6 +117,62 @@ public sealed class CommandLineTests
         Directory.Delete(folder, recursive: true);
     }
 
+    [Fact]
+    public void ALogFileThatCannotBeOpenedLeavesTheCommandOnItsConsole()
+    {
+        var folder = Directory.CreateTempSubdirectory("pulsar-command-log-").FullName; // a folder where the file should be
+        var errors = new StringWriter();
+        var originalError = Console.Error;
+        Console.SetError(errors);
+        try
+        {
+            Assert.Null(CommandLog.Open(folder, "enroll"));
+        }
+        finally
+        {
+            Console.SetError(originalError);
+            Directory.Delete(folder);
+        }
+
+        Assert.Contains($"cannot write the log file {folder}", errors.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheServiceCanBeAskedToStopItsGameServersToo()
+    {
+        var line = CommandLine.Parse(["service", "stop", "--stop-servers", "--data-dir", @"D:\Agent"], AgentCommands.Flags);
+
+        line.Allow("data-dir", "stop-servers");
+        Assert.Equal(("service", "stop"), (line.Command, line.Subcommand));
+        Assert.True(line.Has("stop-servers"));
+        Assert.False(CommandLine.Parse(["service", "stop"], AgentCommands.Flags).Has("stop-servers"));
+    }
+
+    [Fact]
+    public void UnenrollTakesALogFile()
+    {
+        // The agent MSI's uninstall runs it as a custom action, which has no console.
+        var line = CommandLine.Parse(["unenroll", "--log-file", @"C:\ProgramData\Pulsar\Agent\logs\unenroll.log"], AgentCommands.Flags);
+
+        line.Allow("data-dir", "log-file");
+        Assert.Equal(@"C:\ProgramData\Pulsar\Agent\logs\unenroll.log", line.Value("log-file"));
+    }
+
+    [Theory]
+    [InlineData(@"D:\PulsarServers", @"D:\PulsarServers")]
+    [InlineData(@"D:\PulsarServers""", @"D:\PulsarServers")] // "D:\PulsarServers\" from an installer: the backslash escaped the quote
+    [InlineData(@"D:\Pulsar Servers\", @"D:\Pulsar Servers\")]
+    public void FolderOptionsAreFullPathsWithoutAStrayQuote(string value, string expected)
+    {
+        var line = CommandLine.Parse(["enroll", "--servers-root", value, "--backups-root", value], AgentCommands.Flags);
+
+        Assert.Equal(expected, AgentCommands.DirectoryOption(line, "servers-root"));
+        Assert.Equal(expected, AgentCommands.DirectoryOption(line, "backups-root"));
+        Assert.Null(AgentCommands.DirectoryOption(CommandLine.Parse(["enroll"], AgentCommands.Flags), "servers-root"));
+        Assert.Throws<UsageException>(() => AgentCommands.DirectoryOption(CommandLine.Parse(["enroll", "--servers-root", "\""], AgentCommands.Flags),
+            "servers-root"));
+    }
+
     [Theory]
     [InlineData(new string[0], "help")]
     [InlineData(new[] { "--help" }, "help")]

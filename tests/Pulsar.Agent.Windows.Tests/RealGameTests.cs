@@ -81,7 +81,7 @@ public sealed class RealGameTests : IDisposable
         Assert.Equal(0, process.CountProcesses());
     }
 
-    private static WindowsServerProvisioner Provisioner() => new(new WindowsServerAccounts(NullLogger<WindowsServerAccounts>.Instance),
+    private static WindowsServerProvisioner Provisioner() => new(TestAccounts.Create(),
         development: false, NullLogger<WindowsServerProvisioner>.Instance);
 
     // srcds keeps console.log open for writing.

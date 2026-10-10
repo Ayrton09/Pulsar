@@ -486,6 +486,44 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
         await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
     }
 
+    [Fact]
+    public async Task AGameTakenOverWhileItWasStoppingEndsThatStopWhenItExits()
+    {
+        // The previous run of the agent died in the middle of a stop.
+        var supervisor = Supervisor();
+        var game = new FakeGameProcess(5000);
+        var host = new GameHostReference("pulsar-host-test", 4000, DateTimeOffset.UtcNow);
+
+        Assert.True(await supervisor.AttachAsync(new FakeHostedProcess(game, host), new GameHostState(host, 0, 0, Ready: false, Stopping: true),
+            desiredRunning: false));
+        Assert.Equal(RuntimeState.Stopping, supervisor.Snapshot.State);
+        Assert.True(supervisor.HostState!.Stopping);
+
+        game.Exit(0);
+
+        var offline = await _events.WaitForAsync(RuntimeState.Offline);
+        Assert.Equal(StateChangeReason.Requested, offline.Reason); // the stop's end, not the game quitting by itself
+        Assert.Empty(_processes.Started);
+    }
+
+    [Fact]
+    public async Task AStopTakenOverTimesOutAgainAndARestartStartsTheGameAfterIt()
+    {
+        var supervisor = Supervisor();
+        var game = new FakeGameProcess(5000) { IgnoreQuit = true };
+        var host = new GameHostReference("pulsar-host-test", 4000, DateTimeOffset.UtcNow);
+        await supervisor.AttachAsync(new FakeHostedProcess(game, host), new GameHostState(host, 0, 0, Ready: true, Stopping: true),
+            desiredRunning: true); // a restart: it should run again
+        await supervisor.FlushAsync();
+
+        _clock.Advance(TimeSpan.FromSeconds(15)); // the manifest's stop timeout
+
+        await _events.WaitForAsync(RuntimeState.Offline, StateChangeReason.StopTimedOut);
+        Assert.Equal(1, game.TerminatedWith);
+        await _events.WaitForAsync(RuntimeState.Starting);
+        Assert.Single(_processes.Started);
+    }
+
     private ServerQueryInfo Answer(string name) => new(_clock.GetUtcNow(), name, "de_dust2", 1, 16, 0, "1.0", [new QueryPlayer("Ana", 3, null)]);
 
     private sealed class FakeQuery : IServerQuery
