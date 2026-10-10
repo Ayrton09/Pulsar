@@ -93,7 +93,8 @@ function ServersCard({ servers }: { servers: ServerSummary[] }) {
 
 function NodesCard({ nodes }: { nodes: NodeSummary[] }) {
   const { t } = useTranslation();
-  const enrolled = nodes.filter((n) => nodeState(n) !== 'pending');
+  // Nodes not enrolled yet, or waiting for approval, are not expected online.
+  const enrolled = nodes.filter((n) => !['pending', 'awaiting'].includes(nodeState(n)));
   const online = enrolled.filter((n) => nodeState(n) === 'online').length;
   return (
     <Stat

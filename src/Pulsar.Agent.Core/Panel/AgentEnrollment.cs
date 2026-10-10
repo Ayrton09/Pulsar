@@ -27,6 +27,9 @@ public sealed class AgentEnrollment(
     PanelTransport transport,
     TimeProvider clock)
 {
+    /// <summary>The last enrollment created a node that waits for an administrator's approval (a reusable token's).</summary>
+    public bool AwaitingApproval { get; private set; }
+
     public async Task<AgentConfig> EnrollAsync(EnrollmentRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -80,6 +83,7 @@ public sealed class AgentEnrollment(
                 request.ServersRoot, clock.GetUtcNow(), request.Development, BackupsRoot: request.BackupsRoot);
             configs.Save(config);
             saved = true;
+            AwaitingApproval = result.AwaitingApproval;
 
             // Re-enrollment: the panel has already revoked the old credential, so its key is useless now.
             if (previous is not null && previous.Key != key.Reference)

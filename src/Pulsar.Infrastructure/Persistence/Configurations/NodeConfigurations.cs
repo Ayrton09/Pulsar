@@ -19,6 +19,7 @@ internal sealed class NodeConfiguration : IEntityTypeConfiguration<Node>
         builder.Property(n => n.Description).HasMaxLength(Node.MaxDescriptionLength);
         builder.Property(n => n.PublicHost).HasMaxLength(Node.MaxPublicHostLength);
         builder.Property(n => n.Status).HasConversion<SnakeCaseEnumConverter<NodeStatus>>();
+        builder.HasOne<ReusableEnrollmentToken>().WithMany().HasForeignKey(n => n.EnrollmentTokenId).OnDelete(DeleteBehavior.SetNull);
         builder.PrimitiveCollection(n => n.PinnedPanelKeys);
         builder.Property<uint>("Version").IsRowVersion();
 
@@ -94,5 +95,23 @@ internal sealed class PanelSigningKeyConfiguration : IEntityTypeConfiguration<Pa
 
         // A single active signing key.
         builder.HasIndex(k => k.Status).IsUnique().HasFilter("status = 'active'").HasDatabaseName("ux_panel_signing_keys_single_active");
+    }
+}
+
+internal sealed class ReusableEnrollmentTokenConfiguration : IEntityTypeConfiguration<ReusableEnrollmentToken>
+{
+    public void Configure(EntityTypeBuilder<ReusableEnrollmentToken> builder)
+    {
+        builder.ToTable("reusable_enrollment_tokens", t =>
+        {
+            t.HasCheckConstraint("ck_reusable_enrollment_tokens_uses", "uses >= 0 AND uses <= max_uses");
+            t.HasCheckConstraint("ck_reusable_enrollment_tokens_max_uses", $"max_uses BETWEEN 1 AND {ReusableEnrollmentToken.MaxUsesLimit}");
+        });
+        builder.HasKey(t => t.Id);
+        builder.Property(t => t.Id).ValueGeneratedNever();
+        builder.Property(t => t.Name).HasMaxLength(ReusableEnrollmentToken.MaxNameLength);
+        builder.Property(t => t.TokenPrefix).HasMaxLength(32);
+        builder.HasIndex(t => t.TokenHash).IsUnique();
+        builder.HasOne<PulsarUser>().WithMany().HasForeignKey(t => t.CreatedBy).OnDelete(DeleteBehavior.SetNull);
     }
 }

@@ -30,6 +30,15 @@ public sealed record CreateAllocationsRequest(
 
 public sealed record RevokeCredentialRequest([property: StringLength(NodeCredential.MaxRevokeReasonLength)] string? Reason);
 
+/// <param name="LifetimeHours">1 hour to 90 days.</param>
+public sealed record CreateEnrollmentTokenRequest(
+    [property: Required, StringLength(ReusableEnrollmentToken.MaxNameLength)] string Name,
+    [property: Range(1, ReusableEnrollmentToken.MaxUsesLimit)] int MaxUses,
+    [property: Range(1, ReusableEnrollmentToken.MaxLifetimeDays * 24)] int LifetimeHours,
+    bool RequireApproval);
+
+public sealed record ApproveNodesRequest([property: Required, MinLength(1), MaxLength(NodeManagement.MaxApprovals)] IReadOnlyList<Guid> NodeIds);
+
 public static class NodeEndpoints
 {
     public static RouteGroupBuilder MapNodeEndpoints(this RouteGroupBuilder api)
@@ -50,6 +59,15 @@ public static class NodeEndpoints
         nodes.MapPost("/{id:guid}/enable", (Guid id, NodeManagement m, CancellationToken ct) => StatusAsync(m.EnableAsync(new NodeId(id), ct)))
             .RequirePermission(Permissions.Node.Manage);
         nodes.MapPost("/{id:guid}/ping", PingAsync).RequirePermission(Permissions.Node.Manage);
+        nodes.MapPost("/{id:guid}/approve", async Task<Results<Ok<NodeSummary>, ProblemHttpResult>> (Guid id, NodeManagement m, CancellationToken ct) =>
+                await m.ApproveAsync([new NodeId(id)], ct) is { IsSuccess: true } approved
+                    ? TypedResults.Ok(approved.Value[0])
+                    : ApiProblems.FromDomainError(NodeErrors.NotFound))
+            .RequirePermission(Permissions.Node.Manage);
+        // Many at once (machines enrolled together): node.manage held globally.
+        nodes.MapPost("/approve", async (ApproveNodesRequest request, NodeManagement m, CancellationToken ct) =>
+                (await m.ApproveAsync([.. request.NodeIds.Select(i => new NodeId(i))], ct)).ToHttp())
+            .RequirePermission(Permissions.Node.Manage);
         nodes.MapDelete("/{id:guid}", DeleteAsync).RequirePermission(Permissions.Node.Manage);
         nodes.MapPost("/{id:guid}/enrollment-tokens", CreateEnrollmentTokenAsync).RequirePermission(Permissions.Node.CredentialsManage);
         nodes.MapPost("/{id:guid}/credentials/{credentialId:guid}/revoke", RevokeCredentialAsync).RequirePermission(Permissions.Node.CredentialsManage);
@@ -63,6 +81,20 @@ public static class NodeEndpoints
         nodes.MapDelete("/{id:guid}/allocations/{allocationId:guid}", async (Guid id, Guid allocationId, NodeAllocations allocations,
                 CancellationToken ct) => (await allocations.DeleteAsync(new NodeId(id), new AllocationId(allocationId), ct)).ToHttp())
             .RequirePermission(Permissions.Node.Manage);
+
+        // Reusable enrollment tokens (Phase 14): they create nodes and their credentials, so they take
+        // node.credentials.manage held globally.
+        var tokens = api.MapGroup("/enrollment-tokens").WithTags("Nodes").RequirePermission(Permissions.Node.CredentialsManage);
+        tokens.MapGet("/", async (EnrollmentTokens t, CancellationToken ct) => TypedResults.Ok(await t.ListAsync(ct)));
+        tokens.MapPost("/", async Task<Results<Created<CreatedEnrollmentToken>, ProblemHttpResult>> (CreateEnrollmentTokenRequest request,
+            EnrollmentTokens t, CancellationToken ct) =>
+        {
+            var result = await t.CreateAsync(request.Name, request.MaxUses, TimeSpan.FromHours(request.LifetimeHours), request.RequireApproval, ct);
+            return result.IsSuccess
+                ? TypedResults.Created($"/api/v1/enrollment-tokens/{result.Value.Token.Id}", result.Value)
+                : ApiProblems.FromDomainError(result.Error!);
+        });
+        tokens.MapPost("/{id:guid}/revoke", async (Guid id, EnrollmentTokens t, CancellationToken ct) => (await t.RevokeAsync(id, ct)).ToHttp());
 
         var panelKeys = api.MapGroup("/panel-keys").WithTags("Panel keys").RequirePermission(Permissions.Settings.Manage);
         panelKeys.MapGet("/", async (PanelKeyManagement keys, CancellationToken ct) => TypedResults.Ok(await keys.GetAsync(ct)));

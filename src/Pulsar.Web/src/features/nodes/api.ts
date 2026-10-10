@@ -8,8 +8,12 @@ export type NodeCredential = Schemas['NodeCredentialView'];
 export type EnrollmentInstructions = Schemas['EnrollmentInstructions'];
 export type CreatedNode = Schemas['CreatedNode'];
 
+export type EnrollmentTokenView = Schemas['EnrollmentTokenView'];
+export type CreatedEnrollmentToken = Schemas['CreatedEnrollmentToken'];
+
 export const nodeKeys = {
   all: ['nodes'] as const,
+  enrollmentTokens: ['enrollment-tokens'] as const,
   detail: (id: string) => ['nodes', id] as const,
   allocations: (id: string) => ['nodes', id, 'allocations'] as const,
 };
@@ -177,6 +181,59 @@ export function useRetirePanelKey() {
   return useMutation({
     mutationFn: (keyId: string) =>
       unwrap(api.POST('/api/v1/panel-keys/{keyId}/retire', { params: { path: { keyId } } })),
+    onSuccess: changed,
+  });
+}
+
+/** Lets the agent of a node that waited for approval connect. */
+export function useApproveNode() {
+  const changed = useNodesChanged();
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.POST('/api/v1/nodes/{id}/approve', { params: { path: { id } } })),
+    onSuccess: changed,
+  });
+}
+
+/** Lets the agents of nodes that waited for approval connect (several at once from the list). */
+export function useApproveNodes() {
+  const changed = useNodesChanged();
+  return useMutation({
+    mutationFn: (nodeIds: string[]) => unwrap(api.POST('/api/v1/nodes/approve', { body: { nodeIds } })),
+    onSuccess: changed,
+  });
+}
+
+/** Reusable enrollment tokens: each use enrolls a new node (Intune, group policy, scripts). */
+export function useEnrollmentTokens(enabled = true) {
+  return useQuery({
+    queryKey: nodeKeys.enrollmentTokens,
+    queryFn: () => unwrap(api.GET('/api/v1/enrollment-tokens')),
+    enabled,
+  });
+}
+
+function useEnrollmentTokensChanged() {
+  const queryClient = useQueryClient();
+  return () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: nodeKeys.enrollmentTokens }),
+      queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
+    ]);
+}
+
+export function useCreateReusableToken() {
+  const changed = useEnrollmentTokensChanged();
+  return useMutation({
+    mutationFn: (body: Schemas['CreateEnrollmentTokenRequest']) =>
+      unwrap(api.POST('/api/v1/enrollment-tokens', { body })),
+    onSuccess: changed,
+  });
+}
+
+export function useRevokeReusableToken() {
+  const changed = useEnrollmentTokensChanged();
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.POST('/api/v1/enrollment-tokens/{id}/revoke', { params: { path: { id } } })),
     onSuccess: changed,
   });
 }

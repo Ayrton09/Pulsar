@@ -7,7 +7,13 @@ import { useFormatDate } from '../../lib/format';
 import type { EnrollmentInstructions, NodeSummary } from './api';
 import { enrollCommand, nodeState } from './nodeStatus';
 
-const stateTones = { online: 'success', offline: 'danger', pending: 'neutral', disabled: 'neutral' } as const;
+const stateTones = {
+  online: 'success',
+  offline: 'danger',
+  pending: 'neutral',
+  awaiting: 'accent',
+  disabled: 'neutral',
+} as const;
 
 export function NodeStateBadge({ node }: { node: Pick<NodeSummary, 'status' | 'connected'> }) {
   const { t } = useTranslation();

@@ -1,6 +1,6 @@
 import type { NodeSummary } from './api';
 
-export type NodeState = 'online' | 'offline' | 'pending' | 'disabled';
+export type NodeState = 'online' | 'offline' | 'pending' | 'awaiting' | 'disabled';
 
 /** What the UI shows for a node: its administrative status first, then whether its agent is connected. */
 export function nodeState(node: Pick<NodeSummary, 'status' | 'connected'>): NodeState {
@@ -9,6 +9,9 @@ export function nodeState(node: Pick<NodeSummary, 'status' | 'connected'>): Node
   }
   if (node.status === 'pendingEnrollment') {
     return 'pending';
+  }
+  if (node.status === 'pendingApproval') {
+    return 'awaiting';
   }
   return node.connected ? 'online' : 'offline';
 }
@@ -23,4 +26,9 @@ export function nodeState(node: Pick<NodeSummary, 'status' | 'connected'>): Node
  */
 export function enrollCommand(origin: string, token: string, panelKeyFingerprint: string): string {
   return `powershell -ExecutionPolicy Bypass -File .\\Install-Pulsar.ps1 -Mode Agent -PanelUrl ${origin} -Token ${token} -PanelKey ${panelKeyFingerprint}`;
+}
+
+/** The agent's MSI, installed silently (Intune, a group policy, a script) with a reusable token. */
+export function msiCommand(origin: string, token: string, panelKeyFingerprint: string, agentPackage: string): string {
+  return `msiexec /i ${agentPackage} /qn PANELURL=${origin} TOKEN=${token} PANELKEY=${panelKeyFingerprint}`;
 }

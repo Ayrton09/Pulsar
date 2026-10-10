@@ -42,6 +42,12 @@ public sealed class TestAgent : IAsyncDisposable
 
     public static NodeInventory Inventory { get; } = new("TEST-NODE", "Windows 11 Pro", "26200", "Test CPU", 8, 16L * 1024 * 1024 * 1024, @"D:\PulsarServers");
 
+    /// <summary>The machine name this agent reports (reusable tokens name their nodes after it).</summary>
+    public string Hostname { get; init; } = Inventory.Hostname;
+
+    /// <summary>The panel said the node waits for approval.</summary>
+    public bool AwaitingApproval { get; private set; }
+
     /// <summary>Enrolls and returns the raw response (for rejection tests). <paramref name="proofKey"/> forges the proof.</summary>
     public Task<HttpResponseMessage> PostEnrollAsync(string token, ECDsa? proofKey = null)
     {
@@ -49,7 +55,7 @@ public sealed class TestAgent : IAsyncDisposable
         var proof = ProtocolCrypto.Sign(proofKey ?? Key,
             ProtocolCrypto.SignedData(AgentProtocol.Purposes.Enroll, ProtocolCrypto.Utf8(token), publicKey));
         return Http.PostAsJsonAsync(AgentProtocol.EnrollPath,
-            new EnrollRequest(token, publicKey, "software", "0.1.0-test", Inventory, proof), ProtocolJson.Options, Ct);
+            new EnrollRequest(token, publicKey, "software", "0.1.0-test", Inventory with { Hostname = Hostname }, proof), ProtocolJson.Options, Ct);
     }
 
     /// <summary>The full enrollment, as the real agent does it: pin the panel key first, then verify the answer with it.</summary>
@@ -68,6 +74,7 @@ public sealed class TestAgent : IAsyncDisposable
         NodeId = result.NodeId;
         CredentialId = result.CredentialId;
         PinnedKeys = result.PanelKeys;
+        AwaitingApproval = result.AwaitingApproval;
     }
 
     public Task<HttpResponseMessage> PostChallengeAsync() =>

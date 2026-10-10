@@ -305,7 +305,8 @@
         "credential_rotation_started": "Node registered a new key",
         "credential_rotated": "Node key rotated",
         "allocations_created": "Added allocations",
-        "allocation_deleted": "Removed an allocation"
+        "allocation_deleted": "Removed an allocation",
+        "approved": "Approved a node"
       },
       "panel_key": {
         "rotated": "Rotated the panel signing key",
@@ -376,6 +377,10 @@
         "created": "Added a Steam account",
         "updated": "Changed a Steam account",
         "deleted": "Deleted a Steam account"
+      },
+      "enrollment_token": {
+        "created": "Created a reusable enrollment token",
+        "revoked": "Revoked a reusable enrollment token"
       }
     }
   },
@@ -664,7 +669,8 @@
       "online": "Online",
       "offline": "Offline",
       "pending": "Awaiting enrollment",
-      "disabled": "Disabled"
+      "disabled": "Disabled",
+      "awaiting": "Awaiting approval"
     },
     "hostname": "Host name",
     "os": "Windows",
@@ -734,7 +740,17 @@
       "servers": "game servers",
       "backups": "backups"
     },
-    "diskValue": "{{free}} free of {{total}}"
+    "diskValue": "{{free}} free of {{total}}",
+    "approval": {
+      "title_one": "{{count}} node waits for approval",
+      "title_other": "{{count}} nodes wait for approval",
+      "hint": "They enrolled with a reusable token that requires approval: their agents connect once you approve them. A node you do not recognize can be deleted instead.",
+      "machine": "{{os}}, enrolled {{date}}",
+      "approve_one": "Approve {{count}} node",
+      "approve_other": "Approve {{count}} nodes",
+      "notice": "This node enrolled with a reusable token that requires approval: its agent cannot connect until it is approved. Check that the machine is yours (its name and Windows are below).",
+      "approveOne": "Approve"
+    }
   },
   "servers": {
     "title": "Servers",
@@ -1550,5 +1566,42 @@
     "secondary": "Use an account of its own for servers, not your personal one: Steam may ask for a Steam Guard code, and the agents keep the login SteamCMD caches (encrypted, never in a server's files).",
     "hint": "The first install or update with an account may stop for a Steam Guard code (by mail, or from the Steam mobile app): the server's page asks for it. After that the node signs in with the login it keeps.",
     "deleteConfirm": "Delete the Steam account {{name}}?"
+  },
+  "enrollmentTokens": {
+    "title": "Reusable enrollment tokens",
+    "description": "One token enrolls many machines, each as a new node named after it: for the agent MSI deployed with Intune or a group policy, or a script.",
+    "create": "Create token",
+    "empty": "There are no reusable tokens. Nodes are added one at a time with their own command.",
+    "name": "Name",
+    "nameHint": "What it is for, e.g. \"Intune rollout\".",
+    "uses": "Uses",
+    "usesValue": "{{uses}} of {{max}}",
+    "expires": "Expires",
+    "state": "State",
+    "withApproval": "Nodes wait for approval",
+    "withoutApproval": "Nodes are active at once",
+    "maxUses": "Machines",
+    "maxUsesHint": "How many machines can enroll with it (1 to 1000).",
+    "days": "Valid for (days)",
+    "daysHint": "1 to 90.",
+    "requireApproval": "New nodes wait for my approval",
+    "requireApprovalHint": "Recommended: if the token leaks, a machine that is not yours gets nothing until someone approves it.",
+    "noApprovalWarning": "Anyone with the token can add a node, until it expires, is used up or you revoke it.",
+    "revoke": "Revoke",
+    "revokeConfirm": "Revoke {{name}}? No machine can enroll with it anymore; the nodes it created stay.",
+    "createdTitle": "Token {{name}}",
+    "once": "The token is shown only now. Use it with the agent MSI (silent install) or the installer script, on each machine as administrator:",
+    "msi": "Agent MSI (Intune, group policy)",
+    "script": "Installer script (release ZIP)",
+    "limits": "It enrolls up to {{uses}} machines until {{expires}}, and you can revoke it at any time.",
+    "approvalNote": "The nodes it creates wait for your approval in this page before their agents connect.",
+    "noApprovalNote": "The nodes it creates are active right away.",
+    "msiNote": "{{file}} is in the release, next to the ZIP. The token reaches the machine on the command line: deploy it only through channels you trust.",
+    "states": {
+      "usable": "Usable",
+      "usedUp": "Used up",
+      "expired": "Expired",
+      "revoked": "Revoked"
+    }
   }
 }

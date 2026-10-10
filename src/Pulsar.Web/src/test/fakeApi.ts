@@ -35,12 +35,15 @@ export function fakeApi(routes: Record<string, Handler>) {
     const request = input instanceof Request ? input : new Request(input, init);
     const url = new URL(request.url);
     const key = `${request.method} ${url.pathname}`;
-    // Server and node pages show a usage history; tests about something else get an empty one.
+    // Server and node pages show a usage history, and the nodes page the reusable enrollment tokens; tests about
+    // something else get empty ones.
     const handler =
       routes[key] ??
       (request.method === 'GET' && /^\/api\/v1\/(servers|nodes)\/[^/]+\/metrics$/.test(url.pathname)
         ? () => json(emptyHistory(url.searchParams.get('range')))
-        : undefined);
+        : key === 'GET /api/v1/enrollment-tokens'
+          ? () => json([])
+          : undefined);
     if (!handler) {
       throw new Error(`Unexpected request in test: ${key}`);
     }

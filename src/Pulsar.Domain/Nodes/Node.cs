@@ -9,6 +9,11 @@ public enum NodeStatus
     Active,
     /// <summary>Kept with its credential, but the agent cannot connect.</summary>
     Disabled,
+    /// <summary>
+    /// Enrolled with a reusable token that requires approval (Phase 14): the agent may not connect until an
+    /// administrator approves the node.
+    /// </summary>
+    PendingApproval,
 }
 
 /// <summary>Inventory reported by the agent at enrollment and on every connection.</summary>
@@ -82,6 +87,12 @@ public sealed class Node
     /// <summary>When the panel told that a drive of this node is low; cleared when every drive has room again.</summary>
     public DateTimeOffset? DiskLowNotifiedAt { get; private set; }
 
+    /// <summary>The reusable enrollment token that created the node, when one did.</summary>
+    public Guid? EnrollmentTokenId { get; private set; }
+
+    /// <summary>An administrator must approve the node before its agent may connect (it stays so while disabled).</summary>
+    public bool ApprovalRequired { get; private set; }
+
     public static string Normalize(string name) => name.Trim().ToUpperInvariant();
 
     /// <summary>Marks the node as told offline; false when it already was.</summary>
@@ -146,6 +157,46 @@ public sealed class Node
         return Result.Success();
     }
 
+    /// <summary>
+    /// A machine enrolled with a reusable token (Phase 14): a new node named after it, enrolled already, and waiting for
+    /// approval when the token says so.
+    /// </summary>
+    public static Result<Node> EnrolledWithToken(string name, NodeInventorySnapshot inventory, Guid tokenId, bool requireApproval, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(inventory);
+        var created = Create(name, null, null, now);
+        if (!created.IsSuccess)
+        {
+            return created;
+        }
+
+        var node = created.Value!;
+        node.EnrollmentTokenId = tokenId;
+        node.ApprovalRequired = requireApproval;
+        node.Inventory = inventory;
+        node.Status = requireApproval ? NodeStatus.PendingApproval : NodeStatus.Active;
+        node.LastSeenAt = now;
+        return node;
+    }
+
+    /// <summary>An administrator lets the agent of a node that waited for approval connect.</summary>
+    public Result Approve(DateTimeOffset now)
+    {
+        if (!ApprovalRequired)
+        {
+            return Result.Success();
+        }
+
+        ApprovalRequired = false;
+        if (Status == NodeStatus.PendingApproval)
+        {
+            Status = NodeStatus.Active;
+        }
+
+        UpdatedAt = now;
+        return Result.Success();
+    }
+
     /// <summary>An agent completed enrollment (first time or re-enrollment).</summary>
     public void Enrolled(NodeInventorySnapshot inventory, DateTimeOffset now)
     {
@@ -190,8 +241,8 @@ public sealed class Node
             return Result.Success();
         }
 
-        // Back to where it was: enrolled nodes have an inventory.
-        Status = Inventory is null ? NodeStatus.PendingEnrollment : NodeStatus.Active;
+        // Back to where it was: enrolled nodes have an inventory, and one waiting for approval still waits.
+        Status = ApprovalRequired ? NodeStatus.PendingApproval : Inventory is null ? NodeStatus.PendingEnrollment : NodeStatus.Active;
         UpdatedAt = now;
         return Result.Success();
     }

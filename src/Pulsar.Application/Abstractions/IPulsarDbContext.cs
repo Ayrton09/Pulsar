@@ -37,6 +37,8 @@ public interface IPulsarDbContext
 
     DbSet<NodeEnrollmentToken> NodeEnrollmentTokens { get; }
 
+    DbSet<ReusableEnrollmentToken> ReusableEnrollmentTokens { get; }
+
     DbSet<PanelSigningKey> PanelSigningKeys { get; }
 
     DbSet<GameTemplate> GameTemplates { get; }

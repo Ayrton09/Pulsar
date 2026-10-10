@@ -9,7 +9,7 @@ import { initI18n } from '../../app/i18n';
 import { routes } from '../../app/routes';
 import { parseTimeSpan } from '../../lib/format';
 import { adminUser, fakeApi, json, session } from '../../test/fakeApi';
-import { enrollCommand, nodeState } from './nodeStatus';
+import { enrollCommand, msiCommand, nodeState } from './nodeStatus';
 
 const operator = {
   ...adminUser,
@@ -58,6 +58,19 @@ const pending: Schemas['NodeSummary'] = {
   inventory: null,
   metrics: null,
 };
+const awaiting: Schemas['NodeSummary'] = {
+  ...online,
+  id: '0192f1a0-0000-7000-8000-0000000000a4',
+  name: 'FLEET-01',
+  status: 'pendingApproval',
+  connected: false,
+  metrics: null,
+};
+const awaitingToo: Schemas['NodeSummary'] = {
+  ...awaiting,
+  id: '0192f1a0-0000-7000-8000-0000000000a5',
+  name: 'FLEET-02',
+};
 const credential: Schemas['NodeCredentialView'] = {
   id: '0192f1a0-0000-7000-8000-0000000000c1',
   fingerprint: 'sha256:node-key-fingerprint',
@@ -91,6 +104,7 @@ describe('node helpers', () => {
     [{ status: 'active', connected: false }, 'offline'],
     [{ status: 'pendingEnrollment', connected: false }, 'pending'],
     [{ status: 'disabled', connected: true }, 'disabled'],
+    [{ status: 'pendingApproval', connected: false }, 'awaiting'],
   ] as const)('maps %o to %s', (node, state) => {
     expect(nodeState(node)).toBe(state);
   });
@@ -98,6 +112,14 @@ describe('node helpers', () => {
   it('builds the installer command for the release folder', () => {
     expect(enrollCommand('https://panel.example.com', 'tok', 'sha256:abc')).toBe(
       'powershell -ExecutionPolicy Bypass -File .\\Install-Pulsar.ps1 -Mode Agent -PanelUrl https://panel.example.com -Token tok -PanelKey sha256:abc',
+    );
+  });
+
+  it('builds the silent MSI command of a reusable token', () => {
+    expect(
+      msiCommand('https://panel.example.com', 'pulsar_enroll_x', 'sha256:abc', 'pulsar-agent-1.0.0-windows-x64.msi'),
+    ).toBe(
+      'msiexec /i pulsar-agent-1.0.0-windows-x64.msi /qn PANELURL=https://panel.example.com TOKEN=pulsar_enroll_x PANELKEY=sha256:abc',
     );
   });
 
@@ -174,6 +196,149 @@ describe('nodes page', () => {
 
     expect(await screen.findByRole('table', { name: 'Nodes' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add node' })).not.toBeInTheDocument();
+  });
+});
+
+describe('bulk enrollment', () => {
+  it('approves the nodes left selected, together', async () => {
+    let body: unknown;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/nodes': () => json([online, awaiting, awaitingToo]),
+      'POST /api/v1/nodes/approve': async (request) => {
+        body = await request.json();
+        return json([{ ...awaiting, status: 'active' }]);
+      },
+    });
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    const card = await screen.findByRole('region', { name: '2 nodes wait for approval' });
+    expect(within(screen.getByRole('table', { name: 'Nodes' })).getAllByText('Awaiting approval')).toHaveLength(2);
+    await user.click(within(card).getByRole('checkbox', { name: /FLEET-02/ }));
+    await user.click(within(card).getByRole('button', { name: 'Approve 1 node' }));
+
+    await vi.waitFor(() => expect(body).toEqual({ nodeIds: [awaiting.id] }));
+  });
+
+  it('creates a reusable token and shows it once in the MSI and script commands', async () => {
+    let body: unknown;
+    const token: Schemas['EnrollmentTokenView'] = {
+      id: '0192f1a0-0000-7000-8000-0000000000e1',
+      name: 'Intune rollout',
+      tokenPrefix: 'pulsar_enroll_abcdef',
+      maxUses: 25,
+      uses: 0,
+      requireApproval: true,
+      createdAt: '2026-10-09T12:00:00Z',
+      expiresAt: '2026-10-16T12:00:00Z',
+      lastUsedAt: null,
+      revokedAt: null,
+      usable: true,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/nodes': () => json([online]),
+      'POST /api/v1/enrollment-tokens': async (request) => {
+        body = await request.json();
+        return json(
+          {
+            token,
+            value: 'pulsar_enroll_abcdef-secret',
+            panelKeyFingerprint: 'sha256:panel-key',
+            agentPackage: 'pulsar-agent-1.0.0-windows-x64.msi',
+          },
+          201,
+        );
+      },
+    });
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Create token' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Create token' });
+    await user.type(within(dialog).getByLabelText('Name'), 'Intune rollout');
+    await user.clear(within(dialog).getByLabelText('Machines'));
+    await user.type(within(dialog).getByLabelText('Machines'), '25');
+    expect(within(dialog).getByRole('checkbox', { name: 'New nodes wait for my approval' })).toBeChecked();
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+
+    const msi = await screen.findByLabelText('Agent MSI (Intune, group policy)');
+    expect(msi).toHaveTextContent(
+      `msiexec /i pulsar-agent-1.0.0-windows-x64.msi /qn PANELURL=${window.location.origin} TOKEN=pulsar_enroll_abcdef-secret PANELKEY=sha256:panel-key`,
+    );
+    expect(screen.getByLabelText('Installer script (release ZIP)')).toHaveTextContent(
+      '-Token pulsar_enroll_abcdef-secret',
+    );
+    expect(body).toEqual({ name: 'Intune rollout', maxUses: 25, lifetimeHours: 168, requireApproval: true });
+  });
+
+  it('lists reusable tokens and revokes one', async () => {
+    let revoked = false;
+    const token: Schemas['EnrollmentTokenView'] = {
+      id: '0192f1a0-0000-7000-8000-0000000000e2',
+      name: 'Lab',
+      tokenPrefix: 'pulsar_enroll_qwerty',
+      maxUses: 10,
+      uses: 3,
+      requireApproval: false,
+      createdAt: '2026-10-09T12:00:00Z',
+      expiresAt: '2026-10-16T12:00:00Z',
+      lastUsedAt: '2026-10-09T13:00:00Z',
+      revokedAt: null,
+      usable: true,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/nodes': () => json([online]),
+      'GET /api/v1/enrollment-tokens': () => json([token]),
+      [`POST /api/v1/enrollment-tokens/${token.id}/revoke`]: () => {
+        revoked = true;
+        return new Response(null, { status: 204 });
+      },
+    });
+    vi.stubGlobal('confirm', () => true);
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    const table = await screen.findByRole('table', { name: 'Reusable enrollment tokens' });
+    expect(within(table).getByText('3 of 10')).toBeInTheDocument();
+    expect(within(table).getByText('Nodes are active at once')).toBeInTheDocument();
+    await user.click(within(table).getByRole('button', { name: 'Revoke' }));
+
+    await vi.waitFor(() => expect(revoked).toBe(true));
+  });
+
+  it('does not show reusable tokens to whoever cannot manage node credentials', async () => {
+    const manager = { ...adminUser, permissions: ['node.view', 'node.manage'] };
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      'GET /api/v1/nodes': () => json([online]),
+    });
+
+    renderAt('/nodes');
+
+    expect(await screen.findByRole('table', { name: 'Nodes' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create token' })).not.toBeInTheDocument();
+  });
+
+  it('approves one node from its page', async () => {
+    let approved = false;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/nodes/${awaiting.id}`]: () => json({ node: awaiting, credentials: [credential] }),
+      [`POST /api/v1/nodes/${awaiting.id}/approve`]: () => {
+        approved = true;
+        return json({ ...awaiting, status: 'active' });
+      },
+    });
+    renderAt(`/nodes/${awaiting.id}`);
+    const user = userEvent.setup();
+
+    expect(await screen.findByText(/its agent cannot connect until it is approved/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await vi.waitFor(() => expect(approved).toBe(true));
   });
 });
 

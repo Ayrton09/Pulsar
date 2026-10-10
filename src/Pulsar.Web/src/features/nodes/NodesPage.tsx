@@ -6,14 +6,15 @@ import { Link } from 'react-router';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Card, PageHeader, Table, Td, Th } from '../../components/ui/Display';
-import { Field, Input } from '../../components/ui/Form';
+import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage, fieldErrors } from '../../lib/errors';
 import { useFormatDate, useFormatGigabytes } from '../../lib/format';
 import { can, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useWatchNodes } from '../live/hooks';
-import { useCreateNode, useNodes, type CreatedNode } from './api';
+import { useApproveNodes, useCreateNode, useNodes, type CreatedNode, type NodeSummary } from './api';
 import { EnrollmentCommand, NodeStateBadge } from './components';
+import { EnrollmentTokensSection } from './EnrollmentTokensSection';
 import { nodeSchema, type NodeFormValues } from './nodeForm';
 import { PanelKeysSection } from './PanelKeysSection';
 
@@ -36,6 +37,7 @@ export function NodesPage() {
       />
       {nodes.isPending && <Spinner label={t('common.loading')} />}
       {nodes.isError && <Alert>{errorMessage(t, nodes.error)}</Alert>}
+      {canManage && nodes.data && <ApprovalCard nodes={nodes.data.filter((n) => n.status === 'pendingApproval')} />}
       {nodes.data?.length === 0 && (
         <Card className="p-6">
           <p className="text-sm text-muted">{canManage ? t('nodes.emptyManage') : t('nodes.empty')}</p>
@@ -101,9 +103,72 @@ export function NodesPage() {
           </tbody>
         </Table>
       )}
+      {can(me, Permission.NodeCredentialsManage) && <EnrollmentTokensSection />}
       {can(me, Permission.SettingsManage) && <PanelKeysSection />}
       {creating && <CreateNodeDialog onClose={() => setCreating(false)} />}
     </>
+  );
+}
+
+/**
+ * Machines enrolled with a reusable token that requires approval: their agents connect once approved, all at once or
+ * a few (the rest stay waiting; deleting a node turns it away).
+ */
+function ApprovalCard({ nodes }: { nodes: NodeSummary[] }) {
+  const { t } = useTranslation();
+  const formatDate = useFormatDate();
+  const approve = useApproveNodes();
+  const [unselected, setUnselected] = useState<ReadonlySet<string>>(new Set());
+  if (nodes.length === 0) {
+    return null;
+  }
+
+  const selected = nodes.filter((n) => !unselected.has(n.id)).map((n) => n.id);
+  const toggle = (id: string, checked: boolean) =>
+    setUnselected((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+
+  return (
+    <Card className="mb-6 space-y-4 border-accent/40 p-6">
+      <div role="region" aria-labelledby="nodes-awaiting" className="space-y-3">
+        <h2 id="nodes-awaiting" className="text-lg font-semibold">
+          {t('nodes.approval.title', { count: nodes.length })}
+        </h2>
+        <p className="text-sm text-muted">{t('nodes.approval.hint')}</p>
+        {approve.isError && <Alert>{errorMessage(t, approve.error)}</Alert>}
+        <ul className="space-y-2">
+          {nodes.map((node) => (
+            <li key={node.id}>
+              <Checkbox
+                label={
+                  <>
+                    <span className="font-medium">{node.name}</span>{' '}
+                    <span className="text-xs text-muted">
+                      {t('nodes.approval.machine', {
+                        os: node.inventory?.osDescription ?? '—',
+                        date: formatDate(node.createdAt),
+                      })}
+                    </span>
+                  </>
+                }
+                checked={!unselected.has(node.id)}
+                onChange={(e) => toggle(node.id, e.target.checked)}
+              />
+            </li>
+          ))}
+        </ul>
+        <Button busy={approve.isPending} disabled={selected.length === 0} onClick={() => approve.mutate(selected)}>
+          {t('nodes.approval.approve', { count: selected.length })}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

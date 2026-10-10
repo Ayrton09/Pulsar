@@ -170,6 +170,41 @@ public sealed class NodeManagement(
         return Summarize(node, await ActiveKeyIdAsync(cancellationToken));
     }
 
+    /// <summary>
+    /// Lets the agents of nodes that waited for approval connect (they were enrolled with a reusable token that requires
+    /// it, Phase 14). Nodes that need none are left as they are.
+    /// </summary>
+    public async Task<Result<IReadOnlyList<NodeSummary>>> ApproveAsync(IReadOnlyCollection<NodeId> ids, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        var wanted = ids.Distinct().ToList();
+        if (wanted.Count is 0 or > MaxApprovals)
+        {
+            return NodeErrors.ApprovalBatchInvalid;
+        }
+
+        var nodes = await db.Nodes.Where(n => wanted.Contains(n.Id)).ToListAsync(cancellationToken);
+        if (nodes.Count != wanted.Count)
+        {
+            return NodeErrors.NotFound;
+        }
+
+        var now = clock.GetUtcNow();
+        foreach (var node in nodes.Where(n => n.ApprovalRequired))
+        {
+            node.Approve(now);
+            audit.Record(AuditActions.Node.Approved, metadata: new { name = node.Name, hostname = node.Inventory?.Hostname })
+                .WithNode(node.Id).WithTarget("node", node.Id.ToString());
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        var activeKey = await ActiveKeyIdAsync(cancellationToken);
+        return nodes.OrderBy(n => n.NormalizedName).Select(n => Summarize(n, activeKey)).ToList();
+    }
+
+    /// <summary>The most nodes one approval takes.</summary>
+    public const int MaxApprovals = 200;
+
     /// <summary>A new single-use token, for the first enrollment or to re-enroll a reinstalled machine.</summary>
     public async Task<Result<EnrollmentInstructions>> CreateEnrollmentTokenAsync(NodeId id, CancellationToken cancellationToken)
     {

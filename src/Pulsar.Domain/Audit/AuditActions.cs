@@ -47,6 +47,14 @@ public static class AuditActions
         public const string CredentialRotated = "node.credential_rotated";
         public const string AllocationsCreated = "node.allocations_created";
         public const string AllocationDeleted = "node.allocation_deleted";
+        public const string Approved = "node.approved";
+    }
+
+    /// <summary>Reusable enrollment tokens (Phase 14).</summary>
+    public static class EnrollmentToken
+    {
+        public const string Created = "enrollment_token.created";
+        public const string Revoked = "enrollment_token.revoked";
     }
 
     public static class Server

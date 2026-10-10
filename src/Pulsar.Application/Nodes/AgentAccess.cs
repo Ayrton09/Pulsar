@@ -50,6 +50,11 @@ public sealed partial class AgentAccess(
         var now = clock.GetUtcNow();
         var hash = NodeEnrollmentToken.Hash(request.Token);
         var token = await db.NodeEnrollmentTokens.SingleOrDefaultAsync(t => t.TokenHash == hash, cancellationToken);
+        if (token is null && await db.ReusableEnrollmentTokens.SingleOrDefaultAsync(t => t.TokenHash == hash, cancellationToken) is { } reusable)
+        {
+            return await EnrollWithReusableTokenAsync(request, reusable, keyStorage, panelOrigin, now, cancellationToken);
+        }
+
         if (token is null || !token.IsUsable(now))
         {
             return await RejectEnrollmentAsync(token?.NodeId, token is null ? "unknown_token" : "token_expired_or_used", cancellationToken);
@@ -104,6 +109,94 @@ public sealed partial class AgentAccess(
         LogEnrolled(node.Id, request.Inventory.Hostname, fingerprint);
         var result = new EnrollmentResult(node.Id.Value, credential.Id, panelOrigin, await keys.GetPublicKeysAsync(cancellationToken));
         return await keys.SignAsync(AgentProtocol.Purposes.EnrollmentResult, ProtocolJson.Serialize(result), cancellationToken);
+    }
+
+    /// <summary>
+    /// Enrollment with a reusable token (Phase 14): a new node named after the machine, never an existing one (a leaked
+    /// token must not take a node over), waiting for approval when the token requires it.
+    /// </summary>
+    private async Task<Result<SignedMessage>> EnrollWithReusableTokenAsync(EnrollRequest request, ReusableEnrollmentToken reusable,
+        NodeKeyStorage keyStorage, string panelOrigin, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (!reusable.IsUsable(now))
+        {
+            return await RejectEnrollmentAsync(null, "reusable_token_unusable", cancellationToken);
+        }
+
+        var inventory = ToSnapshot(request.Inventory, request.AgentVersion, AgentProtocol.CurrentVersion);
+        var created = Node.EnrolledWithToken(await FreeNodeNameAsync(inventory.Hostname, cancellationToken), inventory, reusable.Id, reusable.RequireApproval,
+            now);
+        if (!created.IsSuccess)
+        {
+            return await RejectEnrollmentAsync(null, "node_name_invalid", cancellationToken);
+        }
+
+        var node = created.Value;
+        var fingerprint = ProtocolCrypto.Fingerprint(request.PublicKey);
+        var credential = NodeCredential.Enrolled(node.Id, request.PublicKey, fingerprint, keyStorage, now);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        // Atomic count: machines racing for the last use cannot all enroll.
+        var counted = await db.ReusableEnrollmentTokens
+            .Where(t => t.Id == reusable.Id && t.RevokedAt == null && t.ExpiresAt > now && t.Uses < t.MaxUses)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.Uses, t => t.Uses + 1).SetProperty(t => t.LastUsedAt, now), cancellationToken);
+        if (counted != 1)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return await RejectEnrollmentAsync(null, "reusable_token_used_up", cancellationToken);
+        }
+
+        db.Nodes.Add(node);
+        db.NodeCredentials.Add(credential);
+        var actor = NodeActor(node);
+        audit.Record(AuditActions.Node.Created, AuditOutcome.Success, actor, new { name = node.Name, enrollmentToken = reusable.Name })
+            .WithNode(node.Id).WithTarget("node", node.Id.ToString());
+        audit.Record(AuditActions.Node.Enrolled, AuditOutcome.Success, actor, new
+        {
+            hostname = inventory.Hostname,
+            fingerprint,
+            keyStorage = keyStorage.ToString().ToLowerInvariant(),
+            enrollmentToken = reusable.Name,
+            awaitingApproval = node.ApprovalRequired,
+        }).WithNode(node.Id).WithTarget("node", node.Id.ToString());
+
+        // Another machine of the same name may have taken it meanwhile: the next free one (a failed save inside the
+        // transaction is rolled back to its savepoint, so it can be saved again).
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            catch (DbUpdateException) when (attempt < 3)
+            {
+                node.Update($"{node.Name[..Math.Min(node.Name.Length, Node.MaxNameLength - 9)]}-{node.Id.Value.ToString("N")[^8..]}", null, null, now);
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        LogEnrolledWithToken(node.Id, inventory.Hostname, fingerprint, reusable.Name, node.ApprovalRequired);
+        var result = new EnrollmentResult(node.Id.Value, credential.Id, panelOrigin, await keys.GetPublicKeysAsync(cancellationToken), node.ApprovalRequired);
+        return await keys.SignAsync(AgentProtocol.Purposes.EnrollmentResult, ProtocolJson.Serialize(result), cancellationToken);
+    }
+
+    /// <summary>The machine's name, or with a number after it when a node has that name already.</summary>
+    private async Task<string> FreeNodeNameAsync(string hostname, CancellationToken cancellationToken)
+    {
+        var name = new string([.. hostname.Trim().Where(c => !char.IsControl(c))]);
+        name = name.Length == 0 ? "node" : name[..Math.Min(name.Length, Node.MaxNameLength - 4)];
+        for (var number = 1; number < 100; number++)
+        {
+            var candidate = number == 1 ? name : $"{name}-{number}";
+            if (!await db.Nodes.AnyAsync(n => n.NormalizedName == Node.Normalize(candidate), cancellationToken))
+            {
+                return candidate;
+            }
+        }
+
+        return $"{name}-{Guid.NewGuid().ToString("N")[..8]}"[..Math.Min(name.Length + 9, Node.MaxNameLength)];
     }
 
     public async Task<Result<ChallengeResponse>> ChallengeAsync(ChallengeRequest request, string panelOrigin, CancellationToken cancellationToken)
@@ -368,6 +461,10 @@ public sealed partial class AgentAccess(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} enrolled from {Hostname} with key {Fingerprint}")]
     private partial void LogEnrolled(NodeId nodeId, string hostname, string fingerprint);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Node {NodeId} created and enrolled from {Hostname} with key {Fingerprint} by the reusable token {Token} (waiting for approval: {AwaitingApproval})")]
+    private partial void LogEnrolledWithToken(NodeId nodeId, string hostname, string fingerprint, string token, bool awaitingApproval);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Enrollment rejected: {Reason}")]
     private partial void LogEnrollmentRejected(string reason);

@@ -15,6 +15,7 @@ import { useCurrentUser } from '../auth/api';
 import { useWatchNodes } from '../live/hooks';
 import { NodeUsageHistory } from '../metrics/UsageHistory';
 import {
+  useApproveNode,
   useCreateEnrollmentToken,
   useDeleteNode,
   useNode,
@@ -76,6 +77,7 @@ export function NodePage() {
           </>
         }
       />
+      {node.status === 'pendingApproval' && <ApprovalNotice node={node} canManage={canManage} />}
       <div className="grid gap-6 xl:grid-cols-2">
         <MachineCard node={node} />
         <UsageCard node={node} />
@@ -87,6 +89,23 @@ export function NodePage() {
         <AdministrationSection node={node} canManage={canManage} canManageCredentials={canManageCredentials} />
       )}
     </>
+  );
+}
+
+/** A node a reusable token created that waits for approval: its agent cannot connect until then. */
+function ApprovalNotice({ node, canManage }: { node: NodeSummary; canManage: boolean }) {
+  const { t } = useTranslation();
+  const approve = useApproveNode();
+  return (
+    <Card className="mb-6 space-y-3 border-accent/40 p-6">
+      <p className="text-sm">{t('nodes.approval.notice')}</p>
+      {approve.isError && <Alert>{errorMessage(t, approve.error)}</Alert>}
+      {canManage && (
+        <Button busy={approve.isPending} onClick={() => approve.mutate(node.id)}>
+          {t('nodes.approval.approveOne')}
+        </Button>
+      )}
+    </Card>
   );
 }
 

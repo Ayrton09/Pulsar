@@ -117,6 +117,11 @@ internal static class AgentCommands
                 """);
         }
 
+        if (enrollment.AwaitingApproval)
+        {
+            Console.WriteLine("The panel created a node for this machine that waits for an administrator's approval (Nodes, in the panel): the agent connects once it is approved.");
+        }
+
         if (development)
         {
             Console.WriteLine($"Development install: start the agent with  PulsarAgent run --data-dir \"{paths.Root}\"");

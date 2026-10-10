@@ -39,6 +39,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<NodeEnrollmentToken> NodeEnrollmentTokens => Set<NodeEnrollmentToken>();
 
+    public DbSet<ReusableEnrollmentToken> ReusableEnrollmentTokens => Set<ReusableEnrollmentToken>();
+
     public DbSet<PanelSigningKey> PanelSigningKeys => Set<PanelSigningKey>();
 
     public DbSet<GameTemplate> GameTemplates => Set<GameTemplate>();

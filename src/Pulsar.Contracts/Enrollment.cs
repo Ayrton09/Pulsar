@@ -41,7 +41,11 @@ public sealed record EnrollRequest(
 /// Payload of the panel's answer to an enrollment, delivered as a <see cref="SignedMessage"/> so the agent can check
 /// it came from the panel key it pinned.
 /// </summary>
-public sealed record EnrollmentResult(Guid NodeId, Guid CredentialId, string PanelOrigin, IReadOnlyList<PanelKey> PanelKeys);
+/// <param name="AwaitingApproval">
+/// The node was created by a reusable token that requires approval (Phase 14): the agent cannot connect until an
+/// administrator approves it in the panel.
+/// </param>
+public sealed record EnrollmentResult(Guid NodeId, Guid CredentialId, string PanelOrigin, IReadOnlyList<PanelKey> PanelKeys, bool AwaitingApproval = false);
 
 /// <summary>
 /// Bytes signed by a panel key. The signature covers <c>SignedData(purpose, Payload)</c>; the payload is verified

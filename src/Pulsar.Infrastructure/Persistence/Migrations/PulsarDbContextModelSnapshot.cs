@@ -715,6 +715,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool>("ApprovalRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("approval_required");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -727,6 +731,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("DiskLowNotifiedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("disk_low_notified_at");
+
+                    b.Property<Guid?>("EnrollmentTokenId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("enrollment_token_id");
 
                     b.Property<DateTimeOffset?>("LastSeenAt")
                         .HasColumnType("timestamp with time zone")
@@ -775,13 +783,16 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_nodes");
 
+                    b.HasIndex("EnrollmentTokenId")
+                        .HasDatabaseName("ix_nodes_enrollment_token_id");
+
                     b.HasIndex("NormalizedName")
                         .IsUnique()
                         .HasDatabaseName("ix_nodes_normalized_name");
 
                     b.ToTable("nodes", null, t =>
                         {
-                            t.HasCheckConstraint("ck_nodes_status", "status IN ('active', 'disabled', 'pending_enrollment')");
+                            t.HasCheckConstraint("ck_nodes_status", "status IN ('active', 'disabled', 'pending_approval', 'pending_enrollment')");
                         });
                 });
 
@@ -1044,6 +1055,79 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.ToTable("panel_signing_keys", null, t =>
                         {
                             t.HasCheckConstraint("ck_panel_signing_keys_status", "status IN ('active', 'retired', 'retiring')");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Nodes.ReusableEnrollmentToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_used_at");
+
+                    b.Property<int>("MaxUses")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_uses");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("RequireApproval")
+                        .HasColumnType("boolean")
+                        .HasColumnName("require_approval");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("token_hash");
+
+                    b.Property<string>("TokenPrefix")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("token_prefix");
+
+                    b.Property<int>("Uses")
+                        .HasColumnType("integer")
+                        .HasColumnName("uses");
+
+                    b.HasKey("Id")
+                        .HasName("pk_reusable_enrollment_tokens");
+
+                    b.HasIndex("CreatedBy")
+                        .HasDatabaseName("ix_reusable_enrollment_tokens_created_by");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_reusable_enrollment_tokens_token_hash");
+
+                    b.ToTable("reusable_enrollment_tokens", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_reusable_enrollment_tokens_max_uses", "max_uses BETWEEN 1 AND 1000");
+
+                            t.HasCheckConstraint("ck_reusable_enrollment_tokens_uses", "uses >= 0 AND uses <= max_uses");
                         });
                 });
 
@@ -2376,6 +2460,12 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Pulsar.Domain.Nodes.Node", b =>
                 {
+                    b.HasOne("Pulsar.Domain.Nodes.ReusableEnrollmentToken", null)
+                        .WithMany()
+                        .HasForeignKey("EnrollmentTokenId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_nodes_reusable_enrollment_tokens_enrollment_token_id");
+
                     b.OwnsOne("Pulsar.Domain.Nodes.NodeInventorySnapshot", "Inventory", b1 =>
                         {
                             b1.Property<Guid>("NodeId")
@@ -2492,6 +2582,15 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_node_enrollment_tokens_nodes_node_id");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Nodes.ReusableEnrollmentToken", b =>
+                {
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_reusable_enrollment_tokens_users_created_by");
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Notifications.NotificationDelivery", b =>

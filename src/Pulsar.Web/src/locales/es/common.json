@@ -305,7 +305,8 @@
         "credential_rotation_started": "El nodo registró una clave nueva",
         "credential_rotated": "Clave del nodo rotada",
         "allocations_created": "Agregó asignaciones",
-        "allocation_deleted": "Quitó una asignación"
+        "allocation_deleted": "Quitó una asignación",
+        "approved": "Aprobó un nodo"
       },
       "panel_key": {
         "rotated": "Rotó la clave de firma del panel",
@@ -376,6 +377,10 @@
         "created": "Agregó una cuenta de Steam",
         "updated": "Cambió una cuenta de Steam",
         "deleted": "Borró una cuenta de Steam"
+      },
+      "enrollment_token": {
+        "created": "Creó un token de enrolamiento reutilizable",
+        "revoked": "Revocó un token de enrolamiento reutilizable"
       }
     }
   },
@@ -664,7 +669,8 @@
       "online": "En línea",
       "offline": "Desconectado",
       "pending": "Esperando enrolamiento",
-      "disabled": "Deshabilitado"
+      "disabled": "Deshabilitado",
+      "awaiting": "Esperando aprobación"
     },
     "hostname": "Nombre de host",
     "os": "Windows",
@@ -734,7 +740,17 @@
       "servers": "servidores",
       "backups": "backups"
     },
-    "diskValue": "{{free}} libres de {{total}}"
+    "diskValue": "{{free}} libres de {{total}}",
+    "approval": {
+      "title_one": "{{count}} nodo espera aprobación",
+      "title_other": "{{count}} nodos esperan aprobación",
+      "hint": "Se enrolaron con un token reutilizable que pide aprobación: sus agentes se conectan cuando los aprobás. Si no reconocés alguno, podés borrarlo.",
+      "machine": "{{os}}, enrolado el {{date}}",
+      "approve_one": "Aprobar {{count}} nodo",
+      "approve_other": "Aprobar {{count}} nodos",
+      "notice": "Este nodo se enroló con un token reutilizable que pide aprobación: su agente no puede conectarse hasta que lo apruebes. Fijate que la máquina sea tuya (abajo están su nombre y su Windows).",
+      "approveOne": "Aprobar"
+    }
   },
   "servers": {
     "title": "Servidores",
@@ -1550,5 +1566,42 @@
     "secondary": "Usá una cuenta propia para los servidores, no la personal: Steam puede pedir un código de Steam Guard, y los agentes guardan el inicio de sesión que cachea SteamCMD (cifrado, nunca en los archivos de un servidor).",
     "hint": "El primer install o update con una cuenta puede frenar por un código de Steam Guard (por mail, o desde la app móvil de Steam): la página del servidor lo pide. Después, el nodo inicia sesión con lo que guardó.",
     "deleteConfirm": "¿Borrar la cuenta de Steam {{name}}?"
+  },
+  "enrollmentTokens": {
+    "title": "Tokens de enrolamiento reutilizables",
+    "description": "Un solo token enrola muchas máquinas, cada una como un nodo nuevo con su nombre: para el MSI del agente distribuido con Intune o una directiva de grupo, o para un script.",
+    "create": "Crear token",
+    "empty": "No hay tokens reutilizables. Los nodos se agregan de a uno, cada uno con su comando.",
+    "name": "Nombre",
+    "nameHint": "Para qué es, por ejemplo \"Despliegue con Intune\".",
+    "uses": "Usos",
+    "usesValue": "{{uses}} de {{max}}",
+    "expires": "Vence",
+    "state": "Estado",
+    "withApproval": "Los nodos esperan aprobación",
+    "withoutApproval": "Los nodos quedan activos de una",
+    "maxUses": "Máquinas",
+    "maxUsesHint": "Cuántas máquinas pueden enrolarse con él (de 1 a 1000).",
+    "days": "Vale por (días)",
+    "daysHint": "De 1 a 90.",
+    "requireApproval": "Los nodos nuevos esperan mi aprobación",
+    "requireApprovalHint": "Recomendado: si el token se filtra, una máquina que no es tuya no recibe nada hasta que alguien la apruebe.",
+    "noApprovalWarning": "Cualquiera que tenga el token puede agregar un nodo, hasta que venza, se agoten sus usos o lo revoques.",
+    "revoke": "Revocar",
+    "revokeConfirm": "¿Revocar {{name}}? Ninguna máquina va a poder enrolarse con él; los nodos que creó se quedan.",
+    "createdTitle": "Token {{name}}",
+    "once": "El token se muestra solo ahora. Usalo con el MSI del agente (instalación silenciosa) o con el script de instalación, en cada máquina como administrador:",
+    "msi": "MSI del agente (Intune, directiva de grupo)",
+    "script": "Script de instalación (ZIP de la versión)",
+    "limits": "Enrola hasta {{uses}} máquinas hasta el {{expires}}, y lo podés revocar cuando quieras.",
+    "approvalNote": "Los nodos que crea esperan tu aprobación en esta página antes de que sus agentes se conecten.",
+    "noApprovalNote": "Los nodos que crea quedan activos enseguida.",
+    "msiNote": "{{file}} está en la versión publicada, al lado del ZIP. El token llega a la máquina en la línea de comandos: distribuilo solo por canales en los que confíes.",
+    "states": {
+      "usable": "Vigente",
+      "usedUp": "Agotado",
+      "expired": "Vencido",
+      "revoked": "Revocado"
+    }
   }
 }
