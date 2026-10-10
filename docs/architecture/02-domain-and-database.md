@@ -11,7 +11,7 @@
 | Access | **User** | Managed with ASP.NET Core Identity (`IdentityUserContext`, no Identity roles). |
 | Access | **Role**, RolePermission | Roles defined by administrators; permissions come from a catalog in code. |
 | Access | UserRole, NodeAccess, ServerAccess | A role granted to a user in a *scope* (global / node / server). |
-| Nodes | **Node**, NodeCredential, NodeEnrollmentToken | Cryptographic identity per node. |
+| Nodes | **Node**, NodeCredential, NodeEnrollmentToken, ReusableEnrollmentToken | Cryptographic identity per node; reusable tokens enroll many machines (Phase 14). |
 | Nodes | NodeAllocation | Reservable `ip:port` pair (TCP and UDP) assignable to a server. |
 | Templates | **GameTemplate** | Validated, versioned, immutable manifest (`key` + `version`). |
 | Servers | **Server**, ServerVariable, ServerAddon | Desired state, observed state, variables (secrets encrypted), installed addons (Phase 12). |
@@ -214,7 +214,7 @@ CREATE TABLE nodes (
     id                  uuid PRIMARY KEY,
     name                varchar(64) NOT NULL UNIQUE,
     description         varchar(512),
-    status              text NOT NULL CHECK (status IN ('pending_enrollment','active','disabled','revoked')),
+    status              text NOT NULL CHECK (status IN ('pending_enrollment','pending_approval','active','disabled')),
     public_host         varchar(255),        -- host/IP shown to players
     maintenance_mode    boolean NOT NULL DEFAULT false,
     -- inventory reported by the agent (last connection)
@@ -230,6 +230,8 @@ CREATE TABLE nodes (
     last_seen_at        timestamptz,
     offline_notified_at timestamptz,         -- told offline (notifications); cleared, and told, when it is back
     disk_low_notified_at timestamptz,        -- told a drive is low; cleared when every drive has room again
+    enrollment_token_id uuid REFERENCES reusable_enrollment_tokens(id) ON DELETE SET NULL,  -- the reusable token that created it
+    approval_required   boolean NOT NULL DEFAULT false,  -- waits for an administrator before its agent may connect
     created_at          timestamptz NOT NULL,
     updated_at          timestamptz NOT NULL
 );
@@ -262,6 +264,22 @@ CREATE TABLE node_enrollment_tokens (
     expires_at                 timestamptz NOT NULL,
     consumed_at                timestamptz,
     consumed_by_credential_id  uuid REFERENCES node_credentials(id)
+);
+
+-- Phase 14: one token, many machines; each use creates a new node (docs/architecture/03, "Bulk enrollment").
+CREATE TABLE reusable_enrollment_tokens (
+    id                uuid PRIMARY KEY,
+    name              varchar(64) NOT NULL,
+    token_hash        bytea NOT NULL UNIQUE,        -- SHA-256 of 'pulsar_enroll_' + 32 random bytes
+    token_prefix      varchar(32) NOT NULL,         -- the first characters, to recognize it
+    max_uses          integer NOT NULL CHECK (max_uses BETWEEN 1 AND 1000),
+    uses              integer NOT NULL CHECK (uses >= 0 AND uses <= max_uses),
+    require_approval  boolean NOT NULL,
+    created_by        uuid REFERENCES users(id) ON DELETE SET NULL,
+    created_at        timestamptz NOT NULL,
+    expires_at        timestamptz NOT NULL,         -- 1 hour to 90 days after creation
+    last_used_at      timestamptz,
+    revoked_at        timestamptz
 );
 
 -- ===================== Templates =====================

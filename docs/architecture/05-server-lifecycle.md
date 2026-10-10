@@ -105,7 +105,7 @@ Cases:
 | Situation | Behavior |
 |---|---|
 | Panel down | Servers keep running. Crash auto-restart works (local). Scheduler paused: runs missed meanwhile are recorded as skipped, not done late (Phase 8). |
-| Agent restarts / is updated | Its servers **stop** (Job with KILL_ON_JOB_CLOSE, see doc 06). On start, it starts those with `auto_start` or that were `Running` before an orderly service stop. |
+| Agent restarts / is updated / crashes | Its servers **keep running** in their host processes (Phase 14, doc 06 "Server hosts"): the agent takes them over when it starts, before its first Hello, and their consoles continue where it stopped reading; a game that exited meanwhile is handled then (crash policy). When Windows shuts down, or the node is unenrolled, or `service stop --stop-servers` is used, the servers stop gracefully; on start, the agent starts those with `auto_start` or that were `Running` before that stop. A host that is gone (the machine restarted without stopping them) counts as an agent crash: only auto-start servers start. With `Pulsar:ServerHosts` false, servers stop with the agent as before Phase 14. |
 | Windows reboot | Same as above: automatic service start + `auto_start`. |
 | Flaky network | Reconnect with backoff; the console is backfilled from the ring buffer by `Sequence`. |
 

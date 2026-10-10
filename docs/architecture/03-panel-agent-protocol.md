@@ -267,6 +267,18 @@ Admin (UI)                  Panel                                   Windows node
 
 The enrollment endpoint is rate limited. A leaked token works at most once and for 30 minutes; the administrator sees the hostname and fingerprint of the node that consumed it.
 
+### Bulk enrollment (Phase 14)
+
+To enroll many machines with one command (the agent MSI deployed through Intune or a group policy, or a script), an administrator with `node.credentials.manage` held globally creates a **reusable enrollment token** (`/api/v1/enrollment-tokens`): a name, a number of uses (1 to 1000), an expiry (1 hour to 90 days) and whether the nodes it creates wait for approval (on by default). The value (`pulsar_enroll_` and 32 random bytes) is shown once; only its SHA-256 is stored, with its first characters to recognize it. At most 50 usable tokens exist at a time, and a token can be revoked whenever.
+
+The agent enrolls with it exactly as with a single-use token (the same endpoint, proof and signed answer). The panel looks the hash up among single-use tokens first, then among reusable ones, and then:
+
+- counts the use atomically (`UPDATE … SET uses = uses + 1 WHERE uses < max_uses AND revoked_at IS NULL AND expires_at > now`), so machines racing for the last use cannot all enroll;
+- creates a **new node** named after the machine (with `-2`, `-3`… when the name is taken; a save that loses a race to the same name retries with a suffix). A use never re-enrolls an existing node: a leaked token cannot take one over;
+- audits `node.created` and `node.enrolled` with the token's name, and answers with `awaitingApproval` when the token requires approval, which `PulsarAgent enroll` reports.
+
+A node waiting for approval (`pending_approval`) is enrolled but may not authenticate: its agent retries with its usual backoff and connects within a minute of the approval. Disabling and enabling such a node does not skip the approval. Approving takes `node.manage` (`POST /nodes/{id}/approve`, or `POST /nodes/approve` with up to 200 nodes, held globally), audited `node.approved`; deleting the node turns the machine away.
+
 ### Authentication on every connection
 
 ```
@@ -336,18 +348,22 @@ How `Pulsar.Agent.Core` (portable protocol logic), `Pulsar.Agent.Windows` (CNG, 
 ### Command line
 
 ```
-PulsarAgent enroll --panel <url> --token <token> --panel-key <fingerprint> [--servers-root <dir>] [--no-service] [--dev] [--data-dir <dir>]
+PulsarAgent enroll --panel <url> --token <token> --panel-key <fingerprint> [--servers-root <dir>] [--no-service] [--dev] [--data-dir <dir>] [--log-file <file>]
 PulsarAgent status [--check] [--data-dir <dir>]
 PulsarAgent run [--data-dir <dir>]
-PulsarAgent service install|uninstall|start|stop [--data-dir <dir>]
+PulsarAgent service install|uninstall|start|stop [--stop-servers] [--data-dir <dir>]
 PulsarAgent unenroll [--data-dir <dir>]
+PulsarAgent host --server <id> --pipe <name> [--data-dir <dir>]   (started by the agent, not listed by help)
 ```
 
 - The service runs the executable it was installed from as SYSTEM, so `enroll` and `service install` refuse when anyone other than SYSTEM, Administrators or TrustedInstaller could modify it or its folder, or rename a folder above it (a download folder, or a folder created directly under `C:\`, fails; `C:\Program Files\Pulsar\Agent` passes). The check runs before enrolling, so a refusal does not consume the token. `service start` checks again, and so does the agent itself when it runs as the service (started by the service control manager, or as SYSTEM): it logs the reason and exits.
 - `enroll` must run elevated. It pins the panel key, creates the node key, enrolls, writes `config\agent.json`, and installs and starts the `PulsarAgent` service (LocalSystem, automatic start; the service control manager restarts it after 5 s, 15 s, then every 60 s, also when it stops itself with an error). Re-running it on an enrolled node stops the service first and deletes the old key once the new enrollment is saved.
 - `status` shows the enrollment and the node key fingerprint (the one the panel shows for the credential); `--check` also authenticates against the panel.
 - `--dev` is for development only: the key goes to the current user's store, the state directory also grants the current user, and no service is installed. The service runs as SYSTEM and could not open such a key. A development enrollment never runs as the service either: `service install` and `service start` refuse it, and the agent refuses to run it as the service, where its servers (started as the current user) would run as SYSTEM.
-- `unenroll` removes the service, the node key and the configuration (logs stay). The node must also be deleted, or re-enrolled, in the panel.
+- `unenroll` removes the service, the node key and the configuration (logs stay). The node must also be deleted, or re-enrolled, in the panel. Since Phase 14 it stops the node's game servers first (they would otherwise keep running in their host processes); hosts the service was not running to stop are ended.
+- `service stop` leaves the game servers running in their hosts (Phase 14, doc 06 "Server hosts"); `--stop-servers` stops them with the service, and they start again with it.
+- `enroll --log-file` also writes what it prints to a file: the agent MSI runs it as a custom action, which has no console.
+- `host` is the process a game server runs under (doc 06, "Server hosts"); its log is `logs\hosts\host-<server>-<date>.log`.
 - The value after an option is always taken as its value: enrollment tokens are base64url and can start with `-`.
 - The process list shows command lines: `--token -` reads the token from standard input, and without `--token` it is taken from the `PULSAR_ENROLLMENT_TOKEN` environment variable.
 

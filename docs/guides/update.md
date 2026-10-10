@@ -25,9 +25,14 @@ It updates whatever this machine has, the panel, the agent or both:
 
 - **Panel**: the PulsarPanel service stops, its programs are replaced and it starts again, applying any database
   changes at start. Browsers reconnect on their own; signed-in users stay signed in.
-- **Agent**: the PulsarAgent service stops, **and so do the node's game servers**, which run under it (each gets its
-  game's normal stop); its programs are replaced and it starts again, and so do the servers that were running and those
-  set to start automatically. Players are disconnected meanwhile: pick a quiet moment for each node.
+- **Agent**: the PulsarAgent service stops, its programs are replaced and it starts again. **The node's game servers
+  keep running**: each runs in a host process of its own, which the agent takes over again when it starts, and players
+  stay connected, and their consoles continue where they were. (With `Pulsar:ServerHosts` set to `false` in the agent's
+  settings, the servers stop with the service and start again with it instead.)
+
+An agent installed with the MSI is updated with the newer package, silently and without the panel's values:
+`msiexec /i pulsar-agent-<version>-windows-x64.msi /qn`. It keeps the enrollment and leaves the games running, as above.
+Intune and group policies can deploy the new package the same way.
 
 The settings files (`appsettings.Production.json`) are never replaced.
 

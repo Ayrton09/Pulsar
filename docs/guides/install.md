@@ -115,6 +115,36 @@ command lines in the process list. With the panel's self-signed certificate, cop
 The panel's machine must accept connections on its port (the installer opens it in Windows Firewall; routers and cloud
 firewalls are up to you). Nodes only connect out to the panel.
 
+### Many nodes at once
+
+To enroll many machines with one command, for example with Intune or a group policy, create a reusable token in the
+panel: **Nodes → Reusable enrollment tokens → Create token**. Give it a name, how many machines may use it (up to
+1000) and for how many days (up to 90). Keep **New nodes wait for my approval** checked unless you deploy only to
+machines you control end to end. With it checked, a machine that enrolls appears in **Nodes** as waiting, and its agent
+connects once you approve it: one node from its page, or many at once from the list. The token is shown once, inside
+two commands:
+
+- **The agent MSI** (`pulsar-agent-<version>-windows-x64.msi`, next to the ZIP in the release; check it against its
+  `.sha256` file as you do the ZIP), installed silently as administrator:
+
+  ```powershell
+  msiexec /i pulsar-agent-<version>-windows-x64.msi /qn PANELURL=https://panel:8443 TOKEN=<token> PANELKEY=sha256:<fingerprint>
+  ```
+
+  Add `SERVERSROOT=D:\PulsarServers` to put game servers somewhere other than `C:\PulsarServers`. The package copies the
+  agent to `C:\Program Files\Pulsar\Agent`, enrolls the machine (what `enroll` printed is in
+  `C:\ProgramData\Pulsar\Agent\logs\enroll.log`) and starts the service; if enrolling fails, nothing is left
+  installed. In Intune, add it as a line-of-business or Win32 app with that command line; with a group policy, run it
+  from a computer startup script, since software installation policies cannot pass the token. Machines that already
+  run an agent installed from the ZIP must be uninstalled first (`Install-Pulsar.ps1 -Uninstall`).
+- **The installer script**, as for a single node: `Install-Pulsar.ps1 -Mode Agent -PanelUrl … -Token … -PanelKey …`.
+
+Each machine becomes a new node named after the computer (with `-2`, `-3`… when a node already has that name). The
+panel's certificate must be trusted by every machine, as for one node: distribute `panel.cer` with the same tool (a
+group policy or an Intune certificate profile) before the agent, or use a certificate from a trusted authority. The
+token travels in the command line, which the machine's administrators can see while it runs (the MSI keeps it out of
+its log): revoke the token once the rollout is done.
+
 ## 4. First steps in the panel
 
 1. **Account → Two-factor authentication**: set it up with an authenticator app and keep the recovery codes. In
@@ -165,3 +195,7 @@ powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Uninstall
 It removes the services, the programs, the firewall rule and the trust in the panel's certificate. It keeps the
 database, `C:\ProgramData\Pulsar` and the game servers' folders. Delete game servers from the panel first: that also
 removes their Windows accounts.
+
+An agent installed with the MSI is removed from **Apps** in Windows settings, or with
+`msiexec /x pulsar-agent-<version>-windows-x64.msi /qn`: its game servers stop, and the service, the node key and the
+configuration go, as with `PulsarAgent unenroll`. The node stays in the panel, offline, until you delete it there.
