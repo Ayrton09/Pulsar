@@ -29,7 +29,6 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
     private const uint UserExists = 2224; // NERR_UserExists
     private const uint UserNotFound = 2221; // NERR_UserNotFound
 
-    private static readonly Lock s_logonLock = new();
     private static readonly string[] s_grantedRights = ["SeBatchLogonRight"];
     private static readonly string[] s_deniedRights =
         ["SeDenyInteractiveLogonRight", "SeDenyRemoteInteractiveLogonRight", "SeDenyNetworkLogonRight"];
@@ -212,9 +211,24 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
         ValidateName(name);
         var password = NewPassword();
 
-        // Setting a password and logging on with it is one step: another logon in between (a server starting while the
-        // file manager acts as its account) would set its own password and make this one fail.
-        lock (s_logonLock)
+        // Setting a password and logging on with it is one step: another logon in between (a server starting in its host
+        // process while the agent's file manager acts as its account) would set its own password and make this one fail.
+        // Hence a lock shared by the agent and the hosts: a named mutex per account, in the global namespace, which a
+        // server's account cannot create (no SeCreateGlobalPrivilege) nor open (SYSTEM's default security).
+        using var mutex = new Mutex(false, $@"Global\Pulsar-Logon-{name}");
+        try
+        {
+            if (!mutex.WaitOne(TimeSpan.FromSeconds(30)))
+            {
+                throw new Win32Exception((int)WIN32_ERROR.ERROR_TIMEOUT, $"Another logon of {name} did not finish in time.");
+            }
+        }
+        catch (AbandonedMutexException)
+        {
+            // A process died holding it: the lock is ours now.
+        }
+
+        try
         {
             fixed (char* namePtr = name)
             fixed (char* passwordPtr = password)
@@ -239,6 +253,10 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
             }
 
             return token;
+        }
+        finally
+        {
+            mutex.ReleaseMutex();
         }
     }
 

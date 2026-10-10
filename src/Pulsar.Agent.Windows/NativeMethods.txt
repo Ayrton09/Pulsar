@@ -109,3 +109,10 @@ WINTRUST_ACTION_GENERIC_VERIFY_V2
 // Agent state encryption (DPAPI, machine scope)
 CryptProtectData
 CryptUnprotectData
+
+// Server hosts: the process each game runs under, found again after the agent restarts (docs/architecture/06)
+GetNamedPipeServerProcessId
+GetProcessTimes
+TerminateProcess
+WaitForSingleObject
+QueryFullProcessImageName

@@ -10,15 +10,20 @@ namespace Pulsar.Agent.Core.Servers;
 /// a file that shrinks (truncated) is read again from its start. A byte order mark is skipped. Cancelling ends the
 /// enumeration after one last read, so what the game wrote just before exiting is not lost.
 /// </summary>
-public sealed class LogTail(IServerFiles files, string serverRoot, string relativePath, Encoding encoding, TimeSpan pollInterval)
+/// <param name="start">Where to start reading: 0, or where an earlier run of the agent stopped (a game left running in its host).</param>
+public sealed class LogTail(IServerFiles files, string serverRoot, string relativePath, Encoding encoding, TimeSpan pollInterval, long start = 0)
 {
     private const int BufferSize = 64 * 1024;
+    private long _position = start;
+
+    /// <summary>How far the file was read (bytes): where a later reader continues.</summary>
+    public long Position => Interlocked.Read(ref _position);
 
     public async IAsyncEnumerable<string> ReadAsync([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         Stream? stream = null;
         var decoder = encoding.GetDecoder();
-        var position = 0L;
+        var position = Position;
         var bytes = new byte[BufferSize];
         var chars = new char[encoding.GetMaxCharCount(BufferSize)];
         var lastRead = false;
@@ -30,6 +35,7 @@ public sealed class LogTail(IServerFiles files, string serverRoot, string relati
                 if (stream is not null && stream.Length < position)
                 {
                     position = 0;
+                    Interlocked.Exchange(ref _position, 0);
                     decoder.Reset();
                 }
 
@@ -62,6 +68,7 @@ public sealed class LogTail(IServerFiles files, string serverRoot, string relati
 
                 var offset = position == 0 ? Preamble(bytes.AsSpan(0, read)) : 0;
                 position += read;
+                Interlocked.Exchange(ref _position, position);
                 var count = decoder.GetChars(bytes, offset, read - offset, chars, 0);
                 if (count > 0)
                 {

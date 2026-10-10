@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Contracts;
 
@@ -15,6 +16,13 @@ public sealed record ServerRecord(Guid ServerId, ServerRuntimeSpec Spec, bool De
 {
     public override string ToString() => $"ServerRecord {{ ServerId = {ServerId} }}";
 }
+
+/// <summary>
+/// The host process a server's game runs in (docs/architecture/06, "Server hosts") and how far the agent read its
+/// console: its output offset in the host, and its position in the game's log file (<c>logfile+rcon</c>).
+/// </summary>
+/// <param name="Ready">The game had passed its readiness check.</param>
+public sealed record GameHostRecord(Guid ServerId, GameHostReference Host, long ConsoleOffset, long LogPosition, bool Ready);
 
 /// <summary>
 /// Server records and undelivered operation results, as JSON files in the agent's state directory (SYSTEM and
@@ -65,6 +73,25 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
     }
 
     public void Delete(Guid serverId) => File.Delete(Path.Combine(paths.ServersStateDirectory, $"{serverId:N}.json"));
+
+    public IReadOnlyList<GameHostRecord> LoadHosts()
+    {
+        if (!Directory.Exists(paths.HostsStateDirectory))
+        {
+            return [];
+        }
+
+        return [.. Directory.EnumerateFiles(paths.HostsStateDirectory, "*.json").Select(f => ReadOrSetAside(f, Read<GameHostRecord>))
+            .OfType<GameHostRecord>()];
+    }
+
+    public void SaveHost(GameHostRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        Write(paths.HostsStateDirectory, record.ServerId, record);
+    }
+
+    public void DeleteHost(Guid serverId) => File.Delete(Path.Combine(paths.HostsStateDirectory, $"{serverId:N}.json"));
 
     public IReadOnlyList<OperationCompleted> PendingResults()
     {

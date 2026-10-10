@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Backups;
 using Pulsar.Agent.Core.Commands;
@@ -41,6 +42,13 @@ internal static class AgentHost
             // The service starts in System32; settings and paths are relative to the executable.
             var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { ContentRootPath = AppContext.BaseDirectory });
             builder.Services.AddWindowsService(options => options.ServiceName = AgentService.Name);
+            builder.Services.AddSingleton<AgentShutdown>();
+            if (WindowsServiceHelpers.IsWindowsService())
+            {
+                // Tells a Windows shutdown from a service stop: only the first stops the game servers.
+                builder.Services.AddSingleton<IHostLifetime, AgentServiceLifetime>();
+            }
+
             builder.Services.AddSerilog((services, configuration) => configuration
                 // A lost panel connection is routine (panel restart, network cut) and the agent logs it in one line; the
                 // SignalR client would add errors with full stack traces for the same event.
@@ -70,6 +78,17 @@ internal static class AgentHost
             // Game servers (docs/architecture/05 and 06).
             builder.Services.AddSingleton<WindowsServerAccounts>();
             builder.Services.AddSingleton<IGameProcessManager, WindowsGameProcessManager>();
+            // Each game in a host process of its own, so games outlive the agent (docs/architecture/06, "Server hosts").
+            // Pulsar:ServerHosts false runs them inside the agent, as before Phase 14 (they then stop with it).
+            if (builder.Configuration.GetValue("Pulsar:ServerHosts", true))
+            {
+                builder.Services.AddSingleton<IGameHostLauncher>(services => new WindowsGameHostLauncher(
+                    GameHostProgram.Prepare(AppContext.BaseDirectory, Path.GetFileName(Environment.ProcessPath!), paths.HostProgramsDirectory),
+                    paths.Root, paths.HostProgramsDirectory, services.GetRequiredService<ILogger<WindowsGameHostLauncher>>()));
+                builder.Services.AddSingleton(services => new GameHostManager(services.GetRequiredService<IGameProcessManager>(),
+                    services.GetRequiredService<IGameHostLauncher>(), services.GetRequiredService<ILogger<GameHostManager>>()));
+            }
+
             builder.Services.AddSingleton<IServerProvisioner>(services => new WindowsServerProvisioner(
                 services.GetRequiredService<WindowsServerAccounts>(),
                 development: services.GetRequiredService<AgentConfigStore>().Load()?.Development ?? false,

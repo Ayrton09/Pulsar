@@ -39,9 +39,21 @@ public sealed class AgentPaths(string root)
     /// <summary>Backups, one folder per server, unless enrollment chose another place (<see cref="AgentConfig.BackupsRoot"/>).</summary>
     public string BackupsDirectory => Path.Combine(Root, "backups");
 
+    /// <summary>The host processes of running games (docs/architecture/06, "Server hosts"): one record per server.</summary>
+    public string HostsStateDirectory => Path.Combine(Root, "state", "hosts");
+
+    /// <summary>
+    /// Copies of the agent's program that host processes run from, one per version: updating the agent replaces its
+    /// installed files while games keep running in hosts of the previous version.
+    /// </summary>
+    public string HostProgramsDirectory => Path.Combine(Root, "host-programs");
+
+    /// <summary>Asks the agent to stop its game servers when it stops next (written by <c>unenroll</c>), instead of leaving them running.</summary>
+    public string StopServersMarker => Path.Combine(Root, "state", "stop-servers");
+
     /// <summary>The folders the agent itself makes in <see cref="Root"/>: what securing it resets (nothing else in it).</summary>
     public IReadOnlyList<string> OwnFolders =>
-        [ConfigDirectory, LogsDirectory, Path.Combine(Root, "state"), SteamCmdDirectory, ConsoleLogsDirectory, BackupsDirectory];
+        [ConfigDirectory, LogsDirectory, Path.Combine(Root, "state"), SteamCmdDirectory, ConsoleLogsDirectory, BackupsDirectory, HostProgramsDirectory];
 }
 
 /// <summary>Everything the agent needs to reach and trust its panel, written at enrollment.</summary>

@@ -413,6 +413,12 @@ public static class AgentCapabilities
     /// <summary>Not a command: the agent manages Windows Firewall rules for its servers (its administrator enabled it).</summary>
     public const string Firewall = "node.firewall";
 
+    /// <summary>
+    /// Not a command: the agent runs each game in a host process of its own, so games keep running while the agent
+    /// restarts or is updated (Phase 14).
+    /// </summary>
+    public const string ServerHosts = "server.hosts";
+
     /// <summary>Not a command: the agent copies backups to S3-compatible storage (<see cref="RemoteBackupTarget"/>).</summary>
     public const string RemoteBackups = "backups.remote";
 

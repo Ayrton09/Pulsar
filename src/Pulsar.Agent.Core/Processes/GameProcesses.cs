@@ -81,7 +81,11 @@ public sealed record ProcessLimits(int? CpuPercent, long? MemoryBytes)
 }
 
 /// <summary>Decoded console output, in arrival order. A pseudo console delivers screen updates, not lines.</summary>
-public sealed record ConsoleChunk(DateTimeOffset At, string Text);
+/// <param name="End">
+/// For a game in a host process: the offset right after this text in the game's output since it started, from which
+/// the agent asks for the rest after a restart (docs/architecture/06, "Server hosts"); -1 otherwise.
+/// </param>
+public sealed record ConsoleChunk(DateTimeOffset At, string Text, long End = -1);
 
 /// <summary>Resource usage of a server's process tree at one moment.</summary>
 /// <param name="CpuTime">CPU time of every process the tree ever had (finished ones included), user and kernel.</param>

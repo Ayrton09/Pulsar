@@ -2,7 +2,9 @@ using System.Security.Cryptography;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Panel;
+using Pulsar.Agent.Core.Servers;
 using Pulsar.Agent.Windows;
+using Pulsar.Agent.Windows.Processes;
 using Pulsar.Contracts;
 
 namespace Pulsar.Agent;
@@ -10,7 +12,8 @@ namespace Pulsar.Agent;
 /// <summary>The administrator-facing commands: enroll, status, service.</summary>
 internal static class AgentCommands
 {
-    public static IReadOnlySet<string> Flags { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "dev", "no-service", "check" };
+    public static IReadOnlySet<string> Flags { get; } =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "dev", "no-service", "check", "stop-servers" };
 
     /// <summary>Where <c>enroll</c> also takes its token from (the process list shows command lines, not environments).</summary>
     public const string TokenVariable = "PULSAR_ENROLLMENT_TOKEN";
@@ -31,9 +34,12 @@ internal static class AgentCommands
                   authenticates against the panel.
               PulsarAgent run [--data-dir <dir>]
                   Runs the agent in this console (the service runs this command).
-              PulsarAgent service install|uninstall|start|stop [--data-dir <dir>]
+              PulsarAgent service install|uninstall|start|stop [--stop-servers] [--data-dir <dir>]
+                  Game servers keep running while the service stops, restarts or is updated (each runs in a
+                  host process of its own); --stop-servers stops them with it. Windows shutting down stops them.
               PulsarAgent unenroll [--data-dir <dir>]
-                  Removes this machine from Pulsar: the service, the node key and the configuration.
+                  Removes this machine from Pulsar: stops its game servers, removes the service, the node key
+                  and the configuration.
 
             Options:
               --dev        Development install: key in the current user's store, no administrator rights,
@@ -239,8 +245,18 @@ internal static class AgentCommands
                 return 1;
             }
 
+            // The service stops its game servers on the way out instead of leaving them running in their hosts.
+            AskToStopServers(paths);
             AgentService.Uninstall();
         }
+
+        var ended = EndHosts(paths);
+        if (ended > 0)
+        {
+            Console.WriteLine($"Ended {ended} game server(s) the agent had left running (it was not running to stop them).");
+        }
+
+        File.Delete(paths.StopServersMarker);
 
         new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance).Delete(config.Key);
         File.Delete(paths.ConfigFile);
@@ -253,7 +269,7 @@ internal static class AgentCommands
 
     public static async Task<int> ServiceAsync(CommandLine line)
     {
-        line.Allow("data-dir");
+        line.Allow("data-dir", "stop-servers");
         if (!WindowsDirectorySecurity.IsElevated())
         {
             await Console.Error.WriteLineAsync("Managing the service needs an elevated prompt (Run as administrator).");
@@ -286,12 +302,47 @@ internal static class AgentCommands
                 Console.WriteLine($"The {AgentService.Name} service is starting.");
                 return 0;
             case "stop":
-                AgentService.Stop(TimeSpan.FromSeconds(30));
-                Console.WriteLine($"The {AgentService.Name} service is stopped.");
+                var stopServers = line.Has("stop-servers");
+                if (stopServers)
+                {
+                    AskToStopServers(Paths(line));
+                }
+
+                AgentService.Stop(TimeSpan.FromSeconds(60));
+                Console.WriteLine(stopServers
+                    ? $"The {AgentService.Name} service and its game servers are stopped."
+                    : $"The {AgentService.Name} service is stopped; its game servers keep running and it takes them over when it starts.");
                 return 0;
             default:
                 throw new UsageException("Use 'PulsarAgent service install|uninstall|start|stop'.");
         }
+    }
+
+    /// <summary>The next stop of the agent stops its game servers too (docs/architecture/06, "Server hosts").</summary>
+    private static void AskToStopServers(AgentPaths paths)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(paths.StopServersMarker)!);
+        File.WriteAllText(paths.StopServersMarker, string.Empty);
+    }
+
+    /// <summary>Ends the host processes of games the agent is not there to stop; their games end with them.</summary>
+    private static int EndHosts(AgentPaths paths)
+    {
+        var store = new ServerStore(paths, new DpapiStateProtector());
+        var launcher = new WindowsGameHostLauncher(Environment.ProcessPath!, paths.Root, null, NullLogger<WindowsGameHostLauncher>.Instance);
+        var ended = 0;
+        foreach (var record in store.LoadHosts())
+        {
+            if (launcher.IsAlive(record.Host))
+            {
+                launcher.Kill(record.Host);
+                ended++;
+            }
+
+            store.DeleteHost(record.ServerId);
+        }
+
+        return ended;
     }
 
     /// <summary>The service runs this executable as SYSTEM: refuse when anyone else could replace it.</summary>

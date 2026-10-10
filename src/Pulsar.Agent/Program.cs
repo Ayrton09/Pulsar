@@ -9,6 +9,7 @@ try
         "status" => await AgentCommands.StatusAsync(line),
         "unenroll" => await AgentCommands.UnenrollAsync(line),
         "run" => await AgentHost.RunAsync(line),
+        "host" => await HostCommand.RunAsync(line),
         "service" => await AgentCommands.ServiceAsync(line),
         "help" or "h" or "?" => AgentCommands.Help(),
         _ => throw new UsageException($"Unknown command '{line.Command}'."),

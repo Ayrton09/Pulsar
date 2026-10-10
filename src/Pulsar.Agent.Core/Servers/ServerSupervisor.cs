@@ -25,7 +25,21 @@ public interface IServerEventSink
 
     /// <summary>The server should (not) be running: persisted by the agent and mirrored by the panel.</summary>
     void DesiredChanged(Guid serverId, bool running);
+
+    /// <summary>
+    /// The server's game started or stopped running in a host process, or became ready there: the agent keeps
+    /// <see cref="ServerSupervisor.HostState"/> so its next run finds the game again.
+    /// </summary>
+    void HostChanged(Guid serverId)
+    {
+    }
 }
+
+/// <summary>A game running in a host process, and how far the agent read its console (docs/architecture/06, "Server hosts").</summary>
+/// <param name="ConsoleOffset">The host's output offset after the last text written to the console.</param>
+/// <param name="LogPosition">The position in the game's log file read so far (<c>logfile+rcon</c>).</param>
+/// <param name="Ready">The game passed its readiness check.</param>
+public sealed record GameHostState(GameHostReference Host, long ConsoleOffset, long LogPosition, bool Ready);
 
 public sealed class SupervisorOptions
 {
@@ -100,6 +114,11 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private (int Generation, IRconSession Session)? _consoleRcon; // guarded by _rconLock
     private (int Generation, ProcessUsage Usage, DateTimeOffset At)? _lastUsage;
     private volatile QueryAnswer? _lastQuery;
+    private volatile IHostedGameProcess? _hosted; // the game's host, until the process is released
+    private long _consoleEnd; // host output offset written to the console so far
+    private long _logPosition; // game log file position read so far
+    private Task _pumping = Task.CompletedTask;
+    private Task _tailing = Task.CompletedTask;
 
     public ServerSupervisor(ServerDefinition definition, IGameProcessManager processes, IServerEventSink events, TimeProvider clock,
         SupervisorOptions options, ILogger logger, IServerFiles? files = null, IRconConnector? rcon = null, IServerFirewall? firewall = null,
@@ -130,6 +149,34 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     /// <summary>The server's console output, across restarts of its game.</summary>
     public ServerConsole Console => _console;
+
+    /// <summary>The host process of the running game and how far its console was read; null when none runs in a host.</summary>
+    public GameHostState? HostState => _hosted is { } hosted
+        ? new GameHostState(hosted.Host, Interlocked.Read(ref _consoleEnd), Interlocked.Read(ref _logPosition), _snapshot.State == RuntimeState.Running)
+        : null;
+
+    /// <summary>
+    /// Takes over a game a previous run of the agent left running in its host (docs/architecture/06, "Server hosts"): the
+    /// server is running (or still starting) again without a start, its console continues where that run stopped
+    /// reading, and an exit that happened meanwhile is handled now. False when the server already runs something.
+    /// </summary>
+    public async Task<bool> AttachAsync(IGameProcess process, GameHostState state, bool desiredRunning)
+    {
+        var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await Post(new Attach(done, process, state, desiredRunning));
+        return await done.Task;
+    }
+
+    /// <summary>
+    /// The agent is stopping but its servers keep running: lets go of a game that runs in a host, which keeps it. False
+    /// when there is none to leave (not running, stopping, or started without a host): such a server is shut down.
+    /// </summary>
+    public async Task<bool> DetachAsync()
+    {
+        var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await Post(new Detach(done));
+        return await done.Task;
+    }
 
     /// <summary>
     /// Sends a command line to the running game: to its console input, or over RCON for <c>logfile+rcon</c> games (in
@@ -210,6 +257,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             if (process is not null)
             {
                 await process.DisposeAsync();
+                Released(process);
             }
         }
 
@@ -294,6 +342,12 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             case Shutdown shutdown:
                 shutdown.Answer(HandleShutdown(shutdown.Budget));
                 break;
+            case Attach attach:
+                attach.Done.TrySetResult(HandleAttach(attach));
+                break;
+            case Detach detach:
+                detach.Done.TrySetResult(await HandleDetachAsync());
+                break;
             case WhenSettled waiter:
                 _settledWaiters.Add(waiter.Done);
                 break;
@@ -345,6 +399,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             case Grace grace when grace.Process == _lingering:
                 _lingering = null;
                 await grace.Process.DisposeAsync();
+                Released(grace.Process);
                 SweepStrays();
                 break;
         }
@@ -492,11 +547,28 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _process = process;
         _plan = plan;
         _snapshot = _snapshot with { StartedAt = process.StartedAt };
+        Interlocked.Exchange(ref _consoleEnd, 0);
+        Interlocked.Exchange(ref _logPosition, 0);
+        _hosted = process as IHostedGameProcess;
+        if (_hosted is not null)
+        {
+            _events.HostChanged(ServerId);
+        }
+
         _ = WatchExitAsync(process, generation);
+        Watch(process, plan, generation, plan.Readiness, logStart: 0);
+    }
+
+    /// <summary>
+    /// Follows a running process: its console (the process's output, or its log file), its readiness while it starts
+    /// (<paramref name="readinessCheck"/>, null when it is ready already) and its query.
+    /// </summary>
+    private void Watch(IGameProcess process, LaunchPlan plan, int generation, ReadinessDefinition? readinessCheck, long logStart)
+    {
         // Linear-time matching; the timeout only guards against a pathological line. It is wall-clock time, first match
         // included (the engine builds its states then): at 100 ms a busy machine tripped it on an ordinary line, and the
         // server then stayed Starting until the readiness timeout.
-        var readiness = plan.Readiness switch
+        var readiness = readinessCheck switch
         {
             LogPatternReadiness log => new Regex(log.Pattern, RegexOptions.NonBacktracking | RegexOptions.CultureInvariant | RegexOptions.Multiline,
                 TimeSpan.FromSeconds(1)),
@@ -507,15 +579,15 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         if (plan.Console.Mode == ManifestConsoleMode.LogfileRcon)
         {
             // The game's console is its log file; whatever reaches the pseudo console is drained and dropped.
-            _ = PumpOutputAsync(process, generation, readiness: null, toConsole: false);
-            _ = TailLogAsync(plan, generation, readiness, _watchers.Token);
+            _pumping = PumpOutputAsync(process, generation, readiness: null, toConsole: false);
+            _tailing = TailLogAsync(plan, generation, readiness, logStart, _watchers.Token);
         }
         else
         {
-            _ = PumpOutputAsync(process, generation, readiness, toConsole: true);
+            _pumping = PumpOutputAsync(process, generation, readiness, toConsole: true);
         }
 
-        switch (plan.Readiness)
+        switch (readinessCheck)
         {
             case LogPatternReadiness log:
                 PostLater(TimeSpan.FromSeconds(log.TimeoutSeconds), new ReadinessTimeout(generation));
@@ -534,8 +606,64 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
         if (plan.Query is { } query)
         {
-            _ = QueryLoopAsync(query, generation, readiness: plan.Readiness is QueryReadiness, _watchers.Token);
+            _ = QueryLoopAsync(query, generation, readiness: readinessCheck is QueryReadiness, _watchers.Token);
         }
+    }
+
+    private bool HandleAttach(Attach attach)
+    {
+        if (_process is not null || _lingering is not null || _state is not (RuntimeState.Offline or RuntimeState.Crashed))
+        {
+            return false;
+        }
+
+        // What the previous run of the agent wanted, without telling anyone again.
+        _desiredRunning = attach.DesiredRunning;
+        _exitCode = null;
+        _stopReason = null;
+        _restartTimer++;
+        var plan = _definition.Plan;
+        var generation = ++_generation;
+        _process = attach.Process;
+        _plan = plan;
+        _hosted = attach.Process as IHostedGameProcess;
+        Interlocked.Exchange(ref _consoleEnd, attach.State.ConsoleOffset);
+        Interlocked.Exchange(ref _logPosition, attach.State.LogPosition);
+
+        // Reported by the next Hello's snapshot, which the panel always takes: no change to send.
+        _state = attach.State.Ready ? RuntimeState.Running : RuntimeState.Starting;
+        _snapshot = new ServerSnapshot(ServerId, _state, ++_sequence, null, attach.Process.StartedAt);
+        LogAttached(ServerId, attach.Process.ProcessId, _state);
+
+        _ = WatchExitAsync(attach.Process, generation);
+        // A game that was still starting is checked again (a log line it printed already is not seen again: it is then
+        // considered running when its readiness times out).
+        Watch(attach.Process, plan, generation, attach.State.Ready ? null : plan.Readiness, attach.State.LogPosition);
+        return true;
+    }
+
+    private async Task<bool> HandleDetachAsync()
+    {
+        _restartTimer++; // a crash restart that was waiting must not fire in an agent that is going away
+        if (_process is not IHostedGameProcess hosted || _state is not (RuntimeState.Starting or RuntimeState.Running))
+        {
+            return false;
+        }
+
+        // Late messages about this process (its readiness, its timers) are ignored from here on.
+        _generation++;
+        StopWatchers();
+        _process = null;
+        await hosted.DetachAsync();
+        // The console is read up to where the host will resume it: what was received is written before the offsets are kept.
+        await Task.WhenAny(Task.WhenAll(_pumping, _tailing), Task.Delay(TimeSpan.FromSeconds(5), _clock));
+        if (_lingering is { } lingering)
+        {
+            _lingering = null;
+            await lingering.DisposeAsync();
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -613,9 +741,10 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     /// Follows the game's log file (<c>logfile+rcon</c>): it is the server's console, and the readiness line may be in it.
     /// Ends when the process exits (a last read takes what it wrote while quitting).
     /// </summary>
-    private async Task TailLogAsync(LaunchPlan plan, int generation, Regex? readiness, CancellationToken cancellationToken)
+    private async Task TailLogAsync(LaunchPlan plan, int generation, Regex? readiness, long start, CancellationToken cancellationToken)
     {
-        var tail = new LogTail(_files, _definition.Directory, plan.Console.LogFile!, TextEncoding(plan.Console.Encoding), _options.LogPollInterval);
+        var tail = new LogTail(_files, _definition.Directory, plan.Console.LogFile!, TextEncoding(plan.Console.Encoding), _options.LogPollInterval,
+            start);
         var lines = readiness is null ? null : new ConsoleLines();
         try
         {
@@ -623,6 +752,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             await foreach (var text in tail.ReadAsync(cancellationToken))
             {
                 _console.Write(text, _clock.GetUtcNow());
+                Interlocked.Exchange(ref _logPosition, tail.Position);
                 if (logsCommands)
                 {
                     _recentLog.Append(text);
@@ -1024,6 +1154,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         else
         {
             await process.DisposeAsync();
+            Released(process);
             SweepStrays();
         }
 
@@ -1074,6 +1205,16 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         PostLater(delay, new AutoRestart(++_restartTimer));
     }
 
+    /// <summary>A process that ran in a host is gone with it: the agent forgets the host.</summary>
+    private void Released(IGameProcess process)
+    {
+        if (process == _hosted)
+        {
+            _hosted = null;
+            _events.HostChanged(ServerId);
+        }
+    }
+
     /// <summary>Kills what the server's account still runs outside the Job (see <see cref="IGameProcessManager.TerminateStrayProcesses"/>).</summary>
     private void SweepStrays()
     {
@@ -1111,6 +1252,11 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 if (toConsole)
                 {
                     _console.Write(chunk.Text, chunk.At);
+                }
+
+                if (chunk.End >= 0 && process == _hosted)
+                {
+                    Interlocked.Exchange(ref _consoleEnd, chunk.End);
                 }
 
                 if (ready)
@@ -1169,6 +1315,10 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         _lastChange = change;
         LogTransition(ServerId, previous, state, reason);
         _events.StateChanged(change);
+        if (_hosted is not null)
+        {
+            _events.HostChanged(ServerId); // ready or not, for the next run of the agent
+        }
     }
 
     private void SetDesired(bool running)
@@ -1212,6 +1362,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: could not look for processes of its account outside its job")]
     private partial void LogStraySweepFailed(Exception exception, Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: took over its game (process {ProcessId}) from its host, {State}")]
+    private partial void LogAttached(Guid serverId, int processId, RuntimeState state);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: {Previous} → {State} ({Reason})")]
     private partial void LogTransition(Guid serverId, RuntimeState previous, RuntimeState state, StateChangeReason reason);
@@ -1319,4 +1472,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private sealed record AutoRestart(int Timer) : Message;
 
     private sealed record Grace(IGameProcess Process) : Message;
+
+    private sealed record Attach(TaskCompletionSource<bool> Done, IGameProcess Process, GameHostState State, bool DesiredRunning) : Message;
+
+    private sealed record Detach(TaskCompletionSource<bool> Done) : Message;
 }

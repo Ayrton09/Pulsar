@@ -30,6 +30,8 @@ public sealed class ServerHostTests : IAsyncDisposable
     private ServerHost? _host;
     private FileCommands? _fileCommands;
     private SteamCmdRunner? _steamCmd;
+    private readonly FakeProcessManager _games = new();
+    private InProcessHostLauncher? _launcher;
 
     public ServerHostTests()
     {
@@ -50,6 +52,11 @@ public sealed class ServerHostTests : IAsyncDisposable
 
         _fileCommands?.Dispose();
         _steamCmd?.Dispose();
+        if (_launcher is not null)
+        {
+            await _launcher.DisposeAsync();
+        }
+
         if (Directory.Exists(_root))
         {
             Directory.Delete(_root, recursive: true);
@@ -141,6 +148,95 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AGameInAHostKeepsRunningWhileTheAgentRestartsAndItsConsoleGoesOn()
+    {
+        var serverId = Stored("abcd2345");
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null))).Status);
+        var game = await StartedAsync();
+        game.Print("ready\n");
+        await WaitForAsync(host, serverId, RuntimeState.Running);
+        game.Print("line 1\n");
+        await WaitUntilAsync(() => Text(host, serverId).Contains("line 1", StringComparison.Ordinal));
+
+        await RestartAgentAsync(); // the agent stops: the game does not
+        Assert.False(game.Disposed);
+        Assert.Empty(game.Input);
+        var record = Assert.Single(_store.LoadHosts());
+        Assert.Equal((serverId, true, 13L), (record.ServerId, record.Ready, record.ConsoleOffset));
+        game.Print("while away\n");
+
+        host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(RuntimeState.Running, Assert.Single(host.Snapshots()).State); // what the first Hello reports
+        await WaitUntilAsync(() => Text(host, serverId).Contains("while away", StringComparison.Ordinal));
+        Assert.DoesNotContain("line 1", Text(host, serverId), StringComparison.Ordinal); // the panel has it already
+        Assert.Single(_games.Started); // taken over, not started again
+
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new SendConsoleInputCommand(serverId, "say hi"), null))).Status);
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new StopServerCommand(serverId), null))).Status);
+        await WaitForAsync(host, serverId, RuntimeState.Offline);
+        Assert.Equal(["say hi\r\n", "quit\r\n"], game.Input);
+        await WaitUntilAsync(() => game.Disposed && _store.LoadHosts().Count == 0);
+    }
+
+    [Fact]
+    public async Task AGameThatCrashedWhileTheAgentWasAwayIsHandledWhenItComesBack()
+    {
+        var serverId = Stored("abcd2345");
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+        var game = await StartedAsync();
+        game.Print("ready\n");
+        await WaitForAsync(host, serverId, RuntimeState.Running);
+
+        await RestartAgentAsync();
+        game.Exit(5);
+
+        host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        await WaitForAsync(host, serverId, RuntimeState.Crashed);
+        await WaitUntilAsync(() => _store.LoadHosts().Count == 0);
+        Assert.Single(_games.Started); // no restart: the server does not restart on crashes
+    }
+
+    [Fact]
+    public async Task AnUnenrollStopsTheServersInsteadOfLeavingThemRunning()
+    {
+        var serverId = Stored("abcd2345");
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+        var game = await StartedAsync();
+        game.Print("ready\n");
+        await WaitForAsync(host, serverId, RuntimeState.Running);
+        File.WriteAllText(_configs.Paths.StopServersMarker, "");
+
+        await RestartAgentAsync();
+
+        Assert.Equal(["quit\r\n"], game.Input);
+        await WaitUntilAsync(() => game.Disposed);
+        Assert.Empty(_store.LoadHosts());
+        Assert.True(_store.Load(serverId)!.ResumeOnStart);
+        Assert.False(File.Exists(_configs.Paths.StopServersMarker)); // asked once
+    }
+
+    [Fact]
+    public async Task AHostWhoseServerIsGoneIsKilledWhenTheAgentStarts()
+    {
+        _launcher = new InProcessHostLauncher(_games);
+        var orphan = _launcher.Launch(Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()));
+        _store.SaveHost(new GameHostRecord(Guid.NewGuid(), orphan, 0, 0, Ready: true));
+
+        await Host(hosted: true).StartAsync(TestContext.Current.CancellationToken);
+
+        await WaitUntilAsync(() => !_launcher.IsAlive(orphan));
+        Assert.Empty(_store.LoadHosts());
+    }
+
+    [Fact]
     public async Task ABackupSentWithAnUnusableTicketIsNotLeftOpen()
     {
         var serverId = Stored("abcd2345");
@@ -168,17 +264,57 @@ public sealed class ServerHostTests : IAsyncDisposable
         return serverId;
     }
 
-    private ServerHost Host()
+    /// <summary>The agent stops (its games keep running in their hosts unless asked otherwise) and starts again in a new host.</summary>
+    private async Task RestartAgentAsync()
+    {
+        await _host!.StopAsync(CancellationToken.None);
+        _host.Dispose();
+        _host = null;
+        _fileCommands?.Dispose();
+        _steamCmd?.Dispose();
+    }
+
+    private async Task<FakeGameProcess> StartedAsync()
+    {
+        await WaitUntilAsync(() => _games.Started.Count > 0);
+        return _games.Last;
+    }
+
+    private static string Text(ServerHost host, Guid serverId) =>
+        string.Concat(host.ConsoleOf(serverId)!.Read(null, int.MaxValue).Select(e => e.Text));
+
+    private static Task WaitForAsync(ServerHost host, Guid serverId, RuntimeState state) =>
+        WaitUntilAsync(() => host.Snapshots().Single(s => s.ServerId == serverId).State == state);
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "Timed out.");
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+    }
+
+    private ServerHost Host(bool hosted = false)
     {
         var channel = new PanelChannel();
         var files = new DirectServerFiles();
-        var processes = new FakeProcessManager();
+        var processes = hosted ? _games : new FakeProcessManager();
+        GameHostManager? hosts = null;
+        if (hosted)
+        {
+            _launcher ??= new InProcessHostLauncher(_games);
+            hosts = new GameHostManager(_games, _launcher, NullLogger<GameHostManager>.Instance);
+        }
+
         var install = new InstallOptions();
         _steamCmd = new SteamCmdRunner(processes, new NoSteamCmd(), files, new DirectServerFileManager(), new SteamLoginStore(_configs.Paths, new PlainStateProtector()), new SteamCmdOptions(), TimeProvider.System, NullLogger<SteamCmdRunner>.Instance);
         _fileCommands = new FileCommands(new DirectServerFileManager(), channel, new FileCommandOptions(), NullLogger<FileCommands>.Instance);
         _host = new ServerHost(_configs, _store, _provisioner, processes, new InstallSteps(install, files), _steamCmd, files, new NoRcon(),
             new UnmanagedFirewall(), _fileCommands, new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance), install,
-            channel, new SupervisorOptions(), new ServerHostOptions { ConsoleLog = null }, TimeProvider.System, NullLoggerFactory.Instance);
+            channel, new SupervisorOptions(), new ServerHostOptions { ConsoleLog = null }, TimeProvider.System, NullLoggerFactory.Instance,
+            hosts: hosts);
         return _host;
     }
 
