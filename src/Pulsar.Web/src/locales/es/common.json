@@ -468,7 +468,8 @@
       "allocation_notes_too_long": "Las notas son demasiado largas.",
       "allocation_taken": "El nodo ya tiene una asignación en ese puerto (en esa dirección o en todas las interfaces).",
       "allocation_not_found": "Esa asignación no existe.",
-      "allocation_in_use": "Un servidor usa esa asignación."
+      "allocation_in_use": "Un servidor usa esa asignación.",
+      "approval_batch_invalid": "Aprobá de 1 a 200 nodos por vez."
     },
     "panel_key": {
       "rotation_in_progress": "La clave anterior todavía se está retirando. Retirala antes de volver a rotar.",
@@ -627,6 +628,13 @@
       "too_many": "El panel tiene como máximo 20 cuentas de Steam.",
       "unsupported": "El agente del nodo no puede iniciar SteamCMD con una cuenta de Steam (actualizá el agente).",
       "guard_code_invalid": "Un código de Steam Guard tiene 5 letras o dígitos."
+    },
+    "enrollment_token": {
+      "name_invalid": "Poné un nombre de una línea, de hasta 64 caracteres.",
+      "uses_invalid": "Un token enrola de 1 a 1000 máquinas.",
+      "lifetime_invalid": "Un token vale de 1 hora a 90 días.",
+      "too_many": "El panel ya tiene 50 tokens que se pueden usar: revocá uno primero.",
+      "not_found": "Ese token ya no existe."
     }
   },
   "account": {
@@ -745,11 +753,13 @@
       "title_one": "{{count}} nodo espera aprobación",
       "title_other": "{{count}} nodos esperan aprobación",
       "hint": "Se enrolaron con un token reutilizable que pide aprobación: sus agentes se conectan cuando los aprobás. Si no reconocés alguno, podés borrarlo.",
-      "machine": "{{os}}, enrolado el {{date}}",
+      "machine": "{{hostname}}, {{os}}, enrolado el {{date}}",
       "approve_one": "Aprobar {{count}} nodo",
       "approve_other": "Aprobar {{count}} nodos",
       "notice": "Este nodo se enroló con un token reutilizable que pide aprobación: su agente no puede conectarse hasta que lo apruebes. Fijate que la máquina sea tuya (abajo están su nombre y su Windows).",
-      "approveOne": "Aprobar"
+      "approveOne": "Aprobar",
+      "origin": "Token {{token}}, clave {{fingerprint}}",
+      "selectAll": "Seleccionar todos"
     }
   },
   "servers": {

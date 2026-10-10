@@ -9,10 +9,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Time.Testing;
+using Pulsar.Api.Nodes;
 using Pulsar.Api.Notifications;
 using Pulsar.Api.Tests.Auth;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Nodes;
 using Pulsar.Application.Notifications;
 using Pulsar.Contracts;
 using Pulsar.Domain.Access;
@@ -290,6 +292,41 @@ public sealed class NotificationTests(NotificationApiFactory factory) : IClassFi
         Assert.Equal(NotificationSeverity.Recovered, online.Message.Severity);
         var disk = deliveries.Single(d => d.Event == NotificationEvent.NodeDiskLow);
         Assert.Contains(disk.Message.Fields, f => f.Name == @"D:\" && f.Value == "4 GB free of 100 GB (4 %)");
+    }
+
+    [DatabaseFact]
+    public async Task ANodeApprovedAfterAWaitGetsTheWholeGraceToConnect()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var channel = await CreateAsync(admin, Channel("approved", NotificationKind.Email) with { Recipients = ["ops@example.com"] });
+        using var created = await admin.PostAsync("/api/v1/enrollment-tokens", new CreateEnrollmentTokenRequest("Notified", 1, 24, true));
+        await AccessScenario.EnsureSuccessAsync(created);
+        var token = (await created.Content.ReadFromJsonAsync<CreatedEnrollmentToken>(AccessScenario.Json, Ct))!;
+        await using var agent = new TestAgent(factory) { Hostname = "APPROVED-LATE" };
+        await agent.EnrollAsync(token.Value, token.PanelKeyFingerprint);
+        var grace = TimeSpan.FromMinutes((await GetJsonAsync<NotificationSettingsView>(admin, "/api/v1/notifications/settings")).NodeOfflineMinutes);
+
+        // It waited two days for approval (its agent last asked then), with the panel up all along.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow.AddDays(-2));
+        var watch = new NodeWatch(factory.Services.GetRequiredService<IServiceScopeFactory>(), clock);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Nodes.Where(n => n.Id == new NodeId(agent.NodeId))
+                .ExecuteUpdateAsync(s => s.SetProperty(n => n.LastSeenAt, DateTimeOffset.UtcNow.AddDays(-2)), Ct);
+        }
+
+        clock.Advance(TimeSpan.FromDays(2));
+        using (var approved = await admin.PostAsync($"/api/v1/nodes/{agent.NodeId}/approve"))
+        {
+            await AccessScenario.EnsureSuccessAsync(approved);
+        }
+
+        // Its agent has the grace period from the approval to connect, as a new node would.
+        await watch.SweepAsync(Ct);
+        Assert.Empty(await DeliveriesForAsync(channel.Id, agent.NodeId));
+        clock.Advance(grace + TimeSpan.FromMinutes(1));
+        await watch.SweepAsync(Ct);
+        Assert.Equal(["node:" + agent.NodeId + ":offline"], (await DeliveriesForAsync(channel.Id, agent.NodeId)).Select(d => d.Subject));
     }
 
     /// <summary>The channel's deliveries about <paramref name="nodeId"/> (other tests' nodes go offline too).</summary>

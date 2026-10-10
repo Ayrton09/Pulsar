@@ -17,6 +17,17 @@ const operator = {
 };
 const viewer = { ...adminUser, permissions: ['node.view'] };
 
+const inventory: Schemas['NodeInventoryView'] = {
+  hostname: 'BA-GAMES-01',
+  osDescription: 'Windows Server 2025 Datacenter',
+  osBuild: '26100.4061',
+  cpuModel: 'AMD Ryzen 9 7950X',
+  logicalCores: 32,
+  memoryTotalBytes: 64 * 1024 ** 3,
+  serversRoot: 'D:\\PulsarServers',
+  agentVersion: '0.1.0',
+  protocolVersion: 1,
+};
 const online: Schemas['NodeSummary'] = {
   id: '0192f1a0-0000-7000-8000-0000000000a1',
   name: 'Buenos Aires 1',
@@ -25,17 +36,7 @@ const online: Schemas['NodeSummary'] = {
   status: 'active',
   connected: true,
   lastSeenAt: '2026-10-01T12:00:00Z',
-  inventory: {
-    hostname: 'BA-GAMES-01',
-    osDescription: 'Windows Server 2025 Datacenter',
-    osBuild: '26100.4061',
-    cpuModel: 'AMD Ryzen 9 7950X',
-    logicalCores: 32,
-    memoryTotalBytes: 64 * 1024 ** 3,
-    serversRoot: 'D:\\PulsarServers',
-    agentVersion: '0.1.0',
-    protocolVersion: 1,
-  },
+  inventory,
   metrics: {
     at: '2026-10-01T12:00:00Z',
     cpuPercent: 12.5,
@@ -46,6 +47,8 @@ const online: Schemas['NodeSummary'] = {
   },
   createdAt: '2026-09-01T12:00:00Z',
   panelKeyTrust: 'current',
+  enrollmentTokenName: null,
+  credentialFingerprint: 'sha256:node-key-fingerprint',
 };
 const offline = { ...online, id: '0192f1a0-0000-7000-8000-0000000000a2', name: 'Backup', connected: false };
 const pending: Schemas['NodeSummary'] = {
@@ -65,11 +68,16 @@ const awaiting: Schemas['NodeSummary'] = {
   status: 'pendingApproval',
   connected: false,
   metrics: null,
+  inventory: { ...inventory, hostname: 'FLEET-01' },
+  enrollmentTokenName: 'Intune rollout',
+  credentialFingerprint: 'sha256:fleet-01-key',
 };
 const awaitingToo: Schemas['NodeSummary'] = {
   ...awaiting,
   id: '0192f1a0-0000-7000-8000-0000000000a5',
   name: 'FLEET-02',
+  inventory: { ...inventory, hostname: 'FLEET-02' },
+  credentialFingerprint: 'sha256:fleet-02-key',
 };
 const credential: Schemas['NodeCredentialView'] = {
   id: '0192f1a0-0000-7000-8000-0000000000c1',
@@ -200,7 +208,7 @@ describe('nodes page', () => {
 });
 
 describe('bulk enrollment', () => {
-  it('approves the nodes left selected, together', async () => {
+  it('starts with nothing selected and approves only the nodes checked', async () => {
     let body: unknown;
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
@@ -215,10 +223,39 @@ describe('bulk enrollment', () => {
 
     const card = await screen.findByRole('region', { name: '2 nodes wait for approval' });
     expect(within(screen.getByRole('table', { name: 'Nodes' })).getAllByText('Awaiting approval')).toHaveLength(2);
-    await user.click(within(card).getByRole('checkbox', { name: /FLEET-02/ }));
+    const first = within(card).getByRole('checkbox', { name: /^FLEET-01/ });
+    expect(first).not.toBeChecked();
+    expect(within(card).getByRole('checkbox', { name: /^FLEET-02/ })).not.toBeChecked();
+    expect(within(card).getByRole('button', { name: 'Approve 0 nodes' })).toBeDisabled();
+    // What to check the machine by: its host name, the token that created it and its key.
+    expect(first).toHaveAccessibleName(/FLEET-01, Windows Server 2025 Datacenter/);
+    expect(first).toHaveAccessibleName(/Token Intune rollout, key sha256:fleet-01-key/);
+
+    await user.click(first);
     await user.click(within(card).getByRole('button', { name: 'Approve 1 node' }));
 
     await vi.waitFor(() => expect(body).toEqual({ nodeIds: [awaiting.id] }));
+  });
+
+  it('selects every node shown at once', async () => {
+    let body: unknown;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/nodes': () => json([awaiting, awaitingToo]),
+      'POST /api/v1/nodes/approve': async (request) => {
+        body = await request.json();
+        return json([]);
+      },
+    });
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    const card = await screen.findByRole('region', { name: '2 nodes wait for approval' });
+    await user.click(within(card).getByRole('checkbox', { name: 'Select all' }));
+    expect(within(card).getByRole('checkbox', { name: /^FLEET-02/ })).toBeChecked();
+    await user.click(within(card).getByRole('button', { name: 'Approve 2 nodes' }));
+
+    await vi.waitFor(() => expect(body).toEqual({ nodeIds: [awaiting.id, awaitingToo.id] }));
   });
 
   it('creates a reusable token and shows it once in the MSI and script commands', async () => {

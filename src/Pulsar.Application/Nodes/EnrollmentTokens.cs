@@ -46,6 +46,8 @@ public sealed class EnrollmentTokens(IPulsarDbContext db, IPanelKeyRing keys, IR
         CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow();
+        // A soft cap, counted before the insert: tokens created at the same moment may all pass it, which is
+        // harmless (it keeps the list short; it is no security boundary), so no lock is taken.
         var usable = await db.ReusableEnrollmentTokens.CountAsync(t => t.RevokedAt == null && t.ExpiresAt > now && t.Uses < t.MaxUses, cancellationToken);
         if (usable >= MaxUsable)
         {

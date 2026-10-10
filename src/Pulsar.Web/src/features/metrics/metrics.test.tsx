@@ -166,6 +166,8 @@ describe('node usage history', () => {
     metrics: null,
     createdAt: '2026-09-01T12:00:00Z',
     panelKeyTrust: 'current',
+    enrollmentTokenName: null,
+    credentialFingerprint: null,
   };
   const nodeViewer = { ...adminUser, permissions: ['node.view'] };
 

@@ -468,7 +468,8 @@
       "allocation_notes_too_long": "Notes are too long.",
       "allocation_taken": "The node already has an allocation on that port (on that address or on every interface).",
       "allocation_not_found": "That allocation does not exist.",
-      "allocation_in_use": "A server uses that allocation."
+      "allocation_in_use": "A server uses that allocation.",
+      "approval_batch_invalid": "Approve 1 to 200 nodes at a time."
     },
     "panel_key": {
       "rotation_in_progress": "The previous key is still being retired. Retire it before rotating again.",
@@ -627,6 +628,13 @@
       "too_many": "The panel has at most 20 Steam accounts.",
       "unsupported": "The node's agent cannot sign SteamCMD in with a Steam account (update the agent).",
       "guard_code_invalid": "A Steam Guard code is 5 letters or digits."
+    },
+    "enrollment_token": {
+      "name_invalid": "Give the token a name of one line, up to 64 characters.",
+      "uses_invalid": "A token enrolls 1 to 1000 machines.",
+      "lifetime_invalid": "A token is valid for 1 hour to 90 days.",
+      "too_many": "The panel already has 50 tokens that can be used: revoke one first.",
+      "not_found": "That token does not exist any more."
     }
   },
   "account": {
@@ -745,11 +753,13 @@
       "title_one": "{{count}} node waits for approval",
       "title_other": "{{count}} nodes wait for approval",
       "hint": "They enrolled with a reusable token that requires approval: their agents connect once you approve them. A node you do not recognize can be deleted instead.",
-      "machine": "{{os}}, enrolled {{date}}",
+      "machine": "{{hostname}}, {{os}}, enrolled {{date}}",
       "approve_one": "Approve {{count}} node",
       "approve_other": "Approve {{count}} nodes",
       "notice": "This node enrolled with a reusable token that requires approval: its agent cannot connect until it is approved. Check that the machine is yours (its name and Windows are below).",
-      "approveOne": "Approve"
+      "approveOne": "Approve",
+      "origin": "Token {{token}}, key {{fingerprint}}",
+      "selectAll": "Select all"
     }
   },
   "servers": {

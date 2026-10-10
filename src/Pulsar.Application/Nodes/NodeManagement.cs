@@ -36,6 +36,8 @@ public sealed record NodeMetricsView(DateTimeOffset At, double CpuPercent, long 
     }
 }
 
+/// <param name="EnrollmentTokenName">The reusable enrollment token that created the node, when one did (and still exists).</param>
+/// <param name="CredentialFingerprint">The fingerprint of the node's active key, to check a machine before approving it.</param>
 public sealed record NodeSummary(
     Guid Id,
     string Name,
@@ -47,7 +49,9 @@ public sealed record NodeSummary(
     NodeInventoryView? Inventory,
     NodeMetricsView? Metrics,
     DateTimeOffset CreatedAt,
-    PanelKeyTrust PanelKeyTrust);
+    PanelKeyTrust PanelKeyTrust,
+    string? EnrollmentTokenName,
+    string? CredentialFingerprint);
 
 /// <summary>Whether the node's agent trusts the panel's active signing key (it may still pin only a retiring one).</summary>
 public enum PanelKeyTrust
@@ -104,8 +108,7 @@ public sealed class NodeManagement(
             nodes = [.. nodes.Where(n => sees(n.Id))];
         }
 
-        var activeKeyId = await ActiveKeyIdAsync(cancellationToken);
-        return [.. nodes.Select(n => Summarize(n, activeKeyId))];
+        return await SummarizeAsync(nodes, cancellationToken);
     }
 
     public async Task<Result<NodeDetails>> GetAsync(NodeId id, CancellationToken cancellationToken)
@@ -121,7 +124,7 @@ public sealed class NodeManagement(
             .OrderByDescending(c => c.CreatedAt)
             .Select(c => new NodeCredentialView(c.Id, c.Fingerprint, c.KeyStorage, c.Status, c.CreatedAt, c.LastUsedAt, c.RevokedAt, c.RevokeReason, c.SupersededAt))
             .ToListAsync(cancellationToken);
-        return new NodeDetails(Summarize(node, await ActiveKeyIdAsync(cancellationToken)), credentials);
+        return new NodeDetails(await SummarizeAsync(node, cancellationToken), credentials);
     }
 
     public async Task<Result<CreatedNode>> CreateAsync(string name, string? description, string? publicHost, CancellationToken cancellationToken)
@@ -143,7 +146,7 @@ public sealed class NodeManagement(
         var instructions = await IssueTokenAsync(node, now, cancellationToken);
         audit.Record(AuditActions.Node.Created, metadata: new { name = node.Name }).WithNode(node.Id).WithTarget("node", node.Id.ToString());
         await db.SaveChangesAsync(cancellationToken);
-        return new CreatedNode(Summarize(node, await ActiveKeyIdAsync(cancellationToken)), instructions);
+        return new CreatedNode(await SummarizeAsync(node, cancellationToken), instructions);
     }
 
     public async Task<Result<NodeSummary>> UpdateAsync(NodeId id, string name, string? description, string? publicHost, CancellationToken cancellationToken)
@@ -167,7 +170,7 @@ public sealed class NodeManagement(
 
         audit.Record(AuditActions.Node.Updated, metadata: new { name = node.Name }).WithNode(node.Id).WithTarget("node", node.Id.ToString());
         await db.SaveChangesAsync(cancellationToken);
-        return Summarize(node, await ActiveKeyIdAsync(cancellationToken));
+        return await SummarizeAsync(node, cancellationToken);
     }
 
     /// <summary>
@@ -198,8 +201,7 @@ public sealed class NodeManagement(
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        var activeKey = await ActiveKeyIdAsync(cancellationToken);
-        return nodes.OrderBy(n => n.NormalizedName).Select(n => Summarize(n, activeKey)).ToList();
+        return await SummarizeAsync([.. nodes.OrderBy(n => n.NormalizedName)], cancellationToken);
     }
 
     /// <summary>The most nodes one approval takes.</summary>
@@ -324,7 +326,7 @@ public sealed class NodeManagement(
             CutOff(id);
         }
 
-        return Summarize(node, await ActiveKeyIdAsync(cancellationToken));
+        return await SummarizeAsync(node, cancellationToken);
     }
 
     private async Task<EnrollmentInstructions> IssueTokenAsync(Node node, DateTimeOffset now, CancellationToken cancellationToken)
@@ -347,7 +349,27 @@ public sealed class NodeManagement(
     private async Task<string> ActiveKeyIdAsync(CancellationToken cancellationToken) =>
         (await keys.GetPublicKeysAsync(cancellationToken))[0].KeyId;
 
-    private NodeSummary Summarize(Node node, string activeKeyId)
+    private async Task<NodeSummary> SummarizeAsync(Node node, CancellationToken cancellationToken) =>
+        (await SummarizeAsync([node], cancellationToken))[0];
+
+    /// <summary>The nodes as the UI lists them, with their active key and the reusable token that created them (to approve them knowingly).</summary>
+    private async Task<List<NodeSummary>> SummarizeAsync(IReadOnlyList<Node> nodes, CancellationToken cancellationToken)
+    {
+        var activeKeyId = await ActiveKeyIdAsync(cancellationToken);
+        var ids = nodes.Select(n => n.Id).ToList();
+        var fingerprints = await db.NodeCredentials.AsNoTracking()
+            .Where(c => ids.Contains(c.NodeId) && c.Status == NodeCredentialStatus.Active)
+            .Select(c => new { c.NodeId, c.Fingerprint })
+            .ToDictionaryAsync(c => c.NodeId, c => c.Fingerprint, cancellationToken);
+        var tokenIds = nodes.Where(n => n.EnrollmentTokenId is not null).Select(n => n.EnrollmentTokenId!.Value).Distinct().ToList();
+        var tokens = tokenIds.Count == 0
+            ? []
+            : await db.ReusableEnrollmentTokens.AsNoTracking().Where(t => tokenIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Name, cancellationToken);
+        return [.. nodes.Select(n => Summarize(n, activeKeyId, n.EnrollmentTokenId is { } token ? tokens.GetValueOrDefault(token) : null,
+            fingerprints.GetValueOrDefault(n.Id)))];
+    }
+
+    private NodeSummary Summarize(Node node, string activeKeyId, string? enrollmentTokenName, string? credentialFingerprint)
     {
         // A connection whose session ended (revocation, key rotation) is about to close or be replaced: not connected.
         var connection = connections.Find(node.Id) is { } live && sessions.IsActive(live.SessionId) ? live : null;
@@ -356,7 +378,8 @@ public sealed class NodeManagement(
             : null;
         var metrics = connection?.LastMetrics is { } m ? NodeMetricsView.From(m) : null;
         return new NodeSummary(node.Id.Value, node.Name, node.Description, node.PublicHost, node.Status, connection is not null,
-            node.LastSeenAt, inventory, metrics, node.CreatedAt, Trust(connection?.PinnedPanelKeys ?? node.PinnedPanelKeys, activeKeyId));
+            node.LastSeenAt, inventory, metrics, node.CreatedAt, Trust(connection?.PinnedPanelKeys ?? node.PinnedPanelKeys, activeKeyId),
+            enrollmentTokenName, credentialFingerprint);
     }
 
     private static PanelKeyTrust Trust(IReadOnlyList<string>? pinned, string activeKeyId) => pinned switch

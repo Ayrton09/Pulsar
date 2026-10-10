@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -183,8 +184,17 @@ internal static class ApiServiceCollectionExtensions
                     ? RateLimitPartition.GetFixedWindowLimiter(partition,
                         _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.ApiKeyPermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
                     : RateLimitPartition.GetNoLimiter(""));
-            options.OnRejected = (context, _) => new ValueTask(WriteProblemAsync(context.HttpContext,
-                StatusCodes.Status429TooManyRequests, "rate_limit.exceeded", "Too many attempts. Try again in a minute."));
+            options.OnRejected = (context, _) =>
+            {
+                // When the window ends: agents enrolling together (a rollout behind one address) wait that long.
+                if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+                {
+                    context.HttpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+                }
+
+                return new ValueTask(WriteProblemAsync(context.HttpContext,
+                    StatusCodes.Status429TooManyRequests, "rate_limit.exceeded", "Too many attempts. Try again in a minute."));
+            };
         });
     }
 
