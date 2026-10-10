@@ -411,6 +411,34 @@ public sealed class GameHostTests : IAsyncDisposable
         }
     }
 
+    [Fact]
+    public void AFailedCopyOfTheProgramLeavesNothingBehind()
+    {
+        // Tried again at every start while it fails (a full disk): each try must not leave another partial copy.
+        var root = Directory.CreateTempSubdirectory("pulsar-host-programs-").FullName;
+        try
+        {
+            var program = Path.Combine(root, "program");
+            var copies = Path.Combine(root, "copies");
+            Directory.CreateDirectory(Path.Combine(program, "runtimes"));
+            File.WriteAllText(Path.Combine(program, "PulsarAgent.exe"), "version 1");
+            File.WriteAllText(Path.Combine(program, "runtimes", "native.dll"), "native");
+
+            using (new FileStream(Path.Combine(program, "runtimes", "native.dll"), FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                Assert.ThrowsAny<IOException>(() => GameHostProgram.Prepare(program, "PulsarAgent.exe", copies));
+                Assert.ThrowsAny<IOException>(() => GameHostProgram.Prepare(program, "PulsarAgent.exe", copies));
+            }
+
+            Assert.Empty(Directory.GetDirectories(copies));
+            Assert.Equal("version 1", File.ReadAllText(GameHostProgram.Prepare(program, "PulsarAgent.exe", copies)));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static ProcessLaunchSpec Spec() =>
         new(Guid.Parse("01a10000-0000-7000-8000-000000000001"), @"C:\servers\abc", "game.exe", ["-port", "27015"], ".",
             new Dictionary<string, string> { ["GAME_MODE"] = "casual" }, ConsoleMode.Pty, ConsoleEncoding.Utf8, ProcessIdentity.Account("pulsar_abc"),
@@ -460,9 +488,12 @@ internal sealed class InProcessHostLauncher(IGameProcessManager games, GameHostO
     /// <summary>False: every pipe looks served by another process than its host's.</summary>
     public bool Trusted { get; set; } = true;
 
-    public GameHostReference Launch(Guid serverId, string pipe)
+    public GameHostReference Launch(Guid serverId, string pipe) => Launch(serverId, pipe, options ?? new GameHostOptions());
+
+    /// <summary>A host with options of its own (one of another protocol version among current ones, say).</summary>
+    public GameHostReference Launch(Guid serverId, string pipe, GameHostOptions hostOptions)
     {
-        var service = new GameHostService(games, serverId, pipe, options ?? new GameHostOptions(), TimeProvider.System,
+        var service = new GameHostService(games, serverId, pipe, hostOptions, TimeProvider.System,
             NullLogger<GameHostService>.Instance);
         var kill = new CancellationTokenSource();
         var reference = new GameHostReference(pipe, Interlocked.Increment(ref _nextId), DateTimeOffset.UtcNow);

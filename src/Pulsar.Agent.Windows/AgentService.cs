@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using Microsoft.Win32;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.Services;
@@ -132,6 +133,13 @@ public static class AgentService
 
             Thread.Sleep(250);
         }
+    }
+
+    /// <summary>The command line the service runs, null when it is not installed; reading it does not need administrator rights.</summary>
+    public static string? CommandLine()
+    {
+        using var key = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{Name}");
+        return key?.GetValue("ImagePath") as string;
     }
 
     /// <summary>Current state; reading it does not need administrator rights.</summary>

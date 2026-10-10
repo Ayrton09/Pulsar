@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Panel;
@@ -59,7 +60,11 @@ internal static class AgentCommands
     public static async Task<int> EnrollAsync(CommandLine line)
     {
         line.Allow("panel", "token", "panel-key", "servers-root", "backups-root", "no-service", "dev", "data-dir", "log-file");
-        using var log = CommandLog.Open(line.Value("log-file"), "enroll");
+        return await LoggedAsync(line, "enroll", () => EnrollCoreAsync(line));
+    }
+
+    private static async Task<int> EnrollCoreAsync(CommandLine line)
+    {
         var development = line.Has("dev");
         var installService = !development && !line.Has("no-service");
         if (line.Value("token") == "-" && !Console.IsInputRedirected)
@@ -245,10 +250,14 @@ internal static class AgentCommands
     public static async Task<int> UnenrollAsync(CommandLine line)
     {
         line.Allow("data-dir", "log-file");
-        using var log = CommandLog.Open(line.Value("log-file"), "unenroll");
-        var paths = Paths(line);
+        return await LoggedAsync(line, "unenroll", () => UnenrollCoreAsync(Paths(line)));
+    }
+
+    private static async Task<int> UnenrollCoreAsync(AgentPaths paths)
+    {
         var configs = new AgentConfigStore(paths);
         AgentConfig? config;
+        var unreadable = false;
         try
         {
             config = configs.Load();
@@ -258,14 +267,32 @@ internal static class AgentCommands
             await Console.Error.WriteLineAsync($"{paths.Root} is readable only by administrators: run this from an elevated prompt.");
             return 1;
         }
-
-        if (config is null)
+        catch (Exception ex) when (ex is JsonException or InvalidDataException or IOException or NotSupportedException)
         {
-            Console.WriteLine($"This agent is not enrolled ({paths.ConfigFile} not found).");
-            return 0;
+            // Never fixed by a retry (the MSI's uninstall would fail for good): the rest is removed without it.
+            await Console.Error.WriteLineAsync($"{paths.ConfigFile} cannot be read ({ex.Message}): the node key it names cannot be found, so it " +
+                "stays in the machine's key store. Removing the service, the game servers and the configuration anyway.");
+            config = null;
+            unreadable = true;
         }
 
-        if (!config.Development)
+        // Without a configuration, the service is this agent's when it runs with this state directory (a development
+        // agent never runs as the service, and its own state directory is never the service's).
+        var service = config is null ? ServiceRunsFrom(paths) : !config.Development;
+        if (config is null && !unreadable)
+        {
+            if (!service)
+            {
+                Console.WriteLine($"This agent is not enrolled ({paths.ConfigFile} not found).");
+                return 0;
+            }
+
+            // Deleted by hand, say: the service and the games it left would otherwise outlive the program.
+            Console.WriteLine($"This agent is not enrolled ({paths.ConfigFile} not found), but the {AgentService.Name} service runs with {paths.Root}: " +
+                "removing it and the game servers it left.");
+        }
+
+        if (service)
         {
             if (!WindowsDirectorySecurity.IsElevated())
             {
@@ -309,13 +336,71 @@ internal static class AgentCommands
             await Console.Error.WriteLineAsync($"{paths.HostProgramsDirectory} could not be deleted ({ex.Message}); delete it by hand.");
         }
 
-        new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance).Delete(config.Key);
+        if (config is not null)
+        {
+            new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance).Delete(config.Key);
+        }
+
         File.Delete(paths.ConfigFile);
+        var removed = (config is not null ? "the node key and " : string.Empty) + "the configuration are deleted" +
+            (service ? " and the service is removed" : string.Empty);
         Console.WriteLine($"""
-            This machine is no longer enrolled: the node key and the configuration are deleted{(config.Development ? string.Empty : " and the service is removed")}.
-            Delete node {config.NodeId} in the panel too (or re-enroll this machine with a new command).
+            This machine is no longer enrolled: {removed}.
+            Delete {(config is not null ? $"node {config.NodeId}" : "its node")} in the panel too (or re-enroll this machine with a new command).
             """);
         return 0;
+    }
+
+    /// <summary>
+    /// Runs a command whose output may go to a log file (all the MSI's custom actions keep of it): an unexpected exception
+    /// is printed through that log too, where the runtime would print it past the log, and fails the command.
+    /// </summary>
+    private static async Task<int> LoggedAsync(CommandLine line, string command, Func<Task<int>> run)
+    {
+        using var log = CommandLog.Open(line.Value("log-file"), command);
+        try
+        {
+            return await run();
+        }
+        catch (Exception ex) when (ex is not UsageException)
+        {
+            await Console.Error.WriteLineAsync($"PulsarAgent {command} failed: {ex}");
+            return 1;
+        }
+    }
+
+    /// <summary>Whether the PulsarAgent service runs with this state directory.</summary>
+    private static bool ServiceRunsFrom(AgentPaths paths) => AgentService.CommandLine() is { } commandLine
+        && string.Equals(Path.TrimEndingDirectorySeparator(ServiceDataDirectory(commandLine)), Path.TrimEndingDirectorySeparator(paths.Root),
+            StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The state directory a service command line (<c>"&lt;exe&gt;" run [--data-dir "&lt;dir&gt;"]</c>, see
+    /// <see cref="ServiceArguments"/>) runs with: the default one unless it names another.
+    /// </summary>
+    internal static string ServiceDataDirectory(string commandLine)
+    {
+        ArgumentNullException.ThrowIfNull(commandLine);
+        var arguments = new List<string>();
+        for (var i = 0; i < commandLine.Length;)
+        {
+            if (char.IsWhiteSpace(commandLine[i]))
+            {
+                i++;
+                continue;
+            }
+
+            // A quoted argument runs to the next quote (paths hold no quotes), any other to the next space.
+            var quoted = commandLine[i] == '"';
+            var start = quoted ? i + 1 : i;
+            var end = quoted ? commandLine.IndexOf('"', start) : commandLine.IndexOfAny([' ', '\t'], start);
+            end = end < 0 ? commandLine.Length : end;
+            arguments.Add(commandLine[start..end]);
+            i = quoted ? end + 1 : end;
+        }
+
+        var index = arguments.FindIndex(a => string.Equals(a, "--data-dir", StringComparison.OrdinalIgnoreCase));
+        return Path.GetFullPath(index >= 0 && index + 1 < arguments.Count ? arguments[index + 1] : AgentPaths.DefaultRoot);
     }
 
     public static async Task<int> ServiceAsync(CommandLine line)

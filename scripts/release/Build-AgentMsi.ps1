@@ -197,6 +197,15 @@ try {
         REINSTALLMODE = 'amus'
         # Extra arguments for "enroll" when SERVERSROOT is given (set below by a type 51 action).
         SERVERSROOTARGUMENT = ' '
+        # The package stops and starts the service itself (ServiceControl, and "unenroll" on uninstall, which asks it to
+        # stop its game servers first). Restart Manager would stop it earlier, at InstallValidate, because it holds the
+        # package's files: the agent would leave its games running in their hosts, and "unenroll" would then find the
+        # service stopped and kill them instead of stopping them. Nothing else here needs it (the hosts run from copies
+        # of the program in the state directory, not from INSTALLDIR); a file still in use is replaced at the next reboot.
+        MSIRESTARTMANAGERCONTROL = 'Disable'
+        # Never restart the machine on its own: it runs game servers, and silent installs (Intune, group policies)
+        # have nobody to ask. A file that was still in use is replaced whenever the machine next restarts.
+        REBOOT = 'ReallySuppress'
     }
     foreach ($name in $properties.Keys) { Insert 'Property' @('Property', 'Value') @($name, $properties[$name]) }
 
@@ -265,7 +274,9 @@ try {
     Insert 'CustomAction' @('Action', 'Type', 'Source', 'Target', 'ExtendedType') @('UnenrollAgent', (18 + 1024 + 2048), $exe.Key, "unenroll --log-file `"$logs\unenroll.log`"", $null)
 
     # The service is created by "enroll" (it checks its executable's permissions first); the package only stops it
-    # before replacing the program and starts it again after (2 + 1 on install, 32 on uninstall).
+    # before replacing the program and starts it again after (2 + 1 on install, 32 on uninstall). Not 128 (delete on
+    # uninstall) as a safety net for a failed "unenroll": an upgrade uninstalls the older package, whose components
+    # would then delete the service, and nothing creates it again ("enroll" runs on the first install only).
     Insert 'ServiceControl' @('ServiceControl', 'Name', 'Event', 'Arguments', 'Wait', 'Component_') @('AgentService', $ServiceName, (1 + 2 + 32), $null, 1, $exe.Component)
 
     $firstInstall = 'NOT Installed AND NOT OLDERFOUND'

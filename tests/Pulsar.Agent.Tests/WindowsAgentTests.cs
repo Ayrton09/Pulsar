@@ -104,6 +104,69 @@ public sealed class WindowsAgentTests
     }
 
     [WindowsFact]
+    public async Task UnenrollWritesWhyItFailedToItsLog()
+    {
+        // The MSI only keeps the log: an exception the runtime printed itself would be missing from it.
+        var root = Directory.CreateTempSubdirectory("pulsar-unenroll-").FullName;
+        var logFile = Path.Combine(root, "logs", "unenroll.log");
+        try
+        {
+            var paths = new AgentPaths(root);
+            new AgentConfigStore(paths).Save(new AgentConfig(new Uri("https://panel.example.com/"), Guid.NewGuid(), Guid.NewGuid(),
+                new NodeKeyReference("PulsarAgentTest-missing", NodeKeyScope.User, "unknown-storage"), [], null, DateTimeOffset.UtcNow,
+                Development: true));
+
+            var exit = await AgentCommands.UnenrollAsync(CommandLine.Parse(["unenroll", "--data-dir", root, "--log-file", logFile],
+                AgentCommands.Flags));
+
+            Assert.Equal(1, exit);
+            Assert.Contains("Unknown key storage 'unknown-storage'", await File.ReadAllTextAsync(logFile, TestContext.Current.CancellationToken),
+                StringComparison.Ordinal);
+            Assert.True(File.Exists(paths.ConfigFile)); // kept for a retry
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [WindowsFact]
+    public async Task AnUnreadableConfigurationIsUnenrolledWithoutItsKey()
+    {
+        var root = Directory.CreateTempSubdirectory("pulsar-unenroll-").FullName;
+        var logFile = Path.Combine(root, "logs", "unenroll.log");
+        try
+        {
+            var paths = new AgentPaths(root);
+            Directory.CreateDirectory(paths.ConfigDirectory);
+            await File.WriteAllTextAsync(paths.ConfigFile, "{ \"panel\": ", TestContext.Current.CancellationToken);
+            Directory.CreateDirectory(Path.Combine(paths.HostProgramsDirectory, "0123456789abcdef"));
+
+            var exit = await AgentCommands.UnenrollAsync(CommandLine.Parse(["unenroll", "--data-dir", root, "--log-file", logFile],
+                AgentCommands.Flags));
+
+            Assert.Equal(0, exit);
+            Assert.False(File.Exists(paths.ConfigFile));
+            Assert.False(Directory.Exists(paths.HostProgramsDirectory));
+            Assert.Contains("the node key it names cannot be found", await File.ReadAllTextAsync(logFile, TestContext.Current.CancellationToken),
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(@"""C:\Program Files\Pulsar\Agent\PulsarAgent.exe"" run", null)]
+    [InlineData(@"""C:\Program Files\Pulsar\Agent\PulsarAgent.exe"" run --data-dir ""D:\Pulsar Data""", @"D:\Pulsar Data")]
+    [InlineData(@"C:\Pulsar\PulsarAgent.exe run --data-dir D:\PulsarState", @"D:\PulsarState")]
+    public void TheServiceRunsWithTheStateDirectoryItsCommandLineNames(string commandLine, string? dataDirectory)
+    {
+        Assert.Equal(Path.GetFullPath(dataDirectory ?? AgentPaths.DefaultRoot), AgentCommands.ServiceDataDirectory(commandLine));
+    }
+
+    [WindowsFact]
     public async Task UnenrollEndsTheGameServersTheAgentLeftRunning()
     {
         // The agent is not running to stop them: their hosts are ended (a host with nobody connected also ends on its own

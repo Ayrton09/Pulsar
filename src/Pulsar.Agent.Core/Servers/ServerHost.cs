@@ -488,6 +488,19 @@ public sealed partial class ServerHost(
         return true;
     }
 
+    /// <summary>As above, for a server that stays: its console tells the user what became of the game they could not see.</summary>
+    private bool EndStrandedHost(Server server)
+    {
+        if (!EndStrandedHost(server.Supervisor.ServerId))
+        {
+            return false;
+        }
+
+        server.Supervisor.Console.Note("An earlier version of the agent had left this server's game running, which this version cannot manage: " +
+            "ended the game (killed, without saving).", clock.GetUtcNow());
+        return true;
+    }
+
     private void ForgetHost(Guid serverId)
     {
         lock (_hostLock)
@@ -1140,16 +1153,23 @@ public sealed partial class ServerHost(
 
         if (_strandedHosts.ContainsKey(serverId))
         {
-            // Its game still runs in a host this agent cannot drive: a stop or kill ends that host (and the game), and
-            // the server can start again afterwards; a start would run a second copy beside it.
+            // Its game still runs in a host this agent cannot drive, and the panel shows the server offline (this agent
+            // reports no game): a stop or kill ends that host (and the game); a start, the one action the panel offers
+            // for an offline server, ends it first instead of running a second copy beside it. Ending it is a kill: the
+            // game's console and Ctrl+C belong to that host, which does not speak this agent's protocol.
             if (envelope.Command is StopServerCommand or KillServerCommand)
             {
-                return new CommandAck(envelope.CommandId, EndStrandedHost(serverId) ? AckStatus.Accepted : AckStatus.AlreadyInState, null, null);
+                return new CommandAck(envelope.CommandId, EndStrandedHost(server) ? AckStatus.Accepted : AckStatus.AlreadyInState, null, null);
             }
 
-            return Rejected(envelope, "server.host_incompatible",
-                "The server's game still runs in a host process of another version of the agent, which this agent cannot manage. Stop the server " +
-                "to end it, then start it again.");
+            if (envelope.Command is not StartServerCommand)
+            {
+                return Rejected(envelope, "server.host_incompatible",
+                    "The server's game still runs in a host process of another version of the agent, which this agent cannot manage. Stop or " +
+                    "start the server to end it.");
+            }
+
+            EndStrandedHost(server);
         }
 
         var status = await action(server.Supervisor);

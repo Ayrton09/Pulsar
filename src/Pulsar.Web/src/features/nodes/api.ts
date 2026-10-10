@@ -195,11 +195,25 @@ export function useApproveNode() {
 }
 
 /** Lets the agents of nodes that waited for approval connect (several at once from the list). */
+/** The most nodes one approval request takes (NodeManagement.MaxApprovals). */
+const maxApprovals = 200;
+
+/**
+ * Approves any number of nodes, in batches the API takes, one after another (a large rollout's machines all at once);
+ * the nodes approved before a batch fails stay approved, so the list is refreshed either way.
+ */
 export function useApproveNodes() {
   const changed = useNodesChanged();
   return useMutation({
-    mutationFn: (nodeIds: string[]) => unwrap(api.POST('/api/v1/nodes/approve', { body: { nodeIds } })),
-    onSuccess: changed,
+    mutationFn: async (nodeIds: string[]) => {
+      const approved: NodeSummary[] = [];
+      for (let start = 0; start < nodeIds.length; start += maxApprovals) {
+        const batch = nodeIds.slice(start, start + maxApprovals);
+        approved.push(...(await unwrap(api.POST('/api/v1/nodes/approve', { body: { nodeIds: batch } }))));
+      }
+      return approved;
+    },
+    onSettled: changed,
   });
 }
 

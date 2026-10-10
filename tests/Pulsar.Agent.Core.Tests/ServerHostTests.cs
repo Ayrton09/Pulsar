@@ -388,14 +388,41 @@ public sealed class ServerHostTests : IAsyncDisposable
         Assert.Equal(stranded, Assert.Single(_store.LoadHosts()).Host); // for an agent that speaks its protocol
         Assert.Equal(RuntimeState.Offline, Assert.Single(host.Snapshots()).State);
         Assert.Empty(_games.Started); // not started beside it, although it starts with the agent
-        var start = await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
-        Assert.Equal((AckStatus.Rejected, "server.host_incompatible"), (start.Status, start.ErrorCode));
+        var restart = await host.ExecuteAsync(Envelope(new RestartServerCommand(serverId), null));
+        Assert.Equal((AckStatus.Rejected, "server.host_incompatible"), (restart.Status, restart.ErrorCode));
 
         Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new StopServerCommand(serverId), null))).Status);
 
         await _launcher.WaitEndedAsync(stranded);
         Assert.Empty(_store.LoadHosts());
+        Assert.Contains("ended the game", Text(host, serverId), StringComparison.Ordinal);
         Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null))).Status);
+    }
+
+    [Fact]
+    public async Task StartingAServerWhoseGameRunsInAHostOfAnotherProtocolVersionEndsThatHostFirst()
+    {
+        // The panel shows the server offline (this agent cannot drive that game), so Start is what a user can press.
+        _launcher = new InProcessHostLauncher(_games);
+        var serverId = Stored("abcd2345");
+        var stranded = _launcher.Launch(serverId, GameHostProtocol.NewPipeName(serverId),
+            new GameHostOptions { Protocol = GameHostProtocol.Version + 1 });
+        _store.SaveHost(new GameHostRecord(serverId, stranded, 0, 0, Ready: true));
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(RuntimeState.Offline, Assert.Single(host.Snapshots()).State);
+
+        var start = await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+
+        Assert.Equal(AckStatus.Accepted, start.Status);
+        await _launcher.WaitEndedAsync(stranded);
+        var game = await StartedAsync();
+        Assert.Single(_games.Started);
+        game.Print("ready\n");
+        await WaitForAsync(host, serverId, RuntimeState.Running);
+        Assert.NotEqual(stranded, Assert.Single(_store.LoadHosts()).Host); // the new game's host
+        // The user learns where the old game went: it was killed, not stopped (its console belongs to that host).
+        Assert.Contains("ended the game", Text(host, serverId), StringComparison.Ordinal);
     }
 
     [Fact]

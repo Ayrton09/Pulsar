@@ -418,7 +418,32 @@ describe('server page', () => {
 
     expect(window.confirm).toHaveBeenCalledWith('Kill Surf now? Its processes end without saving.');
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'The node did not accept the command (busy server.busy).',
+      'Another operation is running on this server. Wait for it to finish.',
+    );
+  });
+
+  it('says why the agent refused a command, or which code it gave', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${running.id}`]: () => json(details(running)),
+      [`POST /api/v1/servers/${running.id}/restart`]: () =>
+        json({ status: 'rejected', errorCode: 'server.host_incompatible' }),
+      [`POST /api/v1/servers/${running.id}/stop`]: () =>
+        json({ status: 'rejected', errorCode: 'server.something_new' }),
+    });
+    renderAt(`/servers/${running.id}`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Restart' }));
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      "The server's game still runs under an earlier version of the agent, which cannot manage it. Stop or start the server to end that game (it is killed, without saving).",
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Stop' }));
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'The node did not accept the command (rejected server.something_new).',
+      ),
     );
   });
 

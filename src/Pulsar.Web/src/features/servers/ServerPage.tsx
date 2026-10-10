@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
@@ -242,11 +243,17 @@ function LifecycleActions({ details }: { details: ServerDetails }) {
       {command.isError && <Alert>{errorMessage(t, command.error)}</Alert>}
       {refused && (
         <p role="status" className="text-sm text-danger">
-          {t('servers.commandRefused', { status: command.data.status, code: command.data.errorCode ?? '' })}
+          {refusal(t, command.data.status, command.data.errorCode)}
         </p>
       )}
     </section>
   );
+}
+
+/** Why the agent refused a command: the translation of its code when there is one, the status and code otherwise. */
+function refusal(t: TFunction, status: string, code: string | null): string {
+  const generic = t('servers.commandRefused', { status, code: code ?? '' });
+  return code ? t(`errors.${code}`, { defaultValue: generic }) : generic;
 }
 
 function Facts({ items }: { items: [string, ReactNode][] }) {

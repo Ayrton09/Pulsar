@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Windows.Servers;
 
 namespace Pulsar.Agent.Windows.Tests;
@@ -31,6 +32,19 @@ public sealed class LogonLockTests : IDisposable
         Assert.False(second.IsCompleted);
         first.Dispose();
         (await second.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken)).Dispose();
+    }
+
+    [WindowsFact]
+    public void DeletingAnAccountThatIsAlreadyGoneDeletesItsLockFile()
+    {
+        // A delete retried after the account went (the agent stopped right after removing it): its lock goes too.
+        var file = Path.Combine(_locks, "pulsar_gone2345.lock");
+        File.WriteAllText(file, string.Empty);
+        var accounts = new WindowsServerAccounts(NullLogger<WindowsServerAccounts>.Instance, _locks);
+
+        Assert.False(accounts.Delete("pulsar_gone2345"));
+
+        Assert.False(File.Exists(file));
     }
 
     [WindowsFact]

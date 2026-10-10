@@ -258,6 +258,39 @@ describe('bulk enrollment', () => {
     await vi.waitFor(() => expect(body).toEqual({ nodeIds: [awaiting.id, awaitingToo.id] }));
   });
 
+  it('approves more nodes than one request takes in batches, one after another', async () => {
+    // The API takes at most 200 nodes per approval.
+    const fleet = Array.from({ length: 201 }, (_, i) => ({
+      ...awaiting,
+      id: `0192f1a0-0000-7000-8000-${String(i).padStart(12, '0')}`,
+      name: `FLEET-${String(i).padStart(3, '0')}`,
+    }));
+    const batches: string[][] = [];
+    let inFlight = 0;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/nodes': () => json(fleet),
+      'POST /api/v1/nodes/approve': async (request) => {
+        expect(inFlight).toBe(0);
+        inFlight++;
+        const { nodeIds } = (await request.json()) as { nodeIds: string[] };
+        batches.push(nodeIds);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        inFlight--;
+        return json([]);
+      },
+    });
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    const card = await screen.findByRole('region', { name: '201 nodes wait for approval' });
+    await user.click(within(card).getByRole('checkbox', { name: 'Select all' }));
+    await user.click(within(card).getByRole('button', { name: 'Approve 201 nodes' }));
+
+    await vi.waitFor(() => expect(batches.map((b) => b.length)).toEqual([200, 1]));
+    expect(batches.flat()).toEqual(fleet.map((n) => n.id));
+  });
+
   it('creates a reusable token and shows it once in the MSI and script commands', async () => {
     let body: unknown;
     const token: Schemas['EnrollmentTokenView'] = {

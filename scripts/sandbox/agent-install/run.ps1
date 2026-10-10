@@ -432,10 +432,20 @@ try {
     $products = @(Get-AgentProducts)
     Check 'msi: an older package does not downgrade it' ($exit -ne 0 -and (Get-Content (Join-Path $report 'msi-downgrade.log') -Raw) -match 'A newer version of the Pulsar Agent is installed' -and $products.Count -eq 1 -and $products[0].DisplayVersion -eq '1.0.1' -and (Test-AgentRunning)) "exit $exit; $(($products | ForEach-Object DisplayVersion) -join ', ')"
 
+    # unenroll.log grows with every run (the rolled-back install above wrote to it too): only this uninstall's part counts.
+    $unenrollFrom = if (Test-Path $unenrollLog) { (Get-Item $unenrollLog).Length } else { 0 }
     $exit = Uninstall-Msi $second 'msi-uninstall.log'
     Check 'msi: uninstalled silently' ($exit -eq 0) "exit $exit"
     Check 'msi: uninstall stopped the game and removed the service and the enrollment' (@(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'").Count -eq 0 -and $null -eq (Get-Service PulsarAgent -ErrorAction SilentlyContinue) -and -not (Test-Path $agentConfig))
-    Check 'msi: unenroll log written' ((Test-Path $unenrollLog) -and (Get-Content $unenrollLog -Raw) -match 'no longer enrolled') (Get-LogTail $unenrollLog)
+    $unenrolled = ''
+    if (Test-Path $unenrollLog) {
+        $bytes = [IO.File]::ReadAllBytes($unenrollLog)
+        $unenrolled = [Text.Encoding]::UTF8.GetString($bytes, $unenrollFrom, $bytes.Length - $unenrollFrom)
+    }
+    Check 'msi: unenroll log written' ($unenrolled -match 'no longer enrolled') (Get-LogTail $unenrollLog)
+    # The running service stopped the game on its way out. Had something stopped the service before unenroll ran (Restart
+    # Manager, at InstallValidate), the service would have left the game running and unenroll would have killed it.
+    Check 'msi: uninstall stopped the game gracefully (unenroll ended no game server)' ($unenrolled -match 'no longer enrolled' -and $unenrolled -notmatch 'Ended \d+ game server') ($unenrolled -replace '\s+', ' ')
     # The package removes what it installed; the settings file this check wrote is not its own, and stays.
     $left = @(Get-ChildItem $installDir -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($installDir.Length + 1) })
     Check 'msi: program removed (only the settings file written here is left)' (-not (Test-Path $agentExe) -and ($left -join ',') -eq 'appsettings.Production.json') ($left -join ', ')
@@ -455,6 +465,17 @@ catch {
     Check 'script' $false ($_ | Out-String).Trim()
 }
 finally {
+    # For diagnosis, whatever happened above: what the agent and unenroll logged.
+    try {
+        $agentLogs = Join-Path $dataDir 'logs'
+        if (Test-Path $agentLogs) {
+            $copies = New-Item -ItemType Directory -Force (Join-Path $report 'agent-logs')
+            Get-ChildItem $agentLogs -File | Where-Object { $_.Name -eq 'unenroll.log' -or $_.Name -like 'agent-*.log' } | Copy-Item -Destination $copies
+        }
+    }
+    catch {
+        Add-Content $summary "note: the agent's logs were not copied ($($_.Exception.Message))"
+    }
     Stop-Transcript | Out-Null
     Add-Content $summary 'done'
 }

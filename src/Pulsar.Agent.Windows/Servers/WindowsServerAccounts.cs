@@ -94,6 +94,7 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
         }
         catch (IdentityNotMappedException)
         {
+            DeleteLogonLock(name); // a delete retried after the account went, before its lock did
             return false;
         }
 
@@ -118,6 +119,12 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
         }
 
         LogAccountDeleted(name);
+        DeleteLogonLock(name);
+        return true;
+    }
+
+    private void DeleteLogonLock(string name)
+    {
         try
         {
             File.Delete(Path.Combine(logonLocks, name + ".lock"));
@@ -126,8 +133,6 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
         {
             // An empty file: left for the next time.
         }
-
-        return true;
     }
 
     public static bool Exists(string name)

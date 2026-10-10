@@ -228,3 +228,20 @@ can be retried instead of leaving a service without its program, the node key an
 `unenroll.log` says why; fix that and uninstall again. Running
 `& 'C:\Program Files\Pulsar\Agent\PulsarAgent.exe' unenroll` in an elevated PowerShell shows the same error, and once
 it succeeds the uninstall goes through.
+
+A configuration (`C:\ProgramData\Pulsar\Agent\config\agent.json`) that cannot be read does not stop it: the service,
+the game servers and the configuration are removed anyway, but the node key cannot be found without the configuration
+and stays in the machine's key store (`unenroll.log` says so; once you delete the node in the panel it opens nothing).
+Nor does a missing configuration: the service is still removed when it runs with that state directory.
+
+As a last resort, when `unenroll` keeps failing for a reason you cannot fix, remove what it would have removed by hand,
+in an elevated PowerShell, then uninstall again:
+
+```powershell
+& 'C:\Program Files\Pulsar\Agent\PulsarAgent.exe' service stop --stop-servers  # stops its game servers gracefully
+sc.exe delete PulsarAgent
+Remove-Item C:\ProgramData\Pulsar\Agent\config\agent.json
+```
+
+With the service and the configuration gone, `unenroll` finds nothing to remove and succeeds. The node key stays in the
+key store, and the node stays in the panel until you delete it there.

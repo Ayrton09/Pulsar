@@ -26,14 +26,23 @@ public static class GameHostProgram
         {
             // Copied next to its final place and moved there whole: a host never starts from half a copy.
             var staging = target + ".tmp-" + RandomNumberGenerator.GetHexString(8, lowercase: true);
-            Copy(source, staging);
-            File.WriteAllText(Path.Combine(staging, CompleteMarker), string.Empty);
-            if (Directory.Exists(target))
+            try
             {
-                Directory.Delete(target, recursive: true); // an incomplete copy (the agent stopped while copying)
-            }
+                Copy(source, staging);
+                File.WriteAllText(Path.Combine(staging, CompleteMarker), string.Empty);
+                if (Directory.Exists(target))
+                {
+                    Directory.Delete(target, recursive: true); // an incomplete copy (the agent stopped while copying)
+                }
 
-            Directory.Move(staging, target);
+                Directory.Move(staging, target);
+            }
+            catch
+            {
+                // Tried again at every start while it fails (a full disk, say): no try may leave its partial copy behind.
+                DeleteStaging(staging);
+                throw;
+            }
         }
 
         return Path.Combine(target, executableName);
@@ -104,6 +113,21 @@ public static class GameHostProgram
         }
 
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())))[..16];
+    }
+
+    private static void DeleteStaging(string staging)
+    {
+        try
+        {
+            if (Directory.Exists(staging))
+            {
+                Directory.Delete(staging, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The copy's own error is the one to report; CleanUp deletes this leftover when the agent next starts.
+        }
     }
 
     private static void Copy(string source, string target)
