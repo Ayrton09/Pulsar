@@ -172,13 +172,27 @@ The next two post-v1 items: game servers that keep running while the agent resta
   - The Windows Sandbox logs showed Windows Installer's Restart Manager stopping the service before the uninstall's unenroll could stop the games gracefully. It is disabled in the package.
 - *Tests:* the .NET suite (1343 tests; one older file-manager test failed once under full parallel load and passed in every rerun), vitest (196) and the E2E suite (8) passed.
 
-## Phase 15 — Backups of running games · *in progress*
+## Phase 15 — Backups of running games · *done*
 
 The next post-v1 item: a backup made while the game runs that holds every file as it was at one moment, and a restore that can leave nothing newer behind.
 
 - Game saves: a running game whose manifest has `backup.save` is asked to save through its console first; the backup waits for the line that confirms it, or a fixed time for games that print none, and records how the game answered. Minecraft pauses its autosave around the snapshot (`save-off`, `save-all flush`, `save-on`); an agent that stops in between resumes it at its next start. Bundled for Minecraft, Rust, ARK, Palworld, 7 Days to Die and Project Zomboid. *Done (doc 04, "Backups").*
 - Snapshots: the agent reads a running game's files from a Volume Shadow Copy snapshot of their volume (no writers, deleted after the backup), files the game holds open included; without one (a development agent, a FAT or network volume, no shadow storage, turned off) it reads them live as before and the backup says why. *Done (docs 03, 05, 06, 08).*
 - Clean restores: a restore can first delete the files the backup's rules select that it does not have; refused for a backup that left files out. *Done (docs 02, 05, 07, backup guide).*
+
+**Done when:** a backup of a running test game, made by the agent service as SYSTEM, reads a snapshot (a file the game holds open with no sharing is in it), the game confirmed its save first, and no snapshot is left afterwards; a clean restore deletes a file made after the backup; a development agent that cannot take snapshots reads the files live and says why. *Met on 2026-10-10.*
+
+- *Windows Sandbox (`scripts/sandbox/agent-install`), the service as SYSTEM, a server account and the test game:* 78 checks, all passed, before and after the review's fixes.
+  - The game locked a file with no sharing; the backup came from a snapshot after the game confirmed its save, held that file, and left no snapshot (none listed by `Win32_ShadowCopy`), no paused save, and the agent's log showed the snapshot taken and deleted.
+  - A clean restore, as the server's account, deleted a file made after the backup and brought the saved world back.
+  - The first run showed `PrepareForBackup` answering `VSS_E_BAD_STATE` in a snapshot without writers: the requester skips it, as Microsoft's vshadow does.
+- *End-to-end run (a development agent, not an administrator):* a backup of the running test game confirmed its save through its pseudo console and said it was copied live because the agent is not running as an administrator; a clean restore from the restore dialog deleted the newer file.
+- *Browser, in Spanish:* the create dialog's warning, the note under a backup ("Copiado con el juego encendido, sin instantánea (el agente no corre como administrador) · el juego guardó antes") and the restore dialog with its clean option.
+- *Review:*
+  - Three reviewers, one per area: 17 findings (0 high, 5 medium, 12 low), all fixed. Among them: an agent stopping during a backup now cancels it first so the game saves again, a backup that began stopped reports a live copy when the game starts meanwhile, and a clean restore deletes by the rules the backup was made with (recorded in the archive).
+  - The fixes were reviewed again: 1 medium finding, a flaky test that showed state files could not be read and replaced at the same time (also possible in production), fixed.
+  - The last full run showed a Phase 14 host flaky under load: a client that connected to a host's pipe and left at once left it broken, and the host ended with its game. Fixed, with a test that reproduced it every time.
+- *Tests:* the .NET suite (1414 tests, 13 skipped: the ones that need an elevated, disposable machine), vitest (198) and the E2E suite (8) passed.
 
 ## Post-v1 (tentative order)
 
