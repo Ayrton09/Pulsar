@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -213,11 +213,17 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
       .subarray(0, 2)
       .toString(),
   ).toBe('PK');
+  // Phase 15: restored clean, the file made after the backup goes too.
   writeFileSync(join(serverDir, 'cfg', 'server.cfg'), 'hostname "changed after the backup"');
+  writeFileSync(join(serverDir, 'cfg', 'later.cfg'), 'made after the backup');
   await backups.getByRole('button', { name: 'Restore Before the edit' }).click();
+  const restoreBackup = page.getByRole('dialog', { name: 'Restore Before the edit' });
+  await restoreBackup.getByRole('checkbox', { name: 'Delete the files made after this backup' }).check();
+  await restoreBackup.getByRole('button', { name: 'Restore' }).click();
   await expect
     .poll(() => readFileSync(join(serverDir, 'cfg', 'server.cfg'), 'utf8'), { timeout: 30_000 })
     .toBe('hostname "E2E" // edited in the browser');
+  await expect.poll(() => existsSync(join(serverDir, 'cfg', 'later.cfg')), { timeout: 30_000 }).toBe(false);
   await page.screenshot({ path: 'test-results/screens/server-backups.png', fullPage: true });
   await page.getByRole('tab', { name: 'Overview' }).click();
   await expect(operations.getByRole('row', { name: /Restore/ })).toContainText('Done');
@@ -227,6 +233,22 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   // the minute), sends a command the game answers in its console.
   await actions.getByRole('button', { name: 'Start', exact: true }).click();
   await expectStatus(page, 'Online');
+
+  // Phase 15: a backup of the running game asks it to save first (pulsar-test's backup.save), then reads a snapshot
+  // of its disk; a development agent is no administrator, so it reads the files live and says why.
+  await page.getByRole('tab', { name: 'Backups' }).click();
+  await page.getByRole('button', { name: 'Create backup' }).click();
+  const runningBackup = page.getByRole('dialog', { name: 'Create a backup' });
+  await expect(runningBackup).toContainText('The server is running');
+  await runningBackup.getByLabel('Name').fill('While running');
+  await runningBackup.getByRole('button', { name: 'Create backup' }).click();
+  const runningRow = backups.getByRole('row', { name: /While running/ });
+  await expect(runningRow).toContainText('Ready', { timeout: 60_000 });
+  await expect(runningRow).toContainText(
+    /Copied (from a snapshot of the disk|while the game ran, without a snapshot \(.+\)) · the game saved first/,
+  );
+  await page.getByRole('tab', { name: 'Console' }).click();
+  await expect(page.getByTestId('console-output')).toContainText('Test server: autosave on', { timeout: 15_000 });
   await page.getByRole('tab', { name: 'Schedules' }).click();
   await page.getByRole('button', { name: 'New task' }).click();
   const newTask = page.getByRole('dialog', { name: 'New scheduled task' });

@@ -536,6 +536,8 @@
       "not_completed": "El backup no está completo.",
       "locked": "El backup está bloqueado: desbloquealo antes de eliminarlo.",
       "unsupported": "El agente del nodo no puede hacer backups. Actualizá el agente.",
+      "clean_unsupported": "El agente del nodo no puede hacer una restauración limpia. Actualizá el agente.",
+      "clean_incomplete": "Este backup dejó afuera archivos que el juego tenía abiertos: una restauración limpia los borraría. Restauralo sin limpiar.",
       "in_use": "El backup se está descargando o restaurando. Probá de nuevo cuando termine.",
       "corrupt": "El backup no se puede restaurar: {{detail}}",
       "remote_failed": "Falló el almacenamiento remoto: {{detail}}"
@@ -931,7 +933,11 @@
       "scanning": "buscando los archivos",
       "archiving": "comprimiendo",
       "checking": "verificando el archivo",
-      "restoring": "restaurando archivos"
+      "restoring": "restaurando archivos",
+      "saving": "pidiéndole al juego que guarde",
+      "snapshotting": "haciendo una instantánea del disco",
+      "cleaning": "borrando archivos más nuevos",
+      "uploading": "copiando al almacenamiento remoto"
     },
     "settings": {
       "title": "Configuración",
@@ -1165,7 +1171,7 @@
     "name": "Nombre",
     "nameHint": "Opcional. Sin nombre, el backup lleva la hora en que se hizo.",
     "nameTooLong": "Como máximo {{max}} caracteres.",
-    "runningWarning": "El servidor está en marcha: los archivos que escriba durante el backup pueden quedar guardados a medias. Detenelo antes para una copia coherente.",
+    "runningWarning": "El servidor está en marcha: primero se le pide al juego que guarde (si su plantilla dice cómo) y sus archivos se copian desde una instantánea del disco. Si el nodo no puede hacerla, los archivos que el juego escriba mientras tanto pueden copiarse a medias; el backup lo va a avisar.",
     "empty": "Todavía no hay backups.",
     "created": "Creado",
     "size": "Tamaño",
@@ -1190,7 +1196,31 @@
     "downloadNamed": "Descargar {{name}}",
     "restore": "Restaurar",
     "restoreNamed": "Restaurar {{name}}",
-    "restoreConfirm": "¿Restaurar {{name}} en {{server}}? Los archivos del backup reemplazan a los actuales del servidor; los que el backup no tiene quedan como están.",
+    "restoreTitle": "Restaurar {{name}}",
+    "restoreText": "Los archivos del backup reemplazan a los actuales de {{server}}.",
+    "restoreKeep": "Los archivos que el backup no tiene quedan como están.",
+    "restoreClean": "Borrar los archivos creados después de este backup",
+    "restoreCleanHint": "Primero se borran los archivos que el backup incluiría pero no tiene, como las regiones del mapa exploradas desde entonces. El juego instalado y los archivos fuera del backup no se tocan.",
+    "restoreCleanSkipped": "No disponible: este backup dejó afuera archivos que el juego tenía abiertos, y una restauración limpia los borraría.",
+    "copy": {
+      "snapshot": "Copiado desde una instantánea del disco",
+      "live": "Copiado con el juego encendido, sin instantánea ({{reason}})"
+    },
+    "save": {
+      "confirmed": "el juego guardó antes",
+      "waited": "se le pidió al juego que guardara antes",
+      "unconfirmed": "el juego no confirmó que guardó"
+    },
+    "snapshotErrors": {
+      "disabled": "las instantáneas están apagadas en este nodo",
+      "not_permitted": "el agente no corre como administrador",
+      "unsupported": "este disco no admite instantáneas",
+      "unavailable": "el servicio de instantáneas de volumen (VSS) no está funcionando",
+      "no_space": "no hay lugar en el disco para la instantánea",
+      "busy": "otro programa no dejaba de hacer instantáneas",
+      "failed": "Windows no pudo hacerla; el log del agente dice por qué",
+      "unknown": "sin motivo informado"
+    },
     "stopToRestore": "Detené el servidor para restaurar un backup.",
     "lock": "Bloquear",
     "unlock": "Desbloquear",

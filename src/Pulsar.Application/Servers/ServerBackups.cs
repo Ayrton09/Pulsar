@@ -17,6 +17,9 @@ namespace Pulsar.Application.Servers;
 /// <param name="OperationId">The operation making it (to follow its progress or cancel it).</param>
 /// <param name="RemoteStatus">Its copy in remote storage.</param>
 /// <param name="RemoteError">Why the copy failed.</param>
+/// <param name="CopyMode">How the node read the files (null: made before Phase 15).</param>
+/// <param name="SnapshotError">Why a running game's files were read live rather than from a snapshot (a <c>snapshot.*</c> code).</param>
+/// <param name="GameSave">How the game answered when asked to save first (null: not asked).</param>
 public sealed record BackupView(
     Guid Id,
     string Name,
@@ -33,7 +36,10 @@ public sealed record BackupView(
     string? ErrorMessage,
     Guid? OperationId,
     RemoteCopyStatus RemoteStatus,
-    string? RemoteError);
+    string? RemoteError,
+    BackupCopyMode? CopyMode,
+    string? SnapshotError,
+    GameSaveResult? GameSave);
 
 /// <param name="Limit">How many backups retention keeps (locked ones besides); null keeps them all.</param>
 /// <summary>A storage a server can copy its backups to (its name only: the rest is the panel's settings).</summary>
@@ -68,8 +74,9 @@ public sealed partial class ServerBackups(
     }
 
     /// <summary>
-    /// Starts a backup on the server's node; it may keep running meanwhile (files it writes then may be captured half
-    /// written). <paramref name="name"/> defaults to the time it was asked for.
+    /// Starts a backup on the server's node; it may keep running meanwhile (the node asks the game to save and reads a
+    /// snapshot of its volume when it can; otherwise files it writes then may be captured half written).
+    /// <paramref name="name"/> defaults to the time it was asked for.
     /// </summary>
     public async Task<Result<BackupView>> CreateAsync(ServerId id, string? name, OperationRequester via, CancellationToken cancellationToken)
     {
@@ -117,8 +124,11 @@ public sealed partial class ServerBackups(
         return View(backup);
     }
 
-    /// <summary>Puts the backup's files back (the server must be stopped); the server cannot start until it ends.</summary>
-    public async Task<Result> RestoreAsync(ServerId id, BackupId backupId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Puts the backup's files back (the server must be stopped); the server cannot start until it ends. A
+    /// <paramref name="clean"/> restore first deletes the files the backup's rules select that it does not have.
+    /// </summary>
+    public async Task<Result> RestoreAsync(ServerId id, BackupId backupId, bool clean, CancellationToken cancellationToken)
     {
         var server = await db.Servers.SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
         var backup = server is null ? null : await db.Backups.AsNoTracking().SingleOrDefaultAsync(b => b.Id == backupId && b.ServerId == id, cancellationToken);
@@ -132,16 +142,27 @@ public sealed partial class ServerBackups(
             return ServerErrors.BackupNotCompleted;
         }
 
+        if (clean && backup.CheckCleanRestore() is { IsSuccess: false } incomplete)
+        {
+            return incomplete;
+        }
+
         if (Connection(server.NodeId, AgentCapabilities.RestoreBackup) is { IsSuccess: false } connection)
         {
             return connection.Error!;
         }
 
+        // An older agent would ignore the request to clean and only write the backup's files over the others.
+        if (clean && Connection(server.NodeId, AgentCapabilities.CleanRestore) is { IsSuccess: false })
+        {
+            return ServerErrors.CleanRestoreUnsupported;
+        }
+
         var operation = Operation.Create(OperationType.BackupRestore, server.NodeId, server.Id, request.UserId, OperationRequester.User, clock.GetUtcNow());
         var remote = await RemoteOfAsync(backup, cancellationToken);
         var run = await operations.RunAsync(server, operation,
-            new RestoreBackupCommand(server.Id.Value, backup.Id.Value, Convert.ToHexStringLower(sha256), remote),
-            () => audit.Record(AuditActions.Server.BackupRestoreRequested, metadata: new { backup = backup.Id.Value, backup.Name })
+            new RestoreBackupCommand(server.Id.Value, backup.Id.Value, Convert.ToHexStringLower(sha256), remote, clean),
+            () => audit.Record(AuditActions.Server.BackupRestoreRequested, metadata: new { backup = backup.Id.Value, backup.Name, clean })
                 .WithServer(server.Id, server.NodeId),
             cancellationToken);
         return run.IsSuccess ? Result.Success() : run.Error!;
@@ -444,7 +465,7 @@ public sealed partial class ServerBackups(
 
     internal static BackupView View(Backup b) => new(b.Id.Value, b.Name, b.Status, b.SizeBytes, b.FileCount, b.SkippedFiles,
         b.Sha256 is { } hash ? Convert.ToHexStringLower(hash) : null, b.IsLocked, b.CreatedVia, b.CreatedAt, b.CompletedAt, b.Duration?.TotalSeconds,
-        b.ErrorMessage, b.OperationId?.Value, b.RemoteStatus, b.RemoteError);
+        b.ErrorMessage, b.OperationId?.Value, b.RemoteStatus, b.RemoteError, b.CopyMode, b.SnapshotError, b.GameSave);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Retention on server {ServerId} stopped at backup {BackupId}; it continues after the next backup")]
     private partial void LogPruneStopped(ServerId serverId, BackupId backupId);

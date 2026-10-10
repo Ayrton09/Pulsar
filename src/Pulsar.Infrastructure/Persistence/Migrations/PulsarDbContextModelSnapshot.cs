@@ -1524,6 +1524,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("completed_at");
 
+                    b.Property<string>("CopyMode")
+                        .HasColumnType("text")
+                        .HasColumnName("copy_mode");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -1545,6 +1549,10 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.Property<int?>("FileCount")
                         .HasColumnType("integer")
                         .HasColumnName("file_count");
+
+                    b.Property<string>("GameSave")
+                        .HasColumnType("text")
+                        .HasColumnName("game_save");
 
                     b.Property<bool>("IsLocked")
                         .HasColumnType("boolean")
@@ -1597,6 +1605,11 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("skipped_files");
 
+                    b.Property<string>("SnapshotError")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("snapshot_error");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");
@@ -1636,7 +1649,11 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("backups", null, t =>
                         {
+                            t.HasCheckConstraint("ck_backups_copy_mode", "copy_mode IN ('live', 'snapshot', 'stopped')");
+
                             t.HasCheckConstraint("ck_backups_created_via", "created_via IN ('schedule', 'system', 'user')");
+
+                            t.HasCheckConstraint("ck_backups_game_save", "game_save IN ('confirmed', 'unconfirmed', 'waited')");
 
                             t.HasCheckConstraint("ck_backups_remote_status", "remote_status IN ('copied', 'failed', 'none', 'pending')");
 

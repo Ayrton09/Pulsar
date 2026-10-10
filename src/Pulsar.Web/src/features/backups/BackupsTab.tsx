@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Badge, Card, Table, Td, Th } from '../../components/ui/Display';
-import { Field, Input, Select } from '../../components/ui/Form';
+import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate, useFormatFileSize } from '../../lib/format';
 import { canOnServer, Permission } from '../../lib/permissions';
@@ -44,6 +44,7 @@ export function BackupsTab({ details }: { details: ServerDetails }) {
   const lock = useLockBackup(server.id);
   const remove = useDeleteBackup(server.id);
   const [creating, setCreating] = useState(false);
+  const [restoring, setRestoring] = useState<BackupView | null>(null);
   const canCreate = canOnServer(me, server, Permission.ServerBackupsCreate);
   const canRestore = canOnServer(me, server, Permission.ServerBackupsRestore);
   const canDelete = canOnServer(me, server, Permission.ServerBackupsDelete);
@@ -59,10 +60,7 @@ export function BackupsTab({ details }: { details: ServerDetails }) {
     return <Alert>{errorMessage(t, backups.error)}</Alert>;
   }
 
-  const error = restore.error ?? lock.error ?? remove.error;
-  const restoreBackup = (backup: BackupView) =>
-    window.confirm(t('backups.restoreConfirm', { name: backup.name, server: server.name })) &&
-    restore.mutate(backup.id);
+  const error = lock.error ?? remove.error;
   const deleteBackup = (backup: BackupView) =>
     window.confirm(t('backups.deleteConfirm', { name: backup.name })) && remove.mutate(backup.id);
 
@@ -105,11 +103,14 @@ export function BackupsTab({ details }: { details: ServerDetails }) {
                 canDelete={canDelete && connected}
                 showDelete={canDelete}
                 pending={
-                  (restore.isPending && restore.variables === backup.id) ||
+                  (restore.isPending && restore.variables.backupId === backup.id) ||
                   (lock.isPending && lock.variables.backupId === backup.id) ||
                   (remove.isPending && remove.variables === backup.id)
                 }
-                onRestore={() => restoreBackup(backup)}
+                onRestore={() => {
+                  restore.reset();
+                  setRestoring(backup);
+                }}
                 onLock={(locked) => lock.mutate({ backupId: backup.id, locked })}
                 onDelete={() => deleteBackup(backup)}
               />
@@ -123,7 +124,93 @@ export function BackupsTab({ details }: { details: ServerDetails }) {
         <RemoteCopyCard serverId={server.id} storageId={backups.data.storageId} storages={backups.data.storages} />
       )}
       {creating && <CreateBackupDialog serverId={server.id} running={!stopped} onDone={() => setCreating(false)} />}
+      {restoring && (
+        <RestoreBackupDialog
+          backup={restoring}
+          serverName={server.name}
+          restore={restore}
+          onDone={() => setRestoring(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * How the node read the files: from a snapshot, or live while the game ran (and why), and whether the game saved
+ * first. Nothing for a backup of a stopped server, or one made before Pulsar said.
+ */
+function CopyNote({ backup }: { backup: BackupView }) {
+  const { t } = useTranslation();
+  if (backup.copyMode !== 'snapshot' && backup.copyMode !== 'live') {
+    return null;
+  }
+
+  const reason = backup.snapshotError?.startsWith('snapshot.')
+    ? backup.snapshotError.slice('snapshot.'.length)
+    : 'unknown';
+  const copy =
+    backup.copyMode === 'snapshot'
+      ? t('backups.copy.snapshot')
+      : t('backups.copy.live', {
+          reason: t(`backups.snapshotErrors.${reason}`, { defaultValue: t('backups.snapshotErrors.unknown') }),
+        });
+  return (
+    <p className="mt-1 text-xs text-muted">
+      {copy}
+      {backup.gameSave && ` · ${t(`backups.save.${backup.gameSave}`)}`}
+    </p>
+  );
+}
+
+function RestoreBackupDialog({
+  backup,
+  serverName,
+  restore,
+  onDone,
+}: {
+  backup: BackupView;
+  serverName: string;
+  restore: ReturnType<typeof useRestoreBackup>;
+  onDone: () => void;
+}) {
+  const { t } = useTranslation();
+  const [clean, setClean] = useState(false);
+  // A clean restore would also delete the files this backup left out because the game held them open.
+  const incomplete = (backup.skippedFiles ?? 0) > 0;
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    restore.mutate({ backupId: backup.id, clean: clean && !incomplete }, { onSuccess: onDone });
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onDone()} title={t('backups.restoreTitle', { name: backup.name })}>
+      <form onSubmit={submit} className="space-y-4" noValidate>
+        <p className="text-sm">{t('backups.restoreText', { server: serverName })}</p>
+        <div>
+          <Checkbox
+            label={t('backups.restoreClean')}
+            checked={clean && !incomplete}
+            disabled={incomplete}
+            onChange={(e) => setClean(e.target.checked)}
+          />
+          <p className="mt-1 ml-6 text-xs text-muted">
+            {incomplete ? t('backups.restoreCleanSkipped') : t('backups.restoreCleanHint')}
+          </p>
+        </div>
+        {!clean && <p className="text-sm text-muted">{t('backups.restoreKeep')}</p>}
+        {restore.isError && <Alert>{errorMessage(t, restore.error)}</Alert>}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onDone}>
+            {t('actions.cancel')}
+          </Button>
+          <Button type="submit" busy={restore.isPending}>
+            {t('backups.restore')}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
@@ -174,6 +261,7 @@ function BackupRow({
             {(backup.skippedFiles ?? 0) > 0 && ` · ${t('backups.skipped', { count: backup.skippedFiles ?? 0 })}`}
           </p>
         )}
+        {completed && <CopyNote backup={backup} />}
         {backup.status === 'failed' && backup.errorMessage && (
           <p className="mt-1 text-xs break-words text-danger">{backup.errorMessage}</p>
         )}

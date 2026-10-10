@@ -98,6 +98,44 @@ public sealed class BackupTests
     }
 
     [Fact]
+    public void ABackupRecordsHowItsFilesWereRead()
+    {
+        var snapshot = NewBackup();
+        var live = NewBackup();
+        var forged = NewBackup();
+        var older = NewBackup();
+
+        snapshot.Completed(1, 1, 0, [1], s_now, BackupCopyMode.Snapshot, "snapshot.no_space", GameSaveResult.Confirmed);
+        live.Completed(1, 1, 2, [1], s_now, BackupCopyMode.Live, "snapshot.no_space", GameSaveResult.Unconfirmed);
+        forged.Completed(1, 1, 0, [1], s_now, BackupCopyMode.Live, "<script>" + new string('x', 100));
+        older.Completed(1, 1, 0, [1], s_now);
+
+        Assert.Equal((BackupCopyMode.Snapshot, null, GameSaveResult.Confirmed), (snapshot.CopyMode, snapshot.SnapshotError, snapshot.GameSave));
+        Assert.Equal((BackupCopyMode.Live, "snapshot.no_space", GameSaveResult.Unconfirmed), (live.CopyMode, live.SnapshotError, live.GameSave));
+        Assert.Null(forged.SnapshotError); // the agent's word is shown as a reason: only a plain code
+        Assert.Equal((null, null, null), (older.CopyMode, older.SnapshotError, older.GameSave));
+    }
+
+    [Fact]
+    public void ABackupThatLeftFilesOutCannotBeRestoredClean()
+    {
+        var complete = NewBackup();
+        var partial = NewBackup();
+        complete.Completed(1, 3, 0, [1], s_now, BackupCopyMode.Snapshot);
+        partial.Completed(1, 3, 2, [1], s_now, BackupCopyMode.Live, "snapshot.not_permitted");
+
+        Assert.True(complete.CheckCleanRestore().IsSuccess);
+        Assert.Equal(ServerErrors.CleanRestoreIncomplete, partial.CheckCleanRestore().Error);
+    }
+
+    private static Backup NewBackup()
+    {
+        var server = InstalledServer();
+        var operation = Operation.Create(OperationType.BackupCreate, server.NodeId, server.Id, null, OperationRequester.User, s_now);
+        return Backup.Create(server, "a", operation, null, OperationRequester.User, s_now).Value;
+    }
+
+    [Fact]
     public void AFailedOrCancelledBackupKeepsWhy()
     {
         var server = InstalledServer();

@@ -25,6 +25,31 @@ public enum RemoteCopyStatus
     Failed,
 }
 
+/// <summary>How the node read the server's files for a backup (Phase 15).</summary>
+public enum BackupCopyMode
+{
+    /// <summary>The game was not running: nothing was writing the files.</summary>
+    Stopped,
+
+    /// <summary>From a snapshot of the volume: every file as it was at the same moment.</summary>
+    Snapshot,
+
+    /// <summary>Live, while the game ran: files it wrote meanwhile may be half-written, files it held open were left out.</summary>
+    Live,
+}
+
+/// <summary>How a running game answered when asked to save before its backup.</summary>
+public enum GameSaveResult
+{
+    Confirmed,
+
+    /// <summary>The game has no line that confirms a save: the node waited the time its manifest gives.</summary>
+    Waited,
+
+    /// <summary>The game did not confirm in time.</summary>
+    Unconfirmed,
+}
+
 /// <summary>
 /// A backup of a server (ADR-0012; docs/architecture/02, "Backups"): metadata only, the zip lives on the server's node.
 /// Made by a <see cref="OperationType.BackupCreate"/> operation; locked backups are never deleted by retention.
@@ -33,6 +58,7 @@ public sealed class Backup
 {
     public const int MaxNameLength = 128;
     public const int MaxErrorMessageLength = 1024;
+    public const int MaxSnapshotErrorLength = 64;
 
     private Backup()
     {
@@ -102,6 +128,15 @@ public sealed class Backup
 
     public string? RemoteError { get; private set; }
 
+    /// <summary>How the node read the files; null for backups made before Phase 15 (or by an older agent).</summary>
+    public BackupCopyMode? CopyMode { get; private set; }
+
+    /// <summary>Why a running game's files were read live rather than from a snapshot (a <c>snapshot.*</c> code).</summary>
+    public string? SnapshotError { get; private set; }
+
+    /// <summary>How the game answered when asked to save first; null when it was not asked.</summary>
+    public GameSaveResult? GameSave { get; private set; }
+
     /// <summary>How long the node took (from the request to its result).</summary>
     public TimeSpan? Duration => Status == BackupStatus.Completed && CompletedAt is { } end ? end - (StartedAt ?? CreatedAt) : null;
 
@@ -154,7 +189,9 @@ public sealed class Backup
         }
     }
 
-    public void Completed(long size, int fileCount, int skippedFiles, byte[] sha256, DateTimeOffset now)
+    /// <param name="snapshotError">Kept only when the files were read live, and only a plain code (the agent's word, shown as a reason).</param>
+    public void Completed(long size, int fileCount, int skippedFiles, byte[] sha256, DateTimeOffset now, BackupCopyMode? copyMode = null,
+        string? snapshotError = null, GameSaveResult? gameSave = null)
     {
         ArgumentNullException.ThrowIfNull(sha256);
         if (Status != BackupStatus.Creating)
@@ -168,7 +205,19 @@ public sealed class Backup
         SkippedFiles = skippedFiles;
         Sha256 = sha256;
         CompletedAt = now;
+        CopyMode = copyMode;
+        SnapshotError = copyMode == BackupCopyMode.Live && IsCode(snapshotError) ? snapshotError : null;
+        GameSave = gameSave;
     }
+
+    /// <summary>
+    /// A clean restore deletes the files the backup's rules select that it does not have: files the backup left out
+    /// because the game held them open would be deleted too, so a backup that skipped any cannot be restored clean.
+    /// </summary>
+    public Result CheckCleanRestore() => SkippedFiles is > 0 ? ServerErrors.CleanRestoreIncomplete : Result.Success();
+
+    private static bool IsCode(string? code) => code is { Length: > 0 and <= MaxSnapshotErrorLength }
+        && code.All(c => c is (>= 'a' and <= 'z') or '.' or '_');
 
     /// <summary>The backup could not be made (or was cancelled); later reports change nothing.</summary>
     public void Ended(BackupStatus status, string? errorMessage, DateTimeOffset now)

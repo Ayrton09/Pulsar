@@ -77,6 +77,9 @@ function backup(changes: Partial<Schemas['BackupView']>): Schemas['BackupView'] 
     operationId: '0192f1a0-0000-7000-8000-0000000000c1',
     remoteStatus: 'none',
     remoteError: null,
+    copyMode: 'stopped',
+    snapshotError: null,
+    gameSave: null,
     ...changes,
   };
 }
@@ -93,6 +96,15 @@ const list: Schemas['BackupList'] = {
       createdVia: 'schedule',
       locked: true,
       skippedFiles: 2,
+      copyMode: 'live',
+      snapshotError: 'snapshot.not_permitted',
+      gameSave: 'unconfirmed',
+    }),
+    backup({
+      id: '0192f1a0-0000-7000-8000-0000000000b4',
+      name: 'While playing',
+      copyMode: 'snapshot',
+      gameSave: 'confirmed',
     }),
     backup({
       id: '0192f1a0-0000-7000-8000-0000000000b3',
@@ -151,6 +163,11 @@ describe('backups tab', () => {
     expect(row('Nightly')).toHaveTextContent('Locked');
     expect(row('Nightly')).toHaveTextContent('scheduled');
     expect(row('Nightly')).toHaveTextContent('2 files left out (in use)');
+    expect(row('Nightly')).toHaveTextContent(
+      'Copied while the game ran, without a snapshot (the agent is not running as an administrator) · the game did not confirm its save',
+    );
+    expect(row('While playing')).toHaveTextContent('Copied from a snapshot of the disk · the game saved first');
+    expect(row('Before the update')).not.toHaveTextContent('Copied'); // the server was stopped: nothing to say
     expect(screen.getByRole('button', { name: 'Delete Nightly' })).toBeDisabled();
     expect(row('Broken')).toHaveTextContent('Failed');
     expect(row('Broken')).toHaveTextContent('Not enough disk space.');
@@ -191,8 +208,8 @@ describe('backups tab', () => {
       'GET /api/v1/auth/session': session(manager),
       [`GET /api/v1/servers/${serverId}`]: () => json(details()),
       [`GET /api/v1/servers/${serverId}/backups`]: () => json(list),
-      [`POST /api/v1/servers/${serverId}/backups/0192f1a0-0000-7000-8000-0000000000b1/restore`]: () => {
-        calls.push('restore');
+      [`POST /api/v1/servers/${serverId}/backups/0192f1a0-0000-7000-8000-0000000000b1/restore`]: (request) => {
+        calls.push(`restore ${new URL(request.url).search}`);
         return new Response(null, { status: 204 });
       },
       [`PUT /api/v1/servers/${serverId}/backups/0192f1a0-0000-7000-8000-0000000000b1/lock`]: async (request) => {
@@ -206,18 +223,51 @@ describe('backups tab', () => {
     });
     renderAt(`/servers/${serverId}?tab=backups`);
     await screen.findByRole('table', { name: 'Backups' });
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValue(true);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
 
+    // Asked first; cancelled, nothing happens.
     await userEvent.click(screen.getByRole('button', { name: 'Restore Before the update' }));
+    let dialog = await screen.findByRole('dialog', { name: 'Restore Before the update' });
+    expect(dialog).toHaveTextContent("The backup's files replace the current ones in Retakes.");
+    expect(dialog).toHaveTextContent('Files the backup does not have stay as they are.');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(calls).toEqual([]);
-    expect(confirm).toHaveBeenCalledWith(
-      "Restore Before the update into Retakes? The backup's files replace the server's current ones; files the backup does not have stay as they are.",
-    );
+
+    // Restored clean: the files made after the backup go first.
     await userEvent.click(screen.getByRole('button', { name: 'Restore Before the update' }));
+    dialog = await screen.findByRole('dialog', { name: 'Restore Before the update' });
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Delete the files made after this backup' }));
+    expect(dialog).not.toHaveTextContent('Files the backup does not have stay as they are.');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Restore' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
     await userEvent.click(screen.getByRole('button', { name: 'Lock Before the update' }));
     await userEvent.click(screen.getByRole('button', { name: 'Delete Broken' }));
 
-    await waitFor(() => expect(calls).toEqual(['restore', 'lock {"locked":true}', 'delete']));
+    await waitFor(() => expect(calls).toEqual(['restore ?clean=true', 'lock {"locked":true}', 'delete']));
+  });
+
+  it('does not restore clean a backup that left files out', async () => {
+    const calls: string[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/backups`]: () => json(list),
+      [`POST /api/v1/servers/${serverId}/backups/0192f1a0-0000-7000-8000-0000000000b2/restore`]: (request) => {
+        calls.push(`restore ${new URL(request.url).search}`);
+        return new Response(null, { status: 204 });
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=backups`);
+    await screen.findByRole('table', { name: 'Backups' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Restore Nightly' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Restore Nightly' });
+    expect(within(dialog).getByRole('checkbox', { name: 'Delete the files made after this backup' })).toBeDisabled();
+    expect(dialog).toHaveTextContent('this backup left out files the game held open');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Restore' }));
+
+    await waitFor(() => expect(calls).toEqual(['restore ?clean=false']));
   });
 
   it('keeps a number of backups, asking before deleting old ones', async () => {

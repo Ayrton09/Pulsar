@@ -285,7 +285,8 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                 backup.Ended(BackupStatus.Failed, "The node reported a negative size or count for the archive.", now);
                 break;
             case OperationStatus.Succeeded when result is BackupResult made && Sha256(made.Sha256) is { } hash:
-                backup.Completed(made.Size, made.FileCount, made.SkippedFiles, hash, now);
+                backup.Completed(made.Size, made.FileCount, made.SkippedFiles, hash, now, CopyMode(made.Capture?.Mode), made.Capture?.SnapshotError,
+                    GameSave(made.Capture?.Save));
                 if (backup.RemoteStatus == RemoteCopyStatus.Pending)
                 {
                     backup.RemoteCopyEnded(made.RemoteCopied, made.RemoteError);
@@ -317,6 +318,23 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
 
     // Skipped files are not in the archive, so they can outnumber the files in it.
     private static bool Plausible(BackupResult made) => made is { Size: >= 0, FileCount: >= 0, SkippedFiles: >= 0 };
+
+    // A value this panel does not know (a newer agent's) is left unknown.
+    private static BackupCopyMode? CopyMode(BackupCaptureMode? mode) => mode switch
+    {
+        BackupCaptureMode.Stopped => BackupCopyMode.Stopped,
+        BackupCaptureMode.Snapshot => BackupCopyMode.Snapshot,
+        BackupCaptureMode.Live => BackupCopyMode.Live,
+        _ => null,
+    };
+
+    private static GameSaveResult? GameSave(GameSaveOutcome? outcome) => outcome switch
+    {
+        GameSaveOutcome.Confirmed => GameSaveResult.Confirmed,
+        GameSaveOutcome.Waited => GameSaveResult.Waited,
+        GameSaveOutcome.Unconfirmed => GameSaveResult.Unconfirmed,
+        _ => null,
+    };
 
     private static byte[]? Sha256(string hex)
     {

@@ -37,12 +37,15 @@ export function useCreateBackup(serverId: string) {
   });
 }
 
+/** A clean restore first deletes the files the backup's rules select that it does not have (made after it). */
 export function useRestoreBackup(serverId: string) {
   const changed = useBackupsChanged(serverId);
   return useMutation({
-    mutationFn: (backupId: string) =>
+    mutationFn: ({ backupId, clean }: { backupId: string; clean: boolean }) =>
       unwrap(
-        api.POST('/api/v1/servers/{id}/backups/{backupId}/restore', { params: { path: { id: serverId, backupId } } }),
+        api.POST('/api/v1/servers/{id}/backups/{backupId}/restore', {
+          params: { path: { id: serverId, backupId }, query: { clean } },
+        }),
       ),
     onSettled: changed,
   });

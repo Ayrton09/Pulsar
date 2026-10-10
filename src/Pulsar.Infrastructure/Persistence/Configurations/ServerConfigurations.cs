@@ -146,6 +146,8 @@ internal sealed class BackupConfiguration : IEntityTypeConfiguration<Backup>
             t.HasCheckConstraint("ck_backups_status", SnakeCaseEnum<BackupStatus>.CheckConstraint("status"));
             t.HasCheckConstraint("ck_backups_created_via", SnakeCaseEnum<OperationRequester>.CheckConstraint("created_via"));
             t.HasCheckConstraint("ck_backups_remote_status", SnakeCaseEnum<RemoteCopyStatus>.CheckConstraint("remote_status"));
+            t.HasCheckConstraint("ck_backups_copy_mode", SnakeCaseEnum<BackupCopyMode>.CheckConstraint("copy_mode"));
+            t.HasCheckConstraint("ck_backups_game_save", SnakeCaseEnum<GameSaveResult>.CheckConstraint("game_save"));
         });
 
         builder.HasKey(b => b.Id);
@@ -158,6 +160,9 @@ internal sealed class BackupConfiguration : IEntityTypeConfiguration<Backup>
             .HasSentinel(RemoteCopyStatus.None);
         builder.Property(b => b.RemoteKey).HasMaxLength(512);
         builder.Property(b => b.RemoteError).HasMaxLength(Backup.MaxErrorMessageLength);
+        builder.Property(b => b.CopyMode).HasConversion<SnakeCaseEnumConverter<BackupCopyMode>>();
+        builder.Property(b => b.SnapshotError).HasMaxLength(Backup.MaxSnapshotErrorLength);
+        builder.Property(b => b.GameSave).HasConversion<SnakeCaseEnumConverter<GameSaveResult>>();
         builder.Ignore(b => b.Duration);
         // The agent's result, retention and users (locking, deleting) can race: the loser retries or gives way.
         builder.Property<uint>("Version").IsRowVersion();

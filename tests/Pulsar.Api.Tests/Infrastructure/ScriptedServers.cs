@@ -147,6 +147,9 @@ public sealed class ScriptedProcess(int processId) : IGameProcess
 
     public void Print(string text) => _output.Writer.TryWrite(new ConsoleChunk(DateTimeOffset.UtcNow, text));
 
+    /// <summary>When the game was told to save (the pulsar-test manifest's <c>backup.save</c>).</summary>
+    public System.Collections.Concurrent.ConcurrentBag<DateTimeOffset> Saves { get; } = [];
+
     /// <summary>Ends the process by itself (a crash when <paramref name="code"/> is not 0).</summary>
     public void Exit(int code)
     {
@@ -165,6 +168,11 @@ public sealed class ScriptedProcess(int processId) : IGameProcess
         else if (text.StartsWith("say ", StringComparison.Ordinal))
         {
             Print($"Test server: {text[4..].TrimEnd()}\r\n");
+        }
+        else if (text.TrimEnd() == "save")
+        {
+            Saves.Add(DateTimeOffset.UtcNow);
+            Print($"Test server: saved ({Saves.Count})\r\n");
         }
 
         return ValueTask.CompletedTask;

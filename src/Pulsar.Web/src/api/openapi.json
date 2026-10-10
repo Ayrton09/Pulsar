@@ -8027,6 +8027,14 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "clean",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
           }
         ],
         "responses": {
@@ -11407,6 +11415,14 @@
           }
         }
       },
+      "BackupCopyMode": {
+        "enum": [
+          "stopped",
+          "snapshot",
+          "live",
+          null
+        ]
+      },
       "BackupList": {
         "required": [
           "backups",
@@ -11656,7 +11672,10 @@
           "errorMessage",
           "operationId",
           "remoteStatus",
-          "remoteError"
+          "remoteError",
+          "copyMode",
+          "snapshotError",
+          "gameSave"
         ],
         "type": "object",
         "properties": {
@@ -11741,6 +11760,32 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "copyMode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BackupCopyMode"
+              }
+            ]
+          },
+          "snapshotError": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "gameSave": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GameSaveResult"
+              }
             ]
           }
         }
@@ -12609,6 +12654,14 @@
             "type": "string"
           }
         }
+      },
+      "GameSaveResult": {
+        "enum": [
+          "confirmed",
+          "waited",
+          "unconfirmed",
+          null
+        ]
       },
       "HttpValidationProblemDetails": {
         "type": "object",

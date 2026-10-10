@@ -7848,7 +7848,9 @@ export interface paths {
         put?: never;
         post: {
             parameters: {
-                query?: never;
+                query?: {
+                    clean?: boolean;
+                };
                 header?: never;
                 path: {
                     id: string;
@@ -10815,6 +10817,8 @@ export interface components {
             /** Format: uuid */
             nextBefore: null | string;
         };
+        /** @enum {unknown} */
+        BackupCopyMode: "stopped" | "snapshot" | "live" | null;
         BackupList: {
             backups: components["schemas"]["BackupView"][];
             /** Format: int32 */
@@ -10895,6 +10899,9 @@ export interface components {
             operationId: null | string;
             remoteStatus: components["schemas"]["RemoteCopyStatus"];
             remoteError: null | string;
+            copyMode: null | components["schemas"]["BackupCopyMode"];
+            snapshotError: null | string;
+            gameSave: null | components["schemas"]["GameSaveResult"];
         };
         ChangePasswordRequest: {
             currentPassword: string;
@@ -11098,6 +11105,8 @@ export interface components {
         FilePathRequest: {
             path: string;
         };
+        /** @enum {unknown} */
+        GameSaveResult: "confirmed" | "waited" | "unconfirmed" | null;
         HttpValidationProblemDetails: {
             type?: null | string;
             title?: null | string;

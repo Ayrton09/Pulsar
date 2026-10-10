@@ -102,6 +102,12 @@ public static class ServerErrors
     public static DomainError BackupsUnsupported { get; } =
         new("backups.unsupported", "The node's agent cannot make backups (update the agent).");
 
+    public static DomainError CleanRestoreUnsupported { get; } =
+        new("backups.clean_unsupported", "The node's agent cannot restore a backup clean (update the agent).");
+
+    public static DomainError CleanRestoreIncomplete { get; } =
+        new("backups.clean_incomplete", "This backup left out files the game held open: a clean restore would delete them. Restore it without cleaning.");
+
     /// <summary>The agent refused a backup command; its code (<c>backups.*</c>) and message are passed on.</summary>
     public static DomainError BackupRejected(string code, string message) => new(code, message);
 

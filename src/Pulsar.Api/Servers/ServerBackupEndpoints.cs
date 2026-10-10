@@ -55,8 +55,10 @@ public static class ServerBackupEndpoints
             .RequirePermission(Permissions.Server.BackupsView)
             .Produces(StatusCodes.Status200OK, contentType: "application/zip")
             .ProducesProblem(StatusCodes.Status404NotFound);
-        backups.MapPost("/{backupId:guid}/restore", async (Guid id, Guid backupId, ServerBackups b, CancellationToken ct) =>
-                (await b.RestoreAsync(new ServerId(id), new BackupId(backupId), ct)).ToHttp())
+        // ?clean=true first deletes the files the backup's rules select that it does not have (made after it); without it
+        // they stay, as for restores asked before clean ones existed (scripts with API keys).
+        backups.MapPost("/{backupId:guid}/restore", async (Guid id, Guid backupId, ServerBackups b, CancellationToken ct, bool clean = false) =>
+                (await b.RestoreAsync(new ServerId(id), new BackupId(backupId), clean, ct)).ToHttp())
             .RequirePermission(Permissions.Server.BackupsRestore);
         backups.MapPut("/{backupId:guid}/lock", async (Guid id, Guid backupId, LockBackupRequest request, ServerBackups b, CancellationToken ct) =>
                 (await b.SetLockedAsync(new ServerId(id), new BackupId(backupId), request.Locked, ct)).ToHttp())

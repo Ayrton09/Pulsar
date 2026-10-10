@@ -41,6 +41,7 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
         var backup = await WaitForBackupAsync(admin, server, created.Id, BackupStatus.Completed);
         Assert.Equal(2, backup.FileCount); // the test game's executable and the configuration
         Assert.Equal(0, backup.SkippedFiles);
+        Assert.Equal((BackupCopyMode.Stopped, null, null), (backup.CopyMode, backup.SnapshotError, backup.GameSave)); // nothing was writing
         Assert.Matches("^[0-9a-f]{64}$", backup.Sha256);
         Assert.NotNull(backup.DurationSeconds);
         var archive = Path.Combine(agent.Configs.Paths.BackupsDirectory, _shortIds[server], $"{backup.Id:N}.zip");
@@ -87,6 +88,9 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
         Assert.Matches(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC$", created.Name);
         var backup = await WaitForBackupAsync(admin, server, created.Id, BackupStatus.Completed);
 
+        // The game saved first (pulsar-test's backup.save); this agent takes no snapshots, so its files were read live.
+        Assert.Equal((BackupCopyMode.Live, "snapshot.unsupported", GameSaveResult.Confirmed), (backup.CopyMode, backup.SnapshotError, backup.GameSave));
+        Assert.Single(agent.Processes.Started.Last(p => !p.IsSteamCmd).Saves);
         Assert.Equal(ServerRuntimeState.Running, (await ServerApi.GetAsync(admin, server))!.Server.RuntimeState);
         await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/backups/{backup.Id}/restore"), HttpStatusCode.Conflict,
             ServerErrors.MustBeStopped.Code);
@@ -94,6 +98,56 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
             ServerErrors.OperationNotCancellable.Code);
         await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/backups/{Guid.NewGuid()}/restore"), HttpStatusCode.NotFound,
             ServerErrors.BackupNotFound.Code);
+    }
+
+    [DatabaseFact]
+    public async Task ACleanRestoreDeletesTheFilesMadeAfterTheBackup()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "clean");
+        var server = await InstalledServerAsync(admin, agent, "Clean");
+        var data = Path.Combine(ServerDirectory(agent, server), "data");
+        await File.WriteAllTextAsync(Path.Combine(data, "server.cfg"), "hostname one", Ct);
+        var backup = await MadeAsync(admin, server, "Before exploring");
+        await File.WriteAllTextAsync(Path.Combine(data, "server.cfg"), "hostname two", Ct);
+        await File.WriteAllTextAsync(Path.Combine(data, "region.dat"), "explored after the backup", Ct);
+
+        await EnsureAsync(await admin.PostAsync($"/api/v1/servers/{server}/backups/{backup.Id}/restore?clean=true"));
+
+        var details = await ServerApi.WaitForAsync(admin, server, s => s.Server.ActiveOperation is null, "restored");
+        Assert.Equal(OperationStatus.Succeeded, details.RecentOperations.First(o => o.Type == OperationType.BackupRestore).Status);
+        Assert.Equal("hostname one", await File.ReadAllTextAsync(Path.Combine(data, "server.cfg"), Ct));
+        Assert.False(File.Exists(Path.Combine(data, "region.dat")));
+        var audited = (await AuditAsync(server)).Single(a => a.Action == AuditActions.Server.BackupRestoreRequested).Metadata;
+        Assert.True(JsonDocument.Parse(audited).RootElement.GetProperty("clean").GetBoolean(), audited);
+    }
+
+    [DatabaseFact]
+    public async Task ABackupThatLeftFilesOutIsNotRestoredClean()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "partial");
+        var server = await InstalledServerAsync(admin, agent, "Partial");
+        Guid partial;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            // Read live while the game held two files open (a node that could not take a snapshot).
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var row = await db.Servers.SingleAsync(s => s.Id == new ServerId(server), Ct);
+            var operation = Operation.Create(OperationType.BackupCreate, row.NodeId, row.Id, null, OperationRequester.User, DateTimeOffset.UtcNow);
+            operation.Complete(OperationStatus.Succeeded, null, null, DateTimeOffset.UtcNow);
+            var backup = Backup.Create(row, "partial", operation, null, OperationRequester.User, DateTimeOffset.UtcNow).Value;
+            backup.Completed(10, 3, 2, new byte[32], DateTimeOffset.UtcNow, BackupCopyMode.Live, "snapshot.not_permitted");
+            db.Operations.Add(operation);
+            db.Backups.Add(backup);
+            await db.SaveChangesAsync(Ct);
+            partial = backup.Id.Value;
+        }
+
+        await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/backups/{partial}/restore?clean=true"),
+            HttpStatusCode.Conflict, ServerErrors.CleanRestoreIncomplete.Code);
+        var listed = (await ListAsync(admin, server)).Backups.Single(b => b.Id == partial);
+        Assert.Equal((BackupCopyMode.Live, "snapshot.not_permitted", 2), (listed.CopyMode, listed.SnapshotError, listed.SkippedFiles));
     }
 
     [DatabaseFact]

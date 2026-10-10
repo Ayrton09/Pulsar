@@ -536,6 +536,8 @@
       "not_completed": "The backup is not complete.",
       "locked": "The backup is locked: unlock it before deleting it.",
       "unsupported": "The node's agent cannot make backups. Update the agent.",
+      "clean_unsupported": "The node's agent cannot restore a backup clean. Update the agent.",
+      "clean_incomplete": "This backup left out files the game held open: restoring clean would delete them. Restore it without cleaning.",
       "in_use": "The backup is being downloaded or restored. Try again when that ends.",
       "corrupt": "The backup cannot be restored: {{detail}}",
       "remote_failed": "Remote storage failed: {{detail}}"
@@ -931,7 +933,11 @@
       "scanning": "finding the files",
       "archiving": "compressing",
       "checking": "checking the archive",
-      "restoring": "restoring files"
+      "restoring": "restoring files",
+      "saving": "asking the game to save",
+      "snapshotting": "taking a snapshot of the disk",
+      "cleaning": "deleting newer files",
+      "uploading": "copying to remote storage"
     },
     "settings": {
       "title": "Settings",
@@ -1165,7 +1171,7 @@
     "name": "Name",
     "nameHint": "Optional. Without one, the backup is named after the time it was made.",
     "nameTooLong": "At most {{max}} characters.",
-    "runningWarning": "The server is running: files it writes during the backup may be saved half written. Stop it first for a consistent copy.",
+    "runningWarning": "The server is running: the game is asked to save first (when its template says how) and its files are copied from a snapshot of the disk. If the node cannot take one, files the game writes meanwhile may be copied half written; the backup will say so.",
     "empty": "No backups yet.",
     "created": "Created",
     "size": "Size",
@@ -1190,7 +1196,31 @@
     "downloadNamed": "Download {{name}}",
     "restore": "Restore",
     "restoreNamed": "Restore {{name}}",
-    "restoreConfirm": "Restore {{name}} into {{server}}? The backup's files replace the server's current ones; files the backup does not have stay as they are.",
+    "restoreTitle": "Restore {{name}}",
+    "restoreText": "The backup's files replace the current ones in {{server}}.",
+    "restoreKeep": "Files the backup does not have stay as they are.",
+    "restoreClean": "Delete the files made after this backup",
+    "restoreCleanHint": "Files the backup would include but does not have are deleted first, such as map regions explored since. The installed game and files outside the backup stay.",
+    "restoreCleanSkipped": "Not available: this backup left out files the game held open, and restoring clean would delete them.",
+    "copy": {
+      "snapshot": "Copied from a snapshot of the disk",
+      "live": "Copied while the game ran, without a snapshot ({{reason}})"
+    },
+    "save": {
+      "confirmed": "the game saved first",
+      "waited": "the game was asked to save first",
+      "unconfirmed": "the game did not confirm its save"
+    },
+    "snapshotErrors": {
+      "disabled": "snapshots are turned off on this node",
+      "not_permitted": "the agent is not running as an administrator",
+      "unsupported": "this disk cannot have snapshots",
+      "unavailable": "the Volume Shadow Copy service is not running",
+      "no_space": "the disk has no room for the snapshot",
+      "busy": "another program kept taking snapshots",
+      "failed": "Windows could not take one; the agent's log says why",
+      "unknown": "no reason given"
+    },
     "stopToRestore": "Stop the server to restore a backup.",
     "lock": "Lock",
     "unlock": "Unlock",
