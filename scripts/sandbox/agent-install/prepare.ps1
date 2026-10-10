@@ -21,9 +21,10 @@ dotnet publish (Join-Path $repo 'src\Pulsar.Api') -c Release -r win-x64 --self-c
 if ($LASTEXITCODE -ne 0) { throw 'publish panel failed' }
 dotnet publish (Join-Path $repo 'src\Pulsar.Agent') -c Release -r win-x64 --self-contained -o (Join-Path $bundle 'agent')
 if ($LASTEXITCODE -ne 0) { throw 'publish agent failed' }
-# The agent MSI (Phase 14), twice: the check upgrades the first with the second while a game runs.
-foreach ($version in '1.0.0', '1.0.1') {
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'scripts\release\Build-AgentMsi.ps1') -AgentDir (Join-Path $bundle 'agent') -Version $version -Output (Join-Path $bundle 'msi')
+# The agent MSI (Phase 14): 1.0.0, a second build of 1.0.0 (a new product of the same version, which replaces it), and
+# 1.0.1, which upgrades them while a game runs (and which 1.0.0 must not downgrade).
+foreach ($build in @(@('1.0.0', 'msi'), @('1.0.0', 'msi\rebuild'), @('1.0.1', 'msi'))) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'scripts\release\Build-AgentMsi.ps1') -AgentDir (Join-Path $bundle 'agent') -Version $build[0] -Output (Join-Path $bundle $build[1])
     if ($LASTEXITCODE -ne 0) { throw 'agent MSI failed' }
 }
 # The test game server runs as a server account, which has no .NET runtime to find either.
@@ -37,6 +38,8 @@ foreach ($dll in 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'msvc
 }
 
 Copy-Item (Join-Path $PSScriptRoot 'run.ps1') $bundle
+# The check makes sure the ZIP's installer leaves an agent from the MSI alone.
+Copy-Item (Join-Path $repo 'scripts\install\Install-Pulsar.ps1') $bundle
 
 $sandboxBundle = 'C:\Users\WDAGUtilityAccount\Desktop\agent-install'
 @"

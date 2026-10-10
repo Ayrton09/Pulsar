@@ -32,7 +32,9 @@ It updates whatever this machine has, the panel, the agent or both:
 
 An agent installed with the MSI is updated with the newer package, silently and without the panel's values:
 `msiexec /i pulsar-agent-<version>-windows-x64.msi /qn`. It keeps the enrollment and leaves the games running, as above.
-Intune and group policies can deploy the new package the same way.
+Intune and group policies can deploy the new package the same way. An older package does not replace a newer one
+("A newer version of the Pulsar Agent is installed"). `Install-Pulsar.ps1 -Update` leaves such an agent alone (it
+updates only the panel, if the machine has one): the MSI and the script each maintain only the agents they installed.
 
 The settings files (`appsettings.Production.json`) are never replaced.
 

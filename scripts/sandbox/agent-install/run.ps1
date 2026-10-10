@@ -1,8 +1,10 @@
 # Installs the agent the production way on a disposable, elevated Windows (Windows Sandbox through prepare.ps1, or a CI
 # runner): PostgreSQL + panel on 127.0.0.1, then elevated enroll, machine key, PulsarAgent service as SYSTEM, and a
 # test game server running as its own Windows account, then a real Counter-Strike: Source server installed by SteamCMD
-# from Valve (about 2.5 GB), started and stopped over RCON as its account, with managed firewall rules. Every check is
-# written to report\summary.txt as PASS/FAIL; the last line is "done", and the exit code is 1 on any FAIL.
+# from Valve (about 2.5 GB), started and stopped over RCON as its account, with managed firewall rules. Then the agent
+# MSI: refused next to that agent, a refused token, install, a same-version rebuild, an upgrade with a game running, a
+# refused downgrade, Install-Pulsar.ps1 leaving it alone, uninstall. Every check is written to report\summary.txt as
+# PASS/FAIL; the last line is "done", and the exit code is 1 on any FAIL.
 # When the machine has a ready TPM, the node key must be in it.
 # Never run it on a machine you use: it installs a service and creates a machine key (removed again at the end).
 param(
@@ -329,32 +331,68 @@ try {
     $panelErrors = @(Select-String -Path (Join-Path $report 'panel.txt') -Pattern ' (ERR|FTL)\]')
     Check 'panel log: no errors' ($panelErrors.Count -eq 0) (($panelErrors | ForEach-Object Line) -join ' | ')
 
+    # --- The agent MSI (Phase 14) refuses to install where an agent installed without it runs (same folder, same service) ---
+    $first = Get-ChildItem (Join-Path $Bundle 'msi') -Filter 'pulsar-agent-1.0.0-*.msi'
+    $rebuild = Get-ChildItem (Join-Path $Bundle 'msi\rebuild') -Filter 'pulsar-agent-1.0.0-*.msi'
+    $second = Get-ChildItem (Join-Path $Bundle 'msi') -Filter 'pulsar-agent-1.0.1-*.msi'
+    function Invoke-Msi([string[]] $arguments) { (Start-Process msiexec.exe -ArgumentList $arguments -Wait -PassThru).ExitCode }
+    function Install-Msi($package, [string] $log, [string[]] $properties = @()) {
+        Invoke-Msi (@('/i', "`"$($package.FullName)`"", '/qn', '/l*v', "`"$(Join-Path $report $log)`"") + $properties)
+    }
+    function Uninstall-Msi($package, [string] $log) { Invoke-Msi @('/x', "`"$($package.FullName)`"", '/qn', '/l*v', "`"$(Join-Path $report $log)`"") }
+    function Get-AgentProducts {
+        @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.PSObject.Properties['DisplayName'] -and $_.DisplayName -eq 'Pulsar Agent' })
+    }
+    $exit = Install-Msi $first 'msi-over-zip.log' @("PANELURL=$panel", 'TOKEN=unused', "PANELKEY=$panelKey")
+    $refusal = Get-Content (Join-Path $report 'msi-over-zip.log') -Raw
+    Check 'msi: refused where an agent installed without it runs (service and program untouched)' ($exit -ne 0 -and $refusal -match 'Install-Pulsar\.ps1 -Uninstall' -and $null -ne (Get-Service PulsarAgent -ErrorAction SilentlyContinue) -and (Test-Path $agentExe) -and @(Get-AgentProducts).Count -eq 0) "exit $exit"
+
     # --- Unenroll removes the service, the key and the configuration ---
     $removed = Invoke-Native $agentExe unenroll
     $serviceGone = $null -eq (Get-Service PulsarAgent -ErrorAction SilentlyContinue)
     $keyGone = -not [Security.Cryptography.CngKey]::Exists($config.key.name, $provider, [Security.Cryptography.CngKeyOpenOptions]::MachineKey)
     Check 'unenroll removes service, key and configuration' ($LASTEXITCODE -eq 0 -and $serviceGone -and $keyGone -and -not (Test-Path (Join-Path $dataDir 'config\agent.json'))) ($removed.Trim() -replace '\s+', ' ')
 
-    # --- The agent MSI with a reusable token (Phase 14): install, approval, an upgrade with a game running, uninstall ---
+    # --- The agent MSI with a reusable token (Phase 14): a refused token, install, approval, a rebuild, an upgrade with a
+    # game running, a refused downgrade, uninstall, and an install with a SERVERSROOT ending in a backslash ---
     Remove-Item $installDir -Recurse -Force # the copy installed by hand above
+    # Two machines' worth: the first install and the one with the trailing backslash (a refused token uses none).
     $reusable = Api POST '/api/v1/enrollment-tokens' @{ name = 'sandbox-msi'; maxUses = 2; lifetimeHours = 24; requireApproval = $true }
-    $first = Get-ChildItem (Join-Path $Bundle 'msi') -Filter 'pulsar-agent-1.0.0-*.msi'
-    $second = Get-ChildItem (Join-Path $Bundle 'msi') -Filter 'pulsar-agent-1.0.1-*.msi'
-    function Invoke-Msi([string[]] $arguments) { (Start-Process msiexec.exe -ArgumentList $arguments -Wait -PassThru).ExitCode }
-    $exit = Invoke-Msi @('/i', "`"$($first.FullName)`"", '/qn', '/l*v', "`"$(Join-Path $report 'msi-install.log')`"", "PANELURL=$panel",
-        "TOKEN=$($reusable.value)", "PANELKEY=$($reusable.panelKeyFingerprint)", 'SERVERSROOT=C:\PulsarServers')
+    $values = @("PANELURL=$panel", "TOKEN=$($reusable.value)", "PANELKEY=$($reusable.panelKeyFingerprint)")
+    $agentConfig = Join-Path $dataDir 'config\agent.json'
+    $enrollLog = Join-Path $dataDir 'logs\enroll.log'
+    $unenrollLog = Join-Path $dataDir 'logs\unenroll.log'
+    function Get-LogTail([string] $path) { ((Get-Content $path -Tail 4 -ErrorAction SilentlyContinue) -join ' ') -replace '\s+', ' ' }
+    function Test-AgentRunning { $agent = Get-Service PulsarAgent -ErrorAction SilentlyContinue; $null -ne $agent -and $agent.Status -eq 'Running' }
+
+    # The panel refuses the token: enroll fails, and the installation rolls back completely.
+    $exit = Install-Msi $first 'msi-bad-token.log' @("PANELURL=$panel", "TOKEN=$($reusable.value)x", "PANELKEY=$($reusable.panelKeyFingerprint)")
+    Check 'msi: a refused token fails the install and leaves nothing (no service, program, enrollment or product)' ($exit -ne 0 -and $null -eq (Get-Service PulsarAgent -ErrorAction SilentlyContinue) -and -not (Test-Path $installDir) -and -not (Test-Path $agentConfig) -and @(Get-AgentProducts).Count -eq 0) "exit $exit; enroll.log: $(Get-LogTail $enrollLog)"
+
+    # Without SERVERSROOT: enroll gets no --servers-root, and servers go to the default folder.
+    $exit = Install-Msi $first 'msi-install.log' $values
     Check 'msi: installed silently' ($exit -eq 0) "exit $exit"
     $service = Get-CimInstance Win32_Service -Filter "Name='PulsarAgent'"
     Check 'msi: the service runs from Program Files' ($service.State -eq 'Running' -and $service.PathName -like "*$installDir\PulsarAgent.exe*") "$($service.State) $($service.PathName)"
     $msiNode = $null
     foreach ($candidate in (Api GET '/api/v1/nodes')) { if ($candidate.name -eq $env:COMPUTERNAME) { $msiNode = $candidate } }
     Check 'msi: the token created a node named after the machine, waiting for approval' ($null -ne $msiNode -and $msiNode.status -eq 'pendingApproval') "$($msiNode.name) $($msiNode.status)"
-    $enrollLog = Join-Path $dataDir 'logs\enroll.log'
     Check 'msi: enroll log written' ((Test-Path $enrollLog) -and (Get-Content $enrollLog -Raw) -match 'Enrolled with') ((Get-Content $enrollLog -Raw -ErrorAction SilentlyContinue) -replace '\s+', ' ')
-    $leaked = @(Select-String -Path (Join-Path $report 'msi-install.log'), $enrollLog -SimpleMatch $reusable.value)
+    # The refused token is the real one plus a character: a log holding either matches.
+    $leaked = @(Select-String -Path (Join-Path $report 'msi-bad-token.log'), (Join-Path $report 'msi-install.log'), $enrollLog -SimpleMatch $reusable.value)
     Check 'msi: the token is in no log' ($leaked.Count -eq 0) "$($leaked.Count) lines"
     $null = Api POST "/api/v1/nodes/$($msiNode.id)/approve"
     Check 'msi: node online once approved' (Wait-Until { (Api GET "/api/v1/nodes/$($msiNode.id)").node.connected } 120)
+    $msiConfig = Get-Content $agentConfig -Raw | ConvertFrom-Json
+    $inventory = (Api GET "/api/v1/nodes/$($msiNode.id)").node.inventory
+    Check 'msi: without SERVERSROOT, the default servers root' ($null -eq $msiConfig.serversRoot -and $inventory.serversRoot -eq 'C:\PulsarServers') "configured: $($msiConfig.serversRoot); reported: $($inventory.serversRoot)"
+
+    # Another build of the same version is a new product: it replaces the installed one, enrollment included.
+    $built = @(Get-AgentProducts)
+    $exit = Install-Msi $rebuild 'msi-rebuild.log'
+    $products = @(Get-AgentProducts)
+    Check 'msi: a rebuild of the same version replaces it (no values needed)' ($exit -eq 0 -and $products.Count -eq 1 -and $products[0].DisplayVersion -eq '1.0.0' -and $products[0].PSChildName -ne $built[0].PSChildName) "exit $exit; $(($products | ForEach-Object { "$($_.PSChildName) $($_.DisplayVersion)" }) -join ', ')"
+    Check 'msi: enrollment kept through the rebuild, node online' ((Test-Path $agentConfig) -and (Wait-Until { (Api GET "/api/v1/nodes/$($msiNode.id)").node.connected } 60))
 
     # A test game on the new node, running while the package is upgraded.
     @{ Pulsar = @{ TestGameDirectory = $testGameDir } } | ConvertTo-Json | Set-Content (Join-Path $installDir 'appsettings.Production.json')
@@ -367,20 +405,50 @@ try {
     Check 'msi: server running on the node' (Wait-Until { (MsiServer).runtimeState -eq 'running' } 60)
     $before = @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'")[0].ProcessId
 
-    $exit = Invoke-Msi @('/i', "`"$($second.FullName)`"", '/qn', '/l*v', "`"$(Join-Path $report 'msi-upgrade.log')`"")
+    $exit = Install-Msi $second 'msi-upgrade.log'
     Check 'msi: upgraded silently (no values needed)' ($exit -eq 0) "exit $exit"
-    $products = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.PSObject.Properties['DisplayName'] -and $_.DisplayName -eq 'Pulsar Agent' })
+    $products = @(Get-AgentProducts)
     Check 'msi: one product left, the new version' ($products.Count -eq 1 -and $products[0].DisplayVersion -eq '1.0.1') (($products | ForEach-Object DisplayVersion) -join ', ')
     Check 'msi: the game kept running through the upgrade (same process)' (Wait-Until {
             $now = @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'")
             (Api GET "/api/v1/nodes/$($msiNode.id)").node.connected -and (MsiServer).runtimeState -eq 'running' -and $now.Count -eq 1 -and $now[0].ProcessId -eq $before
         } 120)
-    Check 'msi: enrollment kept' (Test-Path (Join-Path $dataDir 'config\agent.json'))
+    Check 'msi: enrollment kept' (Test-Path $agentConfig)
 
-    $exit = Invoke-Msi @('/x', "`"$($second.FullName)`"", '/qn', '/l*v', "`"$(Join-Path $report 'msi-uninstall.log')`"")
+    # The ZIP's installer leaves an agent from the MSI alone (this machine has no panel service for it to handle).
+    $installScript = Join-Path $Bundle 'Install-Pulsar.ps1'
+    foreach ($arguments in @(@('-Update'), @('-Uninstall'), @('-Mode', 'Agent', '-PanelUrl', $panel, '-Token', 'unused', '-PanelKey', 'unused'))) {
+        $refused = & {
+            $ErrorActionPreference = 'Continue'
+            (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installScript @arguments 2>&1 | ForEach-Object { "$_" }) -join ' '
+        }
+        $code = $LASTEXITCODE
+        # Windows PowerShell wraps the error it prints at the console's width, anywhere in a word.
+        Check "msi: Install-Pulsar.ps1 $($arguments[0]) $($arguments[1]) refuses to touch it" ($code -ne 0 -and ($refused -replace '\s', '') -match 'msiexec/x' -and (Test-AgentRunning) -and (Test-Path $agentExe)) "exit $code; $($refused -replace '\s+', ' ')"
+    }
+
+    # An older package is refused, and the installed one keeps running.
+    $exit = Install-Msi $first 'msi-downgrade.log'
+    $products = @(Get-AgentProducts)
+    Check 'msi: an older package does not downgrade it' ($exit -ne 0 -and (Get-Content (Join-Path $report 'msi-downgrade.log') -Raw) -match 'A newer version of the Pulsar Agent is installed' -and $products.Count -eq 1 -and $products[0].DisplayVersion -eq '1.0.1' -and (Test-AgentRunning)) "exit $exit; $(($products | ForEach-Object DisplayVersion) -join ', ')"
+
+    $exit = Uninstall-Msi $second 'msi-uninstall.log'
     Check 'msi: uninstalled silently' ($exit -eq 0) "exit $exit"
-    Check 'msi: uninstall stopped the game and removed the service and the enrollment' (@(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'").Count -eq 0 -and $null -eq (Get-Service PulsarAgent -ErrorAction SilentlyContinue) -and -not (Test-Path (Join-Path $dataDir 'config\agent.json')))
-    Check 'msi: program removed' (-not (Test-Path $agentExe))
+    Check 'msi: uninstall stopped the game and removed the service and the enrollment' (@(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'").Count -eq 0 -and $null -eq (Get-Service PulsarAgent -ErrorAction SilentlyContinue) -and -not (Test-Path $agentConfig))
+    Check 'msi: unenroll log written' ((Test-Path $unenrollLog) -and (Get-Content $unenrollLog -Raw) -match 'no longer enrolled') (Get-LogTail $unenrollLog)
+    # The package removes what it installed; the settings file this check wrote is not its own, and stays.
+    $left = @(Get-ChildItem $installDir -Recurse -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($installDir.Length + 1) })
+    Check 'msi: program removed (only the settings file written here is left)' (-not (Test-Path $agentExe) -and ($left -join ',') -eq 'appsettings.Production.json') ($left -join ', ')
+    Check 'msi: no product left' (@(Get-AgentProducts).Count -eq 0)
+    Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
+
+    # SERVERSROOT ending in a backslash: its closing quote reaches the agent escaped (C:\PulsarServers2"), which it trims.
+    $exit = Install-Msi $second 'msi-install-backslash.log' ($values + 'SERVERSROOT=C:\PulsarServers2\')
+    $msiConfig = Get-Content $agentConfig -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
+    $root = if ($msiConfig) { "$($msiConfig.serversRoot)" } else { '' }
+    Check 'msi: SERVERSROOT with a trailing backslash' ($exit -eq 0 -and $root.TrimEnd('\') -eq 'C:\PulsarServers2') "exit $exit; servers root: $root; enroll.log: $(Get-LogTail $enrollLog)"
+    $exit = Uninstall-Msi $second 'msi-uninstall-backslash.log'
+    Check 'msi: uninstalled again, nothing left' ($exit -eq 0 -and $null -eq (Get-Service PulsarAgent -ErrorAction SilentlyContinue) -and -not (Test-Path $agentConfig) -and -not (Test-Path $installDir) -and @(Get-AgentProducts).Count -eq 0) "exit $exit"
     Check 'msi: no host process left' (@(Get-CimInstance Win32_Process -Filter "Name = 'PulsarAgent.exe'").Count -eq 0)
 }
 catch {

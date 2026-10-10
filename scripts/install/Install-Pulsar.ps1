@@ -18,6 +18,9 @@
     -Update replaces the programs of whatever is installed and keeps settings and data. -Uninstall removes the
     services and programs; the database, the panel's keys and logs and the game servers' folders are kept.
 
+    An agent installed with the agent MSI is updated and removed with msiexec, never by this script: -Mode Agent and
+    -Mode AllInOne refuse to run next to it, and -Update and -Uninstall handle only the panel.
+
     -Mode Panel -RestoreFrom <folder> installs the panel from a backup made by Backup-Pulsar.ps1 (on this machine or
     another): its database, keys, certificates and settings. Nodes reconnect on their own when the panel's address
     leads to this machine.
@@ -109,6 +112,19 @@ function Assert-RuntimeSupported {
 }
 
 function Test-Service([string] $name) { return $null -ne (Get-Service -Name $name -ErrorAction SilentlyContinue) }
+
+# The agent MSI (pulsar-agent-<version>-windows-x64.msi) installs the same program, in the same folder, as the same
+# service. Whichever installed the agent maintains it: this script must not replace or remove what Windows Installer
+# tracks (a later MSI upgrade or uninstall would then fail or remove the wrong files).
+function Get-AgentPackage {
+    $products = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+        Where-Object { $_.PSObject.Properties['DisplayName'] -and $_.DisplayName -eq 'Pulsar Agent' -and $_.PSObject.Properties['WindowsInstaller'] -and $_.WindowsInstaller -eq 1 }
+    return $products | Select-Object -First 1
+}
+
+function Get-AgentPackageMessage($package) {
+    return "The agent on this machine was installed with the agent MSI (Pulsar Agent $($package.DisplayVersion)), which maintains it: update it with a newer package (msiexec /i pulsar-agent-<version>-windows-x64.msi /qn), and remove it from Apps in Windows settings or with msiexec /x $($package.PSChildName) /qn."
+}
 
 function Invoke-Native([string] $exe) {
     # Windows PowerShell turns a native program's stderr into errors under ErrorActionPreference=Stop.
@@ -571,11 +587,20 @@ function Uninstall-Agent {
 # --- Main -------------------------------------------------------------------------------------------------------
 
 Assert-Administrator
+# Checked before anything changes: with an agent from the MSI, only a panel is this script's to install, update or remove.
+$agentPackage = Get-AgentPackage
+if ($agentPackage) {
+    if ($Update -or $Uninstall) {
+        if (-not (Test-Service $PanelService)) { throw (Get-AgentPackageMessage $agentPackage) }
+    }
+    elseif ($Mode -ne 'Panel') { throw (Get-AgentPackageMessage $agentPackage) }
+}
 if (-not $Uninstall) { Assert-RuntimeSupported }
 
 if ($Update) {
     $any = $false
-    if (Test-Service $AgentService) { Update-Agent; $any = $true }
+    if ($agentPackage) { Write-Warning "The agent is left as it is. $(Get-AgentPackageMessage $agentPackage)" }
+    elseif (Test-Service $AgentService) { Update-Agent; $any = $true }
     if (Test-Service $PanelService) { Update-Panel; $any = $true }
     if (-not $any) { throw 'Pulsar is not installed on this machine.' }
     Write-Host 'Pulsar is updated.' -ForegroundColor Green
@@ -583,9 +608,11 @@ if ($Update) {
 }
 
 if ($Uninstall) {
-    if (Test-Service $AgentService) { Uninstall-Agent }
+    if ($agentPackage) { Write-Warning "The agent is left as it is. $(Get-AgentPackageMessage $agentPackage)" }
+    elseif (Test-Service $AgentService) { Uninstall-Agent }
     if (Test-Service $PanelService) { Uninstall-Panel }
-    Write-Host "Pulsar is removed. Kept: the database, $DataRoot (the panel's keys, needed to read its database's secrets, and logs) and the game servers' folders." -ForegroundColor Green
+    $removed = if ($agentPackage) { 'The panel is removed (not the agent: see above).' } else { 'Pulsar is removed.' }
+    Write-Host "$removed Kept: the database, $DataRoot (the panel's keys, needed to read its database's secrets, and logs) and the game servers' folders." -ForegroundColor Green
     return
 }
 

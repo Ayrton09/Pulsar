@@ -133,10 +133,20 @@ two commands:
 
   Add `SERVERSROOT=D:\PulsarServers` to put game servers somewhere other than `C:\PulsarServers`. The package copies the
   agent to `C:\Program Files\Pulsar\Agent`, enrolls the machine (what `enroll` printed is in
-  `C:\ProgramData\Pulsar\Agent\logs\enroll.log`) and starts the service; if enrolling fails, nothing is left
-  installed. In Intune, add it as a line-of-business or Win32 app with that command line; with a group policy, run it
-  from a computer startup script, since software installation policies cannot pass the token. Machines that already
-  run an agent installed from the ZIP must be uninstalled first (`Install-Pulsar.ps1 -Uninstall`).
+  `C:\ProgramData\Pulsar\Agent\logs\enroll.log`) and starts the service; if enrolling fails, `msiexec` ends with
+  error 1603 and nothing is left installed. In Intune, add it as a line-of-business or Win32 app with that command
+  line; with a group policy, run it from a computer startup script, since software installation policies cannot pass
+  the token.
+
+  The package needs 64-bit Windows 10 version 1607, Windows Server 2016 or later, but unlike `Install-Pulsar.ps1` it
+  does not check for the Windows updates Pulsar needs (see Requirements): on a Windows that lacks them, the agent does
+  not start, the installation fails and is undone, and `enroll.log` has no entry for that attempt (add
+  `/l*v <file>` to the command for the installer's own log). Install the updates first.
+
+  The MSI and the installer script do not share an agent. The package refuses to install where an agent installed
+  from the ZIP runs (the PulsarAgent service exists): remove that one first with `Install-Pulsar.ps1 -Uninstall`.
+  The script leaves an agent installed by the MSI alone: `-Mode Agent` and `-Mode AllInOne` refuse to run next to it,
+  and `-Update` and `-Uninstall` handle only the panel.
 - **The installer script**, as for a single node: `Install-Pulsar.ps1 -Mode Agent -PanelUrl … -Token … -PanelKey …`.
 
 Each machine becomes a new node named after the computer (with `-2`, `-3`… when a node already has that name). The
@@ -194,8 +204,17 @@ powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Uninstall
 
 It removes the services, the programs, the firewall rule and the trust in the panel's certificate. It keeps the
 database, `C:\ProgramData\Pulsar` and the game servers' folders. Delete game servers from the panel first: that also
-removes their Windows accounts.
+removes their Windows accounts. An agent installed with the MSI is not the script's to remove: it says so and removes
+only the panel, if this machine has one.
 
 An agent installed with the MSI is removed from **Apps** in Windows settings, or with
 `msiexec /x pulsar-agent-<version>-windows-x64.msi /qn`: its game servers stop, and the service, the node key and the
-configuration go, as with `PulsarAgent unenroll`. The node stays in the panel, offline, until you delete it there.
+configuration go, as with `PulsarAgent unenroll` (what it printed is in
+`C:\ProgramData\Pulsar\Agent\logs\unenroll.log`). Then the program goes; an `appsettings.Production.json` you added to
+its folder stays, delete it by hand. The node stays in the panel, offline, until you delete it there.
+
+If the agent cannot unenroll, the uninstall fails (`msiexec` ends with error 1603) and the program stays, so that it
+can be retried instead of leaving a service without its program, the node key and the configuration behind.
+`unenroll.log` says why; fix that and uninstall again. Running
+`& 'C:\Program Files\Pulsar\Agent\PulsarAgent.exe' unenroll` in an elevated PowerShell shows the same error, and once
+it succeeds the uninstall goes through.

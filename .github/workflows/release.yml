@@ -1,8 +1,8 @@
 name: Release
 
-# A tag v<version> (for example v1.0.0) builds the Windows release ZIP in CI, attests its provenance and creates a
-# draft GitHub release with the ZIP and its SHA-256 (docs/architecture/08, "Supply chain and releases"). A maintainer
-# reviews the draft, adds the notes and publishes it.
+# A tag v<version> (for example v1.0.0) builds the Windows release ZIP and the agent-only MSI in CI, attests their
+# provenance and creates a draft GitHub release with the ZIP, the MSI and the SHA-256 file of each
+# (docs/architecture/08, "Supply chain and releases"). A maintainer reviews the draft, adds the notes and publishes it.
 on:
   push:
     tags: ['v*']
