@@ -140,7 +140,7 @@ The first three post-v1 items: how a server and a node did over the last hours a
 
 **Done when:** after a few hours with a server running, its page charts CPU, memory and players that match what the live usage showed, a panel restart leaves at most the minute in progress missing, and the 7- and 30-day views read hour buckets; a database host on a real MariaDB gets a database for a server, the game server's own account connects with the credentials the panel shows and sees no other database, rotating the password locks the old one out, and deleting the server drops the database and its user; a server installs with a real (secondary) Steam account, asking for the Steam Guard code once, a second update logs in from the cached login without a code, and the cached login is in no server file after the operation. *Met on 2026-10-09 with a published panel and a real agent, except where said. History: a test server capped at 10 % CPU burning for 90 s charted a 10.3 % peak and the 200 MB it allocated, minute by minute, matching the live usage; a panel killed without stopping lost only its minute; the 7- and 30-day views and the roll-up are checked by the API tests (not over hours of real running). Databases, on a portable MariaDB 12.3.3 with a dedicated `pulsar` account: the host was checked by connecting, a database created from the Spanish UI, its user (connecting with the shown credentials from the node) saw only its own database and was refused `mysql`, a changed password locked the old one out with the data kept, and deleting the server dropped the database and its user, audited (`dropped: true`). Steam accounts: the real sign-in with a Steam account was skipped at the user's request; Steam Guard, the cached login, a refused cached login, an account-only game and the rebuild of SteamCMD are checked with scripted SteamCMD in the agent and API tests, and SteamCMD's login messages come from forum reports, not from a run. The phase was reviewed per area (23 findings, 2 high, all fixed) and the fixes reviewed again (4 findings, 1 high, fixed). The E2E suite passed (8 tests).*
 
-## Phase 14 — Server hosts and bulk enrollment · *in progress*
+## Phase 14 — Server hosts and bulk enrollment · *done*
 
 The next two post-v1 items: game servers that keep running while the agent restarts or is updated, and many machines enrolled at once.
 
@@ -148,7 +148,29 @@ The next two post-v1 items: game servers that keep running while the agent resta
 - Bulk enrollment: reusable enrollment tokens (a name, a number of uses, an expiry, revocable) enroll each machine as a new node named after it; each token decides whether its nodes wait for an administrator's approval (on by default), approved one by one or many at once. *Done (docs 02, 03, 07, 08).*
 - An agent-only MSI for Intune and group policies, built with Windows' own Installer API (no third-party tool): a silent install with the panel's values enrolls the machine and starts the service, a newer package upgrades it keeping the enrollment (and the games running), and uninstalling unenrolls it. *Done (install guide).*
 
-**Done when:** a test game server keeps the same process through a restart of the agent service, a crash of the agent and an upgrade of the agent MSI, and its console goes on without a gap; Windows Sandbox installs the agent MSI silently with a reusable token, the node waits for approval and connects once approved, and uninstalling the MSI stops the game and removes the enrollment.
+**Done when:** a test game server keeps the same process through a restart of the agent service, a crash of the agent and an upgrade of the agent MSI, and its console goes on without a gap; Windows Sandbox installs the agent MSI silently with a reusable token, the node waits for approval and connects once approved, and uninstalling the MSI stops the game and removes the enrollment. *Met on 2026-10-09.*
+
+- *Development agent with the manual panel:*
+  - The agent was killed with a test server running. The game (same process id) and its host lived on, and the next run reported it running.
+  - Its console went on with no line repeated, once a second had passed since the last output; that is the checkpoint interval.
+  - A game killed while the agent was away was reported as a crash when it came back, and the crash policy restarted it in a new host.
+  - A host uses about 12 MB of private memory.
+- *Windows Sandbox (`scripts/sandbox/agent-install`), the service as SYSTEM, a server account and a test game:* 69 checks, all passed.
+  - The game kept its process through a service restart and through a crash of the agent (Windows restarted the service).
+  - `service stop --stop-servers` stopped it, and it started again with the service.
+  - With the agent MSI:
+    - It was refused where an agent installed from the ZIP runs. A refused token failed the install and left nothing.
+    - A silent install with a reusable token created a node named after the machine. The node waited for approval, then connected once approved.
+    - A rebuild of the same version and an upgrade to 1.0.1 kept the enrollment and the game's process.
+    - The ZIP installer refused to touch the MSI agent, and a downgrade was refused.
+    - Uninstalling stopped the game gracefully and left no service, enrollment, product or host. A `SERVERSROOT` with a trailing backslash worked.
+    - The token appeared in no log.
+- *Browser, in Spanish:* a token created from **Nodes** showed both commands once. The approval card started unchecked and showed the machine, the token and the key fingerprint. An approved node was online within a minute, and revoking the token worked.
+- *Review:*
+  - The phase was reviewed per area: 43 findings, 1 high (a logon lock a game's account could squat), all fixed.
+  - The fixes were reviewed again: 5 findings, all fixed.
+  - The Windows Sandbox logs showed Windows Installer's Restart Manager stopping the service before the uninstall's unenroll could stop the games gracefully. It is disabled in the package.
+- *Tests:* the .NET suite (1343 tests; one older file-manager test failed once under full parallel load and passed in every rerun), vitest (196) and the E2E suite (8) passed.
 
 ## Post-v1 (tentative order)
 
