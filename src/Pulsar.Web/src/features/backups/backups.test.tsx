@@ -7,7 +7,7 @@ import type { Schemas } from '../../api/client';
 import { App } from '../../app/App';
 import { initI18n } from '../../app/i18n';
 import { routes } from '../../app/routes';
-import { adminUser, fakeApi, json, session } from '../../test/fakeApi';
+import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
 import { serverActions, serverDisplayState } from '../servers/serverStatus';
 
 const serverId = '0192f1a0-0000-7000-8000-0000000000e1';
@@ -107,6 +107,12 @@ const list: Schemas['BackupList'] = {
       gameSave: 'confirmed',
     }),
     backup({
+      id: '0192f1a0-0000-7000-8000-0000000000b5',
+      name: 'Started meanwhile',
+      copyMode: 'live',
+      snapshotError: 'snapshot.game_started',
+    }),
+    backup({
       id: '0192f1a0-0000-7000-8000-0000000000b3',
       name: 'Broken',
       status: 'failed',
@@ -167,6 +173,9 @@ describe('backups tab', () => {
       'Copied while the game ran, without a snapshot (the agent is not running as an administrator) · the game did not confirm its save',
     );
     expect(row('While playing')).toHaveTextContent('Copied from a snapshot of the disk · the game saved first');
+    expect(row('Started meanwhile')).toHaveTextContent(
+      'Copied while the game ran, without a snapshot (the game started while its files were read)',
+    );
     expect(row('Before the update')).not.toHaveTextContent('Copied'); // the server was stopped: nothing to say
     expect(screen.getByRole('button', { name: 'Delete Nightly' })).toBeDisabled();
     expect(row('Broken')).toHaveTextContent('Failed');
@@ -236,7 +245,9 @@ describe('backups tab', () => {
     // Restored clean: the files made after the backup go first.
     await userEvent.click(screen.getByRole('button', { name: 'Restore Before the update' }));
     dialog = await screen.findByRole('dialog', { name: 'Restore Before the update' });
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Delete the files made after this backup' }));
+    const clean = within(dialog).getByRole('checkbox', { name: 'Delete the files made after this backup' });
+    expect(clean).toHaveAccessibleDescription(/^Files the backup would include but does not have are deleted first/);
+    await userEvent.click(clean);
     expect(dialog).not.toHaveTextContent('Files the backup does not have stay as they are.');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Restore' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -263,11 +274,37 @@ describe('backups tab', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Restore Nightly' }));
     const dialog = await screen.findByRole('dialog', { name: 'Restore Nightly' });
-    expect(within(dialog).getByRole('checkbox', { name: 'Delete the files made after this backup' })).toBeDisabled();
-    expect(dialog).toHaveTextContent('this backup left out files the game held open');
+    const clean = within(dialog).getByRole('checkbox', { name: 'Delete the files made after this backup' });
+    expect(clean).toBeDisabled();
+    // Screen readers say why with the box itself.
+    expect(clean).toHaveAccessibleDescription(
+      'Not available: this backup left out files the game held open, and restoring clean would delete them.',
+    );
     await userEvent.click(within(dialog).getByRole('button', { name: 'Restore' }));
 
     await waitFor(() => expect(calls).toEqual(['restore ?clean=false']));
+  });
+
+  it('says when the agent is too old to restore clean', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/backups`]: () => json(list),
+      [`POST /api/v1/servers/${serverId}/backups/0192f1a0-0000-7000-8000-0000000000b1/restore`]: () =>
+        problem(409, 'backups.clean_unsupported', "The node's agent cannot restore a backup clean (update the agent)."),
+    });
+    renderAt(`/servers/${serverId}?tab=backups`);
+    await screen.findByRole('table', { name: 'Backups' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Restore Before the update' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Restore Before the update' });
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Delete the files made after this backup' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Restore' }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      "The node's agent cannot restore a backup clean. Update the agent.",
+    );
+    expect(dialog).toBeInTheDocument(); // still open: it can be restored without cleaning
   });
 
   it('keeps a number of backups, asking before deleting old ones', async () => {

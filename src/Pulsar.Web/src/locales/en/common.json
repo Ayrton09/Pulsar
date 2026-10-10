@@ -1219,6 +1219,7 @@
       "no_space": "the disk has no room for the snapshot",
       "busy": "another program kept taking snapshots",
       "failed": "Windows could not take one; the agent's log says why",
+      "game_started": "the game started while its files were read",
       "unknown": "no reason given"
     },
     "stopToRestore": "Stop the server to restore a backup.",

@@ -1219,6 +1219,7 @@
       "no_space": "no hay lugar en el disco para la instantánea",
       "busy": "otro programa no dejaba de hacer instantáneas",
       "failed": "Windows no pudo hacerla; el log del agente dice por qué",
+      "game_started": "el juego arrancó mientras se copiaban sus archivos",
       "unknown": "sin motivo informado"
     },
     "stopToRestore": "Detené el servidor para restaurar un backup.",

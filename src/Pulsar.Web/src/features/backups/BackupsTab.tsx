@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
@@ -176,6 +176,7 @@ function RestoreBackupDialog({
 }) {
   const { t } = useTranslation();
   const [clean, setClean] = useState(false);
+  const hintId = useId();
   // A clean restore would also delete the files this backup left out because the game held them open.
   const incomplete = (backup.skippedFiles ?? 0) > 0;
 
@@ -193,9 +194,10 @@ function RestoreBackupDialog({
             label={t('backups.restoreClean')}
             checked={clean && !incomplete}
             disabled={incomplete}
+            aria-describedby={hintId}
             onChange={(e) => setClean(e.target.checked)}
           />
-          <p className="mt-1 ml-6 text-xs text-muted">
+          <p id={hintId} className="mt-1 ml-6 text-xs text-muted">
             {incomplete ? t('backups.restoreCleanSkipped') : t('backups.restoreCleanHint')}
           </p>
         </div>

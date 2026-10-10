@@ -10,6 +10,7 @@ using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Servers;
+using Pulsar.Contracts;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Notifications;
@@ -434,5 +435,33 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
         await ServerApi.WaitForAsync(admin, created.Server.Id, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null,
             "installed");
         return created.Server.Id;
+    }
+
+    /// <summary>An agent older than clean restores would ignore the request and keep the newer files: the panel never asks it.</summary>
+    public sealed class OnAnAgentWithoutCleanRestore(OnAnAgentWithoutCleanRestore.Factory factory) : IClassFixture<OnAnAgentWithoutCleanRestore.Factory>
+    {
+        [DatabaseFact]
+        public async Task ACleanRestoreIsRefusedButAPlainOneIsNot()
+        {
+            var tests = new ServerBackupTests(factory); // its helpers, against this panel
+            using var admin = await factory.CreateAdminClientAsync();
+            await using var agent = await tests.ConnectedAgentAsync(admin, "older");
+            var server = await tests.InstalledServerAsync(admin, agent, "Older");
+            var data = Path.Combine(tests.ServerDirectory(agent, server), "data");
+            var backup = await MadeAsync(admin, server, "Before exploring");
+            await File.WriteAllTextAsync(Path.Combine(data, "region.dat"), "explored after the backup", Ct);
+
+            await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/backups/{backup.Id}/restore?clean=true"),
+                HttpStatusCode.Conflict, ServerErrors.CleanRestoreUnsupported.Code);
+            Assert.DoesNotContain((await ServerApi.GetAsync(admin, server))!.RecentOperations, o => o.Type == OperationType.BackupRestore);
+
+            await EnsureAsync(await admin.PostAsync($"/api/v1/servers/{server}/backups/{backup.Id}/restore"));
+            var details = await ServerApi.WaitForAsync(admin, server, s => s.Server.ActiveOperation is null, "restored");
+            Assert.Equal(OperationStatus.Succeeded, details.RecentOperations.Single(o => o.Type == OperationType.BackupRestore).Status);
+            Assert.True(File.Exists(Path.Combine(data, "region.dat"))); // not cleaned
+        }
+
+        /// <summary>The panel, seeing its agents without clean restores.</summary>
+        public sealed class Factory() : WithoutCapabilityFactory(AgentCapabilities.CleanRestore);
     }
 }

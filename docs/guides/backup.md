@@ -65,18 +65,28 @@ open are left out. The usual reasons:
 - **The Volume Shadow Copy service is not running**: its startup type must be *Manual* (the default) or *Automatic*.
 - **Snapshots are turned off on this node**: `"Pulsar": { "BackupSnapshots": false }` in the agent's
   `appsettings.Production.json` (next to `PulsarAgent.exe`) turns them off; remove it to turn them on again.
+- **The game started while its files were read**: the backup began with the server stopped, so it took no snapshot,
+  and the game was started before it finished. It says it was copied live because files the game wrote meanwhile may
+  be half written; make another one if that matters.
 
 ### Restoring clean
 
 Restoring writes the backup's files over the current ones and keeps the files the backup does not have. Tick **Delete
 the files made after this backup** to delete those first: for a game world, regions explored after the backup would
-otherwise stay next to the restored ones. Only files the backup's rules would have taken are deleted; the installed
-game, logs and other files outside them stay. A backup that left out files the game held open cannot be restored
-clean (it would delete them).
+otherwise stay next to the restored ones. Only files that the rules the backup was made with would have taken are
+deleted: the agent records those rules in the backup, and a backup made before this version uses the template's
+current rules. The installed game, logs and other files outside them stay. A backup that left out files the game held
+open cannot be restored clean (it would delete them), and neither can a node whose agent is older than this version
+(update the agent).
+
+If a newer file cannot be deleted because a program has it open, the backup's files are still restored and the
+restore reports which file stayed: close what holds it and restore again.
 
 Through the API: `POST /api/v1/servers/{id}/backups/{backupId}/restore?clean=true`.
 
-To keep them safe from the loss of the node, copy them to S3-compatible storage (AWS S3, Cloudflare R2, Backblaze B2,
+### Remote copies
+
+To keep backups safe from the loss of the node, copy them to S3-compatible storage (AWS S3, Cloudflare R2, Backblaze B2,
 or your own MinIO or SeaweedFS):
 
 1. Create a bucket at the provider, and an access key that can read, write and delete in **that bucket only**.
