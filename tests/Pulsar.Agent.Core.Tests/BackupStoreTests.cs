@@ -114,7 +114,7 @@ public sealed class BackupStoreTests : IDisposable
         Write("cfg/new.cfg", "made later");
         _progress.Clear();
 
-        await _store.RestoreAsync(location, _server, backup.Sha256, Progress, TestContext.Current.CancellationToken);
+        await _store.RestoreAsync(location, _server, backup.Sha256, null, Progress, TestContext.Current.CancellationToken);
 
         Assert.Equal("hostname old", ReadServer("cfg/server.cfg"));
         Assert.Equal("plugin", ReadServer("addons/plugin.smx"));
@@ -122,6 +122,51 @@ public sealed class BackupStoreTests : IDisposable
         Assert.Equal([BackupStages.Checking, BackupStages.Restoring], _progress.Select(p => p.Stage).Distinct());
         Assert.DoesNotContain(Directory.EnumerateFiles(_serverDirectory, "*", SearchOption.AllDirectories),
             f => Path.GetFileName(f).StartsWith(ServerFileRules.TemporaryPrefix, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ACleanRestoreDeletesWhatTheBackupWouldHaveTakenButDoesNotHave()
+    {
+        Write("cfg/server.cfg", "hostname old");
+        Write("server.exe", "the game");
+        var location = Location();
+        var backup = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        Write("cfg/new.cfg", "made later");
+        Write("addons/later/plugin.smx", "installed later");
+        Write("cfg/console.log", "excluded by the rules");
+        Write("game/update.dll", "outside the rules");
+        Write(".pulsar/state.json", "Pulsar's own");
+        _progress.Clear();
+
+        await _store.RestoreAsync(location, _server, backup.Sha256, new CleanRestore(s_rules), Progress, TestContext.Current.CancellationToken);
+
+        Assert.Equal("hostname old", ReadServer("cfg/server.cfg"));
+        Assert.False(File.Exists(Path.Combine(_serverDirectory, "cfg", "new.cfg")));
+        Assert.False(File.Exists(Path.Combine(_serverDirectory, "addons", "later", "plugin.smx")));
+        Assert.Equal("excluded by the rules", ReadServer("cfg/console.log"));
+        Assert.Equal("outside the rules", ReadServer("game/update.dll"));
+        Assert.Equal("the game", ReadServer("server.exe"));
+        Assert.Equal("Pulsar's own", ReadServer(".pulsar/state.json"));
+        Assert.Equal([BackupStages.Checking, BackupStages.Cleaning, BackupStages.Restoring], _progress.Select(p => p.Stage).Distinct());
+    }
+
+    [Fact]
+    public async Task ACleanRestoreOfAnArchiveThatChangedDeletesNothing()
+    {
+        Write("cfg/server.cfg", "hostname old");
+        var location = Location();
+        var backup = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        Write("cfg/new.cfg", "made later");
+        await using (var archive = File.OpenWrite(location.Archive))
+        {
+            archive.Seek(-1, SeekOrigin.End);
+            archive.WriteByte(0x42);
+        }
+
+        await Assert.ThrowsAsync<BackupException>(() =>
+            _store.RestoreAsync(location, _server, backup.Sha256, new CleanRestore(s_rules), Progress, TestContext.Current.CancellationToken));
+
+        Assert.Equal("made later", ReadServer("cfg/new.cfg"));
     }
 
     [Fact]
@@ -138,7 +183,7 @@ public sealed class BackupStoreTests : IDisposable
         }
 
         var error = await Assert.ThrowsAsync<BackupException>(() =>
-            _store.RestoreAsync(location, _server, backup.Sha256, Progress, TestContext.Current.CancellationToken));
+            _store.RestoreAsync(location, _server, backup.Sha256, null, Progress, TestContext.Current.CancellationToken));
 
         Assert.Equal(BackupErrors.Corrupt, error.Code);
         Assert.Equal("hostname current", ReadServer("cfg/server.cfg"));
@@ -170,7 +215,7 @@ public sealed class BackupStoreTests : IDisposable
         }
 
         var error = await Assert.ThrowsAsync<BackupException>(() =>
-            _store.RestoreAsync(location, _server, Hash(location.Archive), Progress, TestContext.Current.CancellationToken));
+            _store.RestoreAsync(location, _server, Hash(location.Archive), null, Progress, TestContext.Current.CancellationToken));
 
         Assert.Equal(BackupErrors.Corrupt, error.Code);
         Assert.Empty(Directory.EnumerateFileSystemEntries(_serverDirectory));
@@ -220,7 +265,7 @@ public sealed class BackupStoreTests : IDisposable
         Assert.False(_store.Delete(location));
         Assert.Equal(BackupErrors.NotFound, Assert.Throws<BackupException>(() => _store.Open(location)).Code);
         Assert.Equal(BackupErrors.NotFound, (await Assert.ThrowsAsync<BackupException>(() =>
-            _store.RestoreAsync(location, _server, backup.Sha256, Progress, TestContext.Current.CancellationToken))).Code);
+            _store.RestoreAsync(location, _server, backup.Sha256, null, Progress, TestContext.Current.CancellationToken))).Code);
     }
 
     [Fact]

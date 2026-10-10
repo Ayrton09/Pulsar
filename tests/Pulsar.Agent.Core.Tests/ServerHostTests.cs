@@ -475,6 +475,216 @@ public sealed class ServerHostTests : IAsyncDisposable
         Assert.False(File.Exists(archive));
     }
 
+    [Fact]
+    public async Task ABackupOfAStoppedServerReadsItsDirectoryAsItIs()
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest);
+        WriteServerFile("world/level.dat", "the world");
+        var snapshots = new CopySnapshots();
+        var host = Host(snapshots: snapshots);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        var made = await BackupAsync(host, serverId);
+
+        Assert.Equal(new BackupCapture(BackupCaptureMode.Stopped), made.Capture);
+        Assert.Equal(0, snapshots.Taken);
+    }
+
+    [Fact]
+    public async Task ARunningGameIsAskedToSaveThenItsFilesAreReadFromASnapshot()
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest);
+        WriteServerFile("world/level.dat", "the world");
+        var snapshots = new CopySnapshots();
+        var host = Host(hosted: true, snapshots: snapshots);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var game = await RunningAsync(host, serverId);
+        game.OnInput = text =>
+        {
+            if (text == "save-all\r\n")
+            {
+                game.Print("Saved the game\n");
+            }
+        };
+        snapshots.OnTaken = () =>
+        {
+            // The game was saved, and stays paused until the snapshot is taken (a next run of the agent would resume it).
+            Assert.Equal(["save-off\r\n", "save-all\r\n"], game.Input);
+            Assert.Single(_store.LoadPausedSaves());
+        };
+
+        var made = await BackupAsync(host, serverId, out var location);
+
+        Assert.Equal(new BackupCapture(BackupCaptureMode.Snapshot, null, GameSaveOutcome.Confirmed), made.Capture);
+        Assert.Equal(["save-off\r\n", "save-all\r\n", "save-on\r\n"], game.Input);
+        Assert.Contains("world/snapshot.txt", Entries(location.Archive)); // read from the snapshot, not the live directory
+        Assert.Equal(1, snapshots.Deleted);
+        Assert.Empty(_store.LoadPausedSaves());
+        Assert.Contains("Asking the game to save before a backup", Text(host, serverId), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WithoutASnapshotARunningGameIsReadLiveAndSavesAgainAfterTheCopy()
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest);
+        WriteServerFile("world/level.dat", "the world");
+        var host = Host(hosted: true, snapshots: new NoVolumeSnapshots(BackupSnapshotErrors.NoSpace));
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var game = await RunningAsync(host, serverId);
+        game.OnInput = text =>
+        {
+            if (text == "save-all\r\n")
+            {
+                game.Print("Saved the game\n");
+            }
+        };
+
+        var made = await BackupAsync(host, serverId);
+
+        Assert.Equal(new BackupCapture(BackupCaptureMode.Live, BackupSnapshotErrors.NoSpace, GameSaveOutcome.Confirmed), made.Capture);
+        Assert.Equal(["save-off\r\n", "save-all\r\n", "save-on\r\n"], game.Input);
+        Assert.Empty(_store.LoadPausedSaves());
+    }
+
+    [Fact]
+    public async Task AGameThatDoesNotConfirmItsSaveIsBackedUpAnywayAndSavesAgain()
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest.Replace("\"timeoutSeconds\": 30", "\"timeoutSeconds\": 1", StringComparison.Ordinal));
+        WriteServerFile("world/level.dat", "the world");
+        var host = Host(hosted: true, snapshots: new CopySnapshots());
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var game = await RunningAsync(host, serverId);
+
+        var made = await BackupAsync(host, serverId);
+
+        Assert.Equal(new BackupCapture(BackupCaptureMode.Snapshot, null, GameSaveOutcome.Unconfirmed), made.Capture);
+        Assert.Equal("save-on\r\n", game.Input[^1]);
+    }
+
+    [Fact]
+    public async Task ASnapshotThatBreaksUnexpectedlyStillLeavesALiveBackup()
+    {
+        var serverId = Stored("abcd2345");
+        WriteServerFile("bin/game.exe", "the game");
+        var host = Host(hosted: true, snapshots: new BrokenSnapshots());
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        await RunningAsync(host, serverId);
+
+        var made = await BackupAsync(host, serverId);
+
+        Assert.Equal(new BackupCapture(BackupCaptureMode.Live, BackupSnapshotErrors.Failed), made.Capture);
+        Assert.Equal(1, made.FileCount);
+    }
+
+    [Fact]
+    public async Task SnapshotsTurnedOffReadTheRunningGameLive()
+    {
+        var serverId = Stored("abcd2345");
+        WriteServerFile("bin/game.exe", "the game");
+        var snapshots = new CopySnapshots();
+        var host = Host(hosted: true, new ServerHostOptions { ConsoleLog = null, BackupSnapshots = false }, snapshots);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        await RunningAsync(host, serverId);
+
+        var made = await BackupAsync(host, serverId);
+
+        Assert.Equal(new BackupCapture(BackupCaptureMode.Live, BackupSnapshotErrors.Disabled), made.Capture); // no save in its manifest
+        Assert.Equal(0, snapshots.Taken);
+    }
+
+    [Fact]
+    public async Task AGameABackupLeftNotSavingIsResumedByTheAgentsNextRun()
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest);
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var game = await RunningAsync(host, serverId);
+        // The agent stopped between "save-off" and "save-on" (a crash, an update): the game would never save again.
+        _store.SavePausedSave(new PausedSave(serverId, ["save-on"]));
+        await RestartAgentAsync();
+
+        await Host(hosted: true).StartAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(["save-on\r\n"], game.Input);
+        Assert.Empty(_store.LoadPausedSaves());
+    }
+
+    [Fact]
+    public async Task ACleanRestoreDeletesTheFilesMadeAfterTheBackup()
+    {
+        var serverId = Stored("abcd2345", manifest: SavingManifest);
+        WriteServerFile("world/level.dat", "the world");
+        WriteServerFile("bin/game.exe", "the game");
+        var host = Host();
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        Assert.Contains(AgentCapabilities.CleanRestore, host.Capabilities);
+        var backupId = Guid.NewGuid();
+        var made = await BackupAsync(host, serverId, backupId);
+        WriteServerFile("world/region/r.1.1.mca", "explored later");
+        WriteServerFile("bin/update.dll", "outside the backup");
+
+        var restore = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new RestoreBackupCommand(serverId, backupId, made.Sha256, Clean: true),
+            restore))).Status);
+
+        Assert.Equal(OperationOutcome.Succeeded, (await ResultAsync(restore)).Outcome);
+        Assert.False(File.Exists(Path.Combine(_root, "servers", "abcd2345", "world", "region", "r.1.1.mca")));
+        Assert.True(File.Exists(Path.Combine(_root, "servers", "abcd2345", "bin", "update.dll")));
+    }
+
+    private const string SavingManifest = """
+        {
+          "schemaVersion": 1, "key": "pulsar-test", "version": "1.0.0", "name": "Pulsar test server", "platforms": ["windows-x64"],
+          "runtime": { "windows-x64": { "executable": "bin/game.exe", "console": { "mode": "pty" } } },
+          "readiness": { "type": "logPattern", "pattern": "^ready", "timeoutSeconds": 60 },
+          "stop": { "steps": [ { "type": "consoleCommand", "command": "quit" } ], "timeoutSeconds": 15 },
+          "backup": {
+            "include": ["world/**"],
+            "save": { "commands": ["save-off", "save-all"], "confirmation": "^Saved the game", "timeoutSeconds": 30, "resume": ["save-on"] }
+          }
+        }
+        """;
+
+    private void WriteServerFile(string path, string content)
+    {
+        var file = Path.Combine(_root, "servers", "abcd2345", path.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, content);
+    }
+
+    private async Task<FakeGameProcess> RunningAsync(ServerHost host, Guid serverId)
+    {
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null))).Status);
+        var game = await StartedAsync();
+        game.Print("ready\n");
+        await WaitForAsync(host, serverId, RuntimeState.Running);
+        return game;
+    }
+
+    private Task<BackupResult> BackupAsync(ServerHost host, Guid serverId) => BackupAsync(host, serverId, Guid.NewGuid());
+
+    private Task<BackupResult> BackupAsync(ServerHost host, Guid serverId, out BackupLocation location)
+    {
+        var backupId = Guid.NewGuid();
+        location = new BackupLocation(Path.Combine(_root, "backups"), "abcd2345", backupId);
+        return BackupAsync(host, serverId, backupId);
+    }
+
+    private async Task<BackupResult> BackupAsync(ServerHost host, Guid serverId, Guid backupId)
+    {
+        var operation = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new CreateBackupCommand(serverId, backupId), operation))).Status);
+        var result = await ResultAsync(operation);
+        Assert.True(result.Outcome == OperationOutcome.Succeeded, result.Message);
+        return Assert.IsType<BackupResult>(result.Result);
+    }
+
+    private static List<string> Entries(string archive)
+    {
+        using var zip = System.IO.Compression.ZipFile.OpenRead(archive);
+        return [.. zip.Entries.Select(e => e.FullName)];
+    }
+
     private Guid Stored(string shortId, string manifest = Manifest, bool autoStart = false)
     {
         var serverId = Guid.NewGuid();
@@ -516,7 +726,7 @@ public sealed class ServerHostTests : IAsyncDisposable
         }
     }
 
-    private ServerHost Host(bool hosted = false, ServerHostOptions? options = null)
+    private ServerHost Host(bool hosted = false, ServerHostOptions? options = null, IVolumeSnapshots? snapshots = null)
     {
         var channel = new PanelChannel();
         var files = new DirectServerFiles();
@@ -534,8 +744,52 @@ public sealed class ServerHostTests : IAsyncDisposable
         _host = new ServerHost(_configs, _store, _provisioner, processes, new InstallSteps(install, files), _steamCmd, files, new NoRcon(),
             new UnmanagedFirewall(), _fileCommands, new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance), install,
             channel, new SupervisorOptions(), options ?? new ServerHostOptions { ConsoleLog = null }, TimeProvider.System, NullLoggerFactory.Instance,
-            hosts: hosts);
+            hosts: hosts, snapshots: snapshots);
         return _host;
+    }
+
+    private sealed class BrokenSnapshots : IVolumeSnapshots
+    {
+        public Task<IVolumeSnapshot> TakeAsync(string directory, CancellationToken cancellationToken) =>
+            throw new InvalidCastException("A COM interface that is not there.");
+    }
+
+    /// <summary>"Snapshots" that copy the directory, with a file of their own to show the backup read the copy.</summary>
+    private sealed class CopySnapshots : IVolumeSnapshots
+    {
+        public int Taken { get; private set; }
+
+        public int Deleted { get; private set; }
+
+        public Action? OnTaken { get; set; }
+
+        public Task<IVolumeSnapshot> TakeAsync(string directory, CancellationToken cancellationToken)
+        {
+            Taken++;
+            OnTaken?.Invoke();
+            var copy = directory + ".snapshot";
+            foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
+            {
+                var target = Path.Combine(copy, Path.GetRelativePath(directory, file));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(file, target);
+            }
+
+            File.WriteAllText(Path.Combine(copy, "world", "snapshot.txt"), "only in the snapshot");
+            return Task.FromResult<IVolumeSnapshot>(new Copy(copy, this));
+        }
+
+        private sealed class Copy(string directory, CopySnapshots owner) : IVolumeSnapshot
+        {
+            public string Directory { get; } = directory;
+
+            public ValueTask DisposeAsync()
+            {
+                owner.Deleted++;
+                System.IO.Directory.Delete(Directory, recursive: true);
+                return ValueTask.CompletedTask;
+            }
+        }
     }
 
     private static CommandEnvelope Envelope(AgentCommand command, Guid? operationId) => new(AgentProtocol.CurrentVersion, Guid.NewGuid(),

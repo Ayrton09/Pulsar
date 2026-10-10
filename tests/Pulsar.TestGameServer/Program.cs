@@ -9,7 +9,8 @@
 //   --exit-after <ms> <code>  exit by itself with <code> after a delay (a crash when <code> is not 0)
 //   --print-args              print every argument between brackets (argv round trip)
 // Commands (one per line): quit, crash <code>, say <text>, conout <text>, spawn, whoami, env <name>, read <path>,
-//   write <path>, handle <value>, privileges, allocate <MB>, burn <seconds>.
+//   write <path>, handle <value>, privileges, allocate <MB>, burn <seconds>, save-off, save, save-on (a world saved to
+//   world.dat, like Minecraft's), lock <path> (a file held open with no sharing, like a game's world).
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -66,6 +67,8 @@ for (var i = 0; i < args.Length; i++)
 }
 
 var kept = new List<nint>(); // memory taken by "allocate"
+var held = new List<FileStream>(); // files taken by "lock"
+var saves = 0;
 using var interrupted = new ManualResetEventSlim();
 Console.CancelKeyPress += (_, e) =>
 {
@@ -148,6 +151,29 @@ while ((line = Console.ReadLine()) is not null)
             burners.ForEach(t => t.Start());
             burners.ForEach(t => t.Join());
             Console.WriteLine("Test server: burned");
+            break;
+        case "save-off":
+            Console.WriteLine("Test server: autosave off");
+            break;
+        case "save":
+            Try(() =>
+            {
+                File.WriteAllText("world.dat", $"save {++saves}"); // in its working directory (the pulsar-test manifest's data)
+                Console.WriteLine($"Test server: saved ({saves})");
+            });
+            break;
+        case "save-on":
+            Console.WriteLine("Test server: autosave on");
+            break;
+        case "lock":
+            Try(() =>
+            {
+                var file = new FileStream(argument, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                file.Write("held by the game"u8);
+                file.Flush(flushToDisk: true);
+                held.Add(file);
+                Console.WriteLine($"Test server: locked {argument}");
+            });
             break;
         case "whoami":
             Console.WriteLine($"Test server: user={WindowsIdentity.GetCurrent().Name}");

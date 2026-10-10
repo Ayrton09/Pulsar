@@ -13,6 +13,15 @@ namespace Pulsar.Agent.Core.Backups;
 /// <summary>Stages of backup operations, as reported in <see cref="OperationProgress"/>.</summary>
 public static class BackupStages
 {
+    /// <summary>The running game was asked to save and the backup waits for it (the manifest's <c>backup.save</c>).</summary>
+    public const string Saving = "saving";
+
+    /// <summary>A snapshot of the server's volume is being taken.</summary>
+    public const string Snapshotting = "snapshotting";
+
+    /// <summary>A clean restore deletes the files the backup does not have.</summary>
+    public const string Cleaning = "cleaning";
+
     public const string Scanning = "scanning";
     public const string Archiving = "archiving";
     public const string Checking = "checking";
@@ -29,6 +38,9 @@ public sealed class BackupException(string code, string message, Exception? inne
     /// <summary>One of <see cref="BackupErrors"/>.</summary>
     public string Code { get; } = code;
 }
+
+/// <summary>A restore that first deletes the files the rules (the manifest's <c>backup</c>) select that the backup does not have.</summary>
+public sealed record CleanRestore(BackupDefinition? Rules);
 
 /// <summary>Where a backup lives on the node: <c>&lt;backups root&gt;\&lt;shortId&gt;\&lt;backupId&gt;.zip</c>.</summary>
 public sealed record BackupLocation(string Root, string ShortId, Guid BackupId)
@@ -156,12 +168,13 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     }
 
     /// <summary>
-    /// Writes the backup's files back into the server directory, each replacing the file it had (files the backup does
-    /// not have stay). The archive must still hash to <paramref name="sha256"/>, and every entry must be a plain path
-    /// inside the server directory outside Pulsar's own files: anything else refuses the whole archive before a byte
-    /// is written.
+    /// Writes the backup's files back into the server directory, each replacing the file it had. Files the backup does
+    /// not have stay, unless the restore is <paramref name="clean"/>: then the files its rules select that the backup
+    /// does not have are deleted first. The archive must still hash to <paramref name="sha256"/>, and every entry must
+    /// be a plain path inside the server directory outside Pulsar's own files: anything else refuses the whole archive
+    /// before a file is deleted or written.
     /// </summary>
-    public async Task RestoreAsync(BackupLocation location, ProvisionedServer server, string sha256, BackupProgress progress,
+    public async Task RestoreAsync(BackupLocation location, ProvisionedServer server, string sha256, CleanRestore? clean, BackupProgress progress,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(location);
@@ -179,6 +192,12 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         {
             await using var archive = await ZipArchive.CreateAsync(input, ZipArchiveMode.Read, leaveOpen: true, entryNameEncoding: null, cancellationToken);
             var entries = Check(archive);
+            if (clean is not null)
+            {
+                await progress(BackupStages.Cleaning, null);
+                DeleteNewer(location, server, clean.Rules, entries.Where(e => !e.Directory).Select(e => e.Path), cancellationToken);
+            }
+
             var meter = new ProgressMeter(BackupStages.Restoring, entries.Sum(e => e.Entry.Length), progress);
             await meter.ReportAsync(force: true);
             var buffer = new byte[BufferSize];
@@ -386,6 +405,37 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         return [.. candidates.Where(e => matched.Contains(e.Path)).OrderBy(e => e.Path, StringComparer.Ordinal)];
     }
 
+    /// <summary>
+    /// The clean part of a restore: deletes the files the rules select that the backup does not have (made after it).
+    /// What the rules leave out (the installed game, logs, Pulsar's own files) and links are never touched.
+    /// </summary>
+    private void DeleteNewer(BackupLocation location, ProvisionedServer server, BackupDefinition? rules, IEnumerable<string> kept,
+        CancellationToken cancellationToken)
+    {
+        var keep = kept.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var deleted = 0;
+        foreach (var file in Select(files.Walk(server), rules))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (keep.Contains(file.Path))
+            {
+                continue;
+            }
+
+            try
+            {
+                files.Delete(server, file.Path);
+                deleted++;
+            }
+            catch (FileManagerException ex) when (ex.Code == FileErrors.NotFound)
+            {
+                // Gone meanwhile.
+            }
+        }
+
+        LogCleaned(location.ShortId, location.BackupId, deleted);
+    }
+
     /// <summary>Whether deflate makes <paramref name="sample"/> at least a tenth smaller (small files are always compressed).</summary>
     internal static bool Shrinks(ReadOnlySpan<byte> sample)
     {
@@ -495,6 +545,9 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Backup {BackupId} restored into {ShortId}: {Entries} entries")]
     private partial void LogRestored(string shortId, Guid backupId, int entries);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Clean restore of backup {BackupId} into {ShortId}: {Files} newer files deleted first")]
+    private partial void LogCleaned(string shortId, Guid backupId, int files);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Backup {BackupId} of {ShortId} opened to be sent")]
     private partial void LogOpened(string shortId, Guid backupId);

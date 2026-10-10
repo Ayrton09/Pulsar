@@ -39,7 +39,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         {
             using var directory = root.OpenDirectory(path, ListDirectory | ReadAttributes | Synchronize);
             return ServerFileRules.Listing(Enumerate(directory, path));
-        });
+        }, write: false);
     }
 
     public void CreateDirectory(ProvisionedServer server, string path) => MakeDirectories(server, path, mustBeNew: true);
@@ -51,7 +51,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         var entries = new List<TreeEntry>();
         WalkInto(root, ServerFilePath.Root, entries, 0);
         return entries;
-    });
+    }, write: false);
 
     /// <summary>Lists each directory from its own checked handle; links are recorded, never opened as directories.</summary>
     private static void WalkInto(ServerRoot root, string path, List<TreeEntry> entries, int depth)
@@ -178,7 +178,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             {
                 opened.Dispose();
             }
-        });
+        }, write: false);
     }
 
     public PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion)
@@ -204,14 +204,18 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         });
     }
 
-    private T Run<T>(ProvisionedServer server, Func<ServerRoot, T> action)
+    /// <param name="write">
+    /// Whether the action may create in the server directory; reads open it read-only, so they also work on a snapshot
+    /// of it (a backup of a running game, docs/architecture/06, "Backup snapshots").
+    /// </param>
+    private T Run<T>(ProvisionedServer server, Func<ServerRoot, T> action, bool write = true)
     {
         ArgumentNullException.ThrowIfNull(server);
         try
         {
             return impersonation.Run(server.Identity, () =>
             {
-                using var root = ServerRoot.Open(server.Directory);
+                using var root = ServerRoot.Open(server.Directory, write);
                 return action(root);
             });
         }
@@ -585,13 +589,14 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
 
         private ServerRoot(string path, SafeFileHandle handle, string final) => (_path, _handle, _final) = (path, handle, final);
 
-        public static ServerRoot Open(string directory)
+        public static ServerRoot Open(string directory, bool write = true)
         {
             var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
 
             // The server directory itself may be reached through a junction an administrator set up (the servers root on
             // another drive, say): it is followed; only what lies below it is the server's.
-            var handle = OpenRaw(path, ListDirectory | AddFile | AddSubdirectory | ReadAttributes | Synchronize, FILE_CREATION_DISPOSITION.OPEN_EXISTING, follow: true)
+            var access = ListDirectory | ReadAttributes | Synchronize | (write ? AddFile | AddSubdirectory : 0);
+            var handle = OpenRaw(path, access, FILE_CREATION_DISPOSITION.OPEN_EXISTING, follow: true)
                 ?? throw new FileManagerException(FileErrors.NotFound, "The server directory does not exist.");
             try
             {
@@ -612,9 +617,13 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
                 return Long(_path);
             }
 
-            var full = Path.Join(_path, path.Replace('/', '\\'));
-            if (!string.Equals(Path.GetFullPath(full), full, StringComparison.Ordinal)
-                || !full.StartsWith(_path + "\\", StringComparison.OrdinalIgnoreCase))
+            var relative = path.Replace('/', '\\');
+            var full = Path.Join(_path, relative);
+            // GetFullPath leaves a path in the \\?\ form (a snapshot's) as it is: then the relative part is checked alone.
+            var normalized = _path.StartsWith(@"\\?\", StringComparison.Ordinal)
+                ? string.Equals(Path.GetFullPath(Path.Join(@"C:\pulsar", relative)), Path.Join(@"C:\pulsar", relative), StringComparison.Ordinal)
+                : string.Equals(Path.GetFullPath(full), full, StringComparison.Ordinal);
+            if (!normalized || !full.StartsWith(_path + "\\", StringComparison.OrdinalIgnoreCase))
             {
                 throw new FileManagerException(FileErrors.OutsideServer, $"'{path}' resolves outside the server directory.");
             }
@@ -719,7 +728,9 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         private static bool Below(string path, string directory) =>
             path.Length > directory.Length + 1 && path.StartsWith(directory, StringComparison.OrdinalIgnoreCase) && path[directory.Length] == '\\';
 
-        private static string Long(string path) => path.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + path[2..] : @"\\?\" + path;
+        private static string Long(string path) => path.StartsWith(@"\\?\", StringComparison.Ordinal)
+            ? path
+            : path.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + path[2..] : @"\\?\" + path;
 
         private static unsafe SafeFileHandle? OpenRaw(string path, uint access, FILE_CREATION_DISPOSITION disposition, bool follow)
         {
@@ -749,6 +760,12 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             {
                 length = PInvoke.GetFinalPathNameByHandle((HANDLE)handle.DangerousGetHandle(), pointer, (uint)buffer.Length,
                     GETFINALPATHNAMEBYHANDLE_FLAGS.FILE_NAME_NORMALIZED);
+                if (length == 0)
+                {
+                    // A snapshot's volume has no drive letter: its device name (\Device\HarddiskVolumeShadowCopy7\...) does.
+                    length = PInvoke.GetFinalPathNameByHandle((HANDLE)handle.DangerousGetHandle(), pointer, (uint)buffer.Length,
+                        GETFINALPATHNAMEBYHANDLE_FLAGS.FILE_NAME_NORMALIZED | GETFINALPATHNAMEBYHANDLE_FLAGS.VOLUME_NAME_NT);
+                }
             }
 
             if (length == 0 || length >= buffer.Length)

@@ -202,6 +202,31 @@ public static class BackupErrors
     public const string RemoteFailed = "backups.remote_failed";
 }
 
+/// <summary>Why a backup of a running game read its files live instead of from a snapshot (<see cref="BackupCapture.SnapshotError"/>).</summary>
+public static class BackupSnapshotErrors
+{
+    /// <summary>The agent's administrator turned snapshots off.</summary>
+    public const string Disabled = "snapshot.disabled";
+
+    /// <summary>The agent may not take snapshots: a development agent running without administrator rights.</summary>
+    public const string NotPermitted = "snapshot.not_permitted";
+
+    /// <summary>The volume cannot have snapshots (FAT, exFAT, a network share) or this system has none.</summary>
+    public const string Unsupported = "snapshot.unsupported";
+
+    /// <summary>The Volume Shadow Copy service is disabled or not answering.</summary>
+    public const string Unavailable = "snapshot.unavailable";
+
+    /// <summary>The volume has no room left for the snapshot's changes (its shadow storage is full).</summary>
+    public const string NoSpace = "snapshot.no_space";
+
+    /// <summary>Other snapshots kept being taken (another backup program) for longer than the agent waits.</summary>
+    public const string Busy = "snapshot.busy";
+
+    /// <summary>Anything else; the agent's log says what Windows answered.</summary>
+    public const string Failed = "snapshot.failed";
+}
+
 /// <summary>A directory's entries: directories first, then files and links, each by name.</summary>
 public sealed record FileListResult(IReadOnlyList<FileEntry> Entries, bool Truncated) : CommandResult;
 

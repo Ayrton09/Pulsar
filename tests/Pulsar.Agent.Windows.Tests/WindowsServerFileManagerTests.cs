@@ -176,7 +176,7 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
         Link("/J", "cfg", _outside);
 
         var error = await Assert.ThrowsAsync<FileManagerException>(() =>
-            store.RestoreAsync(location, Server, backup.Sha256, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken));
+            store.RestoreAsync(location, Server, backup.Sha256, null, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken));
 
         Assert.Equal(FileErrors.Link, error.Code);
         OutsideIsUntouched();
@@ -381,7 +381,7 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
 
             Assert.Equal(1, backup.SkippedFiles);
             File.WriteAllText(Path.Combine(a.Directory, "server.cfg"), "changed");
-            await store.RestoreAsync(location, a, backup.Sha256, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
+            await store.RestoreAsync(location, a, backup.Sha256, null, (_, _) => Task.CompletedTask, TestContext.Current.CancellationToken);
             Assert.Equal("server a", File.ReadAllText(Path.Combine(a.Directory, "server.cfg")));
         }
         finally

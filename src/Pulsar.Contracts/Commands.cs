@@ -300,11 +300,16 @@ public sealed record CreateBackupCommand(Guid ServerId, Guid BackupId, RemoteBac
 }
 
 /// <summary>
-/// Operation: puts the backup's files back in the server directory (files it does not have stay as they are). The
-/// server must be stopped; the archive must still have <paramref name="Sha256"/> (lowercase hex). An archive no longer
-/// on the node is fetched from <paramref name="Remote"/> first (and kept).
+/// Operation: puts the backup's files back in the server directory. The server must be stopped; the archive must still
+/// have <paramref name="Sha256"/> (lowercase hex). An archive no longer on the node is fetched from
+/// <paramref name="Remote"/> first (and kept).
 /// </summary>
-public sealed record RestoreBackupCommand(Guid ServerId, Guid BackupId, string Sha256, RemoteBackupTarget? Remote = null) : AgentCommand
+/// <param name="Clean">
+/// First delete the files the manifest's backup rules select that the backup does not have (files made after it);
+/// otherwise they stay. Only for agents that announce <see cref="AgentCapabilities.CleanRestore"/>: older ones ignore it.
+/// </param>
+public sealed record RestoreBackupCommand(Guid ServerId, Guid BackupId, string Sha256, RemoteBackupTarget? Remote = null, bool Clean = false)
+    : AgentCommand
 {
     public const string Type = "server.backup_restore";
 }
@@ -357,8 +362,42 @@ public sealed record AddonRelease(string Key, string? Release);
 /// <param name="Sha256">The archive's SHA-256, lowercase hex: a restore checks it first.</param>
 /// <param name="RemoteCopied">The archive was copied to the command's remote storage.</param>
 /// <param name="RemoteError">Why the copy to remote storage failed (the backup itself is fine on the node).</param>
-public sealed record BackupResult(long Size, int FileCount, int SkippedFiles, string Sha256, bool RemoteCopied = false, string? RemoteError = null)
-    : CommandResult;
+/// <param name="Capture">How the files were read (null from agents older than Phase 15).</param>
+public sealed record BackupResult(long Size, int FileCount, int SkippedFiles, string Sha256, bool RemoteCopied = false, string? RemoteError = null,
+    BackupCapture? Capture = null) : CommandResult;
+
+/// <summary>How a backup read the server's files (docs/architecture/05, "Backups").</summary>
+/// <param name="SnapshotError">
+/// Why a running game's files were read live rather than from a snapshot (<see cref="BackupCaptureMode.Live"/>): one of
+/// <see cref="BackupSnapshotErrors"/>.
+/// </param>
+/// <param name="Save">How the game answered when asked to save first; null when it was not asked (it was not running, or its manifest has no save).</param>
+public sealed record BackupCapture(BackupCaptureMode Mode, string? SnapshotError = null, GameSaveOutcome? Save = null);
+
+public enum BackupCaptureMode
+{
+    /// <summary>The game was not running: nothing was writing the files.</summary>
+    Stopped,
+
+    /// <summary>Read from a snapshot of the volume: every file as it was at the same moment.</summary>
+    Snapshot,
+
+    /// <summary>Read while the game ran, file by file: files it wrote meanwhile may be half-written, files it held open are left out.</summary>
+    Live,
+}
+
+/// <summary>What happened when a running game was asked to save before a backup (the manifest's <c>backup.save</c>).</summary>
+public enum GameSaveOutcome
+{
+    /// <summary>The game wrote the line that says the save ended.</summary>
+    Confirmed,
+
+    /// <summary>The game has no such line: the backup waited the time its manifest gives.</summary>
+    Waited,
+
+    /// <summary>The game did not confirm in time, or did not take the commands: the backup went on with what was on disk.</summary>
+    Unconfirmed,
+}
 
 public enum AckStatus
 {
@@ -421,6 +460,9 @@ public static class AgentCapabilities
 
     /// <summary>Not a command: the agent copies backups to S3-compatible storage (<see cref="RemoteBackupTarget"/>).</summary>
     public const string RemoteBackups = "backups.remote";
+
+    /// <summary>Not a command: the agent honours <see cref="RestoreBackupCommand.Clean"/> (Phase 15).</summary>
+    public const string CleanRestore = "backups.clean_restore";
 
     public const string InstallAddon = InstallAddonCommand.Type;
     public const string RemoveAddon = RemoveAddonCommand.Type;

@@ -1,6 +1,7 @@
 # Installs the agent the production way on a disposable, elevated Windows (Windows Sandbox through prepare.ps1, or a CI
 # runner): PostgreSQL + panel on 127.0.0.1, then elevated enroll, machine key, PulsarAgent service as SYSTEM, and a
-# test game server running as its own Windows account, then a real Counter-Strike: Source server installed by SteamCMD
+# test game server running as its own Windows account (backed up while it runs, from a volume snapshot, and restored
+# clean), then a real Counter-Strike: Source server installed by SteamCMD
 # from Valve (about 2.5 GB), started and stopped over RCON as its account, with managed firewall rules. Then the agent
 # MSI: refused next to that agent, a refused token, install, a same-version rebuild, an upgrade with a game running, a
 # refused downgrade, Install-Pulsar.ps1 leaving it alone, uninstall. Every check is written to report\summary.txt as
@@ -251,6 +252,41 @@ try {
         (Server).runtimeState -eq 'running' -and $now.Count -eq 1 -and $now[0].ProcessId -ne $before
     } 90
     Check 'server resumes when the service starts again' $resumed "reason: $((Server).lastStateReason)"
+
+    # --- A backup of the running game reads a snapshot of its volume, after the game saved (docs/architecture/06,
+    # "Backup snapshots"): a file the game holds open with no sharing is in it, which a live copy leaves out ---
+    $null = Api POST "/api/v1/servers/$serverId/console" @{ command = 'lock held.dat' }
+    Check 'the game holds a file open' (Wait-Until { Test-Path (Join-Path $serverDir 'data\held.dat') } 30)
+    Start-Sleep -Seconds 1
+    $made = Api POST "/api/v1/servers/$serverId/backups" @{ name = 'while running' }
+    function Backup-Of($id) { foreach ($b in (Api GET "/api/v1/servers/$serverId/backups").backups) { if ($b.id -eq $id) { return $b } } }
+    $completed = Wait-Until { (Backup-Of $made.id).status -in 'completed', 'failed' } 180
+    $running = Backup-Of $made.id
+    Check 'backup of the running game: from a snapshot, after the game saved' ($completed -and $running.status -eq 'completed' -and $running.copyMode -eq 'snapshot' -and $running.gameSave -eq 'confirmed' -and $running.skippedFiles -eq 0) "$($running.status) $($running.copyMode) $($running.snapshotError) save=$($running.gameSave) skipped=$($running.skippedFiles) $($running.errorMessage)"
+    $archive = Join-Path $dataDir "backups\$($server.shortId)\$($made.id -replace '-', '').zip"
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $entries = @()
+    if (Test-Path $archive) {
+        $zip = [IO.Compression.ZipFile]::OpenRead($archive)
+        try { $entries = @($zip.Entries | ForEach-Object FullName) } finally { $zip.Dispose() }
+    }
+    Check 'the backup has the file the game held open, and the world it saved' ('data/held.dat' -in $entries -and 'data/world.dat' -in $entries) (($entries | Sort-Object) -join ', ')
+    $shadows = @(Get-CimInstance Win32_ShadowCopy -ErrorAction SilentlyContinue)
+    Check 'no snapshot left after the backup' ($shadows.Count -eq 0) "$($shadows.Count) left"
+    Check 'no paused save left (the game was told to save again)' (-not (Test-Path (Join-Path $dataDir 'state\paused-saves\*.json')))
+    $agentLog = Get-ChildItem (Join-Path $dataDir 'logs') -Filter 'agent-*.log' | Sort-Object LastWriteTime | Select-Object -Last 1
+    Check 'agent log: snapshot taken and deleted' ((Get-Content $agentLog.FullName -Raw) -match 'Snapshot of .+ taken: \\\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy' -and (Get-Content $agentLog.FullName -Raw) -match 'Snapshot \S+ deleted')
+
+    # A clean restore, the server stopped: the file made after the backup goes, the backup's files come back.
+    $null = Api POST "/api/v1/servers/$serverId/stop"
+    Check 'server stopped for the restore' (Wait-Until { (Server).runtimeState -eq 'offline' } 30)
+    Set-Content (Join-Path $serverDir 'data\later.dat') 'made after the backup'
+    Remove-Item (Join-Path $serverDir 'data\world.dat')
+    $null = Api POST "/api/v1/servers/$serverId/backups/$($made.id)/restore?clean=true"
+    $restored = Wait-Until { $s = Server; $null -eq $s.activeOperation -and (Test-Path (Join-Path $serverDir 'data\world.dat')) } 120
+    Check 'clean restore as the server account: newer file deleted, backed-up files back' ($restored -and -not (Test-Path (Join-Path $serverDir 'data\later.dat')) -and (Test-Path (Join-Path $serverDir 'data\held.dat'))) "later.dat left: $(Test-Path (Join-Path $serverDir 'data\later.dat'))"
+    $null = Api POST "/api/v1/servers/$serverId/start"
+    Check 'server online again after the restore' (Wait-Until { (Server).runtimeState -eq 'running' } 60)
 
     $null = Api POST "/api/v1/servers/$serverId/kill"
     Check 'kill stops the server and leaves no process' (Wait-Until { (Server).runtimeState -eq 'offline' -and @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'").Count -eq 0 } 30)

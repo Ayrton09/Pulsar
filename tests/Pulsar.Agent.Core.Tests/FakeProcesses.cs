@@ -119,8 +119,12 @@ internal sealed class FakeGameProcess(int processId) : IGameProcess
             Exit(0);
         }
 
+        OnInput?.Invoke(text);
         return ValueTask.CompletedTask;
     }
+
+    /// <summary>How the game answers what it is sent (a save command's confirmation).</summary>
+    public Action<string>? OnInput { get; set; }
 
     public ValueTask SendInterruptAsync(CancellationToken cancellationToken)
     {

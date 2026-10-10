@@ -38,6 +38,12 @@ public sealed class ServerHostOptions
     /// the manager only ends the hosts an earlier run of the agent left: a game started here would run beside them.
     /// </summary>
     public bool GamesInHosts { get; set; } = true;
+
+    /// <summary>
+    /// Whether backups of running games read a snapshot of their volume (<c>Pulsar:BackupSnapshots</c>); when off, they
+    /// read the files live, as before Phase 15, and say so.
+    /// </summary>
+    public bool BackupSnapshots { get; set; } = true;
 }
 
 /// <summary>
@@ -77,10 +83,13 @@ public sealed partial class ServerHost(
     ILoggerFactory loggerFactory,
     IServerQuery? query = null,
     GameHostManager? hosts = null,
-    AgentShutdown? shutdown = null) : IHostedService, IServerEventSink, IGameHostRecords, IDisposable
+    AgentShutdown? shutdown = null,
+    IVolumeSnapshots? snapshots = null) : IHostedService, IServerEventSink, IGameHostRecords, IDisposable
 {
     // The panel waits for the ack: deleting a remote copy gets a bounded time.
     private static readonly TimeSpan s_remoteDeleteTimeout = TimeSpan.FromSeconds(20);
+
+    private static readonly IVolumeSnapshots s_noSnapshots = new NoVolumeSnapshots();
 
     private const string Platform = ManifestValidator.WindowsX64;
 
@@ -133,6 +142,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.DeleteBackup;
             yield return AgentCapabilities.SendBackup;
             yield return AgentCapabilities.RemoteBackups;
+            yield return AgentCapabilities.CleanRestore;
             yield return AgentCapabilities.Limits;
             yield return AgentCapabilities.SteamAccounts;
             yield return AgentCapabilities.InstallAddon;
@@ -278,6 +288,9 @@ public sealed partial class ServerHost(
             {
                 LogBackupsNotCleaned(ex.Message);
             }
+
+            // A backup the previous run did not finish may have left a taken-over game not saving (Minecraft's save-off).
+            await BackupSource.ResumePausedAsync(store, id => _servers.TryGetValue(id, out var server) ? server.Supervisor : null, _logger);
         }
         finally
         {
@@ -1019,7 +1032,13 @@ public sealed partial class ServerHost(
         {
             var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
             BackupProgress progress = (stage, percent) => SendProgressAsync(operationId, stage, percent);
-            var made = await backups.CreateAsync(location, provisioned, server.Manifest.Backup, progress, cancellationToken);
+            BackupResult made;
+            await using (var source = await BackupSource.OpenAsync(server.Supervisor, provisioned, server.Manifest.Backup?.Save,
+                options.BackupSnapshots ? snapshots ?? s_noSnapshots : null, store, progress, clock, _logger, cancellationToken))
+            {
+                made = await backups.CreateAsync(location, source.Files, server.Manifest.Backup, progress, cancellationToken) with { Capture = source.Capture };
+            }
+
             return command.Remote is { } remote ? await backups.CopyToRemoteAsync(location, made, remote, progress, cancellationToken) : made;
         });
     }
@@ -1053,7 +1072,8 @@ public sealed partial class ServerHost(
                 await backups.FetchAsync(location, remote, command.Sha256, progress, cancellationToken);
             }
 
-            await backups.RestoreAsync(location, provisioned, command.Sha256, progress, cancellationToken);
+            await backups.RestoreAsync(location, provisioned, command.Sha256, command.Clean ? new CleanRestore(server.Manifest.Backup) : null,
+                progress, cancellationToken);
         });
     }
 

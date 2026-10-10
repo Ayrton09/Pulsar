@@ -40,5 +40,9 @@
   "stop": {
     "steps": [ { "type": "consoleCommand", "command": "quit" } ],
     "timeoutSeconds": 15
+  },
+
+  "backup": {
+    "save": { "commands": ["save-off", "save"], "confirmation": "^Test server: saved", "timeoutSeconds": 15, "resume": ["save-on"] }
   }
 }

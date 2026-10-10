@@ -25,6 +25,9 @@ public sealed record ServerRecord(Guid ServerId, ServerRuntimeSpec Spec, bool De
 /// <param name="Stopping">The game was being stopped.</param>
 public sealed record GameHostRecord(Guid ServerId, GameHostReference Host, long ConsoleOffset, long LogPosition, bool Ready, bool Stopping = false);
 
+/// <summary>A game a backup asked to stop saving, and the commands that make it save again (the manifest's <c>backup.save.resume</c>).</summary>
+public sealed record PausedSave(Guid ServerId, IReadOnlyList<string> Resume);
+
 /// <summary>
 /// Server records and undelivered operation results, as JSON files in the agent's state directory (SYSTEM and
 /// Administrators only). Every write replaces the file atomically. Records hold secrets (secret variables, the RCON
@@ -100,6 +103,25 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
     }
 
     public void DeleteHost(Guid serverId) => File.Delete(Path.Combine(paths.HostsStateDirectory, $"{serverId:N}.json"));
+
+    public IReadOnlyList<PausedSave> LoadPausedSaves()
+    {
+        if (!Directory.Exists(paths.PausedSavesDirectory))
+        {
+            return [];
+        }
+
+        return [.. Directory.EnumerateFiles(paths.PausedSavesDirectory, "*.json").Select(f => ReadOrSetAside(f, Read<PausedSave>))
+            .OfType<PausedSave>()];
+    }
+
+    public void SavePausedSave(PausedSave paused)
+    {
+        ArgumentNullException.ThrowIfNull(paused);
+        Write(paths.PausedSavesDirectory, paused.ServerId, paused);
+    }
+
+    public void DeletePausedSave(Guid serverId) => File.Delete(Path.Combine(paths.PausedSavesDirectory, $"{serverId:N}.json"));
 
     public IReadOnlyList<OperationCompleted> PendingResults()
     {

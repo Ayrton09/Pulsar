@@ -43,6 +43,12 @@ public sealed class AgentPaths(string root)
     public string HostsStateDirectory => Path.Combine(Root, "state", "hosts");
 
     /// <summary>
+    /// Games a backup asked to stop saving (Minecraft's <c>save-off</c>) and that have not been told to resume yet: the
+    /// next run of the agent resumes them if the agent stopped in between (docs/architecture/05, "Backups").
+    /// </summary>
+    public string PausedSavesDirectory => Path.Combine(Root, "state", "paused-saves");
+
+    /// <summary>
     /// Copies of the agent's program that host processes run from, one per version: updating the agent replaces its
     /// installed files while games keep running in hosts of the previous version.
     /// </summary>

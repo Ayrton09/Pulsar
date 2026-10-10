@@ -53,6 +53,23 @@ public sealed class ConsoleBuffer
         }
     }
 
+    /// <summary>
+    /// The sequence of the newest entry, which no longer changes from now on: everything written later is in entries
+    /// after it (to watch for what a command makes the game write).
+    /// </summary>
+    public long Mark()
+    {
+        lock (_lock)
+        {
+            if (_entries.Count > _start)
+            {
+                _entries[^1].Seal();
+            }
+
+            return _next - 1;
+        }
+    }
+
     public void Append(string text, DateTimeOffset at)
     {
         if (string.IsNullOrEmpty(text))

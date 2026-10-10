@@ -49,6 +49,24 @@ public sealed class ConsoleBufferTests
     }
 
     [Fact]
+    public void WhatIsWrittenAfterAMarkIsAfterIt()
+    {
+        // A game's answer to a command can come within the merge window of what it wrote before.
+        var buffer = new ConsoleBuffer(new FakeTimeProvider(s_start));
+        buffer.Append("ready\n", s_start);
+
+        var mark = buffer.Mark();
+        buffer.Append("Saved the game\n", s_start.AddMilliseconds(10));
+
+        Assert.Equal("Saved the game\n", Assert.Single(buffer.Read(mark, int.MaxValue)).Text);
+
+        var empty = new ConsoleBuffer(new FakeTimeProvider(s_start));
+        var before = empty.Mark();
+        empty.Append("first\n", s_start);
+        Assert.Equal("first\n", Assert.Single(empty.Read(before, int.MaxValue)).Text);
+    }
+
+    [Fact]
     public void PiecesFurtherApartThanTheMergeWindowAreSeparateEntries()
     {
         var buffer = new ConsoleBuffer(new FakeTimeProvider(s_start));

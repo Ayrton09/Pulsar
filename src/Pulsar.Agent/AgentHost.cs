@@ -11,6 +11,7 @@ using Pulsar.Agent.Core.Security;
 using Pulsar.Agent.Core.Servers;
 using Pulsar.Agent.Core.Steam;
 using Pulsar.Agent.Windows;
+using Pulsar.Agent.Windows.Backups;
 using Pulsar.Agent.Windows.Processes;
 using Pulsar.Agent.Windows.Servers;
 using Pulsar.Contracts;
@@ -113,13 +114,17 @@ internal static class AgentHost
             builder.Services.AddSingleton<FileCommands>();
             builder.Services.AddSingleton<IRemoteBackupStore, S3RemoteBackupStore>();
             builder.Services.AddSingleton<BackupStore>();
+            // Backups of running games read a snapshot of their volume (docs/architecture/06, "Backup snapshots");
+            // Pulsar:BackupSnapshots false reads them live, as before Phase 15.
+            var backupSnapshots = builder.Configuration.GetValue("Pulsar:BackupSnapshots", true);
+            builder.Services.AddSingleton<IVolumeSnapshots, WindowsVolumeSnapshots>();
             builder.Services.AddSingleton<InstallSteps>();
             builder.Services.AddSingleton<ISteamCmdSource, SteamCmdBootstrapper>();
             builder.Services.AddSingleton(new SteamCmdOptions());
             builder.Services.AddSingleton<SteamLoginStore>();
             builder.Services.AddSingleton<SteamCmdRunner>();
             builder.Services.AddSingleton(new SupervisorOptions());
-            builder.Services.AddSingleton(new ServerHostOptions { GamesInHosts = serverHosts });
+            builder.Services.AddSingleton(new ServerHostOptions { GamesInHosts = serverHosts, BackupSnapshots = backupSnapshots });
             builder.Services.AddSingleton<ServerHost>();
 
             // Started in this order and stopped in reverse: the connection waits for the servers to load before its Hello,
