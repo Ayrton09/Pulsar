@@ -1,3 +1,5 @@
+using System.Data.Common;
+using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -38,6 +40,9 @@ public sealed partial class AgentAccess(
     ILogger<AgentAccess> logger)
 {
     private const int MaxTokenLength = 128;
+
+    /// <summary>The SQLSTATE of a unique index violation (PostgreSQL's, the standard one).</summary>
+    private const string UniqueViolation = "23505";
 
     public async Task<Result<SignedMessage>> EnrollAsync(EnrollRequest request, string panelOrigin, CancellationToken cancellationToken)
     {
@@ -93,9 +98,10 @@ public sealed partial class AgentAccess(
 
         db.NodeCredentials.Add(credential);
         token.Consumed(credential.Id, now); // saved with the credential, which the reference needs to exist first
-        node.Enrolled(ToSnapshot(request.Inventory, request.AgentVersion, AgentProtocol.CurrentVersion), now);
+        var inventory = ToSnapshot(request.Inventory, request.AgentVersion, AgentProtocol.CurrentVersion);
+        node.Enrolled(inventory, now);
         audit.Record(AuditActions.Node.Enrolled, AuditOutcome.Success, NodeActor(node),
-                new { hostname = request.Inventory.Hostname, fingerprint, keyStorage = keyStorage.ToString().ToLowerInvariant(), replacedCredentials = previous.Count })
+                new { hostname = inventory.Hostname, fingerprint, keyStorage = keyStorage.ToString().ToLowerInvariant(), replacedCredentials = previous.Count })
             .WithNode(node.Id).WithTarget("node", node.Id.ToString());
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -106,7 +112,7 @@ public sealed partial class AgentAccess(
             connections.Disconnect(node.Id);
         }
 
-        LogEnrolled(node.Id, request.Inventory.Hostname, fingerprint);
+        LogEnrolled(node.Id, inventory.Hostname, fingerprint);
         var result = new EnrollmentResult(node.Id.Value, credential.Id, panelOrigin, await keys.GetPublicKeysAsync(cancellationToken));
         return await keys.SignAsync(AgentProtocol.Purposes.EnrollmentResult, ProtocolJson.Serialize(result), cancellationToken);
     }
@@ -120,7 +126,7 @@ public sealed partial class AgentAccess(
     {
         if (!reusable.IsUsable(now))
         {
-            return await RejectEnrollmentAsync(null, "reusable_token_unusable", cancellationToken);
+            return await RejectTokenEnrollmentAsync(reusable, "reusable_token_unusable", cancellationToken);
         }
 
         var inventory = ToSnapshot(request.Inventory, request.AgentVersion, AgentProtocol.CurrentVersion);
@@ -128,7 +134,7 @@ public sealed partial class AgentAccess(
             now);
         if (!created.IsSuccess)
         {
-            return await RejectEnrollmentAsync(null, "node_name_invalid", cancellationToken);
+            return await RejectTokenEnrollmentAsync(reusable, "node_name_invalid", cancellationToken);
         }
 
         var node = created.Value;
@@ -144,7 +150,7 @@ public sealed partial class AgentAccess(
         if (counted != 1)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return await RejectEnrollmentAsync(null, "reusable_token_used_up", cancellationToken);
+            return await RejectTokenEnrollmentAsync(reusable, "reusable_token_used_up", cancellationToken);
         }
 
         db.Nodes.Add(node);
@@ -161,8 +167,6 @@ public sealed partial class AgentAccess(
             awaitingApproval = node.ApprovalRequired,
         }).WithNode(node.Id).WithTarget("node", node.Id.ToString());
 
-        // Another machine of the same name may have taken it meanwhile: the next free one (a failed save inside the
-        // transaction is rolled back to its savepoint, so it can be saved again).
         for (var attempt = 1; ; attempt++)
         {
             try
@@ -170,23 +174,35 @@ public sealed partial class AgentAccess(
                 await db.SaveChangesAsync(cancellationToken);
                 break;
             }
-            catch (DbUpdateException) when (attempt < 3)
+            catch (DbUpdateException ex) when (ex.InnerException is DbException { SqlState: UniqueViolation })
             {
-                node.Update($"{node.Name[..Math.Min(node.Name.Length, Node.MaxNameLength - 9)]}-{node.Id.Value.ToString("N")[^8..]}", null, null, now);
+                // Another machine of the same name may have taken it meanwhile: the next free one (a failed save inside
+                // the transaction is rolled back to its savepoint, so it can be saved again). Any other duplicate (the
+                // key is registered already: a replayed request) refuses the enrollment, without using the token.
+                var nameTaken = await db.Nodes.AnyAsync(n => n.NormalizedName == node.NormalizedName, cancellationToken);
+                if (nameTaken && attempt < 3)
+                {
+                    node.Update($"{Truncate(node.Name, Node.MaxNameLength - 9)}-{node.Id.Value.ToString("N")[^8..]}", null, null, now);
+                    continue;
+                }
+
+                await transaction.RollbackAsync(cancellationToken);
+                db.ChangeTracker.Clear();
+                return await RejectTokenEnrollmentAsync(reusable, nameTaken ? "node_name_taken" : "key_already_registered", cancellationToken);
             }
         }
 
         await transaction.CommitAsync(cancellationToken);
-        LogEnrolledWithToken(node.Id, inventory.Hostname, fingerprint, reusable.Name, node.ApprovalRequired);
+        LogEnrolledWithToken(node.Id, node.Name, inventory.Hostname, fingerprint, reusable.Name, node.ApprovalRequired);
         var result = new EnrollmentResult(node.Id.Value, credential.Id, panelOrigin, await keys.GetPublicKeysAsync(cancellationToken), node.ApprovalRequired);
         return await keys.SignAsync(AgentProtocol.Purposes.EnrollmentResult, ProtocolJson.Serialize(result), cancellationToken);
     }
 
-    /// <summary>The machine's name, or with a number after it when a node has that name already.</summary>
+    /// <summary>The machine's name (cleaned by <see cref="ToSnapshot"/>), or with a number after it when a node has that name already.</summary>
     private async Task<string> FreeNodeNameAsync(string hostname, CancellationToken cancellationToken)
     {
-        var name = new string([.. hostname.Trim().Where(c => !char.IsControl(c))]);
-        name = name.Length == 0 ? "node" : name[..Math.Min(name.Length, Node.MaxNameLength - 4)];
+        var name = Truncate(hostname.Trim(), Node.MaxNameLength - 4);
+        name = name.Length == 0 ? "node" : name;
         for (var number = 1; number < 100; number++)
         {
             var candidate = number == 1 ? name : $"{name}-{number}";
@@ -196,7 +212,7 @@ public sealed partial class AgentAccess(
             }
         }
 
-        return $"{name}-{Guid.NewGuid().ToString("N")[..8]}"[..Math.Min(name.Length + 9, Node.MaxNameLength)];
+        return $"{Truncate(name, Node.MaxNameLength - 9)}-{Guid.NewGuid().ToString("N")[..8]}";
     }
 
     public async Task<Result<ChallengeResponse>> ChallengeAsync(ChallengeRequest request, string panelOrigin, CancellationToken cancellationToken)
@@ -384,8 +400,13 @@ public sealed partial class AgentAccess(
     private static bool TryParseKeyStorage(string? value, out NodeKeyStorage keyStorage) =>
         Enum.TryParse(value, ignoreCase: true, out keyStorage) && Enum.IsDefined(keyStorage);
 
+    /// <summary>
+    /// What the panel keeps of the agent's inventory. The host name is shown as the machine's identity and names the
+    /// nodes of reusable tokens, so it loses the characters that would hide in it (format characters such as
+    /// zero-width spaces and direction overrides, line breaks).
+    /// </summary>
     public static NodeInventorySnapshot ToSnapshot(NodeInventory inventory, string agentVersion, int protocolVersion) => new(
-        Truncate(inventory.Hostname, 255),
+        Truncate(Visible(inventory.Hostname), 255),
         Truncate(inventory.OsDescription, 255),
         Truncate(inventory.OsBuild, 64),
         inventory.CpuModel is null ? null : Truncate(inventory.CpuModel, 255),
@@ -457,14 +478,30 @@ public sealed partial class AgentAccess(
         return AgentErrors.EnrollmentRejected;
     }
 
-    private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
+    /// <summary>A refused use of a reusable token: the audit says which token, so a leaked one can be found and revoked.</summary>
+    private async Task<Result<SignedMessage>> RejectTokenEnrollmentAsync(ReusableEnrollmentToken token, string reason, CancellationToken cancellationToken)
+    {
+        audit.Record(AuditActions.Node.EnrollmentFailed, AuditOutcome.Failure, metadata: new { reason, enrollmentToken = token.Name, enrollmentTokenId = token.Id })
+            .WithTarget("enrollment_token", token.Id.ToString());
+        await db.SaveChangesAsync(cancellationToken);
+        LogEnrollmentRejected(reason);
+        return AgentErrors.EnrollmentRejected;
+    }
+
+    /// <summary>Without the characters that hide or break a line in what the panel shows or logs.</summary>
+    private static string Visible(string value) => new([.. value.Where(c => !char.IsControl(c) && CharUnicodeInfo.GetUnicodeCategory(c)
+        is not (UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator))]);
+
+    /// <summary>At most <paramref name="max"/> characters, never half of a surrogate pair (PostgreSQL refuses it).</summary>
+    private static string Truncate(string value, int max) =>
+        value.Length <= max ? value : value[..(char.IsHighSurrogate(value[max - 1]) ? max - 1 : max)];
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} enrolled from {Hostname} with key {Fingerprint}")]
     private partial void LogEnrolled(NodeId nodeId, string hostname, string fingerprint);
 
     [LoggerMessage(Level = LogLevel.Information,
-        Message = "Node {NodeId} created and enrolled from {Hostname} with key {Fingerprint} by the reusable token {Token} (waiting for approval: {AwaitingApproval})")]
-    private partial void LogEnrolledWithToken(NodeId nodeId, string hostname, string fingerprint, string token, bool awaitingApproval);
+        Message = "Node {NodeId} ({Name}) created and enrolled from {Hostname} with key {Fingerprint} by the reusable token {Token} (waiting for approval: {AwaitingApproval})")]
+    private partial void LogEnrolledWithToken(NodeId nodeId, string name, string hostname, string fingerprint, string token, bool awaitingApproval);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Enrollment rejected: {Reason}")]
     private partial void LogEnrollmentRejected(string reason);

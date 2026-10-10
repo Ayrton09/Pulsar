@@ -27,8 +27,14 @@ public sealed class AgentEnrollment(
     PanelTransport transport,
     TimeProvider clock)
 {
+    /// <summary>How long enrollment keeps waiting for a panel that limits enrollments from this address.</summary>
+    public static readonly TimeSpan MaxBusyWait = TimeSpan.FromMinutes(10);
+
     /// <summary>The last enrollment created a node that waits for an administrator's approval (a reusable token's).</summary>
     public bool AwaitingApproval { get; private set; }
+
+    /// <summary>Told before each wait for a busy panel, with how long it is.</summary>
+    public Action<TimeSpan>? Waiting { get; set; }
 
     public async Task<AgentConfig> EnrollAsync(EnrollmentRequest request, CancellationToken cancellationToken)
     {
@@ -59,7 +65,7 @@ public sealed class AgentEnrollment(
         {
             var publicKey = key.PublicKey;
             var proof = key.Sign(ProtocolCrypto.SignedData(AgentProtocol.Purposes.Enroll, ProtocolCrypto.Utf8(request.Token), publicKey));
-            var signed = await PanelTransport.PostAsync<EnrollRequest, SignedMessage>(http, AgentProtocol.EnrollPath,
+            var signed = await PostEnrollAsync(http,
                 new EnrollRequest(request.Token, publicKey, key.Reference.Storage, AgentInfo.Version, system.GetInventory(request.ServersRoot), proof),
                 cancellationToken);
 
@@ -101,6 +107,37 @@ public sealed class AgentEnrollment(
         finally
         {
             key.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Many machines enrolling at once from one address (a rollout behind NAT) go over the panel's per-address limit:
+    /// each waits as long as the panel says, plus a random share so they do not all come back together, for up to
+    /// <see cref="MaxBusyWait"/>. Only that answer is retried: a refused token is not (it would only use the limit up).
+    /// </summary>
+    private async Task<SignedMessage> PostEnrollAsync(HttpClient http, EnrollRequest enroll, CancellationToken cancellationToken)
+    {
+        var giveUpAt = clock.GetUtcNow() + MaxBusyWait;
+        while (true)
+        {
+            try
+            {
+                return await PanelTransport.PostAsync<EnrollRequest, SignedMessage>(http, AgentProtocol.EnrollPath, enroll, cancellationToken);
+            }
+            catch (PanelBusyException busy)
+            {
+                var asked = busy.RetryAfter is { } after ? TimeSpan.FromSeconds(Math.Clamp(after.TotalSeconds, 1, 60)) : TimeSpan.FromSeconds(30);
+                var wait = asked + TimeSpan.FromSeconds(Random.Shared.NextDouble() * 10);
+                if (clock.GetUtcNow() + wait > giveUpAt)
+                {
+                    throw new AgentException(
+                        $"The panel turned the enrollment away for too many attempts from this address for {MaxBusyWait.TotalMinutes:0} minutes. " +
+                        "Try again later, or raise RateLimiting:Auth:EnrollPermitLimit in the panel's settings for a large rollout.", busy);
+                }
+
+                Waiting?.Invoke(wait);
+                await Task.Delay(wait, clock, cancellationToken);
+            }
         }
     }
 }

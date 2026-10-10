@@ -53,6 +53,30 @@ public class AgentException : Exception
     }
 }
 
+/// <summary>The panel turned the request away for too many attempts from this address (429): it may be tried again later.</summary>
+public sealed class PanelBusyException : AgentException
+{
+    public PanelBusyException()
+    {
+    }
+
+    public PanelBusyException(string message)
+        : base(message)
+    {
+    }
+
+    public PanelBusyException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
+    public PanelBusyException(string message, TimeSpan? retryAfter)
+        : base(message) => RetryAfter = retryAfter;
+
+    /// <summary>How long the panel asked to wait (its Retry-After), when it said.</summary>
+    public TimeSpan? RetryAfter { get; }
+}
+
 /// <summary>The panel refused this node's credential (revoked, node disabled or deleted). Retrying will not help soon.</summary>
 public sealed class AgentRejectedException : AgentException
 {

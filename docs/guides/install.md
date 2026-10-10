@@ -145,6 +145,16 @@ group policy or an Intune certificate profile) before the agent, or use a certif
 token travels in the command line, which the machine's administrators can see while it runs (the MSI keeps it out of
 its log): revoke the token once the rollout is done.
 
+The panel takes at most 10 enrollments a minute from one address. Machines that reach it through the same NAT address
+share that limit: the ones turned away wait as the panel says and try again for up to 10 minutes (a refused token is
+not tried again), so a large rollout from one site is slow or fails on some machines. Before one, raise the limit in
+the panel's `C:\Program Files\Pulsar\Panel\appsettings.Production.json` and restart the panel service; set it back
+afterwards:
+
+```json
+"RateLimiting": { "Auth": { "EnrollPermitLimit": 200 } }
+```
+
 ## 4. First steps in the panel
 
 1. **Account → Two-factor authentication**: set it up with an authenticator app and keep the recovery codes. In

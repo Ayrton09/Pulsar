@@ -112,25 +112,26 @@ export function NodesPage() {
 
 /**
  * Machines enrolled with a reusable token that requires approval: their agents connect once approved, all at once or
- * a few (the rest stay waiting; deleting a node turns it away).
+ * a few (the rest stay waiting; deleting a node turns it away). Nothing starts checked, and "select all" takes only
+ * the nodes on screen: a machine a leaked token adds while the page is open is never approved without being seen.
  */
 function ApprovalCard({ nodes }: { nodes: NodeSummary[] }) {
   const { t } = useTranslation();
   const formatDate = useFormatDate();
   const approve = useApproveNodes();
-  const [unselected, setUnselected] = useState<ReadonlySet<string>>(new Set());
+  const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   if (nodes.length === 0) {
     return null;
   }
 
-  const selected = nodes.filter((n) => !unselected.has(n.id)).map((n) => n.id);
-  const toggle = (id: string, checked: boolean) =>
-    setUnselected((current) => {
+  const selected = nodes.filter((n) => checked.has(n.id)).map((n) => n.id);
+  const toggle = (id: string, on: boolean) =>
+    setChecked((current) => {
       const next = new Set(current);
-      if (checked) {
-        next.delete(id);
-      } else {
+      if (on) {
         next.add(id);
+      } else {
+        next.delete(id);
       }
       return next;
     });
@@ -143,6 +144,11 @@ function ApprovalCard({ nodes }: { nodes: NodeSummary[] }) {
         </h2>
         <p className="text-sm text-muted">{t('nodes.approval.hint')}</p>
         {approve.isError && <Alert>{errorMessage(t, approve.error)}</Alert>}
+        <Checkbox
+          label={t('nodes.approval.selectAll')}
+          checked={selected.length === nodes.length}
+          onChange={(e) => setChecked(new Set(e.target.checked ? nodes.map((n) => n.id) : []))}
+        />
         <ul className="space-y-2">
           {nodes.map((node) => (
             <li key={node.id}>
@@ -152,13 +158,20 @@ function ApprovalCard({ nodes }: { nodes: NodeSummary[] }) {
                     <span className="font-medium">{node.name}</span>{' '}
                     <span className="text-xs text-muted">
                       {t('nodes.approval.machine', {
+                        hostname: node.inventory?.hostname ?? '—',
                         os: node.inventory?.osDescription ?? '—',
                         date: formatDate(node.createdAt),
                       })}
                     </span>
+                    <span className="block break-all text-xs text-muted">
+                      {t('nodes.approval.origin', {
+                        token: node.enrollmentTokenName ?? '—',
+                        fingerprint: node.credentialFingerprint ?? '—',
+                      })}
+                    </span>
                   </>
                 }
-                checked={!unselected.has(node.id)}
+                checked={checked.has(node.id)}
                 onChange={(e) => toggle(node.id, e.target.checked)}
               />
             </li>

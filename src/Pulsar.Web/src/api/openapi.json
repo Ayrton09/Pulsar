@@ -13054,7 +13054,9 @@
           "inventory",
           "metrics",
           "createdAt",
-          "panelKeyTrust"
+          "panelKeyTrust",
+          "enrollmentTokenName",
+          "credentialFingerprint"
         ],
         "type": "object",
         "properties": {
@@ -13116,6 +13118,18 @@
           },
           "panelKeyTrust": {
             "$ref": "#/components/schemas/PanelKeyTrust"
+          },
+          "enrollmentTokenName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "credentialFingerprint": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

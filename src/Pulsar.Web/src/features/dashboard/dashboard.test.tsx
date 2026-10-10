@@ -54,6 +54,8 @@ const node = (id: string, name: string, connected: boolean, cores: number, cpu: 
     : null,
   createdAt: '2026-10-02T12:00:00Z',
   panelKeyTrust: 'current',
+  enrollmentTokenName: null,
+  credentialFingerprint: null,
 });
 
 beforeAll(async () => {

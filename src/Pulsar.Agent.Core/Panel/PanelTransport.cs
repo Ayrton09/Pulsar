@@ -55,6 +55,14 @@ public class PanelTransport
             throw new AgentRejectedException("The panel rejected this node's credential (revoked, disabled or deleted node).");
         }
 
+        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            var retryAfter = response.Headers.RetryAfter is { } header
+                ? header.Delta ?? (header.Date is { } date ? date - DateTimeOffset.UtcNow : null)
+                : null;
+            throw new PanelBusyException($"The panel answered 429 Too Many Requests to {path}: too many attempts from this address.", retryAfter);
+        }
+
         AgentError? error = null;
         if (response.Content.Headers.ContentType?.MediaType == "application/json")
         {

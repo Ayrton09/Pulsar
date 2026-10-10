@@ -11229,6 +11229,8 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             panelKeyTrust: components["schemas"]["PanelKeyTrust"];
+            enrollmentTokenName: null | string;
+            credentialFingerprint: null | string;
         };
         NotificationChannelList: {
             channels: components["schemas"]["NotificationChannelView"][];

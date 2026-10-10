@@ -58,8 +58,10 @@ public sealed class NodeWatch(IServiceScopeFactory scopes, TimeProvider clock)
         var connection = services.GetRequiredService<IAgentConnections>().Find(node.Id);
         if (connection is null)
         {
+            // Approving or enabling the node (UpdatedAt) restarts the grace too: its agent was turned away until then, so
+            // a node that waited days for approval is not told offline the moment it is approved.
             var lastSeen = node.LastSeenAt ?? node.CreatedAt;
-            var graceFrom = lastSeen > _startedAt ? lastSeen : _startedAt;
+            var graceFrom = new[] { lastSeen, node.UpdatedAt, _startedAt }.Max();
             if (node.OfflineNotifiedAt is not null || now - graceFrom < settings.NodeOfflineAfter)
             {
                 return;

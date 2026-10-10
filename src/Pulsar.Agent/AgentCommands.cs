@@ -94,7 +94,10 @@ internal static class AgentCommands
 
         var keys = new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance);
         var enrollment = new AgentEnrollment(new AgentConfigStore(paths), keys, new WindowsNodeSystem(TimeProvider.System),
-            new WindowsDirectorySecurity(), new PanelTransport(), TimeProvider.System);
+            new WindowsDirectorySecurity(), new PanelTransport(), TimeProvider.System)
+        {
+            Waiting = wait => Console.Error.WriteLine($"The panel takes no more enrollments from this address for now; trying again in {wait.TotalSeconds:0} s."),
+        };
         AgentConfig config;
         try
         {
