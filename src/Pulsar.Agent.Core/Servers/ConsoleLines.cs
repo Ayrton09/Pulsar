@@ -16,6 +16,9 @@ public sealed partial class ConsoleLines
 
     private readonly StringBuilder _pending = new();
 
+    /// <summary>Tests: how many characters the searches looked at, which stays proportional to what was added.</summary>
+    internal long Searched { get; private set; }
+
     /// <summary>The complete lines in <paramref name="text"/> (with what earlier chunks left unfinished).</summary>
     public IReadOnlyList<string> Add(string text)
     {
@@ -28,6 +31,7 @@ public sealed partial class ConsoleLines
         // a move that may have begun before, instead of copying and searching everything pending each time.
         var from = Math.Max(0, searched - MaxMoveLength);
         var added = _pending.ToString(from, _pending.Length - from);
+        Searched += added.Length;
         if (!added.Contains('\n', StringComparison.Ordinal) && !RowStart().IsMatch(added))
         {
             return Overflow(lines);
@@ -36,6 +40,7 @@ public sealed partial class ConsoleLines
         // One pass over the text: each search starts where the last line ended, and the next move found is kept until
         // the lines before it are taken (the pattern has no anchors, so a later start cannot find an earlier match).
         var pending = _pending.ToString();
+        Searched += pending.Length;
         var start = 0;
         var move = RowStart().Match(pending);
         while (true)

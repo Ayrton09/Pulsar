@@ -64,7 +64,6 @@ public sealed class ConsoleLinesTests
         // Each chunk used to copy and scan the whole unfinished line (up to 16 KiB) before looking at what it added.
         var lines = new ConsoleLines();
         var added = new List<string>();
-        var watch = System.Diagnostics.Stopwatch.StartNew();
 
         for (var i = 0; i < 1_000_000; i++)
         {
@@ -74,8 +73,9 @@ public sealed class ConsoleLinesTests
         added.AddRange(lines.Add("\u001b[1"));
         added.AddRange(lines.Add(";1Hnext\n"));
 
-        watch.Stop();
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), $"Took {watch.Elapsed}.");
+        // Counted rather than timed (a timed test fails on a busy machine): a few dozen characters looked at per
+        // character added, where searching everything pending looked at thousands.
+        Assert.True(lines.Searched < 64L * 1_000_000, $"Searched {lines.Searched} characters.");
         Assert.Equal(1_000_000 - 20, added.Sum(l => l.Count(c => c == 'a')));
         Assert.Equal([16_385, 16_385, 16_385, 844], added.Take(4).Select(l => l.Length));
         Assert.Equal("next", added[^1]);
