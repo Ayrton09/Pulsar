@@ -752,6 +752,30 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AnOperationTheAgentsStopEndsIsInTheOutboxBeforeTheStopReturns()
+    {
+        var serverId = Stored("abcd2346", manifest: SavingManifest);
+        WriteServerFile("world/level.dat", "the world");
+        var host = Host(hosted: true, snapshots: new CopySnapshots());
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var game = await RunningAsync(host, serverId);
+        var operation = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new CreateBackupCommand(serverId, Guid.NewGuid()), operation))).Status);
+        await WaitUntilAsync(() => game.Input.Contains("save-all\r\n"));
+        // Writing the result takes a while: another program holds its file for half a second.
+        var held = new FileStream(Path.Combine(_configs.Paths.OutboxDirectory, $"{operation:N}.json"), FileMode.CreateNew, FileAccess.ReadWrite,
+            FileShare.None);
+        var released = Task.Delay(500, TestContext.Current.CancellationToken).ContinueWith(_ => held.Dispose(), TaskScheduler.Default);
+
+        await RestartAgentAsync();
+
+        // An agent whose process ends right after its stop must have reported the operation.
+        Assert.True(released.IsCompleted, "The stop returned before the operation's result was written.");
+        await released;
+        Assert.Equal(OperationOutcome.Cancelled, (await ResultAsync(operation)).Outcome);
+    }
+
+    [Fact]
     public async Task AGameThatCouldNotBeToldToResumeKeepsItsPausedSaveForTheNextRun()
     {
         var serverId = Stored("abcd2345", manifest: SavingManifest);

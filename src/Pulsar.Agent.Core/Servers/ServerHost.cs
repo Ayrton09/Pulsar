@@ -994,7 +994,9 @@ public sealed partial class ServerHost(
             }
 
             // Already gone (a retried delete): report success so the panel can finish.
-            _ = CompleteAsync(new OperationCompleted(operationId, command.ServerId, OperationOutcome.Succeeded, null, null));
+            var gone = new OperationCompleted(operationId, command.ServerId, OperationOutcome.Succeeded, null, null);
+            store.SaveResult(gone);
+            _ = DeliverResultAsync(gone);
             return new CommandAck(envelope.CommandId, AckStatus.AlreadyInState, null, null);
         }
 
@@ -1289,11 +1291,20 @@ public sealed partial class ServerHost(
                 _cancellations.TryRemove(operationId, out _);
                 cancellation.Dispose();
                 gate?.EndExclusive();
+            }
+
+            try
+            {
+                // In the outbox before the operation counts as ended: an agent that stops now still reports it.
+                store.SaveResult(result);
+            }
+            finally
+            {
                 _operations.TryRemove(new KeyValuePair<Guid, RunningOperation>(serverId, running));
                 running.Ended.TrySetResult();
             }
 
-            await CompleteAsync(result);
+            await DeliverResultAsync(result);
         });
         return new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null);
     }
@@ -1313,9 +1324,9 @@ public sealed partial class ServerHost(
         }
     }
 
-    private async Task CompleteAsync(OperationCompleted result)
+    /// <summary>Sends a result already in the outbox, and removes it from there once the panel has it.</summary>
+    private async Task DeliverResultAsync(OperationCompleted result)
     {
-        store.SaveResult(result);
         if (await panel.DeliverAsync(nameof(IAgentHub.OperationCompleted), result, _stopping.Token))
         {
             store.DeleteResult(result.OperationId);
