@@ -270,7 +270,7 @@ The enrollment endpoint is rate limited. A leaked token works at most once and f
 
 ### Bulk enrollment (Phase 14)
 
-To enroll many machines with one command (the agent MSI deployed through Intune or a group policy, or a script), an administrator with `node.credentials.manage` held globally creates a **reusable enrollment token** (`/api/v1/enrollment-tokens`): a name, a number of uses (1 to 1000), an expiry (1 hour to 90 days) and whether the nodes it creates wait for approval (on by default). The value (`pulsar_enroll_` and 32 random bytes) is shown once; only its SHA-256 is stored, with its first characters to recognize it. At most 50 usable tokens exist at a time, and a token can be revoked whenever.
+To enroll many machines with one command (the agent MSI deployed through Intune or a group policy, or a script), an administrator with `node.credentials.manage` held globally creates a **reusable enrollment token** (`/api/v1/enrollment-tokens`): a name, a number of uses (1 to 1000), an expiry (1 hour to 90 days) and whether the nodes it creates wait for approval (on by default: `requireApproval` left out of the request is `true`). The value (`pulsar_enroll_` and 32 random bytes) is shown once; only its SHA-256 is stored, with its first characters to recognize it. At most 50 usable tokens exist at a time, and a token can be revoked whenever. Tokens are never deleted (the nodes they created name them); the list shows every usable one and the 20 newest of the others (revoked, expired or used up).
 
 The agent enrolls with it exactly as with a single-use token (the same endpoint, proof and signed answer). The panel looks the hash up among single-use tokens first, then among reusable ones, and then:
 

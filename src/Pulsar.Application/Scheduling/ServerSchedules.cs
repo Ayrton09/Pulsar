@@ -68,6 +68,7 @@ public sealed class ServerSchedules(
     Scheduler scheduler,
     ScheduleSignal signal,
     IPermissionEvaluator permissions,
+    IRowLocks locks,
     IAuditLog audit,
     IRequestContext request,
     TimeProvider clock)
@@ -123,6 +124,9 @@ public sealed class ServerSchedules(
             return check.Error!;
         }
 
+        // Counted with the server's row locked: requests made at the same moment cannot all take the last place.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockServerAsync(id, cancellationToken);
         if (await db.ScheduledTasks.CountAsync(t => t.ServerId == id, cancellationToken) >= ScheduledTask.MaxTasksPerServer)
         {
             return ScheduleErrors.TooMany;
@@ -139,6 +143,7 @@ public sealed class ServerSchedules(
         db.ScheduledTasks.Add(task);
         audit.Record(AuditActions.Server.ScheduleCreated, metadata: Audited(task)).WithServer(server.Id, server.NodeId);
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         signal.Notify();
         return View(task, null);
     }

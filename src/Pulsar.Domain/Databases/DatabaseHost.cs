@@ -90,8 +90,8 @@ public sealed partial class DatabaseHost
     }
 
     /// <summary>
-    /// Replaces the settings; a null <paramref name="passwordProtected"/> keeps the current password, a null
-    /// <paramref name="requireTls"/> the current choice.
+    /// Replaces the settings; a null <paramref name="passwordProtected"/> keeps the current password (only while the
+    /// address, port and user name stay the same), a null <paramref name="requireTls"/> the current choice.
     /// </summary>
     public Result Change(string name, string host, int port, string userName, byte[]? passwordProtected, string? serverAddress, int? serverPort,
         string? userHost, IReadOnlyCollection<Guid> nodeIds, DateTimeOffset now, bool? requireTls = null)
@@ -125,6 +125,13 @@ public sealed partial class DatabaseHost
         if (!UserHostPattern().IsMatch(from))
         {
             return DatabaseErrors.UserHostInvalid;
+        }
+
+        // The saved password belongs to one account on one server: never sent to another one.
+        if (passwordProtected is null
+            && !(string.Equals(Host, address, StringComparison.OrdinalIgnoreCase) && Port == port && string.Equals(UserName, user, StringComparison.Ordinal)))
+        {
+            return DatabaseErrors.HostPasswordRequired;
         }
 
         Name = trimmed;

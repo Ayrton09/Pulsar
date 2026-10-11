@@ -6,6 +6,7 @@ using Pulsar.Api.Auth;
 using Pulsar.Api.Realtime;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
+using Pulsar.Api.Tests.Servers;
 using Pulsar.Application.Access;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Servers;
@@ -191,6 +192,43 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
         }
 
         Assert.Equal(10, (await ServerApi.GetAsync(scenario.Admin, server))!.Limits.CpuPercent);
+    }
+
+    [DatabaseFact]
+    public async Task CreatingOnANodeShowsItsFreePortsButNotTheServersItCannotSee()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(scenario.Admin, "ports");
+        var node = agent.Config!.NodeId;
+        var template = await GameServerTests.TemplateAsync(scenario.Admin, "css");
+        await GameServerTests.AllocateAsync(scenario.Admin, node, "0.0.0.0", "27200-27202");
+        var hidden = await CreatedAsync(scenario.Admin, new CreateServerRequest(node, template.Template.Id, "Hidden", null));
+        var shown = await CreatedAsync(scenario.Admin, new CreateServerRequest(node, template.Template.Id, "Shown", null));
+        var creator = await CreateRoleAsync(scenario, "node-creator", PermissionScope.Node, Permissions.Server.Create);
+        var viewer = await CreateRoleAsync(scenario, "one-server-viewer", PermissionScope.Server, Permissions.Server.View);
+        var user = await scenario.CreateUserAsync("ports-creator");
+        await GrantAsync(scenario.Admin, user.Id, "nodes", node, creator.Id);
+        await GrantAsync(scenario.Admin, user.Id, "servers", shown.Server.Id, viewer.Id);
+        using var client = await scenario.SignInAsync("ports-creator");
+
+        // The free port, and the one of the server they see; the hidden server's id, name and port are not theirs to know.
+        var listed = await ListAsync<AllocationView>(client, $"/api/v1/nodes/{node}/allocations");
+        var shownPort = shown.Ports.Single(p => p.Name == "game").Port!.Value;
+        var hiddenPort = hidden.Ports.Single(p => p.Name == "game").Port!.Value;
+        Assert.Equal(Enumerable.Range(27200, 3).Where(p => p != hiddenPort), listed.Select(a => a.Port));
+        Assert.Equal((shown.Server.Id, "Shown"), listed.Where(a => a.Port == shownPort).Select(a => (a.ServerId, a.ServerName)).Single());
+        Assert.All(listed.Where(a => a.Port != shownPort), a => Assert.Null(a.ServerId));
+
+        // Whoever sees every server sees every holder.
+        var all = await ListAsync<AllocationView>(scenario.Admin, $"/api/v1/nodes/{node}/allocations");
+        Assert.Contains(all, a => a.ServerId == hidden.Server.Id && a.ServerName == "Hidden");
+    }
+
+    private static async Task<ServerDetails> CreatedAsync(PanelClient client, CreateServerRequest request)
+    {
+        using var response = await client.PostAsync("/api/v1/servers", request);
+        await AccessScenario.EnsureSuccessAsync(response);
+        return (await response.Content.ReadFromJsonAsync<ServerDetails>(AccessScenario.Json, Ct))!;
     }
 
     private static async Task<Guid> InstalledAsync(PanelClient admin, Guid node, string name)

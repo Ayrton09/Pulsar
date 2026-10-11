@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
@@ -120,86 +121,114 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         ArgumentNullException.ThrowIfNull(completed);
         for (var attempt = 0; ; attempt++)
         {
-            var operation = await db.Operations.SingleOrDefaultAsync(o => o.Id == new OperationId(completed.OperationId) && o.NodeId == nodeId,
-                cancellationToken);
-            if (operation is null)
-            {
-                LogUnknownOperation(nodeId, completed.OperationId);
-                return null;
-            }
-
-            var now = clock.GetUtcNow();
-            progressCache.Remove(completed.OperationId);
-            if (!operation.Complete(Map(completed.Outcome), completed.ErrorCode, completed.Message, now))
-            {
-                return null;
-            }
-
-            var server = operation.ServerId is { } serverId ? await db.Servers.SingleOrDefaultAsync(s => s.Id == serverId, cancellationToken) : null;
-            ServerFollowUp? followUp = null;
-            if (server is not null)
-            {
-                server.OperationCompleted(operation, now);
-                // Addons installed, updated after a game update, or removed.
-                if (operation.Status == OperationStatus.Succeeded && completed.Result is AddonsResult addons)
-                {
-                    await ServerAddons.ApplyAsync(db, server, operation.Type, addons, now, cancellationToken);
-                }
-
-                switch (operation.Type)
-                {
-                    case OperationType.ServerProvision when operation.Status == OperationStatus.Succeeded:
-                        followUp = new ServerFollowUp(server.Id, operation.RequestedBy);
-                        break;
-                    case OperationType.BackupCreate:
-                        if (await BackupEndedAsync(server, operation, completed.Result, now, cancellationToken) && server.BackupLimit is not null)
-                        {
-                            followUp = new ServerFollowUp(server.Id, operation.RequestedBy, ServerFollowUpKind.PruneBackups);
-                        }
-
-                        break;
-                    case OperationType.ServerDelete when operation.Status == OperationStatus.Succeeded:
-                        // Its allocations become free for other servers.
-                        foreach (var allocation in await db.NodeAllocations.Where(a => a.ServerId == server.Id).ToListAsync(cancellationToken))
-                        {
-                            allocation.Release();
-                        }
-
-                        // Its databases go with it, dropped on their hosts first (no new one can come while it is being deleted).
-                        await databases.DropAllAsync(server, cancellationToken);
-                        db.Servers.Remove(server);
-                        // The node did it (the user's request has its own entry, server.delete_requested).
-                        var node = await db.Nodes.AsNoTracking().SingleAsync(n => n.Id == nodeId, cancellationToken);
-                        audit.Record(AuditActions.Server.Deleted, AuditOutcome.Success, AgentAccess.NodeActor(node),
-                                new { server.Name, server.ShortId, requestedBy = operation.RequestedBy?.Value })
-                            .WithServer(server.Id, server.NodeId);
-                        break;
-                }
-
-                // A scheduled update (or install) that failed after the node took it: the task's run said "dispatched".
-                if (operation is { RequestedVia: OperationRequester.Schedule, Status: OperationStatus.Failed } && operation.Type != OperationType.BackupCreate)
-                {
-                    var taskName = await db.ScheduledTaskRuns.AsNoTracking().Where(r => r.OperationId == operation.Id)
-                        .Join(db.ScheduledTasks.AsNoTracking(), r => r.TaskId, t => t.Id, (r, t) => t.Name)
-                        .FirstOrDefaultAsync(cancellationToken);
-                    if (taskName is not null)
-                    {
-                        await notifications.ScheduledTaskFailedAsync(server, taskName, operation.ErrorMessage ?? operation.ErrorCode, cancellationToken);
-                    }
-                }
-            }
-
+            // A server's deletion takes one: its databases are dropped with its row locked.
+            IDbContextTransaction? transaction = null;
             try
             {
+                if (await CompleteOperationAsync(nodeId, completed, t => transaction = t, cancellationToken) is not { } outcome)
+                {
+                    return null;
+                }
+
                 await db.SaveChangesAsync(cancellationToken);
-                LogOperationCompleted(completed.OperationId, operation.Type, operation.Status, completed.ErrorCode);
-                return followUp;
+                if (transaction is not null)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                }
+
+                LogOperationCompleted(completed.OperationId, outcome.Operation.Type, outcome.Operation.Status, completed.ErrorCode);
+                return outcome.FollowUp;
             }
             catch (DbUpdateConcurrencyException) when (attempt < 2)
             {
                 db.ChangeTracker.Clear();
             }
+            finally
+            {
+                if (transaction is not null)
+                {
+                    await transaction.DisposeAsync();
+                }
+            }
         }
+    }
+
+    /// <summary>Applies the result (not saved); null when it was recorded already or the operation is not the node's.</summary>
+    private async Task<(Operation Operation, ServerFollowUp? FollowUp)?> CompleteOperationAsync(NodeId nodeId, OperationCompleted completed,
+        Action<IDbContextTransaction> began, CancellationToken cancellationToken)
+    {
+        var operation = await db.Operations.SingleOrDefaultAsync(o => o.Id == new OperationId(completed.OperationId) && o.NodeId == nodeId,
+            cancellationToken);
+        if (operation is null)
+        {
+            LogUnknownOperation(nodeId, completed.OperationId);
+            return null;
+        }
+
+        var now = clock.GetUtcNow();
+        progressCache.Remove(completed.OperationId);
+        if (!operation.Complete(Map(completed.Outcome), completed.ErrorCode, completed.Message, now))
+        {
+            return null;
+        }
+
+        var server = operation.ServerId is { } serverId ? await db.Servers.SingleOrDefaultAsync(s => s.Id == serverId, cancellationToken) : null;
+        ServerFollowUp? followUp = null;
+        if (server is not null)
+        {
+            server.OperationCompleted(operation, now);
+            // Addons installed, updated after a game update, or removed.
+            if (operation.Status == OperationStatus.Succeeded && completed.Result is AddonsResult addons)
+            {
+                await ServerAddons.ApplyAsync(db, server, operation.Type, addons, now, cancellationToken);
+            }
+
+            switch (operation.Type)
+            {
+                case OperationType.ServerProvision when operation.Status == OperationStatus.Succeeded:
+                    followUp = new ServerFollowUp(server.Id, operation.RequestedBy);
+                    break;
+                case OperationType.BackupCreate:
+                    if (await BackupEndedAsync(server, operation, completed.Result, now, cancellationToken) && server.BackupLimit is not null)
+                    {
+                        followUp = new ServerFollowUp(server.Id, operation.RequestedBy, ServerFollowUpKind.PruneBackups);
+                    }
+
+                    break;
+                case OperationType.ServerDelete when operation.Status == OperationStatus.Succeeded:
+                    // Its allocations become free for other servers.
+                    foreach (var allocation in await db.NodeAllocations.Where(a => a.ServerId == server.Id).ToListAsync(cancellationToken))
+                    {
+                        allocation.Release();
+                    }
+
+                    // Its databases go with it, dropped on their hosts first (no new one can come while it is being deleted;
+                    // one its host was still creating is dropped again by its creation).
+                    began(await db.Database.BeginTransactionAsync(cancellationToken));
+                    await databases.DropAllAsync(server, cancellationToken);
+                    db.Servers.Remove(server);
+                    // The node did it (the user's request has its own entry, server.delete_requested).
+                    var node = await db.Nodes.AsNoTracking().SingleAsync(n => n.Id == nodeId, cancellationToken);
+                    audit.Record(AuditActions.Server.Deleted, AuditOutcome.Success, AgentAccess.NodeActor(node),
+                            new { server.Name, server.ShortId, requestedBy = operation.RequestedBy?.Value })
+                        .WithServer(server.Id, server.NodeId);
+                    break;
+            }
+
+            // A scheduled update (or install) that failed after the node took it: the task's run said "dispatched".
+            if (operation is { RequestedVia: OperationRequester.Schedule, Status: OperationStatus.Failed } && operation.Type != OperationType.BackupCreate)
+            {
+                var taskName = await db.ScheduledTaskRuns.AsNoTracking().Where(r => r.OperationId == operation.Id)
+                    .Join(db.ScheduledTasks.AsNoTracking(), r => r.TaskId, t => t.Id, (r, t) => t.Name)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (taskName is not null)
+                {
+                    await notifications.ScheduledTaskFailedAsync(server, taskName, operation.ErrorMessage ?? operation.ErrorCode, cancellationToken);
+                }
+            }
+        }
+
+        return (operation, followUp);
     }
 
     /// <summary>
@@ -256,6 +285,16 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
             }
 
             LogInterrupted(operation.Id, nodeId);
+        }
+
+        // Installing with nothing installing it: the install that follows provisioning was lost (the panel restarted, or
+        // its database failed, in between) or could not begin. It failed; installing again is the user's choice.
+        foreach (var server in servers)
+        {
+            if (server.InstallAbandoned(now))
+            {
+                LogInstallAbandoned(server.Id, nodeId);
+            }
         }
 
         try
@@ -407,4 +446,7 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Operation {OperationId} on node {NodeId} was interrupted (the agent no longer has it)")]
     private partial void LogInterrupted(OperationId operationId, NodeId nodeId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId} on node {NodeId} was installing with no install running: its install failed")]
+    private partial void LogInstallAbandoned(ServerId serverId, NodeId nodeId);
 }

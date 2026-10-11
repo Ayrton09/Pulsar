@@ -105,7 +105,8 @@ public sealed class SteamAccountTests(PulsarApiFactory factory) : IClassFixture<
                 db.SteamAccounts.Add(SteamAccount.Create(name, "pulsar_other", protector.Protect(Password), DateTimeOffset.UtcNow).Value!);
                 db.SaveChangesAsync(Ct).GetAwaiter().GetResult();
             });
-            var accounts = new SteamAccounts(services.GetRequiredService<IPulsarDbContext>(), protector, audit, TimeProvider.System);
+            var accounts = new SteamAccounts(services.GetRequiredService<IPulsarDbContext>(), protector, services.GetRequiredService<IRowLocks>(), audit,
+                TimeProvider.System);
             return (await action(accounts)).Error;
         }
 

@@ -37,6 +37,9 @@ run yourself; it does not install MySQL or MariaDB.
      should also sit behind a VPN or tunnel. MySQL 8 and MariaDB 11.4 or newer offer TLS out of the box.
    - **Nodes**: tick some to offer the host to their servers only.
 
+   Editing a host, an empty password keeps the saved one, as long as the address, port and user stay the same; change
+   any of them and type the password again.
+
 ## Databases of a server
 
 The server's **Databases** tab lists them. With `server.databases.manage` you create one (its name is

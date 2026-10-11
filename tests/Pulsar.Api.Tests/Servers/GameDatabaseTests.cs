@@ -445,8 +445,12 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
         // Each attempt may wait for a connection timeout: a host that failed once is not tried again for this server.
         var client = new FailingClient(new DatabaseHostException("Unable to connect to any of the specified MySQL hosts."));
         var server = await db.Servers.SingleAsync(s => s.Id == new ServerId(serverId), Ct);
-        await DatabasesWith(services, client).DropAllAsync(server, CancellationToken.None);
-        await db.SaveChangesAsync(Ct);
+        await using (var transaction = await db.Database.BeginTransactionAsync(Ct))
+        {
+            await DatabasesWith(services, client).DropAllAsync(server, CancellationToken.None);
+            await db.SaveChangesAsync(Ct);
+            await transaction.CommitAsync(Ct);
+        }
 
         Assert.Equal(2, client.Calls);
         Assert.False(await db.ServerDatabases.AnyAsync(d => d.ServerId == server.Id, Ct));
@@ -457,6 +461,139 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
             Assert.False(Dropped(e));
             Assert.Contains("Unable to connect", e, StringComparison.Ordinal);
         });
+    }
+
+    [DatabaseFact]
+    public async Task OverlappingRotationsLeaveTheHostAndThePanelWithTheSamePassword()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(scenario.Admin, "rotations");
+        var serverId = new ServerId(await InstalledServerAsync(scenario.Admin, agent, "db-rotations"));
+        var shortId = (await ServerApi.GetAsync(scenario.Admin, serverId.Value))!.Server.ShortId;
+        ServerDatabase database;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var host = await AddHostAsync(scope.ServiceProvider, "rotations");
+            var protector = scope.ServiceProvider.GetRequiredService<IDatabaseSecretProtector>();
+            database = ServerDatabase.Create(serverId, shortId, host, "main", protector.Protect(ServerDatabase.NewPassword()), DateTimeOffset.UtcNow).Value;
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            db.ServerDatabases.Add(database);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        // The first rotation's ALTER USER reaches the host first and its answer comes back last.
+        var client = new SlowFirstPasswordClient();
+        async Task RotateAsync()
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            var rotated = await DatabasesWith(scope.ServiceProvider, client).RotatePasswordAsync(serverId, database.Id.Value, Ct);
+            Assert.True(rotated.IsSuccess);
+        }
+
+        var first = RotateAsync();
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(client.Password is not null), "first rotation on the host");
+        await Task.WhenAll(first, RotateAsync());
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var saved = await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().ServerDatabases.AsNoTracking()
+                .SingleAsync(d => d.Id == database.Id, Ct);
+            Assert.Equal(client.Password, scope.ServiceProvider.GetRequiredService<IDatabaseSecretProtector>().Unprotect(saved.PasswordProtected));
+        }
+    }
+
+    [DatabaseFact]
+    public async Task ADatabaseCreatedWhileItsServerWasDeletedIsDroppedAgain()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        var admin = scenario.Admin;
+        await using var agent = await ConnectedAgentAsync(admin, "late");
+        var serverId = await InstalledServerAsync(admin, agent, "db-late");
+        var client = new GatedCreateClient();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var host = await AddHostAsync(scope.ServiceProvider, "late");
+
+        // The host is still creating it when the node confirms the server's deletion.
+        var create = DatabasesWith(scope.ServiceProvider, client).CreateAsync(new ServerId(serverId), host.Id.Value, "late", Ct);
+        await client.Started.Task.WaitAsync(TimeSpan.FromSeconds(30), Ct);
+        await DeleteServerAsync(admin, serverId);
+        client.Release.SetResult();
+
+        var created = await create;
+        Assert.Equal(ServerErrors.NotFound, created.Error);
+        Assert.NotNull(client.Created);
+        Assert.Equal(client.Created, Assert.Single(client.Dropped));
+    }
+
+    [DatabaseFact]
+    public async Task ThePanelsLastDatabaseHostGoesToOneRequest()
+    {
+        var client = new RecordingClient();
+        var names = new List<string>();
+        async Task<DomainError?> CreateAsync(string name)
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            var services = scope.ServiceProvider;
+            var hosts = new DatabaseHosts(services.GetRequiredService<IPulsarDbContext>(), services.GetRequiredService<IDatabaseSecretProtector>(), client,
+                services.GetRequiredService<IRowLocks>(), services.GetRequiredService<IAuditLog>(), TimeProvider.System);
+            lock (names)
+            {
+                names.Add(name);
+            }
+
+            return (await hosts.CreateAsync(new DatabaseHostDefinition(name, "127.0.0.1", 1, "pulsar", "password", null, null, null, []), Ct)).Error;
+        }
+
+        try
+        {
+            int existing;
+            await using (var scope = factory.Services.CreateAsyncScope())
+            {
+                existing = await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().DatabaseHosts.CountAsync(Ct);
+            }
+
+            for (var i = existing; i < DatabaseHost.MaxHosts - 1; i++)
+            {
+                Assert.Null(await CreateAsync($"limit-{i}"));
+            }
+
+            // Checking each host takes a while: the last place is counted again once they are checked.
+            var answers = await Task.WhenAll(Enumerable.Range(0, 8).Select(i => CreateAsync($"limit-race-{i}")));
+            Assert.Single(answers, e => e is null);
+            Assert.All(answers.Where(e => e is not null), e => Assert.Equal(DatabaseErrors.TooManyHosts, e));
+        }
+        finally
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().DatabaseHosts.Where(h => names.Contains(h.Name)).ExecuteDeleteAsync(Ct);
+        }
+    }
+
+    [DatabaseFact]
+    public async Task TheSavedPasswordGoesOnlyToTheServerAndAccountItWasGivenFor()
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        var host = await AddHostAsync(services, "moved");
+        var client = new RecordingClient();
+        var hosts = new DatabaseHosts(services.GetRequiredService<IPulsarDbContext>(), services.GetRequiredService<IDatabaseSecretProtector>(), client,
+            services.GetRequiredService<IRowLocks>(), services.GetRequiredService<IAuditLog>(), TimeProvider.System);
+
+        // Another address, port or account without a password: refused before connecting anywhere.
+        foreach (var (address, port, user) in new[] { ("203.0.113.9", 1, "pulsar"), ("127.0.0.1", 3306, "pulsar"), ("127.0.0.1", 1, "root") })
+        {
+            var moved = await hosts.UpdateAsync(host.Id.Value, new DatabaseHostDefinition("moved", address, port, user, null, null, null, null, []), Ct);
+            Assert.Equal(DatabaseErrors.HostPasswordRequired, moved.Error);
+        }
+
+        Assert.Empty(client.Connections);
+
+        // The same account on the same server keeps it (checked with it).
+        var renamed = await hosts.UpdateAsync(host.Id.Value,
+            new DatabaseHostDefinition("moved-renamed", "127.0.0.1", 1, "pulsar", null, "db.example.test", null, null, []), Ct);
+        Assert.True(renamed.IsSuccess);
+        var connection = Assert.Single(client.Connections);
+        Assert.Equal(("127.0.0.1", 1, "pulsar", "password"), (connection.Host, connection.Port, connection.UserName, connection.Password));
     }
 
     private static async Task<DatabaseHost> AddHostAsync(IServiceProvider services, string name)
@@ -472,7 +609,7 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
 
     private static ServerDatabases DatabasesWith(IServiceProvider services, IDatabaseHostClient client) => new(
         services.GetRequiredService<IPulsarDbContext>(), services.GetRequiredService<DatabaseHosts>(), services.GetRequiredService<IDatabaseSecretProtector>(),
-        client, services.GetRequiredService<IServerLocks>(), services.GetRequiredService<IAuditLog>(), TimeProvider.System,
+        client, services.GetRequiredService<IRowLocks>(), services.GetRequiredService<IAuditLog>(), TimeProvider.System,
         NullLogger<ServerDatabases>.Instance);
 
     /// <summary>A host client whose every call fails as given, counting them.</summary>
@@ -497,6 +634,85 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
             Interlocked.Increment(ref _calls);
             return Task.FromException<T>(failure);
         }
+    }
+
+    /// <summary>A host that answers every check (after a moment, as over a network), keeping where it was asked to connect.</summary>
+    private sealed class RecordingClient : RecordingClientBase
+    {
+        public List<DatabaseHostConnection> Connections { get; } = [];
+
+        public override async Task<string> CheckAsync(DatabaseHostConnection host, CancellationToken cancellationToken)
+        {
+            lock (Connections)
+            {
+                Connections.Add(host);
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+            return await base.CheckAsync(host, cancellationToken);
+        }
+    }
+
+    /// <summary>A host whose first password change takes effect at once but is answered late.</summary>
+    private sealed class SlowFirstPasswordClient : RecordingClientBase
+    {
+        private int _changes;
+
+        public string? Password { get; private set; }
+
+        public override async Task SetPasswordAsync(DatabaseHostConnection host, string name, string userHost, string password,
+            CancellationToken cancellationToken)
+        {
+            Password = password;
+            if (Interlocked.Increment(ref _changes) == 1)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(700), cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>A host whose CREATE waits for the test, keeping what it created and dropped.</summary>
+    private sealed class GatedCreateClient : RecordingClientBase
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string? Created { get; private set; }
+
+        public List<string> Dropped { get; } = [];
+
+        public override async Task CreateAsync(DatabaseHostConnection host, string name, string userHost, string password,
+            CancellationToken cancellationToken)
+        {
+            Started.SetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            Created = name;
+        }
+
+        public override Task DropAsync(DatabaseHostConnection host, string name, string userHost, CancellationToken cancellationToken)
+        {
+            lock (Dropped)
+            {
+                Dropped.Add(name);
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>A host that answers every call (overridden to watch some).</summary>
+    private abstract class RecordingClientBase : IDatabaseHostClient
+    {
+        public virtual Task<string> CheckAsync(DatabaseHostConnection host, CancellationToken cancellationToken) => Task.FromResult("11.8.3-MariaDB");
+
+        public virtual Task CreateAsync(DatabaseHostConnection host, string name, string userHost, string password, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public virtual Task DropAsync(DatabaseHostConnection host, string name, string userHost, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public virtual Task SetPasswordAsync(DatabaseHostConnection host, string name, string userHost, string password,
+            CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private static DatabaseHostRequest HostRequest(string name, IReadOnlyList<Guid>? nodes = null)

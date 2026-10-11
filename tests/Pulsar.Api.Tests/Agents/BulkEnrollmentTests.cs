@@ -322,6 +322,43 @@ public sealed class BulkEnrollmentTests(PulsarApiFactory factory) : IClassFixtur
     }
 
     [DatabaseFact]
+    public async Task ATokenMakesNodesWaitForApprovalUnlessToldOtherwise()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        using var response = await admin.PostAsync("/api/v1/enrollment-tokens", new { name = "Said nothing", maxUses = 3, lifetimeHours = 24 });
+        await AccessScenario.EnsureSuccessAsync(response);
+        var created = (await response.Content.ReadFromJsonAsync<CreatedEnrollmentToken>(AccessScenario.Json, Ct))!;
+        Assert.True(created.Token.RequireApproval);
+        await AccessScenario.EnsureSuccessAsync(await admin.PostAsync($"/api/v1/enrollment-tokens/{created.Token.Id}/revoke"));
+    }
+
+    [DatabaseFact]
+    public async Task TheListShowsEveryUsableTokenAndTheNewestOfTheOthers()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var kept = await CreateTokenAsync(admin, "Still usable", maxUses: 1, requireApproval: true);
+        var revoked = new List<Guid>();
+        try
+        {
+            for (var i = 0; i < EnrollmentTokens.MaxListedUnusable + 2; i++)
+            {
+                var token = await CreateTokenAsync(admin, $"Spent {i}", maxUses: 1, requireApproval: true);
+                await AccessScenario.EnsureSuccessAsync(await admin.PostAsync($"/api/v1/enrollment-tokens/{token.Token.Id}/revoke"));
+                revoked.Add(token.Token.Id);
+            }
+
+            var listed = await ListTokensAsync(admin);
+            Assert.Contains(listed, t => t.Id == kept.Token.Id);
+            Assert.Equal(EnrollmentTokens.MaxListedUnusable, listed.Count(t => !t.Usable));
+            Assert.Equal(revoked[^EnrollmentTokens.MaxListedUnusable..].AsEnumerable().Reverse(), listed.Where(t => !t.Usable).Select(t => t.Id));
+        }
+        finally
+        {
+            await AccessScenario.EnsureSuccessAsync(await admin.PostAsync($"/api/v1/enrollment-tokens/{kept.Token.Id}/revoke"));
+        }
+    }
+
+    [DatabaseFact]
     public async Task TheFiftyFirstUsableTokenIsRefused()
     {
         using var admin = await factory.CreateAdminClientAsync();

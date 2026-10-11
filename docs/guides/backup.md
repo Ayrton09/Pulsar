@@ -106,7 +106,9 @@ or your own MinIO or SeaweedFS):
 From then on every new backup is uploaded after it is made, and the tab says whether each copy is there (a failed copy
 leaves the backup on the node and is notified to the channels that want *Backup failed*). If the node loses a backup,
 restoring or downloading it brings it back from the storage. Deleting a backup in Pulsar deletes its copy too; deleting
-a server or a storage leaves the copies already in the bucket.
+a server or a storage leaves the copies already in the bucket. While a storage holds copies its endpoint and bucket
+cannot change (Pulsar finds the copies there): new keys, the region, the folder for new copies and *Bucket in the
+path* can. To move to another bucket, add a storage for it and choose it in the servers.
 
 ## Restoring the panel
 

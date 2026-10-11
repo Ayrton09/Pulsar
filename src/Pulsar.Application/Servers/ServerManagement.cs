@@ -375,11 +375,18 @@ public sealed partial class ServerManagement(
             // Nobody waits for this one: the failed install says why on the server's page (a new server's game needs an account).
             await operations.FailAsync(server, Operation.Create(OperationType.ServerInstall, server.NodeId, server.Id, requestedBy, OperationRequester.System,
                 clock.GetUtcNow()), login.Error!, cancellationToken);
-            return;
+        }
+        else
+        {
+            await RunOperationAsync(server, OperationType.ServerInstall, new InstallServerCommand(server.Id.Value, login.Value), requestedBy,
+                OperationRequester.System, cancellationToken);
         }
 
-        await RunOperationAsync(server, OperationType.ServerInstall, new InstallServerCommand(server.Id.Value, login.Value), requestedBy,
-            OperationRequester.System, cancellationToken);
+        // The install could not even begin (the server was busy, or started meanwhile): it failed, rather than installing for ever.
+        if (server.InstallAbandoned(clock.GetUtcNow()))
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
     }
 
     public async Task<Result<AgentCommandResult>> StartAsync(ServerId id, CancellationToken cancellationToken) =>
@@ -792,33 +799,44 @@ public sealed partial class ServerManagement(
             return NodeErrors.NotConnected;
         }
 
+        // Checked now, kept only once the node took it: a refused request changes nothing and is audited as refused.
         var changed = change(server);
         if (!changed.IsSuccess)
         {
             return changed.Error!;
         }
 
-        audit.Record(action).WithServer(server.Id, server.NodeId);
-        try
+        // Once sent, its answer is waited for (the request given up included): what is saved must follow it.
+        var ack = await connections.SendAsync(server.NodeId, command, request.UserId, CancellationToken.None);
+        if (ack?.Status is not (AckStatus.Accepted or AckStatus.AlreadyInState))
         {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            // The agent reported a state change in between: apply the request again on the fresh row.
-            await db.Entry(server).ReloadAsync(cancellationToken);
-            changed = change(server);
-            if (!changed.IsSuccess)
+            await db.Entry(server).ReloadAsync(CancellationToken.None);
+            audit.Record(action, AuditOutcome.Failure, new { status = ack?.Status, errorCode = ack?.ErrorCode ?? NodeErrors.NotConnected.Code })
+                .WithServer(server.Id, server.NodeId);
+            await db.SaveChangesAsync(CancellationToken.None);
+            if (ack is null)
             {
-                return changed.Error!;
+                return NodeErrors.NotConnected;
             }
 
-            await db.SaveChangesAsync(cancellationToken);
+            return new AgentCommandResult(ack.Status, ack.ErrorCode);
         }
-        var ack = await connections.SendAsync(server.NodeId, command, request.UserId, cancellationToken);
-        if (ack is null)
+
+        audit.Record(action).WithServer(server.Id, server.NodeId);
+        for (var attempt = 0; ; attempt++)
         {
-            return NodeErrors.NotConnected;
+            try
+            {
+                await db.SaveChangesAsync(CancellationToken.None);
+                break;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < 4)
+            {
+                // The agent reports what the command does meanwhile: apply the request again on the fresh row (the node
+                // took it, so it is kept and audited whatever the fresh row says).
+                await db.Entry(server).ReloadAsync(CancellationToken.None);
+                _ = change(server);
+            }
         }
 
         return new AgentCommandResult(ack.Status, ack.ErrorCode);

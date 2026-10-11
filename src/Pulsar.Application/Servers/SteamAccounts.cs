@@ -33,7 +33,7 @@ public sealed record SteamAccountList(IReadOnlyList<SteamAccountView> Accounts);
 /// Steam accounts for SteamCMD (Phase 13), for holders of <c>settings.manage</c>. The password goes in encrypted and
 /// never comes back out; nodes get it only inside the install and update commands of servers that use the account.
 /// </summary>
-public sealed class SteamAccounts(IPulsarDbContext db, ISteamAccountSecretProtector secrets, IAuditLog audit, TimeProvider clock)
+public sealed class SteamAccounts(IPulsarDbContext db, ISteamAccountSecretProtector secrets, IRowLocks locks, IAuditLog audit, TimeProvider clock)
 {
     public async Task<SteamAccountList> ListAsync(CancellationToken cancellationToken)
     {
@@ -46,6 +46,9 @@ public sealed class SteamAccounts(IPulsarDbContext db, ISteamAccountSecretProtec
     public async Task<Result<SteamAccountView>> CreateAsync(SteamAccountDefinition definition, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(definition);
+        // Counted with creations taking turns: requests made at the same moment cannot all take the last place.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockCreationsAsync<SteamAccount>(cancellationToken);
         if (await db.SteamAccounts.CountAsync(cancellationToken) >= SteamAccount.MaxAccounts)
         {
             return SteamAccountErrors.TooMany;
@@ -81,6 +84,7 @@ public sealed class SteamAccounts(IPulsarDbContext db, ISteamAccountSecretProtec
             return SteamAccountErrors.NameTaken;
         }
 
+        await transaction.CommitAsync(cancellationToken);
         return View(account, 0);
     }
 

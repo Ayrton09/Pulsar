@@ -81,6 +81,30 @@ public sealed class BackupStorageTests
     }
 
     [Fact]
+    public void AStorageHoldingCopiesKeepsItsEndpointAndBucket()
+    {
+        var storage = Storage(prefix: "pulsar");
+
+        // Copies are found at the storage's endpoint and bucket, under the key each backup kept (its prefix included).
+        Assert.Equal(BackupStorageErrors.HoldsCopies,
+            storage.Change("S3", "https://other.example.com", "auto", "pulsar-backups", "pulsar", "AKID", null, true, s_now, holdsCopies: true).Error);
+        Assert.Equal(BackupStorageErrors.HoldsCopies,
+            storage.Change("S3", "https://s3.example.com", "auto", "other-bucket", "pulsar", "AKID", null, true, s_now, holdsCopies: true).Error);
+        Assert.Equal(BackupStorageErrors.HoldsCopies,
+            storage.Change("S3", null, "auto", "pulsar-backups", "pulsar", "AKID", null, true, s_now, holdsCopies: true).Error);
+        Assert.Equal(("https://s3.example.com", "pulsar-backups"), (storage.Endpoint, storage.Bucket));
+
+        // New credentials, region, path style or folder for new copies: the same bucket.
+        byte[] rotated = [4, 5, 6];
+        Assert.True(storage.Change("Renamed", " HTTPS://S3.example.com/ ", "us-east-1", "pulsar-backups", "new-folder", "AKID2", rotated, false, s_now,
+            holdsCopies: true).IsSuccess);
+        Assert.Equal(("AKID2", rotated, "new-folder/"), (storage.AccessKeyId, storage.SecretProtected, storage.Prefix));
+
+        // Without copies, it may move.
+        Assert.True(storage.Change("Moved", "https://other.example.com", "auto", "other-bucket", null, "AKID2", null, true, s_now).IsSuccess);
+    }
+
+    [Fact]
     public void ABackupsCopyIsPendingThenCopiedOrFailed()
     {
         var storage = Storage();
