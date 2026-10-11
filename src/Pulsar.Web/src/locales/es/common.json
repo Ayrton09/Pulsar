@@ -528,7 +528,8 @@
       "invalid_servers_root": "La carpeta de servidores del nodo no es válida: {{detail}}"
     },
     "console": {
-      "invalid_input": "Un comando es una línea sin caracteres de control (como tabulaciones)."
+      "invalid_input": "Un comando es una línea sin caracteres de control (como tabulaciones).",
+      "not_reading": "El juego no está tomando comandos por la consola (puede estar colgado). Probá de nuevo o reiniciá el servidor."
     },
     "template": {
       "version_exists": "Esa versión del juego ya está registrada. Las plantillas no cambian nunca: dale una versión nueva.",

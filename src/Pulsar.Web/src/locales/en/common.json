@@ -528,7 +528,8 @@
       "invalid_servers_root": "The node's servers folder is not valid: {{detail}}"
     },
     "console": {
-      "invalid_input": "A command is one line without control characters (such as tabs)."
+      "invalid_input": "A command is one line without control characters (such as tabs).",
+      "not_reading": "The game is not taking console input right now (it may be frozen). Try again, or restart the server."
     },
     "template": {
       "version_exists": "That game version is already registered. Templates never change: give it a new version.",
