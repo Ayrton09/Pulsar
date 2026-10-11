@@ -188,7 +188,7 @@
           "description": "'account': only a Steam account that owns the dedicated server may download it; the server needs one set in the panel."
         },
         "beta": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$" },
-        "betaPasswordVar": { "type": "string", "description": "A secret variable holding the beta branch password." },
+        "betaPasswordVar": { "type": "string", "description": "A secret variable holding the beta branch password. The agent fails the install (steamcmd.beta_password_invalid) when its value is one SteamCMD would not receive whole: more than 64 characters, spaces, double quotes or control characters, or a leading + or -." },
         "validate": { "type": "boolean", "default": false }
       }
     },

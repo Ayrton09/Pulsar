@@ -121,4 +121,22 @@ public sealed class AgentConfigurationTests : IDisposable
             Assert.InRange(capped, TimeSpan.FromSeconds(30), max);
         }
     }
+
+    [Fact]
+    public void ASessionClosedRightAfterItsHelloCountsAsAFailure()
+    {
+        // Two machines with one node identity (a cloned VM) close each other's session at every Hello: the backoff grows.
+        var failures = 0;
+        for (var i = 0; i < 5; i++)
+        {
+            failures = AgentConnection.FailuresAfterSession(failures, TimeSpan.FromSeconds(2));
+        }
+
+        Assert.Equal(5, failures);
+        Assert.Equal(30, AgentConnection.FailuresAfterSession(30, TimeSpan.FromSeconds(10)));
+
+        // A session that lasted is a working connection that was lost: retry soon.
+        Assert.Equal(1, AgentConnection.FailuresAfterSession(30, TimeSpan.FromMinutes(5)));
+        Assert.Equal(1, AgentConnection.FailuresAfterSession(0, TimeSpan.FromMinutes(1)));
+    }
 }

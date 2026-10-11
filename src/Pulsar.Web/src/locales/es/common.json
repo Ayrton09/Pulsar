@@ -617,7 +617,8 @@
       "password_unreadable": "La contraseña no se puede leer con las claves de este panel: cambiala para obtener una nueva."
     },
     "steamcmd": {
-      "account_required": "Solo una cuenta de Steam que tenga el servidor dedicado de este juego puede descargarlo: elegí una en la configuración del servidor."
+      "account_required": "Solo una cuenta de Steam que tenga el servidor dedicado de este juego puede descargarlo: elegí una en la configuración del servidor.",
+      "beta_password_invalid": "La contraseña de la rama beta tiene hasta 64 caracteres, sin espacios ni comillas dobles, y no empieza con + ni -: cambiala en la configuración del servidor."
     },
     "steam_account": {
       "not_found": "Esa cuenta de Steam no existe.",

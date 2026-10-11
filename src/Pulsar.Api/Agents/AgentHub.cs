@@ -130,8 +130,12 @@ internal sealed partial class AgentHub(
             _ = Task.Run(() => UpdatePanelKeysAsync(nodeId));
         }
 
-        // Consoles browsers were watching (before a reconnect or a panel restart) resume where the panel's copy ends.
-        return new HelloAccepted(now, panelKeys, consoles.SubscriptionsFor(nodeId));
+        // Consoles browsers were watching (before a reconnect or a panel restart) resume where the panel's copy ends. The
+        // Steam accounts the panel has: the agent forgets the cached logins of those deleted while it was away.
+        var steamAccounts = hello.Capabilities.Contains(AgentCapabilities.ForgetSteamLogin, StringComparer.Ordinal)
+            ? (await db.SteamAccounts.AsNoTracking().Select(a => a.Id).ToListAsync(Context.ConnectionAborted)).Select(id => id.Value).ToList()
+            : null;
+        return new HelloAccepted(now, panelKeys, consoles.SubscriptionsFor(nodeId), steamAccounts);
     }
 
     private async Task UpdatePanelKeysAsync(NodeId nodeId)

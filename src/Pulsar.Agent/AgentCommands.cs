@@ -3,9 +3,12 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Panel;
+using Pulsar.Agent.Core.Processes;
+using Pulsar.Agent.Core.Security;
 using Pulsar.Agent.Core.Servers;
 using Pulsar.Agent.Windows;
 using Pulsar.Agent.Windows.Processes;
+using Pulsar.Agent.Windows.Servers;
 using Pulsar.Contracts;
 
 namespace Pulsar.Agent;
@@ -43,8 +46,10 @@ internal static class AgentCommands
                   host process of its own); --stop-servers stops them with it (or, when the service is not
                   running, ends those it left running). Windows shutting down stops them.
               PulsarAgent unenroll [--data-dir <dir>] [--log-file <file>]
-                  Removes this machine from Pulsar: stops its game servers, removes the service, the node key
-                  and the configuration. --log-file also writes what it prints to a file (the agent MSI does).
+                  Removes this machine from Pulsar: stops its game servers, removes the service, the node key,
+                  the configuration, the servers' accounts, firewall rules and saved secrets, and the cached Steam
+                  logins. Server folders, backups and logs are kept. --log-file also writes what it prints to a
+                  file (the agent MSI does).
 
             Options:
               --dev        Development install: key in the current user's store, no administrator rights,
@@ -97,11 +102,31 @@ internal static class AgentCommands
             restartService = true;
         }
 
+        try
+        {
+            var (code, installed) = await EnrollStoppedAsync(request, paths, development, installService);
+            restartService &= !installed;
+            return code;
+        }
+        finally
+        {
+            // Whatever failed once the service was stopped: the machine goes back to running its previous enrollment.
+            if (restartService)
+            {
+                RestartService();
+            }
+        }
+    }
+
+    /// <returns>The exit code, and whether the service was installed and started with the new enrollment.</returns>
+    private static async Task<(int Code, bool Installed)> EnrollStoppedAsync(EnrollmentRequest request, AgentPaths paths, bool development, bool installService)
+    {
         var keys = new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance);
         var enrollment = new AgentEnrollment(new AgentConfigStore(paths), keys, new WindowsNodeSystem(TimeProvider.System),
             new WindowsDirectorySecurity(), new PanelTransport(), TimeProvider.System)
         {
             Waiting = wait => Console.Error.WriteLine($"The panel takes no more enrollments from this address for now; trying again in {wait.TotalSeconds:0} s."),
+            Warning = Console.Error.WriteLine,
         };
         AgentConfig config;
         try
@@ -111,12 +136,7 @@ internal static class AgentCommands
         catch (Exception ex) when (ex is AgentException or HttpRequestException or TaskCanceledException or CryptographicException or UnauthorizedAccessException)
         {
             await Console.Error.WriteLineAsync($"Enrollment failed: {Describe(ex)}");
-            if (restartService)
-            {
-                AgentService.Start();
-            }
-
-            return 1;
+            return (1, false);
         }
 
         using (var key = keys.Open(config.Key))
@@ -143,9 +163,23 @@ internal static class AgentCommands
             AgentService.Install(Environment.ProcessPath!, ServiceArguments(paths));
             AgentService.Start();
             Console.WriteLine($"The {AgentService.Name} service is installed and running.");
+            return (0, true);
         }
 
-        return 0;
+        return (0, false);
+    }
+
+    private static void RestartService()
+    {
+        try
+        {
+            AgentService.Start();
+            Console.WriteLine($"The {AgentService.Name} service is started again.");
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            Console.Error.WriteLine($"The {AgentService.Name} service could not be started again ({ex.Message}): start it with 'PulsarAgent service start'.");
+        }
     }
 
     /// <summary>
@@ -246,7 +280,10 @@ internal static class AgentCommands
         }
     }
 
-    /// <summary>Removes this machine from Pulsar: service, node key and configuration (logs are kept).</summary>
+    /// <summary>
+    /// Removes this machine from Pulsar: service, node key, configuration, and what the servers leave besides their folders
+    /// (see <see cref="RemoveServers"/>). Server folders, backups and logs are kept.
+    /// </summary>
     public static async Task<int> UnenrollAsync(CommandLine line)
     {
         line.Allow("data-dir", "log-file");
@@ -336,6 +373,14 @@ internal static class AgentCommands
             await Console.Error.WriteLineAsync($"{paths.HostProgramsDirectory} could not be deleted ({ex.Message}); delete it by hand.");
         }
 
+        // Server accounts exist outside development; deleting them needs the elevation a production agent's removal has.
+        var accounts = config is { Development: true } || !WindowsDirectorySecurity.IsElevated()
+            ? null
+            : new WindowsServerAccounts(NullLogger<WindowsServerAccounts>.Instance, paths.LogonLocksDirectory);
+        RemoveServers(paths, config?.ServersRootOrDefault(paths) ?? (service ? AgentConfig.DefaultServersRoot(paths, development: false) : null),
+            config?.BackupsRootOrDefault(paths) ?? paths.BackupsDirectory, new DpapiStateProtector(), accounts is null ? null : accounts.Delete,
+            WindowsServerFirewall.RemoveAll, Console.Out, Console.Error);
+
         if (config is not null)
         {
             new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance).Delete(config.Key);
@@ -349,6 +394,92 @@ internal static class AgentCommands
             Delete {(config is not null ? $"node {config.NodeId}" : "its node")} in the panel too (or re-enroll this machine with a new command).
             """);
         return 0;
+    }
+
+    /// <summary>
+    /// The rest of what the game servers leave on this machine once their hosts are ended (docs/architecture/03,
+    /// "Command line"): their Windows accounts (with their logon right and profile), the firewall rules the agent made, and
+    /// the agent's state, which holds the servers' secret variables and RCON passwords and the cached Steam logins. Server
+    /// folders, backups and logs are kept, and said so.
+    /// </summary>
+    /// <param name="serversRoot">Null when it is not known (an unreadable configuration): the server records name the servers then.</param>
+    /// <param name="deleteAccount">Deletes a server account (false: there was none); null when there are none to delete (a development agent's servers run as the current user).</param>
+    /// <param name="removeFirewallRules">Removes the rules of the servers with these short ids; returns how many.</param>
+    internal static void RemoveServers(AgentPaths paths, string? serversRoot, string? backupsRoot, IStateProtector protector,
+        Func<string, bool>? deleteAccount, Func<IReadOnlyCollection<string>, int> removeFirewallRules, TextWriter output, TextWriter errors)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        ArgumentNullException.ThrowIfNull(removeFirewallRules);
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(errors);
+
+        // A server is named by its record or, if that is gone or unreadable, by its folder.
+        var shortIds = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var record in new ServerStore(paths, protector).LoadAll())
+        {
+            shortIds.Add(record.Spec.ShortId);
+        }
+
+        if (serversRoot is not null && Directory.Exists(serversRoot))
+        {
+            foreach (var name in Directory.EnumerateDirectories(serversRoot).Select(Path.GetFileName).OfType<string>().Where(ServerShortId.IsValid))
+            {
+                shortIds.Add(name);
+            }
+        }
+
+        var accounts = 0;
+        foreach (var account in deleteAccount is null ? [] : shortIds.Select(WindowsServerAccounts.AccountName))
+        {
+            try
+            {
+                accounts += deleteAccount!(account) ? 1 : 0;
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                errors.WriteLine($"The account {account} could not be deleted ({ex.Message}); delete it in Computer Management (Local Users and Groups).");
+            }
+        }
+
+        var rules = 0;
+        try
+        {
+            rules = removeFirewallRules(shortIds);
+        }
+        catch (Exception ex) when (ex is GameProcessException or System.Runtime.InteropServices.COMException or UnauthorizedAccessException)
+        {
+            errors.WriteLine($"The firewall rules of the game servers (group '{WindowsServerFirewall.Grouping}') could not be removed ({ex.Message}); " +
+                "remove them in Windows Defender Firewall from an elevated prompt.");
+        }
+
+        // Nothing reads the agent's state once the node is gone, and it holds secrets.
+        var state = Path.GetDirectoryName(paths.ServersStateDirectory)!;
+        try
+        {
+            if (Directory.Exists(state))
+            {
+                Directory.Delete(state, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            errors.WriteLine($"{state} could not be deleted ({ex.Message}): it holds the servers' passwords and Steam logins, delete it by hand.");
+        }
+
+        output.WriteLine($"Removed {accounts} server account(s), {rules} firewall rule(s), the server records and the cached Steam logins.");
+        var kept = new List<string>();
+        if (serversRoot is not null)
+        {
+            kept.Add($"the game servers' folders in {serversRoot}");
+        }
+
+        if (backupsRoot is not null)
+        {
+            kept.Add($"the backups in {backupsRoot}");
+        }
+
+        kept.Add($"the logs in {paths.LogsDirectory} and {paths.ConsoleLogsDirectory}");
+        output.WriteLine($"Kept {string.Join(", ", kept)}: delete them by hand once they are no longer needed.");
     }
 
     /// <summary>

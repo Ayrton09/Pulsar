@@ -84,6 +84,45 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
         LogRulesRemoved(shortId);
     }
 
+    /// <summary>
+    /// Removes every rule the agent made for these servers (by its grouping and their names), whatever ports they had and
+    /// whether managing the firewall is on now or not: unenroll leaves none behind. Returns how many were removed.
+    /// </summary>
+    public static int RemoveAll(IReadOnlyCollection<string> shortIds)
+    {
+        ArgumentNullException.ThrowIfNull(shortIds);
+        return shortIds.Count == 0 ? 0 : RemoveWhere(name => shortIds.Any(id => name.StartsWith($"{Grouping} {id} ", StringComparison.Ordinal)));
+    }
+
+    /// <summary>Removes the rules of the agent's grouping whose name matches.</summary>
+    internal static int RemoveWhere(Func<string, bool> match)
+    {
+        List<string> names = [];
+        Use(rules =>
+        {
+            foreach (var rule in rules)
+            {
+                try
+                {
+                    if (rule.Grouping is string grouping && grouping == Grouping && rule.Name is string name && match(name))
+                    {
+                        names.Add(name);
+                    }
+                }
+                finally
+                {
+                    Marshal.FinalReleaseComObject(rule);
+                }
+            }
+
+            foreach (var name in names.Distinct(StringComparer.Ordinal))
+            {
+                rules.Remove(name);
+            }
+        });
+        return names.Count;
+    }
+
     private static void RemoveRules(dynamic rules, string shortId, IReadOnlyCollection<string> portNames)
     {
         foreach (var name in portNames.SelectMany(p => new[] { RuleName(shortId, p, PortProtocol.Udp), RuleName(shortId, p, PortProtocol.Tcp) }))

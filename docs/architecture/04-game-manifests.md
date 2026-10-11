@@ -152,7 +152,7 @@ A port can `follow` another: `"follows": { "port": "game", "offset": 1 }` says t
 
 | Type | v1 | Parameters |
 |---|---|---|
-| `steamcmd` | Yes | `appId`, `login` (`anonymous`, or `account` when only an account that owns the game may download it: such a server is not installed without a Steam account, Phase 13), `beta?`, `betaPasswordVar?` (a secret variable, with `beta`), `validate?` |
+| `steamcmd` | Yes | `appId`, `login` (`anonymous`, or `account` when only an account that owns the game may download it: such a server is not installed without a Steam account, Phase 13), `beta?`, `betaPasswordVar?` (a secret variable, with `beta`; the agent fails the install with `steamcmd.beta_password_invalid` when its value has spaces, double quotes or control characters, starts with `+` or `-`, or is longer than 64 characters, since SteamCMD would split it into commands), `validate?` |
 | `ensureDirectory` | Yes | `path` |
 | `writeFileIfMissing` | Yes | `path`, `content` (literal text, no placeholders) |
 | `copyFileIfMissing` | Phase 12 | `from`, `to`: copies a file of the server directory when `to` does not exist yet (at most 16 MiB), through the agent's link-safe file access. 7 Days to Die's server makes its `serverconfig.xml` the server's own `pulsar-serverconfig.xml`, which the game's updates then leave alone. |

@@ -617,7 +617,8 @@
       "password_unreadable": "The password cannot be read with this panel's keys: change it to get a new one."
     },
     "steamcmd": {
-      "account_required": "Only a Steam account that owns this game's dedicated server may download it: choose one in the server's settings."
+      "account_required": "Only a Steam account that owns this game's dedicated server may download it: choose one in the server's settings.",
+      "beta_password_invalid": "The beta branch password must be up to 64 characters, without spaces or double quotes, and must not start with + or -: change it in the server's settings."
     },
     "steam_account": {
       "not_found": "That Steam account does not exist.",

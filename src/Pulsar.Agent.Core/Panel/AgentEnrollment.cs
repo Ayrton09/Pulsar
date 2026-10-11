@@ -6,6 +6,7 @@ namespace Pulsar.Agent.Core.Panel;
 /// <param name="Panel">Panel URL as typed by the administrator.</param>
 /// <param name="Token">Single-use enrollment token shown by the panel.</param>
 /// <param name="PanelKeyFingerprint">Fingerprint of the panel key, shown next to the token: the agent pins it.</param>
+/// <param name="ServersRoot">Where server directories go (null: the default); the folder is restricted like the state directory.</param>
 /// <param name="BackupsRoot">Where backups go (null: inside the state directory); restricted like the state directory.</param>
 public sealed record EnrollmentRequest(
     string Panel,
@@ -36,9 +37,17 @@ public sealed class AgentEnrollment(
     /// <summary>Told before each wait for a busy panel, with how long it is.</summary>
     public Action<TimeSpan>? Waiting { get; set; }
 
+    /// <summary>Told what the enrollment went on despite (an unreadable earlier configuration).</summary>
+    public Action<string>? Warning { get; set; }
+
     public async Task<AgentConfig> EnrollAsync(EnrollmentRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (request.Development)
+        {
+            RefuseProductionState();
+        }
+
         var panel = PanelAddress.Parse(request.Panel);
         var origin = PanelAddress.Origin(panel);
         using var http = transport.CreateClient(panel);
@@ -57,7 +66,11 @@ public sealed class AgentEnrollment(
             directorySecurity.SecureFolder(backups, request.Development);
         }
 
-        var previous = configs.Load();
+        // Steam logins are lent to server directories in it, and the agent applies their rules there: no one else may
+        // put a folder of theirs in its place (docs/architecture/06, "Isolation").
+        directorySecurity.SecureServersRoot(request.ServersRoot ?? AgentConfig.DefaultServersRoot(configs.Paths, request.Development), request.Development);
+
+        var previous = Previous();
         var scope = request.Development ? NodeKeyScope.User : NodeKeyScope.Machine;
         var key = keys.Create($"PulsarAgent-{Guid.NewGuid():N}", scope);
         var saved = false;
@@ -109,6 +122,53 @@ public sealed class AgentEnrollment(
             key.Dispose();
         }
     }
+
+    /// <summary>
+    /// A development enrollment would replace the configuration in its state directory and delete the machine key it
+    /// names: never a production enrollment's (the default state directory is the service's).
+    /// </summary>
+    private void RefuseProductionState()
+    {
+        bool production;
+        try
+        {
+            production = configs.Load() is { Development: false };
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Only administrators may read it: a production state directory.
+            production = true;
+        }
+        catch (Exception ex) when (IsUnreadable(ex))
+        {
+            production = false;
+        }
+
+        if (production)
+        {
+            throw new AgentException($"""
+                {configs.Paths.Root} holds this machine's production enrollment, which a development enrollment would replace.
+                Pass --data-dir with another folder for a development agent (or unenroll the production one first).
+                """);
+        }
+    }
+
+    /// <summary>The configuration being replaced; one that cannot be read is replaced as if there were none.</summary>
+    private AgentConfig? Previous()
+    {
+        try
+        {
+            return configs.Load();
+        }
+        catch (Exception ex) when (IsUnreadable(ex))
+        {
+            Warning?.Invoke($"{configs.Paths.ConfigFile} cannot be read ({ex.Message}): it is replaced, and the node key it names stays in the key store.");
+            return null;
+        }
+    }
+
+    private static bool IsUnreadable(Exception exception) =>
+        exception is System.Text.Json.JsonException or InvalidDataException or NotSupportedException;
 
     /// <summary>
     /// Many machines enrolling at once from one address (a rollout behind NAT) go over the panel's per-address limit:

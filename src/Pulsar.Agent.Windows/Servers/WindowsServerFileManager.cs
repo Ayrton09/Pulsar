@@ -32,6 +32,9 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
     private const uint GenericWrite = 0x40000000;
     private const uint NameSurrogate = 0x20000000;
 
+    // What one read of a directory's entries returns at most (a few hundred entries).
+    private const int ListingBuffer = 64 * 1024;
+
     public FileListResult List(ProvisionedServer server, string path)
     {
         ServerFileRules.Validate(path, allowRoot: true);
@@ -59,8 +62,11 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         List<FileEntry> children;
         using (var directory = root.OpenDirectory(path, ListDirectory | ReadAttributes | Synchronize))
         {
-            children = Enumerate(directory, path);
+            // One more than the walk may still return is enough to refuse it.
+            children = [.. Enumerate(directory, path).Take(ServerFileRules.MaxWalkEntries - entries.Count + 1)];
         }
+
+        ServerFileRules.CheckWalk(entries.Count + children.Count, depth);
 
         foreach (var child in children)
         {
@@ -261,16 +267,19 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
     /// <summary>
     /// Deletes what <paramref name="top"/> is, and everything below it when it is a folder (its handle is taken over).
     /// Each entry is opened relative to the folder it was listed in, by the name listed: see <see cref="DeleteDirectoryTree"/>.
+    /// A folder's entries are read a batch at a time and deleted before the next batch is read: a folder of millions of
+    /// entries is never held whole.
     /// </summary>
     private static void DeleteTree(SafeFileHandle top, string path, Action<string>? beforeListing = null)
     {
         var stack = new Stack<Deleting>();
         stack.Push(new Deleting(top, path));
+        var buffer = new byte[ListingBuffer];
         try
         {
             while (stack.TryPeek(out var current))
             {
-                if (current.Children is null)
+                if (current.Listing is null)
                 {
                     if (Describe(current.Handle).Kind != FileEntryKind.Directory)
                     {
@@ -281,8 +290,21 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
                     beforeListing?.Invoke(current.Path);
                     // Deleting needs only the right to delete each entry; listing a folder also needs the right to read
                     // it: the same folder, opened again through its own handle.
-                    using var listing = OpenChild(current.Handle, string.Empty, ListDirectory | Synchronize, current.Path) ?? throw NotFound(current.Path);
-                    current.Children = Enumerate(listing, current.Path);
+                    current.Listing = OpenChild(current.Handle, string.Empty, ListDirectory | Synchronize, current.Path) ?? throw NotFound(current.Path);
+                }
+
+                if (current.Next == current.Children.Count)
+                {
+                    // The entries read so far are deleted: the listing goes on after them.
+                    current.Children.Clear();
+                    current.Next = 0;
+                    if (!ReadEntries(current.Listing, current.Path, current.Restart, buffer, current.Children))
+                    {
+                        Finish(stack);
+                        continue;
+                    }
+
+                    current.Restart = false;
                 }
 
                 if (current.Next < current.Children.Count)
@@ -294,25 +316,21 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
                         stack.Push(new Deleting(handle, childPath));
                     }
                 }
-                else
-                {
-                    Finish(stack);
-                }
             }
         }
         finally
         {
             while (stack.TryPop(out var left))
             {
-                left.Handle.Dispose();
+                left.Dispose();
             }
         }
 
         static void Finish(Stack<Deleting> stack)
         {
-            var done = stack.Peek();
+            using var done = stack.Pop();
+            done.Listing?.Dispose();
             MarkDeleted(done.Handle, done.Path);
-            stack.Pop().Handle.Dispose();
         }
     }
 
@@ -363,16 +381,26 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         }
     }
 
-    /// <summary>A folder being deleted: its handle, and its entries once listed.</summary>
-    private sealed class Deleting(SafeFileHandle handle, string path)
+    /// <summary>An entry being deleted: its handle, and for a folder the handle it is listed through and the batch of its entries being deleted.</summary>
+    private sealed class Deleting(SafeFileHandle handle, string path) : IDisposable
     {
         public SafeFileHandle Handle { get; } = handle;
 
         public string Path { get; } = path;
 
-        public List<FileEntry>? Children { get; set; }
+        public SafeFileHandle? Listing { get; set; }
+
+        public bool Restart { get; set; } = true;
+
+        public List<FileEntry> Children { get; } = [];
 
         public int Next { get; set; }
+
+        public void Dispose()
+        {
+            Listing?.Dispose();
+            Handle.Dispose();
+        }
     }
 
     /// <summary>Deletes what the handle is (a link, never its target) as soon as possible, read-only or not.</summary>
@@ -467,56 +495,71 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         }
     }
 
-    /// <summary>The entries of an opened directory, read from its handle.</summary>
-    private static unsafe List<FileEntry> Enumerate(SafeFileHandle directory, string path)
+    /// <summary>
+    /// The entries of an opened directory, read from its handle as they are consumed: a folder of millions of entries
+    /// is never held whole (the handle must stay open while enumerating).
+    /// </summary>
+    private static IEnumerable<FileEntry> Enumerate(SafeFileHandle directory, string path)
     {
-        var entries = new List<FileEntry>();
-        var buffer = new byte[64 * 1024];
-        var infoClass = FILE_INFO_BY_HANDLE_CLASS.FileFullDirectoryRestartInfo;
+        var buffer = new byte[ListingBuffer];
+        var batch = new List<FileEntry>();
+        for (var restart = true; ReadEntries(directory, path, restart, buffer, batch); restart = false)
+        {
+            foreach (var entry in batch)
+            {
+                yield return entry;
+            }
+
+            batch.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Adds the next entries of an opened directory (the first ones when <paramref name="restart"/>), as many as one
+    /// <paramref name="buffer"/> holds, to <paramref name="entries"/>; false when there are no more.
+    /// </summary>
+    private static unsafe bool ReadEntries(SafeFileHandle directory, string path, bool restart, byte[] buffer, List<FileEntry> entries)
+    {
+        var infoClass = restart ? FILE_INFO_BY_HANDLE_CLASS.FileFullDirectoryRestartInfo : FILE_INFO_BY_HANDLE_CLASS.FileFullDirectoryInfo;
+        fixed (byte* pointer = buffer)
+        {
+            if (!PInvoke.GetFileInformationByHandleEx((HANDLE)directory.DangerousGetHandle(), infoClass, pointer, (uint)buffer.Length))
+            {
+                var error = (WIN32_ERROR)Marshal.GetLastPInvokeError();
+                if (error == WIN32_ERROR.ERROR_NO_MORE_FILES)
+                {
+                    return false;
+                }
+
+                throw Failure(path, error);
+            }
+        }
+
+        // FILE_FULL_DIR_INFO: next entry offset, file index, four times, end of file, allocation size, attributes,
+        // name length in bytes, EA size (the reparse tag for reparse points), name.
+        var offset = 0;
         while (true)
         {
-            fixed (byte* pointer = buffer)
+            var entry = buffer.AsSpan(offset);
+            var next = BinaryPrimitives.ReadInt32LittleEndian(entry);
+            var lastWrite = BinaryPrimitives.ReadInt64LittleEndian(entry[24..]);
+            var size = BinaryPrimitives.ReadInt64LittleEndian(entry[40..]);
+            var attributes = BinaryPrimitives.ReadUInt32LittleEndian(entry[56..]);
+            var nameLength = BinaryPrimitives.ReadInt32LittleEndian(entry[60..]);
+            var tag = BinaryPrimitives.ReadUInt32LittleEndian(entry[64..]);
+            var name = new string(MemoryMarshal.Cast<byte, char>(entry.Slice(68, nameLength)));
+            if (name is not ("." or ".."))
             {
-                if (!PInvoke.GetFileInformationByHandleEx((HANDLE)directory.DangerousGetHandle(), infoClass, pointer, (uint)buffer.Length))
-                {
-                    var error = (WIN32_ERROR)Marshal.GetLastPInvokeError();
-                    if (error == WIN32_ERROR.ERROR_NO_MORE_FILES)
-                    {
-                        return entries;
-                    }
-
-                    throw Failure(path, error);
-                }
+                var kind = Kind(attributes, tag);
+                entries.Add(new FileEntry(name, kind, kind == FileEntryKind.File ? size : 0, Time(lastWrite)));
             }
 
-            infoClass = FILE_INFO_BY_HANDLE_CLASS.FileFullDirectoryInfo;
-
-            // FILE_FULL_DIR_INFO: next entry offset, file index, four times, end of file, allocation size, attributes,
-            // name length in bytes, EA size (the reparse tag for reparse points), name.
-            var offset = 0;
-            while (true)
+            if (next == 0)
             {
-                var entry = buffer.AsSpan(offset);
-                var next = BinaryPrimitives.ReadInt32LittleEndian(entry);
-                var lastWrite = BinaryPrimitives.ReadInt64LittleEndian(entry[24..]);
-                var size = BinaryPrimitives.ReadInt64LittleEndian(entry[40..]);
-                var attributes = BinaryPrimitives.ReadUInt32LittleEndian(entry[56..]);
-                var nameLength = BinaryPrimitives.ReadInt32LittleEndian(entry[60..]);
-                var tag = BinaryPrimitives.ReadUInt32LittleEndian(entry[64..]);
-                var name = new string(MemoryMarshal.Cast<byte, char>(entry.Slice(68, nameLength)));
-                if (name is not ("." or ".."))
-                {
-                    var kind = Kind(attributes, tag);
-                    entries.Add(new FileEntry(name, kind, kind == FileEntryKind.File ? size : 0, Time(lastWrite)));
-                }
-
-                if (next == 0)
-                {
-                    break;
-                }
-
-                offset += next;
+                return true;
             }
+
+            offset += next;
         }
     }
 

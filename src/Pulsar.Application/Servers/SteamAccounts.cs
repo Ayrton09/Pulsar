@@ -33,7 +33,9 @@ public sealed record SteamAccountList(IReadOnlyList<SteamAccountView> Accounts);
 /// Steam accounts for SteamCMD (Phase 13), for holders of <c>settings.manage</c>. The password goes in encrypted and
 /// never comes back out; nodes get it only inside the install and update commands of servers that use the account.
 /// </summary>
-public sealed class SteamAccounts(IPulsarDbContext db, ISteamAccountSecretProtector secrets, IAuditLog audit, TimeProvider clock)
+/// <param name="agents">Tells connected nodes to forget a deleted account's cached login; null: nobody is told (nodes drop it at their next Hello).</param>
+public sealed class SteamAccounts(IPulsarDbContext db, ISteamAccountSecretProtector secrets, IAuditLog audit, TimeProvider clock,
+    IAgentConnections? agents = null)
 {
     public async Task<SteamAccountList> ListAsync(CancellationToken cancellationToken)
     {
@@ -141,7 +143,25 @@ public sealed class SteamAccounts(IPulsarDbContext db, ISteamAccountSecretProtec
         db.SteamAccounts.Remove(account);
         audit.Record(AuditActions.SteamAccount.Deleted, metadata: new { account.Name, account.UserName }).WithTarget("steam_account", account.Id.ToString());
         await db.SaveChangesAsync(cancellationToken);
+        await ForgetOnNodesAsync(account.Id, cancellationToken);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Nodes keep the login SteamCMD cached for the account, with which its user name alone signs in: the connected ones
+    /// forget it now, the others at their next Hello (it names the accounts the panel still has).
+    /// </summary>
+    private async Task ForgetOnNodesAsync(SteamAccountId accountId, CancellationToken cancellationToken)
+    {
+        if (agents is null)
+        {
+            return;
+        }
+
+        var nodes = await db.Nodes.AsNoTracking().Select(n => n.Id).ToListAsync(cancellationToken);
+        // Not connected, or not announcing the command: the send does nothing.
+        await Task.WhenAll(nodes.Where(n => agents.Find(n) is not null)
+            .Select(n => agents.SendAsync(n, new ForgetSteamLoginCommand(accountId.Value), actor: null, cancellationToken)));
     }
 
     /// <summary>

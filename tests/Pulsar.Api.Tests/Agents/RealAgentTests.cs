@@ -43,6 +43,20 @@ public sealed class RealAgentTests(PulsarApiFactory factory) : IClassFixture<Pul
     }
 
     [DatabaseFact]
+    public async Task NodeMetricsGoOnAfterASampleFails()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "real-metrics-failure");
+        await using var agent = new InProcessAgent(factory) { FailingMetricSamples = 1 };
+        var config = await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+
+        await agent.StartAsync();
+
+        await InProcessAgent.EventuallyAsync(async () => (await GetNodeAsync(admin, config.NodeId)).Node.Metrics is not null, "metrics after the failed sample");
+        Assert.True(agent.FailingMetricSamples < 0);
+    }
+
+    [DatabaseFact]
     public async Task AgentReconnectsByItselfAfterTheConnectionIsLost()
     {
         using var admin = await factory.CreateAdminClientAsync();
