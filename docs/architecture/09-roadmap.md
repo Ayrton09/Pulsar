@@ -194,6 +194,14 @@ The next post-v1 item: a backup made while the game runs that holds every file a
   - The last full run showed a Phase 14 host flaky under load: a client that connected to a host's pipe and left at once left it broken, and the host ended with its game. Fixed, with a test that reproduced it every time.
 - *Tests:* the .NET suite (1414 tests, 13 skipped: the ones that need an elevated, disposable machine), vitest (198) and the E2E suite (8) passed.
 
+## Full audit after Phase 15 · *done* (2026-10-11)
+
+A read of the whole codebase, not just a phase's changes, in eight areas (agent servers and hosts; the rest of the agent; its Windows layer and the install scripts; the API and infrastructure; the application layer; domain, contracts and manifests; the web's server pages; the rest of the web).
+
+- *Found and fixed:* 90 findings (2 high, 19 medium, 69 low). The high ones: a database host's saved password was sent to a new address when only the address changed; and a game that stopped reading its console could hold a console command, and with it every stop, kill and the agent's own stop for that server, forever. Among the rest: a locked backup deleted by retention racing the lock, allocation lists naming other tenants' servers, the panel's settings (and its first-run token) readable while the installer wrote them, the self-signed panel certificate able to sign others once trusted, a servers root that could be a junction, unenroll leaving server accounts and secrets, unsaved file edits lost when changing tabs, and refresh failures replacing pages.
+- *Reviewed again:* seven reviewers on the fixes found 21 more (0 high, 7 medium, 14 low): 20 fixed, and one (a command arriving before Hello's answer blocking the SignalR client) shown not to happen by a test that now guards it; among them a start the node had already given up being wanted again after a save conflict, a refused start killing an install's processes, and a command the agent had refused still reaching a game that thawed. Two flaky tests turned out to be a real ordering bug (an operation counted as ended before its result reached the outbox) and a timed test (now counted).
+- *Checks:* the .NET suite (1575 tests, 13 skipped), vitest (256), the E2E suite (8), and both Windows Sandbox runs (the panel installer, and the agent installed as a service with its MSI).
+
 ## Post-v1 (tentative order)
 
 Optional mTLS mode → Linux agent. (Server hosts and bulk enrollment: Phase 14; backups of running games: Phase 15.)
