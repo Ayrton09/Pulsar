@@ -409,7 +409,7 @@ export function NetworkTab({ details }: { details: ServerDetails }) {
   const { server } = details;
   const stopped = server.runtimeState === 'offline' || server.runtimeState === 'crashed';
   const canEdit = canOnServer(me, server, Permission.ServerSettingsEdit) && stopped && server.activeOperation === null;
-  const options = (allocations.data ?? []).filter((a) => a.serverId === null || a.serverId === server.id);
+  const options = (allocations.data ?? []).filter((a) => !a.inUse || a.serverId === server.id);
 
   if (details.ports.length === 0) {
     return (

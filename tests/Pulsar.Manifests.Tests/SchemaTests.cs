@@ -34,6 +34,9 @@ public sealed class SchemaTests
     [InlineData("""{"configFiles": [{"path": ".Pulsar/server.cfg", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
     [InlineData("""{"version": "1.0.١"}""")]
     [InlineData("""{"addons": [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": "cstrike", "source": {"type": "githubRelease", "repo": "../..", "asset": "x"}}]}""")]
+    [InlineData("""{"addons": [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": ".pulsar", "source": {"type": "githubRelease", "repo": "a/b", "asset": "x"}}]}""")]
+    [InlineData("""{"addons": [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": "cstrike/../..", "source": {"type": "githubRelease", "repo": "a/b", "asset": "x"}}]}""")]
+    [InlineData("""{"addons": [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": "PULSAR~1", "source": {"type": "githubRelease", "repo": "a/b", "asset": "x"}}]}""")]
     public void TheSchemaRefusesWhatTheParserRefuses(string overlay)
     {
         var json = TestManifests.Change("css", m =>
@@ -46,6 +49,20 @@ public sealed class SchemaTests
 
         Assert.False(ManifestParser.Parse(System.Text.Encoding.UTF8.GetBytes(json)).IsValid);
         Assert.False(Validator().Validate(json).IsValid);
+    }
+
+    // An addon's target is a relative path, or empty for the server's folder.
+    [Theory]
+    [InlineData("")]
+    [InlineData("cstrike/addons")]
+    public void TheSchemaTakesWhatTheParserTakes(string target)
+    {
+        var json = TestManifests.Change("css", m => m["addons"] = JsonNode.Parse($$$"""
+            [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": "{{{target}}}", "source": {"type": "githubRelease", "repo": "a/b", "asset": "x"}}]
+            """));
+
+        Assert.True(ManifestParser.Parse(System.Text.Encoding.UTF8.GetBytes(json)).IsValid);
+        Assert.True(Validator().Validate(json).IsValid);
     }
 
     /// <summary>Every record of the model has a definition with the same JSON properties, required ones and enum values.</summary>

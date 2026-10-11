@@ -194,6 +194,41 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task RetentionKeepsABackupLockedMeanwhileAndPrunesTheRest()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "retention-race");
+        var server = await InstalledServerAsync(admin, agent, "Retention race");
+        var oldest = await MadeAsync(admin, server, "oldest");
+        var older = await MadeAsync(admin, server, "older");
+        var newer = await MadeAsync(admin, server, "newer");
+        var newest = await MadeAsync(admin, server, "newest");
+        await using var scope = factory.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Database
+            .ExecuteSqlRawAsync("UPDATE servers SET backup_limit = 1 WHERE id = {0}", [server], Ct);
+
+        // Retention takes the newer, the older and the oldest, in that order; a user locks the older one while the node
+        // deletes the newer.
+        var connections = new InterceptedConnections(scope.ServiceProvider.GetRequiredService<IAgentConnections>(), async (command, next, token) =>
+        {
+            if (command is DeleteBackupCommand { BackupId: var deleting } && deleting == newer.Id)
+            {
+                await EnsureAsync(await admin.PutAsync($"/api/v1/servers/{server}/backups/{older.Id}/lock", new LockBackupRequest(true)));
+            }
+
+            return await next(token);
+        });
+        var backups = ActivatorUtilities.CreateInstance<ServerBackups>(scope.ServiceProvider, (IAgentConnections)connections);
+        await backups.PruneAsync(new ServerId(server), Ct);
+
+        // The locked one is kept, and retention went on past it.
+        Assert.Equal([newest.Id, older.Id], (await ListAsync(admin, server)).Backups.Select(b => b.Id));
+        Assert.True(File.Exists(Archive(agent, server, older.Id)));
+        Assert.False(File.Exists(Archive(agent, server, oldest.Id)));
+        Assert.False(File.Exists(Archive(agent, server, newer.Id)));
+    }
+
+    [DatabaseFact]
     public async Task ABackupLockedWhileTheNodeDeletesItGoesAndIsAudited()
     {
         using var admin = await factory.CreateAdminClientAsync();

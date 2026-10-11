@@ -96,7 +96,7 @@ Effective permissions(user, server S on node N) =
 - No *deny* rules in v1 (simpler to reason about and audit).
 - `IPermissionEvaluator` caches grants per user in memory (short TTL + explicit invalidation when roles/access change; valid because v1 is a single instance).
 - REST endpoints and hub methods use the same evaluator. Every endpoint declares its permission as metadata (`.RequirePermission(Permissions.Server.Start)`); a test enumerates all endpoints and **fails if one declares neither a permission nor `AllowAnonymous`**.
-- Listings filter by visible resources (`server.view`); requesting a resource without access returns **404** (not 403) so its existence is not revealed. A node's allocations leave out those held by servers the user cannot see (whoever may only create servers there sees its free ports and their own servers' ones, never another server's id or name).
+- Listings filter by visible resources (`server.view`); requesting a resource without access returns **404** (not 403) so its existence is not revealed. A node's allocation list holds all of them, each saying whether it is in use (`inUse`); one held by a server the user cannot see leaves out that server's id, name and port name, so whoever manages the node or creates servers there knows every taken port without learning another server's id or name.
 - Caps on what users add (25 API keys per user, 50 scheduled tasks and the database limit per server, 20 backup storages, Steam accounts and database hosts) are counted with the parent row locked (the user's or the server's) or, for panel-wide ones, with their creations taking turns (a PostgreSQL advisory lock): requests made at the same moment cannot all take the last place.
 - *Implemented in Phase 11 (node and server assignments):* `node_access` and `server_access` as below; the evaluator loads them with the global roles. The endpoint gate checks routes under `/servers/{id}` and `/nodes/{id}` against that server (with its node) or node: a role on one server opens nothing on another, and a server or node the user cannot see at all (`server.view`; for nodes `node.view`, `node.manage` or `server.create`) answers `404` like a missing one; one they see but may not act on answers `403`. A user with no such permission anywhere gets `403` for every such route, existing or not. Lists and the create dialog's catalogs pass the gate with the permission held anywhere and show only what it applies to (servers on the user's nodes and their own servers; the nodes they may see or create servers on); creating a server checks `server.create` on its node. Assignments are given and taken one by one (`PUT`/`DELETE /users/{id}/nodes/{node}/roles/{role}`, same for servers) under the same anti-escalation rules as global ones, audited, and close the user's live connections. The session carries the permissions per node and per server, so pages show only the actions the user has there. Roles count a user once however many places they hold it, and cannot be deleted while assigned anywhere.
 
@@ -515,7 +515,11 @@ CREATE TABLE server_databases (
 );
 -- servers.database_limit integer NOT NULL DEFAULT 2 CHECK (database_limit BETWEEN 0 AND 50).
 -- A row is written (with the server's row locked) before the database is created on its host, and removed again if that fails.
--- A server's databases are dropped on their hosts when its node confirms its deletion, before its row goes.
+-- A server's databases are dropped on their hosts when its node confirms its deletion, before its row goes. The
+-- server's row stays locked (one transaction) from listing its databases until the row is gone, so a database whose
+-- host was still creating it is dropped again by its creation and none is missed. The price: while a host does not
+-- answer (up to 15 s per host, each tried once), that server's state events and database creations wait. Only the
+-- server being deleted is held, and its node already deleted it.
 -- A backup row is written with its operation; the operation's result completes it (an interrupted one fails it).
 -- Deleting a server deletes its rows (and the node its archives).
 

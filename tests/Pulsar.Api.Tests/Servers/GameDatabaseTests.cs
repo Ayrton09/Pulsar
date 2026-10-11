@@ -12,6 +12,7 @@ using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
 using Pulsar.Application.Databases;
 using Pulsar.Application.Servers;
+using Pulsar.Contracts;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
@@ -526,6 +527,100 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task ARotationMeetingItsServersDeletionIsWaitedFor()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(scenario.Admin, "rotated-away");
+        var (serverId, database, deletion) = await DeletingServerWithDatabaseAsync(scenario.Admin, agent, "rotated-away");
+        var client = new DeletionRaceClient();
+
+        // A rotation is at the host when the node confirms the deletion: the database's row goes once the rotation saved it.
+        var rotation = Task.Run(async () =>
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            return await DatabasesWith(scope.ServiceProvider, client).RotatePasswordAsync(serverId, database.Id.Value, Ct);
+        }, Ct);
+        await client.Changing.Task.WaitAsync(TimeSpan.FromSeconds(30), Ct);
+        var completion = CompleteDeletionAsync(new NodeId(agent.Config!.NodeId), deletion, client);
+        await client.Dropping.Task.WaitAsync(TimeSpan.FromSeconds(30), Ct);
+        client.Release.SetResult();
+
+        Assert.True((await rotation).IsSuccess);
+        await completion;
+        await AssertDeletedAsync(scenario.Admin, serverId, database, deletion);
+        Assert.Equal([database.Name], client.Dropped);
+        Assert.Single(await AuditAsync(AuditActions.Server.DatabasePasswordRotated, serverId.Value));
+    }
+
+    [DatabaseFact]
+    public async Task AServersDeletionThatConflictsIsAppliedAgainWholly()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(scenario.Admin, "deleted-twice");
+        var node = new NodeId(agent.Config!.NodeId);
+        var (serverId, database, deletion) = await DeletingServerWithDatabaseAsync(scenario.Admin, agent, "deleted-twice");
+
+        // The deletion's progress is saved while its databases are dropped: the deletion's save conflicts, and it is
+        // applied again (its databases dropped again) in a new transaction.
+        var client = new DeletionRaceClient();
+        client.Release.SetResult();
+        client.OnFirstDrop = async () =>
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<AgentServerEvents>()
+                .OperationProgressAsync(node, new OperationProgress(deletion.Id.Value, "removing-account", null, null), Ct);
+        };
+        await CompleteDeletionAsync(node, deletion, client);
+
+        await AssertDeletedAsync(scenario.Admin, serverId, database, deletion);
+        Assert.Equal([database.Name, database.Name], client.Dropped);
+    }
+
+    /// <summary>An installed server with a database, whose deletion its node has started.</summary>
+    private async Task<(ServerId Server, ServerDatabase Database, Operation Deletion)> DeletingServerWithDatabaseAsync(PanelClient admin,
+        InProcessAgent agent, string name)
+    {
+        var serverId = new ServerId(await InstalledServerAsync(admin, agent, $"db-{name}"));
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+        var server = await db.Servers.SingleAsync(s => s.Id == serverId, Ct);
+        var host = await AddHostAsync(scope.ServiceProvider, name);
+        var database = ServerDatabase.Create(serverId, server.ShortId, host, "main",
+            scope.ServiceProvider.GetRequiredService<IDatabaseSecretProtector>().Protect(ServerDatabase.NewPassword()), DateTimeOffset.UtcNow).Value;
+        db.ServerDatabases.Add(database);
+        var deletion = Operation.Create(OperationType.ServerDelete, server.NodeId, serverId, null, OperationRequester.User, DateTimeOffset.UtcNow);
+        Assert.True(server.BeginOperation(deletion, DateTimeOffset.UtcNow).IsSuccess);
+        deletion.Started(DateTimeOffset.UtcNow);
+        db.Operations.Add(deletion);
+        await db.SaveChangesAsync(Ct);
+        return (serverId, database, deletion);
+    }
+
+    /// <summary>The node reports the deletion done; the panel drops the server's databases through <paramref name="client"/>.</summary>
+    private Task CompleteDeletionAsync(NodeId node, Operation deletion, IDatabaseHostClient client) => Task.Run(async () =>
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var events = ActivatorUtilities.CreateInstance<AgentServerEvents>(scope.ServiceProvider, DatabasesWith(scope.ServiceProvider, client));
+        await events.OperationCompletedAsync(node, new OperationCompleted(deletion.Id.Value, deletion.ServerId!.Value.Value, OperationOutcome.Succeeded,
+            null, null), Ct);
+    }, Ct);
+
+    /// <summary>The server and its database are gone, the deletion succeeded, and each is audited once.</summary>
+    private async Task AssertDeletedAsync(PanelClient admin, ServerId serverId, ServerDatabase database, Operation deletion)
+    {
+        Assert.Null(await ServerApi.GetAsync(admin, serverId.Value));
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            Assert.False(await db.ServerDatabases.AnyAsync(d => d.Id == database.Id, Ct));
+            Assert.Equal(OperationStatus.Succeeded, (await db.Operations.AsNoTracking().SingleAsync(o => o.Id == deletion.Id, Ct)).Status);
+        }
+
+        Assert.True(Dropped(Assert.Single(await AuditAsync(AuditActions.Server.DatabaseDeleted, serverId.Value))));
+        Assert.Single(await AuditAsync(AuditActions.Server.Deleted, serverId.Value));
+    }
+
+    [DatabaseFact]
     public async Task ThePanelsLastDatabaseHostGoesToOneRequest()
     {
         var client = new RecordingClient();
@@ -698,6 +793,46 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
             }
 
             return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// A host whose password change waits for the test, keeping what it dropped; its first drop signals and runs
+    /// <see cref="OnFirstDrop"/>.
+    /// </summary>
+    private sealed class DeletionRaceClient : RecordingClientBase
+    {
+        public TaskCompletionSource Changing { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Dropping { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Func<Task>? OnFirstDrop { get; set; }
+
+        public List<string> Dropped { get; } = [];
+
+        public override async Task SetPasswordAsync(DatabaseHostConnection host, string name, string userHost, string password,
+            CancellationToken cancellationToken)
+        {
+            Changing.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+        }
+
+        public override async Task DropAsync(DatabaseHostConnection host, string name, string userHost, CancellationToken cancellationToken)
+        {
+            int count;
+            lock (Dropped)
+            {
+                Dropped.Add(name);
+                count = Dropped.Count;
+            }
+
+            Dropping.TrySetResult();
+            if (count == 1 && OnFirstDrop is { } first)
+            {
+                await first();
+            }
         }
     }
 

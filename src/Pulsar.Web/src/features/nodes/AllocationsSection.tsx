@@ -69,13 +69,14 @@ export function AllocationsSection({ nodeId, canManage }: { nodeId: string; canM
                       {allocation.serverName} <span className="text-muted">({allocation.portName})</span>
                     </Link>
                   ) : (
-                    <span className="text-muted">{t('allocations.free')}</span>
+                    // Free, or held by a server the user cannot see (its holder is not theirs to know).
+                    <span className="text-muted">{t(allocation.inUse ? 'allocations.inUse' : 'allocations.free')}</span>
                   )}
                 </Td>
                 <Td>{allocation.notes ?? ''}</Td>
                 {canManage && (
                   <Td className="text-right">
-                    {!allocation.serverId && (
+                    {!allocation.inUse && (
                       <Button
                         variant="secondary"
                         busy={remove.isPending && remove.variables.allocationId === allocation.id}

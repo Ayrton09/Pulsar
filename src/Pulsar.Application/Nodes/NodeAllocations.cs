@@ -9,7 +9,12 @@ using Pulsar.Domain.Nodes;
 
 namespace Pulsar.Application.Nodes;
 
-public sealed record AllocationView(Guid Id, string IpAddress, int Port, Guid? ServerId, string? ServerName, string? PortName, string? Notes);
+/// <summary>
+/// An allocation. <see cref="InUse"/> says a server holds it; <see cref="ServerId"/>, <see cref="ServerName"/> and
+/// <see cref="PortName"/> are left out when the caller cannot see that server.
+/// </summary>
+public sealed record AllocationView(Guid Id, string IpAddress, int Port, Guid? ServerId, string? ServerName, string? PortName, string? Notes,
+    bool InUse);
 
 /// <summary>
 /// The <c>ip:port</c> pairs of a node that servers can use (docs/architecture/02, "node_allocations"). Two allocations
@@ -20,8 +25,8 @@ public sealed class NodeAllocations(IPulsarDbContext db, VisibleResources visibl
     public const int MaxPortsPerRequest = 1000;
 
     /// <summary>
-    /// The node's allocations; one held by a server the user cannot see is left out (its holder, and that it is taken,
-    /// are that server's business), so those who may only create servers there see the free ones and their servers' own.
+    /// Every allocation of the node, so the ports in use are known to whoever adds or removes some. One held by a server
+    /// the user cannot see says only that it is taken: its holder is that server's business.
     /// </summary>
     public async Task<Result<IReadOnlyList<AllocationView>>> ListAsync(NodeId nodeId, CancellationToken cancellationToken)
     {
@@ -31,13 +36,15 @@ public sealed class NodeAllocations(IPulsarDbContext db, VisibleResources visibl
         }
 
         var sees = await visible.ServersAsync(cancellationToken);
-        var allocations = (await db.NodeAllocations.AsNoTracking().Where(a => a.NodeId == nodeId)
-                .OrderBy(a => a.IpAddress).ThenBy(a => a.Port).ToListAsync(cancellationToken))
-            .Where(a => a.ServerId is not { } server || sees is null || sees(server, nodeId))
-            .ToList();
-        var serverIds = allocations.Where(a => a.ServerId is not null).Select(a => a.ServerId!.Value).Distinct().ToList();
+        var allocations = await db.NodeAllocations.AsNoTracking().Where(a => a.NodeId == nodeId)
+            .OrderBy(a => a.IpAddress).ThenBy(a => a.Port).ToListAsync(cancellationToken);
+        var serverIds = allocations.Where(a => a.ServerId is { } server && (sees is null || sees(server, nodeId))).Select(a => a.ServerId!.Value)
+            .Distinct().ToList();
         var names = await db.Servers.AsNoTracking().Where(s => serverIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, cancellationToken);
-        return allocations.Select(a => View(a, a.ServerId is { } id ? names.GetValueOrDefault(id) : null)).ToList();
+        return allocations.Select(a => a.ServerId is not { } id ? View(a, null)
+                : names.TryGetValue(id, out var name) ? View(a, name)
+                : View(a, null) with { ServerId = null, PortName = null })
+            .ToList();
     }
 
     /// <summary>Adds allocations for <paramref name="ports"/> ("27015", "27015-27030", "27015,27020") on one address.</summary>
@@ -152,5 +159,5 @@ public sealed class NodeAllocations(IPulsarDbContext db, VisibleResources visibl
     }
 
     internal static AllocationView View(NodeAllocation a, string? serverName) =>
-        new(a.Id.Value, a.IpAddress, a.Port, a.ServerId?.Value, serverName, a.PortName, a.Notes);
+        new(a.Id.Value, a.IpAddress, a.Port, a.ServerId?.Value, serverName, a.PortName, a.Notes, a.IsAssigned);
 }

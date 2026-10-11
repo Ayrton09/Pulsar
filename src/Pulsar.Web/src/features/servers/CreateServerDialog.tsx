@@ -250,7 +250,7 @@ function Requirements({ details }: { details: TemplateDetails }) {
 interface PortsStepProps {
   details: TemplateDetails;
   nodeId: string;
-  allocations: { id: string; ipAddress: string; port: number; serverId: string | null }[];
+  allocations: { id: string; ipAddress: string; port: number; inUse: boolean }[];
   loading: boolean;
   ports: Record<string, string>;
   onChange: (port: string, value: string) => void;
@@ -266,7 +266,7 @@ function PortsStep({ details, nodeId, allocations, loading, ports, onChange }: P
     return <Spinner label={t('common.loading')} />;
   }
 
-  const free = allocations.filter((a) => a.serverId === null);
+  const free = allocations.filter((a) => !a.inUse);
   return (
     <div className="space-y-4">
       {free.length === 0 && (

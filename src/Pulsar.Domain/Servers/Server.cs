@@ -447,6 +447,10 @@ public sealed class Server
         UpdatedAt = now;
     }
 
+    /// <summary>The game asked to stop, or it cannot be kept running: the desired state follows the agent's report.</summary>
+    public static bool StopsIntent(ServerStateReason reason) =>
+        reason is ServerStateReason.ExitedByItself or ServerStateReason.CrashLoop or ServerStateReason.StartFailed;
+
     /// <summary>
     /// What the agent reports. Changes older than the last one taken are ignored; a <paramref name="snapshot"/> (the
     /// agent's Hello) is always taken and resets the sequence, since a restarted agent counts from zero again.
@@ -473,8 +477,7 @@ public sealed class Server
             LastExitCode = exitCode ?? LastExitCode;
         }
 
-        // The game asked to stop, or it cannot be kept running: the intent follows.
-        if (reason is ServerStateReason.ExitedByItself or ServerStateReason.CrashLoop or ServerStateReason.StartFailed)
+        if (StopsIntent(reason))
         {
             DesiredState = DesiredState.Stopped;
         }

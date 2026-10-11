@@ -195,7 +195,7 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
-    public async Task CreatingOnANodeShowsItsFreePortsButNotTheServersItCannotSee()
+    public async Task ANodesPortsAreAllListedButNotTheServersTheCallerCannotSee()
     {
         var scenario = await AccessScenario.CreateAsync(factory);
         await using var agent = await ConnectedAgentAsync(scenario.Admin, "ports");
@@ -211,17 +211,21 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
         await GrantAsync(scenario.Admin, user.Id, "servers", shown.Server.Id, viewer.Id);
         using var client = await scenario.SignInAsync("ports-creator");
 
-        // The free port, and the one of the server they see; the hidden server's id, name and port are not theirs to know.
+        // Every port, with the holder of the one they see; the hidden server's port is taken, but its id and name are
+        // not theirs to know.
         var listed = await ListAsync<AllocationView>(client, $"/api/v1/nodes/{node}/allocations");
         var shownPort = shown.Ports.Single(p => p.Name == "game").Port!.Value;
         var hiddenPort = hidden.Ports.Single(p => p.Name == "game").Port!.Value;
-        Assert.Equal(Enumerable.Range(27200, 3).Where(p => p != hiddenPort), listed.Select(a => a.Port));
-        Assert.Equal((shown.Server.Id, "Shown"), listed.Where(a => a.Port == shownPort).Select(a => (a.ServerId, a.ServerName)).Single());
-        Assert.All(listed.Where(a => a.Port != shownPort), a => Assert.Null(a.ServerId));
+        Assert.Equal(Enumerable.Range(27200, 3), listed.Select(a => a.Port));
+        Assert.Equal((shown.Server.Id, "Shown", "game", true),
+            listed.Where(a => a.Port == shownPort).Select(a => (a.ServerId, a.ServerName, a.PortName, a.InUse)).Single());
+        Assert.Equal((null, null, null, true),
+            listed.Where(a => a.Port == hiddenPort).Select(a => (a.ServerId, a.ServerName, a.PortName, a.InUse)).Single());
+        Assert.Equal((null, false), listed.Where(a => a.Port != shownPort && a.Port != hiddenPort).Select(a => (a.ServerId, a.InUse)).Single());
 
         // Whoever sees every server sees every holder.
         var all = await ListAsync<AllocationView>(scenario.Admin, $"/api/v1/nodes/{node}/allocations");
-        Assert.Contains(all, a => a.ServerId == hidden.Server.Id && a.ServerName == "Hidden");
+        Assert.Contains(all, a => a.ServerId == hidden.Server.Id && a.ServerName == "Hidden" && a.InUse);
     }
 
     private static async Task<ServerDetails> CreatedAsync(PanelClient client, CreateServerRequest request)

@@ -14,6 +14,7 @@ const templateId = '0192f1a0-0000-7000-8000-0000000000f2';
 const serverId = '0192f1a0-0000-7000-8000-0000000000e9';
 const allocationA = '0192f1a0-0000-7000-8000-0000000000c1';
 const allocationB = '0192f1a0-0000-7000-8000-0000000000c2';
+const allocationHidden = '0192f1a0-0000-7000-8000-0000000000c4';
 
 const operator = {
   ...adminUser,
@@ -102,8 +103,37 @@ const templateDetails: Schemas['TemplateDetails'] = {
 };
 
 const allocations: Schemas['AllocationView'][] = [
-  { id: allocationA, ipAddress: '0.0.0.0', port: 27015, serverId: null, serverName: null, portName: null, notes: null },
-  { id: allocationB, ipAddress: '0.0.0.0', port: 27020, serverId: null, serverName: null, portName: null, notes: null },
+  {
+    id: allocationA,
+    ipAddress: '0.0.0.0',
+    port: 27015,
+    serverId: null,
+    serverName: null,
+    portName: null,
+    notes: null,
+    inUse: false,
+  },
+  {
+    id: allocationB,
+    ipAddress: '0.0.0.0',
+    port: 27020,
+    serverId: null,
+    serverName: null,
+    portName: null,
+    notes: null,
+    inUse: false,
+  },
+  // Held by a server the user cannot see: taken, without its holder.
+  {
+    id: allocationHidden,
+    ipAddress: '0.0.0.0',
+    port: 27025,
+    serverId: null,
+    serverName: null,
+    portName: null,
+    notes: null,
+    inUse: true,
+  },
 ];
 
 const summary: Schemas['ServerSummary'] = {
@@ -203,6 +233,7 @@ describe('creating a game server', () => {
 
     const game = await screen.findByLabelText('Game *');
     expect(within(game).getByRole('option', { name: /Automatic/ })).toBeInTheDocument();
+    expect(within(game).queryByRole('option', { name: '0.0.0.0:27025' })).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText('SourceTV'), '0.0.0.0:27020');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
@@ -503,7 +534,11 @@ describe('a game server page', () => {
       'GET /api/v1/auth/session': session(operator),
       [`GET /api/v1/servers/${serverId}`]: () => json(details()),
       [`GET /api/v1/nodes/${nodeId}/allocations`]: () =>
-        json([{ ...allocations[0], serverId, serverName: 'Retakes', portName: 'game' }, allocations[1]]),
+        json([
+          { ...allocations[0], serverId, serverName: 'Retakes', portName: 'game', inUse: true },
+          allocations[1],
+          allocations[2],
+        ]),
       [`PUT /api/v1/servers/${serverId}/ports`]: async (request) => {
         body = await request.json();
         return json(details());
@@ -514,6 +549,7 @@ describe('a game server page', () => {
 
     const tv = await screen.findByLabelText('SourceTV');
     await within(tv).findByRole('option', { name: '0.0.0.0:27020' });
+    expect(within(tv).queryByRole('option', { name: '0.0.0.0:27025' })).not.toBeInTheDocument();
     await user.selectOptions(tv, '0.0.0.0:27020');
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -637,6 +673,10 @@ describe('node allocations', () => {
     );
     const user = userEvent.setup();
     const row = (await screen.findByText('0.0.0.0:27015')).closest('tr') as HTMLElement;
+    // One held by a server the user cannot see is in use: it cannot be deleted.
+    const hidden = screen.getByText('0.0.0.0:27025').closest('tr') as HTMLElement;
+    expect(within(hidden).getByText('In use')).toBeInTheDocument();
+    expect(within(hidden).queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
 
     await user.click(within(row).getByRole('button', { name: 'Delete' }));
     expect(confirm).toHaveBeenLastCalledWith('Delete the allocation 0.0.0.0:27015?');
