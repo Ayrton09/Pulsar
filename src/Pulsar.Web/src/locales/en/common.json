@@ -655,6 +655,7 @@
     },
     "steamcmd": {
       "account_required": "Only a Steam account that owns this game's dedicated server may download it: choose one in the server's settings.",
+      "beta_password_invalid": "The beta branch password must be up to 64 characters, without spaces or double quotes, and must not start with + or -: change it in the server's settings.",
       "guard_required": "Steam asked for a Steam Guard code: enter it to go on.",
       "login_failed": "Steam refused the account's sign-in: check its user name and password.",
       "rate_limited": "Steam refuses sign-ins for a while after too many attempts. Try again later.",

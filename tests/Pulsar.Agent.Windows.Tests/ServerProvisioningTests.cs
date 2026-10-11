@@ -79,6 +79,35 @@ public sealed class ServerProvisioningTests : IDisposable
     }
 
     [WindowsFact]
+    public void AServersRootOrServerFolderThatIsAJunctionIsRefusedAndWhatItPointsAtKeepsItsRules()
+    {
+        var provisioner = Provisioner(development: true);
+        var outside = Directory.CreateDirectory(Path.Combine(_root, "outside")).FullName;
+        File.WriteAllText(Path.Combine(outside, "precious.txt"), "keep me");
+        var before = new DirectoryInfo(outside).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All);
+        var serversRoot = Path.Combine(_root, "servers");
+        CreateJunction(serversRoot, outside);
+        try
+        {
+            var refused = Assert.Throws<GameProcessException>(() => provisioner.Provision(serversRoot, "dev5test"));
+            Assert.Equal("server.unsafe_directory", refused.Code);
+        }
+        finally
+        {
+            Directory.Delete(serversRoot);
+        }
+
+        Directory.CreateDirectory(serversRoot);
+        CreateJunction(Path.Combine(serversRoot, "dev5test"), outside);
+        var again = Assert.Throws<GameProcessException>(() => provisioner.Provision(serversRoot, "dev5test"));
+        Directory.Delete(Path.Combine(serversRoot, "dev5test"));
+
+        Assert.Equal("server.unsafe_directory", again.Code);
+        Assert.Equal(before, new DirectoryInfo(outside).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
+        Assert.Equal(["precious.txt"], Directory.EnumerateFileSystemEntries(outside).Select(Path.GetFileName));
+    }
+
+    [WindowsFact]
     public void DeletingAServerNeverFollowsAJunctionOutOfItsDirectory()
     {
         var provisioner = Provisioner(development: true);

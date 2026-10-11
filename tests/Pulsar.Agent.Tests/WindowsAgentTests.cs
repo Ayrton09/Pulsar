@@ -410,6 +410,74 @@ public sealed class WindowsAgentTests
     }
 
     [WindowsFact]
+    public void AProductionServersRootInsideAFolderOthersCanReplaceIsRefused()
+    {
+        // As with --backups-root: someone who could rename the root could put a folder of theirs in its place.
+        var directory = Path.Combine(Path.GetTempPath(), "pulsar-servers-root-" + Guid.NewGuid().ToString("N"), "PulsarServers");
+
+        var refused = Assert.Throws<Core.Panel.AgentException>(() => new WindowsDirectorySecurity().SecureServersRoot(directory, development: false));
+
+        Assert.Contains(Path.GetTempPath().TrimEnd('\\'), refused.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Directory.Exists(Path.GetDirectoryName(directory)));
+    }
+
+    [WindowsFact]
+    public void AServersRootThatIsAJunctionIsRefusedAndItsTargetKeepsItsRules()
+    {
+        var directory = Directory.CreateTempSubdirectory("pulsar-servers-root-");
+        var target = directory.CreateSubdirectory("someone-elses");
+        var root = Path.Combine(directory.FullName, "servers");
+        try
+        {
+            var before = target.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All);
+            Junction(root, target.FullName);
+
+            Assert.Throws<Core.Panel.AgentException>(() => new WindowsDirectorySecurity().SecureServersRoot(root, development: true));
+
+            Assert.Equal(before, target.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root);
+            }
+
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [WindowsFact]
+    public void SecuringTheServersRootAgainLeavesEachServerDirectoryItsOwnRules()
+    {
+        var directory = Directory.CreateTempSubdirectory("pulsar-servers-root-");
+        try
+        {
+            var root = Path.Combine(directory.FullName, "servers");
+            new WindowsDirectorySecurity().SecureServersRoot(root, development: true);
+            Assert.True(new DirectoryInfo(root).GetAccessControl().AreAccessRulesProtected);
+            var server = Directory.CreateDirectory(Path.Combine(root, "k3x7m2qa"));
+            var own = new DirectorySecurity();
+            own.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            own.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.FullControl,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+            own.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.NetworkServiceSid, null), FileSystemRights.Modify,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+            server.SetAccessControl(own);
+            var before = server.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+
+            // Enrolled again: the root is already the agent's, with a server in it.
+            new WindowsDirectorySecurity().SecureServersRoot(root, development: true);
+
+            Assert.Equal(before, server.GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [WindowsFact]
     public void AReparsePointThatIsNotALinkIsAnOrdinaryFile()
     {
         // Deduplicated files and cloud placeholders are reparse points too, but they do not point elsewhere.

@@ -37,8 +37,34 @@ public sealed class CommandVerifier(
 
     private readonly ReplayWindow _replay = new();
 
-    /// <summary>Panel time minus local time, measured at Hello. Expiry is judged on the panel's clock.</summary>
-    public TimeSpan PanelClockOffset { get; set; }
+    private readonly TaskCompletionSource _clockMeasured = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private TimeSpan _panelClockOffset;
+
+    /// <summary>
+    /// Panel time minus local time, measured at Hello. Expiry is judged on the panel's clock. Setting it lets the commands
+    /// waiting for it through (<see cref="WaitsForClock"/>).
+    /// </summary>
+    public TimeSpan PanelClockOffset
+    {
+        get => _panelClockOffset;
+        set
+        {
+            _panelClockOffset = value;
+            _clockMeasured.TrySetResult();
+        }
+    }
+
+    /// <summary>
+    /// Commands wait until <see cref="PanelClockOffset"/> is set (a hub session's verifier: the panel's first commands can
+    /// arrive between Hello's answer and the offset being measured from it).
+    /// </summary>
+    public bool WaitsForClock { get; init; }
+
+    /// <summary>Completes when commands may be verified (see <see cref="WaitsForClock"/>).</summary>
+    public Task ClockMeasured => WaitsForClock ? _clockMeasured.Task : Task.CompletedTask;
+
+    /// <summary>The session ended before its Hello was answered: commands waiting for the clock are dropped.</summary>
+    public void Abandon() => _clockMeasured.TrySetCanceled();
 
     public CommandVerification Verify(SignedMessage message)
     {

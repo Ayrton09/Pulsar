@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Commands;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Agent.Core.Servers;
+using Pulsar.Agent.Core.Steam;
 using Pulsar.Contracts;
 
 namespace Pulsar.Agent.Core.Panel;
@@ -52,10 +53,14 @@ public sealed partial class AgentConnection(
     IHostApplicationLifetime lifetime,
     ILoggerFactory loggerFactory,
     PanelChannel? channel = null,
-    ServerHost? servers = null) : BackgroundService, IAgentControl
+    ServerHost? servers = null,
+    SteamLoginStore? steamLogins = null) : BackgroundService, IAgentControl
 {
     /// <summary>Enough failures for the backoff to sit at its maximum.</summary>
     private const int MaxFailures = 30;
+
+    /// <summary>How long a session must last for the reconnect backoff to start over.</summary>
+    private static readonly TimeSpan s_stableSession = TimeSpan.FromMinutes(1);
 
     private readonly ILogger _logger = loggerFactory.CreateLogger<AgentConnection>();
     private readonly PanelChannel _channel = channel ?? new PanelChannel();
@@ -156,7 +161,7 @@ public sealed partial class AgentConnection(
 
                     current = next;
                     CurrentSessionId = current.SessionId;
-                    failures = 0;
+                    var connectedAt = clock.GetUtcNow();
 
                     SessionEnd end;
                     do
@@ -168,12 +173,14 @@ public sealed partial class AgentConnection(
                     if (end == SessionEnd.Rotate)
                     {
                         // The next connection authenticates with the new key, which completes the rotation.
+                        failures = 0;
                         continue;
                     }
 
                     if (end == SessionEnd.Renew)
                     {
                         LogRenewing(current.SessionId);
+                        failures = 0;
                         continue;
                     }
 
@@ -181,7 +188,7 @@ public sealed partial class AgentConnection(
                     CurrentSessionId = null;
                     await current.DisposeAsync();
                     current = null;
-                    failures = 1;
+                    failures = FailuresAfterSession(failures, clock.GetUtcNow() - connectedAt);
                 }
                 catch (AgentRejectedException ex)
                 {
@@ -231,6 +238,13 @@ public sealed partial class AgentConnection(
         return capped * (0.5 + (Random.Shared.NextDouble() / 2));
     }
 
+    /// <summary>
+    /// The failure count after a session closed: back to one once it lasted a minute, otherwise one more
+    /// (a session closed right after its Hello, as two machines sharing one node identity do to each other, is no success).
+    /// </summary>
+    internal static int FailuresAfterSession(int failures, TimeSpan lasted) =>
+        lasted >= s_stableSession ? 1 : Math.Min(failures + 1, MaxFailures);
+
     private static bool IsExpected(Exception exception) => exception is AgentException or HttpRequestException or HubException
         or System.Net.WebSockets.WebSocketException or IOException or TimeoutException or TaskCanceledException;
 
@@ -271,13 +285,16 @@ public sealed partial class AgentConnection(
             DeleteKey(stale.Key);
         }
 
-        var newKey = keys.Create($"PulsarAgent-{Guid.NewGuid():N}", config.Key.Scope);
+        INodeKey? newKey = null;
+        var saved = false;
         try
         {
+            newKey = keys.Create($"PulsarAgent-{Guid.NewGuid():N}", config.Key.Scope);
             var credentialId = await rotation.RegisterAsync(config, session.AccessToken, session.SessionId, newKey, cancellationToken);
             lock (_configLock)
             {
                 SaveConfig(_config with { PendingRotation = new PendingRotation(newKey.Reference, credentialId, clock.GetUtcNow()) });
+                saved = true;
             }
 
             LogRotationStarted(credentialId, newKey.Reference.Storage);
@@ -285,18 +302,19 @@ public sealed partial class AgentConnection(
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            DeleteKey(newKey.Reference);
             lock (_configLock)
             {
                 if (_config.PendingRotation is not null)
                 {
                     SaveConfig(_config with { PendingRotation = null });
+                    saved = false;
                 }
             }
 
             _nextRotationAttempt = clock.GetUtcNow() + options.RotationRetryDelay;
             LogRotationFailed(ex.Message, _nextRotationAttempt);
-            if (!IsExpected(ex))
+            // A key this machine cannot create (its key storage refusing) is no reason to drop the session.
+            if (newKey is not null && !IsExpected(ex))
             {
                 throw;
             }
@@ -305,7 +323,16 @@ public sealed partial class AgentConnection(
         }
         finally
         {
-            newKey.Dispose();
+            // Unless it is saved as pending, nothing will ever use the new key: also when the service stops meanwhile.
+            if (newKey is not null)
+            {
+                if (!saved)
+                {
+                    DeleteKey(newKey.Reference);
+                }
+
+                newKey.Dispose();
+            }
         }
     }
 
@@ -377,7 +404,11 @@ public sealed partial class AgentConnection(
     {
         var token = await AuthenticateAsync(cancellationToken);
         var config = _config;
-        var verifier = new CommandVerifier(config.NodeId, token.SessionId, () => _config.PanelKeys, dispatcher.SupportedCommands, clock);
+        // Commands wait for the panel's clock offset: the panel sends its first ones as soon as Hello is answered.
+        var verifier = new CommandVerifier(config.NodeId, token.SessionId, () => _config.PanelKeys, dispatcher.SupportedCommands, clock)
+        {
+            WaitsForClock = true,
+        };
 
         var builder = new HubConnectionBuilder()
             .WithUrl(new Uri(config.Panel, AgentProtocol.HubPath), HttpTransportType.WebSockets, o =>
@@ -416,15 +447,44 @@ public sealed partial class AgentConnection(
             LogConnected(token.SessionId, verifier.PanelClockOffset);
             // Consoles browsers were already watching: their output resumes where the panel's copy ends.
             servers?.SubscribeConsoles(hello.ConsoleSubscriptions ?? []);
+            ForgetDeletedSteamAccounts(hello.SteamAccountIds);
             await _channel.AttachAsync(connection, new PanelHttp(transport, config.Panel, token.AccessToken), cancellationToken);
             return session;
         }
         catch
         {
+            verifier.Abandon();
             await session.DisposeAsync();
             throw;
         }
     }
+
+    /// <summary>Steam accounts deleted in the panel while this node was away: their cached logins go.</summary>
+    private void ForgetDeletedSteamAccounts(IReadOnlyList<Guid>? known)
+    {
+        if (steamLogins is null || known is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (steamLogins.ForgetAllBut([.. known]) is > 0 and var forgotten)
+            {
+                LogSteamLoginsForgotten(forgotten);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogSteamLoginsNotForgotten(ex.Message);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Forgot the cached logins of {Count} Steam account(s) the panel no longer has")]
+    private partial void LogSteamLoginsForgotten(int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The cached logins of Steam accounts the panel no longer has could not be deleted: {Reason}")]
+    private partial void LogSteamLoginsNotForgotten(string reason);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "This agent is not enrolled ({ConfigFile} not found). Run 'PulsarAgent enroll' first")]
     private partial void LogNotEnrolled(string configFile);
@@ -555,12 +615,23 @@ public sealed partial class AgentConnection(
             using var timer = new PeriodicTimer(options.MetricsInterval, clock);
             do
             {
+                NodeMetrics metrics;
                 try
                 {
-                    var metrics = system.SampleMetrics() with
+                    metrics = system.SampleMetrics() with
                     {
                         Disks = disks(),
                     };
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // A Windows call that failed this time: the next sample may work.
+                    LogSamplingFailed(ex);
+                    continue;
+                }
+
+                try
+                {
                     await connection.SendAsync(nameof(IAgentHub.NodeMetrics), metrics, cancellationToken);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -575,5 +646,8 @@ public sealed partial class AgentConnection(
 
         [LoggerMessage(Level = LogLevel.Debug, Message = "Metrics not sent: {Reason}")]
         private partial void LogMetricsFailed(string reason);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Node metrics could not be sampled; trying again at the next interval")]
+        private partial void LogSamplingFailed(Exception exception);
     }
 }

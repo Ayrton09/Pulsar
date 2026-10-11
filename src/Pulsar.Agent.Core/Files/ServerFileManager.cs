@@ -99,6 +99,12 @@ public static class ServerFileRules
     public const int MaxWalkDepth = 256;
 
     /// <summary>
+    /// The most entries of one folder a listing reads: a folder with more is listed from the first ones the file system
+    /// returns, and the listing is marked truncated.
+    /// </summary>
+    public const int MaxListScan = 1_000_000;
+
+    /// <summary>
     /// Where SteamCMD finds the Steam login the agent lends it during an install (docs/architecture/06, "Steam
     /// accounts"): no file manager operation reaches into it, whatever name or link leads there; a walk does not enter it.
     /// </summary>
@@ -126,17 +132,39 @@ public static class ServerFileRules
 
     public static string TemporaryName() => TemporaryPrefix + Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8)) + ".tmp";
 
-    /// <summary>Directories first, then the rest, each by name; cut where the listing would grow too large.</summary>
+    /// <summary>
+    /// Directories first, then the rest, each by name; cut where the listing would grow too large. Reads
+    /// <paramref name="entries"/> once, holding no more than the entries it keeps (a folder may hold millions), and
+    /// stops after <see cref="MaxListScan"/>.
+    /// </summary>
     public static FileListResult Listing(IEnumerable<FileEntry> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
-        var sorted = entries
-            .OrderBy(e => e.Kind == FileEntryKind.Directory ? 0 : 1)
-            .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+
+        // The first entries in order so far, the last of them on top.
+        var first = new PriorityQueue<FileEntry, FileEntry>(Comparer<FileEntry>.Create((a, b) => ListingOrder(b, a)));
+        var read = 0;
+        foreach (var entry in entries)
+        {
+            if (++read > MaxListScan)
+            {
+                break;
+            }
+
+            if (first.Count < FileLimits.MaxListEntries)
+            {
+                first.Enqueue(entry, entry);
+            }
+            else if (ListingOrder(entry, first.Peek()) < 0)
+            {
+                first.DequeueEnqueue(entry, entry);
+            }
+        }
+
+        var sorted = first.UnorderedItems.Select(i => i.Element).Order(Comparer<FileEntry>.Create(ListingOrder)).ToList();
         var budget = ListingBudget;
         var kept = 0;
-        while (kept < sorted.Count && kept < FileLimits.MaxListEntries)
+        while (kept < sorted.Count)
         {
             budget -= (sorted[kept].Name.Length * 6) + 128;
             if (budget < 0)
@@ -147,7 +175,19 @@ public static class ServerFileRules
             kept++;
         }
 
-        return new FileListResult(kept == sorted.Count ? sorted : sorted[..kept], kept < sorted.Count);
+        return new FileListResult(kept == sorted.Count ? sorted : sorted[..kept], kept < read);
+    }
+
+    private static int ListingOrder(FileEntry a, FileEntry b)
+    {
+        var kind = (a.Kind == FileEntryKind.Directory ? 0 : 1) - (b.Kind == FileEntryKind.Directory ? 0 : 1);
+        if (kind != 0)
+        {
+            return kind;
+        }
+
+        var name = StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name);
+        return name != 0 ? name : string.CompareOrdinal(a.Name, b.Name);
     }
 
     /// <summary>The target of a write may be replaced as asked (see <see cref="ReceiveFileCommand"/>).</summary>

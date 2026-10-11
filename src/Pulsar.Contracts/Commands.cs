@@ -51,6 +51,7 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(SendBackupCommand), SendBackupCommand.Type)]
 [JsonDerivedType(typeof(InstallAddonCommand), InstallAddonCommand.Type)]
 [JsonDerivedType(typeof(RemoveAddonCommand), RemoveAddonCommand.Type)]
+[JsonDerivedType(typeof(ForgetSteamLoginCommand), ForgetSteamLoginCommand.Type)]
 public abstract record AgentCommand;
 
 /// <summary>Round-trip check of the signed command path (the UI's "test connection").</summary>
@@ -290,6 +291,16 @@ public sealed record SteamLogin(Guid AccountId, string UserName, string Password
 }
 
 /// <summary>
+/// The Steam account <paramref name="AccountId"/> was deleted in the panel: the agent deletes the login SteamCMD cached
+/// for it, with which the account's user name alone would sign in. Nodes that miss it drop it at their next Hello
+/// (<see cref="HelloAccepted.SteamAccountIds"/>).
+/// </summary>
+public sealed record ForgetSteamLoginCommand(Guid AccountId) : AgentCommand
+{
+    public const string Type = "steam.forget_login";
+}
+
+/// <summary>
 /// Operation: archives the server's files (the manifest's <c>backup</c> globs) into a zip kept on the node
 /// (docs/architecture/03, "Backups"), then copies it to <paramref name="Remote"/> when there is one. The server may keep
 /// running. The result carries a <see cref="BackupResult"/>.
@@ -473,6 +484,12 @@ public static class AgentCapabilities
     /// <summary>Not a command: the agent logs SteamCMD in with a <see cref="Contracts.SteamLogin"/> (Phase 13).</summary>
     public const string SteamAccounts = "steam.login";
 
+    /// <summary>
+    /// The agent forgets the cached login of a deleted Steam account, by command and from
+    /// <see cref="HelloAccepted.SteamAccountIds"/>.
+    /// </summary>
+    public const string ForgetSteamLogin = ForgetSteamLoginCommand.Type;
+
     /// <summary>The capability an agent must announce to receive <paramref name="command"/>.</summary>
     public static string Of(AgentCommand command) => command switch
     {
@@ -504,6 +521,7 @@ public static class AgentCapabilities
         SendBackupCommand => SendBackup,
         InstallAddonCommand => InstallAddon,
         RemoveAddonCommand => RemoveAddon,
+        ForgetSteamLoginCommand => ForgetSteamLogin,
         null => throw new ArgumentNullException(nameof(command)),
         _ => throw new ArgumentOutOfRangeException(nameof(command), command.GetType().Name, "Command without a capability."),
     };

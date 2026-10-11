@@ -53,8 +53,12 @@ public sealed record AgentHello(
 /// Consoles browsers are watching: the agent sends their output from the given sequence on, as after a
 /// <see cref="SubscribeConsoleCommand"/>. Subscriptions end with the connection.
 /// </param>
+/// <param name="SteamAccountIds">
+/// The Steam accounts the panel has, for agents that announce <see cref="AgentCapabilities.ForgetSteamLogin"/> (null
+/// otherwise, and from older panels): the agent forgets the cached logins of any other account, deleted while it was away.
+/// </param>
 public sealed record HelloAccepted(DateTimeOffset ServerTime, IReadOnlyList<PanelKey> PanelKeys,
-    IReadOnlyList<ConsoleSubscription>? ConsoleSubscriptions = null);
+    IReadOnlyList<ConsoleSubscription>? ConsoleSubscriptions = null, IReadOnlyList<Guid>? SteamAccountIds = null);
 
 /// <summary>A drive the agent uses (<see cref="DiskUses"/>), with its free space: the panel warns when one is nearly full.</summary>
 public sealed record DiskUsage(string Root, long TotalBytes, long FreeBytes, IReadOnlyList<string> Uses);

@@ -97,9 +97,16 @@ public sealed record AgentConfig(
     public string ServersRootOrDefault(AgentPaths paths)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        return ServersRoot ?? (Development
+        return ServersRoot ?? DefaultServersRoot(paths, Development);
+    }
+
+    /// <summary>Where server directories go when enrollment did not choose a place.</summary>
+    public static string DefaultServersRoot(AgentPaths paths, bool development)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        return development
             ? Path.Combine(paths.Root, "servers")
-            : Path.Combine((Environment.GetEnvironmentVariable("SystemDrive") ?? "C:") + Path.DirectorySeparatorChar, "PulsarServers"));
+            : Path.Combine((Environment.GetEnvironmentVariable("SystemDrive") ?? "C:") + Path.DirectorySeparatorChar, "PulsarServers");
     }
 
     /// <summary>Where backups go: out of the servers' reach (only SYSTEM and Administrators can open it).</summary>
@@ -135,6 +142,15 @@ public interface IAgentDirectorySecurity
     /// <param name="directory">Created if missing.</param>
     /// <param name="development">Also grants the current user (development installs run without elevation).</param>
     void SecureFolder(string directory, bool development);
+
+    /// <summary>
+    /// The servers root: the folder itself is restricted like <see cref="SecureFolder"/> (refused when it is a junction or
+    /// link, lies in a folder other accounts could replace, or already holds files of someone else), but what it holds keeps
+    /// its rules: each server directory has its own (docs/architecture/06, "Isolation").
+    /// </summary>
+    /// <param name="directory">Created if missing.</param>
+    /// <param name="development">Also grants the current user (development installs run without elevation).</param>
+    void SecureServersRoot(string directory, bool development);
 }
 
 /// <summary>Reads and atomically replaces <c>config\agent.json</c>.</summary>

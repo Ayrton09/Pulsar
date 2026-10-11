@@ -224,6 +224,37 @@ public sealed class SteamAccountTests(PulsarApiFactory factory) : IClassFixture<
         Assert.Equal(["user+password"], agent.Processes.SteamSignIns);
     }
 
+    [DatabaseFact]
+    public async Task NodesForgetTheCachedLoginOfADeletedAccount()
+    {
+        var admin = (await AccessScenario.CreateAsync(factory)).Admin;
+        await using var agent = await ConnectedAgentAsync(admin, "forget");
+        var kept = await CreateAccountAsync(admin, "Kept", "pulsar_kept");
+        var deleted = await CreateAccountAsync(admin, "Deleted", "pulsar_deleted");
+        var keptLogin = new Pulsar.Contracts.SteamLogin(kept.Id, "pulsar_kept", Password);
+        var deletedLogin = new Pulsar.Contracts.SteamLogin(deleted.Id, "pulsar_deleted", Password);
+        // Logins SteamCMD cached on this node, the last one for an account deleted while the node was away.
+        var gone = new Pulsar.Contracts.SteamLogin(Guid.NewGuid(), "pulsar_gone", Password);
+        foreach (var login in new[] { keptLogin, deletedLogin, gone })
+        {
+            agent.SteamLogins.Save(login, "cached login"u8.ToArray());
+        }
+
+        // A connected node forgets at once: the user name alone would sign SteamCMD in with it.
+        using (var response = await admin.DeleteAsync($"/api/v1/steam-accounts/{deleted.Id}"))
+        {
+            await AccessScenario.EnsureSuccessAsync(response);
+        }
+
+        Assert.Null(agent.SteamLogins.Load(deletedLogin));
+        Assert.NotNull(agent.SteamLogins.Load(gone));
+
+        // Any other node at its next Hello, which names the accounts the panel still has.
+        factory.Services.GetRequiredService<Pulsar.Application.Nodes.IAgentConnections>().Disconnect(new NodeId(agent.Config!.NodeId));
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(agent.SteamLogins.Load(gone) is null), "the login of an account the panel no longer has forgotten");
+        Assert.NotNull(agent.SteamLogins.Load(keptLogin));
+    }
+
     private static string CachedLogin(InProcessAgent agent, ServerDetails server) =>
         Path.Combine(agent.ServersRoot, server.Server.ShortId, ".pulsar", "steamcmd", "config", "config.vdf");
 

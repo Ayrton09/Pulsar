@@ -63,12 +63,39 @@ public sealed class SteamLoginStore(AgentPaths paths, IStateProtector protector)
         File.Move(temporary, file, overwrite: true);
     }
 
-    public void Forget(Guid accountId)
+    /// <summary>Deletes the account's cached login; false when there was none.</summary>
+    public bool Forget(Guid accountId)
     {
-        if (Directory.Exists(paths.SteamLoginsDirectory))
+        var file = PathOf(accountId);
+        if (!File.Exists(file))
         {
-            File.Delete(PathOf(accountId));
+            return false;
         }
+
+        File.Delete(file);
+        return true;
+    }
+
+    /// <summary>Deletes the cached logins of every account but <paramref name="known"/> (the panel's); returns how many.</summary>
+    public int ForgetAllBut(IReadOnlyCollection<Guid> known)
+    {
+        ArgumentNullException.ThrowIfNull(known);
+        if (!Directory.Exists(paths.SteamLoginsDirectory))
+        {
+            return 0;
+        }
+
+        var forgotten = 0;
+        foreach (var file in Directory.EnumerateFiles(paths.SteamLoginsDirectory, "*.bin"))
+        {
+            if (Guid.TryParseExact(Path.GetFileNameWithoutExtension(file), "N", out var accountId) && !known.Contains(accountId))
+            {
+                File.Delete(file);
+                forgotten++;
+            }
+        }
+
+        return forgotten;
     }
 
     private static byte[] Stamp(SteamLogin login) => SHA256.HashData(Encoding.UTF8.GetBytes($"pulsar-steam-login\n{login.UserName}\n{login.Password}"));

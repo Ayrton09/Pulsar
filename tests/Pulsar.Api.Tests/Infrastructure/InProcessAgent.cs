@@ -29,6 +29,7 @@ public sealed class InProcessAgent : IAsyncDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "pulsar-agent-tests", Guid.NewGuid().ToString("N"));
     private readonly TestServerTransport _transport;
     private readonly TimeProvider _clock;
+    private readonly FixedNodeSystem _system = new();
     private AgentConnection? _connection;
     private ServerHost? _servers;
     private SteamCmdRunner? _steamCmd;
@@ -46,6 +47,13 @@ public sealed class InProcessAgent : IAsyncDisposable
     public PanelTransport Transport => _transport;
 
     public MemoryNodeKeyStore Keys { get; } = new();
+
+    /// <summary>How many of the next node metric samples fail (as a failing Windows call would).</summary>
+    public int FailingMetricSamples
+    {
+        get => _system.FailingSamples;
+        set => _system.FailingSamples = value;
+    }
 
     public AgentConfig? Config { get; private set; }
 
@@ -107,9 +115,9 @@ public sealed class InProcessAgent : IAsyncDisposable
             new InstallSteps(install, files), _steamCmd, files, Rcon, new UnmanagedFirewall(),
             new FileCommands(new DirectServerFileManager(), channel, FileOptions, NullLogger<FileCommands>.Instance),
             new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance, RemoteBackups), install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance, Query);
-        _connection = new AgentConnection(Configs, Keys, new FixedNodeSystem(), _transport, new PanelAuthenticator(_transport),
-            new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance, _servers), Options,
-            _clock, new StubLifetime(), NullLoggerFactory.Instance, channel, _servers);
+        _connection = new AgentConnection(Configs, Keys, _system, _transport, new PanelAuthenticator(_transport),
+            new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance, _servers, SteamLogins), Options,
+            _clock, new StubLifetime(), NullLoggerFactory.Instance, channel, _servers, SteamLogins);
 
         // As the agent host orders them: the connection waits for the servers to load; the servers stop first.
         await _connection.StartAsync(TestContext.Current.CancellationToken);
@@ -172,29 +180,59 @@ public sealed class InProcessAgent : IAsyncDisposable
     {
         private readonly ConcurrentDictionary<string, ECParameters> _keys = new(StringComparer.Ordinal);
 
+        private readonly ConcurrentDictionary<string, ManualResetEventSlim> _held = new(StringComparer.Ordinal);
+
         public IReadOnlyCollection<string> Names => [.. _keys.Keys];
+
+        /// <summary>Creating a key fails (as a key storage provider that refuses would).</summary>
+        public bool RefuseCreate { get; set; }
+
+        /// <summary>Keys created from now on wait for it before their first signature (to stop the agent in the middle of a rotation).</summary>
+        public ManualResetEventSlim? HoldSigning { get; set; }
+
+        /// <summary>Set when a held key starts waiting to sign.</summary>
+        public ManualResetEventSlim SigningHeld { get; } = new();
 
         public INodeKey Create(string name, NodeKeyScope scope)
         {
+            if (RefuseCreate)
+            {
+                throw new CryptographicException("The key storage provider refused to create a key.");
+            }
+
             using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             _keys[name] = key.ExportParameters(includePrivateParameters: true);
+            if (HoldSigning is { } hold)
+            {
+                _held[name] = hold;
+            }
+
             return Open(new NodeKeyReference(name, scope, NodeKeyStorage.Software));
         }
 
         public INodeKey Open(NodeKeyReference reference) =>
             _keys.TryGetValue(reference.Name, out var parameters)
-                ? new MemoryKey(reference, ECDsa.Create(parameters))
+                ? new MemoryKey(reference, ECDsa.Create(parameters), this)
                 : throw new CryptographicException($"Key {reference.Name} does not exist.");
 
         public void Delete(NodeKeyReference reference) => _keys.TryRemove(reference.Name, out _);
 
-        private sealed class MemoryKey(NodeKeyReference reference, ECDsa key) : INodeKey
+        private sealed class MemoryKey(NodeKeyReference reference, ECDsa key, MemoryNodeKeyStore store) : INodeKey
         {
             public NodeKeyReference Reference { get; } = reference;
 
             public byte[] PublicKey => key.ExportSubjectPublicKeyInfo();
 
-            public byte[] Sign(ReadOnlySpan<byte> data) => ProtocolCrypto.Sign(key, data);
+            public byte[] Sign(ReadOnlySpan<byte> data)
+            {
+                if (store._held.TryRemove(Reference.Name, out var hold))
+                {
+                    store.SigningHeld.Set();
+                    hold.Wait(TimeSpan.FromSeconds(30));
+                }
+
+                return ProtocolCrypto.Sign(key, data);
+            }
 
             public void Dispose() => key.Dispose();
         }
@@ -202,10 +240,19 @@ public sealed class InProcessAgent : IAsyncDisposable
 
     private sealed class FixedNodeSystem : INodeSystem
     {
+        private int _failingSamples;
+
+        public int FailingSamples
+        {
+            get => Volatile.Read(ref _failingSamples);
+            set => Volatile.Write(ref _failingSamples, value);
+        }
+
         public NodeInventory GetInventory(string? serversRoot) => TestAgent.Inventory with { ServersRoot = serversRoot };
 
-        public NodeMetrics SampleMetrics() =>
-            new(DateTimeOffset.UtcNow, 12.5, 4L * 1024 * 1024 * 1024, TestAgent.Inventory.MemoryTotalBytes, TimeSpan.FromHours(3));
+        public NodeMetrics SampleMetrics() => Interlocked.Decrement(ref _failingSamples) >= 0
+            ? throw new System.ComponentModel.Win32Exception(5)
+            : new(DateTimeOffset.UtcNow, 12.5, 4L * 1024 * 1024 * 1024, TestAgent.Inventory.MemoryTotalBytes, TimeSpan.FromHours(3));
     }
 
     private sealed class NoDirectorySecurity : IAgentDirectorySecurity
@@ -213,6 +260,8 @@ public sealed class InProcessAgent : IAsyncDisposable
         public void SecureState(string directory, IReadOnlyCollection<string> ownFolders, bool development) => Directory.CreateDirectory(directory);
 
         public void SecureFolder(string directory, bool development) => Directory.CreateDirectory(directory);
+
+        public void SecureServersRoot(string directory, bool development) => Directory.CreateDirectory(directory);
     }
 
     private sealed class StubLifetime : IHostApplicationLifetime

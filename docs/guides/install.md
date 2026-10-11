@@ -137,7 +137,9 @@ two commands:
   msiexec /i pulsar-agent-<version>-windows-x64.msi /qn PANELURL=https://panel:8443 TOKEN=<token> PANELKEY=sha256:<fingerprint>
   ```
 
-  Add `SERVERSROOT=D:\PulsarServers` to put game servers somewhere other than `C:\PulsarServers`. The package copies the
+  Add `SERVERSROOT=D:\PulsarServers` to put game servers somewhere other than `C:\PulsarServers`: a new or empty folder
+  (or the one an earlier enrollment used), not one inside a folder other users may change (`C:\Users\Public`, a
+  download folder), which enrollment refuses. The package copies the
   agent to `C:\Program Files\Pulsar\Agent`, enrolls the machine (what `enroll` printed is in
   `C:\ProgramData\Pulsar\Agent\logs\enroll.log`) and starts the service; if enrolling fails, `msiexec` ends with
   error 1603 and nothing is left installed. In Intune, add it as a line-of-business or Win32 app with that command
@@ -229,9 +231,10 @@ stops there and keeps the agent, as the MSI does (see below): what `unenroll` pr
 `-Uninstall` again.
 
 An agent installed with the MSI is removed from **Apps** in Windows settings, or with
-`msiexec /x pulsar-agent-<version>-windows-x64.msi /qn`: its game servers stop, and the service, the node key and the
-configuration go, as with `PulsarAgent unenroll` (what it printed is in
-`C:\ProgramData\Pulsar\Agent\logs\unenroll.log`). Then the program goes; an `appsettings.Production.json` you added to
+`msiexec /x pulsar-agent-<version>-windows-x64.msi /qn`: its game servers stop, and the service, the node key, the
+configuration, the game servers' Windows accounts and firewall rules, their saved passwords and the cached Steam logins
+go, as with `PulsarAgent unenroll` (what it printed is in `C:\ProgramData\Pulsar\Agent\logs\unenroll.log`). The game
+servers' folders, the backups and the logs stay; `unenroll` says where, delete them once you no longer need them. Then the program goes; an `appsettings.Production.json` you added to
 its folder stays, delete it by hand. The node stays in the panel, offline, until you delete it there.
 
 If the agent cannot unenroll, the uninstall fails (`msiexec` ends with error 1603) and the program stays, so that it

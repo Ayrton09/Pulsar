@@ -91,6 +91,7 @@ public sealed partial class SteamCmdRunner(
     {
         ArgumentNullException.ThrowIfNull(job);
         ArgumentNullException.ThrowIfNull(progress);
+        CheckBetaPassword(job.BetaPassword);
         await progress(InstallStages.Queued, null);
         // The account first, then a slot: a run waiting for its account holds no slot another account could use.
         var account = job.Login is { } owner ? AccountLock(owner.AccountId) : null;
@@ -247,6 +248,7 @@ public sealed partial class SteamCmdRunner(
             arguments.AddRange(["-beta", beta]);
             if (job.BetaPassword is { Length: > 0 } password)
             {
+                CheckBetaPassword(password);
                 arguments.AddRange(["-betapassword", password]);
             }
         }
@@ -258,6 +260,22 @@ public sealed partial class SteamCmdRunner(
 
         arguments.Add("+quit");
         return arguments;
+    }
+
+    /// <summary>
+    /// A beta branch password is the value of a server variable its owner sets, put on SteamCMD's command line: SteamCMD
+    /// splits that line on spaces and quotes and reads an argument starting with + or - as a command or an option, so a
+    /// password like "x +quit" would not reach Steam whole and would add commands. The rule the panel applies to Steam
+    /// account passwords applies (never with the value in the message).
+    /// </summary>
+    private static void CheckBetaPassword(string? password)
+    {
+        if (password is { Length: > 0 }
+            && (password.Length > 64 || password[0] is '+' or '-' || password.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c == '"')))
+        {
+            throw new GameProcessException("steamcmd.beta_password_invalid",
+                "The beta branch password must be at most 64 characters, without spaces, double quotes or control characters, and not start with + or -.");
+        }
     }
 
     /// <summary>

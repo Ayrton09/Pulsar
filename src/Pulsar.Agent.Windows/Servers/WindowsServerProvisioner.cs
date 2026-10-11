@@ -9,7 +9,8 @@ namespace Pulsar.Agent.Windows.Servers;
 /// Server directories and accounts on Windows (docs/architecture/06, "Isolation"). The servers root is open to SYSTEM
 /// and Administrators only; each server directory adds Modify for the server's own account, so a server cannot list or
 /// read another one. OWNER RIGHTS is limited to Modify too: a server owns the files it creates but cannot change who
-/// may read them. A development agent runs servers as the current user, who is granted the directories instead.
+/// may read them. A development agent runs servers as the current user, who is granted the directories instead. Each
+/// provisioning checks again that neither the servers root nor the server directory is a junction or link.
 /// </summary>
 public sealed partial class WindowsServerProvisioner(WindowsServerAccounts accounts, bool development, ILogger<WindowsServerProvisioner> logger)
     : IServerProvisioner
@@ -116,14 +117,15 @@ public sealed partial class WindowsServerProvisioner(WindowsServerAccounts accou
             security.AddAccessRule(new FileSystemAccessRule(s_ownerRights, FileSystemRights.Modify, Inherit, PropagationFlags.None, AccessControlType.Allow));
         }
 
-        var info = new DirectoryInfo(directory);
-        if (info.Exists)
+        // Through a handle that does not follow a link: a junction a user put in the place of the servers root (before the
+        // first server, if its parent lets them) or a server folder never gets these rules or this owner on its target.
+        try
         {
-            info.SetAccessControl(security);
+            WindowsDirectorySecurity.SetRules(directory, security);
         }
-        else
+        catch (UnsafeFolderException ex)
         {
-            info.Create(security);
+            throw new GameProcessException("server.unsafe_directory", ex.Message);
         }
     }
 

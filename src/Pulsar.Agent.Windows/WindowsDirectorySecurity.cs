@@ -6,6 +6,8 @@ using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Panel;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.Security;
+using Windows.Win32.Security.Authorization;
 using Windows.Win32.Storage.FileSystem;
 
 namespace Pulsar.Agent.Windows;
@@ -16,7 +18,8 @@ namespace Pulsar.Agent.Windows;
 /// already hold is reset to inherit from them (owned by Administrators), a junction or symbolic link in them is refused,
 /// and a production folder must not lie in a folder anyone else could replace: the SYSTEM service trusts what it loads
 /// from there. Other content is never rewritten: in the state directory it keeps its rules (a development agent's
-/// servers), and a backups root that holds someone else's files is refused.
+/// servers), in the servers root each server directory keeps its own, and a backups or servers root that holds someone
+/// else's files is refused.
 /// </summary>
 public sealed class WindowsDirectorySecurity : IAgentDirectorySecurity
 {
@@ -24,6 +27,9 @@ public sealed class WindowsDirectorySecurity : IAgentDirectorySecurity
     // ordinary files and folders to whoever opens them, as in the file manager.
     private const uint NameSurrogate = 0x20000000;
     private const uint ReadAttributes = 0x0080;
+    private const uint ReadControl = 0x00020000;
+    private const uint WriteDac = 0x00040000;
+    private const uint WriteOwner = 0x00080000;
 
     private static readonly EnumerationOptions s_everything = new() { AttributesToSkip = 0 };
 
@@ -88,6 +94,33 @@ public sealed class WindowsDirectorySecurity : IAgentDirectorySecurity
         }
     }
 
+    public void SecureServersRoot(string directory, bool development)
+    {
+        directory = Checked(directory, development);
+        var info = new DirectoryInfo(directory);
+        if (info.Exists)
+        {
+            RefuseLink(info);
+            if (info.EnumerateFileSystemInfos("*", s_everything).Any() && !IsRestricted(info, development))
+            {
+                throw new AgentException($"""
+                    {directory} already holds files other accounts can open. The agent keeps its servers root to SYSTEM and Administrators, which would change who can open them.
+                    Choose an empty or new folder (--servers-root) and enroll again.
+                    """);
+            }
+        }
+
+        // Only the folder itself: each server directory in it keeps its own rules (the server's account is granted there).
+        try
+        {
+            SetRules(directory, Rules(development));
+        }
+        catch (UnsafeFolderException ex)
+        {
+            throw new AgentException(ex.Message);
+        }
+    }
+
     /// <summary>Who, besides SYSTEM, Administrators and TrustedInstaller, could replace or change a folder above <paramref name="directory"/>.</summary>
     public static IReadOnlyList<string> FindReplaceableAncestors(string directory)
     {
@@ -102,6 +135,72 @@ public sealed class WindowsDirectorySecurity : IAgentDirectorySecurity
         }
 
         return findings;
+    }
+
+    /// <summary>
+    /// Gives a folder <paramref name="security"/> (creating it with those rules when missing) through a handle opened
+    /// without following a link: a junction or symbolic link in its place, whoever put it there and whenever, is refused,
+    /// and the rules never land on what it points at. Inheritable rules reach what the folder holds, as with a path.
+    /// </summary>
+    /// <exception cref="IOException">It is a link or not a folder (<see cref="UnsafeFolderException"/>), or cannot be opened.</exception>
+    internal static unsafe void SetRules(string directory, DirectorySecurity security)
+    {
+        var info = new DirectoryInfo(directory);
+        if (!info.Exists && !File.Exists(directory))
+        {
+            try
+            {
+                info.Create(security);
+            }
+            catch (IOException)
+            {
+                // Something took the name meanwhile (or a link to nowhere has it): opening it below tells which.
+            }
+        }
+
+        var descriptor = new RawSecurityDescriptor(security.GetSecurityDescriptorBinaryForm(), 0);
+        var dacl = new byte[descriptor.DiscretionaryAcl!.BinaryLength];
+        descriptor.DiscretionaryAcl.GetBinaryForm(dacl, 0);
+        var owner = new byte[descriptor.Owner?.BinaryLength ?? 0];
+        descriptor.Owner?.GetBinaryForm(owner, 0);
+
+        using var handle = PInvoke.CreateFile(directory, ReadAttributes | ReadControl | WriteDac | (owner.Length > 0 ? WriteOwner : 0),
+            FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_DELETE, null,
+            FILE_CREATION_DISPOSITION.OPEN_EXISTING,
+            FILE_FLAGS_AND_ATTRIBUTES.FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAGS_AND_ATTRIBUTES.FILE_FLAG_BACKUP_SEMANTICS, null);
+        FILE_ATTRIBUTE_TAG_INFO tag;
+        if (handle.IsInvalid
+            || !PInvoke.GetFileInformationByHandleEx((HANDLE)handle.DangerousGetHandle(), FILE_INFO_BY_HANDLE_CLASS.FileAttributeTagInfo, &tag,
+                (uint)sizeof(FILE_ATTRIBUTE_TAG_INFO)))
+        {
+            throw new IOException($"Cannot open {directory}: {new Win32Exception(Marshal.GetLastPInvokeError()).Message}");
+        }
+
+        if (IsLink(tag.FileAttributes, tag.ReparseTag))
+        {
+            throw new UnsafeFolderException($"{directory} is a junction or link: it must be a plain folder.");
+        }
+
+        if ((tag.FileAttributes & (uint)FileAttributes.Directory) == 0)
+        {
+            throw new UnsafeFolderException($"{directory} is a file, not a folder.");
+        }
+
+        var sections = OBJECT_SECURITY_INFORMATION.DACL_SECURITY_INFORMATION
+            | (descriptor.ControlFlags.HasFlag(ControlFlags.DiscretionaryAclProtected)
+                ? OBJECT_SECURITY_INFORMATION.PROTECTED_DACL_SECURITY_INFORMATION
+                : OBJECT_SECURITY_INFORMATION.UNPROTECTED_DACL_SECURITY_INFORMATION)
+            | (owner.Length > 0 ? OBJECT_SECURITY_INFORMATION.OWNER_SECURITY_INFORMATION : 0);
+        fixed (byte* daclPointer = dacl)
+        fixed (byte* ownerPointer = owner)
+        {
+            var error = PInvoke.SetSecurityInfo((HANDLE)handle.DangerousGetHandle(), SE_OBJECT_TYPE.SE_FILE_OBJECT, sections,
+                owner.Length > 0 ? (PSID)ownerPointer : default, default, (ACL*)daclPointer, null);
+            if (error != WIN32_ERROR.ERROR_SUCCESS)
+            {
+                throw new UnauthorizedAccessException($"Cannot set who may open {directory}: {new Win32Exception((int)error).Message}");
+            }
+        }
     }
 
     /// <summary>A junction or symbolic link (a name surrogate), as opposed to an ordinary file or other reparse point.</summary>
@@ -126,6 +225,23 @@ public sealed class WindowsDirectorySecurity : IAgentDirectorySecurity
     /// <summary>Gives the folder its rules (creating it if missing); returns the owner its content gets, if any.</summary>
     private static SecurityIdentifier? Apply(DirectoryInfo info, bool development)
     {
+        var security = Rules(development);
+        var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+        if (info.Exists)
+        {
+            info.SetAccessControl(security);
+        }
+        else
+        {
+            info.Create(security);
+        }
+
+        return development ? null : administrators;
+    }
+
+    /// <summary>SYSTEM and Administrators (and the current user, in development), nothing inherited from the parent.</summary>
+    private static DirectorySecurity Rules(bool development)
+    {
         var security = new DirectorySecurity();
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         Allow(security, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null));
@@ -141,16 +257,7 @@ public sealed class WindowsDirectorySecurity : IAgentDirectorySecurity
             security.SetOwner(administrators);
         }
 
-        if (info.Exists)
-        {
-            info.SetAccessControl(security);
-        }
-        else
-        {
-            info.Create(security);
-        }
-
-        return development ? null : administrators;
+        return security;
     }
 
     /// <summary>Only the agent's accounts may open it, and it does not inherit from its parent: what the agent made.</summary>
@@ -270,3 +377,6 @@ public sealed class WindowsDirectorySecurity : IAgentDirectorySecurity
         security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl,
             InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
 }
+
+/// <summary>A folder the agent was to secure is a junction, a link or a file.</summary>
+public sealed class UnsafeFolderException(string message) : IOException(message);

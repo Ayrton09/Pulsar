@@ -94,6 +94,9 @@ FILE_DISPOSITION_INFO
 OpenProcess
 OpenProcessToken
 
+// Servers root and server folders: rules set through a handle that never follows a link (docs/architecture/06)
+SetSecurityInfo
+
 // File manager (handle-based operations as the server's account, docs/architecture/08)
 CreateDirectory
 GetFileInformationByHandle

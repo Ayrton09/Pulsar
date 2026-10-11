@@ -71,6 +71,56 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
     }
 
     [DatabaseFact]
+    public async Task AKeyTheMachineCannotCreateLeavesTheSessionAndTheCurrentKeyAsTheyWere()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-no-new-key");
+        await agent.StartAsync();
+        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, enrolled.NodeId)).Node.Connected, "connection");
+        var session = agent.CurrentSessionId;
+        agent.Keys.RefuseCreate = true;
+
+        using (var request = await admin.PostAsync($"/api/v1/nodes/{enrolled.NodeId}/credentials/rotate"))
+        {
+            await AccessScenario.EnsureSuccessAsync(request);
+        }
+
+        // A failure that dropped the connection would reconnect within the test's backoff (two seconds at most).
+        await Task.Delay(TimeSpan.FromSeconds(3), Ct);
+        Assert.Equal(session, agent.CurrentSessionId);
+        Assert.Equal(enrolled.CredentialId, agent.LiveConfig!.CredentialId);
+        Assert.Null(agent.LiveConfig.PendingRotation);
+        Assert.Equal([enrolled.Key.Name], agent.Keys.Names);
+    }
+
+    [DatabaseFact]
+    public async Task StoppingTheAgentWhileItRegistersANewKeyLeavesNoKeyBehind()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-then-stop");
+        await agent.StartAsync();
+        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, enrolled.NodeId)).Node.Connected, "connection");
+        using var hold = new ManualResetEventSlim();
+        agent.Keys.HoldSigning = hold;
+
+        using (var request = await admin.PostAsync($"/api/v1/nodes/{enrolled.NodeId}/credentials/rotate"))
+        {
+            await AccessScenario.EnsureSuccessAsync(request);
+        }
+
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(agent.Keys.SigningHeld.IsSet), "the new key about to be registered");
+        var stopping = agent.StopAsync();
+        await Task.Delay(TimeSpan.FromSeconds(1), Ct); // the service stop cancels the registration meanwhile
+        hold.Set();
+        await stopping;
+
+        Assert.Equal([enrolled.Key.Name], agent.Keys.Names);
+        Assert.Null(agent.Configs.Load()!.PendingRotation);
+    }
+
+    [DatabaseFact]
     public async Task ARotationInterruptedBeforeItsFirstLoginCompletesWhenTheAgentStartsAgain()
     {
         using var admin = await factory.CreateAdminClientAsync();

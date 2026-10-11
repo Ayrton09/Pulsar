@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Servers;
+using Pulsar.Agent.Core.Steam;
 using Pulsar.Contracts;
 
 namespace Pulsar.Agent.Core.Commands;
@@ -19,17 +20,22 @@ public interface IAgentControl
 /// Runs verified commands. The ack only says whether the command was accepted; long work reports its completion
 /// through events.
 /// </summary>
-public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger, ServerHost? servers = null)
+/// <param name="steamLogins">The cached Steam logins (<see cref="ForgetSteamLoginCommand"/>); null: an agent without servers.</param>
+public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger, ServerHost? servers = null, SteamLoginStore? steamLogins = null)
 {
     /// <summary>Command types this agent handles (and features it has), announced as capabilities in its Hello.</summary>
     public IReadOnlySet<string> SupportedCommands { get; } = new HashSet<string>(
-        [AgentCapabilities.Ping, AgentCapabilities.RotateCredential, AgentCapabilities.UpdatePanelKeys, .. servers?.Capabilities ?? []],
+        [
+            AgentCapabilities.Ping, AgentCapabilities.RotateCredential, AgentCapabilities.UpdatePanelKeys, .. servers?.Capabilities ?? [],
+            .. steamLogins is null ? [] : new[] { AgentCapabilities.ForgetSteamLogin },
+        ],
         StringComparer.Ordinal);
 
     public async Task<CommandAck> ExecuteAsync(CommandVerifier verifier, SignedMessage message, IAgentControl control)
     {
         ArgumentNullException.ThrowIfNull(verifier);
         ArgumentNullException.ThrowIfNull(control);
+        await verifier.ClockMeasured;
         var verification = verifier.Verify(message);
         if (verification.Rejection is { } rejection)
         {
@@ -46,6 +52,10 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger,
             case RotateCredentialCommand:
                 LogRotationRequested(envelope.CommandId, envelope.ActorUserId);
                 return Ack(envelope, control.RequestCredentialRotation() ? AckStatus.Accepted : AckStatus.AlreadyInState);
+            case ForgetSteamLoginCommand forget when steamLogins is not null:
+                var forgotten = steamLogins.Forget(forget.AccountId);
+                LogSteamLoginForgotten(envelope.CommandId, forget.AccountId, forgotten);
+                return Ack(envelope, forgotten ? AckStatus.Accepted : AckStatus.AlreadyInState);
             case UpdatePanelKeysCommand update:
                 if (!AreValid(update.Keys, verification.SignedBy!))
                 {
@@ -116,4 +126,7 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger,
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Panel keys from command {CommandId}: {Keys} (changed: {Changed})")]
     private partial void LogPanelKeys(Guid commandId, string keys, bool changed);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Steam account {AccountId} deleted in the panel ({CommandId}): cached login forgotten: {Forgotten}")]
+    private partial void LogSteamLoginForgotten(Guid commandId, Guid accountId, bool forgotten);
 }

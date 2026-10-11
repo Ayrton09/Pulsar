@@ -129,6 +129,30 @@ public abstract class ServerFileManagerContract : IDisposable
     }
 
     [ContractFact]
+    public void AFolderWithMoreEntriesThanAListingHoldsIsListedInOrderAndDeletedWhole()
+    {
+        var logs = Directory.CreateDirectory(Path.Combine(ServerDirectory, "logs")).FullName;
+        var count = FileLimits.MaxListEntries + 500;
+        for (var i = count - 1; i >= 0; i--)
+        {
+            File.WriteAllBytes(Path.Combine(logs, $"log-{i:D5}.txt"), []);
+        }
+
+        Directory.CreateDirectory(Path.Combine(logs, "zz-archive"));
+
+        var listing = Files.List(Server, "logs");
+
+        Assert.True(listing.Truncated);
+        Assert.Equal(FileLimits.MaxListEntries, listing.Entries.Count);
+        Assert.Equal("zz-archive", listing.Entries[0].Name);
+        Assert.Equal(Enumerable.Range(0, FileLimits.MaxListEntries - 1).Select(i => $"log-{i:D5}.txt"), listing.Entries.Skip(1).Select(e => e.Name));
+
+        Files.Delete(Server, "logs");
+
+        Assert.False(Directory.Exists(logs));
+    }
+
+    [ContractFact]
     public void ReadsFilesUpToALimitWithTheVersionTheListingShows()
     {
         File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "hostname x");

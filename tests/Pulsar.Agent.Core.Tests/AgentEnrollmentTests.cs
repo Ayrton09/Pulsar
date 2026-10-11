@@ -21,6 +21,7 @@ public sealed class AgentEnrollmentTests : IDisposable
     private readonly ECDsa _panelKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     private readonly FakeTimeProvider _clock = new(DateTimeOffset.UtcNow);
     private readonly MemoryKeys _keys = new();
+    private readonly PlainFolders _folders = new();
 
     private PanelKey PanelKey => new(ProtocolCrypto.Fingerprint(_panelKey.ExportSubjectPublicKeyInfo()), _panelKey.ExportSubjectPublicKeyInfo());
 
@@ -73,8 +74,73 @@ public sealed class AgentEnrollmentTests : IDisposable
         Assert.Equal(1, panel.Enrollments);
     }
 
+    [Fact]
+    public async Task TheServersRootIsSecuredBeforeAnythingIsSent()
+    {
+        var chosen = Path.Combine(_root, "games");
+        var panel = new FakePanel(this, busyAnswers: 0, retryAfter: null);
+
+        await RunAsync(Enrollment(panel).EnrollAsync(Request() with { ServersRoot = chosen }, TestContext.Current.CancellationToken));
+        await RunAsync(Enrollment(panel).EnrollAsync(Request(), TestContext.Current.CancellationToken));
+
+        Assert.Equal([chosen, Path.Combine(_root, "servers")], _folders.ServersRoots);
+    }
+
+    [Fact]
+    public async Task AServersRootThatCannotBeSecuredStopsTheEnrollment()
+    {
+        var panel = new FakePanel(this, busyAnswers: 0, retryAfter: null);
+        _folders.Refuse = true;
+
+        await Assert.ThrowsAsync<AgentException>(() => RunAsync(Enrollment(panel).EnrollAsync(Request(), TestContext.Current.CancellationToken)));
+
+        Assert.Equal(0, panel.Enrollments);
+        Assert.Empty(_keys.Names);
+    }
+
+    [Fact]
+    public async Task ADevelopmentEnrollmentNeverReplacesAProductionOne()
+    {
+        // enroll --dev without --data-dir targets the default state directory, where the service's enrollment lives.
+        var configs = new AgentConfigStore(new AgentPaths(_root));
+        var production = new AgentConfig(new Uri(Panel), Guid.NewGuid(), Guid.NewGuid(), new NodeKeyReference("PulsarAgent-production", NodeKeyScope.Machine,
+            NodeKeyStorage.Software), [PanelKey], null, DateTimeOffset.UtcNow, Development: false);
+        configs.Save(production);
+        var panel = new FakePanel(this, busyAnswers: 0, retryAfter: null);
+
+        var refused = await Assert.ThrowsAsync<AgentException>(() => RunAsync(Enrollment(panel).EnrollAsync(Request(), TestContext.Current.CancellationToken)));
+
+        Assert.Contains("--data-dir", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(0, panel.Enrollments);
+        Assert.Empty(_keys.Names);
+        Assert.Empty(_folders.ServersRoots);
+        Assert.Equal(production.NodeId, configs.Load()!.NodeId);
+
+        // A production enrollment may replace another one (re-enrollment), and a development one a development one.
+        var enrolled = await RunAsync(Enrollment(panel).EnrollAsync(Request() with { Development = false }, TestContext.Current.CancellationToken));
+        Assert.False(enrolled.Development);
+        configs.Save(enrolled with { Development = true });
+        Assert.True((await RunAsync(Enrollment(panel).EnrollAsync(Request(), TestContext.Current.CancellationToken))).Development);
+    }
+
+    [Fact]
+    public async Task AnUnreadablePreviousConfigurationIsReplacedWithAWarning()
+    {
+        var paths = new AgentPaths(_root);
+        Directory.CreateDirectory(paths.ConfigDirectory);
+        await File.WriteAllTextAsync(paths.ConfigFile, "{ not json", TestContext.Current.CancellationToken);
+        var enrollment = Enrollment(new FakePanel(this, busyAnswers: 0, retryAfter: null));
+        List<string> warnings = [];
+        enrollment.Warning = warnings.Add;
+
+        var config = await RunAsync(enrollment.EnrollAsync(Request(), TestContext.Current.CancellationToken));
+
+        Assert.Equal(config.NodeId, new AgentConfigStore(paths).Load()!.NodeId);
+        Assert.Contains(paths.ConfigFile, Assert.Single(warnings), StringComparison.Ordinal);
+    }
+
     private AgentEnrollment Enrollment(FakePanel panel) =>
-        new(new AgentConfigStore(new AgentPaths(_root)), _keys, new FixedSystem(), new PlainFolders(), panel, _clock);
+        new(new AgentConfigStore(new AgentPaths(_root)), _keys, new FixedSystem(), _folders, panel, _clock);
 
     private EnrollmentRequest Request() => new(Panel, "pulsar_enroll_token", PanelKey.KeyId, null, Development: true);
 
@@ -178,8 +244,23 @@ public sealed class AgentEnrollmentTests : IDisposable
 
     private sealed class PlainFolders : IAgentDirectorySecurity
     {
+        public List<string> ServersRoots { get; } = [];
+
         public void SecureState(string directory, IReadOnlyCollection<string> ownFolders, bool development) => Directory.CreateDirectory(directory);
 
         public void SecureFolder(string directory, bool development) => Directory.CreateDirectory(directory);
+
+        public bool Refuse { get; set; }
+
+        public void SecureServersRoot(string directory, bool development)
+        {
+            if (Refuse)
+            {
+                throw new AgentException($"{directory} is a junction or link.");
+            }
+
+            ServersRoots.Add(directory);
+            Directory.CreateDirectory(directory);
+        }
     }
 }

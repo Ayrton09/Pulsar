@@ -156,6 +156,32 @@ public sealed class SteamCmdRunnerTests : IDisposable
         Assert.DoesNotContain("pw", Job().ToString(), StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("x +quit")]
+    [InlineData("+quit")]
+    [InlineData("-beta")]
+    [InlineData("a\"b")]
+    [InlineData("tab\there")]
+    [InlineData("12345678901234567890123456789012345678901234567890123456789012345")]
+    public async Task ABetaPasswordSteamCmdWouldNotReceiveWholeFailsTheInstall(string password)
+    {
+        // SteamCMD splits its command line on spaces and reads "+..." as one of its commands.
+        _processes.OnStarted = (process, _) =>
+        {
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        var failed = await Assert.ThrowsAsync<GameProcessException>(() =>
+            runner.RunAsync(Job() with { Beta = "public_beta", BetaPassword = password }, Report, TestContext.Current.CancellationToken));
+
+        Assert.Equal("steamcmd.beta_password_invalid", failed.Code);
+        Assert.DoesNotContain(password, failed.Message, StringComparison.Ordinal);
+        Assert.Empty(_processes.Specs);
+        Assert.Throws<GameProcessException>(() => SteamCmdRunner.Arguments(Job() with { Beta = "public_beta", BetaPassword = password }));
+    }
+
     [Fact]
     public async Task ASelfUpdateRunsSteamCmdAgainWithoutCountingAsAFailure()
     {

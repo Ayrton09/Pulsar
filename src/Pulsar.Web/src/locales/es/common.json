@@ -655,6 +655,7 @@
     },
     "steamcmd": {
       "account_required": "Solo una cuenta de Steam que tenga el servidor dedicado de este juego puede descargarlo: elegí una en la configuración del servidor.",
+      "beta_password_invalid": "La contraseña de la rama beta tiene hasta 64 caracteres, sin espacios ni comillas dobles, y no empieza con + ni -: cambiala en la configuración del servidor.",
       "guard_required": "Steam pidió un código de Steam Guard: ingresalo para seguir.",
       "login_failed": "Steam rechazó el inicio de sesión de la cuenta: revisá su nombre de usuario y su contraseña.",
       "rate_limited": "Steam rechaza inicios de sesión por un tiempo después de demasiados intentos. Probá de nuevo más tarde.",
