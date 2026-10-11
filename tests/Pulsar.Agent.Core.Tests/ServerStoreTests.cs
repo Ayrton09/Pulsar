@@ -129,6 +129,37 @@ public sealed class ServerStoreTests : IDisposable
     }
 
     [Fact]
+    public void TemporaryFilesAWriteLeftBehindAreDeletedWhenTheStateIsLoaded()
+    {
+        // The agent stopped between creating a record's temporary file and moving it over the record. One being written
+        // right now (a few seconds old) is left alone.
+        var paths = new AgentPaths(_root);
+        var store = new ServerStore(paths, new PlainStateProtector());
+        string[] directories = [paths.ServersStateDirectory, paths.HostsStateDirectory, paths.PausedSavesDirectory, paths.OutboxDirectory];
+        var orphans = new List<string>();
+        var fresh = new List<string>();
+        foreach (var directory in directories)
+        {
+            Directory.CreateDirectory(directory);
+            var orphan = Path.Combine(directory, $"{Guid.NewGuid():N}.{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(orphan, "{");
+            File.SetLastWriteTimeUtc(orphan, DateTime.UtcNow.AddHours(-1));
+            orphans.Add(orphan);
+            var writing = Path.Combine(directory, $"{Guid.NewGuid():N}.{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(writing, "{");
+            fresh.Add(writing);
+        }
+
+        Assert.Empty(store.LoadAll());
+        Assert.Empty(store.LoadHosts());
+        Assert.Empty(store.LoadPausedSaves());
+        Assert.Empty(store.PendingResults());
+
+        Assert.All(orphans, orphan => Assert.False(File.Exists(orphan), orphan));
+        Assert.All(fresh, writing => Assert.True(File.Exists(writing), writing));
+    }
+
+    [Fact]
     public async Task OneRecordWrittenFromTwoPlacesAtOnceIsNeverLeftHalfWritten()
     {
         var store = new ServerStore(new AgentPaths(_root), new PlainStateProtector());

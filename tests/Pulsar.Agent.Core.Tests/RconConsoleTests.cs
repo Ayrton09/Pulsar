@@ -488,6 +488,29 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         Assert.Equal("config.invalid", failed.Detail);
         Assert.Equal(latin, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
         Assert.Empty(_processes.Started);
+        Assert.Contains("cstrike/cfg/server.cfg is not UTF-8 text, so Pulsar does not change it: save it as UTF-8.", Text(supervisor), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AFileAnAddonEditsThatIsNotUtf8IsLeftAsItIsAndFailsTheStart()
+    {
+        // A gameinfo.gi saved in Windows-1252: Metamod's line must not cost the user's other characters.
+        var path = Path.Combine(_root, "game", "csgo", "gameinfo.gi");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var latin = Encoding.Latin1.GetBytes("// mi café\nGame_LowViolence csgo_lv\n");
+        await File.WriteAllBytesAsync(path, latin, TestContext.Current.CancellationToken);
+        var supervisor = Supervisor(new RconReadiness(60), change: plan => plan with
+        {
+            LineEdits = [new LineEdit("game/csgo/gameinfo.gi", "Game_LowViolence csgo_lv", "Game\tcsgo/addons/metamod")],
+        });
+
+        await supervisor.StartAsync();
+
+        var failed = await _events.WaitForAsync(RuntimeState.Crashed, StateChangeReason.StartFailed);
+        Assert.Equal("config.invalid", failed.Detail);
+        Assert.Equal(latin, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+        Assert.Empty(_processes.Started);
+        Assert.Contains("game/csgo/gameinfo.gi is not UTF-8 text, so Pulsar does not change it: save it as UTF-8.", Text(supervisor), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -645,7 +668,7 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
     private static Task EventuallyAsync(Func<bool> condition) => LogTailTests.Eventually(condition, () => "condition not met");
 
     private ServerSupervisor Supervisor(ReadinessDefinition readiness, bool logsCommands = false, ManifestConsoleMode mode = ManifestConsoleMode.LogfileRcon,
-        TimeSpan? loggedAnswerWait = null)
+        TimeSpan? loggedAnswerWait = null, Func<LaunchPlan, LaunchPlan>? change = null)
     {
         var plan = new LaunchPlan("srcds.exe", "", ["-game", "cstrike"], new Dictionary<string, string>(),
             new ConsoleDefinition(mode, LogFile: mode == ManifestConsoleMode.LogfileRcon ? "cstrike/console.log" : null,
@@ -656,7 +679,8 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
                 [new ConfigEntry("hostname", "Pulsar", Secret: false)])],
             Rcon = new RconEndpoint(RconProtocol.Source, "127.0.0.1", 27015, Rcon),
         };
-        var definition = new ServerDefinition(Guid.NewGuid(), "abcd1234", _root, ProcessIdentity.CurrentUser, plan, AutoStart: false, RestartOnCrash: true);
+        var definition = new ServerDefinition(Guid.NewGuid(), "abcd1234", _root, ProcessIdentity.CurrentUser, change?.Invoke(plan) ?? plan, AutoStart: false,
+            RestartOnCrash: true);
         _supervisor = new ServerSupervisor(definition, _processes, _events, _clock,
             new SupervisorOptions { LogPollInterval = TimeSpan.FromMilliseconds(20), LoggedAnswerWait = loggedAnswerWait ?? s_loggedAnswerWait }, NullLogger.Instance, new DirectServerFiles(), _rcon);
         return _supervisor;

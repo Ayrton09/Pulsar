@@ -16,6 +16,12 @@ public sealed class GameHostOptions
     /// <summary>How long children may outlive the game's main process while no agent is connected to decide.</summary>
     public TimeSpan TreeGrace { get; set; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// How long console input (or Ctrl+C) may take from when the host received it, its wait behind other input included:
+    /// the agent's own wait for it (<c>SupervisorOptions.InputTimeout</c>). Then it is given up, never written later.
+    /// </summary>
+    public TimeSpan InputTimeout { get; set; } = TimeSpan.FromSeconds(5);
+
     /// <summary>The protocol this host speaks (tests play a host of another version of the agent).</summary>
     internal int Protocol { get; set; } = GameHostProtocol.Version;
 }
@@ -292,10 +298,14 @@ public sealed partial class GameHostService(
         private static readonly TimeSpan s_releaseGameWait = TimeSpan.FromSeconds(5);
         private static readonly TimeSpan s_releaseOutputWait = TimeSpan.FromSeconds(2);
 
+        // Console input waiting in the host, the one being written included (the agent itself keeps as many waiting).
+        private const int MaxQueuedInputs = 16;
+
         private readonly SemaphoreSlim _writeLock = new(1, 1);
         private readonly CancellationTokenSource _closed = CancellationTokenSource.CreateLinkedTokenSource(stopping);
         private Task _forwarding = Task.CompletedTask;
         private Task _inputs = Task.CompletedTask; // console input being written, one request after the other
+        private int _queuedInputs;
         private bool _greeted;
 
         public async Task RunAsync()
@@ -319,8 +329,21 @@ public sealed partial class GameHostService(
                     if (request is HostInput or HostInterrupt)
                     {
                         // Answered when written: a game that stopped reading its input keeps the write waiting, and the
-                        // requests after it (a kill, a release) must still be read. In order, one at a time.
-                        _inputs = AnswerInputAsync(request, _inputs);
+                        // requests after it (a kill, a release) must still be read. In order, one at a time, each within
+                        // its time from now; too many waiting are refused at once.
+                        if (Interlocked.Increment(ref _queuedInputs) > MaxQueuedInputs)
+                        {
+                            Interlocked.Decrement(ref _queuedInputs);
+                            if (!await SendAsync(new HostReply(request.Id, GameHostErrors.InputBusy,
+                                "Console input is piling up behind a command the game does not take.")).ConfigureAwait(false))
+                            {
+                                return;
+                            }
+
+                            continue;
+                        }
+
+                        _inputs = AnswerInputAsync(request, host.Clock.GetUtcNow() + host.InputTimeout, _inputs);
                         continue;
                     }
 
@@ -352,25 +375,45 @@ public sealed partial class GameHostService(
             }
         }
 
-        private async Task AnswerInputAsync(HostRequest request, Task previous)
+        /// <summary>
+        /// Writes one input after the one before it, by <paramref name="deadline"/>: the agent gave up on it then (the user
+        /// was told the game did not take it), so one whose time ran out before its turn is not written at all.
+        /// </summary>
+        private async Task AnswerInputAsync(HostRequest request, DateTimeOffset deadline, Task previous)
         {
             await previous.ConfigureAwait(false);
             try
             {
-                await SendAsync(await HandleAsync(request).ConfigureAwait(false)).ConfigureAwait(false);
+                var left = deadline - host.Clock.GetUtcNow();
+                if (left <= TimeSpan.Zero)
+                {
+                    await SendAsync(Expired(request)).ConfigureAwait(false);
+                    return;
+                }
+
+                using var limit = new CancellationTokenSource(left, host.Clock);
+                await SendAsync(await HandleAsync(request, limit.Token).ConfigureAwait(false)).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
                 // The connection is going away: the write was given up.
             }
+            finally
+            {
+                Interlocked.Decrement(ref _queuedInputs);
+            }
         }
 
+        private static HostReply Expired(HostRequest request) =>
+            new(request.Id, GameHostErrors.InputExpired, "The game did not take its console input in time.");
+
         /// <summary>The answer to a request; a request that fails in any way is answered as failed, never left to end the host.</summary>
-        private async Task<HostReply> HandleAsync(HostRequest request)
+        /// <param name="inputDeadline">Ends the wait for an input or Ctrl+C to be written.</param>
+        private async Task<HostReply> HandleAsync(HostRequest request, CancellationToken inputDeadline = default)
         {
             try
             {
-                return await HandleCoreAsync(request).ConfigureAwait(false);
+                return await HandleCoreAsync(request, inputDeadline).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (_closed.IsCancellationRequested)
             {
@@ -383,7 +426,7 @@ public sealed partial class GameHostService(
             }
         }
 
-        private async Task<HostReply> HandleCoreAsync(HostRequest request)
+        private async Task<HostReply> HandleCoreAsync(HostRequest request, CancellationToken inputDeadline)
         {
             if (request is HostHello hello)
             {
@@ -434,15 +477,16 @@ public sealed partial class GameHostService(
                 return new HostReply(request.Id, "host.not_started", "No game was started.");
             }
 
+            using var writing = CancellationTokenSource.CreateLinkedTokenSource(_closed.Token, inputDeadline);
             try
             {
                 switch (request)
                 {
                     case HostInput input:
-                        await game.WriteInputAsync(input.Text, _closed.Token).ConfigureAwait(false);
+                        await game.WriteInputAsync(input.Text, writing.Token).ConfigureAwait(false);
                         return new HostReply(request.Id);
                     case HostInterrupt:
-                        await game.SendInterruptAsync(_closed.Token).ConfigureAwait(false);
+                        await game.SendInterruptAsync(writing.Token).ConfigureAwait(false);
                         return new HostReply(request.Id);
                     case HostTerminate terminate:
                         game.TerminateTree(terminate.ExitCode);
@@ -459,6 +503,10 @@ public sealed partial class GameHostService(
             catch (GameProcessException ex)
             {
                 return new HostReply(request.Id, ex.Code, ex.Message);
+            }
+            catch (OperationCanceledException) when (inputDeadline.IsCancellationRequested && !_closed.IsCancellationRequested)
+            {
+                return Expired(request);
             }
             catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or System.ComponentModel.Win32Exception)
             {
@@ -572,6 +620,8 @@ public sealed partial class GameHostService(
     private TimeProvider Clock => clock;
 
     private int Protocol => options.Protocol;
+
+    private TimeSpan InputTimeout => options.InputTimeout;
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Host of server {ServerId} listening on pipe {Pipe}")]
     private partial void LogListening(Guid serverId, string pipe);

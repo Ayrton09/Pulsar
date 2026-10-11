@@ -237,8 +237,9 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
     }
 
     /// <summary>
-    /// Asks the host to kill the game's tree. A host that does not answer in time (or refuses) is killed itself: its Job
-    /// closes and the game dies with it, and the connection's end reports the exit. Never fails: a kill must kill.
+    /// Asks the host to kill the game's tree. A host that does not answer within <see cref="GameHostManager.TerminateTimeout"/>
+    /// (or refuses) is killed itself: its Job closes and the game dies with it, and the connection's end reports the exit.
+    /// Never fails: a kill must kill.
     /// </summary>
     public async ValueTask TerminateTreeAsync(int exitCode, CancellationToken cancellationToken)
     {
@@ -249,7 +250,7 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
 
         try
         {
-            await RequestWithinAsync(id => new HostTerminate(id, exitCode), cancellationToken).ConfigureAwait(false);
+            await RequestWithinAsync(id => new HostTerminate(id, exitCode), cancellationToken, _manager.TerminateTimeout).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is GameProcessException or TimeoutException)
         {
@@ -372,12 +373,12 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
         }
     }
 
-    /// <summary>A request whose answer is awaited at most <see cref="GameHostManager.RequestTimeout"/>.</summary>
+    /// <summary>A request whose answer is awaited at most <paramref name="timeout"/> (<see cref="GameHostManager.RequestTimeout"/> by default).</summary>
     /// <exception cref="TimeoutException">No answer in time.</exception>
-    private async Task<HostReply> RequestWithinAsync(Func<int, HostRequest> create, CancellationToken cancellationToken)
+    private async Task<HostReply> RequestWithinAsync(Func<int, HostRequest> create, CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        limit.CancelAfter(_manager.RequestTimeout);
+        limit.CancelAfter(timeout ?? _manager.RequestTimeout);
         try
         {
             return await RequestAsync(create, limit.Token).ConfigureAwait(false);

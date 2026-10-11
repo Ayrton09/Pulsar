@@ -204,7 +204,9 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     /// backup does not have are deleted first. The archive must still hash to <paramref name="sha256"/>, and every entry
     /// must be a plain path inside the server directory outside Pulsar's own files: anything else refuses the whole
     /// archive before a file is deleted or written. A file the clean part cannot delete (held open, say) is left and
-    /// the backup's files are still written; the restore then fails, saying so.
+    /// the backup's files are still written; the restore then fails, saying so. So does one whose first folder is named
+    /// like an 8.3 short name that leads to another folder of the server (<c>PULSAR~1</c>, <c>.pulsar</c>'s): what the
+    /// backup has there is left out, the rest is written.
     /// </summary>
     public async Task RestoreAsync(BackupLocation location, ProvisionedServer server, string sha256, CleanRestore? clean, BackupProgress progress,
         CancellationToken cancellationToken)
@@ -224,6 +226,14 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         {
             await using var archive = await ZipArchive.CreateAsync(input, ZipArchiveMode.Read, leaveOpen: true, entryNameEncoding: null, cancellationToken);
             var entries = Check(archive);
+            var elsewhere = ShortNamesElsewhere(server, entries.Select(e => e.Path));
+            var leftOut = entries.Where(e => !e.Directory && elsewhere.Contains(FirstSegment(e.Path))).Select(e => e.Path).ToList();
+            entries.RemoveAll(e => elsewhere.Contains(FirstSegment(e.Path)));
+            foreach (var folder in leftOut.GroupBy(FirstSegment, StringComparer.OrdinalIgnoreCase))
+            {
+                LogNotRestored(location.ShortId, location.BackupId, folder.Count(), folder.Key);
+            }
+
             var undeleted = new List<(string Path, FileManagerException Error)>();
             if (clean is not null)
             {
@@ -283,6 +293,13 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
             {
                 throw new BackupException(error.Code,
                     $"The backup's files were restored, but {undeleted.Count} newer files could not be deleted (first: {first}: {error.Message}).", error);
+            }
+
+            if (leftOut is [var notRestored, ..])
+            {
+                throw new BackupException(FileErrors.Exists,
+                    $"The backup's files were restored, except {leftOut.Count} under '{FirstSegment(notRestored)}': in this server's folder that name is the "
+                    + "short name of another folder (Pulsar's own .pulsar, say).");
             }
         }
         catch (InvalidDataException ex)
@@ -438,8 +455,9 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         var matcher = new Matcher(StringComparison.OrdinalIgnoreCase);
         matcher.AddIncludePatterns(rules?.Include is { Count: > 0 } include ? include : ["**/*"]);
         matcher.AddExcludePatterns([.. rules?.Exclude ?? [], .. s_alwaysExcluded]);
-        // A first folder named like a short name is left out too: a restore refuses it (see Check).
-        var candidates = tree.Where(e => e.Kind == FileEntryKind.File && !FileCommands.IsPulsarFolder(e.Path)).ToList();
+        // A walk names every entry by its long name: a first folder named like a short name (DATA~1) is a folder of that
+        // name, never .pulsar's, and is backed up like any other.
+        var candidates = tree.Where(e => e.Kind == FileEntryKind.File).ToList();
         var root = Path.GetFullPath(Path.DirectorySeparatorChar.ToString());
         var matched = matcher.Match(root, candidates.Select(e => e.Path)).Files.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
         return [.. candidates.Where(e => matched.Contains(e.Path)).OrderBy(e => e.Path, StringComparer.Ordinal)];
@@ -551,8 +569,9 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
                 throw Corrupt(name, error);
             }
 
-            // By any case, or by a first segment shaped like its 8.3 short name (PULSAR~1), as the file manager refuses it.
-            if (FileCommands.IsPulsarFolder(path))
+            // By any case. A first segment shaped like its 8.3 short name (PULSAR~1) is checked against the server's folder
+            // before anything is written (see ShortNamesElsewhere).
+            if (FirstSegment(path).Equals(PulsarDirectory, StringComparison.OrdinalIgnoreCase))
             {
                 throw Corrupt(name, "Pulsar's own files are never restored");
             }
@@ -567,6 +586,43 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
         return entries;
     }
+
+    private static string FirstSegment(string path) => path.Split('/')[0];
+
+    /// <summary>
+    /// The archive's first folders named like 8.3 short names (<c>DATA~1</c>) that lead to another folder of the server:
+    /// on a volume that keeps short names, <c>PULSAR~1</c> is <c>.pulsar</c> itself. A backup names its folders by their
+    /// long names, so such a folder is restored only as a folder of that very name, one the server has or the restore
+    /// creates now; the file manager refuses to create one whose name already leads elsewhere.
+    /// </summary>
+    private HashSet<string> ShortNamesElsewhere(ProvisionedServer server, IEnumerable<string> paths)
+    {
+        var elsewhere = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var shortNamed = paths.Select(FirstSegment).Where(FileCommands.IsShortName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (shortNamed.Count == 0)
+        {
+            return elsewhere;
+        }
+
+        var named = files.List(server, ServerFilePath.Root).Entries.Select(e => e.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in shortNamed.Where(n => !named.Contains(n)))
+        {
+            try
+            {
+                files.CreateDirectory(server, name);
+            }
+            catch (FileManagerException ex) when (ex.Code == FileErrors.Exists)
+            {
+                elsewhere.Add(name);
+            }
+        }
+
+        return elsewhere;
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Backup {BackupId} of server {ShortId}: {Count} files under {Folder} not restored, since that name leads to another folder of the server")]
+    private partial void LogNotRestored(string shortId, Guid backupId, int count, string folder);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Backup {BackupId} of server {ShortId} copied to remote storage (bucket {Bucket})")]
     private partial void LogUploaded(string shortId, Guid backupId, string bucket);
