@@ -29,6 +29,7 @@ public sealed class MinecraftInstaller(IServerFiles files, HttpMessageHandler ha
 
     private const long MaximumExtracted = 2L * 1024 * 1024 * 1024;
     private const int MaximumEntries = 20_000;
+    private const int MaximumMarkerSize = 1024 * 1024; // a runtime lists about 300 files of a few dozen characters
 
     // GitHub serves Adoptium's binaries: github.com redirects to its asset hosts.
     private static readonly HashSet<string> s_hosts = new(StringComparer.OrdinalIgnoreCase)
@@ -169,7 +170,8 @@ public sealed class MinecraftInstaller(IServerFiles files, HttpMessageHandler ha
     private (string Release, IReadOnlyList<string> Files)? ReadMarker(string serverDirectory)
     {
         using var stream = files.OpenRead(serverDirectory, JavaMarker);
-        if (stream is null)
+        // The server's account can write it: one larger than a runtime's list of files is not read, and counts as none.
+        if (stream is null || stream.Length > MaximumMarkerSize)
         {
             return null;
         }

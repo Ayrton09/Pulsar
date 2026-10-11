@@ -11,14 +11,28 @@ public sealed partial class ConsoleLines
 {
     private const int MaxLineLength = 16 * 1024;
 
+    // How far back a move to the start of a row may have begun in earlier chunks (ESC [ row ; 1 H is a few characters).
+    private const int MaxMoveLength = 32;
+
     private readonly StringBuilder _pending = new();
 
     /// <summary>The complete lines in <paramref name="text"/> (with what earlier chunks left unfinished).</summary>
     public IReadOnlyList<string> Add(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
+        var searched = _pending.Length; // what is pending ends no line: earlier chunks were split already
         _pending.Append(text);
         var lines = new List<string>();
+
+        // Most chunks end no line (a game writing a character at a time): only what they add is searched, with the end of
+        // a move that may have begun before, instead of copying and searching everything pending each time.
+        var from = Math.Max(0, searched - MaxMoveLength);
+        var added = _pending.ToString(from, _pending.Length - from);
+        if (!added.Contains('\n', StringComparison.Ordinal) && !RowStart().IsMatch(added))
+        {
+            return Overflow(lines);
+        }
+
         // One pass over the text: each search starts where the last line ended, and the next move found is kept until
         // the lines before it are taken (the pattern has no anchors, so a later start cannot find an earlier match).
         var pending = _pending.ToString();
@@ -56,8 +70,12 @@ public sealed partial class ConsoleLines
         }
 
         _pending.Remove(0, start);
+        return Overflow(lines);
+    }
 
-        // A process that never ends its line still cannot grow this without bound.
+    /// <summary>A process that never ends its line still cannot grow what is pending without bound.</summary>
+    private List<string> Overflow(List<string> lines)
+    {
         if (_pending.Length > MaxLineLength)
         {
             lines.Add(Clean(_pending.ToString()));

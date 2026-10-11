@@ -81,6 +81,25 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AWantedStateThatCannotBeSavedDoesNotFailTheCommandAndIsSavedLater()
+    {
+        var serverId = Stored("abcd2345");
+        var host = Host(hosted: true, new ServerHostOptions { ConsoleLog = null, MetricsInterval = TimeSpan.FromMilliseconds(50) });
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var record = Path.Combine(_configs.Paths.ServersStateDirectory, $"{serverId:N}.json");
+
+        // A scanner holding the record keeps it from being replaced (a full disk does the same).
+        using (new FileStream(record, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null))).Status);
+            await StartedAsync();
+            Assert.False(_store.Load(serverId)!.DesiredRunning);
+        }
+
+        await WaitUntilAsync(() => _store.Load(serverId)?.DesiredRunning == true);
+    }
+
+    [Fact]
     public async Task ASteamLoginLeftInAServersFolderIsDeletedWhenTheAgentStarts()
     {
         // The agent stopped while SteamCMD had it: the game must not find it at its next start.

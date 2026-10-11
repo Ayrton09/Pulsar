@@ -46,7 +46,8 @@ public sealed class RconException : Exception
 /// The Source RCON protocol (developer.valvesoftware.com/wiki/Source_RCON_Protocol) as srcds and CS2 speak it (spike
 /// 0001): little-endian packets <c>size, id, type, body\0, \0</c>. Authentication is answered with one or two packets
 /// (srcds sends an empty response first, CS2 does not); a command's answer is one or more response packets, read until
-/// the connection has been idle for a moment (CS2 garbles the usual empty "end marker" request).
+/// the connection has been idle for a moment (CS2 garbles the usual empty "end marker" request). An answer that never
+/// pauses is cut at twice <see cref="AnswerTimeout"/> or 1 MiB, and its session closed (what is still coming belongs to it).
 /// </summary>
 public sealed class SourceRconConnector : IRconConnector
 {
@@ -98,10 +99,12 @@ internal sealed class SourceRconSession(TcpClient client, TimeSpan answerTimeout
     private const int AuthResponse = 2;
     private const int ExecCommand = 2;
     private const int MaxPacketSize = 64 * 1024;
+    private const int MaxAnswerLength = 1024 * 1024;
 
     private readonly NetworkStream _stream = client.GetStream();
     private readonly SemaphoreSlim _lock = new(1, 1);
     private int _nextId = 1;
+    private bool _closed; // an answer was cut: the rest of it would be read as the next one's
 
     public async Task AuthenticateAsync(string password, CancellationToken cancellationToken)
     {
@@ -110,7 +113,7 @@ internal sealed class SourceRconSession(TcpClient client, TimeSpan answerTimeout
         using var timeout = Timeout(answerTimeout, cancellationToken);
         while (true)
         {
-            var packet = await ReceiveAsync(timeout.Token, cancellationToken);
+            var packet = await ReceiveAsync(timeout.Token, timeout.Token, cancellationToken);
             if (packet.Type != AuthResponse)
             {
                 continue; // srcds' empty response before the real answer
@@ -136,25 +139,42 @@ internal sealed class SourceRconSession(TcpClient client, TimeSpan answerTimeout
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            await SendAsync(_nextId++, ExecCommand, command, cancellationToken);
-            var answer = new StringBuilder();
-            using (var first = Timeout(answerTimeout, cancellationToken))
+            if (_closed)
             {
-                answer.Append((await ReceiveAsync(first.Token, cancellationToken)).Body);
+                throw new RconException("The RCON connection was closed.") { ConnectionLost = true };
             }
 
-            while (true)
+            await SendAsync(_nextId++, ExecCommand, command, cancellationToken);
+            // The whole answer gets twice the time its first packet may take, and 1 MiB.
+            using var deadline = Timeout(answerTimeout * 2, cancellationToken);
+            var answer = new StringBuilder();
+            using (var first = Timeout(answerTimeout, deadline.Token))
             {
-                using var idle = Timeout(answerIdle, cancellationToken);
+                answer.Append((await ReceiveAsync(first.Token, first.Token, cancellationToken)).Body);
+            }
+
+            while (answer.Length < MaxAnswerLength)
+            {
+                // The idle wait ends the answer only between packets: once a packet started, the rest of it is awaited.
+                using var idle = Timeout(answerIdle, deadline.Token);
                 try
                 {
-                    answer.Append((await ReceiveAsync(idle.Token, cancellationToken, idleEndsAnswer: true)).Body);
+                    answer.Append((await ReceiveAsync(idle.Token, deadline.Token, cancellationToken, idleEndsAnswer: true)).Body);
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
-                    return answer.ToString();
+                    if (!deadline.IsCancellationRequested)
+                    {
+                        return answer.ToString(); // idle: the answer is complete
+                    }
+
+                    break;
                 }
             }
+
+            // A game that keeps answering (a plugin flooding its output): what came so far, and a session no one reads from.
+            await CloseAsync();
+            return answer.Length > MaxAnswerLength ? answer.ToString(0, MaxAnswerLength) : answer.ToString();
         }
         finally
         {
@@ -164,9 +184,15 @@ internal sealed class SourceRconSession(TcpClient client, TimeSpan answerTimeout
 
     public async ValueTask DisposeAsync()
     {
+        await CloseAsync();
+        _lock.Dispose();
+    }
+
+    private async Task CloseAsync()
+    {
+        _closed = true;
         await _stream.DisposeAsync();
         client.Dispose();
-        _lock.Dispose();
     }
 
     private static CancellationTokenSource Timeout(TimeSpan after, CancellationToken cancellationToken)
@@ -194,12 +220,15 @@ internal sealed class SourceRconSession(TcpClient client, TimeSpan answerTimeout
         }
     }
 
-    private async Task<(int Id, int Type, string Body)> ReceiveAsync(CancellationToken timeout, CancellationToken cancellationToken, bool idleEndsAnswer = false)
+    /// <summary>One packet: <paramref name="start"/> limits the wait for its first byte, <paramref name="rest"/> the rest of it.</summary>
+    private async Task<(int Id, int Type, string Body)> ReceiveAsync(CancellationToken start, CancellationToken rest, CancellationToken cancellationToken,
+        bool idleEndsAnswer = false)
     {
         try
         {
             var header = new byte[4];
-            await _stream.ReadExactlyAsync(header, timeout);
+            await _stream.ReadExactlyAsync(header.AsMemory(0, 1), start);
+            await _stream.ReadExactlyAsync(header.AsMemory(1), rest);
             var size = BinaryPrimitives.ReadInt32LittleEndian(header);
             if (size is < 10 or > MaxPacketSize)
             {
@@ -207,7 +236,7 @@ internal sealed class SourceRconSession(TcpClient client, TimeSpan answerTimeout
             }
 
             var packet = new byte[size];
-            await _stream.ReadExactlyAsync(packet, timeout);
+            await _stream.ReadExactlyAsync(packet, rest);
             var id = BinaryPrimitives.ReadInt32LittleEndian(packet);
             var type = BinaryPrimitives.ReadInt32LittleEndian(packet.AsSpan(4));
             var body = packet.AsSpan(8, size - 10);

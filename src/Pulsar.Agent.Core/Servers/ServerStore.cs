@@ -34,7 +34,8 @@ public sealed record PausedSave(Guid ServerId, IReadOnlyList<string> Resume);
 /// password), so they are stored encrypted (<see cref="IStateProtector"/>, DPAPI on Windows) inside a small envelope
 /// that names the protection; a record written before that (plain JSON) is still read. A file that cannot be read
 /// (corrupt, or protected on another machine) is set aside as <c>*.json.unreadable</c> and logged: it must not keep the
-/// other servers from loading, nor the agent from connecting.
+/// other servers from loading, nor the agent from connecting. One that cannot be opened (another program holds it) is
+/// skipped and logged, and stays for the next time.
 /// </summary>
 public sealed partial class ServerStore(AgentPaths paths, IStateProtector protector, ILogger<ServerStore>? logger = null)
 {
@@ -153,6 +154,12 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
             // Deleted between the listing and the read (a result delivered, a host forgotten): there is nothing to load.
             return null;
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Held by another program (a scanner) past the retries: skipped this time, not set aside, since it may be fine.
+            LogNotRead(Path.GetFileName(file), ex.Message);
+            return null;
+        }
         catch (Exception ex) when (ex is JsonException or InvalidDataException or CryptographicException or NotSupportedException)
         {
             LogUnreadable(Path.GetFileName(file), ex.Message);
@@ -229,17 +236,33 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
         }
     }
 
+    /// <summary>
+    /// Written to a file of its own (two writers of one record never share it), on the disk before it replaces the
+    /// record: a power loss right after the replacement must not leave an empty record.
+    /// </summary>
     private static void Write<T>(string directory, Guid id, T value)
     {
         Directory.CreateDirectory(directory);
         var file = Path.Combine(directory, $"{id:N}.json");
-        var temporary = file + ".tmp";
-        File.WriteAllBytes(temporary, JsonSerializer.SerializeToUtf8Bytes(value, s_options));
-        Transient(() =>
+        var temporary = Path.Combine(directory, $"{id:N}.{Guid.NewGuid():N}.tmp");
+        try
         {
-            File.Move(temporary, file, overwrite: true);
-            return true;
-        });
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+            {
+                stream.Write(JsonSerializer.SerializeToUtf8Bytes(value, s_options));
+                stream.Flush(flushToDisk: true);
+            }
+
+            Transient(() =>
+            {
+                File.Move(temporary, file, overwrite: true);
+                return true;
+            });
+        }
+        finally
+        {
+            File.Delete(temporary); // nothing left when it was moved
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "State file {File} cannot be read and is set aside (.unreadable): {Reason}")]
@@ -251,4 +274,7 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
 
     [LoggerMessage(Level = LogLevel.Error, Message = "State file {File} could not be set aside: {Reason}")]
     private partial void LogNotSetAside(string file, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "State file {File} cannot be opened now (skipped this time): {Reason}")]
+    private partial void LogNotRead(string file, string reason);
 }

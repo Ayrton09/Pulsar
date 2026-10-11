@@ -28,7 +28,7 @@ public static class GameSave
         server.Console.Note("Asking the game to save before a backup", clock.GetUtcNow());
         foreach (var command in save.Commands)
         {
-            if (await server.SendInputAsync(command) != AckStatus.Accepted)
+            if (await server.SendInputAsync(command, cancellationToken) != AckStatus.Accepted)
             {
                 return GameSaveOutcome.Unconfirmed; // it stopped meanwhile
             }

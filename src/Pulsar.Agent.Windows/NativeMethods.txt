@@ -51,6 +51,7 @@ CreateProcess
 CreateProcessAsUser
 ResumeThread
 GetExitCodeProcess
+CancelIoEx
 STARTUPINFOEXW
 PROCESS_INFORMATION
 CreateFile

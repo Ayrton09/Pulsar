@@ -99,6 +99,22 @@ public sealed class MinecraftInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task AnOversizedRuntimeRecordIsNotTrusted()
+    {
+        // The server's account can write java/pulsar-java.txt: the agent must not read a file of any size from it.
+        await InstallAsync("26.3");
+        var marker = Path.Combine(_root, "java", "pulsar-java.txt");
+        await File.WriteAllTextAsync(marker, "jdk-25.0.4.1+1\n" + new string('x', 2 * 1024 * 1024) + "\n", TestContext.Current.CancellationToken);
+        _http.Requested.Clear();
+
+        await InstallAsync("26.3");
+
+        Assert.Contains(Asset, _http.Requested); // installed again, as with no record
+        Assert.StartsWith("jdk-25.0.4.1+1\n", await File.ReadAllTextAsync(marker, TestContext.Current.CancellationToken), StringComparison.Ordinal);
+        Assert.True(new FileInfo(marker).Length < 1024);
+    }
+
+    [Fact]
     public async Task AnUnknownVersionIsReported()
     {
         var error = await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync("1.0-nope"));

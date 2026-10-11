@@ -223,7 +223,7 @@ public sealed class SupervisorConsoleTests : IAsyncDisposable
         var supervisor = Supervisor(ManifestConsoleMode.Pty);
         await RunningAsync(supervisor);
 
-        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("say hi"));
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("say hi", TestContext.Current.CancellationToken));
 
         Assert.Equal("say hi\r\n", _processes.Last.Input[^1]);
         Assert.DoesNotContain("> say hi", Text(supervisor), StringComparison.Ordinal);
@@ -235,7 +235,7 @@ public sealed class SupervisorConsoleTests : IAsyncDisposable
         var supervisor = Supervisor(ManifestConsoleMode.Pipes);
         await RunningAsync(supervisor);
 
-        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status"));
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status", TestContext.Current.CancellationToken));
 
         Assert.Equal("status\n", _processes.Last.Input[^1]);
         Assert.EndsWith("> status\n", Text(supervisor), StringComparison.Ordinal);
@@ -250,7 +250,7 @@ public sealed class SupervisorConsoleTests : IAsyncDisposable
         var supervisor = Supervisor(ManifestConsoleMode.Pty);
         await RunningAsync(supervisor);
 
-        Assert.Equal(AckStatus.Rejected, await supervisor.SendInputAsync(line));
+        Assert.Equal(AckStatus.Rejected, await supervisor.SendInputAsync(line, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -258,7 +258,7 @@ public sealed class SupervisorConsoleTests : IAsyncDisposable
     {
         var supervisor = Supervisor(ManifestConsoleMode.Pty);
 
-        Assert.Equal(AckStatus.Rejected, await supervisor.SendInputAsync("status"));
+        Assert.Equal(AckStatus.Rejected, await supervisor.SendInputAsync("status", TestContext.Current.CancellationToken));
     }
 
     [Fact]

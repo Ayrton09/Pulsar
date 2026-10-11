@@ -109,10 +109,14 @@ public interface IGameProcess : IAsyncDisposable
     /// <summary>Whether <see cref="SendInterruptAsync"/> is available (pseudo console only).</summary>
     bool SupportsInterrupt { get; }
 
-    /// <summary>Writes <paramref name="text"/> to the process input as is (the caller adds the newline).</summary>
+    /// <summary>
+    /// Writes <paramref name="text"/> to the process input as is (the caller adds the newline). A game that stopped
+    /// reading its input keeps the write waiting: cancelling gives up waiting (the text may still reach it later).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The process exited or no longer reads its input.</exception>
     ValueTask WriteInputAsync(string text, CancellationToken cancellationToken);
 
-    /// <summary>Sends Ctrl+C.</summary>
+    /// <summary>Sends Ctrl+C (waits as <see cref="WriteInputAsync"/> does).</summary>
     ValueTask SendInterruptAsync(CancellationToken cancellationToken);
 
     /// <summary>Processes still alive in the tree, the main one included.</summary>
@@ -127,6 +131,25 @@ public interface IGameProcess : IAsyncDisposable
     /// <summary>Replaces the tree's caps while it runs (null removes them).</summary>
     /// <exception cref="GameProcessException">The caps could not be applied.</exception>
     void ApplyLimits(ProcessLimits? limits);
+
+    // A local Job answers at once; a game in a host process answers over its pipe, and these never wait long for it.
+
+    /// <inheritdoc cref="SampleUsage"/>
+    ValueTask<ProcessUsage> SampleUsageAsync(CancellationToken cancellationToken) => ValueTask.FromResult(SampleUsage());
+
+    /// <inheritdoc cref="TerminateTree"/>
+    ValueTask TerminateTreeAsync(int exitCode, CancellationToken cancellationToken)
+    {
+        TerminateTree(exitCode);
+        return ValueTask.CompletedTask;
+    }
+
+    /// <inheritdoc cref="ApplyLimits"/>
+    ValueTask ApplyLimitsAsync(ProcessLimits? limits, CancellationToken cancellationToken)
+    {
+        ApplyLimits(limits);
+        return ValueTask.CompletedTask;
+    }
 
     /// <summary>Whether a process of the tree was refused memory because of the memory cap since it started.</summary>
     bool ReachedMemoryLimit { get; }

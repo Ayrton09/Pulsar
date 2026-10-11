@@ -104,6 +104,7 @@ public sealed partial class ServerHost(
     private readonly CancellationTokenSource _stopping = new();
     private readonly CancellationTokenSource _endingOperations = new(); // the agent stops: operations end first
     private readonly Lock _recordLock = new();
+    private readonly ConcurrentDictionary<Guid, Func<ServerRecord, ServerRecord>> _unsavedRecords = new(); // changes a failed write left
     private readonly Lock _hostLock = new();
     private readonly ConcurrentDictionary<Guid, GameHostRecord> _savedHosts = new(); // host records as last written
     private readonly ConcurrentDictionary<Guid, GameHostRecord> _strandedHosts = new(); // hosts of another protocol version, left running
@@ -354,6 +355,8 @@ public sealed partial class ServerHost(
             await servers[i].Supervisor.Console.DisposeAsync(); // the end of its history reaches the disk
         }
 
+        RetryUnsavedRecords();
+
         // The panel should see the servers stop. State changes are sent without waiting and the connection closes right
         // after this, so the last state of each server is delivered again, waiting until the panel has processed it (an
         // already received change carries the same sequence and changes nothing).
@@ -601,9 +604,12 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "console.invalid_input", $"A command is one line of up to {ConsoleInput.MaxLength} characters.");
         }
 
-        return await server.Supervisor.SendInputAsync(command.Line) == AckStatus.Accepted
-            ? new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null)
-            : Rejected(envelope, "server.not_running", "The server is not running.");
+        return await server.Supervisor.SendInputAsync(command.Line) switch
+        {
+            AckStatus.Accepted => new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null),
+            AckStatus.Busy => Rejected(envelope, "console.not_reading", "The game is not reading its console input (it may be frozen)."),
+            _ => Rejected(envelope, "server.not_running", "The server is not running."),
+        };
     }
 
     private CommandAck SubscribeConsole(CommandEnvelope envelope, SubscribeConsoleCommand command)
@@ -625,6 +631,7 @@ public sealed partial class ServerHost(
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
+                RetryUnsavedRecords();
                 var samples = await Task.WhenAll(_servers.Values.Select(s => SampleAsync(s.Supervisor)));
                 var running = samples.OfType<ServerMetrics>().ToList();
                 if (running.Count > 0)
@@ -798,9 +805,10 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "addon.unknown", "The server's game has no such addon.");
         }
 
+        const string stopFirst = "Stop the server before changing its addons.";
         if (server.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
         {
-            return Rejected(envelope, "server.running", "Stop the server before changing its addons.");
+            return Rejected(envelope, "server.running", stopFirst);
         }
 
         return RunOperation(envelope, serverId, operationId, exclusive: true, async cancellationToken =>
@@ -808,7 +816,7 @@ public sealed partial class ServerHost(
             var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
             TerminateStrays(serverId, provisioned.Identity);
             return await work(server, addon, provisioned.Directory, operationId, cancellationToken);
-        });
+        }, stopFirst);
     }
 
     /// <summary>Install or update: the manifest's steps, SteamCMD ones as the server's account, the others by the agent.</summary>
@@ -826,12 +834,13 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.unknown", "This node does not have that server.");
         }
 
+        const string stopFirst = "Stop the server before installing it.";
         if (server.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
         {
-            return Rejected(envelope, "server.running", "Stop the server before installing it.");
+            return Rejected(envelope, "server.running", stopFirst);
         }
 
-        return RunOperation(envelope, serverId, operationId, exclusive: true, async cancellationToken =>
+        return RunOperation(envelope, serverId, operationId, exclusive: true, stoppedMessage: stopFirst, work: async cancellationToken =>
         {
             var directory = await RunStepsAsync(server, operationId, steps(server), validate, login, cancellationToken);
             LogInstalled(serverId);
@@ -1069,13 +1078,14 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.unknown", "This node does not have that server.");
         }
 
+        const string stopFirst = "Stop the server before restoring a backup.";
         if (server.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
         {
-            return Rejected(envelope, "server.running", "Stop the server before restoring a backup.");
+            return Rejected(envelope, "server.running", stopFirst);
         }
 
         var location = Backup(server, command.BackupId);
-        return RunOperation(envelope, command.ServerId, operationId, async cancellationToken =>
+        return RunOperation(envelope, command.ServerId, operationId, stoppedMessage: stopFirst, work: async cancellationToken =>
         {
             var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
             TerminateStrays(command.ServerId, provisioned.Identity);
@@ -1205,26 +1215,44 @@ public sealed partial class ServerHost(
             EndStrandedHost(server);
         }
 
+        // The supervisor refuses a start once an exclusive operation has begun, even one that began after the check above.
         var status = await action(server.Supervisor);
-        return new CommandAck(envelope.CommandId, status, null, null);
+        return status == AckStatus.Busy
+            ? new CommandAck(envelope.CommandId, AckStatus.Busy, "server.busy", "An operation is running on this server.")
+            : new CommandAck(envelope.CommandId, status, null, null);
     }
 
-    private CommandAck RunOperation(CommandEnvelope envelope, Guid serverId, Guid operationId, Func<CancellationToken, Task> work) =>
+    private CommandAck RunOperation(CommandEnvelope envelope, Guid serverId, Guid operationId, Func<CancellationToken, Task> work,
+        string? stoppedMessage = null) =>
         RunOperation(envelope, serverId, operationId, exclusive: true, async cancellationToken =>
         {
             await work(cancellationToken);
             return null;
-        });
+        }, stoppedMessage);
 
-    /// <param name="exclusive">Nothing else may happen to the server meanwhile (everything but a backup).</param>
+    /// <param name="exclusive">
+    /// Nothing else may happen to the server meanwhile (everything but a backup): its supervisor refuses to start it until
+    /// the operation ends (<see cref="ServerSupervisor.TryBeginExclusive"/>).
+    /// </param>
     /// <param name="work">Returns what the operation produced, for its result.</param>
+    /// <param name="stoppedMessage">
+    /// The server must be stopped (the refusal's message, <c>server.running</c>). Checked with the supervisor's own
+    /// state, so a start that was accepted but not handled yet is never missed.
+    /// </param>
     private CommandAck RunOperation(CommandEnvelope envelope, Guid serverId, Guid operationId, bool exclusive,
-        Func<CancellationToken, Task<CommandResult?>> work)
+        Func<CancellationToken, Task<CommandResult?>> work, string? stoppedMessage = null)
     {
         var running = new RunningOperation(operationId, exclusive);
         if (!_operations.TryAdd(serverId, running))
         {
             return new CommandAck(envelope.CommandId, AckStatus.Busy, "server.busy", "Another operation is running on this server.");
+        }
+
+        var gate = exclusive && _servers.TryGetValue(serverId, out var server) ? server.Supervisor : null;
+        if (gate is not null && !gate.TryBeginExclusive(requireStopped: stoppedMessage is not null))
+        {
+            _operations.TryRemove(new KeyValuePair<Guid, RunningOperation>(serverId, running));
+            return Rejected(envelope, "server.running", stoppedMessage ?? "The server is busy.");
         }
 
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_endingOperations.Token);
@@ -1260,6 +1288,7 @@ public sealed partial class ServerHost(
             {
                 _cancellations.TryRemove(operationId, out _);
                 cancellation.Dispose();
+                gate?.EndExclusive();
                 _operations.TryRemove(new KeyValuePair<Guid, RunningOperation>(serverId, running));
                 running.Ended.TrySetResult();
             }
@@ -1406,14 +1435,46 @@ public sealed partial class ServerHost(
             : throw new LaunchPlanException("Invalid manifest: " + string.Join("; ", result.Errors));
     }
 
+    /// <summary>
+    /// Changes a server's record; never fails the caller (a state change of the server, the agent's start or stop). A
+    /// record that cannot be written (a full disk, a file another program holds) is logged and its change kept: it is
+    /// written with the record's next change, or retried with the metrics (<see cref="RetryUnsavedRecords"/>).
+    /// </summary>
     private void UpdateRecord(Guid serverId, Func<ServerRecord, ServerRecord> change)
     {
         lock (_recordLock)
         {
-            if (store.Load(serverId) is { } record)
+            if (_unsavedRecords.TryRemove(serverId, out var earlier))
             {
-                store.Save(change(record));
+                var later = change;
+                change = r => later(earlier(r));
             }
+
+            try
+            {
+                if (store.Load(serverId) is { } record)
+                {
+                    store.Save(change(record));
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _unsavedRecords[serverId] = change;
+                LogRecordNotSaved(serverId, ex.Message);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Unreadable (set aside at the agent's next start): there is nothing to change.
+                LogRecordNotChanged(ex, serverId);
+            }
+        }
+    }
+
+    private void RetryUnsavedRecords()
+    {
+        foreach (var serverId in _unsavedRecords.Keys)
+        {
+            UpdateRecord(serverId, r => r);
         }
     }
 
@@ -1460,6 +1521,12 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: where its game runs could not be saved: {Reason}")]
     private partial void LogHostNotSaved(Guid serverId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Server {ServerId}: its record could not be saved ({Reason}); trying again in a few seconds")]
+    private partial void LogRecordNotSaved(Guid serverId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Server {ServerId}: its record could not be read to change it")]
+    private partial void LogRecordNotChanged(Exception exception, Guid serverId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Servers loaded: {Count} (servers root {ServersRoot})")]
     private partial void LogLoaded(int count, string serversRoot);

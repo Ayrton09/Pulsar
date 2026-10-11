@@ -19,6 +19,9 @@ internal sealed class FakeProcessManager : IGameProcessManager
     /// <summary>When set, starts wait for it (a slow first logon, say).</summary>
     public TaskCompletionSource? Gate { get; set; }
 
+    /// <summary>Starts wait for <see cref="Gate"/> even once they are cancelled (a process creation that never returns).</summary>
+    public bool GateIgnoresCancellation { get; set; }
+
     /// <summary>Scripts each started process (its output, its exit).</summary>
     public Action<FakeGameProcess, ProcessLaunchSpec>? OnStarted { get; set; }
 
@@ -39,7 +42,7 @@ internal sealed class FakeProcessManager : IGameProcessManager
     {
         if (Gate is { } gate)
         {
-            await gate.Task.WaitAsync(cancellationToken);
+            await gate.Task.WaitAsync(GateIgnoresCancellation ? CancellationToken.None : cancellationToken);
         }
 
         lock (Specs)
@@ -106,7 +109,25 @@ internal sealed class FakeGameProcess(int processId) : IGameProcess
         }
     }
 
-    public ValueTask WriteInputAsync(string text, CancellationToken cancellationToken)
+    /// <summary>When set, writing input waits for it (a frozen game that stopped reading its input).</summary>
+    public TaskCompletionSource? InputGate { get; set; }
+
+    /// <summary>Writes waiting for <see cref="InputGate"/> so far.</summary>
+    public int BlockedWrites => Volatile.Read(ref _blockedWrites);
+
+    private int _blockedWrites;
+
+    public ValueTask WriteInputAsync(string text, CancellationToken cancellationToken) =>
+        InputGate is { } gate ? new ValueTask(WriteWhenReadAsync(gate, text, cancellationToken)) : Write(text);
+
+    private async Task WriteWhenReadAsync(TaskCompletionSource gate, string text, CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref _blockedWrites);
+        await gate.Task.WaitAsync(cancellationToken);
+        await Write(text);
+    }
+
+    private ValueTask Write(string text)
     {
         if (_exited.Task.IsCompleted)
         {
@@ -145,7 +166,24 @@ internal sealed class FakeGameProcess(int processId) : IGameProcess
     /// <summary>What <see cref="SampleUsage"/> reports.</summary>
     public ProcessUsage Usage { get; set; } = new(TimeSpan.Zero, 0, 1);
 
-    public ProcessUsage SampleUsage() => Disposed ? new ProcessUsage(TimeSpan.Zero, 0, 0) : Usage;
+    /// <summary>When set, sampling waits for it (a host that does not answer).</summary>
+    public TaskCompletionSource? SampleGate { get; set; }
+
+    public ProcessUsage SampleUsage()
+    {
+        SampleGate?.Task.Wait();
+        return Disposed ? new ProcessUsage(TimeSpan.Zero, 0, 0) : Usage;
+    }
+
+    public async ValueTask<ProcessUsage> SampleUsageAsync(CancellationToken cancellationToken)
+    {
+        if (SampleGate is { } gate)
+        {
+            await gate.Task.WaitAsync(cancellationToken);
+        }
+
+        return Disposed ? new ProcessUsage(TimeSpan.Zero, 0, 0) : Usage;
+    }
 
     public void TerminateTree(int exitCode)
     {
@@ -202,6 +240,8 @@ internal sealed class FakeHostedProcess(FakeGameProcess game, GameHostReference 
 
     public ProcessUsage SampleUsage() => game.SampleUsage();
 
+    public ValueTask<ProcessUsage> SampleUsageAsync(CancellationToken cancellationToken) => game.SampleUsageAsync(cancellationToken);
+
     public void TerminateTree(int exitCode) => game.TerminateTree(exitCode);
 
     public void ApplyLimits(ProcessLimits? limits) => game.ApplyLimits(limits);
@@ -241,7 +281,18 @@ internal sealed class RecordingEvents : IServerEventSink
         }
     }
 
-    public void DesiredChanged(Guid serverId, bool running) => DesiredRunning = running;
+    /// <summary>When set, saving the desired state fails with this error (a full disk).</summary>
+    public Exception? DesiredError { get; set; }
+
+    public void DesiredChanged(Guid serverId, bool running)
+    {
+        if (DesiredError is { } error)
+        {
+            throw error;
+        }
+
+        DesiredRunning = running;
+    }
 
     /// <summary>Waits for the <paramref name="count"/>-th change (1-based) to be <paramref name="state"/>.</summary>
     public async Task<ServerStateChanged> WaitForAsync(RuntimeState state, StateChangeReason? reason = null, int afterIndex = -1)

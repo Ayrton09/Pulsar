@@ -69,16 +69,37 @@ public sealed class SupervisorOptions
 
     /// <summary>How often a running game with a query is asked for its name, map and players.</summary>
     public TimeSpan QueryInterval { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// How long a console command waits for the game to take it (a frozen game stops reading its input); then it is
+    /// refused. Within the panel's wait for the command's ack.
+    /// </summary>
+    public TimeSpan InputTimeout { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How long creating the game's process may take (an account's first logon creates its profile); then the start
+    /// fails, and a process that shows up later is ended.
+    /// </summary>
+    public TimeSpan StartTimeout { get; set; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>How long a usage sample may take (a game in a host process is asked over its pipe); then it is skipped.</summary>
+    public TimeSpan SampleTimeout { get; set; } = TimeSpan.FromSeconds(2);
 }
 
 /// <summary>
 /// Runs one server (docs/architecture/05): a single-reader mailbox processes commands and process events one at a
 /// time, so nothing races ("stop arrives while start is creating the process"). Nothing in the loop waits for long:
-/// readiness, stop steps, timeouts and crash backoff are timers that post messages back, so a kill is always handled
-/// right away. Messages from an earlier process (a late timer, an old exit) carry its generation and are ignored.
+/// readiness, stop steps, timeouts and crash backoff are timers that post messages back, and what the game itself must
+/// answer (console input, a usage sample, a kill of a game in its host) runs beside the loop with a deadline, so a kill
+/// is always handled right away. Only creating the process is awaited in the loop, within
+/// <see cref="SupervisorOptions.StartTimeout"/>. Messages from an earlier process (a late timer, an old exit) carry its
+/// generation and are ignored.
 /// </summary>
 public sealed partial class ServerSupervisor : IAsyncDisposable
 {
+    // Console commands waiting for a game that is slow to take them; more are refused at once.
+    private const int MaxQueuedWrites = 16;
+
     private readonly IGameProcessManager _processes;
     private readonly IServerFiles _files;
     private readonly IRconConnector _rcon;
@@ -95,6 +116,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private readonly CancellationTokenSource _stopping = new();
     private readonly Queue<DateTimeOffset> _restarts = new();
     private readonly List<TaskCompletionSource> _settledWaiters = [];
+    private readonly Lock _gate = new(); // a start and an exclusive operation: whichever comes first keeps the other out
     private readonly Task _loop;
 
     private ServerDefinition _definition;
@@ -102,7 +124,10 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private IGameProcess? _process;
     private IGameProcess? _lingering;
     private LaunchPlan? _plan; // what the running process was started with
-    private CancellationTokenSource? _watchers; // log tail and RCON probe of the running process
+    private CancellationTokenSource? _watchers; // log tail, RCON probe and console input of the running process
+    private Channel<ConsoleWrite>? _writes; // console input of the running process, written in order beside the loop
+    private bool _exclusive; // guarded by _gate: an operation that must not see the game start is running
+    private int _sampling; // 1 while a usage sample is being taken
     private int _generation;
     private long _sequence;
     private int? _exitCode;
@@ -182,16 +207,69 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     /// <summary>
     /// Sends a command line to the running game: to its console input, or over RCON for <c>logfile+rcon</c> games (in
-    /// the background: the answer, or why there is none, shows up in the console). Rejected when it is not running.
+    /// the background: the answer, or why there is none, shows up in the console). Rejected when it is not running;
+    /// <see cref="AckStatus.Busy"/> when the game does not take it within <see cref="SupervisorOptions.InputTimeout"/>
+    /// (it stopped reading its input). Cancelling stops waiting for the answer, not the command.
     /// </summary>
-    public Task<AckStatus> SendInputAsync(string line) => Ask(tcs => new Input(tcs, line));
+    public async Task<AckStatus> SendInputAsync(string line, CancellationToken cancellationToken = default)
+    {
+        var answer = new TaskCompletionSource<AckStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await Post(new Input(answer, line));
+        return await answer.Task.WaitAsync(cancellationToken);
+    }
 
-    /// <summary>Usage of the running game since the previous sample; null when it is not running.</summary>
+    /// <summary>
+    /// Usage of the running game since the previous sample; null when it is not running, when the game does not answer
+    /// within <see cref="SupervisorOptions.SampleTimeout"/>, or while the previous sample is still being taken.
+    /// </summary>
     public async Task<ServerMetrics?> SampleAsync()
     {
+        if (Interlocked.CompareExchange(ref _sampling, 1, 0) != 0)
+        {
+            return null; // a game slow to answer must not pile samples up
+        }
+
         var sample = new TaskCompletionSource<ServerMetrics?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await Post(new Sample(sample));
+        _ = sample.Task.ContinueWith(_ => Volatile.Write(ref _sampling, 0), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        try
+        {
+            await Post(new Sample(sample));
+        }
+        catch (ObjectDisposedException)
+        {
+            sample.TrySetResult(null);
+            throw;
+        }
+
         return await sample.Task;
+    }
+
+    /// <summary>
+    /// An operation that must not see the game start (an install, a restore, a delete) begins: from now on a start is
+    /// refused (<see cref="AckStatus.Busy"/>), automatic ones included, until <see cref="EndExclusive"/>. False when a
+    /// start came first: the server is starting or running (only when <paramref name="requireStopped"/>).
+    /// </summary>
+    public bool TryBeginExclusive(bool requireStopped)
+    {
+        lock (_gate)
+        {
+            if (_exclusive || (requireStopped && _state is not (RuntimeState.Offline or RuntimeState.Crashed)))
+            {
+                return false;
+            }
+
+            _exclusive = true;
+            return true;
+        }
+    }
+
+    public void EndExclusive()
+    {
+        lock (_gate)
+        {
+            _exclusive = false;
+        }
     }
 
     public Task<AckStatus> StartAsync(StateChangeReason reason = StateChangeReason.Requested) => Ask(tcs => new Start(tcs, reason));
@@ -334,7 +412,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 await HandleRestartAsync(restart);
                 break;
             case Kill kill:
-                kill.Answer(HandleKill());
+                HandleKill(kill);
                 break;
             case Update update:
                 ApplyLimits(update.Definition.Limits);
@@ -357,10 +435,10 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 flush.Done.TrySetResult();
                 break;
             case Input input:
-                input.Answer(await HandleInputAsync(input.Line));
+                HandleInput(input);
                 break;
             case Sample sample:
-                sample.Result.TrySetResult(TakeSample());
+                StartSample(sample.Result);
                 break;
             case Exited exited when exited.Generation == _generation:
                 await HandleExitedAsync(exited.ExitCode);
@@ -373,14 +451,14 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 Transition(RuntimeState.Running, StateChangeReason.ReadinessTimedOut, detail: "readiness.timed_out");
                 break;
             case NextStopStep step when step.Generation == _generation && _state == RuntimeState.Stopping:
-                await RunStopStepsAsync(step.Index);
+                RunStopSteps(step.Index);
                 break;
             case StopTimeout timeout when timeout.Generation == _generation && _state == RuntimeState.Stopping:
                 LogStopTimedOut(ServerId);
                 _stopReason = StateChangeReason.StopTimedOut;
                 if (_process is { } stuck)
                 {
-                    stuck.TerminateTree(1);
+                    _ = TerminateAsync(stuck, request: null);
                 }
                 else
                 {
@@ -413,14 +491,15 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     /// </summary>
     private async Task HandleStartAsync(Request request, StateChangeReason reason)
     {
-        SetDesired(true);
         switch (_state)
         {
             case RuntimeState.Starting or RuntimeState.Running:
+                SetDesired(true);
                 request.Answer(AckStatus.AlreadyInState);
                 break;
             case RuntimeState.Stopping:
                 // Started again as soon as the stop completes.
+                SetDesired(true);
                 _restartAfterStop = true;
                 request.Answer(AckStatus.Accepted);
                 break;
@@ -428,8 +507,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 // A manual start leaves the crash history behind.
                 _restartTimer++;
                 _restarts.Clear();
-                request.Answer(AckStatus.Accepted);
-                await LaunchAsync(reason);
+                await LaunchAsync(reason, request);
                 break;
         }
     }
@@ -450,33 +528,40 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     private async Task HandleRestartAsync(Request request)
     {
-        SetDesired(true);
-        request.Answer(AckStatus.Accepted);
         switch (_state)
         {
             case RuntimeState.Starting or RuntimeState.Running:
+                SetDesired(true);
+                request.Answer(AckStatus.Accepted);
                 _restartAfterStop = true;
                 BeginStop(StateChangeReason.Requested, null);
                 break;
             case RuntimeState.Stopping:
+                SetDesired(true);
+                request.Answer(AckStatus.Accepted);
                 _restartAfterStop = true;
                 break;
             default:
                 _restartTimer++;
                 _restarts.Clear();
-                await LaunchAsync(StateChangeReason.Requested);
+                await LaunchAsync(StateChangeReason.Requested, request);
                 break;
         }
     }
 
-    private AckStatus HandleKill()
+    /// <summary>
+    /// The tree is killed beside the loop: a game in a host process is killed through its host, which may not answer
+    /// (then the host is killed with it). The kill is answered once that is done.
+    /// </summary>
+    private void HandleKill(Request request)
     {
         SetDesired(false);
         _restartAfterStop = false;
         _restartTimer++;
-        if (_process is null || _state is RuntimeState.Offline or RuntimeState.Crashed)
+        if (_process is not { } process || _state is RuntimeState.Offline or RuntimeState.Crashed)
         {
-            return AckStatus.AlreadyInState;
+            request.Answer(AckStatus.AlreadyInState);
+            return;
         }
 
         _stopReason = StateChangeReason.Killed;
@@ -485,12 +570,28 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             Transition(RuntimeState.Stopping, StateChangeReason.Killed);
         }
 
-        _process.TerminateTree(1);
-        return AckStatus.Accepted;
+        _ = TerminateAsync(process, request);
     }
 
+    /// <summary>Kills the process's tree (see <see cref="IGameProcess.TerminateTreeAsync"/>); its exit ends the stop.</summary>
+    private async Task TerminateAsync(IGameProcess process, Request? request)
+    {
+        try
+        {
+            await process.TerminateTreeAsync(1, _stopping.Token);
+            request?.Answer(AckStatus.Accepted);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            LogKillFailed(ex, ServerId);
+            request?.Fail(ex);
+        }
+    }
+
+    /// <summary>Accepted when the server should start again with the agent: it was starting, running or restarting.</summary>
     private AckStatus HandleShutdown(TimeSpan budget)
     {
+        var restarting = _restartAfterStop;
         _restartAfterStop = false;
         _restartTimer++;
         switch (_state)
@@ -499,13 +600,19 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 BeginStop(StateChangeReason.AgentStopping, budget);
                 return AckStatus.Accepted;
             case RuntimeState.Stopping:
-                return AckStatus.Accepted;
+                // A stop the user asked for stays a stop; a restart was meant to run again.
+                return restarting ? AckStatus.Accepted : AckStatus.AlreadyInState;
             default:
                 return AckStatus.AlreadyInState;
         }
     }
 
-    private async Task LaunchAsync(StateChangeReason reason)
+    /// <summary>
+    /// Starts the game, unless an exclusive operation runs (<see cref="TryBeginExclusive"/>): then the start is refused
+    /// with <see cref="AckStatus.Busy"/> (a crash restart is skipped). <paramref name="request"/>, a start the user asked
+    /// for, is answered once the start is accepted, before the process exists.
+    /// </summary>
+    private async Task LaunchAsync(StateChangeReason reason, Request? request = null)
     {
         if (_lingering is { } previous)
         {
@@ -515,9 +622,23 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
 
         SweepStrays();
-        _exitCode = null;
-        _stopReason = null;
-        Transition(RuntimeState.Starting, reason);
+        lock (_gate)
+        {
+            if (_exclusive)
+            {
+                LogStartRefused(ServerId, reason);
+                request?.Answer(AckStatus.Busy);
+                return;
+            }
+
+            // Under the gate: an operation that checks the state from now on sees it starting.
+            _exitCode = null;
+            _stopReason = null;
+            Transition(RuntimeState.Starting, reason);
+        }
+
+        SetDesired(true);
+        request?.Answer(AckStatus.Accepted);
         var plan = _definition.Plan;
         // logfile+rcon games still get a console: srcds dies without one (spike 0001), even though it writes nothing to it.
         var spec = new ProcessLaunchSpec(ServerId, _definition.Directory, plan.Executable, plan.Arguments, plan.WorkingDirectory, plan.Environment,
@@ -527,7 +648,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         try
         {
             PrepareFiles(plan);
-            process = await _processes.StartAsync(spec, _stopping.Token);
+            process = await StartProcessAsync(spec);
         }
         catch (GameProcessException ex)
         {
@@ -562,6 +683,60 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     }
 
     /// <summary>
+    /// Creates the process within <see cref="SupervisorOptions.StartTimeout"/>: a creation that never returns (a profile
+    /// that never loads) must not keep stop and kill waiting behind it. A process that shows up after that is ended.
+    /// </summary>
+    private async Task<IGameProcess> StartProcessAsync(ProcessLaunchSpec spec)
+    {
+        var starting = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
+        var start = _processes.StartAsync(spec, starting.Token);
+        try
+        {
+            var process = await start.WaitAsync(_options.StartTimeout, _clock, _stopping.Token);
+            starting.Dispose();
+            return process;
+        }
+        catch (TimeoutException ex)
+        {
+            await starting.CancelAsync();
+            _ = EndLateStartAsync(start, starting);
+            throw new GameProcessException("process.start_failed",
+                $"The game's process was not created within {_options.StartTimeout.TotalSeconds:0} seconds.", ex);
+        }
+        catch
+        {
+            if (start.IsCompleted)
+            {
+                starting.Dispose();
+            }
+            else
+            {
+                _ = EndLateStartAsync(start, starting);
+            }
+
+            throw;
+        }
+    }
+
+    private async Task EndLateStartAsync(Task<IGameProcess> start, CancellationTokenSource starting)
+    {
+        try
+        {
+            var late = await start;
+            LogLateProcessEnded(ServerId, late.ProcessId);
+            await late.DisposeAsync();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // It never started: nothing to end.
+        }
+        finally
+        {
+            starting.Dispose();
+        }
+    }
+
+    /// <summary>
     /// Follows a running process: its console (the process's output, or its log file), its readiness while it starts
     /// (<paramref name="readinessCheck"/>, null when it is ready already) and its query.
     /// </summary>
@@ -578,6 +753,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         };
         StopWatchers();
         _watchers = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
+        var writes = Channel.CreateBounded<ConsoleWrite>(new BoundedChannelOptions(MaxQueuedWrites) { SingleReader = true });
+        _writes = writes;
+        _ = WriteConsoleAsync(process, writes.Reader, _watchers.Token);
         if (plan.Console.Mode == ManifestConsoleMode.LogfileRcon)
         {
             // The game's console is its log file; whatever reaches the pseudo console is drained and dropped.
@@ -699,7 +877,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                             throw new GameProcessException("config.too_large", $"{file.Path} is larger than {ConfigFileWriter.MaximumSize / 1024} KiB.");
                         }
 
-                        existing = new StreamReader(stream, System.Text.Encoding.UTF8).ReadToEnd();
+                        existing = ReadText(stream, file.Path);
                     }
                 }
 
@@ -718,7 +896,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                         throw new GameProcessException("addon.file_missing", $"{edits.Key}, which an installed addon edits, is missing or too large.");
                     }
 
-                    text = new StreamReader(stream, System.Text.Encoding.UTF8).ReadToEnd();
+                    text = ReadText(stream, edits.Key);
                 }
 
                 var edited = edits.Aggregate(text, LineEditor.Apply);
@@ -747,6 +925,23 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             throw new GameProcessException("config.write_failed", ex.Message, ex);
+        }
+    }
+
+    /// <summary>
+    /// A file the agent edits and writes back as UTF-8. One in another encoding (a server.cfg saved as Windows-1252) is
+    /// refused rather than rewritten: its other characters would become U+FFFD, and the user's own lines must stay as
+    /// they are.
+    /// </summary>
+    private static string ReadText(Stream stream, string path)
+    {
+        try
+        {
+            return new StreamReader(stream, new System.Text.UTF8Encoding(false, throwOnInvalidBytes: true)).ReadToEnd();
+        }
+        catch (System.Text.DecoderFallbackException ex)
+        {
+            throw new GameProcessException("config.invalid", $"{path} is not UTF-8 text, so Pulsar does not change it: save it as UTF-8.", ex);
         }
     }
 
@@ -897,14 +1092,16 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     /// <summary>
     /// A console command for the running game. Pseudo consoles echo what they receive; for pipes and RCON the console
     /// shows the command itself, unless the game logs RCON commands on its own (CS2), and the answer, unless the game
-    /// logged it.
+    /// logged it. Written to the game's input beside the loop (<see cref="WriteConsoleAsync"/>), which answers it.
     /// </summary>
-    private async Task<AckStatus> HandleInputAsync(string line)
+    private void HandleInput(Input input)
     {
-        if (_process is not { } process || _plan is not { } plan || _state is not (RuntimeState.Starting or RuntimeState.Running)
+        var line = input.Line;
+        if (_process is null || _plan is not { } plan || _writes is not { } writes || _state is not (RuntimeState.Starting or RuntimeState.Running)
             || !ConsoleInput.IsValid(line))
         {
-            return AckStatus.Rejected;
+            input.Answer(AckStatus.Rejected);
+            return;
         }
 
         var now = _clock.GetUtcNow();
@@ -913,7 +1110,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         {
             if (plan.Rcon is not { } endpoint)
             {
-                return AckStatus.Rejected;
+                input.Answer(AckStatus.Rejected);
+                return;
             }
 
             var logged = plan.Console.Rcon?.LogsCommands == true;
@@ -924,24 +1122,71 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
             // In the background: an answer can take a second (CS2) and the mailbox must stay free for stop and kill.
             _ = SendConsoleRconAsync(endpoint, line, logged, _generation, _watchers?.Token ?? _stopping.Token);
-            return AckStatus.Accepted;
+            input.Answer(AckStatus.Accepted);
+            return;
+        }
+
+        if (!writes.Writer.TryWrite(new ConsoleWrite(line + InputNewline(plan), input.Result)))
+        {
+            // Commands are piling up behind one the game does not take.
+            input.Answer(AckStatus.Busy);
+            return;
         }
 
         if (plan.Console.Mode == ManifestConsoleMode.Pipes)
         {
             _console.Write($"> {line}\n", now);
         }
+    }
 
-        try
+    private static string InputNewline(LaunchPlan plan) => plan.Console.InputNewline ?? (plan.Console.Mode == ManifestConsoleMode.Pty ? "\r\n" : "\n");
+
+    /// <summary>
+    /// Writes the console input of one process, in order: a game that stopped reading its input (frozen) keeps a write
+    /// waiting, and neither the loop nor a kill may wait for it. Each write gets <see cref="SupervisorOptions.InputTimeout"/>;
+    /// a command the game does not take in time is refused (<see cref="AckStatus.Busy"/>), and whatever is left when the
+    /// process goes away is refused too.
+    /// </summary>
+    private async Task WriteConsoleAsync(IGameProcess process, ChannelReader<ConsoleWrite> writes, CancellationToken cancellationToken)
+    {
+        await foreach (var write in writes.ReadAllAsync(CancellationToken.None))
         {
-            var newline = plan.Console.InputNewline ?? (plan.Console.Mode == ManifestConsoleMode.Pty ? "\r\n" : "\n");
-            await process.WriteInputAsync(line + newline, _stopping.Token);
-            return AckStatus.Accepted;
-        }
-        catch (InvalidOperationException)
-        {
-            // The process stopped reading its input (it is exiting).
-            return AckStatus.Rejected;
+            var status = AckStatus.Rejected;
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                using var deadline = new CancellationTokenSource(_options.InputTimeout, _clock);
+                using var both = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+                try
+                {
+                    if (write.Text is { } text)
+                    {
+                        await process.WriteInputAsync(text, both.Token);
+                    }
+                    else
+                    {
+                        await process.SendInterruptAsync(both.Token);
+                    }
+
+                    status = AckStatus.Accepted;
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    // It stopped reading its input (exiting, or frozen), or it is gone.
+                    var late = ex is OperationCanceledException && deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested;
+                    if (write.StopStep is { } index)
+                    {
+                        LogStopStepFailed(ServerId, index, ex.Message);
+                    }
+                    else if (late)
+                    {
+                        LogInputNotTaken(ServerId, _options.InputTimeout);
+                    }
+
+                    status = late ? AckStatus.Busy : AckStatus.Rejected;
+                }
+            }
+
+            write.Answer?.TrySetResult(status);
         }
     }
 
@@ -1037,42 +1282,55 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
     }
 
-    private ServerMetrics? TakeSample()
+    /// <summary>
+    /// Takes a usage sample beside the loop, within <see cref="SupervisorOptions.SampleTimeout"/> (a game in a host is
+    /// asked over its pipe). One at a time (<see cref="SampleAsync"/>), so <see cref="_lastUsage"/> has one writer.
+    /// </summary>
+    private void StartSample(TaskCompletionSource<ServerMetrics?> result)
     {
         if (_process is not { } process || _state is RuntimeState.Offline or RuntimeState.Crashed)
         {
             _lastUsage = null;
-            return null;
+            result.TrySetResult(null);
+            return;
         }
 
+        _ = TakeSampleAsync(process, _generation, result);
+    }
+
+    private async Task TakeSampleAsync(IGameProcess process, int generation, TaskCompletionSource<ServerMetrics?> result)
+    {
         ProcessUsage usage;
         try
         {
-            usage = process.SampleUsage();
+            using var limit = new CancellationTokenSource(_options.SampleTimeout, _clock);
+            using var both = CancellationTokenSource.CreateLinkedTokenSource(limit.Token, _stopping.Token);
+            usage = await process.SampleUsageAsync(both.Token);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             LogSampleFailed(ServerId, ex.Message);
-            return null;
+            result.TrySetResult(null);
+            return;
         }
 
         var now = _clock.GetUtcNow();
         var cpu = 0.0;
-        if (_lastUsage is { } last && last.Generation == _generation && now > last.At)
+        if (_lastUsage is { } last && last.Generation == generation && now > last.At)
         {
             // Share of the whole machine, like the node's CPU and Task Manager.
             var used = (usage.CpuTime - last.Usage.CpuTime).TotalSeconds;
             cpu = Math.Clamp(used / (now - last.At).TotalSeconds / Environment.ProcessorCount * 100, 0, 100);
         }
 
-        _lastUsage = (_generation, usage, now);
+        _lastUsage = (generation, usage, now);
         // An answer older than a few queries is from a game that stopped answering: better nothing than stale players.
-        var query = _lastQuery is { } answer && answer.Generation == _generation && now - answer.Info.At <= _options.QueryInterval * 3 ? answer.Info : null;
-        return new ServerMetrics(ServerId, Math.Round(cpu, 1), usage.MemoryBytes, usage.ProcessCount, now - process.StartedAt, query,
-            usage.CommittedBytes);
+        var query = _lastQuery is { } answer && answer.Generation == generation && now - answer.Info.At <= _options.QueryInterval * 3 ? answer.Info : null;
+        result.TrySetResult(new ServerMetrics(ServerId, Math.Round(cpu, 1), usage.MemoryBytes, usage.ProcessCount, now - process.StartedAt, query,
+            usage.CommittedBytes));
     }
 
-    /// <summary>New caps apply to the running game at once (the next start gets them from the definition).</summary>
+    /// <summary>New caps apply to the running game at once, beside the loop (the next start gets them from the definition).</summary>
     private void ApplyLimits(ProcessLimits? limits)
     {
         if (limits == _definition.Limits || _process is not { } process)
@@ -1080,12 +1338,17 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             return;
         }
 
+        _ = ApplyLimitsAsync(process, limits);
+    }
+
+    private async Task ApplyLimitsAsync(IGameProcess process, ProcessLimits? limits)
+    {
         try
         {
-            process.ApplyLimits(limits);
+            await process.ApplyLimitsAsync(limits, _stopping.Token);
             LogLimitsApplied(ServerId, limits?.CpuPercent, limits?.MemoryBytes);
         }
-        catch (GameProcessException ex)
+        catch (Exception ex) when (ex is GameProcessException or OperationCanceledException or ObjectDisposedException)
         {
             LogLimitsFailed(ServerId, ex.Message);
         }
@@ -1093,6 +1356,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     private void StopWatchers()
     {
+        // Console input still waiting is refused: the process it was for is gone.
+        _writes?.Writer.TryComplete();
+        _writes = null;
         if (_watchers is { } watchers)
         {
             _watchers = null;
@@ -1117,37 +1383,40 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         return budget is { } limit && limit < timeout ? limit : timeout;
     }
 
-    private async Task RunStopStepsAsync(int index)
+    /// <summary>
+    /// The stop's steps from <paramref name="index"/> to the next wait. Console commands and Ctrl+C go through the console
+    /// writer, after any command still waiting there; one the game does not take only fails (the timeout kills it).
+    /// </summary>
+    private void RunStopSteps(int index)
     {
         var plan = _plan ?? _definition.Plan;
         var steps = plan.Stop.Steps;
-        var newline = plan.Console.InputNewline ?? (plan.Console.Mode == ManifestConsoleMode.Pty ? "\r\n" : "\n");
         for (var i = index; i < steps.Count && _process is { } process; i++)
         {
-            try
+            switch (steps[i])
             {
-                switch (steps[i])
-                {
-                    case ConsoleCommandStop command:
-                        await process.WriteInputAsync(command.Command + newline, _stopping.Token);
-                        break;
-                    case RconCommandStop command when plan.Rcon is { } endpoint:
-                        // In the background: connecting can take seconds, and a kill must never wait for it.
-                        _ = SendRconAsync(endpoint, command.Command, i);
-                        break;
-                    case CtrlCStop when process.SupportsInterrupt:
-                        await process.SendInterruptAsync(_stopping.Token);
-                        break;
-                    case WaitStop wait:
-                        PostLater(TimeSpan.FromSeconds(wait.Seconds), new NextStopStep(_generation, i + 1));
-                        return;
-                }
+                case ConsoleCommandStop command:
+                    QueueStopStep(new ConsoleWrite(command.Command + InputNewline(plan), null, i));
+                    break;
+                case RconCommandStop command when plan.Rcon is { } endpoint:
+                    // In the background: connecting can take seconds, and a kill must never wait for it.
+                    _ = SendRconAsync(endpoint, command.Command, i);
+                    break;
+                case CtrlCStop when process.SupportsInterrupt:
+                    QueueStopStep(new ConsoleWrite(null, null, i));
+                    break;
+                case WaitStop wait:
+                    PostLater(TimeSpan.FromSeconds(wait.Seconds), new NextStopStep(_generation, i + 1));
+                    return;
             }
-            catch (InvalidOperationException ex)
-            {
-                // The process stopped reading (or exited): the timeout kills it if needed.
-                LogStopStepFailed(ServerId, i, ex.Message);
-            }
+        }
+    }
+
+    private void QueueStopStep(ConsoleWrite write)
+    {
+        if (_writes?.Writer.TryWrite(write) != true)
+        {
+            LogStopStepFailed(ServerId, write.StopStep ?? -1, "the console's input is full or closed");
         }
     }
 
@@ -1335,12 +1604,23 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Keeps what the server should do, then tells the agent to save it. Saving never fails a transition: a server whose
+    /// game exited while the disk was full must not stay Running with no process.
+    /// </summary>
     private void SetDesired(bool running)
     {
         if (_desiredRunning != running)
         {
             _desiredRunning = running;
-            _events.DesiredChanged(ServerId, running);
+            try
+            {
+                _events.DesiredChanged(ServerId, running);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                LogDesiredNotSaved(ex, ServerId, running);
+            }
         }
     }
 
@@ -1428,6 +1708,21 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Error, Message = "Server {ServerId}: unexpected error handling {Message}")]
     private partial void LogUnexpected(Exception exception, Guid serverId, string message);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: the game did not take a console command within {Timeout}; refused")]
+    private partial void LogInputNotTaken(Guid serverId, TimeSpan timeout);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Server {ServerId}: its processes could not be killed")]
+    private partial void LogKillFailed(Exception exception, Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: start ({Reason}) refused: an operation that keeps it stopped is running")]
+    private partial void LogStartRefused(Guid serverId, StateChangeReason reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: its process {ProcessId} was created after its start had failed; ended it")]
+    private partial void LogLateProcessEnded(Guid serverId, int processId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Server {ServerId}: whether it should run ({Running}) could not be saved")]
+    private partial void LogDesiredNotSaved(Exception exception, Guid serverId, bool running);
+
     private abstract record Message;
 
     private abstract record Command : Message
@@ -1490,4 +1785,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private sealed record Attach(TaskCompletionSource<bool> Done, IGameProcess Process, GameHostState State, bool DesiredRunning) : Message;
 
     private sealed record Detach(TaskCompletionSource<bool> Done) : Message;
+
+    /// <summary>Console input for the running process: <paramref name="Text"/>, or Ctrl+C when null.</summary>
+    /// <param name="Answer">The command's ack; null for a stop step (<paramref name="StopStep"/>, its index).</param>
+    private sealed record ConsoleWrite(string? Text, TaskCompletionSource<AckStatus>? Answer, int? StopStep = null);
 }

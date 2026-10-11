@@ -57,4 +57,27 @@ public sealed class ConsoleLinesTests
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(3), $"Took {watch.Elapsed}.");
         Assert.Equal(["unfinished line"], lines.Add(" line\n"));
     }
+
+    [Fact]
+    public void ALineWrittenACharacterAtATimeIsSplitInLinearTime()
+    {
+        // Each chunk used to copy and scan the whole unfinished line (up to 16 KiB) before looking at what it added.
+        var lines = new ConsoleLines();
+        var added = new List<string>();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        for (var i = 0; i < 1_000_000; i++)
+        {
+            added.AddRange(lines.Add(i % 50_000 == 49_999 ? "\n" : "a"));
+        }
+
+        added.AddRange(lines.Add("\u001b[1"));
+        added.AddRange(lines.Add(";1Hnext\n"));
+
+        watch.Stop();
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), $"Took {watch.Elapsed}.");
+        Assert.Equal(1_000_000 - 20, added.Sum(l => l.Count(c => c == 'a')));
+        Assert.Equal([16_385, 16_385, 16_385, 844], added.Take(4).Select(l => l.Length));
+        Assert.Equal("next", added[^1]);
+    }
 }

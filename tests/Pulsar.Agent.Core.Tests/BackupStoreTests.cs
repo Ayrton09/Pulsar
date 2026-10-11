@@ -281,6 +281,7 @@ public sealed class BackupStoreTests : IDisposable
     [InlineData("cfg/con.txt")]
     [InlineData(".pulsar/steamcmd/steamcmd.exe")]
     [InlineData(".PULSAR/x")]
+    [InlineData("PULSAR~1/steamcmd/steamcmd.exe")] // .pulsar's 8.3 short name, on volumes that keep them
     [InlineData("cfg/server.cfg|CFG/SERVER.CFG")]
     public async Task AnArchiveWithAnEntryARestoreMayNotWriteIsRefusedBeforeWritingAnything(string names)
     {
@@ -385,6 +386,74 @@ public sealed class BackupStoreTests : IDisposable
         Assert.Equal(["cfg/server.cfg"], Entries(location.Archive));
         Assert.Equal(1, result.FileCount);
         Assert.Equal(1, result.SkippedFiles);
+    }
+
+    [Fact]
+    public async Task AFileThatGrowsWhileItIsReadLiveIsKeptAtItsListedSize()
+    {
+        // Read live (no snapshot): a log that grows as fast as it is read must not keep the backup going until the disk fills.
+        Write("cfg/growing.cfg", "start");
+        var files = new HookedServerFileManager(new DirectServerFileManager())
+        {
+            OnOpened = (path, content) => path == "cfg/growing.cfg" ? new GrowingStream(content) : content,
+        };
+        var store = new BackupStore(files, NullLogger<BackupStore>.Instance);
+        var location = Location();
+
+        var result = await store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+
+        Assert.Equal("start", Read(location.Archive, "cfg/growing.cfg"));
+        Assert.Equal(1, result.FileCount);
+    }
+
+    /// <summary>A file the game keeps appending to: after what it held, a megabyte more, as fast as it is read.</summary>
+    private sealed class GrowingStream(Stream start) : Stream
+    {
+        private long _extra = 1024 * 1024;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var read = start.Read(buffer, offset, count);
+            if (read > 0 || _extra == 0)
+            {
+                return read;
+            }
+
+            var more = (int)Math.Min(count, _extra);
+            buffer.AsSpan(offset, more).Fill((byte)'g');
+            _extra -= more;
+            return more;
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                start.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 
     private BackupLocation Location() => new(BackupsRoot, "abcd1234", Guid.NewGuid());

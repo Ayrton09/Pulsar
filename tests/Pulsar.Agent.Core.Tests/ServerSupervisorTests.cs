@@ -125,6 +125,7 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
 
         await supervisor.StopAsync();
         await supervisor.FlushAsync();
+        await LogTailTests.Eventually(() => process.Input.Count == 1, () => string.Join(", ", process.Input)); // written beside the loop
         Assert.Equal(["save\r\n"], process.Input);
 
         _clock.Advance(TimeSpan.FromSeconds(2));
@@ -522,6 +523,211 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
         Assert.Equal(1, game.TerminatedWith);
         await _events.WaitForAsync(RuntimeState.Starting);
         Assert.Single(_processes.Started);
+    }
+
+    [Fact]
+    public async Task AGameThatStopsReadingItsInputDoesNotHoldUpAKill()
+    {
+        // A frozen game: the write of a console command never ends. A kill must not wait behind it.
+        var supervisor = await Running();
+        var process = _processes.Last;
+        process.InputGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var input = supervisor.SendInputAsync("say hi", TestContext.Current.CancellationToken);
+        await LogTailTests.Eventually(() => process.BlockedWrites == 1, () => "the input was never written");
+
+        Assert.Equal(AckStatus.Accepted, await supervisor.KillAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        await _events.WaitForAsync(RuntimeState.Offline, StateChangeReason.Killed);
+        Assert.Equal(AckStatus.Rejected, await input.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task AnInputTheGameDoesNotTakeInTimeIsRefused()
+    {
+        var supervisor = await Running();
+        var process = _processes.Last;
+        process.InputGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var input = supervisor.SendInputAsync("say hi", TestContext.Current.CancellationToken);
+        await LogTailTests.Eventually(() => process.BlockedWrites == 1, () => "the input was never written");
+
+        _clock.Advance(TimeSpan.FromSeconds(30));
+
+        Assert.Equal(AckStatus.Busy, await input.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Equal(RuntimeState.Running, supervisor.Snapshot.State);
+        Assert.Empty(process.Input);
+    }
+
+    [Fact]
+    public async Task WaitingForAConsoleCommandCanBeGivenUp()
+    {
+        // A backup asking a frozen game to save is cancelled: it must not keep waiting for the command.
+        var supervisor = await Running();
+        _processes.Last.InputGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancel = new CancellationTokenSource();
+
+        var input = supervisor.SendInputAsync("save-all", cancel.Token);
+        await cancel.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => input.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task AnExclusiveOperationKeepsTheServerFromStartingAndAStartKeepsItFromBeginning()
+    {
+        // The operation's check and the start used to race: a start queued in the mailbox ran while a restore wrote files.
+        var supervisor = Supervisor();
+        Assert.True(supervisor.TryBeginExclusive(requireStopped: true));
+
+        Assert.Equal(AckStatus.Busy, await Started(supervisor));
+        Assert.Equal(AckStatus.Busy, await supervisor.RestartAsync());
+        Assert.Empty(_processes.Started);
+        Assert.Equal(RuntimeState.Offline, supervisor.Snapshot.State);
+        Assert.Null(_events.DesiredRunning);
+
+        supervisor.EndExclusive();
+        _processes.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.Equal(AckStatus.Accepted, await supervisor.StartAsync()); // answered once it is starting, before the process exists
+
+        Assert.False(supervisor.TryBeginExclusive(requireStopped: true));
+        Assert.True(supervisor.TryBeginExclusive(requireStopped: false)); // a delete kills it itself
+        supervisor.EndExclusive();
+        _processes.Gate.SetResult();
+    }
+
+    [Fact]
+    public async Task ACrashRestartWaitsForNoExclusiveOperation()
+    {
+        var supervisor = await Running();
+        _processes.Last.Exit(3);
+        await _events.WaitForAsync(RuntimeState.Crashed, StateChangeReason.Crashed);
+        await supervisor.FlushAsync();
+        Assert.True(supervisor.TryBeginExclusive(requireStopped: true)); // an update of the crashed server
+
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        await supervisor.FlushAsync();
+
+        Assert.Single(_processes.Started);
+        Assert.Equal(RuntimeState.Crashed, supervisor.Snapshot.State);
+    }
+
+    [Fact]
+    public async Task TheAgentsStopDoesNotWaitForAWriteTheGameDoesNotTake()
+    {
+        var supervisor = await Running();
+        var process = _processes.Last;
+        process.InputGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = supervisor.SendInputAsync("say hi", TestContext.Current.CancellationToken);
+        await LogTailTests.Eventually(() => process.BlockedWrites == 1, () => "the input was never written");
+
+        var shutdown = supervisor.ShutdownAsync(TimeSpan.FromSeconds(3));
+        await _events.WaitForAsync(RuntimeState.Stopping, StateChangeReason.AgentStopping);
+        await supervisor.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        _clock.Advance(TimeSpan.FromSeconds(3));
+
+        Assert.True(await shutdown.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        Assert.Equal(1, process.TerminatedWith); // the stop's command never reached it: its time ran out
+    }
+
+    [Fact]
+    public async Task AServerTheUserWasStoppingIsNotStartedAgainWithTheAgent()
+    {
+        // The user pressed Stop and the agent stopped (an update) while the game was still saving.
+        var supervisor = await Running();
+        _processes.Last.IgnoreQuit = true;
+        await supervisor.StopAsync();
+        await supervisor.FlushAsync();
+
+        var shutdown = supervisor.ShutdownAsync(TimeSpan.FromSeconds(3));
+        await supervisor.FlushAsync();
+        _clock.Advance(TimeSpan.FromSeconds(15));
+
+        Assert.False(await shutdown.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task AServerBeingRestartedWhenTheAgentStopsIsStartedAgainWithIt()
+    {
+        var supervisor = await Running();
+        _processes.Last.IgnoreQuit = true;
+        await supervisor.RestartAsync();
+        await supervisor.FlushAsync();
+
+        var shutdown = supervisor.ShutdownAsync(TimeSpan.FromSeconds(3));
+        await supervisor.FlushAsync();
+        _clock.Advance(TimeSpan.FromSeconds(15));
+
+        Assert.True(await shutdown.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        Assert.Single(_processes.Started); // the agent starts it, not this stop
+    }
+
+    [Fact]
+    public async Task AGameThatExitsWhileItsDesiredStateCannotBeSavedStillEndsOffline()
+    {
+        // A full disk: the server must not stay Running with no process (a start would then answer "already running").
+        var supervisor = await Running();
+        _events.DesiredError = new IOException("There is not enough space on the disk.");
+
+        _processes.Last.Exit(0);
+
+        await _events.WaitForAsync(RuntimeState.Offline, StateChangeReason.ExitedByItself);
+        Assert.Equal(AckStatus.Accepted, await Started(supervisor));
+        Assert.Equal(2, _processes.Started.Count);
+    }
+
+    [Fact]
+    public async Task AGameThatDoesNotAnswerForItsUsageDoesNotHoldUpTheServer()
+    {
+        // A host that does not answer: one sample at a time, and a kill does not wait for it.
+        var supervisor = await Running();
+        var gate = _processes.Last.SampleGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            var first = supervisor.SampleAsync();
+            Assert.Null(await supervisor.SampleAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            Assert.Equal(AckStatus.Accepted, await supervisor.KillAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            await _events.WaitForAsync(RuntimeState.Offline, StateChangeReason.Killed);
+
+            _clock.Advance(TimeSpan.FromSeconds(5));
+            Assert.Null(await first.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            gate.TrySetResult();
+        }
+    }
+
+    [Fact]
+    public async Task AStartThatNeverReturnsFailsAfterItsTime()
+    {
+        // Process creation that hangs (a profile that never loads): stop and kill must not wait forever behind it.
+        var supervisor = Supervisor();
+        var gate = _processes.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _processes.GateIgnoresCancellation = true;
+        try
+        {
+            await supervisor.StartAsync();
+            await _events.WaitForAsync(RuntimeState.Starting);
+
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (supervisor.Snapshot.State == RuntimeState.Starting && DateTime.UtcNow < deadline)
+            {
+                _clock.Advance(TimeSpan.FromSeconds(10));
+                await Task.Delay(10, TestContext.Current.CancellationToken);
+            }
+
+            var failed = await _events.WaitForAsync(RuntimeState.Crashed, StateChangeReason.StartFailed);
+            Assert.Equal("process.start_failed", failed.Detail);
+            Assert.Equal(AckStatus.AlreadyInState, await supervisor.StopAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+
+            // The process it started after all is ended at once.
+            gate.SetResult();
+            await LogTailTests.Eventually(() => _processes.Started.Count == 1 && _processes.Last.Disposed, () => "the late process was not ended");
+        }
+        finally
+        {
+            gate.TrySetResult();
+        }
     }
 
     private ServerQueryInfo Answer(string name) => new(_clock.GetUtcNow(), name, "de_dust2", 1, 16, 0, "1.0", [new QueryPlayer("Ana", 3, null)]);

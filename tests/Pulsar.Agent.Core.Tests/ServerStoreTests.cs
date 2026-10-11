@@ -106,4 +106,44 @@ public sealed class ServerStoreTests : IDisposable
         await writer;
         Assert.Empty(Directory.EnumerateFiles(Path.Combine(_root, "state", "outbox"), "*.unreadable"));
     }
+
+    [Fact]
+    public void ARecordHeldOpenByAnotherProgramIsSkippedNotSetAside()
+    {
+        // A scanner that opened it without sharing: the agent must still start, and the record is read next time.
+        var store = new ServerStore(new AgentPaths(_root), new PlainStateProtector());
+        var spec = new ServerRuntimeSpec("abcd2345", "{}", new Dictionary<string, string?>(), [], AutoStart: false, RestartOnCrash: false);
+        var good = new ServerRecord(Guid.NewGuid(), spec, DesiredRunning: false, ResumeOnStart: false);
+        var held = new ServerRecord(Guid.NewGuid(), spec with { ShortId = "abcd2346" }, DesiredRunning: false, ResumeOnStart: false);
+        store.Save(good);
+        store.Save(held);
+        var file = Path.Combine(_root, "state", "servers", $"{held.ServerId:N}.json");
+
+        using (new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.Equal(good.ServerId, Assert.Single(store.LoadAll()).ServerId);
+        }
+
+        Assert.False(File.Exists(file + ".unreadable"));
+        Assert.Equal(2, store.LoadAll().Count);
+    }
+
+    [Fact]
+    public async Task OneRecordWrittenFromTwoPlacesAtOnceIsNeverLeftHalfWritten()
+    {
+        var store = new ServerStore(new AgentPaths(_root), new PlainStateProtector());
+        var spec = new ServerRuntimeSpec("abcd2345", "{}", new Dictionary<string, string?>(), [], AutoStart: false, RestartOnCrash: false);
+        var record = new ServerRecord(Guid.NewGuid(), spec, DesiredRunning: false, ResumeOnStart: false);
+
+        await Task.WhenAll(Enumerable.Range(0, 4).Select(i => Task.Run(() =>
+        {
+            for (var n = 0; n < 50; n++)
+            {
+                store.Save(record with { DesiredRunning = (n + i) % 2 == 0 });
+            }
+        }, TestContext.Current.CancellationToken)));
+
+        Assert.Equal(record.ServerId, Assert.Single(store.LoadAll()).ServerId);
+        Assert.Empty(Directory.EnumerateFiles(Path.Combine(_root, "state", "servers"), "*.tmp"));
+    }
 }
