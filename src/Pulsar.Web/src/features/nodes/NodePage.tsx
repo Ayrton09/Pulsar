@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Badge, Card, PageHeader, Table, Td, Th } from '../../components/ui/Display';
+import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { Field, Input } from '../../components/ui/Form';
 import { ApiError } from '../../api/client';
 import { errorMessage, fieldErrors } from '../../lib/errors';
@@ -45,8 +46,10 @@ export function NodePage() {
   if (details.isPending) {
     return <Spinner label={t('common.loading')} />;
   }
-  if (details.isError) {
-    return details.error instanceof ApiError && details.error.code === 'node.not_found' ? (
+  const notFound = details.error instanceof ApiError && details.error.code === 'node.not_found';
+  // A failed refetch keeps the page (and an edit in progress); a node deleted meanwhile is gone, though.
+  if (!details.data || notFound) {
+    return notFound ? (
       <div className="py-16 text-center">
         <h1 className="text-xl font-semibold">{t('nodes.notFound')}</h1>
         <Link to="/nodes" className="mt-6 inline-block text-sm text-accent hover:underline">
@@ -61,6 +64,7 @@ export function NodePage() {
   const { node, credentials } = details.data;
   return (
     <>
+      {details.isError && <RefreshFailed error={details.error} retry={() => void details.refetch()} />}
       <p className="mb-2 text-sm">
         <Link to="/nodes" className="text-muted hover:text-text">
           ← {t('nodes.title')}
@@ -431,7 +435,15 @@ function AdministrationSection({
             variant="secondary"
             busy={token.isPending}
             disabled={disabled}
-            onClick={() => token.mutate(node.id, { onSuccess: setInstructions })}
+            onClick={() =>
+              token.mutate(node.id, {
+                // The token lives only in the dialog's state, gone once it closes.
+                onSuccess: (created) => {
+                  setInstructions(created);
+                  token.reset();
+                },
+              })
+            }
           >
             {node.status === 'pendingEnrollment' ? t('nodes.newToken') : t('nodes.reenroll')}
           </Button>

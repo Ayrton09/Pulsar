@@ -6,6 +6,8 @@ import { sessionKey } from '../features/auth/api';
  * One cache for server state. Client errors (4xx) are not retried: they will not fix themselves.
  * A 401 anywhere means the session ended (expired, disabled user, password changed): reload the session so the
  * route guard sends the user to the login page (or to set up the two-factor authentication a role requires).
+ * Finished mutations leave the cache as soon as no component shows them: their variables and answers may be
+ * passwords or one-time tokens (pages that stay open reset theirs once the value is shown or sent).
  */
 export function createQueryClient(): QueryClient {
   const client: QueryClient = new QueryClient({
@@ -17,6 +19,7 @@ export function createQueryClient(): QueryClient {
         refetchOnWindowFocus: false,
         staleTime: 30_000,
       },
+      mutations: { gcTime: 0 },
     },
   });
 

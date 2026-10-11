@@ -93,14 +93,16 @@ function ServersCard({ servers }: { servers: ServerSummary[] }) {
 
 function NodesCard({ nodes }: { nodes: NodeSummary[] }) {
   const { t } = useTranslation();
-  // Nodes not enrolled yet, or waiting for approval, are not expected online.
-  const enrolled = nodes.filter((n) => !['pending', 'awaiting'].includes(nodeState(n)));
+  // Nodes not enrolled yet, waiting for approval or disabled are not expected online (and are not alerts either).
+  const enrolled = nodes.filter((n) => ['online', 'offline'].includes(nodeState(n)));
   const online = enrolled.filter((n) => nodeState(n) === 'online').length;
+  const disabled = nodes.filter((n) => nodeState(n) === 'disabled').length;
+  const offline = t('dashboard.nodesOffline', { count: enrolled.length - online });
   return (
     <Stat
       title={t('dashboard.nodes')}
       value={t('dashboard.onlineOf', { online, total: enrolled.length })}
-      detail={t('dashboard.nodesOffline', { count: enrolled.length - online })}
+      detail={disabled > 0 ? `${offline} · ${t('dashboard.nodesDisabled', { count: disabled })}` : offline}
       to="/nodes"
     />
   );

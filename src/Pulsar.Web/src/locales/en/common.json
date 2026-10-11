@@ -3,7 +3,8 @@
     "loading": "Loading…",
     "none": "None",
     "never": "Never",
-    "actions": "Actions"
+    "actions": "Actions",
+    "refreshFailed": "Could not refresh; showing what was loaded before. {{error}}"
   },
   "actions": {
     "close": "Close",
@@ -66,6 +67,13 @@
     "description": "This page does not exist, or it is not available yet.",
     "home": "Go to the dashboard"
   },
+  "routeError": {
+    "title": "Something went wrong",
+    "description": "This page could not be shown. Reload to try again.",
+    "updatedTitle": "The panel was updated",
+    "updatedDescription": "This tab still runs the previous version. Reload to continue.",
+    "reload": "Reload"
+  },
   "dashboard": {
     "title": "Dashboard",
     "welcome": "Welcome, {{name}}.",
@@ -76,6 +84,7 @@
     "nodes": "Nodes",
     "onlineOf": "{{online}} of {{total}} online",
     "nodesOffline": "Offline: {{count}}",
+    "nodesDisabled": "Disabled: {{count}}",
     "cpu": "CPU (all nodes)",
     "memory": "Memory (all nodes)",
     "acrossNodes": "Nodes reporting: {{count}}",
@@ -1614,6 +1623,11 @@
     "description": "One token enrolls many machines, each as a new node named after it: for the agent MSI deployed with Intune or a group policy, or a script.",
     "create": "Create token",
     "empty": "There are no reusable tokens. Nodes are added one at a time with their own command.",
+    "noneUsable": "No token can enroll machines now.",
+    "finished": "Finished tokens",
+    "showFinished_one": "Show {{count}} finished token",
+    "showFinished_other": "Show {{count}} finished tokens",
+    "hideFinished": "Hide finished tokens",
     "name": "Name",
     "nameHint": "What it is for, e.g. \"Intune rollout\".",
     "uses": "Uses",

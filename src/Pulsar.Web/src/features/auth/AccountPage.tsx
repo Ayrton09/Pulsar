@@ -116,6 +116,7 @@ function PasswordForm() {
       {
         onSuccess: () => {
           reset();
+          change.reset(); // the passwords were its variables
           setChanged(true);
         },
       },

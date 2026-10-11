@@ -17,7 +17,14 @@ export function resolveLanguage(tag: string | undefined): SupportedLanguage {
   return supportedLanguages.find((language) => language === base) ?? 'en';
 }
 
+/** Screen readers read the page in its `lang` (index.html says English until the interface has a language). */
+function setDocumentLanguage(language: string) {
+  document.documentElement.lang = language;
+}
+
 export async function initI18n(languageTag: string | undefined): Promise<void> {
+  i18next.off('languageChanged', setDocumentLanguage);
+  i18next.on('languageChanged', setDocumentLanguage);
   await i18next.use(initReactI18next).init({
     resources,
     lng: resolveLanguage(languageTag),
@@ -25,4 +32,5 @@ export async function initI18n(languageTag: string | undefined): Promise<void> {
     defaultNS: 'common',
     interpolation: { escapeValue: false }, // React already escapes rendered values.
   });
+  setDocumentLanguage(i18next.language);
 }

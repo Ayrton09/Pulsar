@@ -35,7 +35,9 @@ export function UsersPage() {
   const me = useCurrentUser();
   const users = useUsers();
   const formatDate = useFormatDate();
-  const [editing, setEditing] = useState<User | 'new' | null>(null);
+  // The id only: the dialog shows the user as the list now has them (after a reset, a role change…).
+  const [editing, setEditing] = useState<string | 'new' | null>(null);
+  const editedUser = users.data?.find((user) => user.id === editing);
   const canManage = can(me, Permission.UserManage);
 
   return (
@@ -103,7 +105,7 @@ export function UsersPage() {
                 </Td>
                 {canManage && (
                   <Td className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => setEditing(user)}>
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(user.id)}>
                       {t('actions.edit')}
                     </Button>
                   </Td>
@@ -114,8 +116,8 @@ export function UsersPage() {
         </Table>
       )}
       {editing === 'new' && <CreateUserDialog onClose={() => setEditing(null)} />}
-      {editing && editing !== 'new' && (
-        <EditUserDialog user={editing} isSelf={editing.id === me.id} onClose={() => setEditing(null)} />
+      {editedUser && (
+        <EditUserDialog user={editedUser} isSelf={editedUser.id === me.id} onClose={() => setEditing(null)} />
       )}
     </>
   );
@@ -337,6 +339,7 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
                     {
                       onSuccess: () => {
                         setNewPassword('');
+                        reset.reset(); // the password was its variable
                         setNotice(t('users.passwordReset'));
                       },
                     },

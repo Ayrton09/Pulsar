@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, Outlet, useLocation, useSearchParams } from 'react-router';
 import { Button, Spinner } from '../../components/ui/Button';
+import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { errorMessage } from '../../lib/errors';
 import { canAnywhere } from '../../lib/permissions';
 import { useLogout, useSession, useSessionRefresh } from './api';
@@ -36,6 +37,18 @@ function Loading() {
   );
 }
 
+/**
+ * The session could not be read again (it is read after many changes and while the live channel is down): the page
+ * stays, with what the user was editing, and says so.
+ */
+function StaleSession({ error, retry }: { error: unknown; retry: () => void }) {
+  return (
+    <div className="px-6 pt-4">
+      <RefreshFailed error={error} retry={retry} />
+    </div>
+  );
+}
+
 /** Pages for signed-in users. Sends everyone else to the setup or login page. */
 export function RequireSession() {
   const session = useSession();
@@ -43,7 +56,8 @@ export function RequireSession() {
   if (session.isPending) {
     return <Loading />;
   }
-  if (session.isError) {
+  // Only without any session: a failed refetch keeps the last one.
+  if (!session.data) {
     return <SessionError error={session.error} retry={() => void session.refetch()} />;
   }
   if (session.data.setupRequired) {
@@ -53,10 +67,12 @@ export function RequireSession() {
     const returnTo = location.pathname + location.search;
     return <Navigate to={returnTo === '/' ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`} replace />;
   }
-  if (session.data.user.twoFactorSetupRequired) {
-    return <TwoFactorRequired />;
-  }
-  return <Outlet />;
+  return (
+    <>
+      {session.isError && <StaleSession error={session.error} retry={() => void session.refetch()} />}
+      {session.data.user.twoFactorSetupRequired ? <TwoFactorRequired /> : <Outlet />}
+    </>
+  );
 }
 
 /** A role requires two-factor authentication: nothing else is open until the user sets it up (the API agrees). */
@@ -83,7 +99,7 @@ export function PublicOnly({ page }: { page: 'login' | 'setup' }) {
   if (session.isPending) {
     return <Loading />;
   }
-  if (session.isError) {
+  if (!session.data) {
     return <SessionError error={session.error} retry={() => void session.refetch()} />;
   }
   if (session.data.user) {
@@ -96,7 +112,12 @@ export function PublicOnly({ page }: { page: 'login' | 'setup' }) {
   if (page === 'setup' && !session.data.setupRequired) {
     return <Navigate to="/login" replace />;
   }
-  return <Outlet />;
+  return (
+    <>
+      {session.isError && <StaleSession error={session.error} retry={() => void session.refetch()} />}
+      <Outlet />
+    </>
+  );
 }
 
 /** Hides a page from users without any of the permissions (the API refuses them anyway). */

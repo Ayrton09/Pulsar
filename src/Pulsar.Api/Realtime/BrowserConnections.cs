@@ -30,7 +30,7 @@ public sealed class BrowserConnections
 
     internal void WatchesScoped(string connectionId) => _scoped[connectionId] = 0;
 
-    /// <summary>The user was disabled or deleted, changed their password or two-factor setup, or got other roles.</summary>
+    /// <summary>The user signed out, was disabled or deleted, changed their password or two-factor setup, or got other roles.</summary>
     public void EndUser(UserId user)
     {
         foreach (var (_, connection) in _connections.Where(c => c.Value.User == user))

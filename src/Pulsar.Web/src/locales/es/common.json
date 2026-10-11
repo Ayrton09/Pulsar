@@ -3,7 +3,8 @@
     "loading": "Cargando…",
     "none": "Ninguno",
     "never": "Nunca",
-    "actions": "Acciones"
+    "actions": "Acciones",
+    "refreshFailed": "No se pudo actualizar; se muestra lo que se había cargado. {{error}}"
   },
   "actions": {
     "close": "Cerrar",
@@ -66,6 +67,13 @@
     "description": "Esta página no existe o todavía no está disponible.",
     "home": "Ir al inicio"
   },
+  "routeError": {
+    "title": "Algo salió mal",
+    "description": "No se pudo mostrar esta página. Recargala para intentar de nuevo.",
+    "updatedTitle": "El panel se actualizó",
+    "updatedDescription": "Esta pestaña todavía usa la versión anterior. Recargala para seguir.",
+    "reload": "Recargar"
+  },
   "dashboard": {
     "title": "Inicio",
     "welcome": "Hola, {{name}}.",
@@ -76,6 +84,7 @@
     "nodes": "Nodos",
     "onlineOf": "{{online}} de {{total}} conectados",
     "nodesOffline": "Desconectados: {{count}}",
+    "nodesDisabled": "Deshabilitados: {{count}}",
     "cpu": "CPU (todos los nodos)",
     "memory": "Memoria (todos los nodos)",
     "acrossNodes": "Nodos reportando: {{count}}",
@@ -1614,6 +1623,11 @@
     "description": "Un solo token enrola muchas máquinas, cada una como un nodo nuevo con su nombre: para el MSI del agente distribuido con Intune o una directiva de grupo, o para un script.",
     "create": "Crear token",
     "empty": "No hay tokens reutilizables. Los nodos se agregan de a uno, cada uno con su comando.",
+    "noneUsable": "Ningún token puede enrolar máquinas ahora.",
+    "finished": "Tokens terminados",
+    "showFinished_one": "Mostrar {{count}} token terminado",
+    "showFinished_other": "Mostrar {{count}} tokens terminados",
+    "hideFinished": "Ocultar tokens terminados",
     "name": "Nombre",
     "nameHint": "Para qué es, por ejemplo \"Despliegue con Intune\".",
     "uses": "Usos",

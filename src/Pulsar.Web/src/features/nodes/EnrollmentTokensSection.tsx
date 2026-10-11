@@ -22,11 +22,14 @@ import { enrollCommand, msiCommand } from './nodeStatus';
  */
 export function EnrollmentTokensSection() {
   const { t } = useTranslation();
-  const formatDate = useFormatDate();
   const tokens = useEnrollmentTokens();
   const revoke = useRevokeReusableToken();
   const [creating, setCreating] = useState(false);
+  const [showFinished, setShowFinished] = useState(false);
   const error = tokens.error ?? revoke.error;
+  // Expired, used up and revoked tokens only tell the history: folded away so the usable ones stay readable.
+  const usable = tokens.data?.filter((token) => token.usable) ?? [];
+  const finished = tokens.data?.filter((token) => !token.usable) ?? [];
 
   return (
     <section className="mt-10">
@@ -46,58 +49,90 @@ export function EnrollmentTokensSection() {
           <p className="text-sm text-muted">{t('enrollmentTokens.empty')}</p>
         </Card>
       )}
-      {tokens.data && tokens.data.length > 0 && (
-        <Table label={t('enrollmentTokens.title')}>
-          <thead>
-            <tr>
-              <Th>{t('enrollmentTokens.name')}</Th>
-              <Th>{t('enrollmentTokens.uses')}</Th>
-              <Th>{t('enrollmentTokens.expires')}</Th>
-              <Th>{t('enrollmentTokens.state')}</Th>
-              <Th>
-                <span className="sr-only">{t('common.actions')}</span>
-              </Th>
-            </tr>
-          </thead>
-          <tbody>
-            {tokens.data.map((token) => (
-              <tr key={token.id}>
-                <Td>
-                  <p className="font-medium">{token.name}</p>
-                  <code className="font-mono text-xs text-muted">{token.tokenPrefix}…</code>
-                </Td>
-                <Td>
-                  {t('enrollmentTokens.usesValue', { uses: token.uses, max: token.maxUses })}
-                  <p className="text-xs text-muted">
-                    {token.requireApproval ? t('enrollmentTokens.withApproval') : t('enrollmentTokens.withoutApproval')}
-                  </p>
-                </Td>
-                <Td>{formatDate(token.expiresAt)}</Td>
-                <Td>
-                  <TokenState token={token} />
-                </Td>
-                <Td className="text-right">
-                  {token.usable && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      busy={revoke.isPending && revoke.variables === token.id}
-                      onClick={() =>
-                        window.confirm(t('enrollmentTokens.revokeConfirm', { name: token.name })) &&
-                        revoke.mutate(token.id)
-                      }
-                    >
-                      {t('enrollmentTokens.revoke')}
-                    </Button>
-                  )}
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+      {usable.length > 0 && (
+        <TokenTable
+          label={t('enrollmentTokens.title')}
+          tokens={usable}
+          revoking={revoke.isPending ? revoke.variables : undefined}
+          onRevoke={(token) =>
+            window.confirm(t('enrollmentTokens.revokeConfirm', { name: token.name })) && revoke.mutate(token.id)
+          }
+        />
+      )}
+      {usable.length === 0 && finished.length > 0 && (
+        <p className="text-sm text-muted">{t('enrollmentTokens.noneUsable')}</p>
+      )}
+      {finished.length > 0 && (
+        <div className="mt-3 space-y-3">
+          <Button variant="ghost" size="sm" aria-expanded={showFinished} onClick={() => setShowFinished(!showFinished)}>
+            {showFinished
+              ? t('enrollmentTokens.hideFinished')
+              : t('enrollmentTokens.showFinished', { count: finished.length })}
+          </Button>
+          {showFinished && <TokenTable label={t('enrollmentTokens.finished')} tokens={finished} />}
+        </div>
       )}
       {creating && <CreateTokenDialog onClose={() => setCreating(false)} />}
     </section>
+  );
+}
+
+function TokenTable({
+  label,
+  tokens,
+  revoking,
+  onRevoke,
+}: {
+  label: string;
+  tokens: EnrollmentTokenView[];
+  /** The token being revoked. */
+  revoking?: string | undefined;
+  /** Offered on usable tokens. */
+  onRevoke?: (token: EnrollmentTokenView) => void;
+}) {
+  const { t } = useTranslation();
+  const formatDate = useFormatDate();
+  return (
+    <Table label={label}>
+      <thead>
+        <tr>
+          <Th>{t('enrollmentTokens.name')}</Th>
+          <Th>{t('enrollmentTokens.uses')}</Th>
+          <Th>{t('enrollmentTokens.expires')}</Th>
+          <Th>{t('enrollmentTokens.state')}</Th>
+          <Th>
+            <span className="sr-only">{t('common.actions')}</span>
+          </Th>
+        </tr>
+      </thead>
+      <tbody>
+        {tokens.map((token) => (
+          <tr key={token.id}>
+            <Td>
+              <p className="font-medium">{token.name}</p>
+              <code className="font-mono text-xs text-muted">{token.tokenPrefix}…</code>
+            </Td>
+            <Td>
+              {t('enrollmentTokens.usesValue', { uses: token.uses, max: token.maxUses })}
+              <p className="text-xs text-muted">
+                {token.requireApproval ? t('enrollmentTokens.withApproval') : t('enrollmentTokens.withoutApproval')}
+              </p>
+            </Td>
+            <Td>{formatDate(token.expiresAt)}</Td>
+            <Td>
+              <TokenState token={token} />
+            </Td>
+            <Td className="text-right">
+              {token.usable && onRevoke && (
+                <Button variant="secondary" size="sm" busy={revoking === token.id} onClick={() => onRevoke(token)}>
+                  {t('enrollmentTokens.revoke')}
+                </Button>
+              )}
+            </Td>
+          </tr>
+        ))}
+      </tbody>
+    </Table>
   );
 }
 
