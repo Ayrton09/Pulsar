@@ -85,6 +85,34 @@ public sealed class UnenrollTests : IDisposable
         Assert.Contains("firewall", errors.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void AServiceStillStoppingKeepsTheAccountsAndTheStateItMayStillUse()
+    {
+        // The service could still save a server record (secrets included) or log on as a server account meanwhile.
+        var store = new ServerStore(_paths, new PlainStateProtector());
+        store.Save(new ServerRecord(Guid.NewGuid(), new ServerRuntimeSpec("abcd2345", "{}", new Dictionary<string, string?>(), [],
+            AutoStart: true, RestartOnCrash: true), DesiredRunning: true, ResumeOnStart: false, RconPassword: "rcon-secret"));
+        new SteamLoginStore(_paths, new PlainStateProtector()).Save(new SteamLogin(Guid.NewGuid(), "builder", "password"), "cached"u8.ToArray());
+        List<string> deleted = [];
+        using var output = new StringWriter();
+        using var errors = new StringWriter();
+
+        AgentCommands.RemoveServers(_paths, _servers, _paths.BackupsDirectory, new PlainStateProtector(), name =>
+        {
+            deleted.Add(name);
+            return true;
+        }, _ => 1, output, errors, serviceStillStopping: true);
+
+        Assert.Empty(deleted);
+        Assert.True(Directory.Exists(_paths.ServersStateDirectory));
+        Assert.True(Directory.Exists(_paths.SteamLoginsDirectory));
+        Assert.Contains("1 firewall rule(s)", output.ToString(), StringComparison.Ordinal);
+        var printed = errors.ToString();
+        Assert.Contains("pulsar_abcd2345", printed, StringComparison.Ordinal);
+        Assert.Contains(Path.GetDirectoryName(_paths.ServersStateDirectory)!, printed, StringComparison.Ordinal);
+        Assert.Contains("by hand", printed, StringComparison.Ordinal);
+    }
+
     [WindowsFact]
     public void TheAgentsFirewallRulesCanBeFoundWithoutChangingAnything()
     {

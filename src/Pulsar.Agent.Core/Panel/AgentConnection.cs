@@ -425,6 +425,8 @@ public sealed partial class AgentConnection(
             () => DiskUsageSampler.Sample(config.ServersRootOrDefault(configs.Paths), config.BackupsRootOrDefault(configs.Paths)));
         try
         {
+            // The client does not await handlers that return a result before reading on, so a command waiting for the
+            // clock never holds back Hello's answer (CommandBeforeHelloTests).
             connection.On<SignedMessage, CommandAck>(nameof(IAgentClient.Execute), message => dispatcher.ExecuteAsync(verifier, message, this));
             await connection.StartAsync(cancellationToken);
 
