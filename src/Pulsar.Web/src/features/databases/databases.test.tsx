@@ -8,6 +8,7 @@ import { App } from '../../app/App';
 import { initI18n } from '../../app/i18n';
 import { routes } from '../../app/routes';
 import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
+import { databaseKeys } from './api';
 
 const serverId = '0192f1a0-0000-7000-8000-0000000000e1';
 const hostId = '0192f1a0-0000-7000-8000-0000000000d1';
@@ -63,9 +64,11 @@ function list(databases: Schemas['ServerDatabaseView'][], limit = 2): Schemas['S
   return { limit, databases, hosts: [{ id: hostId, name: 'LAN MariaDB' }] };
 }
 
-function renderAt(path: string) {
+function renderAt(
+  path: string,
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } }),
+) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
   render(<App router={router} queryClient={queryClient} />);
 }
 
@@ -186,6 +189,35 @@ describe('databases tab', () => {
     await vi.waitFor(() =>
       expect(screen.queryByRole('region', { name: 'Connection details of sk3x7m2qa_main' })).not.toBeInTheDocument(),
     );
+  });
+
+  it('keeps a shown password and the list when fetching them again fails', async () => {
+    let down = false;
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/databases`]: () => (down ? problem(503, 'unavailable') : json(list([main]))),
+      [`GET /api/v1/servers/${serverId}/databases/${main.id}/password`]: () =>
+        json({ database: main, password: 'Kq7mPz2xVb9nRt4wLs8yHc3d' }),
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
+    renderAt(`/servers/${serverId}?tab=databases`, queryClient);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Show password' }));
+    const shown = await screen.findByRole('region', { name: 'Connection details of sk3x7m2qa_main' });
+    // A reconnect refetches, and the panel does not answer.
+    down = true;
+    await queryClient.invalidateQueries({ queryKey: databaseKeys.server(serverId) });
+
+    expect(await screen.findByText(/Could not refresh/)).toBeInTheDocument();
+    expect(shown).toBeInTheDocument();
+    expect(shown).toHaveTextContent('Kq7mPz2xVb9nRt4wLs8yHc3d');
+    expect(screen.getByRole('table', { name: 'Databases' })).toHaveTextContent('sk3x7m2qa_main');
+
+    down = false;
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await vi.waitFor(() => expect(screen.queryByText(/Could not refresh/)).not.toBeInTheDocument());
   });
 });
 

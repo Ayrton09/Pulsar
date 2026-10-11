@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Table, Td, Th } from '../../components/ui/Display';
+import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { Field, Input, Select } from '../../components/ui/Form';
 import { copyText } from '../../lib/clipboard';
 import { errorMessage } from '../../lib/errors';
@@ -44,7 +45,8 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
   if (databases.isPending) {
     return <Spinner label={t('common.loading')} />;
   }
-  if (databases.isError) {
+  // A failed refetch (after a reconnect, say) keeps the tab with the last data, and what is open on it.
+  if (!databases.data) {
     return <Alert>{errorMessage(t, databases.error)}</Alert>;
   }
 
@@ -69,6 +71,7 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
 
   return (
     <div className="space-y-6">
+      {databases.isError && <RefreshFailed error={databases.error} retry={() => void databases.refetch()} />}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-2xl space-y-1 text-sm text-muted">
           <p>{t('databases.hint')}</p>

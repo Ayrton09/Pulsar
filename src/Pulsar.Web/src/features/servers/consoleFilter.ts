@@ -26,15 +26,13 @@ export class ConsoleFilter {
   /** The last character was a carriage return, already written as a line break: a line feed after it adds none. */
   private afterReturn = false;
 
-  /** @param dropped What stands for a sequence dropped because it never ended. */
-  constructor(private readonly dropped = '…') {}
-
   /** Forgets an unfinished sequence (after a gap, its rest will not come). */
   reset() {
     this.pending = '';
   }
 
-  push(chunk: string): string {
+  /** @param dropped What stands for a sequence dropped because it never ended. */
+  push(chunk: string, dropped = '…'): string {
     const text = this.pending + chunk;
     this.pending = '';
     let out = '';
@@ -47,7 +45,7 @@ export class ConsoleFilter {
           this.pending = text.slice(i);
           break;
         }
-        out += this.translate(sequence);
+        out += this.translate(sequence, dropped);
         i += sequence.length;
         continue;
       }
@@ -72,9 +70,9 @@ export class ConsoleFilter {
     return out;
   }
 
-  private translate(sequence: Sequence): string {
+  private translate(sequence: Sequence, dropped: string): string {
     if (sequence.kind === 'dropped') {
-      return sequence.cut ? this.dropped : '';
+      return sequence.cut ? dropped : '';
     }
     if (sequence.kind === 'osc') {
       // Hyperlinks only: the terminal's link handler opens web links and nothing else.

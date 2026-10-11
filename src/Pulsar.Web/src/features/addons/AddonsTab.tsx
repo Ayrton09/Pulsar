@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Badge, Card } from '../../components/ui/Display';
+import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
 import { canOnServer, Permission } from '../../lib/permissions';
@@ -28,7 +29,8 @@ export function AddonsTab({ details }: { details: ServerDetails }) {
   if (addons.isPending) {
     return <Spinner label={t('common.loading')} />;
   }
-  if (addons.isError) {
+  // A failed refetch (after a reconnect, say) keeps the tab with the last data, and what is open on it.
+  if (!addons.data) {
     return <Alert>{errorMessage(t, addons.error)}</Alert>;
   }
 
@@ -74,6 +76,7 @@ export function AddonsTab({ details }: { details: ServerDetails }) {
 
   return (
     <div className="space-y-6">
+      {addons.isError && <RefreshFailed error={addons.error} retry={() => void addons.refetch()} />}
       <p className="max-w-2xl text-sm text-muted">{t('addons.hint')}</p>
       {canChange && !changeable && <p className="text-sm text-muted">{t('addons.stopToChange')}</p>}
       {error && <Alert>{refusal() ?? errorMessage(t, error)}</Alert>}

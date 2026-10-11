@@ -16,20 +16,44 @@ export function reloadPage(): void {
 }
 
 /**
- * Reloads the page for a newer build, unless it did so in the last minute: if the new build fails too, the user gets
- * the error page instead of a reload loop. Without session storage it cannot tell, so it does not reload. Returns
- * whether it reloads.
+ * Whether the panel answers now. A module that cannot be loaded is also what a browser offline, or a panel restarting
+ * (or a proxy in front of it answering for it), gets; reloading then would show the browser's own error page.
  */
-export function reloadForNewBuild(reload: () => void = reloadPage): boolean {
+export async function panelAnswers(): Promise<boolean> {
+  if (!navigator.onLine) {
+    return false;
+  }
   try {
-    const last = Number(sessionStorage.getItem(reloadedAtKey) ?? 0);
-    if (Date.now() - last < 60_000) {
-      return false;
-    }
-    sessionStorage.setItem(reloadedAtKey, String(Date.now()));
+    return (await fetch('/health/live', { cache: 'no-store' })).ok;
   } catch {
     return false;
   }
+}
+
+/** What reloadForNewBuild did: reload, or not because it already did in the last minute, or the panel is not there. */
+export type NewBuildReload = 'reloading' | 'reloaded' | 'unreachable';
+
+/**
+ * Reloads the page for a newer build, when the panel answers and unless it did so in the last minute: if the new
+ * build fails too, the user gets the error page instead of a reload loop. Without session storage it cannot tell, so
+ * it does not reload.
+ */
+export async function reloadForNewBuild(
+  reload: () => void = reloadPage,
+  answers: () => Promise<boolean> = panelAnswers,
+): Promise<NewBuildReload> {
+  if (!(await answers())) {
+    return 'unreachable';
+  }
+  try {
+    const last = Number(sessionStorage.getItem(reloadedAtKey) ?? 0);
+    if (Date.now() - last < 60_000) {
+      return 'reloaded';
+    }
+    sessionStorage.setItem(reloadedAtKey, String(Date.now()));
+  } catch {
+    return 'reloaded';
+  }
   reload();
-  return true;
+  return 'reloading';
 }

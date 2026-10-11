@@ -563,6 +563,28 @@ describe('server page', () => {
     expect(screen.getByRole('tablist', { name: 'Server sections' })).toBeInTheDocument();
   });
 
+  it.each([
+    ['deleted meanwhile', 404, 'server.not_found'],
+    ['no longer allowed', 403, 'auth.forbidden'],
+  ])('says the server is gone when a refresh finds it %s', async (_, status, code) => {
+    let gone = false;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${running.id}`]: () => (gone ? problem(status, code) : json(details(running))),
+    });
+    const before = connections.length;
+    renderAt(`/servers/${running.id}?tab=overview`);
+    const live = await openedConnection(before);
+    expect(await screen.findByRole('heading', { name: 'Surf' })).toBeInTheDocument();
+
+    gone = true;
+    live.emit('ServersChanged', [running.id]);
+
+    expect(await screen.findByRole('heading', { name: 'This server does not exist.' })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Server sections' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Server actions' })).not.toBeInTheDocument();
+  });
+
   it('explains a node conflict when deleting', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     fakeApi({

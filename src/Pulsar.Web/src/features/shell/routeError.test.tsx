@@ -10,7 +10,7 @@ import { RouteError } from './pages';
 
 vi.mock('../../lib/reload', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/reload')>()),
-  reloadForNewBuild: vi.fn(() => false),
+  reloadForNewBuild: vi.fn(() => Promise.resolve('reloaded')),
   reloadPage: vi.fn(),
 }));
 
@@ -46,7 +46,7 @@ describe('route errors', () => {
   });
 
   it('reload a tab whose page belongs to a build the panel no longer serves', async () => {
-    vi.mocked(reloadForNewBuild).mockReturnValue(true);
+    vi.mocked(reloadForNewBuild).mockResolvedValue('reloading');
 
     renderFailing(new TypeError('Failed to fetch dynamically imported module: /assets/NodesPage-1a2b3c.js'));
 
@@ -58,6 +58,16 @@ describe('route errors', () => {
     renderFailing(new TypeError('Failed to fetch dynamically imported module: /assets/NodesPage-1a2b3c.js'));
 
     expect(await screen.findByRole('heading', { name: 'The panel was updated' })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Reload' }));
+    expect(reloadPage).toHaveBeenCalledOnce();
+  });
+
+  it('do not reload while the panel cannot be reached, and say so', async () => {
+    vi.mocked(reloadForNewBuild).mockResolvedValue('unreachable');
+
+    renderFailing(new TypeError('Failed to fetch dynamically imported module: /assets/NodesPage-1a2b3c.js'));
+
+    expect(await screen.findByRole('heading', { name: 'The panel cannot be reached' })).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Reload' }));
     expect(reloadPage).toHaveBeenCalledOnce();
   });
