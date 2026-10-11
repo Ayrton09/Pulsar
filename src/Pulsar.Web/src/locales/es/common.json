@@ -72,6 +72,8 @@
     "description": "No se pudo mostrar esta página. Recargala para intentar de nuevo.",
     "updatedTitle": "El panel se actualizó",
     "updatedDescription": "Esta pestaña todavía usa la versión anterior. Recargala para seguir.",
+    "unreachableTitle": "No se puede contactar al panel",
+    "unreachableDescription": "Revisá tu conexión, o esperá a que el panel vuelva, y recargá.",
     "reload": "Recargar"
   },
   "dashboard": {
@@ -1251,7 +1253,7 @@
       "tooLarge": "Este archivo pesa más de 1 MB: descargalo.",
       "binary": "Este archivo no es de texto: descargalo.",
       "mixedEndings": "Este archivo mezcla finales de línea de Windows y de Unix, y guardarlo acá los cambiaría: se muestra solo para leer. Descargalo para editarlo.",
-      "tabHint": "Tab indenta. Para salir del editor con el teclado, presioná Esc y después Tab, o Ctrl+M para que Tab mueva el foco."
+      "tabHint": "Tab indenta. Para salir del editor con el teclado, presioná Esc y después Tab, o Ctrl+M (Shift+Alt+M en una Mac) para que Tab mueva el foco."
     },
     "refresh": "Actualizar"
   },

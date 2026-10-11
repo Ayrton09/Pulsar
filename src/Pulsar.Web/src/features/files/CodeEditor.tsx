@@ -1,4 +1,4 @@
-import { defaultKeymap, history, historyKeymap, indentWithTab, toggleTabFocusMode } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { bracketMatching, defaultHighlightStyle, HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search';
 import { EditorState } from '@codemirror/state';
@@ -117,10 +117,7 @@ export default function CodeEditor({
                 return true;
               },
             },
-            // Tab indents, so it does not move the focus: Escape then Tab does (CodeMirror), and Ctrl+M (Shift+Alt+M on a
-            // Mac) makes Tab move the focus until pressed again (WCAG 2.1.2; the page says so next to the editor).
             indentWithTab,
-            { key: 'Ctrl-m', mac: 'Shift-Alt-m', run: toggleTabFocusMode },
             ...defaultKeymap,
             ...historyKeymap,
             ...searchKeymap,

@@ -90,9 +90,12 @@ export function ServerPage() {
     return <Spinner label={t('common.loading')} />;
   }
   // A failed refresh keeps the page with what was loaded last (an open editor included): only a first load that
-  // failed has nothing to show.
-  if (details.data === undefined) {
-    return details.error instanceof ApiError && details.error.code === 'server.not_found' ? (
+  // failed has nothing to show. A server deleted meanwhile, or no longer this user's to see, is gone, though.
+  const gone =
+    details.error instanceof ApiError &&
+    (details.error.code === 'server.not_found' || details.error.code === 'auth.forbidden');
+  if (details.data === undefined || gone) {
+    return gone ? (
       <div className="py-16 text-center">
         <h1 className="text-xl font-semibold">{t('servers.notFound')}</h1>
         <Link to="/servers" className="mt-6 inline-block text-sm text-accent hover:underline">

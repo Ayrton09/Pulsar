@@ -37,24 +37,26 @@ describe('ConsoleFilter', () => {
   });
 
   it('drops a string sequence that never ends, says so and shows what follows', () => {
-    const filter = new ConsoleFilter('[dropped]');
+    const filter = new ConsoleFilter();
+    const push = (chunk: string) => filter.push(chunk, '[dropped]');
 
     // A title with no terminator: held while it may still end, up to the end of its line.
-    expect(filter.push(`before ${ESC}]0;title`)).toBe('before ');
-    expect(filter.push(' more\nafter')).toBe('[dropped]\nafter');
+    expect(push(`before ${ESC}]0;title`)).toBe('before ');
+    expect(push(' more\nafter')).toBe('[dropped]\nafter');
 
     // Too long to be held: dropped, and later output is not held behind it.
-    expect(filter.push(`${ESC}]0;${'x'.repeat(3000)}`)).toBe('');
-    expect(filter.push('y'.repeat(2000))).toBe('[dropped]');
-    expect(filter.push('more')).toBe('more');
+    expect(push(`${ESC}]0;${'x'.repeat(3000)}`)).toBe('');
+    expect(push('y'.repeat(2000))).toBe('[dropped]');
+    expect(push('more')).toBe('more');
   });
 
   it('drops a control sequence that never ends, says so and shows what follows', () => {
-    const filter = new ConsoleFilter('[dropped]');
+    const filter = new ConsoleFilter();
+    const push = (chunk: string) => filter.push(chunk, '[dropped]');
 
-    expect(filter.push(`a${ESC}[${'1;'.repeat(5000)}mb`)).toBe('a[dropped]b');
-    expect(filter.push(`c${ESC}[${'1;'.repeat(5000)}`)).toBe('c[dropped]');
-    expect(filter.push('d')).toBe('d');
+    expect(push(`a${ESC}[${'1;'.repeat(5000)}mb`)).toBe('a[dropped]b');
+    expect(push(`c${ESC}[${'1;'.repeat(5000)}`)).toBe('c[dropped]');
+    expect(push('d')).toBe('d');
   });
 
   it('turns a pseudo console moving to the next row into a line break', () => {

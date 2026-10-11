@@ -1,3 +1,4 @@
+import { defaultKeymap, toggleTabFocusMode } from '@codemirror/commands';
 import { QueryClient } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -407,7 +408,14 @@ describe('files tab', () => {
     renderAt(`/servers/${serverId}?tab=files&file=server.cfg`);
 
     expect(await screen.findByLabelText('Contents of server.cfg')).toHaveAccessibleDescription(
-      'Tab indents. To leave the editor with the keyboard, press Esc and then Tab, or Ctrl+M to make Tab move the focus.',
+      'Tab indents. To leave the editor with the keyboard, press Esc and then Tab, or Ctrl+M (Shift+Alt+M on a Mac) to make Tab move the focus.',
+    );
+  });
+
+  it("relies on CodeMirror's own Ctrl+M (Shift+Alt+M on a Mac), which the hint names", () => {
+    // The editor is replaced in these tests; its keymap is CodeMirror's defaultKeymap, which binds tab-focus mode.
+    expect(defaultKeymap).toContainEqual(
+      expect.objectContaining({ key: 'Ctrl-m', mac: 'Shift-Alt-m', run: toggleTabFocusMode }),
     );
   });
 

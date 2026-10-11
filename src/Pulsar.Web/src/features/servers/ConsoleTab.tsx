@@ -34,8 +34,7 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
   const container = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const search = useRef<SearchAddon | null>(null);
-  // Dimmed, in the reader's language, where a sequence that never ended was dropped.
-  const filter = useRef(new ConsoleFilter(`\x1b[2m[${t('servers.console.dropped')}]\x1b[0m`));
+  const [filter] = useState(() => new ConsoleFilter());
   const [query, setQuery] = useState('');
 
   useEffect(() => {
@@ -76,17 +75,20 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
 
   const write = useCallback(
     (entries: ConsoleEntry[]) => {
+      // Dimmed, in the reader's language (the current one: it may have changed since the tab opened), where a
+      // sequence that never ended was dropped.
+      const dropped = `\x1b[2m[${t('servers.console.dropped')}]\x1b[0m`;
       for (const entry of entries) {
         if (entry.isGap) {
-          filter.current.reset();
+          filter.reset();
         }
         // Game output is filtered: only text, colours and links reach the terminal (no clearing or cursor moves).
         terminal.current?.write(
-          entry.isGap ? `\r\n\x1b[2m—— ${t('servers.console.gap')} ——\x1b[0m\r\n` : filter.current.push(entry.text),
+          entry.isGap ? `\r\n\x1b[2m—— ${t('servers.console.gap')} ——\x1b[0m\r\n` : filter.push(entry.text, dropped),
         );
       }
     },
-    [t],
+    [filter, t],
   );
   const stream = useServerConsole(server.id, write);
   const running = server.runtimeState === 'starting' || server.runtimeState === 'running';

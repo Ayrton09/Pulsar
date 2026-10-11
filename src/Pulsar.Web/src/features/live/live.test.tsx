@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import i18next from 'i18next';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Schemas } from '../../api/client';
@@ -207,6 +208,22 @@ describe('server console', () => {
     await waitFor(() => expect(consoleText()).toContain('a sequence that never ended was dropped here'));
     expect(consoleText()).toMatch(/dropped here.*next/s);
     expect(consoleText()).not.toContain('title');
+  });
+
+  it('marks a dropped sequence in the language the interface has when it is written', async () => {
+    serverApi();
+    answerNext({ WatchConsole: () => ({ entries: [entry(1, 'one\r\n')], nodeConnected: true }) });
+    const live = await renderAt(`/servers/${server.id}?tab=console`);
+    await waitFor(() => expect(consoleText()).toBe('one\r\n'));
+
+    try {
+      await act(() => i18next.changeLanguage('es'));
+      live.emit('ConsoleOutput', { serverId: server.id, entries: [entry(2, 'a\x1b]0;title\nnext\r\n')] });
+
+      expect(consoleText()).toContain('acá se descartó una secuencia que no terminaba');
+    } finally {
+      await act(() => i18next.changeLanguage('en'));
+    }
   });
 
   it('is read-only without the permission to type, and absent without the one to watch', async () => {

@@ -72,6 +72,8 @@
     "description": "This page could not be shown. Reload to try again.",
     "updatedTitle": "The panel was updated",
     "updatedDescription": "This tab still runs the previous version. Reload to continue.",
+    "unreachableTitle": "The panel cannot be reached",
+    "unreachableDescription": "Check your connection, or wait for the panel to be back, then reload.",
     "reload": "Reload"
   },
   "dashboard": {
@@ -1251,7 +1253,7 @@
       "tooLarge": "This file is larger than 1 MB: download it instead.",
       "binary": "This file is not text: download it instead.",
       "mixedEndings": "This file mixes Windows and Unix line endings, and saving it here would change them: it is shown read only. Download it to edit it.",
-      "tabHint": "Tab indents. To leave the editor with the keyboard, press Esc and then Tab, or Ctrl+M to make Tab move the focus."
+      "tabHint": "Tab indents. To leave the editor with the keyboard, press Esc and then Tab, or Ctrl+M (Shift+Alt+M on a Mac) to make Tab move the focus."
     },
     "refresh": "Refresh"
   },
