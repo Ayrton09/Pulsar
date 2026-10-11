@@ -126,8 +126,9 @@ try {
             (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $release 'Backup-Pulsar.ps1') -Destination 'P:\Backups' 2>&1 | ForEach-Object { "$_" }) -join ' '
         }
         $refusedCode = $LASTEXITCODE
-        $left = @(Get-ChildItem 'P:\' -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { -not $_.PSIsContainer })
-        Check 'backup refuses a drive without permissions (FAT32), leaving no file there' ($refusedCode -ne 0 -and ($refusedOutput -replace '\s', '') -match 'NTFSorReFS' -and $left.Count -eq 0) "exit $refusedCode; files left: $($left.Count); $($refusedOutput -replace '\s+', ' ')"
+        # What the backup left in its destination (Windows keeps files of its own in the volume's System Volume Information).
+        $left = @(Get-ChildItem 'P:\Backups' -Recurse -Force -ErrorAction SilentlyContinue)
+        Check 'backup refuses a drive without permissions (FAT32), leaving nothing there' ($refusedCode -ne 0 -and ($refusedOutput -replace '\s', '') -match 'NTFSorReFS' -and $left.Count -eq 0) "exit $refusedCode; left: $(($left | ForEach-Object { $_.FullName }) -join ', '); $($refusedOutput -replace '\s+', ' ')"
     }
     else {
         Add-Content $summary 'INFO backup on a FAT32 drive not checked: the virtual disk could not be made'
