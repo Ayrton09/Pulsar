@@ -7,13 +7,17 @@ namespace Pulsar.Agent.Core.Servers;
 /// <summary>
 /// Follows the log file a game writes its console to (<c>logfile+rcon</c>, spike 0001): the text appended since the
 /// last read, from the start of the file. The agent deletes the file before each start, so the game creates it anew;
-/// a file that shrinks (truncated) is read again from its start. A byte order mark is skipped. Cancelling ends the
-/// enumeration after one last read, so what the game wrote just before exiting is not lost.
+/// a file that shrinks (truncated) is read again from its start, and so is a new file under the same name (a game that
+/// rotates its log: renames it and starts another), which a reader that is idle checks for every few polls. A byte
+/// order mark is skipped. Cancelling ends the enumeration after one last read, so what the game wrote just before
+/// exiting is not lost.
 /// </summary>
 /// <param name="start">Where to start reading: 0, or where an earlier run of the agent stopped (a game left running in its host).</param>
 public sealed class LogTail(IServerFiles files, string serverRoot, string relativePath, Encoding encoding, TimeSpan pollInterval, long start = 0)
 {
     private const int BufferSize = 64 * 1024;
+    private const int IdlePollsPerRotationCheck = 4;
+    private const int SignatureLength = 256;
     private long _position = start;
 
     /// <summary>
@@ -31,12 +35,21 @@ public sealed class LogTail(IServerFiles files, string serverRoot, string relati
         var chars = new char[encoding.GetMaxCharCount(BufferSize)];
         var tail = new List<byte>(4); // the last bytes read: where a character may be cut
         var lastRead = false;
+        var idlePolls = 0;
         try
         {
             while (true)
             {
                 stream ??= files.OpenRead(serverRoot, relativePath);
-                if (stream is not null && stream.Length < position)
+                var restart = stream is not null && stream.Length < position; // truncated
+                if (stream is not null && !restart && ++idlePolls % IdlePollsPerRotationCheck == 0 && Replacement(stream, position) is { } replacement)
+                {
+                    await stream.DisposeAsync();
+                    stream = replacement;
+                    restart = true;
+                }
+
+                if (restart)
                 {
                     position = 0;
                     Interlocked.Exchange(ref _position, 0);
@@ -71,6 +84,7 @@ public sealed class LogTail(IServerFiles files, string serverRoot, string relati
                     continue;
                 }
 
+                idlePolls = 0;
                 var offset = position == 0 ? Preamble(bytes.AsSpan(0, read)) : 0;
                 position += read;
                 tail.AddRange(bytes.AsSpan(Math.Max(0, read - 4), Math.Min(read, 4)));
@@ -90,6 +104,59 @@ public sealed class LogTail(IServerFiles files, string serverRoot, string relati
                 await stream.DisposeAsync();
             }
         }
+    }
+
+    /// <summary>
+    /// The file the path names now, when it is not the one being read (<paramref name="current"/>, read up to
+    /// <paramref name="position"/>): it is longer than that one (a file being written only grows, and its own length is
+    /// read last), shorter than what was read, or starts differently.
+    /// </summary>
+    private Stream? Replacement(Stream current, long position)
+    {
+        if (current.Length > position)
+        {
+            return null; // what it still holds is read first
+        }
+
+        Stream? named;
+        try
+        {
+            named = files.OpenRead(serverRoot, relativePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null; // being replaced right now: checked again later
+        }
+
+        if (named is null)
+        {
+            return null; // renamed, and the game has not created the next one yet
+        }
+
+        var namedLength = named.Length;
+        if (namedLength > current.Length || namedLength < position || !SameStart(current, named, (int)Math.Min(position, SignatureLength)))
+        {
+            return named;
+        }
+
+        named.Dispose();
+        return null;
+    }
+
+    private static bool SameStart(Stream first, Stream second, int length)
+    {
+        if (length == 0)
+        {
+            return true;
+        }
+
+        Span<byte> a = stackalloc byte[length];
+        Span<byte> b = stackalloc byte[length];
+        first.Position = 0;
+        second.Position = 0;
+        first.ReadAtLeast(a, length, throwOnEndOfStream: false);
+        second.ReadAtLeast(b, length, throwOnEndOfStream: false);
+        return a.SequenceEqual(b);
     }
 
     /// <summary>

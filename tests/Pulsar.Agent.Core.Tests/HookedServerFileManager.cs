@@ -29,10 +29,14 @@ internal sealed class HookedServerFileManager(IServerFileManager inner) : IServe
         inner.Delete(server, path);
     }
 
+    /// <summary>Replaces the content of each file opened for reading (one that changes while it is read).</summary>
+    public Func<string, Stream, Stream>? OnOpened { get; set; }
+
     public OpenedFile OpenRead(ProvisionedServer server, string path, long maxSize)
     {
         OnRead?.Invoke(path);
-        return inner.OpenRead(server, path, maxSize);
+        var opened = inner.OpenRead(server, path, maxSize);
+        return OnOpened is { } replace ? new OpenedFile(replace(path, opened.Content), opened.Info) : opened;
     }
 
     public PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion) =>

@@ -307,6 +307,35 @@ public sealed class GameProcessTests : IDisposable
         }
     }
 
+    [WindowsFact]
+    public async Task AWriteAGameDoesNotTakeCanBeGivenUpAndTheProcessStillEnds()
+    {
+        // A frozen game: it never reads its input, so the pipe fills and the next write waits for it.
+        var process = await TestServerDirectory.Manager().StartAsync(_server.Spec(ConsoleMode.Pipes, "--sleep"), TestContext.Current.CancellationToken);
+        var line = new string('x', 64 * 1024) + "\n";
+
+        using (var wait = new CancellationTokenSource(TimeSpan.FromSeconds(1)))
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Task.Run(async () =>
+            {
+                while (true)
+                {
+                    await process.WriteInputAsync(line, wait.Token);
+                }
+            }, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        }
+
+        // The next one waits behind it, and can give up too.
+        using (var wait = new CancellationTokenSource(TimeSpan.FromMilliseconds(200)))
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => process.WriteInputAsync("say hi\n", wait.Token).AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        }
+
+        await process.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => process.WriteInputAsync("say hi\n", TestContext.Current.CancellationToken).AsTask());
+    }
+
     private Task<IGameProcess> Start(ConsoleMode mode, params string[] arguments) =>
         TestServerDirectory.Manager().StartAsync(_server.Spec(mode, ["--ready-after", "100", .. arguments]), TestContext.Current.CancellationToken);
 

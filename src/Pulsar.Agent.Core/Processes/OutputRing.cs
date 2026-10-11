@@ -3,13 +3,22 @@ namespace Pulsar.Agent.Core.Processes;
 /// <summary>
 /// The recent output of a game in its host (docs/architecture/06, "Server hosts"), addressed by character offsets
 /// since the game started: whoever reads remembers where it stopped and asks from there, across connections. Bounded:
-/// the oldest output leaves first, and a reader that asks for it learns what it missed.
+/// the oldest output leaves first, and a reader that asks for it learns what it missed. Output arrives in pieces as the
+/// game writes it (one character at a time, for some): pieces that follow each other closely are joined, and at most one
+/// piece per <see cref="CharactersPerPiece"/> characters of capacity is kept, so a game writing a character at a time
+/// cannot keep an object per character.
 /// </summary>
 public sealed class OutputRing
 {
+    /// <summary>Capacity per piece kept: about what a piece costs beyond its text (an object and a string).</summary>
+    public const int CharactersPerPiece = 32;
+
+    private static readonly TimeSpan s_mergeWindow = TimeSpan.FromMilliseconds(50);
+
     private readonly Lock _lock = new();
     private readonly List<OutputPiece> _pieces = [];
     private readonly int _capacity;
+    private readonly int _maxJoined; // the longest piece joining makes (a small share of the ring, so eviction stays fine-grained)
     private int _first; // pieces before it were evicted (removed from the list in batches)
     private int _length; // characters kept
     private long _start;
@@ -21,6 +30,19 @@ public sealed class OutputRing
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1024);
         _capacity = capacity;
+        _maxJoined = Math.Min(4096, capacity / 8);
+    }
+
+    /// <summary>The pieces kept (tests).</summary>
+    internal int PieceCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _pieces.Count - _first;
+            }
+        }
     }
 
     /// <summary>The oldest offset still kept.</summary>
@@ -82,10 +104,21 @@ public sealed class OutputRing
                 text = text[^_capacity..];
             }
 
-            _pieces.Add(new OutputPiece(offset, at, text));
+            var last = _pieces.Count > _first ? _pieces[^1] : null;
+            if (last is not null && last.Offset + last.Text.Length == offset && at - last.At <= s_mergeWindow
+                && last.Text.Length + text.Length <= _maxJoined)
+            {
+                // Readers get copies: one that read the first part asks for the rest from inside the joined piece.
+                _pieces[^1] = last with { Text = last.Text + text };
+            }
+            else
+            {
+                _pieces.Add(new OutputPiece(offset, at, text));
+            }
+
             _end = offset + text.Length;
             _length += text.Length;
-            while (_length > _capacity)
+            while ((_length > _capacity || _pieces.Count - _first > _capacity / CharactersPerPiece) && _first < _pieces.Count - 1)
             {
                 _length -= _pieces[_first].Text.Length;
                 _first++;

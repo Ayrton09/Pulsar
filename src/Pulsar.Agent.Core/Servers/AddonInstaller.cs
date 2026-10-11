@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Steam;
 using Pulsar.Manifests;
@@ -284,9 +285,11 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
 
     private static string RecordPath(string key) => $"{RecordDirectory}/{key}.json";
 
-    /// <summary>A path an addon may own: inside the server directory, outside Pulsar's own files (<c>.pulsar</c>).</summary>
-    private static bool IsAddonPath(string path) =>
-        ManifestValidator.IsValidRelativePath(path) && !path.Split('/')[0].Equals(".pulsar", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// A path an addon may own: inside the server directory, outside Pulsar's own files (<c>.pulsar</c>, by any case or
+    /// by a first segment shaped like its 8.3 short name: addon files are written as SYSTEM).
+    /// </summary>
+    private static bool IsAddonPath(string path) => ManifestValidator.IsValidRelativePath(path) && !FileCommands.IsPulsarFolder(path);
 
     private static IEnumerable<string> Parents(string path)
     {

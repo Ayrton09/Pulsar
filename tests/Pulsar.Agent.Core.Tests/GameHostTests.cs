@@ -368,6 +368,74 @@ public sealed class GameHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AGameThatDoesNotTakeItsInputCanStillBeKilledAndReleased()
+    {
+        // A frozen game: its host's write of a console command never ends, and must not keep the host from the rest.
+        var process = (IHostedGameProcess)await _hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
+        var game = _games.Last;
+        var gate = game.InputGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            using (var wait = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken))
+            {
+                wait.CancelAfter(TimeSpan.FromMilliseconds(300));
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => process.WriteInputAsync("say hi\n", wait.Token).AsTask());
+            }
+
+            process.TerminateTree(7);
+
+            Assert.Equal(7, await process.Exited.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            await process.DisposeAsync();
+            await _launcher.WaitEndedAsync(process.Host);
+            Assert.True(game.Disposed);
+        }
+        finally
+        {
+            gate.TrySetResult();
+        }
+    }
+
+    [Fact]
+    public async Task InputAHostDoesNotTakeInTimeFails()
+    {
+        await using var launcher = new ScriptedHostLauncher(request => request switch
+        {
+            HostHello hello => new HostReply(hello.Id, Status: new GameHostStatus(Guid.NewGuid(), 4242, DateTimeOffset.UtcNow, null, false, true, 0, 0)),
+            HostSubscribe subscribe => new HostReply(subscribe.Id),
+            _ => null, // stuck
+        });
+        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance) { RequestTimeout = TimeSpan.FromMilliseconds(300) };
+        var host = launcher.Launch(Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()));
+        var process = await hosts.ReattachAsync(host, 0, TestContext.Current.CancellationToken);
+        Assert.NotNull(process);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            process.WriteInputAsync("say hi\n", CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        await process.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task AHostThatDoesNotAnswerAKillIsKilledWithItsGame()
+    {
+        await using var launcher = new ScriptedHostLauncher(request => request switch
+        {
+            HostHello hello => new HostReply(hello.Id, Status: new GameHostStatus(Guid.NewGuid(), 4242, DateTimeOffset.UtcNow, null, false, true, 0, 0)),
+            HostSubscribe subscribe => new HostReply(subscribe.Id),
+            _ => null, // stuck
+        });
+        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance) { RequestTimeout = TimeSpan.FromMilliseconds(300) };
+        var host = launcher.Launch(Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()));
+        var process = await hosts.ReattachAsync(host, 0, TestContext.Current.CancellationToken);
+        Assert.NotNull(process);
+
+        process.TerminateTree(1);
+
+        Assert.True(launcher.Killed);
+        Assert.Equal(HostedGameProcess.HostLostExitCode, await process.Exited.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        await process.DisposeAsync();
+    }
+
+    [Fact]
     public void TheRingKeepsTheNewestOutputAndReadsFromAnyOffset()
     {
         var ring = new OutputRing(1024);
@@ -395,6 +463,34 @@ public sealed class GameHostTests : IAsyncDisposable
         var big = new OutputRing(1024);
         big.Append(new string('x', 1000) + new string('y', 1024), at);
         Assert.Equal((1000L, 2024L), (big.Start, big.End));
+    }
+
+    [Fact]
+    public void OutputWrittenACharacterAtATimeDoesNotKeepAnObjectPerCharacter()
+    {
+        const int capacity = 1024 * 1024;
+        var at = DateTimeOffset.UnixEpoch;
+
+        // A burst: joined into few pieces.
+        var burst = new OutputRing(capacity);
+        for (var i = 0; i < 100_000; i++)
+        {
+            burst.Append("x", at);
+        }
+
+        Assert.True(burst.PieceCount <= 100, $"{burst.PieceCount} pieces");
+        Assert.Equal(new string('x', 10), string.Concat(burst.Read(burst.End - 10, 100).Pieces.Select(p => p.Text)));
+
+        // A character every second: never joined, but the pieces kept are bounded.
+        var slow = new OutputRing(capacity);
+        for (var i = 0; i < 300_000; i++)
+        {
+            slow.Append("y", at.AddSeconds(i));
+        }
+
+        Assert.True(slow.PieceCount <= capacity / OutputRing.CharactersPerPiece, $"{slow.PieceCount} pieces");
+        Assert.Equal(300_000L, slow.End);
+        Assert.Equal(slow.End - slow.PieceCount, slow.Start);
     }
 
     [Fact]

@@ -28,7 +28,7 @@ internal sealed class WindowsGameProcess : IGameProcess
 
     private readonly TaskCompletionSource _readersDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<int> _exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly Lock _inputLock = new();
+    private readonly SemaphoreSlim _inputLock = new(1, 1); // held until a write ends, even one its caller gave up waiting for
     private readonly TimeProvider _clock;
     private RegisteredWaitHandle? _wait;
     private ProcessWaitHandle? _waitHandle;
@@ -72,7 +72,18 @@ internal sealed class WindowsGameProcess : IGameProcess
         _waitHandle = new ProcessWaitHandle(_process);
         _wait = ThreadPool.RegisterWaitForSingleObject(_waitHandle, (_, _) =>
         {
-            _exited.TrySetResult(PInvoke.GetExitCodeProcess(_process, out var code) ? unchecked((int)code) : -1);
+            int code;
+            try
+            {
+                code = PInvoke.GetExitCodeProcess(_process, out var exitCode) ? unchecked((int)exitCode) : -1;
+            }
+            catch (ObjectDisposedException)
+            {
+                // Run after DisposeAsync closed the handle (unregistering does not wait for a callback already queued).
+                code = -1;
+            }
+
+            _exited.TrySetResult(code);
         }, null, Timeout.Infinite, executeOnlyOnce: true);
     }
 
@@ -80,7 +91,7 @@ internal sealed class WindowsGameProcess : IGameProcess
     {
         ArgumentNullException.ThrowIfNull(text);
         var bytes = _inputEncoding.GetBytes(text);
-        return Write(bytes);
+        return new ValueTask(WriteAsync(bytes, cancellationToken));
     }
 
     public ValueTask SendInterruptAsync(CancellationToken cancellationToken)
@@ -91,7 +102,7 @@ internal sealed class WindowsGameProcess : IGameProcess
         }
 
         // A pseudo console turns ETX into CTRL_C_EVENT for the attached processes.
-        return Write([0x03]);
+        return new ValueTask(WriteAsync([0x03], cancellationToken));
     }
 
     public int CountProcesses() => Volatile.Read(ref _disposed) == 1 ? 0 : _job.ActiveProcesses;
@@ -143,9 +154,19 @@ internal sealed class WindowsGameProcess : IGameProcess
             // The wait registration is released below either way.
         }
 
-        lock (_inputLock)
+        // A write the game never took is cancelled (its reader may be the pseudo console, still open), so its thread
+        // ends; the input closes once it has. No write starts anymore (they check _disposed holding the lock).
+        var deadline = Environment.TickCount64 + (long)s_closeTimeout.TotalMilliseconds;
+        bool idle;
+        while (!(idle = await _inputLock.WaitAsync(TimeSpan.FromMilliseconds(100)).ConfigureAwait(false)) && Environment.TickCount64 < deadline)
         {
-            _input.Dispose();
+            CancelPendingWrite();
+        }
+
+        _input.Dispose();
+        if (idle)
+        {
+            _inputLock.Release(); // writes waiting for it learn the process is gone
         }
 
         // The readers keep draining while the pseudo console closes, so closing cannot block on a full pipe; if the
@@ -168,27 +189,69 @@ internal sealed class WindowsGameProcess : IGameProcess
         }
     }
 
-    private ValueTask Write(byte[] bytes)
+    /// <summary>
+    /// Writes on a thread of its own: the pipe is synchronous, and a game that stops reading its input blocks the write
+    /// until it reads again. The caller can give up waiting; the write itself goes on (and holds the input, so writes
+    /// never mix) until the game reads it, exits, or the process is disposed.
+    /// </summary>
+    private async Task WriteAsync(byte[] bytes, CancellationToken cancellationToken)
     {
-        lock (_inputLock)
+        ThrowIfExited();
+        await _inputLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Task write;
+        try
         {
-            if (Volatile.Read(ref _disposed) == 1 || _exited.Task.IsCompleted)
+            ThrowIfExited();
+            write = Task.Run(() =>
             {
-                throw new InvalidOperationException("The process has exited.");
-            }
-
-            try
-            {
-                _input.Write(bytes);
-                _input.Flush();
-            }
-            catch (IOException ex)
-            {
-                throw new InvalidOperationException("The process no longer reads its input.", ex);
-            }
+                try
+                {
+                    _input.Write(bytes);
+                    _input.Flush();
+                }
+                finally
+                {
+                    _inputLock.Release();
+                }
+            }, CancellationToken.None);
+        }
+        catch
+        {
+            _inputLock.Release();
+            throw;
         }
 
-        return ValueTask.CompletedTask;
+        try
+        {
+            await write.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException
+            || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            // Broken pipe (the game exited), closed input, or a write cancelled by DisposeAsync.
+            throw new InvalidOperationException("The process no longer reads its input.", ex);
+        }
+    }
+
+    private void ThrowIfExited()
+    {
+        if (Volatile.Read(ref _disposed) == 1 || _exited.Task.IsCompleted)
+        {
+            throw new InvalidOperationException("The process has exited.");
+        }
+    }
+
+    private unsafe void CancelPendingWrite()
+    {
+        try
+        {
+            // Every I/O of this process on the handle, synchronous ones of other threads included.
+            PInvoke.CancelIoEx(_input.SafeFileHandle, null);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Closed already.
+        }
     }
 
     private void Read(FileStream stream, Encoding encoding)

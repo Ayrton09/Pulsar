@@ -139,8 +139,11 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
                     using (opened)
                     {
+                        // At most the size the walk listed: a file read live (no snapshot) that grows as fast as it is read
+                        // (a log) would otherwise keep the backup going until the disk is full. What it wrote since is left out.
+                        var sample = (int)Math.Min(SampleSize, file.Size);
                         // The start of the file decides: maps, archives and media barely shrink, and deflate would only add to them.
-                        var sampled = await opened.Content.ReadAtLeastAsync(buffer.AsMemory(0, SampleSize), SampleSize, throwOnEndOfStream: false,
+                        var sampled = await opened.Content.ReadAtLeastAsync(buffer.AsMemory(0, sample), sample, throwOnEndOfStream: false,
                             cancellationToken);
                         var level = Shrinks(buffer.AsSpan(0, sampled)) ? CompressionLevel.Fastest : CompressionLevel.NoCompression;
                         var entry = archive.CreateEntry(file.Path, level);
@@ -150,7 +153,8 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
                         long copied = sampled;
                         meter.Add(sampled);
                         int read;
-                        while ((read = await opened.Content.ReadAsync(buffer, cancellationToken)) > 0)
+                        while (copied < file.Size
+                            && (read = await opened.Content.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, file.Size - copied)), cancellationToken)) > 0)
                         {
                             await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                             copied += read;
@@ -158,7 +162,12 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
                             await meter.ReportAsync();
                         }
 
-                        meter.Add(file.Size - copied); // a file that shrank or grew since the walk
+                        if (copied == file.Size && await opened.Content.ReadAsync(buffer.AsMemory(0, 1), cancellationToken) > 0)
+                        {
+                            LogCutAtListedSize(location.ShortId, file.Path, file.Size);
+                        }
+
+                        meter.Add(file.Size - copied); // a file that shrank since the walk
                     }
 
                     count++;
@@ -429,7 +438,8 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         var matcher = new Matcher(StringComparison.OrdinalIgnoreCase);
         matcher.AddIncludePatterns(rules?.Include is { Count: > 0 } include ? include : ["**/*"]);
         matcher.AddExcludePatterns([.. rules?.Exclude ?? [], .. s_alwaysExcluded]);
-        var candidates = tree.Where(e => e.Kind == FileEntryKind.File).ToList();
+        // A first folder named like a short name is left out too: a restore refuses it (see Check).
+        var candidates = tree.Where(e => e.Kind == FileEntryKind.File && !FileCommands.IsPulsarFolder(e.Path)).ToList();
         var root = Path.GetFullPath(Path.DirectorySeparatorChar.ToString());
         var matched = matcher.Match(root, candidates.Select(e => e.Path)).Files.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
         return [.. candidates.Where(e => matched.Contains(e.Path)).OrderBy(e => e.Path, StringComparer.Ordinal)];
@@ -541,7 +551,8 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
                 throw Corrupt(name, error);
             }
 
-            if (path.Equals(PulsarDirectory, StringComparison.OrdinalIgnoreCase) || ServerFilePath.IsInside(path, PulsarDirectory))
+            // By any case, or by a first segment shaped like its 8.3 short name (PULSAR~1), as the file manager refuses it.
+            if (FileCommands.IsPulsarFolder(path))
             {
                 throw Corrupt(name, "Pulsar's own files are never restored");
             }
@@ -612,6 +623,9 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
             LogNotDeleted(path, ex.Message);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Backup of {ShortId}: {Path} grew while it was read; kept its first {Size} bytes, as listed")]
+    private partial void LogCutAtListedSize(string shortId, string path, long size);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Backup {BackupId} of {ShortId} made: {Files} files ({Skipped} skipped), {Bytes} bytes")]
     private partial void LogCreated(string shortId, Guid backupId, int files, int skipped, long bytes);

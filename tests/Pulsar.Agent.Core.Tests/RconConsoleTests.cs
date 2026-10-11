@@ -65,6 +65,39 @@ public sealed class SourceRconTests
         await Assert.ThrowsAsync<ArgumentException>(() => session.ExecuteAsync(command, TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task APacketThatArrivesInPartsIsReadWhole()
+    {
+        // The idle wait that ends an answer must not cut a packet between its header and its body.
+        await using var game = new FakeRconServer("secret", srcds: false);
+        var connector = new SourceRconConnector { AnswerIdle = TimeSpan.FromMilliseconds(100) };
+        await using var session = await connector.ConnectAsync(game.Endpoint("secret"), TestContext.Current.CancellationToken);
+
+        Assert.Equal("part one, part two", await session.ExecuteAsync("split", TestContext.Current.CancellationToken));
+        Assert.Equal("hello\n", await session.ExecuteAsync("echo hello", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public Task AnAnswerThatNeverPausesIsCutAfterItsTime() => AnAnswerThatNeverEndsIsCutAndItsSessionClosedAsync("trickle");
+
+    [Fact]
+    public Task AnAnswerThatNeverEndsIsCutAtItsSize() => AnAnswerThatNeverEndsIsCutAndItsSessionClosedAsync("flood");
+
+    private static async Task AnAnswerThatNeverEndsIsCutAndItsSessionClosedAsync(string command)
+    {
+        await using var game = new FakeRconServer("secret", srcds: false);
+        var connector = new SourceRconConnector { AnswerIdle = TimeSpan.FromMilliseconds(100), AnswerTimeout = TimeSpan.FromSeconds(1) };
+        await using var session = await connector.ConnectAsync(game.Endpoint("secret"), TestContext.Current.CancellationToken);
+
+        var answer = await session.ExecuteAsync(command, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(10),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(answer);
+        Assert.True(answer.Length <= 1024 * 1024, $"{answer.Length} characters kept");
+        var error = await Assert.ThrowsAsync<RconException>(() => session.ExecuteAsync("echo hello", TestContext.Current.CancellationToken));
+        Assert.True(error.ConnectionLost);
+    }
+
     internal static int FreePort()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -130,6 +163,30 @@ internal sealed class FakeRconServer : IAsyncDisposable
                     await SendAsync(stream, id, 0, new string('x', 5000));
                     await SendAsync(stream, id, 0, new string('y', 3000));
                     break;
+                case "split":
+                    // The second packet's header, then a pause longer than the client's idle wait, then its body.
+                    await SendAsync(stream, id, 0, "part one, ");
+                    var packet = Packet(id, 0, "part two");
+                    await stream.WriteAsync(packet.AsMemory(0, 4), _stop.Token);
+                    await Task.Delay(300, _stop.Token);
+                    await stream.WriteAsync(packet.AsMemory(4), _stop.Token);
+                    break;
+                case "trickle":
+                    // A plugin that keeps answering, a little at a time and never pausing long enough to end the answer.
+                    while (!_stop.IsCancellationRequested)
+                    {
+                        await SendAsync(stream, id, 0, "z");
+                        await Task.Delay(20, _stop.Token);
+                    }
+
+                    break;
+                case "flood":
+                    while (!_stop.IsCancellationRequested)
+                    {
+                        await SendAsync(stream, id, 0, new string('f', 60_000));
+                    }
+
+                    break;
                 default:
                     await SendAsync(stream, id, 0, body.StartsWith("echo ", StringComparison.Ordinal) ? body[5..] + "\n" : "");
                     break;
@@ -147,7 +204,9 @@ internal sealed class FakeRconServer : IAsyncDisposable
             Encoding.UTF8.GetString(packet, 8, packet.Length - 10));
     }
 
-    private async Task SendAsync(NetworkStream stream, int id, int type, string body)
+    private async Task SendAsync(NetworkStream stream, int id, int type, string body) => await stream.WriteAsync(Packet(id, type, body), _stop.Token);
+
+    private static byte[] Packet(int id, int type, string body)
     {
         var text = Encoding.UTF8.GetBytes(body);
         var packet = new byte[14 + text.Length];
@@ -155,7 +214,7 @@ internal sealed class FakeRconServer : IAsyncDisposable
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(4), id);
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(8), type);
         text.CopyTo(packet.AsSpan(12));
-        await stream.WriteAsync(packet, _stop.Token);
+        return packet;
     }
 }
 
@@ -201,6 +260,43 @@ public sealed class LogTailTests : IDisposable
 
         await cancel.CancelAsync();
         await reading;
+    }
+
+    [Fact]
+    public async Task ALogTheGameRotatesIsFollowedIntoItsNewFile()
+    {
+        // The game renames its log and starts a new one under the same name: the console goes on with the new one.
+        var path = Path.Combine(_root, "console.log");
+        await File.WriteAllTextAsync(path, "first file\n", TestContext.Current.CancellationToken);
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var text = new StringBuilder();
+        var reading = Task.Run(async () =>
+        {
+            await foreach (var chunk in new LogTail(new DirectServerFiles(), _root, "console.log", Encoding.UTF8, TimeSpan.FromMilliseconds(20))
+                               .ReadAsync(cancel.Token))
+            {
+                lock (text)
+                {
+                    text.Append(chunk);
+                }
+            }
+        }, TestContext.Current.CancellationToken);
+        await Eventually(() => Read(text) == "first file\n", () => Read(text));
+
+        File.Move(path, path + ".1");
+        await File.WriteAllTextAsync(path, "second file, longer than the first\n", TestContext.Current.CancellationToken);
+
+        await Eventually(() => Read(text) == "first file\nsecond file, longer than the first\n", () => Read(text));
+        await cancel.CancelAsync();
+        await reading;
+    }
+
+    private static string Read(StringBuilder text)
+    {
+        lock (text)
+        {
+            return text.ToString();
+        }
     }
 
     [Fact]
@@ -377,6 +473,24 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AConfigurationFileThatIsNotUtf8IsLeftAsItIsAndFailsTheStart()
+    {
+        // A server.cfg saved in Windows-1252: rewriting it as UTF-8 would turn the user's "é" into U+FFFD.
+        var path = Path.Combine(_root, "cstrike", "cfg", "server.cfg");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var latin = Encoding.Latin1.GetBytes("// mi café\nhostname \"old\"\n");
+        await File.WriteAllBytesAsync(path, latin, TestContext.Current.CancellationToken);
+        var supervisor = Supervisor(new RconReadiness(60));
+
+        await supervisor.StartAsync();
+
+        var failed = await _events.WaitForAsync(RuntimeState.Crashed, StateChangeReason.StartFailed);
+        Assert.Equal("config.invalid", failed.Detail);
+        Assert.Equal(latin, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+        Assert.Empty(_processes.Started);
+    }
+
+    [Fact]
     public async Task TheLogFileIsTheConsoleBeforeAndAfterTheServerIsReady()
     {
         var supervisor = await RunningAsync();
@@ -394,8 +508,8 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         var supervisor = await RunningAsync();
         _rcon.Answer = command => command == "status" ? "hostname: Pulsar" : "";
 
-        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status"));
-        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("say hi"));
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status", TestContext.Current.CancellationToken));
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("say hi", TestContext.Current.CancellationToken));
 
         await EventuallyAsync(supervisor, "> status\nhostname: Pulsar\n> say hi\n");
         Assert.Equal(2, _rcon.Connections); // the readiness probe's, then one kept for both commands
@@ -412,7 +526,7 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         _rcon.OnCommand = command => File.AppendAllText(Path.Combine(_root, "cstrike", "console.log"),
             $"rcon from \"127.0.0.1:50000\": command \"{command}\"\nhostname: Pulsar\nplayers : 0 humans\n");
 
-        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status"));
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status", TestContext.Current.CancellationToken));
 
         const string Logged = "rcon from \"127.0.0.1:50000\": command \"status\"\nhostname: Pulsar\nplayers : 0 humans\n";
         await EventuallyAsync(supervisor, Logged);
@@ -430,7 +544,7 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         _rcon.OnCommand = command => File.AppendAllText(Path.Combine(_root, "cstrike", "console.log"),
             $"rcon from \"127.0.0.1:50000\": command \"{command}\"\n");
 
-        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("sv_tags"));
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("sv_tags", TestContext.Current.CancellationToken));
 
         await EventuallyAsync(supervisor, "rcon from \"127.0.0.1:50000\": command \"sv_tags\"\n  sv_tags = pulsar,casual\n");
     }
@@ -441,7 +555,7 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         var supervisor = await RunningAsync();
         _rcon.Listening = false;
 
-        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status"));
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status", TestContext.Current.CancellationToken));
 
         await EventuallyAsync(() => Text(supervisor).Contains("[Pulsar] RCON: Not listening.", StringComparison.Ordinal));
     }
@@ -497,7 +611,7 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         // The game's output is read on its own: once it is in, the command's lines cannot land in the middle of it.
         await LogTailTests.Eventually(() => Text(supervisor).Contains("Running Palworld dedicated server on :8211", StringComparison.Ordinal),
             () => Text(supervisor));
-        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("ShowPlayers"));
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("ShowPlayers", TestContext.Current.CancellationToken));
 
         await LogTailTests.Eventually(() => Text(supervisor).Contains("> ShowPlayers\nname,playeruid,steamid\n", StringComparison.Ordinal),
             () => Text(supervisor));

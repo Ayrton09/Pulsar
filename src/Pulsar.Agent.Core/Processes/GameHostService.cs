@@ -295,6 +295,7 @@ public sealed partial class GameHostService(
         private readonly SemaphoreSlim _writeLock = new(1, 1);
         private readonly CancellationTokenSource _closed = CancellationTokenSource.CreateLinkedTokenSource(stopping);
         private Task _forwarding = Task.CompletedTask;
+        private Task _inputs = Task.CompletedTask; // console input being written, one request after the other
         private bool _greeted;
 
         public async Task RunAsync()
@@ -313,6 +314,14 @@ public sealed partial class GameHostService(
                     {
                         host.LogUnexpectedFrame(host.ServerId, frame.GetType().Name);
                         return;
+                    }
+
+                    if (request is HostInput or HostInterrupt)
+                    {
+                        // Answered when written: a game that stopped reading its input keeps the write waiting, and the
+                        // requests after it (a kill, a release) must still be read. In order, one at a time.
+                        _inputs = AnswerInputAsync(request, _inputs);
+                        continue;
                     }
 
                     var reply = await HandleAsync(request).ConfigureAwait(false);
@@ -340,6 +349,19 @@ public sealed partial class GameHostService(
             {
                 // Whatever goes wrong with one connection ends it, never the host: the game would die with it.
                 host.LogSessionFailed(ex, host.ServerId);
+            }
+        }
+
+        private async Task AnswerInputAsync(HostRequest request, Task previous)
+        {
+            await previous.ConfigureAwait(false);
+            try
+            {
+                await SendAsync(await HandleAsync(request).ConfigureAwait(false)).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // The connection is going away: the write was given up.
             }
         }
 
@@ -537,6 +559,7 @@ public sealed partial class GameHostService(
         {
             await _closed.CancelAsync().ConfigureAwait(false);
             await _forwarding.ConfigureAwait(false);
+            await _inputs.ConfigureAwait(false);
             _closed.Dispose();
             _writeLock.Dispose();
         }

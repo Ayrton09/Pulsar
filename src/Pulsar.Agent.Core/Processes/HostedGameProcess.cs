@@ -203,10 +203,21 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
         await ControlAsync(id => new HostInterrupt(id), cancellationToken).ConfigureAwait(false);
     }
 
-    // The interface is synchronous for these (a local Job answers at once); a pipe to a local process does too.
-    public int CountProcesses() => SampleUsage().ProcessCount;
+    /// <summary>
+    /// Once the game exited, what was left of its tree then (the host said so with the exit): no request, so handling an
+    /// exit never waits for a host.
+    /// </summary>
+    public int CountProcesses() => Exited.IsCompleted ? _remainingAtExit : SampleUsage().ProcessCount;
 
-    public ProcessUsage SampleUsage()
+    // The synchronous forms wait for the asynchronous ones (tests; the agent's supervisor uses the asynchronous ones).
+    public ProcessUsage SampleUsage() => SampleUsageAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
+
+    public void TerminateTree(int exitCode) => TerminateTreeAsync(exitCode, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+
+    public void ApplyLimits(ProcessLimits? limits) => ApplyLimitsAsync(limits, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+
+    /// <exception cref="InvalidOperationException">The host did not answer in time (or is gone while the game had not exited).</exception>
+    public async ValueTask<ProcessUsage> SampleUsageAsync(CancellationToken cancellationToken)
     {
         if (Volatile.Read(ref _closed) == 1)
         {
@@ -215,17 +226,21 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
 
         try
         {
-            var reply = RequestAsync(id => new HostSample(id), CancellationToken.None).WaitAsync(_manager.RequestTimeout).GetAwaiter().GetResult();
+            var reply = await RequestWithinAsync(id => new HostSample(id), cancellationToken).ConfigureAwait(false);
             return reply.Usage ?? new ProcessUsage(TimeSpan.Zero, 0, 0);
         }
-        catch (Exception ex) when (ex is GameProcessException or TimeoutException or OperationCanceledException)
+        catch (Exception ex) when (ex is GameProcessException or TimeoutException)
         {
             // Gone (the exit is reported on its own) or busy: nothing this time.
             return Exited.IsCompleted ? new ProcessUsage(TimeSpan.Zero, 0, _remainingAtExit) : throw new InvalidOperationException(ex.Message, ex);
         }
     }
 
-    public void TerminateTree(int exitCode)
+    /// <summary>
+    /// Asks the host to kill the game's tree. A host that does not answer in time (or refuses) is killed itself: its Job
+    /// closes and the game dies with it, and the connection's end reports the exit. Never fails: a kill must kill.
+    /// </summary>
+    public async ValueTask TerminateTreeAsync(int exitCode, CancellationToken cancellationToken)
     {
         if (Volatile.Read(ref _closed) == 1)
         {
@@ -234,15 +249,22 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
 
         try
         {
-            RequestAsync(id => new HostTerminate(id, exitCode), CancellationToken.None).WaitAsync(_manager.RequestTimeout).GetAwaiter().GetResult();
+            await RequestWithinAsync(id => new HostTerminate(id, exitCode), cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is GameProcessException or TimeoutException or OperationCanceledException)
+        catch (Exception ex) when (ex is GameProcessException or TimeoutException)
         {
-            LogTerminateFailed(ServerId, ex.Message);
+            if (Volatile.Read(ref _closed) == 0 && !Exited.IsCompleted && _manager.Kill(Host))
+            {
+                LogHostKilled(ServerId, Host.ProcessId, ex.Message);
+            }
+            else
+            {
+                LogTerminateFailed(ServerId, ex.Message);
+            }
         }
     }
 
-    public void ApplyLimits(ProcessLimits? limits)
+    public async ValueTask ApplyLimitsAsync(ProcessLimits? limits, CancellationToken cancellationToken)
     {
         if (Volatile.Read(ref _closed) == 1)
         {
@@ -251,7 +273,7 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
 
         try
         {
-            RequestAsync(id => new HostLimits(id, limits), CancellationToken.None).WaitAsync(_manager.RequestTimeout).GetAwaiter().GetResult();
+            await RequestWithinAsync(id => new HostLimits(id, limits), cancellationToken).ConfigureAwait(false);
         }
         catch (TimeoutException ex)
         {
@@ -341,12 +363,28 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
 
         try
         {
-            await RequestAsync(create, cancellationToken).ConfigureAwait(false);
+            await RequestWithinAsync(create, cancellationToken).ConfigureAwait(false);
         }
-        catch (GameProcessException ex)
+        catch (Exception ex) when (ex is GameProcessException or TimeoutException)
         {
-            // As a local process says it: it no longer reads its input (exiting), or the host is gone.
+            // As a local process says it: it no longer reads its input (exiting, or frozen), or the host is gone.
             throw new InvalidOperationException(ex.Message, ex);
+        }
+    }
+
+    /// <summary>A request whose answer is awaited at most <see cref="GameHostManager.RequestTimeout"/>.</summary>
+    /// <exception cref="TimeoutException">No answer in time.</exception>
+    private async Task<HostReply> RequestWithinAsync(Func<int, HostRequest> create, CancellationToken cancellationToken)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        limit.CancelAfter(_manager.RequestTimeout);
+        try
+        {
+            return await RequestAsync(create, limit.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("The server's host process did not answer in time.", ex);
         }
     }
 
@@ -485,6 +523,9 @@ public sealed partial class HostedGameProcess : IHostedGameProcess
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: its host could not kill its processes: {Reason}")]
     private partial void LogTerminateFailed(Guid serverId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: its host process {HostProcessId} did not kill its game ({Reason}); killed the host, and the game with it")]
+    private partial void LogHostKilled(Guid serverId, int hostProcessId, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: its host process {HostProcessId} did not end when released ({Reason}); killed it")]
     private partial void LogReleaseFailed(Guid serverId, int hostProcessId, string reason);
