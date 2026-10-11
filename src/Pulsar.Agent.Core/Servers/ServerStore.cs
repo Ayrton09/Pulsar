@@ -41,6 +41,9 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
 {
     private static readonly JsonSerializerOptions s_options = new(ProtocolJson.Options) { WriteIndented = true };
 
+    // A temporary file older than this belongs to a write that never finished (see DeleteOrphans).
+    private static readonly TimeSpan s_orphanAge = TimeSpan.FromMinutes(5);
+
     private readonly ILogger _logger = logger ?? (ILogger)NullLogger.Instance;
 
     public IReadOnlyList<ServerRecord> LoadAll()
@@ -50,6 +53,7 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
             return [];
         }
 
+        DeleteOrphans(paths.ServersStateDirectory);
         return [.. Directory.EnumerateFiles(paths.ServersStateDirectory, "*.json").Select(f => ReadOrSetAside(f, ReadRecord, serverRecord: true))
             .OfType<ServerRecord>()];
     }
@@ -93,6 +97,7 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
             return [];
         }
 
+        DeleteOrphans(paths.HostsStateDirectory);
         return [.. Directory.EnumerateFiles(paths.HostsStateDirectory, "*.json").Select(f => ReadOrSetAside(f, Read<GameHostRecord>))
             .OfType<GameHostRecord>()];
     }
@@ -112,6 +117,7 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
             return [];
         }
 
+        DeleteOrphans(paths.PausedSavesDirectory);
         return [.. Directory.EnumerateFiles(paths.PausedSavesDirectory, "*.json").Select(f => ReadOrSetAside(f, Read<PausedSave>))
             .OfType<PausedSave>()];
     }
@@ -131,6 +137,7 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
             return [];
         }
 
+        DeleteOrphans(paths.OutboxDirectory);
         return [.. Directory.EnumerateFiles(paths.OutboxDirectory, "*.json").Select(f => ReadOrSetAside(f, Read<OperationCompleted>))
             .OfType<OperationCompleted>()];
     }
@@ -179,6 +186,30 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
             }
 
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Deletes the temporary files of writes that never finished (the agent stopped between creating one and moving it
+    /// over its record). Only ones a few minutes old: a write in progress is never touched. One that cannot be deleted
+    /// now is tried again at the next load.
+    /// </summary>
+    private void DeleteOrphans(string directory)
+    {
+        foreach (var temporary in Directory.EnumerateFiles(directory, "*.tmp"))
+        {
+            try
+            {
+                if (temporary.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) && DateTime.UtcNow - File.GetLastWriteTimeUtc(temporary) > s_orphanAge)
+                {
+                    File.Delete(temporary);
+                    LogOrphanDeleted(temporary);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Held by another program: next time.
+            }
         }
     }
 
@@ -277,4 +308,7 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
 
     [LoggerMessage(Level = LogLevel.Error, Message = "State file {File} cannot be opened now (skipped this time): {Reason}")]
     private partial void LogNotRead(string file, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted {File}, the temporary file of a state write that never finished")]
+    private partial void LogOrphanDeleted(string file);
 }

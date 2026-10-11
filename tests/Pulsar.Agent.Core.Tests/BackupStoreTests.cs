@@ -281,7 +281,6 @@ public sealed class BackupStoreTests : IDisposable
     [InlineData("cfg/con.txt")]
     [InlineData(".pulsar/steamcmd/steamcmd.exe")]
     [InlineData(".PULSAR/x")]
-    [InlineData("PULSAR~1/steamcmd/steamcmd.exe")] // .pulsar's 8.3 short name, on volumes that keep them
     [InlineData("cfg/server.cfg|CFG/SERVER.CFG")]
     public async Task AnArchiveWithAnEntryARestoreMayNotWriteIsRefusedBeforeWritingAnything(string names)
     {
@@ -303,6 +302,53 @@ public sealed class BackupStoreTests : IDisposable
         Assert.Equal(BackupErrors.Corrupt, error.Code);
         Assert.Empty(Directory.EnumerateFileSystemEntries(_serverDirectory));
         Assert.False(File.Exists(Path.Combine(_root, "outside.cfg")));
+    }
+
+    [Fact]
+    public async Task AFolderNamedLikeAShortNameIsBackedUpAndRestored()
+    {
+        // A game's own folder named like an 8.3 short name is a folder of that name: never .pulsar's, which a walk names by its long name.
+        Write("data~1/world.sav", "the world");
+        Write(".pulsar/steamcmd/steamcmd.exe", "the server's own SteamCMD");
+        var location = Location();
+
+        var made = await _store.CreateAsync(location, _server, null, Progress, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["data~1/world.sav"], Entries(location.Archive));
+        Assert.Equal((1, 0), (made.FileCount, made.SkippedFiles));
+        Directory.Delete(Path.Combine(_serverDirectory, "data~1"), recursive: true);
+
+        await _store.RestoreAsync(location, _server, made.Sha256, null, Progress, TestContext.Current.CancellationToken);
+
+        Assert.Equal("the world", ReadServer("data~1/world.sav"));
+        Assert.Contains("data~1", Directory.GetDirectories(_serverDirectory).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task AShortNameThatLeadsToAnotherFolderIsNotRestoredThroughButTheRestIs()
+    {
+        // On a volume that keeps 8.3 names, PULSAR~1 is .pulsar itself: what an archive has there must not land in it.
+        Directory.CreateDirectory(Path.Combine(_serverDirectory, ".pulsar"));
+        Assert.SkipUnless(Directory.Exists(Path.Combine(_serverDirectory, "PULSAR~1")), "The volume keeps no 8.3 names.");
+        var location = Location();
+        Directory.CreateDirectory(location.Directory);
+        await using (var stream = File.Create(location.Archive))
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+        {
+            foreach (var name in new[] { "cfg/server.cfg", "PULSAR~1/steamcmd/steamcmd.exe" })
+            {
+                await using var entry = await archive.CreateEntry(name).OpenAsync(TestContext.Current.CancellationToken);
+                await entry.WriteAsync("from the backup"u8.ToArray(), TestContext.Current.CancellationToken);
+            }
+        }
+
+        var error = await Assert.ThrowsAsync<BackupException>(() =>
+            _store.RestoreAsync(location, _server, Hash(location.Archive), null, Progress, TestContext.Current.CancellationToken));
+
+        Assert.Equal(FileErrors.Exists, error.Code);
+        Assert.Contains("PULSAR~1", error.Message, StringComparison.Ordinal);
+        Assert.Equal("from the backup", ReadServer("cfg/server.cfg"));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(_serverDirectory, ".pulsar")));
     }
 
     [Fact]

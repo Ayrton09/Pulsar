@@ -609,6 +609,140 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
 
         Assert.Single(_processes.Started);
         Assert.Equal(RuntimeState.Crashed, supervisor.Snapshot.State);
+
+        // Once the update ends, the restart it held back runs.
+        supervisor.EndExclusive();
+        await _events.WaitForAsync(RuntimeState.Starting, StateChangeReason.AutoRestart);
+        await supervisor.FlushAsync();
+        Assert.Equal(2, _processes.Started.Count);
+    }
+
+    [Fact]
+    public async Task ACrashRestartHeldBackByAnOperationIsForgottenWhenTheServerIsStopped()
+    {
+        var supervisor = await Running();
+        _processes.Last.Exit(3);
+        await _events.WaitForAsync(RuntimeState.Crashed, StateChangeReason.Crashed);
+        await supervisor.FlushAsync();
+        Assert.True(supervisor.TryBeginExclusive(requireStopped: true));
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        await supervisor.FlushAsync();
+
+        Assert.Equal(AckStatus.AlreadyInState, await supervisor.StopAsync());
+        supervisor.EndExclusive();
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        await supervisor.FlushAsync();
+
+        Assert.Single(_processes.Started);
+        Assert.Equal(RuntimeState.Crashed, supervisor.Snapshot.State);
+    }
+
+    [Fact]
+    public async Task AStartRefusedForAnExclusiveOperationLeavesTheAccountsProcessesAlone()
+    {
+        // An update of a crashed server runs SteamCMD as the server's account: neither the crash restart it refuses, nor
+        // the end of the crash handler's grace, may kill what that account runs.
+        var supervisor = await Running();
+        var crashed = _processes.Last;
+        crashed.Children = 1; // a crash handler that outlives the game
+        crashed.Exit(3);
+        await _events.WaitForAsync(RuntimeState.Crashed, StateChangeReason.Crashed);
+        await supervisor.FlushAsync();
+        var sweeps = _processes.StraySweeps;
+        Assert.True(supervisor.TryBeginExclusive(requireStopped: true));
+
+        _clock.Advance(TimeSpan.FromSeconds(5)); // the crash handler's grace and the crash restart
+        await LogTailTests.Eventually(() => crashed.Disposed, () => "the crash handler's grace never ended");
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        await supervisor.FlushAsync();
+        Assert.Equal(AckStatus.Busy, await Started(supervisor));
+        Assert.Equal(AckStatus.Busy, await supervisor.RestartAsync());
+
+        Assert.Equal(sweeps, _processes.StraySweeps);
+        Assert.Single(_processes.Started);
+    }
+
+    [Fact]
+    public async Task ACommandWaitingBehindOneTheGameDoesNotTakeIsRefusedWithinItsOwnTime()
+    {
+        // The panel waits 10 s for each command's ack: one queued behind a stuck one must not wait 5 s more once its turn comes.
+        var supervisor = await Running();
+        var process = _processes.Last;
+        var gate = process.InputGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            var first = supervisor.SendInputAsync("say 1", TestContext.Current.CancellationToken);
+            await LogTailTests.Eventually(() => process.BlockedWrites == 1, () => "the input was never written");
+            var second = supervisor.SendInputAsync("say 2", TestContext.Current.CancellationToken);
+            await supervisor.FlushAsync();
+
+            _clock.Advance(TimeSpan.FromSeconds(5));
+
+            Assert.Equal(AckStatus.Busy, await first.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            Assert.Equal(AckStatus.Busy, await second.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            gate.SetResult();
+            await supervisor.FlushAsync();
+            Assert.Equal(1, process.BlockedWrites); // the second, refused, never reached the game
+            Assert.Empty(process.Input);
+        }
+        finally
+        {
+            gate.TrySetResult();
+        }
+    }
+
+    [Fact]
+    public async Task CommandsPilingUpBehindOneTheGameDoesNotTakeAreRefusedAtOnce()
+    {
+        var supervisor = await Running();
+        var process = _processes.Last;
+        var gate = process.InputGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            var first = supervisor.SendInputAsync("say 0", TestContext.Current.CancellationToken);
+            await LogTailTests.Eventually(() => process.BlockedWrites == 1, () => "the input was never written");
+            var queued = Enumerable.Range(1, 16).Select(i => supervisor.SendInputAsync($"say {i}", TestContext.Current.CancellationToken)).ToList();
+
+            // 16 wait behind the one being written; the next is refused without waiting.
+            Assert.Equal(AckStatus.Busy, await supervisor.SendInputAsync("say 17", TestContext.Current.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            Assert.DoesNotContain(queued, q => q.IsCompleted);
+
+            gate.SetResult();
+            Assert.All(await Task.WhenAll(queued.Prepend(first)).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken),
+                status => Assert.Equal(AckStatus.Accepted, status));
+            Assert.Equal(Enumerable.Range(0, 17).Select(i => $"say {i}\r\n"), process.Input);
+        }
+        finally
+        {
+            gate.TrySetResult();
+        }
+    }
+
+    [Fact]
+    public async Task AStopsCommandsGoAfterTheCommandsTypedBeforeIt()
+    {
+        var supervisor = await Running();
+        var process = _processes.Last;
+        var gate = process.InputGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            var input = supervisor.SendInputAsync("say bye", TestContext.Current.CancellationToken);
+            await LogTailTests.Eventually(() => process.BlockedWrites == 1, () => "the input was never written");
+            Assert.Equal(AckStatus.Accepted, await supervisor.StopAsync());
+            await supervisor.FlushAsync();
+
+            gate.SetResult();
+
+            Assert.Equal(AckStatus.Accepted, await input.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            await _events.WaitForAsync(RuntimeState.Offline, StateChangeReason.Requested);
+            Assert.Equal(["say bye\r\n", "quit\r\n"], process.Input);
+        }
+        finally
+        {
+            gate.TrySetResult();
+        }
     }
 
     [Fact]

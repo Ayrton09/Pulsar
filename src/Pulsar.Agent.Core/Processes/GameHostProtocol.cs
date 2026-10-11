@@ -121,6 +121,19 @@ public sealed record HostOutputEnded(long End) : HostFrame;
 /// <summary>The game's main process exited; <paramref name="RemainingProcesses"/> of its tree were still alive then.</summary>
 public sealed record HostExited(int ExitCode, bool ReachedMemoryLimit, int RemainingProcesses) : HostFrame;
 
+/// <summary>Why a host answered console input (or Ctrl+C) without writing it.</summary>
+public static class GameHostErrors
+{
+    /// <summary>Too much input waits behind a write the game does not take: refused at once.</summary>
+    public const string InputBusy = "host.input_busy";
+
+    /// <summary>
+    /// Its time ran out, waiting behind a write the game did not take or being written itself: the agent gave up on it
+    /// (the user was told the game did not take it), so it is never written later.
+    /// </summary>
+    public const string InputExpired = "host.input_expired";
+}
+
 public static class GameHostProtocol
 {
     /// <summary>

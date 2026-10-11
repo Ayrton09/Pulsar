@@ -57,6 +57,12 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
     /// <summary>How long a request to a running host may take (a release waits for the game's tree to end).</summary>
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// How long a host gets to kill its game's tree; then the host is killed, and the game with it. A kill is acknowledged
+    /// after that at most, well within the panel's 10 s wait for the ack (killing a Job takes no time).
+    /// </summary>
+    public TimeSpan TerminateTimeout { get; init; } = TimeSpan.FromSeconds(3);
+
     /// <summary>Told about each host as soon as it is started (set by the agent's server host).</summary>
     public IGameHostRecords? Records { get; set; }
 

@@ -120,10 +120,13 @@ internal sealed class FakeGameProcess(int processId) : IGameProcess
     public ValueTask WriteInputAsync(string text, CancellationToken cancellationToken) =>
         InputGate is { } gate ? new ValueTask(WriteWhenReadAsync(gate, text, cancellationToken)) : Write(text);
 
+    /// <summary>When true, a write waiting for <see cref="InputGate"/> cannot be given up: it ends when the game reads.</summary>
+    public bool InputIgnoresCancellation { get; set; }
+
     private async Task WriteWhenReadAsync(TaskCompletionSource gate, string text, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _blockedWrites);
-        await gate.Task.WaitAsync(cancellationToken);
+        await gate.Task.WaitAsync(InputIgnoresCancellation ? CancellationToken.None : cancellationToken);
         await Write(text);
     }
 

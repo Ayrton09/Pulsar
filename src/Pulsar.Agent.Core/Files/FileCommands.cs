@@ -125,8 +125,11 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
     {
         ArgumentNullException.ThrowIfNull(path);
         var first = path.Replace('\\', '/').Trim('/').Split('/')[0];
-        return first.Equals(".pulsar", StringComparison.OrdinalIgnoreCase) || ShortName().IsMatch(first);
+        return first.Equals(".pulsar", StringComparison.OrdinalIgnoreCase) || IsShortName(first);
     }
+
+    /// <summary>Whether <paramref name="name"/> (one path segment) is shaped like an 8.3 short name (<c>PULSAR~1</c>).</summary>
+    public static bool IsShortName(string name) => ShortName().IsMatch(name);
 
     [GeneratedRegex("^[^.~]{1,6}~[0-9]+$", RegexOptions.CultureInvariant)]
     private static partial Regex ShortName();

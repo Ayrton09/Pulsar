@@ -2,7 +2,11 @@ using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using Pulsar.Agent.Core.Processes;
+using Pulsar.Agent.Core.Servers;
+using Pulsar.Contracts;
+using Pulsar.Manifests;
 
 namespace Pulsar.Agent.Core.Tests;
 
@@ -433,6 +437,138 @@ public sealed class GameHostTests : IAsyncDisposable
         Assert.True(launcher.Killed);
         Assert.Equal(HostedGameProcess.HostLostExitCode, await process.Exited.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
         await process.DisposeAsync();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)] // the write that reached the game's input cannot be taken back
+    public async Task ConsoleInputTheAgentGaveUpOnIsNeverWrittenLate(bool writeIgnoresCancellation)
+    {
+        // A game that froze: the user's command was refused (console.not_reading) and typed again. When the game reads
+        // again, the copies the host still held must not run then.
+        await using var launcher = new InProcessHostLauncher(_games, new GameHostOptions { InputTimeout = TimeSpan.FromMilliseconds(300) });
+        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance);
+        var process = await hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
+        var game = _games.Last;
+        var gate = game.InputGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        game.InputIgnoresCancellation = writeIgnoresCancellation;
+        try
+        {
+            foreach (var command in new[] { "kick 1\n", "kick 2\n" })
+            {
+                using var agentWait = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+                agentWait.CancelAfter(TimeSpan.FromMilliseconds(100));
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => process.WriteInputAsync(command, agentWait.Token).AsTask());
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(600), TestContext.Current.CancellationToken); // past both commands' time in the host
+            gate.SetResult();
+            await process.WriteInputAsync("status\n", TestContext.Current.CancellationToken);
+
+            Assert.Equal(writeIgnoresCancellation ? ["kick 1\n", "status\n"] : ["status\n"], game.Input);
+        }
+        finally
+        {
+            gate.TrySetResult();
+            await process.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task ConsoleInputPilingUpInTheHostIsRefusedAtOnce()
+    {
+        await using var launcher = new InProcessHostLauncher(_games, new GameHostOptions { InputTimeout = TimeSpan.FromSeconds(30) });
+        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance);
+        var process = await hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
+        var game = _games.Last;
+        var gate = game.InputGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        game.InputIgnoresCancellation = true;
+        try
+        {
+            var writes = Enumerable.Range(0, 20).Select(i => process.WriteInputAsync($"say {i}\n", CancellationToken.None).AsTask()).ToList();
+
+            // One being written and 15 behind it; the rest are refused without waiting.
+            await WaitUntilAsync(() => writes.Count(w => w.IsCompleted) == 4);
+            foreach (var refused in writes.Where(w => w.IsCompleted))
+            {
+                var error = await Assert.ThrowsAsync<InvalidOperationException>(() => refused);
+                Assert.Equal(GameHostErrors.InputBusy, Assert.IsType<GameProcessException>(error.InnerException).Code);
+            }
+
+            var waiting = writes.Where(w => !w.IsCompleted).ToList();
+            gate.SetResult();
+            await Task.WhenAll(waiting).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.Equal(16, game.Input.Count);
+        }
+        finally
+        {
+            gate.TrySetResult();
+            await process.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task AKillOfAHostThatDoesNotAnswerIsAcknowledgedWellWithinThePanelsWait()
+    {
+        // The panel waits 10 s for a kill's ack: a host that does not kill its game gets far less before it is killed itself.
+        Assert.True(_hosts.TerminateTimeout <= TimeSpan.FromSeconds(3));
+        await using var launcher = new ScriptedHostLauncher(StuckAfterStart);
+        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance)
+        {
+            RequestTimeout = TimeSpan.FromSeconds(30),
+            TerminateTimeout = TimeSpan.FromMilliseconds(300),
+        };
+        var events = new RecordingEvents();
+        await using var supervisor = Supervisor(hosts, TimeProvider.System, events);
+        await supervisor.StartAsync();
+        await supervisor.FlushAsync(); // the game runs in its host
+
+        Assert.Equal(AckStatus.Accepted, await supervisor.KillAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+
+        Assert.True(launcher.Killed);
+        await events.WaitForAsync(RuntimeState.Offline, StateChangeReason.Killed);
+    }
+
+    [Fact]
+    public async Task AStopThatTimesOutKillsAHostThatDoesNotAnswer()
+    {
+        await using var launcher = new ScriptedHostLauncher(StuckAfterStart);
+        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance)
+        {
+            RequestTimeout = TimeSpan.FromSeconds(30),
+            TerminateTimeout = TimeSpan.FromMilliseconds(300),
+        };
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var events = new RecordingEvents();
+        await using var supervisor = Supervisor(hosts, clock, events);
+        await supervisor.StartAsync();
+        await supervisor.FlushAsync();
+        Assert.Equal(AckStatus.Accepted, await supervisor.StopAsync()); // the game takes "quit" and goes on
+        await supervisor.FlushAsync();
+
+        clock.Advance(TimeSpan.FromSeconds(15)); // the manifest's stop timeout
+
+        var offline = await events.WaitForAsync(RuntimeState.Offline, StateChangeReason.StopTimedOut);
+        Assert.Equal(HostedGameProcess.HostLostExitCode, offline.ExitCode);
+        Assert.True(launcher.Killed);
+    }
+
+    /// <summary>A host that starts its game and takes its input, but never answers a kill or a release.</summary>
+    private static HostReply? StuckAfterStart(HostRequest request) => request switch
+    {
+        HostHello hello => new HostReply(hello.Id, Status: new GameHostStatus(Guid.NewGuid(), null, null, null, false, true, 0, 0)),
+        HostStart start => new HostReply(start.Id, Status: new GameHostStatus(start.Launch.ServerId, 4242, DateTimeOffset.UtcNow, null, false, true, 0, 0)),
+        HostSubscribe or HostInput => new HostReply(request.Id),
+        _ => null,
+    };
+
+    private static ServerSupervisor Supervisor(GameHostManager hosts, TimeProvider clock, RecordingEvents events)
+    {
+        var plan = new LaunchPlan("bin/game.exe", "", [], new Dictionary<string, string>(), new ConsoleDefinition(ManifestConsoleMode.Pty, InputNewline: "\r\n"),
+            new LogPatternReadiness("^ready", 60), new StopDefinition([new ConsoleCommandStop("quit")], 15));
+        var definition = new ServerDefinition(Guid.NewGuid(), "abcd1234", @"C:\servers\abcd1234", ProcessIdentity.CurrentUser, plan, AutoStart: false,
+            RestartOnCrash: false);
+        return new ServerSupervisor(definition, hosts, events, clock, new SupervisorOptions(), NullLogger.Instance);
     }
 
     [Fact]
