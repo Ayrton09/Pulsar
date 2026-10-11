@@ -31,6 +31,9 @@ public sealed class SchemaTests
     [InlineData("""{"readiness": {"type": "logPattern", "timeoutSeconds": 5}}""")]
     [InlineData("""{"ports": [{"name": "game", "label": "Game", "protocols": ["sctp"], "default": 1}]}""")]
     [InlineData("""{"configFiles": [{"path": "../server.cfg", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
+    [InlineData("""{"configFiles": [{"path": ".Pulsar/server.cfg", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
+    [InlineData("""{"version": "1.0.١"}""")]
+    [InlineData("""{"addons": [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": "cstrike", "source": {"type": "githubRelease", "repo": "../..", "asset": "x"}}]}""")]
     public void TheSchemaRefusesWhatTheParserRefuses(string overlay)
     {
         var json = TestManifests.Change("css", m =>

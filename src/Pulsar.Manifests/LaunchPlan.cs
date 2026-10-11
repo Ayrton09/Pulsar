@@ -137,6 +137,12 @@ public static class VariableValues
                 throw new LaunchPlanException($"{variable.Key}: {error}");
             }
 
+            // Integers in their plain form: "+8" after "+maxplayers" would be read as a command of its own.
+            if (variable.Type == VariableType.Integer && !string.IsNullOrEmpty(value))
+            {
+                value = long.Parse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+            }
+
             resolved[variable.Key] = value;
         }
 
@@ -165,14 +171,22 @@ public static class VariableValues
                     return $"At most {variable.MaxLength ?? 256} characters.";
                 }
 
-                // The whole value, anchored or not: a substring match would accept anything with one matching character.
-                if (variable.Pattern is { } pattern && !Regex.IsMatch(value, $@"\A(?:{pattern})\z", RegexOptions.NonBacktracking | RegexOptions.CultureInvariant,
-                        ManifestValidator.RegexTimeout))
+                if (variable.Pattern is not { } pattern)
                 {
-                    return "Does not match the allowed format.";
+                    return null;
                 }
 
-                return null;
+                try
+                {
+                    return Regex.IsMatch(value, WholePattern(pattern), RegexOptions.NonBacktracking | RegexOptions.CultureInvariant, ManifestValidator.RegexTimeout)
+                        ? null
+                        : "Does not match the allowed format.";
+                }
+                catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+                {
+                    // Refused when the manifest is validated; never an unhandled error for a manifest that skipped it.
+                    return "The template's format for this value is not a valid regular expression.";
+                }
             case VariableType.Integer:
                 return long.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var number)
                     && number >= variable.Min && number <= variable.Max
@@ -186,6 +200,12 @@ public static class VariableValues
                 return "Unknown variable type.";
         }
     }
+
+    /// <summary>
+    /// A string variable's pattern as it runs: the whole value, anchored or not (a substring match would accept
+    /// anything with one matching character). The validator compiles this same text.
+    /// </summary>
+    internal static string WholePattern(string pattern) => $@"\A(?:{pattern})\z";
 
     /// <summary>A default value in its canonical text form.</summary>
     public static string? FromJson(JsonElement value) => value.ValueKind switch
@@ -232,6 +252,8 @@ public static class LaunchPlanRenderer
         bool IsSecret(string template) => Placeholders.Parse(template, out _).Any(p => p is ["rcon", "password"]
             || (p is ["var", var key, ..] && definitions.TryGetValue(key, out var variable) && variable.Secret));
 
+        var reserved = ReservedArgumentNames(runtime.ArgumentList);
+        var commands = IsCommandLine(runtime, reserved);
         var arguments = new List<string>();
         void Add(IReadOnlyList<ArgumentTemplate> templates)
         {
@@ -240,16 +262,20 @@ public static class LaunchPlanRenderer
                 switch (template)
                 {
                     case ArgumentText text:
-                        arguments.Add(Placeholders.Replace(text.Text, parts =>
+                        var values = new List<(int Start, int End, bool Secret)>();
+                        var argument = Placeholders.Replace(text.Text, Placeholder, (parts, start, end) =>
                         {
-                            var value = Placeholder(parts);
                             if (parts is ["var", var key] && definitions[key].Type == VariableType.String)
                             {
-                                CheckArgumentValue(value, definitions[key].Secret);
+                                values.Add((start, end, definitions[key].Secret));
                             }
+                        });
+                        foreach (var (start, end, secret) in values)
+                        {
+                            CheckArgumentValue(argument, start, end, secret, commands);
+                        }
 
-                            return value;
-                        }));
+                        arguments.Add(argument);
                         break;
                     case ArgumentCondition condition:
                         var holds = condition.If.Split('.') switch
@@ -273,7 +299,6 @@ public static class LaunchPlanRenderer
         }
 
         Add(runtime.ArgumentList);
-        var reserved = ReservedArgumentNames(runtime.ArgumentList);
         foreach (var extra in binding.ExtraArguments ?? [])
         {
             if (!runtime.AllowExtraArguments)
@@ -286,7 +311,7 @@ public static class LaunchPlanRenderer
                 throw new LaunchPlanException("Extra arguments are single lines of 1 to 512 characters.");
             }
 
-            CheckExtraArgument(extra, runtime, reserved);
+            CheckExtraArgument(extra, runtime, reserved, commands);
             arguments.Add(extra);
         }
 
@@ -427,10 +452,8 @@ public static class LaunchPlanRenderer
     /// An extra argument may not set what the manifest sets, nor a sensitive setting (it would be kept in clear in the
     /// server's settings). On RCON consoles (Source), Pulsar's RCON is off limits too, and ';' would start another command.
     /// </summary>
-    private static void CheckExtraArgument(string extra, RuntimeDefinition runtime, HashSet<string> reserved)
+    private static void CheckExtraArgument(string extra, RuntimeDefinition runtime, HashSet<string> reserved, bool commands)
     {
-        // Source-like command lines ('+' arguments are console commands): ';' starts another command, and RCON is Pulsar's.
-        var commands = runtime.Console.Mode == ManifestConsoleMode.LogfileRcon || reserved.Any(n => n.StartsWith('+'));
         if (commands && extra.Contains(';', StringComparison.Ordinal))
         {
             throw new LaunchPlanException($"The extra argument '{extra}' has a ';', which starts another command.");
@@ -455,6 +478,13 @@ public static class LaunchPlanRenderer
         }
     }
 
+    /// <summary>
+    /// Source-like command lines ('+' arguments are console commands, as on RCON consoles): ';' starts another command
+    /// there, a '"' ends the quoted text, and RCON is Pulsar's.
+    /// </summary>
+    private static bool IsCommandLine(RuntimeDefinition runtime, HashSet<string> reserved) =>
+        runtime.Console.Mode == ManifestConsoleMode.LogfileRcon || reserved.Any(n => n.StartsWith('+'));
+
     // "-port=27015" and "-port 27015" set the same thing: the name is what comes before '=' or a space.
     private static string ArgumentName(string text) => text.Split(' ', '=')[0];
 
@@ -463,10 +493,13 @@ public static class LaunchPlanRenderer
     /// <summary>
     /// A string value placed in an argument never becomes a flag or a Source console command (docs/architecture/04),
     /// whatever pattern the manifest declared: it is one argument, but a game may split it at spaces, so no word of it
-    /// may read as one either ('-' or '+' before a letter; "EU - 24/7" and "+1" stay text).
+    /// may read as one either ('-' or '+' before a letter; "EU - 24/7" and "+1" stay text), with the template's text
+    /// after it ("x -" before "?Port=7777"); on command lines it has no ';' or '"' either.
     /// </summary>
-    private static void CheckArgumentValue(string value, bool secret)
+    /// <param name="argument">The rendered argument; the value is <c>argument[start..end]</c>.</param>
+    private static void CheckArgumentValue(string argument, int start, int end, bool secret, bool commands)
     {
+        var value = argument[start..end];
         if (value.Length > 0 && (char.IsWhiteSpace(value[0]) || value[0] is '-' or '+'))
         {
             throw new LaunchPlanException(secret
@@ -474,9 +507,17 @@ public static class LaunchPlanRenderer
                 : $"An argument value cannot start with '-', '+' or whitespace: '{value}'.");
         }
 
-        for (var i = 1; i < value.Length - 1; i++)
+        if (commands && value.AsSpan().IndexOfAny(';', '"') >= 0)
         {
-            if (value[i] is '-' or '+' && char.IsWhiteSpace(value[i - 1]) && !char.IsWhiteSpace(value[i + 1]) && !char.IsAsciiDigit(value[i + 1]))
+            throw new LaunchPlanException(secret
+                ? "An argument value of this game cannot have a ';' or a '\"': it would start another console command."
+                : $"An argument value of this game cannot have a ';' or a '\"': it would start another console command: '{value}'.");
+        }
+
+        // Up to the first character after the value: a word the value's last space starts in the template's text counts.
+        for (var i = start + 1; i <= end && i < argument.Length - 1; i++)
+        {
+            if (argument[i] is '-' or '+' && char.IsWhiteSpace(argument[i - 1]) && !char.IsWhiteSpace(argument[i + 1]) && !char.IsAsciiDigit(argument[i + 1]))
             {
                 throw new LaunchPlanException(secret
                     ? "No word of an argument value can start with '-' or '+'."

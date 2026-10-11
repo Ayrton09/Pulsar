@@ -47,7 +47,9 @@ Then:
    generates, `{{server.shortId}}`, and `{{server.dir}}` for a game that ignores relative folders. Optional parts go in
    `{ "if": "var.x", "then": [...] }` or `{ "if": "port.x", "then": [...] }`, with an optional `"else": [...]`.
 4. **Variables**: what users set. Every string used in arguments needs a `pattern` (or must be an `enum`) so a value
-   cannot become another argument; mark passwords and tokens `"secret": true` (the panel never shows them again). A
+   cannot become another argument (where `+` arguments are console commands, as on Source servers, Pulsar also refuses
+   values with `;` or `"`: leave them out of the pattern too, so users see why where they type); mark passwords and
+   tokens `"secret": true` (the panel never shows them again). A
    setting that lists Steam Workshop items gets `"workshop": { "appId": <the game's app id> }` and an editor that
    shows the items by name.
 5. **Ports**: each with the protocols players use. Pulsar opens firewall rules only for these. A port the game always

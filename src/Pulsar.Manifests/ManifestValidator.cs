@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -10,6 +11,9 @@ public static partial class ManifestValidator
 
     /// <summary>Manifest key of Pulsar's own test game (<c>games/_test</c>); the only one allowed the test server step.</summary>
     public const string TestGameKey = "pulsar-test";
+
+    // As the file manager's names (ServerFilePath.MaxSegmentLength).
+    private const int MaxSegmentLength = 255;
 
     internal static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
 
@@ -190,9 +194,10 @@ public static partial class ManifestValidator
                         error($"{path}.source.asset", "A regular expression (non-backtracking, at most 200 characters) for the asset's file name.");
                     }
 
-                    if (github.Tag is { } tag && (!BranchPattern().IsMatch(tag) || github.Prerelease))
+                    // A tag goes into the API's URL as one segment: '.' and '..' would be read as a path.
+                    if (github.Tag is { } tag && (!BranchPattern().IsMatch(tag) || tag is "." or ".." || github.Prerelease))
                     {
-                        error($"{path}.source.tag", "1–64 letters, digits, '_', '-' or '.'; not with 'prerelease'.");
+                        error($"{path}.source.tag", "1–64 letters, digits, '_', '-' or '.' (not '.' or '..'); not with 'prerelease'.");
                     }
 
                     break;
@@ -244,12 +249,25 @@ public static partial class ManifestValidator
         {
             error(path, "Between 1 and 260 characters.");
         }
-        else if (RelativePathError(value) is { } message)
+        else if ((RelativePathError(value) ?? PulsarFolderError(value)) is { } message)
         {
             error(path, message);
         }
     }
 
+    /// <summary>
+    /// Manifests never name Pulsar's own folder (<c>.pulsar</c>: SteamCMD, its login, addon records), by its name or
+    /// by a first segment shaped like an 8.3 short name (<c>PULSAR~1</c>), as the file manager refuses it.
+    /// </summary>
+    private static string? PulsarFolderError(string path)
+    {
+        var first = path.Split('/')[0];
+        return first.Equals(".pulsar", StringComparison.OrdinalIgnoreCase) || ShortName().IsMatch(first)
+            ? "Pulsar's own folder (.pulsar) is off limits."
+            : null;
+    }
+
+    /// <remarks>The file manager's segment rules (<c>ServerFilePath</c>); the agent also uses it for its own paths.</remarks>
     internal static string? RelativePathError(string path, bool allowWildcards = false)
     {
         if (path.Contains('\\', StringComparison.Ordinal))
@@ -269,6 +287,11 @@ public static partial class ManifestValidator
                 return "Empty, '.' and '..' segments are not allowed.";
             }
 
+            if (segment.Length > MaxSegmentLength)
+            {
+                return $"Names have at most {MaxSegmentLength} characters.";
+            }
+
             if (segment.EndsWith('.') || segment.EndsWith(' ') || segment.StartsWith(' '))
             {
                 return "Segments cannot start with a space or end with a dot or a space.";
@@ -279,7 +302,9 @@ public static partial class ManifestValidator
                 return "Contains characters Windows does not allow in names.";
             }
 
-            if (ReservedName().IsMatch(segment))
+            // Windows maps these names to devices whatever their extension, and trims spaces first ("nul.txt", "CON .cfg").
+            var dot = segment.IndexOf('.', StringComparison.Ordinal);
+            if (ReservedName().IsMatch((dot < 0 ? segment : segment[..dot]).TrimEnd(' ')))
             {
                 return $"'{segment}' is a reserved device name on Windows.";
             }
@@ -341,7 +366,8 @@ public static partial class ManifestValidator
             switch (variable.Type)
             {
                 case VariableType.String:
-                    if (variable.Pattern is { } pattern && CompileError(pattern) is { } patternError)
+                    // As it runs (wrapped): "(?x)a # comment" compiles alone, not with the wrapper's end in the comment.
+                    if (variable.Pattern is { } pattern && (CompileError(pattern) ?? CompileError(VariableValues.WholePattern(pattern))) is { } patternError)
                     {
                         error($"{path}.pattern", patternError);
                     }
@@ -818,7 +844,7 @@ public static partial class ManifestValidator
     {
         for (var i = 0; i < globs.Count; i++)
         {
-            if (globs[i].Length is 0 or > 260 || RelativePathError(globs[i], allowWildcards: true) is not null)
+            if (globs[i].Length is 0 or > 260 || (RelativePathError(globs[i], allowWildcards: true) ?? PulsarFolderError(globs[i])) is not null)
             {
                 error($"{path}[{i}]", "A relative glob ('cfg/**', '**/*.log').");
             }
@@ -1016,7 +1042,8 @@ public static partial class ManifestValidator
     [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{1,63}\z", RegexOptions.CultureInvariant)]
     private static partial Regex KeyPattern();
 
-    [GeneratedRegex(@"^\d{1,6}\.\d{1,6}\.\d{1,6}(-[0-9A-Za-z.-]{1,32})?\z", RegexOptions.CultureInvariant)]
+    // [0-9], not \d: other scripts' digits would be ordered as 0 (GameTemplate.CompareVersions).
+    [GeneratedRegex(@"^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.-]{1,32})?\z", RegexOptions.CultureInvariant)]
     private static partial Regex VersionPattern();
 
     [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9_]{0,63}\z", RegexOptions.CultureInvariant)]
@@ -1052,12 +1079,17 @@ public static partial class ManifestValidator
     [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{1,31}\z", RegexOptions.CultureInvariant)]
     private static partial Regex AddonKeyPattern();
 
-    [GeneratedRegex(@"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}\z", RegexOptions.CultureInvariant)]
+    // Neither part is '.' or '..' (a path, not a repository, in the API's URL).
+    [GeneratedRegex(@"^(?!\.\.?/)[A-Za-z0-9_.-]{1,100}/(?!\.\.?\z)[A-Za-z0-9_.-]{1,100}\z", RegexOptions.CultureInvariant)]
     private static partial Regex GitHubRepoPattern();
 
-    // Device names (the console's CONIN$ and CONOUT$ too, as ServerFilePath has them), with or without an extension.
-    [GeneratedRegex(@"^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[0-9¹²³]|LPT[0-9¹²³])(\..*)?$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    // Device names (the console's CONIN$ and CONOUT$ too, as ServerFilePath has them), matched on the name before its extension.
+    [GeneratedRegex(@"^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[0-9¹²³]|LPT[0-9¹²³])\z", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex ReservedName();
+
+    // An 8.3 short name (PULSAR~1), as the agent's file commands read it.
+    [GeneratedRegex(@"^[^.~]{1,6}~[0-9]+\z", RegexOptions.CultureInvariant)]
+    private static partial Regex ShortName();
 }
 
 /// <summary><c>{{a.b.c}}</c> placeholders: nothing else (no functions, no expressions).</summary>
@@ -1073,6 +1105,24 @@ internal static partial class Placeholders
     }
 
     public static string Replace(string template, Func<string[], string> value) => Pattern().Replace(template, m => value(m.Groups[1].Value.Split('.')));
+
+    /// <summary>As <see cref="Replace(string, Func{string[], string})"/>, telling <paramref name="placed"/> where each value went in the result.</summary>
+    public static string Replace(string template, Func<string[], string> value, Action<string[], int, int> placed)
+    {
+        var result = new StringBuilder();
+        var last = 0;
+        foreach (Match match in Pattern().Matches(template))
+        {
+            result.Append(template, last, match.Index - last);
+            var parts = match.Groups[1].Value.Split('.');
+            var text = value(parts);
+            placed(parts, result.Length, result.Length + text.Length);
+            result.Append(text);
+            last = match.Index + match.Length;
+        }
+
+        return result.Append(template, last, template.Length - last).ToString();
+    }
 
     /// <summary>The literal text of a template.</summary>
     public static string Strip(string template) => Pattern().Replace(template, "");

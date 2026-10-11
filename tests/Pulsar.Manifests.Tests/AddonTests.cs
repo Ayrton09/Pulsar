@@ -53,6 +53,10 @@ public sealed class AddonTests
     [Theory]
     [InlineData("""{ "type": "githubRelease", "repo": "not a repo", "asset": "x" }""", "addons[0].source.repo")]
     [InlineData("""{ "type": "githubRelease", "repo": "a/b\n", "asset": "x" }""", "addons[0].source.repo")]
+    [InlineData("""{ "type": "githubRelease", "repo": "../..", "asset": "x" }""", "addons[0].source.repo")]
+    [InlineData("""{ "type": "githubRelease", "repo": "a/.", "asset": "x" }""", "addons[0].source.repo")]
+    [InlineData("""{ "type": "githubRelease", "repo": "./b", "asset": "x" }""", "addons[0].source.repo")]
+    [InlineData("""{ "type": "githubRelease", "repo": "a/b", "asset": "x", "tag": ".." }""", "addons[0].source.tag")]
     [InlineData("""{ "type": "githubRelease", "repo": "a/b", "asset": "(a+)+$\\1" }""", "addons[0].source.asset")]
     [InlineData("""{ "type": "githubRelease", "repo": "a/b", "asset": "x", "tag": "v1", "prerelease": true }""", "addons[0].source.tag")]
     public void BadSourcesAreRefused(string source, string path)

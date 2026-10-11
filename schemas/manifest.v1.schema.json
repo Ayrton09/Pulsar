@@ -13,7 +13,7 @@
         "$schema": { "type": "string", "description": "Editor hint; ignored by Pulsar." },
         "schemaVersion": { "const": 1, "description": "Version of this format." },
         "key": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$", "description": "Identifies the game; with the version, a template that never changes." },
-        "version": { "type": "string", "pattern": "^\\d{1,6}\\.\\d{1,6}\\.\\d{1,6}(-[0-9A-Za-z.-]{1,32})?$", "description": "Semantic version of this manifest's content." },
+        "version": { "type": "string", "pattern": "^[0-9]{1,6}\\.[0-9]{1,6}\\.[0-9]{1,6}(-[0-9A-Za-z.-]{1,32})?$", "description": "Semantic version of this manifest's content." },
         "name": { "type": "string", "minLength": 1, "maxLength": 128 },
         "description": { "type": "string", "maxLength": 1024 },
         "authors": { "type": "array", "items": { "type": "string" } },
@@ -61,9 +61,9 @@
       "description": "A zip asset of a GitHub release, checked against the SHA-256 GitHub publishes for it.",
       "properties": {
         "type": { "const": "githubRelease" },
-        "repo": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$" },
+        "repo": { "type": "string", "pattern": "^(?!\\.\\.?/)[A-Za-z0-9_.-]{1,100}/(?!\\.\\.?$)[A-Za-z0-9_.-]{1,100}$" },
         "asset": { "type": "string", "maxLength": 200, "description": "Regular expression for the asset's file name." },
-        "tag": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$", "description": "A fixed release; the latest one without it." },
+        "tag": { "type": "string", "pattern": "^(?!\\.\\.?$)[A-Za-z0-9_.-]{1,64}$", "description": "A fixed release; the latest one without it." },
         "prerelease": { "type": "boolean", "default": false, "description": "Take the newest release even when it is marked as a pre-release." }
       }
     },
@@ -420,8 +420,8 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 260,
-      "pattern": "^(?![/\\\\])(?!.*:)(?!.*\\\\)(?!(.*/)?\\.\\.?(/|$))[^<>\"|?*]+$",
-      "description": "Relative to the server directory, with forward slashes; no '..', root, drive or stream."
+      "pattern": "^(?![/\\\\])(?!.*:)(?!.*\\\\)(?!(.*/)?\\.\\.?(/|$))(?![.][pP][uU][lL][sS][aA][rR](/|$))(?![^./~]{1,6}~[0-9]+(/|$))(?!.*[^/]{256})[^<>\"|?*]+$",
+      "description": "Relative to the server directory, with forward slashes; no '..', root, drive or stream, nothing in Pulsar's own .pulsar folder, names of up to 255 characters."
     }
   }
 }

@@ -213,6 +213,18 @@ public sealed class ConfigFileWriterTests
     }
 
     [Fact]
+    public void EveryXmlPropertyOfALineIsSeen()
+    {
+        // Not only the first element of a line: the first one for each key gets the value, its repeats go.
+        const string existing = "<ServerSettings>\n\t<property name=\"A\" value=\"1\"/> <property name=\"B\" value=\"2\"/> <property name=\"A\" value=\"3\"/>\n"
+            + "\t<!-- <property name=\"B\" value=\"old\"/> --> <property name=\"C\" value=\"4\"/>\n</ServerSettings>\n";
+
+        Assert.Equal("<ServerSettings>\n\t<property name=\"A\" value=\"9\"/> <property name=\"B\" value=\"8\"/> \n"
+            + "\t<!-- <property name=\"B\" value=\"old\"/> --> \n</ServerSettings>\n",
+            ConfigFileWriter.Apply(Xml(("B", "8"), ("A", "9"), ("C", "")), existing));
+    }
+
+    [Fact]
     public void AMissingXmlFileStartsAsItsRootAndABrokenOneIsNotOverwritten()
     {
         Assert.Equal("<?xml version=\"1.0\"?>\n<ServerSettings>\n\t<property name=\"ServerPort\" value=\"26900\"/>\n</ServerSettings>\n",
