@@ -5,11 +5,11 @@ import { LoginPage } from '../features/auth/LoginPage';
 import { SetupPage } from '../features/auth/SetupPage';
 import { AppLayout } from '../features/shell/AppLayout';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
-import { NotFoundPage } from '../features/shell/pages';
+import { NotFoundPage, RouteError } from '../features/shell/pages';
 import { Permission } from '../lib/permissions';
 
 /** Route table (docs/architecture/07). Pages appear here as their phase delivers them. */
-export const routes: RouteObject[] = [
+const pages: RouteObject[] = [
   { element: <PublicOnly page="login" />, children: [{ path: '/login', element: <LoginPage /> }] },
   { element: <PublicOnly page="setup" />, children: [{ path: '/setup', element: <SetupPage /> }] },
   {
@@ -183,3 +183,6 @@ export const routes: RouteObject[] = [
     ],
   },
 ];
+
+/** Every page under one error page: a page that fails to load or render shows it, translated, with a reload. */
+export const routes: RouteObject[] = [{ errorElement: <RouteError />, children: pages }];

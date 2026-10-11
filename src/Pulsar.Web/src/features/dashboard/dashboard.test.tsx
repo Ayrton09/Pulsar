@@ -34,12 +34,20 @@ const server = (
   ...change,
 });
 
-const node = (id: string, name: string, connected: boolean, cores: number, cpu: number, usedGb: number) => ({
+const node = (
+  id: string,
+  name: string,
+  connected: boolean,
+  cores: number,
+  cpu: number,
+  usedGb: number,
+  status: Schemas['NodeStatus'] = 'active',
+) => ({
   id,
   name,
   description: null,
   publicHost: null,
-  status: 'active',
+  status,
   connected,
   lastSeenAt: null,
   inventory: { logicalCores: cores },
@@ -101,6 +109,25 @@ describe('dashboard', () => {
     expect(screen.getByRole('link', { name: 'Node Córdoba is offline' })).toBeInTheDocument();
     await waitFor(() => expect(live.calls('WatchServers')).toHaveLength(1));
     expect(live.calls('WatchNodes')).toHaveLength(1);
+  });
+
+  it('counts a disabled node apart from the offline ones', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['node.view'] }),
+      'GET /api/v1/nodes': () =>
+        json([
+          node('0192f1a0-0000-7000-8000-0000000000a1', 'Buenos Aires 1', true, 4, 10, 4),
+          node('0192f1a0-0000-7000-8000-0000000000a2', 'Retired', false, 4, 0, 0, 'disabled'),
+          node('0192f1a0-0000-7000-8000-0000000000a3', 'Córdoba', false, 8, 0, 0),
+        ]),
+    });
+    render(<App router={createMemoryRouter(routes, { initialEntries: ['/'] })} queryClient={new QueryClient()} />);
+
+    expect(await screen.findByText('1 of 2 online')).toBeInTheDocument();
+    expect(screen.getByText('Offline: 1 · Disabled: 1')).toBeInTheDocument();
+    // What the count says matches what needs attention.
+    expect(screen.getByRole('link', { name: 'Node Córdoba is offline' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Retired/ })).not.toBeInTheDocument();
   });
 
   it('shows nothing it would need permissions for', async () => {

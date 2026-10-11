@@ -27,6 +27,7 @@ export class LiveChannel {
   private readonly watches = new Map<string, Watch>();
   private readonly statusListeners = new Set<() => void>();
   private readonly connectedListeners = new Set<() => void>();
+  private readonly failureListeners = new Set<() => void>();
   private status: LiveStatus = 'connecting';
   private stopped = false;
   private retry: ReturnType<typeof setTimeout> | undefined;
@@ -34,10 +35,21 @@ export class LiveChannel {
   constructor(url = '/hubs/panel') {
     this.connection = new HubConnectionBuilder()
       .withUrl(url, { transport: HttpTransportType.WebSockets, skipNegotiation: true })
-      .withAutomaticReconnect({ nextRetryDelayInMilliseconds: (context) => retryDelay(context.previousRetryCount) })
+      .withAutomaticReconnect({
+        nextRetryDelayInMilliseconds: (context) => {
+          // Asked first when the connection drops, then after each attempt that failed.
+          if (context.previousRetryCount > 0) {
+            this.failed();
+          }
+          return retryDelay(context.previousRetryCount);
+        },
+      })
       .configureLogging(LogLevel.None)
       .build();
-    this.connection.onreconnecting(() => this.setStatus('reconnecting'));
+    this.connection.onreconnecting(() => {
+      this.setStatus('reconnecting');
+      this.failed();
+    });
     this.connection.onreconnected(() => this.connected());
     // Closed without reconnecting (the panel closed it): start over, unless the page is done with it.
     this.connection.onclose(() => {
@@ -71,6 +83,16 @@ export class LiveChannel {
   onStatus(listener: () => void): () => void {
     this.statusListeners.add(listener);
     return () => this.statusListeners.delete(listener);
+  }
+
+  /**
+   * Runs when the connection drops and after every attempt to connect that fails. The panel refuses a session that
+   * ended (it expired, or the user signed out in another tab), but a refused connection does not say why: the session
+   * does.
+   */
+  onFailure(listener: () => void): () => void {
+    this.failureListeners.add(listener);
+    return () => this.failureListeners.delete(listener);
   }
 
   /** Runs after every (re)connection, once the shared watches were sent again. */
@@ -130,6 +152,12 @@ export class LiveChannel {
       await this.connection.start();
       this.connected();
     } catch {
+      if (this.stopped) {
+        return;
+      }
+      // Also when the first connection never succeeds (a proxy refusing WebSockets): pages are not being updated.
+      this.setStatus('reconnecting');
+      this.failed();
       this.schedule(attempt + 1);
     }
   }
@@ -148,6 +176,15 @@ export class LiveChannel {
       void entry.watch().catch(ignore);
     }
     for (const listener of this.connectedListeners) {
+      listener();
+    }
+  }
+
+  private failed() {
+    if (this.stopped) {
+      return;
+    }
+    for (const listener of this.failureListeners) {
       listener();
     }
   }

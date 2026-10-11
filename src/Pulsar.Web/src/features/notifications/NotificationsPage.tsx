@@ -241,8 +241,9 @@ function SettingsForm({ settings }: { settings: NotificationSettings }) {
       },
       {
         onSuccess: () => {
-          // The password went in; it is never shown again.
+          // The password went in; it is never shown again (nor kept in the mutation's variables).
           setPassword('');
+          save.reset();
           setClearPassword(false);
           setSaved(true);
         },

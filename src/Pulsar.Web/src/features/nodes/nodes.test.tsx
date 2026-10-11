@@ -8,7 +8,8 @@ import { App } from '../../app/App';
 import { initI18n } from '../../app/i18n';
 import { routes } from '../../app/routes';
 import { parseTimeSpan } from '../../lib/format';
-import { adminUser, fakeApi, json, session } from '../../test/fakeApi';
+import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
+import { nodeKeys } from './api';
 import { enrollCommand, msiCommand, nodeState } from './nodeStatus';
 
 const operator = {
@@ -91,9 +92,11 @@ const credential: Schemas['NodeCredentialView'] = {
   supersededAt: null,
 };
 
-function renderAt(path: string) {
+function renderAt(
+  path: string,
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } }),
+) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
   render(<App router={router} queryClient={queryClient} />);
   return router;
 }
@@ -379,6 +382,50 @@ describe('bulk enrollment', () => {
     await vi.waitFor(() => expect(revoked).toBe(true));
   });
 
+  it('lists usable tokens first and folds away the finished ones', async () => {
+    const token = (id: string, name: string, change: Partial<Schemas['EnrollmentTokenView']>) => ({
+      id,
+      name,
+      tokenPrefix: 'pulsar_enroll_qwerty',
+      maxUses: 10,
+      uses: 3,
+      requireApproval: true,
+      createdAt: '2026-10-09T12:00:00Z',
+      expiresAt: '2026-10-16T12:00:00Z',
+      lastUsedAt: null,
+      revokedAt: null,
+      usable: true,
+      ...change,
+    });
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/nodes': () => json([online]),
+      'GET /api/v1/enrollment-tokens': () =>
+        json([
+          token('0192f1a0-0000-7000-8000-0000000000e3', 'Old rollout', { usable: false }),
+          token('0192f1a0-0000-7000-8000-0000000000e4', 'Lab', {}),
+          token('0192f1a0-0000-7000-8000-0000000000e5', 'Leaked', {
+            usable: false,
+            revokedAt: '2026-10-10T12:00:00Z',
+          }),
+        ]),
+    });
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    const table = await screen.findByRole('table', { name: 'Reusable enrollment tokens' });
+    expect(within(table).getByText('Lab')).toBeInTheDocument();
+    expect(within(table).queryByText('Old rollout')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Finished tokens' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show 2 finished tokens' }));
+
+    const finished = screen.getByRole('table', { name: 'Finished tokens' });
+    expect(within(finished).getByText('Old rollout')).toBeInTheDocument();
+    expect(within(finished).getByText('Leaked')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Hide finished tokens' }));
+    expect(screen.queryByRole('table', { name: 'Finished tokens' })).not.toBeInTheDocument();
+  });
+
   it('does not show reusable tokens to whoever cannot manage node credentials', async () => {
     const manager = { ...adminUser, permissions: ['node.view', 'node.manage'] };
     fakeApi({
@@ -466,6 +513,30 @@ describe('node page', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Revoke' }));
 
     await vi.waitFor(() => expect(body).toEqual({ reason: 'Machine stolen' }));
+  });
+
+  it('keeps the page and what is being edited when fetching the node again fails', async () => {
+    let down = false;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/nodes/${online.id}`]: () =>
+        down ? problem(503, 'unavailable') : json({ node: online, credentials: [credential] }),
+      [`GET /api/v1/nodes/${online.id}/allocations`]: () => json([]),
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
+    renderAt(`/nodes/${online.id}`, queryClient);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Buenos Aires 1' });
+    await user.clear(within(dialog).getByLabelText('Name'));
+    await user.type(within(dialog).getByLabelText('Name'), 'Renamed');
+    down = true;
+    await queryClient.invalidateQueries({ queryKey: nodeKeys.detail(online.id) });
+
+    expect(await screen.findByText(/Could not refresh/)).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Edit Buenos Aires 1' })).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Name')).toHaveValue('Renamed');
   });
 
   it('shows viewers the node without administration actions', async () => {

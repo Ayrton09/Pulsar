@@ -94,4 +94,33 @@ describe('users', () => {
     expect(take).toHaveBeenCalledOnce();
     expect(await within(access).findByText('No roles on single nodes or servers.')).toBeInTheDocument();
   });
+
+  it('stops offering to turn off two-factor authentication once it is off', async () => {
+    let current: Schemas['UserResponse'] = { ...friend, twoFactorEnabled: true };
+    const reset = vi.fn(() => {
+      current = { ...current, twoFactorEnabled: false };
+      return new Response(null, { status: 204 });
+    });
+    fakeApi({
+      'GET /api/v1/auth/session': session(adminUser),
+      'GET /api/v1/users': () => json([current]),
+      'GET /api/v1/roles': () => json([]),
+      'GET /api/v1/servers': () => json([]),
+      'GET /api/v1/nodes': () => json([]),
+      [`POST /api/v1/users/${friend.id}/two-factor/reset`]: reset,
+    });
+    vi.stubGlobal('confirm', () => true);
+    renderAt('/admin/users');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Edit friend' });
+    expect(within(dialog).getByText('Two-factor authentication is on.')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Turn off two-factor' }));
+
+    expect(await within(dialog).findByText('Two-factor authentication turned off.')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Turn off two-factor' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Two-factor authentication is on.')).not.toBeInTheDocument();
+    expect(reset).toHaveBeenCalledOnce();
+  });
 });

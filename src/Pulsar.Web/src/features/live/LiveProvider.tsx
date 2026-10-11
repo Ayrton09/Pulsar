@@ -1,6 +1,7 @@
-import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useQueryClient, type Query, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { adminKeys } from '../admin/api';
+import { sessionKey } from '../auth/api';
 import { nodeKeys, type NodeDetails, type NodeSummary } from '../nodes/api';
 import { serverKeys, type ServerDetails, type ServerSummary } from '../servers/api';
 import { LiveChannel } from './channel';
@@ -10,7 +11,8 @@ import type { NodeMetricsUpdate, OperationProgress, ServerMetrics } from './type
 /**
  * Opens the tab's live channel while someone is signed in, and turns its notices into cache updates: changed servers
  * and nodes are fetched again, progress and usage are written in place. After a reconnection everything shown is
- * fetched again, since notices sent while disconnected are lost.
+ * fetched again, since notices sent while disconnected are lost. While it cannot connect, the session is read again:
+ * when it ended, the route guard sends the user to sign in.
  */
 export function LiveProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -19,10 +21,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Servers and their lists; not their settings, which change only when someone saves them.
     const refreshServers = () => {
-      void queryClient.invalidateQueries({
-        queryKey: serverKeys.all,
-        predicate: (query) => query.queryKey[2] !== 'settings',
-      });
+      void queryClient.invalidateQueries({ queryKey: serverKeys.all, predicate: notServerSettings });
       // The dashboard's latest activity: what changes servers and nodes is audited.
       void queryClient.invalidateQueries({ queryKey: [...adminKeys.audit, 'recent'] });
     };
@@ -41,10 +40,12 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       // What changed while disconnected was never pushed. (The first connection follows the page's own fetches.)
       live.onConnected(() => {
         if (reconnect) {
-          void queryClient.invalidateQueries();
+          void queryClient.invalidateQueries({ predicate: notServerSettings });
         }
         reconnect = true;
       }),
+      // The panel refuses a session that ended; a failed fetch keeps the page (the guard shows a notice).
+      live.onFailure(() => void queryClient.invalidateQueries({ queryKey: sessionKey })),
     ];
     live.start();
     return () => {
@@ -54,6 +55,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   }, [live, queryClient]);
 
   return <LiveContext value={live}>{children}</LiveContext>;
+}
+
+/** A refetch of a server's settings would drop an admin's unsaved edits; only a save or a template upgrade changes them. */
+function notServerSettings(query: Query): boolean {
+  return !(query.queryKey[0] === serverKeys.all[0] && query.queryKey[2] === 'settings');
 }
 
 function applyProgress(queryClient: QueryClient, progress: OperationProgress) {

@@ -60,6 +60,27 @@ public sealed class LiveSessionTests(PulsarApiFactory factory) : IClassFixture<P
     }
 
     [DatabaseFact]
+    public async Task SigningOutClosesTheLiveChannelsOfTheOtherTabs()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        await scenario.CreateUserAsync("live-logout", await scenario.CreateRoleAsync("live-logout-role", Permissions.Server.View));
+        using var user = await scenario.SignInAsync("live-logout");
+        // Another tab of the same browser: same cookie, its own connection.
+        await using var otherTab = await BrowserHub.ConnectAsync(factory, user);
+        Assert.True(await otherTab.Connection.InvokeAsync<bool>("WatchServers", Ct));
+        var closed = ClosedAsync(otherTab.Connection);
+
+        using (var logout = await user.PostAsync("/api/v1/auth/logout"))
+        {
+            await AccessScenario.EnsureSuccessAsync(logout);
+        }
+
+        // The browser dropped the cookie, so the tab's reconnection is refused and its session reloads.
+        await closed.WaitAsync(s_closeTimeout, Ct);
+    }
+
+    [DatabaseFact]
     public async Task ChangingARoleClosesLiveChannelsSoWatchesAreCheckedAgain()
     {
         var scenario = await AccessScenario.CreateAsync(factory);

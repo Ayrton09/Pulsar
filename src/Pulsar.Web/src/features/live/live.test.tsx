@@ -7,9 +7,11 @@ import type { Schemas } from '../../api/client';
 import { App } from '../../app/App';
 import { initI18n } from '../../app/i18n';
 import { routes } from '../../app/routes';
-import { adminUser, fakeApi, json, session } from '../../test/fakeApi';
-import { answerNext, connections, openedConnection } from '../../test/fakeSignalR';
+import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
+import { answerNext, connections, openedConnection, refuseNext } from '../../test/fakeSignalR';
 import { terminals } from '../../test/fakeXterm';
+import { sessionKey } from '../auth/api';
+import { serverKeys } from '../servers/api';
 import type { ConsoleEntry } from './types';
 
 const operator = {
@@ -272,6 +274,23 @@ describe('live updates', () => {
     await waitFor(() => expect(fetches()).toBe(before + 1));
   });
 
+  it('after a reconnect fetches again what is shown, but not the server settings an admin may be editing', async () => {
+    serverApi();
+    const before = connections.length;
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<App router={createMemoryRouter(routes, { initialEntries: ['/servers'] })} queryClient={queryClient} />);
+    const live = await openedConnection(before);
+    await screen.findByRole('table', { name: 'Servers' });
+    queryClient.setQueryData(serverKeys.settings(server.id), { variables: [] });
+    queryClient.setQueryData(serverKeys.templates, []);
+
+    live.drop();
+    live.reconnect();
+
+    await waitFor(() => expect(queryClient.getQueryState(serverKeys.templates)?.isInvalidated).toBe(true));
+    expect(queryClient.getQueryState(serverKeys.settings(server.id))?.isInvalidated).toBe(false);
+  });
+
   it('writes operation progress in place', async () => {
     const operation: Schemas['OperationView'] = {
       id: '0192f1a0-0000-7000-8000-0000000000b1',
@@ -299,5 +318,75 @@ describe('live updates', () => {
     });
 
     await waitFor(() => expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '65'));
+  });
+});
+
+describe('live channel and session', () => {
+  /** The servers page, with a session the test ends (`signedIn`) or breaks (`sessionDown`). */
+  function sessionApi() {
+    const state = { signedIn: true, sessionDown: false };
+    const api = fakeApi({
+      'GET /api/v1/auth/session': () =>
+        state.sessionDown
+          ? problem(503, 'unavailable')
+          : json({ setupRequired: false, user: state.signedIn ? operator : null, insecureConnection: false }),
+      'GET /api/v1/servers': () => json([server]),
+    });
+    const sessionReads = () =>
+      api.mock.calls.filter(([input]) => (input as Request).url.endsWith('/api/v1/auth/session')).length;
+    return { state, sessionReads };
+  }
+
+  async function renderServers() {
+    const before = connections.length;
+    const router = createMemoryRouter(routes, { initialEntries: ['/servers'] });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<App router={router} queryClient={queryClient} />);
+    const live = await openedConnection(before);
+    return { live, router, queryClient };
+  }
+
+  it('reads the session again while it cannot reconnect, and signs out a session that ended', async () => {
+    const { state, sessionReads } = sessionApi();
+    const { live, router } = await renderServers();
+    await screen.findByRole('table', { name: 'Servers' });
+    const before = sessionReads();
+
+    live.drop();
+    live.failReconnect();
+
+    await waitFor(() => expect(sessionReads()).toBe(before + 2));
+    expect(screen.getByRole('table', { name: 'Servers' })).toBeInTheDocument();
+    // Signed out in another tab, or the cookie expired while the laptop slept.
+    state.signedIn = false;
+    live.failReconnect();
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/login');
+  });
+
+  it('says so when the first connection fails, and reads the session again', async () => {
+    const { sessionReads } = sessionApi();
+    refuseNext();
+    await renderServers();
+    await screen.findByRole('table', { name: 'Servers' });
+
+    expect(await screen.findByText('Live updates paused, reconnecting…')).toBeInTheDocument();
+    await waitFor(() => expect(sessionReads()).toBeGreaterThan(1));
+  });
+
+  it('keeps the page when reading the session again fails', async () => {
+    const { state } = sessionApi();
+    const { queryClient } = await renderServers();
+    await screen.findByRole('table', { name: 'Servers' });
+
+    state.sessionDown = true;
+    await queryClient.invalidateQueries({ queryKey: sessionKey });
+
+    expect(await screen.findByText(/Could not refresh/)).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Servers' })).toBeInTheDocument();
+    state.sessionDown = false;
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(screen.queryByText(/Could not refresh/)).not.toBeInTheDocument());
   });
 });

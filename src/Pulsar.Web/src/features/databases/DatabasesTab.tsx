@@ -52,9 +52,15 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
   const list = databases.data.databases;
   const error = reveal.error ?? rotate.error ?? remove.error;
   const full = list.length >= limit;
+  // The password stays only in `shown`: the mutations that brought it forget it.
   const rotatePassword = (database: ServerDatabase) =>
     window.confirm(t('databases.rotateConfirm', { name: database.name })) &&
-    rotate.mutate(database.id, { onSuccess: setShown });
+    rotate.mutate(database.id, {
+      onSuccess: (credentials) => {
+        setShown(credentials);
+        rotate.reset();
+      },
+    });
   const deleteDatabase = (database: ServerDatabase) =>
     window.confirm(t('databases.deleteConfirm', { name: database.name })) &&
     remove.mutate(database.id, {
@@ -116,7 +122,14 @@ export function DatabasesTab({ details }: { details: ServerDetails }) {
                       variant="ghost"
                       size="sm"
                       disabled={reveal.isPending}
-                      onClick={() => reveal.mutate(database.id, { onSuccess: setShown })}
+                      onClick={() =>
+                        reveal.mutate(database.id, {
+                          onSuccess: (credentials) => {
+                            setShown(credentials);
+                            reveal.reset();
+                          },
+                        })
+                      }
                     >
                       {t('databases.showPassword')}
                     </Button>
