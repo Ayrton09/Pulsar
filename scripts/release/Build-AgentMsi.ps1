@@ -116,7 +116,8 @@ try {
     # GetBytes writes no byte order mark (with the UTF-8 code page either).
     [IO.File]::WriteAllBytes($ddf, $ansi.GetBytes(($lines -join "`r`n") + "`r`n"))
     $cab = Join-Path $work 'agent.cab'
-    $made = & makecab.exe /F $ddf 2>&1
+    # Windows' own makecab, by full path: what goes into the package is not up to whatever PATH finds first.
+    $made = & (Join-Path ([Environment]::SystemDirectory) 'makecab.exe') /F $ddf 2>&1
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $cab)) { throw "makecab failed: $made" }
 
     # --- The database ----------------------------------------------------------------------------------------------

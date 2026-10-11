@@ -73,10 +73,18 @@ try {
     Check "panel settings readable only by SYSTEM, Administrators and the panel's account" (-not ($configAcl | Where-Object { $_ -match 'Users|Everyone|Authenticated' })) ($configAcl -join ', ')
     $settings = Get-Content 'C:\Program Files\Pulsar\Panel\appsettings.Production.json' -Raw | ConvertFrom-Json
     Check 'setup token removed from the settings' ($null -eq $settings.PSObject.Properties['InitialSetup'])
+    # Written in a private folder next to it and moved into place: none left behind.
+    Check 'panel settings written without a staging folder left' (-not (Test-Path 'C:\Program Files\Pulsar\Panel\.settings'))
     Check 'Data Protection keys written' ((Get-ChildItem (Join-Path $panelData 'keys') -Filter 'key-*.xml').Count -ge 1)
-    $thumbprint = (Get-Content (Join-Path $panelData 'tls\trusted-thumbprint.txt') -Raw).Trim()
-    Check "panel's certificate trusted by this machine" (Test-Path "Cert:\LocalMachine\Root\$thumbprint") $thumbprint
-    Check 'firewall rule for the panel' ($null -ne (Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue))
+    $panelCertificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2((Join-Path $panelData 'tls\panel.cer'))
+    $thumbprint = $panelCertificate.Thumbprint
+    $constraints = $panelCertificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.19' }
+    $endEntity = $null -ne $constraints -and $constraints.Critical -and -not (New-Object Security.Cryptography.X509Certificates.X509BasicConstraintsExtension($constraints, $true)).CertificateAuthority
+    Check "panel's certificate cannot issue certificates (Basic Constraints: critical, CA=false)" $endEntity
+    $trusted = Get-Item "Cert:\LocalMachine\Root\$thumbprint" -ErrorAction SilentlyContinue
+    Check "panel's certificate trusted by this machine, marked as the installer's" ($null -ne $trusted -and $trusted.FriendlyName -eq 'Pulsar panel (trusted by Install-Pulsar.ps1)') "$thumbprint $($trusted.FriendlyName)"
+    $firewall = Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue
+    Check 'firewall rule for the panel, on Domain and Private networks only' ($null -ne $firewall -and "$($firewall.Profile)" -eq 'Domain, Private') "$($firewall.Profile)"
 
     # --- The panel as a browser sees it (the certificate is trusted now) ---
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -103,6 +111,27 @@ try {
     try { & (Join-Path $release 'Backup-Pulsar.ps1') -Destination $backupRoot *>&1 | Tee-Object -FilePath (Join-Path $report 'backup.txt') } catch { $backedUp = $false; Add-Content (Join-Path $report 'backup.txt') "FAILED: $_" }
     $backup = Get-ChildItem $backupRoot -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
     Check 'backup written (dump, keys, key ring, certificate, settings)' ($backedUp -and $backup -and (Test-Path (Join-Path $backup.FullName 'pulsar.dump')) -and (Test-Path (Join-Path $backup.FullName 'panel-data\keyring\keyring.pfx')) -and (Test-Path (Join-Path $backup.FullName 'panel-data\tls\panel.pfx')) -and (Test-Path (Join-Path $backup.FullName 'appsettings.Production.json')))
+    $backupAcl = if ($backup) { Get-Acl $backup.FullName }
+    $backupSids = @($backupAcl | ForEach-Object { $_.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) } | ForEach-Object { $_.IdentityReference.Value } | Select-Object -Unique | Sort-Object)
+    Check 'backup folder: SYSTEM and Administrators only, protected' ($null -ne $backupAcl -and $backupAcl.AreAccessRulesProtected -and ($backupSids -join ',') -eq 'S-1-5-18,S-1-5-32-544') ($backupSids -join ', ')
+
+    # A drive that keeps no permissions (FAT32, on a small virtual disk) cannot hold a backup: refused, nothing written.
+    $fatDisk = Join-Path $env:TEMP 'pulsar-fat.vhd'
+    $diskpart = Join-Path $env:TEMP 'pulsar-fat.txt'
+    Set-Content $diskpart "create vdisk file=`"$fatDisk`" maximum=64 type=expandable`r`nselect vdisk file=`"$fatDisk`"`r`nattach vdisk`r`ncreate partition primary`r`nformat fs=fat32 quick`r`nassign letter=P"
+    $null = & (Join-Path ([Environment]::SystemDirectory) 'diskpart.exe') /s $diskpart
+    if (Test-Path 'P:\') {
+        $refusedOutput = & {
+            $ErrorActionPreference = 'Continue'
+            (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $release 'Backup-Pulsar.ps1') -Destination 'P:\Backups' 2>&1 | ForEach-Object { "$_" }) -join ' '
+        }
+        $refusedCode = $LASTEXITCODE
+        $left = @(Get-ChildItem 'P:\' -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { -not $_.PSIsContainer })
+        Check 'backup refuses a drive without permissions (FAT32), leaving no file there' ($refusedCode -ne 0 -and ($refusedOutput -replace '\s', '') -match 'NTFSorReFS' -and $left.Count -eq 0) "exit $refusedCode; files left: $($left.Count); $($refusedOutput -replace '\s+', ' ')"
+    }
+    else {
+        Add-Content $summary 'INFO backup on a FAT32 drive not checked: the virtual disk could not be made'
+    }
 
     Stop-Service PulsarPanel
     $null = sc.exe delete PulsarPanel

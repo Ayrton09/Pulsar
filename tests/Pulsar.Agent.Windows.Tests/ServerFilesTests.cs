@@ -104,6 +104,21 @@ public sealed class ServerFilesTests : IDisposable
     }
 
     [WindowsFact]
+    public void AServerDirectoryWhoseFinalPathIsLongerThan1024CharactersWorks()
+    {
+        // Windows paths reach 32,767 characters: an administrator's junction can lead the servers root somewhere deep.
+        var deep = Directory.CreateDirectory(Path.Combine([_root, .. Enumerable.Repeat(new string('d', 200), 5), "server"])).FullName;
+        Assert.True(deep.Length > 1024);
+        var alias = Path.Combine(_root, "alias");
+        Run("mklink", "/J", alias, deep);
+
+        _files.Write(alias, "game/cfg/server.cfg", Content("x"));
+
+        using var stream = _files.OpenRead(alias, "game/cfg/server.cfg")!;
+        Assert.Equal("x", new StreamReader(stream).ReadToEnd());
+    }
+
+    [WindowsFact]
     public void AHardLinkIsReplacedNotWrittenInto()
     {
         Run("mklink", "/H", Path.Combine(_server, "server.cfg"), Path.Combine(_outside, "secret.cfg"));

@@ -125,7 +125,7 @@ internal static class ServerPaths
 
     private static unsafe string FinalPath(SafeFileHandle handle)
     {
-        var buffer = new char[1024];
+        var buffer = new char[32 * 1024];
         uint length;
         fixed (char* pointer = buffer)
         {

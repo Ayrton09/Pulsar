@@ -16,7 +16,8 @@
     -Mode Agent: the agent only, with the values the panel's "Add node" dialog shows.
 
     -Update replaces the programs of whatever is installed and keeps settings and data. -Uninstall removes the
-    services and programs; the database, the panel's keys and logs and the game servers' folders are kept.
+    services and programs, and the trust this script gave the panel's certificate; the database, the panel's keys and
+    logs and the game servers' folders are kept.
 
     An agent installed with the agent MSI is updated and removed with msiexec, never by this script: -Mode Agent and
     -Mode AllInOne refuse to run next to it, and -Update and -Uninstall handle only the panel.
@@ -58,8 +59,11 @@ param(
     [SecureString] $AdminPassword,
     # A backup folder made by Backup-Pulsar.ps1 (with -Mode Panel).
     [string] $RestoreFrom,
-    # Leaves the Windows Firewall alone (by default the panel's port is opened for the panel's program).
+    # Leaves the Windows Firewall alone (by default the panel's port is opened for the panel's program, on Domain and
+    # Private networks).
     [switch] $NoFirewall,
+    # Opens the panel's port on Public networks too.
+    [switch] $FirewallPublic,
 
     # --- Agent ---
     [string] $PanelUrl,
@@ -67,7 +71,8 @@ param(
     [string] $PanelKey,
     # Where game servers are installed (default: C:\PulsarServers).
     [string] $ServersRoot,
-    # The panel's certificate (.cer), when it is self-signed: trusted by this machine so the agent accepts it.
+    # The panel's certificate (.cer), when it is self-signed: trusted by this machine so the agent accepts it (refused
+    # when it can issue certificates; -Uninstall removes the trust).
     [string] $TrustCertificate,
 
     # --- Maintenance ---
@@ -88,7 +93,13 @@ $PanelDir = Join-Path $InstallRoot 'Panel'
 $AgentDir = Join-Path $InstallRoot 'Agent'
 $PanelData = Join-Path $DataRoot 'Panel'
 $PanelConfig = Join-Path $PanelDir 'appsettings.Production.json'
+# Certificates this script trusted carry this friendly name in Cert:\LocalMachine\Root: -Uninstall removes those only.
+$TrustedName = 'Pulsar panel (trusted by Install-Pulsar.ps1)'
+# Where earlier installs noted the certificate they trusted.
 $TrustedMarker = Join-Path $PanelData 'tls\trusted-thumbprint.txt'
+# Windows' own programs by full path: this runs elevated, and a program found through PATH could be anyone's.
+$Icacls = Join-Path ([Environment]::SystemDirectory) 'icacls.exe'
+$Sc = Join-Path ([Environment]::SystemDirectory) 'sc.exe'
 
 function Write-Step([string] $message) { Write-Host "==> $message" -ForegroundColor Cyan }
 
@@ -133,6 +144,14 @@ function Invoke-Native([string] $exe) {
     return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
 }
 
+# Invoke-Native, with $stdin on the program's standard input. The program's options must not abbreviate this function's
+# parameter names (PowerShell would bind -s to -stdin).
+function Invoke-NativeWithInput([string] $stdin, [string] $exe) {
+    $ErrorActionPreference = 'Continue'
+    $output = ($stdin | & $exe @args 2>&1 | ForEach-Object { "$_" }) -join [Environment]::NewLine
+    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+}
+
 function ConvertFrom-Secure([SecureString] $secure) {
     $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
     try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
@@ -164,7 +183,7 @@ function Set-PrivateAcl([string] $path, [string[]] $modify = @(), [string[]] $re
     foreach ($account in $modify) { $arguments += @('/grant:r', "${account}:(OI)(CI)M") }
     foreach ($account in $read) { $arguments += @('/grant:r', "${account}:(OI)(CI)RX") }
     if ((Get-Item $path) -isnot [IO.DirectoryInfo]) { $arguments = $arguments -replace '\(OI\)\(CI\)', '' }
-    $result = Invoke-Native icacls.exe @arguments
+    $result = Invoke-Native $Icacls @arguments
     if ($result.ExitCode -ne 0) { throw "Could not set the permissions of ${path}: $($result.Output)" }
 }
 
@@ -330,10 +349,17 @@ function New-PanelDatabase {
         if ($exists.Output.Trim() -ne '0') {
             throw "PostgreSQL already has a 'pulsar' role (an earlier install?). Pass its database with -ConnectionString, or drop it first."
         }
-        $created = Invoke-Native $psql @common -c "CREATE ROLE pulsar LOGIN PASSWORD '$password'"
+        # On standard input, not the command line: every process on this machine can read command lines.
+        $created = Invoke-NativeWithInput "CREATE ROLE pulsar LOGIN PASSWORD '$password';" $psql @common -f -
         if ($created.ExitCode -ne 0) { throw "Could not create the 'pulsar' role: $($created.Output)" }
         $created = Invoke-Native $psql @common -c 'CREATE DATABASE pulsar OWNER pulsar'
-        if ($created.ExitCode -ne 0) { throw "Could not create the 'pulsar' database: $($created.Output)" }
+        if ($created.ExitCode -ne 0) {
+            # Nobody else knows the role's password: kept, it would only make the next run refuse.
+            $dropped = Invoke-Native $psql @common -c 'DROP ROLE pulsar'
+            $left = ''
+            if ($dropped.ExitCode -ne 0) { $left = " The 'pulsar' role created for it could not be dropped ($($dropped.Output)): drop it before running this script again." }
+            throw "Could not create the 'pulsar' database: $($created.Output)$left"
+        }
     }
     finally {
         Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
@@ -363,14 +389,33 @@ function New-PanelCertificate {
     if ($domain -and $domain -ne 'WORKGROUP') { $names += "$($env:COMPUTERNAME).$domain" }
     $names = @($names + $HostName | Where-Object { $_ } | Select-Object -Unique)
     Write-Step "Creating a self-signed HTTPS certificate for $($names -join ', ')"
+    # Trusted machine-wide (here, and on nodes with -TrustCertificate), so it must not be able to issue certificates:
+    # Basic Constraints, critical, CA=false. Without them Windows may take it for a certificate authority, and whoever
+    # holds its key could vouch for any site.
     $certificate = New-SelfSignedCertificate -DnsName $names -CertStoreLocation 'Cert:\LocalMachine\My' `
-        -FriendlyName 'Pulsar panel' -KeyExportPolicy Exportable -KeyLength 2048 -NotAfter (Get-Date).AddYears(5)
-    $password = New-Secret 32
-    $null = Export-PfxCertificate -Cert $certificate -FilePath $pfx -Password (ConvertTo-SecureString $password -AsPlainText -Force)
-    $null = Export-Certificate -Cert $certificate -FilePath $cer
-    # The panel reads the PFX file; the store copy is not needed.
-    Remove-Item "Cert:\LocalMachine\My\$($certificate.Thumbprint)" -DeleteKey
+        -FriendlyName 'Pulsar panel' -KeyExportPolicy Exportable -KeyLength 2048 -NotAfter (Get-Date).AddYears(5) `
+        -TextExtension @('2.5.29.19={critical}{text}ca=0')
+    try {
+        if ((Get-CertificateAuthority $certificate) -ne $false) {
+            throw 'The self-signed certificate came out able to issue certificates (its Basic Constraints do not say CA=false).'
+        }
+        $password = New-Secret 32
+        $null = Export-PfxCertificate -Cert $certificate -FilePath $pfx -Password (ConvertTo-SecureString $password -AsPlainText -Force)
+        $null = Export-Certificate -Cert $certificate -FilePath $cer
+    }
+    finally {
+        # The panel reads the PFX file; the store copy is not needed.
+        Remove-Item "Cert:\LocalMachine\My\$($certificate.Thumbprint)" -DeleteKey
+    }
     return @{ Path = $pfx; Password = $password; Thumbprint = $certificate.Thumbprint; Cer = $cer; SelfSigned = $true }
+}
+
+# What a certificate's Basic Constraints say: $true (it may issue certificates), $false (it may not), or $null when it
+# has none.
+function Get-CertificateAuthority([Security.Cryptography.X509Certificates.X509Certificate2] $certificate) {
+    $extension = $certificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.19' } | Select-Object -First 1
+    if (-not $extension) { return $null }
+    return (New-Object Security.Cryptography.X509Certificates.X509BasicConstraintsExtension($extension, $extension.Critical)).CertificateAuthority
 }
 
 # The certificate that encrypts the panel's Data Protection key ring. Unlike machine DPAPI, it works on any machine:
@@ -405,17 +450,58 @@ function Restore-PanelDatabase([string] $dump, [string] $connection) {
     }
 }
 
+# Checks that a panel's certificate may be trusted machine-wide: one that can issue certificates is refused, since
+# whoever holds its key could then vouch for any site to this machine.
+function Assert-TrustableCertificate([string] $cer) {
+    $certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path -LiteralPath $cer).ProviderPath)
+    $authority = Get-CertificateAuthority $certificate
+    if ($authority -eq $true) {
+        throw "$cer can issue certificates (its Basic Constraints say CA=true): trusted by this machine, whoever holds its key could vouch for any site. Pass the panel's own certificate (panel.cer), not a certificate authority's."
+    }
+    if ($null -eq $authority) {
+        Write-Warning "$cer does not say whether it can issue certificates (it has no Basic Constraints), and Windows may take it for a certificate authority. The installer's own self-signed certificate says it cannot; consider making a new one like it."
+    }
+}
+
+# Trusts a panel's certificate machine-wide (the agent runs as SYSTEM), marked so -Uninstall removes it again. One that
+# was already trusted is left unmarked: something else trusted it, and -Uninstall leaves it.
 function Add-TrustedCertificate([string] $cer) {
-    $certificate = Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\LocalMachine\Root'
-    return $certificate.Thumbprint
+    Assert-TrustableCertificate $cer
+    $thumbprint = (New-Object Security.Cryptography.X509Certificates.X509Certificate2((Resolve-Path -LiteralPath $cer).ProviderPath)).Thumbprint
+    $trusted = "Cert:\LocalMachine\Root\$thumbprint"
+    if (Test-Path $trusted) { return }
+    $null = Import-Certificate -FilePath $cer -CertStoreLocation 'Cert:\LocalMachine\Root'
+    (Get-Item $trusted).FriendlyName = $TrustedName
+}
+
+# Removes the trust Add-TrustedCertificate gave (and what earlier installs noted in the panel's data folder).
+function Remove-TrustedCertificates {
+    $thumbprints = @(Get-ChildItem 'Cert:\LocalMachine\Root' | Where-Object { $_.FriendlyName -eq $TrustedName } | ForEach-Object Thumbprint)
+    if (Test-Path $TrustedMarker) {
+        $thumbprints += (Get-Content $TrustedMarker -Raw).Trim()
+        Remove-Item $TrustedMarker
+    }
+    foreach ($thumbprint in $thumbprints | Select-Object -Unique) {
+        Write-Step "No longer trusting the panel's certificate ($thumbprint)"
+        Remove-Item "Cert:\LocalMachine\Root\$thumbprint" -ErrorAction SilentlyContinue
+    }
 }
 
 # --- Panel --------------------------------------------------------------------------------------------------------
 
 function Write-PanelConfig([hashtable] $settings) {
-    $settings | ConvertTo-Json -Depth 6 | Set-Content -Path $PanelConfig -Encoding UTF8
-    # Database and certificate passwords: SYSTEM, Administrators and the panel's service account only.
-    Set-PrivateAcl $PanelConfig -read @($PanelAccount)
+    # Database and certificate passwords, and on a first install the setup token: SYSTEM, Administrators and the panel's
+    # service account only, from the start. A file created in the program folder is readable by every user until its
+    # permissions change (and a handle opened meanwhile keeps reading), so it is written in a private folder next to
+    # it, which the file inherits from, and moved into place (the same volume: it keeps its permissions).
+    $staging = Join-Path $PanelDir '.settings'
+    New-Item -ItemType Directory -Force $staging | Out-Null
+    Set-PrivateAcl $staging -read @($PanelAccount)
+    $file = Join-Path $staging 'appsettings.Production.json'
+    $settings | ConvertTo-Json -Depth 6 | Set-Content -Path $file -Encoding UTF8
+    Set-PrivateAcl $file -read @($PanelAccount)
+    Move-Item $file $PanelConfig -Force
+    Remove-Item $staging
 }
 
 function Install-Panel {
@@ -449,11 +535,11 @@ function Install-Panel {
 
     # The service first: its virtual account exists from then on, and the folders below grant it access.
     $exe = Join-Path $PanelDir 'Pulsar.Api.exe'
-    $result = Invoke-Native sc.exe create $PanelService binPath= "`"$exe`"" start= delayed-auto obj= $PanelAccount DisplayName= 'Pulsar Panel'
+    $result = Invoke-Native $Sc create $PanelService binPath= "`"$exe`"" start= delayed-auto obj= $PanelAccount DisplayName= 'Pulsar Panel'
     if ($result.ExitCode -ne 0) { throw "Could not create the panel service: $($result.Output)" }
-    $null = Invoke-Native sc.exe description $PanelService 'Pulsar game server panel (web interface and API).'
-    $null = Invoke-Native sc.exe failure $PanelService reset= 86400 actions= restart/5000/restart/15000/restart/60000
-    $null = Invoke-Native sc.exe failureflag $PanelService 1
+    $null = Invoke-Native $Sc description $PanelService 'Pulsar game server panel (web interface and API).'
+    $null = Invoke-Native $Sc failure $PanelService reset= 86400 actions= restart/5000/restart/15000/restart/60000
+    $null = Invoke-Native $Sc failureflag $PanelService 1
 
     New-Item -ItemType Directory -Force $PanelData | Out-Null
     Set-PrivateAcl $PanelData -modify @($PanelAccount)
@@ -488,10 +574,12 @@ function Install-Panel {
     Write-PanelConfig $settings
 
     if (-not $NoFirewall) {
-        Write-Step "Allowing the panel's HTTPS port ($Port) in Windows Firewall"
+        # Domain and Private networks: on a network Windows treats as public (a coffee shop's, a hotel's), only with -FirewallPublic.
+        $profiles = if ($FirewallPublic) { @('Any') } else { @('Domain', 'Private') }
+        Write-Step "Allowing the panel's HTTPS port ($Port) in Windows Firewall ($($profiles -join ', ') networks)"
         Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
         $null = New-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -DisplayName 'Pulsar Panel (HTTPS)' -Direction Inbound `
-            -Protocol TCP -LocalPort $Port -Program $exe -Action Allow
+            -Protocol TCP -LocalPort $Port -Program $exe -Action Allow -Profile $profiles
     }
 
     Invoke-PanelMigrations
@@ -533,13 +621,8 @@ function Update-Panel {
 function Uninstall-Panel {
     Write-Step 'Removing the panel'
     Stop-Service $PanelService -ErrorAction SilentlyContinue
-    $null = Invoke-Native sc.exe delete $PanelService
+    $null = Invoke-Native $Sc delete $PanelService
     Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-    if (Test-Path $TrustedMarker) {
-        $thumbprint = (Get-Content $TrustedMarker -Raw).Trim()
-        Remove-Item "Cert:\LocalMachine\Root\$thumbprint" -ErrorAction SilentlyContinue
-        Remove-Item $TrustedMarker
-    }
     Start-Sleep -Seconds 2
     Remove-Item $PanelDir -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -572,13 +655,17 @@ function Uninstall-Agent {
     Write-Step 'Removing the agent'
     $exe = Join-Path $AgentDir 'PulsarAgent.exe'
     if (Test-Path $exe) {
-        # Deletes the node key and the configuration, and removes the service.
+        # Stops the game servers, deletes the node key and the configuration, and removes the service. When it cannot,
+        # nothing is deleted: the program stays to try again with, as the agent MSI does.
         $result = Invoke-Native $exe unenroll
         Write-Host $result.Output
+        if ($result.ExitCode -ne 0) {
+            throw "The agent could not unenroll (exit code $($result.ExitCode), see above), so it is kept: fix what it reports and run -Uninstall again. docs/guides/install.md (Uninstalling) has a last resort."
+        }
     }
     if (Test-Service $AgentService) {
         Stop-Service $AgentService -ErrorAction SilentlyContinue
-        $null = Invoke-Native sc.exe delete $AgentService
+        $null = Invoke-Native $Sc delete $AgentService
     }
     Start-Sleep -Seconds 2
     Remove-Item $AgentDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -611,6 +698,8 @@ if ($Uninstall) {
     if ($agentPackage) { Write-Warning "The agent is left as it is. $(Get-AgentPackageMessage $agentPackage)" }
     elseif (Test-Service $AgentService) { Uninstall-Agent }
     if (Test-Service $PanelService) { Uninstall-Panel }
+    # What -Mode Agent -TrustCertificate or -Mode AllInOne trusted (an agent from the MSI may need it: then it stays).
+    if (-not $agentPackage) { Remove-TrustedCertificates }
     $removed = if ($agentPackage) { 'The panel is removed (not the agent: see above).' } else { 'Pulsar is removed.' }
     Write-Host "$removed Kept: the database, $DataRoot (the panel's keys, needed to read its database's secrets, and logs) and the game servers' folders." -ForegroundColor Green
     return
@@ -625,7 +714,7 @@ switch ($Mode) {
         }
         if ($TrustCertificate) {
             Write-Step "Trusting the panel's certificate ($TrustCertificate)"
-            $null = Add-TrustedCertificate $TrustCertificate
+            Add-TrustedCertificate $TrustCertificate
         }
         Install-Agent $PanelUrl $Token $PanelKey
         Write-Host 'The agent is installed. The node appears as online in the panel.' -ForegroundColor Green
@@ -644,7 +733,7 @@ switch ($Mode) {
         $certificate = $installed.Certificate
         if ($certificate.SelfSigned) {
             Write-Step "Trusting the panel's certificate on this machine (the agent and this PC's browsers check it)"
-            Add-TrustedCertificate $certificate.Cer | Set-Content $TrustedMarker
+            Add-TrustedCertificate $certificate.Cer
         }
         $enrollment = $installed.Node.enrollment
         Install-Agent "https://localhost:$Port" $enrollment.token $enrollment.panelKeyFingerprint

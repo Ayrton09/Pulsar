@@ -355,18 +355,10 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
         {
             using (process)
             {
-                try
+                if (TerminateIfRunningAs(process.Id, sid))
                 {
-                    if (ProcessUser(process.Id) == sid)
-                    {
-                        process.Kill(entireProcessTree: false);
-                        killed++;
-                        LogStrayKilled(account.Name, process.Id, process.ProcessName);
-                    }
-                }
-                catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or NotSupportedException)
-                {
-                    // Gone already, or a protected process (never a server account's).
+                    killed++;
+                    LogStrayKilled(account.Name, process.Id, process.ProcessName);
                 }
             }
         }
@@ -374,19 +366,31 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
         return killed;
     }
 
-    private static unsafe SecurityIdentifier? ProcessUser(int processId)
+    /// <summary>
+    /// Ends the process if it runs as <paramref name="user"/>. One handle serves both the check and the kill: a process
+    /// that ended meanwhile cannot have its identifier reused by another account's process between the two.
+    /// </summary>
+    internal static bool TerminateIfRunningAs(int processId, SecurityIdentifier user)
     {
-        using var process = PInvoke.OpenProcess_SafeHandle(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+        // Gone already, or a protected process (never a server account's): nothing to open.
+        using var process = PInvoke.OpenProcess_SafeHandle(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_ACCESS_RIGHTS.PROCESS_TERMINATE,
+            false, (uint)processId);
         if (process.IsInvalid || !PInvoke.OpenProcessToken(process, TOKEN_ACCESS_MASK.TOKEN_QUERY, out var token))
         {
-            return null;
+            return false;
         }
 
         using (token)
+        using (var identity = new WindowsIdentity(token.DangerousGetHandle()))
         {
-            using var identity = new WindowsIdentity(token.DangerousGetHandle());
-            return identity.User;
+            if (identity.User != user)
+            {
+                return false;
+            }
         }
+
+        // Fails only when the process is already ending.
+        return PInvoke.TerminateProcess(process, 1);
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Killed process {ProcessId} ({ProcessName}) running as {Account} outside its server's job")]

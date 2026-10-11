@@ -41,7 +41,8 @@ if ($LASTEXITCODE -ne 0) { throw 'publish agent failed' }
 Get-ChildItem $staging -Recurse -Filter 'appsettings.Development.json' | Remove-Item
 
 # In Windows PowerShell, whatever runs this script: the MSI is written through the Installer's COM interface, checked there.
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Build-AgentMsi.ps1') -AgentDir (Join-Path $staging 'agent') -Version $Version -Output $Output
+# By full path, like the other Windows programs the release and install scripts run.
+& (Join-Path ([Environment]::SystemDirectory) 'WindowsPowerShell\v1.0\powershell.exe') -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Build-AgentMsi.ps1') -AgentDir (Join-Path $staging 'agent') -Version $Version -Output $Output
 if ($LASTEXITCODE -ne 0) { throw 'agent MSI failed' }
 $msi = Join-Path $Output "pulsar-agent-$Version-windows-x64.msi"
 $msiHash = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLowerInvariant()

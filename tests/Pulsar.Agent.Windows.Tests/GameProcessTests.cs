@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Pipes;
 using Pulsar.Agent.Core.Processes;
+using Pulsar.Agent.Windows.Processes;
 
 namespace Pulsar.Agent.Windows.Tests;
 
@@ -284,6 +285,47 @@ public sealed class GameProcessTests : IDisposable
         var throughJunction = _server.Spec(ConsoleMode.Pipes) with { Executable = "link/Pulsar.TestGameServer.exe" };
         Assert.Equal("process.reparse_point",
             (await Assert.ThrowsAsync<GameProcessException>(() => manager.StartAsync(throughJunction, TestContext.Current.CancellationToken))).Code);
+    }
+
+    [WindowsFact]
+    public void AStrayProcessIsKilledOnlyWhenTheHandleItIsKilledThroughRunsAsTheAccount()
+    {
+        using var process = Process.Start(new ProcessStartInfo("ping.exe", ["-n", "60", "127.0.0.1"])
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            CreateNoWindow = true,
+        })!;
+        try
+        {
+            var system = new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.LocalSystemSid, null);
+            Assert.False(WindowsGameProcessManager.TerminateIfRunningAs(process.Id, system));
+            Assert.False(process.WaitForExit(200));
+
+            Assert.True(WindowsGameProcessManager.TerminateIfRunningAs(process.Id, System.Security.Principal.WindowsIdentity.GetCurrent().User!));
+            Assert.True(process.WaitForExit(10_000));
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill();
+            }
+        }
+    }
+
+    [WindowsFact]
+    public void AnExecutableWhoseFinalPathIsLongerThan1024CharactersResolves()
+    {
+        // Windows paths reach 32,767 characters: an administrator's junction can lead the servers root somewhere deep.
+        var deep = Directory.CreateDirectory(Path.Combine([_server.Root, .. Enumerable.Repeat(new string('d', 200), 5), "server"])).FullName;
+        Directory.CreateDirectory(Path.Combine(deep, "bin"));
+        File.WriteAllText(Path.Combine(deep, "bin", "game.exe"), "");
+        Assert.True(deep.Length > 1024);
+        var alias = Path.Combine(_server.Root, "alias");
+        CreateJunction(alias, deep);
+
+        Assert.Equal(Path.Combine(alias, "bin", "game.exe"), ServerPaths.ResolveFile(alias, "bin/game.exe"));
     }
 
     [WindowsFact]
