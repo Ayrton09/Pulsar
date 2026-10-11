@@ -4,8 +4,9 @@
 # clean), then a real Counter-Strike: Source server installed by SteamCMD
 # from Valve (about 2.5 GB), started and stopped over RCON as its account, with managed firewall rules. Then the agent
 # MSI: refused next to that agent, a refused token, install, a same-version rebuild, an upgrade with a game running, a
-# refused downgrade, Install-Pulsar.ps1 leaving it alone, uninstall. Every check is written to report\summary.txt as
-# PASS/FAIL; the last line is "done", and the exit code is 1 on any FAIL.
+# refused downgrade, Install-Pulsar.ps1 leaving it alone, uninstall. Last, Install-Pulsar.ps1 -Mode Agent trusting the
+# panel's certificate (one that can issue certificates refused) and -Uninstall removing that trust. Every check is
+# written to report\summary.txt as PASS/FAIL; the last line is "done", and the exit code is 1 on any FAIL.
 # When the machine has a ready TPM, the node key must be in it.
 # Never run it on a machine you use: it installs a service and creates a machine key (removed again at the end).
 param(
@@ -66,8 +67,10 @@ try {
     & createdb.exe -h 127.0.0.1 -U postgres pulsar
     Check 'postgresql' ($LASTEXITCODE -eq 0)
 
-    # --- TLS certificate for localhost, trusted by the whole machine (the agent service runs as SYSTEM) ---
-    $certificate = New-SelfSignedCertificate -DnsName 'localhost' -CertStoreLocation 'Cert:\LocalMachine\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddDays(2)
+    # --- TLS certificate for localhost, trusted by the whole machine (the agent service runs as SYSTEM); like the
+    # installer's own, it cannot issue certificates ---
+    $certificate = New-SelfSignedCertificate -DnsName 'localhost' -CertStoreLocation 'Cert:\LocalMachine\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddDays(2) `
+        -TextExtension @('2.5.29.19={critical}{text}ca=0')
     $pfx = Join-Path $env:TEMP 'pulsar-panel.pfx'
     $null = Export-PfxCertificate -Cert $certificate -FilePath $pfx -Password (ConvertTo-SecureString 'agent-install' -AsPlainText -Force)
     $cer = Join-Path $env:TEMP 'pulsar-panel.cer'
@@ -496,6 +499,36 @@ try {
     $exit = Uninstall-Msi $second 'msi-uninstall-backslash.log'
     Check 'msi: uninstalled again, nothing left' ($exit -eq 0 -and $null -eq (Get-Service PulsarAgent -ErrorAction SilentlyContinue) -and -not (Test-Path $agentConfig) -and -not (Test-Path $installDir) -and @(Get-AgentProducts).Count -eq 0) "exit $exit"
     Check 'msi: no host process left' (@(Get-CimInstance Win32_Process -Filter "Name = 'PulsarAgent.exe'").Count -eq 0)
+
+    # --- Install-Pulsar.ps1 -Mode Agent -TrustCertificate: a certificate that can issue certificates is refused; the
+    # panel's own is trusted, marked as the script's, and -Uninstall takes that trust away again ---
+    function Invoke-Installer([string[]] $arguments) {
+        $ErrorActionPreference = 'Continue'
+        $output = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installScript @arguments 2>&1 | ForEach-Object { "$_" }) -join ' '
+        [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+    }
+    $authority = New-SelfSignedCertificate -Subject 'CN=Pulsar sandbox authority' -CertStoreLocation 'Cert:\LocalMachine\My' -KeyUsage CertSign `
+        -TextExtension @('2.5.29.19={critical}{text}ca=1') -NotAfter (Get-Date).AddDays(2)
+    $authorityCer = Join-Path $env:TEMP 'pulsar-authority.cer'
+    $null = Export-Certificate -Cert $authority -FilePath $authorityCer
+    Remove-Item "Cert:\LocalMachine\My\$($authority.Thumbprint)" -DeleteKey
+    $scripted = Api POST '/api/v1/nodes' @{ name = 'sandbox-script-node' }
+    $agentValues = @('-Mode', 'Agent', '-PanelUrl', $panel, '-Token', $scripted.enrollment.token, '-PanelKey', $scripted.enrollment.panelKeyFingerprint)
+    $refused = Invoke-Installer ($agentValues + @('-TrustCertificate', $authorityCer))
+    Check 'install script: refuses to trust a certificate that can issue certificates (nothing installed)' ($refused.ExitCode -ne 0 -and ($refused.Output -replace '\s', '') -match 'CA=true' -and -not (Test-Path "Cert:\LocalMachine\Root\$($authority.Thumbprint)") -and $null -eq (Get-Service PulsarAgent -ErrorAction SilentlyContinue)) "exit $($refused.ExitCode); $($refused.Output -replace '\s+', ' ')"
+
+    # The machine stops trusting the panel's certificate, as on a node that never saw it: the script trusts it again.
+    $panelRoot = "Cert:\LocalMachine\Root\$($certificate.Thumbprint)"
+    Remove-Item $panelRoot
+    $installed = Invoke-Installer ($agentValues + @('-TrustCertificate', $cer))
+    Add-Content (Join-Path $report 'install-script-agent.txt') $installed.Output
+    $trusted = Get-Item $panelRoot -ErrorAction SilentlyContinue
+    Check "install script: agent installed, the panel's certificate trusted and marked as the script's" ($installed.ExitCode -eq 0 -and $null -ne $trusted -and $trusted.FriendlyName -eq 'Pulsar panel (trusted by Install-Pulsar.ps1)' -and (Test-AgentRunning)) "exit $($installed.ExitCode); friendly name: $($trusted.FriendlyName)"
+    Check 'install script: node online' (Wait-Until { (Api GET "/api/v1/nodes/$($scripted.node.id)").node.connected } 60)
+
+    $uninstalled = Invoke-Installer @('-Uninstall')
+    Add-Content (Join-Path $report 'install-script-agent.txt') $uninstalled.Output
+    Check 'install script: -Uninstall removes the agent and the trust it gave' ($uninstalled.ExitCode -eq 0 -and $null -eq (Get-Service PulsarAgent -ErrorAction SilentlyContinue) -and -not (Test-Path $agentExe) -and -not (Test-Path $panelRoot)) "exit $($uninstalled.ExitCode); $($uninstalled.Output -replace '\s+', ' ')"
 }
 catch {
     Check 'script' $false ($_ | Out-String).Trim()

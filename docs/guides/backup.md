@@ -26,7 +26,9 @@ powershell -ExecutionPolicy Bypass -File .\Backup-Pulsar.ps1 -Destination D:\Bac
 
 It writes `D:\Backups\pulsar-backup-<date>` with the database dump (`pulsar.dump`), the keys and certificates
 (`panel-data`) and the settings. The panel keeps running. The folder holds secrets: only SYSTEM and Administrators can
-read it. Keep a copy away from the machine (another disk, another computer, offline storage).
+read it, so the destination must be on a drive that keeps permissions (NTFS or ReFS): on a FAT or exFAT drive (most
+USB sticks), or a share that ignores permissions, the script stops before writing anything. Choose a destination only
+administrators can change. Keep a copy away from the machine (another disk, another computer, offline storage).
 
 To do it every night, create a task in Task Scheduler that runs, as SYSTEM:
 

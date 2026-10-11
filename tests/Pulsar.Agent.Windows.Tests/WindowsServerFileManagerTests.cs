@@ -238,6 +238,69 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
     }
 
     [WindowsFact]
+    public void AFolderSwappedForAJunctionBeforeAnUploadStartsLeavesNothingOutside()
+    {
+        // The server's account swaps the folder the file manager has just checked for a junction to somewhere else.
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg"));
+        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System))
+        {
+            BeforeCreate = () =>
+            {
+                Directory.Move(Path.Combine(ServerDirectory, "cfg"), Path.Combine(ServerDirectory, "old"));
+                Link("/J", "cfg", _outside);
+            },
+        };
+
+        try
+        {
+            using var pending = files.Create(Server, "cfg/new.cfg", 1, overwrite: false, expectedVersion: null);
+            pending.Content.Write("x"u8);
+            pending.Commit();
+        }
+        catch (FileManagerException)
+        {
+            // Refusing is fine too; leaving a file outside is not.
+        }
+
+        OutsideIsUntouched();
+    }
+
+    [WindowsFact]
+    public void AFolderMovedOutsideBeforeAnUploadStartsKeepsNoFileThere()
+    {
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg"));
+        var elsewhere = Path.Combine(Root, "elsewhere");
+        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System))
+        {
+            BeforeCreate = () => Directory.Move(Path.Combine(ServerDirectory, "cfg"), elsewhere),
+        };
+
+        Assert.Equal(FileErrors.OutsideServer, Code(() => files.Create(Server, "cfg/new.cfg", 1, overwrite: false, expectedVersion: null)));
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(elsewhere));
+    }
+
+    [WindowsFact]
+    public void AFolderHoldingAnUploadCannotBeMovedElsewhereMeanwhile()
+    {
+        // The upload is renamed into the folder checked when it began. Windows refuses to move that folder, or one above
+        // it, while the upload's temporary file is open in it; the commit checks where the folder is all the same.
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg", "sub"));
+        var elsewhere = Path.Combine(Root, "elsewhere");
+        using (var pending = Files.Create(Server, "cfg/sub/new.cfg", 1, overwrite: false, expectedVersion: null))
+        {
+            pending.Content.Write("x"u8);
+
+            Assert.Throws<IOException>(() => Directory.Move(Path.Combine(ServerDirectory, "cfg", "sub"), elsewhere));
+            Assert.Throws<IOException>(() => Directory.Move(Path.Combine(ServerDirectory, "cfg"), elsewhere));
+            pending.Commit();
+        }
+
+        Assert.Equal("x", File.ReadAllText(Path.Combine(ServerDirectory, "cfg", "sub", "new.cfg")));
+        Assert.False(Directory.Exists(elsewhere));
+    }
+
+    [WindowsFact]
     public void AFileAnotherProgramHasOpenIsStillReplaced()
     {
         // What a virus scanner or the search indexer does to a file just written: read it, sharing everything.

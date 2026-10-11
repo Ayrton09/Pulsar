@@ -11,7 +11,8 @@
 
     The database's secrets (game server tokens, two-factor keys, the panel's signing key) can only be read with the
     keys, so the three always go together. The folder holds secrets: keep it as private as the panel itself (it is
-    readable only by SYSTEM and Administrators) and store a copy away from this machine.
+    readable only by SYSTEM and Administrators, so -Destination must be on a drive that keeps permissions: NTFS or
+    ReFS, not FAT or exFAT) and store a copy away from this machine.
 
     Restore with: Install-Pulsar.ps1 -Mode Panel -RestoreFrom <the backup folder> (docs/guides/backup.md).
     Game servers' own backups stay on their nodes (C:\ProgramData\Pulsar\Agent\backups); copy them separately.
@@ -56,9 +57,28 @@ if (-not $PostgresBin) {
 }
 
 $target = Join-Path $Destination ("pulsar-backup-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-New-Item -ItemType Directory -Force $target | Out-Null
-# SYSTEM and Administrators only: the backup holds the panel's secrets.
-$null = icacls.exe $target /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' /grant:r '*S-1-5-32-544:(OI)(CI)F'
+New-Item -ItemType Directory -Force $Destination | Out-Null
+# A folder made here, never one that already exists (made in advance by someone else, who would own it).
+New-Item -ItemType Directory $target | Out-Null
+# SYSTEM and Administrators only, before anything is written in it: the backup holds the panel's secrets. icacls.exe by
+# full path (this runs elevated, and a program found through PATH could be anyone's); checked, as a native program's
+# failure does not stop the script, and so is the result: a drive without permissions (FAT, exFAT, some network
+# shares) cannot keep the backup private.
+$icacls = Join-Path ([Environment]::SystemDirectory) 'icacls.exe'
+$ErrorActionPreference = 'Continue'
+$output = & $icacls $target /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' /grant:r '*S-1-5-32-544:(OI)(CI)F' 2>&1
+$ErrorActionPreference = 'Stop'
+$isPrivate = $false
+if ($LASTEXITCODE -eq 0) {
+    $acl = Get-Acl $target
+    $allowed = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object { $_.AccessControlType -eq 'Allow' } |
+        ForEach-Object { $_.IdentityReference.Value } | Select-Object -Unique)
+    $isPrivate = $acl.AreAccessRulesProtected -and $allowed.Count -gt 0 -and @($allowed | Where-Object { $_ -notin 'S-1-5-18', 'S-1-5-32-544' }).Count -eq 0
+}
+if (-not $isPrivate) {
+    Remove-Item $target -Recurse -Force
+    throw "$Destination cannot keep the backup readable by SYSTEM and Administrators only (a drive without permissions, such as FAT or exFAT, or a share that ignores them): choose a folder on an NTFS or ReFS drive. $output"
+}
 
 Write-Host '==> Dumping the database' -ForegroundColor Cyan
 $settings = Get-Content $config -Raw | ConvertFrom-Json

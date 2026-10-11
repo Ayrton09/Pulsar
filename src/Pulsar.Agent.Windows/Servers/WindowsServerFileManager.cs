@@ -32,6 +32,9 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
     private const uint GenericWrite = 0x40000000;
     private const uint NameSurrogate = 0x20000000;
 
+    /// <summary>Tests: runs just before an upload's temporary file is created (to swap folders in the meantime).</summary>
+    internal Action? BeforeCreate { get; init; }
+
     public FileListResult List(ProvisionedServer server, string path)
     {
         ServerFileRules.Validate(path, allowRoot: true);
@@ -193,7 +196,8 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             {
                 ServerFileRules.CheckTarget(path, Existing(root, path), overwrite, expectedVersion);
                 var temporary = ServerFilePath.Join(parent, ServerFileRules.TemporaryName());
-                var handle = root.Create(temporary, GenericWrite | DeleteAccess | ReadAttributes | Synchronize);
+                BeforeCreate?.Invoke();
+                var handle = root.Create(directory, temporary, GenericWrite | DeleteAccess | ReadAttributes | Synchronize);
                 return new Pending(this, server, path, size, overwrite, expectedVersion, directory, handle);
             }
             catch
@@ -319,8 +323,10 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
     /// <summary>
     /// Opens <paramref name="name"/> (one name, as listed; empty: the directory itself again) inside the directory
     /// <paramref name="directory"/> is: never through a path, never following a link. Null when it is gone.
+    /// <paramref name="disposition"/> and <paramref name="options"/> (added to the defaults) create a file instead.
     /// </summary>
-    private static unsafe SafeFileHandle? OpenChild(SafeFileHandle directory, string name, uint access, string path)
+    private static unsafe SafeFileHandle? OpenChild(SafeFileHandle directory, string name, uint access, string path, uint disposition = NtFile.FileOpen,
+        uint options = 0)
     {
         var added = false;
         directory.DangerousAddRef(ref added);
@@ -342,8 +348,8 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
                     Attributes = NtFile.ObjCaseInsensitive,
                 };
                 var status = NtFile.NtCreateFile(out var handle, access, &attributes, out _, null, 0,
-                    (uint)(FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_DELETE), NtFile.FileOpen,
-                    NtFile.FileOpenReparsePoint | NtFile.FileOpenForBackupIntent | NtFile.FileSynchronousIoNonAlert, null, 0);
+                    (uint)(FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_DELETE), disposition,
+                    NtFile.FileOpenReparsePoint | NtFile.FileOpenForBackupIntent | NtFile.FileSynchronousIoNonAlert | options, null, 0);
                 if (status >= 0)
                 {
                     return handle;
@@ -690,10 +696,16 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             return opened.Detach();
         }
 
-        /// <summary>Creates a new file (never opening an existing one or a link) and checks where it is.</summary>
-        public SafeFileHandle Create(string path, uint access)
+        /// <summary>
+        /// Creates a new file (never opening an existing one or a link) in <paramref name="directory"/>, its folder as
+        /// <see cref="OpenDirectory"/> opened and checked it: through that handle, not by path, so a folder on the path
+        /// swapped for a junction since is not followed. Should the file still be outside (the folder itself moved away
+        /// meanwhile), it is deleted through its own handle.
+        /// </summary>
+        public SafeFileHandle Create(SafeFileHandle directory, string path, uint access)
         {
-            var handle = OpenRaw(Full(path), access, FILE_CREATION_DISPOSITION.CREATE_NEW, follow: false)!;
+            var handle = OpenChild(directory, ServerFilePath.Name(path), access, path, NtFile.FileCreate, NtFile.FileNonDirectoryFile)
+                ?? throw NotFound(ServerFilePath.Parent(path));
             try
             {
                 Check(handle, path);
@@ -701,8 +713,33 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             }
             catch
             {
+                try
+                {
+                    MarkDeleted(handle, path);
+                }
+                catch (FileManagerException)
+                {
+                    // The file stays (named as a temporary one): nothing else depends on it.
+                }
+
                 handle.Dispose();
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Checks that a folder <see cref="OpenDirectory"/> opened earlier is still where it was: below the server
+        /// directory (or, for <see cref="ServerFilePath.Root"/>, the server directory itself).
+        /// </summary>
+        public void CheckDirectory(SafeFileHandle directory, string path)
+        {
+            if (path.Length > 0)
+            {
+                Check(directory, path);
+            }
+            else if (!FinalPath(directory).Equals(_final, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new FileManagerException(FileErrors.OutsideServer, "The server directory has moved.");
             }
         }
 
@@ -844,6 +881,9 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             _stream.Flush();
             var result = _owner.Run(_server, root =>
             {
+                // The upload goes into the folder checked when it began, wherever that folder is now: checked again. NTFS
+                // refuses to move a folder while a file in it is open; this does not rely on it.
+                root.CheckDirectory(_directory, ServerFilePath.Parent(_path));
                 ServerFileRules.CheckTarget(_path, Existing(root, _path), _overwrite, _expectedVersion);
                 Rename(_stream.SafeFileHandle, _directory, ServerFilePath.Name(_path), replace: _overwrite || _expectedVersion is not null, _path);
                 return Result(_path, Describe(_stream.SafeFileHandle));

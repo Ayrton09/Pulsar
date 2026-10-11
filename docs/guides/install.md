@@ -77,8 +77,10 @@ It asks for the PostgreSQL `postgres` password (step 1) and for a password for P
 2. installs the panel in `C:\Program Files\Pulsar\Panel` as the **PulsarPanel** service, running as its own virtual
    account (`NT SERVICE\PulsarPanel`), with its data in `C:\ProgramData\Pulsar\Panel` (keys, logs, certificate);
 3. makes a self-signed HTTPS certificate for this PC's names and `localhost`, valid for 5 years, and trusts it on this
-   PC (the agent and this PC's browsers check it);
-4. opens the panel's port (**8443**, `-Port` chooses another) in Windows Firewall;
+   PC (the agent and this PC's browsers check it). It is marked as unable to issue other certificates, so trusting it
+   lets nobody vouch for other sites;
+4. opens the panel's port (**8443**, `-Port` chooses another) in Windows Firewall, on Domain and Private networks
+   (`-FirewallPublic` also opens it on networks Windows treats as public; `-NoFirewall` leaves the firewall alone);
 5. starts the panel and creates the administrator;
 6. adds this PC as a node, installs the agent in `C:\Program Files\Pulsar\Agent` and enrolls it; the agent runs as the
    **PulsarAgent** service (LocalSystem) and keeps its data in `C:\ProgramData\Pulsar\Agent`. Game servers go to
@@ -111,9 +113,13 @@ input) or the `PULSAR_ENROLLMENT_TOKEN` environment variable to `--token <token>
 command lines in the process list. With the panel's self-signed certificate, copy
 `C:\ProgramData\Pulsar\Panel\tls\panel.cer` from the panel's machine to the node first and add
 `-TrustCertificate .\panel.cer`: the node then trusts that certificate. The node appears as **Online** in the panel.
+`-TrustCertificate` refuses a certificate that can issue other certificates (a certificate authority's: trusted by the
+node, whoever holds its key could vouch for any site), and warns about one that does not say (certificates made by
+installers before this check); `-Uninstall` removes the trust it gave.
 
-The panel's machine must accept connections on its port (the installer opens it in Windows Firewall; routers and cloud
-firewalls are up to you). Nodes only connect out to the panel.
+The panel's machine must accept connections on its port (the installer opens it in Windows Firewall on Domain and
+Private networks, see `-FirewallPublic` above; routers and cloud firewalls are up to you). Nodes only connect out to
+the panel.
 
 ### Many nodes at once
 
@@ -212,10 +218,15 @@ Back up the panel as described in [backup.md](backup.md): without its keys, the 
 powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Uninstall
 ```
 
-It removes the services, the programs, the firewall rule and the trust in the panel's certificate. It keeps the
+It removes the services, the programs, the firewall rule and the trust the script gave the panel's certificate (in
+all-in-one mode, or with `-TrustCertificate`; a certificate this machine trusted already stays trusted). It keeps the
 database, `C:\ProgramData\Pulsar` and the game servers' folders. Delete game servers from the panel first: that also
 removes their Windows accounts. An agent installed with the MSI is not the script's to remove: it says so and removes
 only the panel, if this machine has one.
+
+If the agent cannot unenroll (stop its game servers, delete its key and configuration, remove its service), the script
+stops there and keeps the agent, as the MSI does (see below): what `unenroll` printed says why; fix that and run
+`-Uninstall` again.
 
 An agent installed with the MSI is removed from **Apps** in Windows settings, or with
 `msiexec /x pulsar-agent-<version>-windows-x64.msi /qn`: its game servers stop, and the service, the node key and the
