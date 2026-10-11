@@ -253,6 +253,23 @@ public sealed class Server
         UpdatedAt = now;
     }
 
+    /// <summary>
+    /// An install that will not run after all (the one that follows provisioning could not begin, or was lost with a
+    /// restart of the panel): the server says it failed rather than installing for ever. False when it is not
+    /// installing, or an install or provisioning is still running.
+    /// </summary>
+    public bool InstallAbandoned(DateTimeOffset now)
+    {
+        if (InstallState != InstallState.Installing || ActiveOperationType is OperationType.ServerProvision or OperationType.ServerInstall)
+        {
+            return false;
+        }
+
+        InstallState = InstallState.Failed;
+        UpdatedAt = now;
+        return true;
+    }
+
     public Result RequestStart(DateTimeOffset now)
     {
         if (InstallState != InstallState.Installed)

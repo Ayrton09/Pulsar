@@ -59,7 +59,7 @@ public static class DependencyInjection
         services.AddSingleton<ISteamAccountSecretProtector, DataProtectionSteamAccountSecretProtector>();
         services.AddSingleton<IDatabaseSecretProtector, DataProtectionDatabaseSecretProtector>();
         services.AddSingleton<IDatabaseHostClient, MySqlDatabaseHostClient>();
-        services.AddScoped<IServerLocks, ServerLocks>();
+        services.AddScoped<IRowLocks, RowLocks>();
         services.AddScoped<IScheduledTaskClaims, ScheduledTaskClaims>();
         services.AddHostedService<SchedulerService>();
 

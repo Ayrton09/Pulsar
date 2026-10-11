@@ -43,7 +43,7 @@ public sealed partial class ServerDatabases(
     DatabaseHosts hosts,
     IDatabaseSecretProtector secrets,
     IDatabaseHostClient client,
-    IServerLocks locks,
+    IRowLocks locks,
     IAuditLog audit,
     TimeProvider clock,
     ILogger<ServerDatabases> logger)
@@ -120,8 +120,21 @@ public sealed partial class ServerDatabases(
             throw;
         }
 
+        // The server's deletion may have completed meanwhile: it dropped its databases (this one before the host made it)
+        // with the server's row locked, so under that lock the row still being here means the server is too.
+        await using var transaction = await db.Database.BeginTransactionAsync(CancellationToken.None);
+        await locks.LockServerAsync(server.Id, CancellationToken.None);
+        if (!await db.ServerDatabases.AsNoTracking().AnyAsync(d => d.Id == database.Id, CancellationToken.None))
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            db.Entry(database).State = EntityState.Detached;
+            await DropOrphanAsync(connection, database, host);
+            return ServerErrors.NotFound;
+        }
+
         audit.Record(AuditActions.Server.DatabaseCreated, metadata: new { database.Name, Host = host.Name }).WithServer(server.Id, server.NodeId);
         await db.SaveChangesAsync(CancellationToken.None);
+        await transaction.CommitAsync(CancellationToken.None);
         return new ServerDatabaseCredentials(View(database, host), password);
     }
 
@@ -150,8 +163,15 @@ public sealed partial class ServerDatabases(
         return new ServerDatabaseCredentials(View(database, host), password);
     }
 
+    /// <summary>
+    /// Rotations of a database take turns (its row locked from the host's change to the save), so the host and the
+    /// panel always end with the same password; once asked, the host's change is waited for even when the request is
+    /// given up.
+    /// </summary>
     public async Task<Result<ServerDatabaseCredentials>> RotatePasswordAsync(ServerId serverId, Guid databaseId, CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockServerDatabaseAsync(new ServerDatabaseId(databaseId), cancellationToken);
         var (database, host) = await FindAsync(serverId, databaseId, tracking: true, cancellationToken);
         if (database is null || host is null)
         {
@@ -166,7 +186,7 @@ public sealed partial class ServerDatabases(
         var password = ServerDatabase.NewPassword();
         try
         {
-            await client.SetPasswordAsync(connection, database.Name, database.UserHost, password, cancellationToken);
+            await client.SetPasswordAsync(connection, database.Name, database.UserHost, password, CancellationToken.None);
         }
         catch (DatabaseHostException ex)
         {
@@ -175,14 +195,20 @@ public sealed partial class ServerDatabases(
 
         database.PasswordChanged(secrets.Protect(password), clock.GetUtcNow());
         audit.Record(AuditActions.Server.DatabasePasswordRotated, metadata: new { database.Name, Host = host.Name })
-            .WithServer(serverId, await NodeOfAsync(serverId, cancellationToken));
+            .WithServer(serverId, await NodeOfAsync(serverId, CancellationToken.None));
         await db.SaveChangesAsync(CancellationToken.None);
+        await transaction.CommitAsync(CancellationToken.None);
         return new ServerDatabaseCredentials(View(database, host), password);
     }
 
-    /// <summary>Drops it on its host, then forgets it; a host that cannot be reached keeps it (try again later).</summary>
+    /// <summary>
+    /// Drops it on its host, then forgets it; a host that cannot be reached keeps it (try again later). A rotation of
+    /// its password under way is waited for.
+    /// </summary>
     public async Task<Result> DeleteAsync(ServerId serverId, Guid databaseId, CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockServerDatabaseAsync(new ServerDatabaseId(databaseId), cancellationToken);
         var (database, host) = await FindAsync(serverId, databaseId, tracking: true, cancellationToken);
         if (database is null || host is null)
         {
@@ -205,8 +231,9 @@ public sealed partial class ServerDatabases(
 
         db.ServerDatabases.Remove(database);
         audit.Record(AuditActions.Server.DatabaseDeleted, metadata: new { database.Name, Host = host.Name, dropped = true })
-            .WithServer(serverId, await NodeOfAsync(serverId, cancellationToken));
+            .WithServer(serverId, await NodeOfAsync(serverId, CancellationToken.None));
         await db.SaveChangesAsync(CancellationToken.None);
+        await transaction.CommitAsync(CancellationToken.None);
         return Result.Success();
     }
 
@@ -215,11 +242,13 @@ public sealed partial class ServerDatabases(
     /// with it). A host that cannot be reached does not hold the deletion up: Pulsar forgets the database anyway and the
     /// audit log names what was left on the host, to remove by hand. A host that failed once is not tried again for the
     /// server's other databases on it: each attempt may wait for a connection timeout, and the node's events wait with
-    /// it. Dropping is idempotent, so a retried save is fine.
+    /// it. Dropping is idempotent, so a retried save is fine. Inside the caller's transaction: the server's row stays
+    /// locked until it is gone, so a database whose host was still creating it is dropped again by its creation.
     /// </summary>
     public async Task DropAllAsync(Server server, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(server);
+        await locks.LockServerAsync(server.Id, cancellationToken);
         var databases = await db.ServerDatabases.Where(d => d.ServerId == server.Id).ToListAsync(cancellationToken);
         var failed = new Dictionary<DatabaseHostId, string>();
         foreach (var database in databases)
@@ -259,7 +288,7 @@ public sealed partial class ServerDatabases(
     private async Task<DomainError?> ReserveAsync(ServerId serverId, ServerDatabase database, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        await locks.LockAsync(serverId, cancellationToken);
+        await locks.LockServerAsync(serverId, cancellationToken);
         var server = await db.Servers.AsNoTracking().Where(s => s.Id == serverId).Select(s => new { s.DatabaseLimit, s.ActiveOperationType })
             .SingleOrDefaultAsync(cancellationToken);
         if (server is null)
@@ -287,6 +316,19 @@ public sealed partial class ServerDatabases(
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return null;
+    }
+
+    /// <summary>Drops a database its server's deletion left to its creation; one the host keeps is logged, to remove by hand.</summary>
+    private async Task DropOrphanAsync(DatabaseHostConnection connection, ServerDatabase database, DatabaseHost host)
+    {
+        try
+        {
+            await client.DropAsync(connection, database.Name, database.UserHost, CancellationToken.None);
+        }
+        catch (DatabaseHostException ex)
+        {
+            LogDatabaseLeft(database.Name, host.Name, ex.Message);
+        }
     }
 
     private async Task ReleaseAsync(ServerDatabase database)

@@ -22,7 +22,7 @@ public sealed record ApiKeyMatch(ApiKeyId Id, UserId UserId, string Name, IReadO
 /// API keys (docs/architecture/02, "API keys"): each user manages their own from a signed-in session (never with a
 /// key); administrators can revoke all of a user's keys. Requests with a key are matched here.
 /// </summary>
-public sealed class ApiKeys(IPulsarDbContext db, IAuditLog audit, TimeProvider clock)
+public sealed class ApiKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audit, TimeProvider clock)
 {
     private static readonly TimeSpan s_lastUsedPrecision = TimeSpan.FromMinutes(1);
 
@@ -36,9 +36,12 @@ public sealed class ApiKeys(IPulsarDbContext db, IAuditLog audit, TimeProvider c
         return [.. keys.Select(View)];
     }
 
+    /// <summary>Counted with the user's row locked: requests made at the same moment cannot all take the last place.</summary>
     public async Task<Result<CreatedApiKey>> CreateAsync(UserId user, string? name, IReadOnlyCollection<string>? permissions, DateTimeOffset? expiresAt,
         CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockUserAsync(user, cancellationToken);
         if (await db.ApiKeys.CountAsync(k => k.UserId == user && k.RevokedAt == null, cancellationToken) >= ApiKey.MaxPerUser)
         {
             return AccessErrors.ApiKeyTooMany;
@@ -54,6 +57,7 @@ public sealed class ApiKeys(IPulsarDbContext db, IAuditLog audit, TimeProvider c
         db.ApiKeys.Add(key);
         audit.Record(AuditActions.Auth.ApiKeyCreated, metadata: new { key = key.Id.Value, key.Name, key.Prefix, key.Permissions, key.ExpiresAt });
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return new CreatedApiKey(View(key), value);
     }
 

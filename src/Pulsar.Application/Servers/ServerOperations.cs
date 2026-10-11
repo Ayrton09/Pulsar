@@ -11,8 +11,9 @@ namespace Pulsar.Application.Servers;
 
 /// <summary>
 /// Starts operations on servers (docs/architecture/05): takes the server for the operation, records it and sends its
-/// command. A refused or unanswered command fails the operation at once (and releases the server), so nothing waits
-/// for a result that will never come; the agent reports the end of an accepted one (<see cref="AgentServerEvents"/>).
+/// command. A refused or unanswered command, or one the panel could not send, fails the operation at once (and releases
+/// the server), so nothing waits for a result that will never come; the agent reports the end of an accepted one
+/// (<see cref="AgentServerEvents"/>).
 /// </summary>
 public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnections connections, TimeProvider clock, ILogger<ServerOperations> logger)
 {
@@ -33,7 +34,23 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
         beforeSave?.Invoke();
         await db.SaveChangesAsync(cancellationToken);
 
-        var ack = await connections.SendAsync(server.NodeId, command, operation.RequestedBy, cancellationToken, operation.Id.Value);
+        // Recorded: from here on the request going away changes nothing (the ack's own timeout still applies), so the
+        // operation never stays queued for a command whose fate nobody waited for.
+        CommandAck? ack;
+        try
+        {
+            ack = await connections.SendAsync(server.NodeId, command, operation.RequestedBy, CancellationToken.None, operation.Id.Value);
+        }
+        catch (Exception ex)
+        {
+            var failedAt = clock.GetUtcNow();
+            operation.Complete(OperationStatus.Failed, ServerErrors.CommandRejected.Code, "The panel could not send the command.", failedAt);
+            server.OperationCompleted(operation, failedAt);
+            LogOperationRefused(operation.Id, operation.Type, server.Id, ex.GetType().Name);
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
+
         var now = clock.GetUtcNow();
         if (ack?.Status is AckStatus.Accepted or AckStatus.AlreadyInState)
         {
@@ -49,15 +66,15 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
 
         try
         {
-            await db.SaveChangesAsync(cancellationToken);
+            await db.SaveChangesAsync(CancellationToken.None);
         }
         catch (DbUpdateConcurrencyException)
         {
             // The agent already reported the result (a quick operation): it wins over "started". Both rows are read
             // again (a deleted server becomes detached).
             LogOperationAlreadyReported(operation.Id);
-            await db.Entry(operation).ReloadAsync(cancellationToken);
-            await db.Entry(server).ReloadAsync(cancellationToken);
+            await db.Entry(operation).ReloadAsync(CancellationToken.None);
+            await db.Entry(server).ReloadAsync(CancellationToken.None);
         }
 
         return operation;

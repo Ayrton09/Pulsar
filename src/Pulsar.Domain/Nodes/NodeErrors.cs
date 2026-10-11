@@ -6,7 +6,7 @@ namespace Pulsar.Domain.Nodes;
 public static class NodeErrors
 {
     public static DomainError NameInvalid { get; } =
-        new("node.name_invalid", $"The node name is one line of 1 to {Node.MaxNameLength} characters.");
+        new("node.name_invalid", $"The node name is one line of 1 to {Node.MaxNameLength} characters, with no invisible ones.");
 
     public static DomainError DescriptionTooLong { get; } =
         new("node.description_too_long", $"The description must have at most {Node.MaxDescriptionLength} characters.");

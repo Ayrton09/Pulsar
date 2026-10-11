@@ -31,11 +31,12 @@ public sealed record CreateAllocationsRequest(
 public sealed record RevokeCredentialRequest([property: StringLength(NodeCredential.MaxRevokeReasonLength)] string? Reason);
 
 /// <param name="LifetimeHours">1 hour to 90 days.</param>
+/// <param name="RequireApproval">The nodes it creates wait for an administrator's approval; on when omitted.</param>
 public sealed record CreateEnrollmentTokenRequest(
     [property: Required, StringLength(ReusableEnrollmentToken.MaxNameLength)] string Name,
     [property: Range(1, ReusableEnrollmentToken.MaxUsesLimit)] int MaxUses,
     [property: Range(1, ReusableEnrollmentToken.MaxLifetimeDays * 24)] int LifetimeHours,
-    bool RequireApproval);
+    bool RequireApproval = true);
 
 public sealed record ApproveNodesRequest([property: Required, MinLength(1), MaxLength(NodeManagement.MaxApprovals)] IReadOnlyList<Guid> NodeIds);
 

@@ -11980,8 +11980,7 @@
         "required": [
           "name",
           "maxUses",
-          "lifetimeHours",
-          "requireApproval"
+          "lifetimeHours"
         ],
         "type": "object",
         "properties": {
@@ -12003,7 +12002,8 @@
             "format": "int32"
           },
           "requireApproval": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
           }
         }
       },

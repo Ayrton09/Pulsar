@@ -90,7 +90,7 @@ public sealed record DatabaseHostCheck(string Version);
 /// Database hosts (Phase 13), for holders of <c>settings.manage</c>. The password goes in encrypted and never comes
 /// back out. A host is saved only once the panel could connect with what was given.
 /// </summary>
-public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector secrets, IDatabaseHostClient client, IAuditLog audit,
+public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector secrets, IDatabaseHostClient client, IRowLocks locks, IAuditLog audit,
     TimeProvider clock)
 {
     public async Task<DatabaseHostList> ListAsync(CancellationToken cancellationToken)
@@ -129,6 +129,15 @@ public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector 
             return refused;
         }
 
+        // Counted again with creations taking turns (the check above may have taken a while): requests made at
+        // the same moment cannot all take the last place.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockCreationsAsync<DatabaseHost>(cancellationToken);
+        if (await db.DatabaseHosts.CountAsync(cancellationToken) >= DatabaseHost.MaxHosts)
+        {
+            return DatabaseErrors.TooManyHosts;
+        }
+
         db.DatabaseHosts.Add(host);
         audit.Record(AuditActions.DatabaseHost.Created, metadata: Metadata(host, passwordChanged: true)).WithTarget("database_host", host.Id.ToString());
         try
@@ -141,6 +150,7 @@ public sealed class DatabaseHosts(IPulsarDbContext db, IDatabaseSecretProtector 
             return DatabaseErrors.HostNameTaken;
         }
 
+        await transaction.CommitAsync(cancellationToken);
         return View(host, 0);
     }
 

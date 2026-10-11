@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
@@ -14,10 +15,14 @@ public sealed record AllocationView(Guid Id, string IpAddress, int Port, Guid? S
 /// The <c>ip:port</c> pairs of a node that servers can use (docs/architecture/02, "node_allocations"). Two allocations
 /// of a node never overlap: the same port on the same address, or on any address when one of them is every interface.
 /// </summary>
-public sealed class NodeAllocations(IPulsarDbContext db, IAuditLog audit, TimeProvider clock)
+public sealed class NodeAllocations(IPulsarDbContext db, VisibleResources visible, IAuditLog audit, TimeProvider clock)
 {
     public const int MaxPortsPerRequest = 1000;
 
+    /// <summary>
+    /// The node's allocations; one held by a server the user cannot see is left out (its holder, and that it is taken,
+    /// are that server's business), so those who may only create servers there see the free ones and their servers' own.
+    /// </summary>
     public async Task<Result<IReadOnlyList<AllocationView>>> ListAsync(NodeId nodeId, CancellationToken cancellationToken)
     {
         if (!await db.Nodes.AnyAsync(n => n.Id == nodeId, cancellationToken))
@@ -25,8 +30,11 @@ public sealed class NodeAllocations(IPulsarDbContext db, IAuditLog audit, TimePr
             return NodeErrors.NotFound;
         }
 
-        var allocations = await db.NodeAllocations.AsNoTracking().Where(a => a.NodeId == nodeId)
-            .OrderBy(a => a.IpAddress).ThenBy(a => a.Port).ToListAsync(cancellationToken);
+        var sees = await visible.ServersAsync(cancellationToken);
+        var allocations = (await db.NodeAllocations.AsNoTracking().Where(a => a.NodeId == nodeId)
+                .OrderBy(a => a.IpAddress).ThenBy(a => a.Port).ToListAsync(cancellationToken))
+            .Where(a => a.ServerId is not { } server || sees is null || sees(server, nodeId))
+            .ToList();
         var serverIds = allocations.Where(a => a.ServerId is not null).Select(a => a.ServerId!.Value).Distinct().ToList();
         var names = await db.Servers.AsNoTracking().Where(s => serverIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, cancellationToken);
         return allocations.Select(a => View(a, a.ServerId is { } id ? names.GetValueOrDefault(id) : null)).ToList();

@@ -35,11 +35,23 @@ public sealed class EnrollmentTokens(IPulsarDbContext db, IPanelKeyRing keys, IR
     /// <summary>How many tokens that can still be used the panel keeps at once.</summary>
     public const int MaxUsable = 50;
 
+    /// <summary>How many tokens that can no longer be used (revoked, expired, used up) the list shows: the newest.</summary>
+    public const int MaxListedUnusable = 20;
+
+    /// <summary>
+    /// Every token that can still be used, then the newest <see cref="MaxListedUnusable"/> of the others: they are never
+    /// deleted (the nodes they created name them), so the list stays short however many were made.
+    /// </summary>
     public async Task<IReadOnlyList<EnrollmentTokenView>> ListAsync(CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow();
-        var tokens = await db.ReusableEnrollmentTokens.AsNoTracking().OrderByDescending(t => t.CreatedAt).ToListAsync(cancellationToken);
-        return [.. tokens.Select(t => View(t, now))];
+        var usable = await db.ReusableEnrollmentTokens.AsNoTracking()
+            .Where(t => t.RevokedAt == null && t.ExpiresAt > now && t.Uses < t.MaxUses)
+            .OrderByDescending(t => t.CreatedAt).ToListAsync(cancellationToken);
+        var others = await db.ReusableEnrollmentTokens.AsNoTracking()
+            .Where(t => t.RevokedAt != null || t.ExpiresAt <= now || t.Uses >= t.MaxUses)
+            .OrderByDescending(t => t.CreatedAt).Take(MaxListedUnusable).ToListAsync(cancellationToken);
+        return [.. usable.Select(t => View(t, now)), .. others.Select(t => View(t, now))];
     }
 
     public async Task<Result<CreatedEnrollmentToken>> CreateAsync(string name, int maxUses, TimeSpan lifetime, bool requireApproval,

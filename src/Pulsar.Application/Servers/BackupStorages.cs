@@ -51,7 +51,7 @@ public sealed record BackupStorageList(IReadOnlyList<BackupStorageView> Storages
 /// S3-compatible storages for backups (Phase 10), for holders of <c>settings.manage</c>. The secret access key goes in
 /// encrypted and never comes back out; nodes get it only inside the backup commands that need it.
 /// </summary>
-public sealed class BackupStorages(IPulsarDbContext db, IBackupStorageSecretProtector secrets, IAuditLog audit, TimeProvider clock)
+public sealed class BackupStorages(IPulsarDbContext db, IBackupStorageSecretProtector secrets, IRowLocks locks, IAuditLog audit, TimeProvider clock)
 {
     public async Task<BackupStorageList> ListAsync(CancellationToken cancellationToken)
     {
@@ -67,6 +67,9 @@ public sealed class BackupStorages(IPulsarDbContext db, IBackupStorageSecretProt
     public async Task<Result<BackupStorageView>> CreateAsync(BackupStorageDefinition definition, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(definition);
+        // Counted with creations taking turns: requests made at the same moment cannot all take the last place.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockCreationsAsync<BackupStorage>(cancellationToken);
         if (await db.BackupStorages.CountAsync(cancellationToken) >= BackupStorage.MaxStorages)
         {
             return BackupStorageErrors.TooMany;
@@ -83,6 +86,7 @@ public sealed class BackupStorages(IPulsarDbContext db, IBackupStorageSecretProt
         db.BackupStorages.Add(storage);
         audit.Record(AuditActions.BackupStorage.Created, metadata: Metadata(storage, secretChanged: true)).WithTarget("backup_storage", storage.Id.ToString());
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return View(storage, 0, 0);
     }
 
@@ -95,9 +99,11 @@ public sealed class BackupStorages(IPulsarDbContext db, IBackupStorageSecretProt
             return BackupStorageErrors.NotFound;
         }
 
+        // Backups keep only the key of their copy: the endpoint and bucket stay while there are any.
         var secret = Secret(definition);
+        var holdsCopies = await db.Backups.AnyAsync(b => b.StorageId == storage.Id, cancellationToken);
         var changed = storage.Change(definition.Name, definition.Endpoint, definition.Region, definition.Bucket, definition.Prefix,
-            definition.AccessKeyId, secret, definition.PathStyle, clock.GetUtcNow());
+            definition.AccessKeyId, secret, definition.PathStyle, clock.GetUtcNow(), holdsCopies);
         if (!changed.IsSuccess)
         {
             return changed.Error!;

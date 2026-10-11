@@ -473,7 +473,7 @@
       "not_found": "The user does not exist."
     },
     "node": {
-      "name_invalid": "A node name is one line of up to 64 characters.",
+      "name_invalid": "A node name is one line of up to 64 characters, with no invisible ones.",
       "description_too_long": "The description is too long.",
       "public_host_invalid": "The public address must be a host name or an IP address.",
       "name_taken": "Another node already has this name.",
@@ -626,7 +626,8 @@
       "access_key_invalid": "That access key id is not valid.",
       "secret_required": "Write the secret access key.",
       "in_use": "Servers or backups use this storage: choose another storage for those servers, or delete their backups, first.",
-      "too_many": "The panel has as many storages as it can (20)."
+      "too_many": "The panel has as many storages as it can (20).",
+      "holds_copies": "Backups have copies in this storage: its endpoint and bucket stay as they are while they do. Add another storage for a new bucket."
     },
     "database_host": {
       "not_found": "That database host does not exist.",

@@ -80,9 +80,14 @@ public sealed class BackupStorage
         return set.IsSuccess ? storage : set.Error!;
     }
 
-    /// <summary>Replaces the settings; a null <paramref name="secretProtected"/> keeps the current secret.</summary>
+    /// <summary>
+    /// Replaces the settings; a null <paramref name="secretProtected"/> keeps the current secret. While backups have
+    /// copies here (<paramref name="holdsCopies"/>) the endpoint and the bucket stay: their copies are found there,
+    /// under the key each one kept (its prefix included). Credentials, region, path style and the prefix of new
+    /// copies may change (the same bucket, reached differently).
+    /// </summary>
     public Result Change(string name, string? endpoint, string region, string bucket, string? prefix, string accessKeyId, byte[]? secretProtected,
-        bool pathStyle, DateTimeOffset now)
+        bool pathStyle, DateTimeOffset now, bool holdsCopies = false)
     {
         var trimmed = name?.Trim() ?? string.Empty;
         if (trimmed.Length is 0 or > MaxNameLength || trimmed.Any(char.IsControl))
@@ -123,6 +128,11 @@ public sealed class BackupStorage
         if (keyId.Length is 0 or > MaxAccessKeyLength || keyId.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
         {
             return BackupStorageErrors.AccessKeyInvalid;
+        }
+
+        if (holdsCopies && (!string.Equals(Endpoint, address, StringComparison.OrdinalIgnoreCase) || !string.Equals(Bucket, bucketName, StringComparison.Ordinal)))
+        {
+            return BackupStorageErrors.HoldsCopies;
         }
 
         Name = trimmed;
@@ -246,4 +256,8 @@ public static class BackupStorageErrors
         new("backup_storage.in_use", "Servers or backups use this storage: choose another storage for them, or delete their backups, first.");
 
     public static DomainError TooMany { get; } = new("backup_storage.too_many", $"The panel has at most {BackupStorage.MaxStorages} storages.");
+
+    public static DomainError HoldsCopies { get; } =
+        new("backup_storage.holds_copies",
+            "Backups have copies in this storage: its endpoint and bucket stay while they do. Add another storage for a new bucket.");
 }

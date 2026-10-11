@@ -15,7 +15,7 @@ public sealed class GameDatabaseTests
         var node = NodeId.New();
         var host = Host(nodes: [node.Value]);
 
-        Assert.True(host.Change("Main", "db.lan", 3306, "pulsar", null, " 127.0.0.1 ", 3307, null, [node.Value], s_now).IsSuccess);
+        Assert.True(host.Change("Main", " DB.lan ", 3306, "root", null, " 127.0.0.1 ", 3307, null, [node.Value], s_now).IsSuccess);
         Assert.Equal(s_password, host.PasswordProtected);
         Assert.Equal(("127.0.0.1", 3307), host.AddressForServers);
         Assert.Equal(DatabaseHost.AnyHost, host.UserHost);
@@ -24,6 +24,23 @@ public sealed class GameDatabaseTests
         Assert.True(Host().Serves(NodeId.New())); // no nodes: every node
         Assert.Equal(DatabaseErrors.HostPasswordRequired,
             DatabaseHost.Create("x", "db.lan", 3306, "root", null, null, null, null, [], s_now).Error);
+    }
+
+    [Theory]
+    [InlineData("attacker.example", 3306, "root")]
+    [InlineData("db.lan", 3307, "root")]
+    [InlineData("db.lan", 3306, "admin")]
+    [InlineData("db.lan", 3306, "Root")]
+    public void TheSavedPasswordIsNeverSentToAnotherAccountOrServer(string address, int port, string user)
+    {
+        var host = Host();
+        Assert.Equal(DatabaseErrors.HostPasswordRequired, host.Change("Main", address, port, user, null, null, null, null, [], s_now).Error);
+        Assert.Equal(("db.lan", 3306, "root"), (host.Host, host.Port, host.UserName));
+
+        // With its password, it may move.
+        byte[] other = [4, 5, 6];
+        Assert.True(host.Change("Main", address, port, user, other, null, null, null, [], s_now).IsSuccess);
+        Assert.Equal(other, host.PasswordProtected);
     }
 
     [Theory]
@@ -61,7 +78,7 @@ public sealed class GameDatabaseTests
         // Chosen explicitly, it is kept; an update that does not say keeps the current choice.
         host = DatabaseHost.Create("Main", address, 3306, "root", s_password, null, null, null, [], s_now, requireTls: !required).Value;
         Assert.Equal(!required, host.RequireTls);
-        Assert.True(host.Change("Main", "203.0.113.8", 3306, "root", null, null, null, null, [], s_now).IsSuccess);
+        Assert.True(host.Change("Main", "203.0.113.8", 3306, "root", s_password, null, null, null, [], s_now).IsSuccess);
         Assert.Equal(!required, host.RequireTls);
         Assert.True(host.Change("Main", "203.0.113.8", 3306, "root", null, null, null, null, [], s_now, requireTls: required).IsSuccess);
         Assert.Equal(required, host.RequireTls);

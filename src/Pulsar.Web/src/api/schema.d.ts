@@ -10950,6 +10950,7 @@ export interface components {
             maxUses: number;
             /** Format: int32 */
             lifetimeHours: number;
+            /** @default true */
             requireApproval: boolean;
         };
         CreateNodeRequest: {

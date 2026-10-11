@@ -67,6 +67,7 @@ public sealed partial class ServerBackups(
     ServerOperations operations,
     FileTransfers transfers,
     BackupStorages storages,
+    IRowLocks locks,
     IAuditLog audit,
     IRequestContext request,
     TimeProvider clock,
@@ -197,24 +198,36 @@ public sealed partial class ServerBackups(
         return deleted;
     }
 
+    /// <summary>A backup being deleted (its archive going) is waited for, and then not found.</summary>
     public async Task<Result<BackupView>> SetLockedAsync(ServerId id, BackupId backupId, bool locked, CancellationToken cancellationToken)
     {
-        var backup = await db.Backups.SingleOrDefaultAsync(b => b.Id == backupId && b.ServerId == id, cancellationToken);
-        if (backup is null)
+        for (var attempt = 0; ; attempt++)
         {
-            return await db.Servers.AnyAsync(s => s.Id == id, cancellationToken) ? ServerErrors.BackupNotFound : ServerErrors.NotFound;
-        }
+            var backup = await db.Backups.SingleOrDefaultAsync(b => b.Id == backupId && b.ServerId == id, cancellationToken);
+            if (backup is null)
+            {
+                return await db.Servers.AnyAsync(s => s.Id == id, cancellationToken) ? ServerErrors.BackupNotFound : ServerErrors.NotFound;
+            }
 
-        var changed = backup.SetLocked(locked);
-        if (!changed.IsSuccess)
-        {
-            return changed.Error!;
-        }
+            var changed = backup.SetLocked(locked);
+            if (!changed.IsSuccess)
+            {
+                return changed.Error!;
+            }
 
-        audit.Record(locked ? AuditActions.Server.BackupLocked : AuditActions.Server.BackupUnlocked, metadata: new { backup = backup.Id.Value, backup.Name })
-            .WithServer(backup.ServerId, backup.NodeId);
-        await db.SaveChangesAsync(cancellationToken);
-        return View(backup);
+            audit.Record(locked ? AuditActions.Server.BackupLocked : AuditActions.Server.BackupUnlocked, metadata: new { backup = backup.Id.Value, backup.Name })
+                .WithServer(backup.ServerId, backup.NodeId);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return View(backup);
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < 2)
+            {
+                // Deleted (or changed by its node) meanwhile: read it again.
+                db.ChangeTracker.Clear();
+            }
+        }
     }
 
     /// <summary>Sets how many backups to keep; backups beyond a lower limit are deleted now.</summary>
@@ -268,7 +281,8 @@ public sealed partial class ServerBackups(
             .ToListAsync(cancellationToken);
         foreach (var backup in extra)
         {
-            if (!(await RemoveAsync(server, backup, AuditActor.System, reason: "retention", cancellationToken)).IsSuccess)
+            var removed = await RemoveAsync(server, backup, AuditActor.System, reason: "retention", cancellationToken);
+            if (!removed.IsSuccess && removed.Error != ServerErrors.BackupLocked)
             {
                 LogPruneStopped(server.Id, backup.Id);
                 return;
@@ -328,9 +342,31 @@ public sealed partial class ServerBackups(
         }
     }
 
-    /// <summary>Deletes the archive on the node (complete backups only have one), then the row.</summary>
+    /// <summary>
+    /// Deletes the archive on the node (complete backups only have one), then the row. The row is claimed first (locked
+    /// until it is gone, and read again): a user locking it meanwhile waits and then finds it gone, and one who locked it
+    /// just before keeps it.
+    /// </summary>
     private async Task<Result> RemoveAsync(Server server, Backup backup, AuditActor actor, string? reason, CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockBackupAsync(backup.Id, cancellationToken);
+        await db.Entry(backup).ReloadAsync(cancellationToken);
+        if (db.Entry(backup).State == EntityState.Detached)
+        {
+            return Result.Success(); // deleted by someone else meanwhile
+        }
+
+        if (backup.IsLocked)
+        {
+            return ServerErrors.BackupLocked;
+        }
+
+        if (backup.Status == BackupStatus.Creating)
+        {
+            return ServerErrors.BackupNotCompleted;
+        }
+
         if (backup.Status == BackupStatus.Completed)
         {
             if (Connection(server.NodeId, AgentCapabilities.DeleteBackup) is { IsSuccess: false } connection)
@@ -339,27 +375,21 @@ public sealed partial class ServerBackups(
             }
 
             var remote = await RemoteOfAsync(backup, cancellationToken);
+            // Once sent, its answer is waited for (the request given up included): the row must follow the archive.
             var ack = Ack(await connections.SendAsync(server.NodeId, new DeleteBackupCommand(server.Id.Value, backup.Id.Value, remote),
-                actor.UserId, cancellationToken));
+                actor.UserId, CancellationToken.None));
             if (!ack.IsSuccess)
             {
                 return ack.Error!;
             }
         }
 
+        // The archive is gone: the row goes with it, audited (nobody else can change it until then).
         db.Backups.Remove(backup);
         audit.Record(AuditActions.Server.BackupDeleted, AuditOutcome.Success, actor, new { backup = backup.Id.Value, backup.Name, reason })
             .WithServer(server.Id, server.NodeId);
-        try
-        {
-            await db.SaveChangesAsync(CancellationToken.None);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            // Deleted (or locked) by someone else meanwhile: the archive is gone either way.
-            db.ChangeTracker.Clear();
-        }
-
+        await db.SaveChangesAsync(CancellationToken.None);
+        await transaction.CommitAsync(CancellationToken.None);
         return Result.Success();
     }
 

@@ -473,7 +473,7 @@
       "not_found": "El usuario no existe."
     },
     "node": {
-      "name_invalid": "El nombre de un nodo es una línea de hasta 64 caracteres.",
+      "name_invalid": "El nombre de un nodo es una línea de hasta 64 caracteres, sin caracteres invisibles.",
       "description_too_long": "La descripción es demasiado larga.",
       "public_host_invalid": "La dirección pública debe ser un nombre de host o una dirección IP.",
       "name_taken": "Ya hay otro nodo con este nombre.",
@@ -626,7 +626,8 @@
       "access_key_invalid": "Ese access key id no es válido.",
       "secret_required": "Escribí la secret access key.",
       "in_use": "Hay servidores o backups que usan este almacenamiento: primero elegí otro para esos servidores, o borrá sus backups.",
-      "too_many": "El panel ya tiene todos los almacenamientos que puede (20)."
+      "too_many": "El panel ya tiene todos los almacenamientos que puede (20).",
+      "holds_copies": "Hay backups con copias en este almacenamiento: su endpoint y su bucket no cambian mientras las tenga. Para otro bucket, agregá otro almacenamiento."
     },
     "database_host": {
       "not_found": "Ese servidor de bases de datos no existe.",

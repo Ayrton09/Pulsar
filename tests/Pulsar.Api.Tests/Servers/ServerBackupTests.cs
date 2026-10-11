@@ -9,6 +9,7 @@ using Pulsar.Api.Notifications;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Nodes;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 using Pulsar.Domain.Audit;
@@ -193,6 +194,37 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task ABackupLockedWhileTheNodeDeletesItGoesAndIsAudited()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "lock-race");
+        var server = await InstalledServerAsync(admin, agent, "Lock race");
+        var backup = await MadeAsync(admin, server, "locked too late");
+
+        // A user locks it while its node is deleting the archive.
+        Task<HttpResponseMessage>? locking = null;
+        await using var scope = factory.Services.CreateAsyncScope();
+        var connections = new InterceptedConnections(scope.ServiceProvider.GetRequiredService<IAgentConnections>(), async (command, next, token) =>
+        {
+            if (command is DeleteBackupCommand)
+            {
+                locking = admin.PutAsync($"/api/v1/servers/{server}/backups/{backup.Id}/lock", new LockBackupRequest(true));
+                await Task.Delay(TimeSpan.FromMilliseconds(700), token);
+            }
+
+            return await next(token);
+        });
+        var backups = ActivatorUtilities.CreateInstance<ServerBackups>(scope.ServiceProvider, (IAgentConnections)connections);
+        Assert.True((await backups.DeleteAsync(new ServerId(server), new BackupId(backup.Id), Ct)).IsSuccess);
+
+        // The lock waited for the deletion and found the backup gone.
+        await ProblemAsync(await locking!, HttpStatusCode.NotFound, ServerErrors.BackupNotFound.Code);
+        Assert.False(File.Exists(Archive(agent, server, backup.Id)));
+        Assert.DoesNotContain((await ListAsync(admin, server)).Backups, b => b.Id == backup.Id);
+        Assert.Single(await AuditAsync(server), a => a.Action == AuditActions.Server.BackupDeleted);
+    }
+
+    [DatabaseFact]
     public async Task ABackupTheNodeLostFails()
     {
         using var admin = await factory.CreateAdminClientAsync();
@@ -286,6 +318,14 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
             await EnsureAsync(download);
             Assert.Equal(backup.Sha256, Convert.ToHexStringLower(SHA256.HashData(await download.Content.ReadAsByteArrayAsync(Ct))));
         }
+
+        // A storage holding copies keeps its bucket (its copies are there), new credentials included.
+        var moved = new BackupStorageRequest("Offsite", "https://s3.example.com", "auto", "elsewhere", "servers", "AKIDEXAMPLE", "storage secret key", true);
+        await ProblemAsync(await admin.PutAsync($"/api/v1/backup-storages/{storage.Id}", moved), HttpStatusCode.Conflict, "backup_storage.holds_copies");
+        await ProblemAsync(await admin.PutAsync($"/api/v1/backup-storages/{storage.Id}", moved with { Bucket = "pulsar-backups", Endpoint = "https://s4.example.com" }),
+            HttpStatusCode.Conflict, "backup_storage.holds_copies");
+        await EnsureAsync(await admin.PutAsync($"/api/v1/backup-storages/{storage.Id}",
+            moved with { Bucket = "pulsar-backups", AccessKeyId = "AKIDROTATED", SecretAccessKey = "rotated secret key" }));
 
         // A storage holding copies cannot go; deleting the backup deletes its copy too.
         await ProblemAsync(await admin.DeleteAsync($"/api/v1/backup-storages/{storage.Id}"), HttpStatusCode.Conflict, "backup_storage.in_use");
