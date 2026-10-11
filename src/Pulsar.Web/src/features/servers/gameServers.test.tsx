@@ -191,14 +191,12 @@ describe('creating a game server', () => {
     expect(slots).toHaveValue(16);
     await user.clear(slots);
     await user.type(slots, '99');
-    await user.type(screen.getByLabelText('Join password'), 'join me'); // a space: not allowed by the pattern
     await user.click(screen.getByRole('button', { name: 'Next' }));
     expect(screen.getByText('Out of the allowed range.')).toBeInTheDocument();
-    expect(screen.getByText('The format is not valid for this setting.')).toBeInTheDocument();
 
     await user.clear(slots);
     await user.type(slots, '24');
-    await user.clear(screen.getByLabelText('Join password'));
+    // Its pattern is the panel's to check (without backtracking), when saving.
     await user.type(screen.getByLabelText('Join password'), 'join-me');
     await user.selectOptions(screen.getByLabelText('Mode *'), 'Competitive');
     await user.click(screen.getByRole('button', { name: 'Next' }));
@@ -399,6 +397,65 @@ describe('a game server page', () => {
     await user.click(within(resources).getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Limits saved.')).toBeInTheDocument();
     expect(bodies).toEqual([{ cpuPercent: null, memoryMb: null }]);
+  });
+
+  it('does not remove a limit whose field holds something that is not a number', async () => {
+    const bodies: unknown[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...operator,
+        permissions: [...operator.permissions, 'server.limits.edit'],
+      }),
+      [`GET /api/v1/servers/${serverId}`]: () =>
+        json({ ...details(), limits: { cpuPercent: 50, memoryMb: null, databases: 2 } }),
+      [`GET /api/v1/servers/${serverId}/settings`]: () =>
+        json({ variables: [], extraArguments: [], allowExtraArguments: false, autoStart: false, restartOnCrash: true }),
+      [`PUT /api/v1/servers/${serverId}/limits`]: async (request) => {
+        bodies.push(await request.json());
+        return json(details());
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=settings`);
+    const user = userEvent.setup();
+    const resources = await screen.findByRole('region', { name: 'Resources' });
+    const cpu = screen.getByLabelText('CPU limit (% of the node)');
+
+    // A half-typed "1e": the browser reports the value as empty, and that it cannot read what is typed.
+    Object.defineProperty(cpu, 'validity', { configurable: true, value: { badInput: true, valid: false } });
+    await user.clear(cpu);
+    await user.click(within(resources).getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Type a number, or leave it empty for no limit.')).toBeInTheDocument();
+    expect(cpu).toHaveAttribute('aria-invalid', 'true');
+    expect(bodies).toEqual([]);
+  });
+
+  it('keeps the settings form when reloading them fails', async () => {
+    let fail = false;
+    const settings: Schemas['ServerSettings'] = {
+      variables: [{ definition: hostname, value: 'My server', hasValue: true }],
+      extraArguments: [],
+      allowExtraArguments: false,
+      autoStart: false,
+      restartOnCrash: true,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/settings`]: () => (fail ? problem(500, 'unexpected') : json(settings)),
+    });
+    const router = createMemoryRouter(routes, { initialEntries: [`/servers/${serverId}?tab=settings`] });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
+    render(<App router={router} queryClient={queryClient} />);
+    expect(await screen.findByLabelText('Server name')).toHaveValue('My server');
+
+    fail = true;
+    await queryClient.refetchQueries({ queryKey: ['servers', serverId, 'settings'] });
+
+    expect(
+      await screen.findByText(/This page could not be refreshed and shows what was loaded last/),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Server name')).toHaveValue('My server');
   });
 
   it('moves a stopped server to a newer version of its template', async () => {

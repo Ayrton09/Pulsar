@@ -15,6 +15,7 @@ import { useLiveStatus, useServerConsole } from '../live/hooks';
 import type { ConsoleEntry } from '../live/types';
 import { useConsoleCommand, type ServerDetails } from './api';
 import { ConsoleFilter } from './consoleFilter';
+import { commandRefusal } from './serverStatus';
 
 const SCROLLBACK = 5_000;
 const HISTORY = 50;
@@ -33,7 +34,8 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
   const container = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const search = useRef<SearchAddon | null>(null);
-  const filter = useRef(new ConsoleFilter());
+  // Dimmed, in the reader's language, where a sequence that never ended was dropped.
+  const filter = useRef(new ConsoleFilter(`\x1b[2m[${t('servers.console.dropped')}]\x1b[0m`));
   const [query, setQuery] = useState('');
 
   useEffect(() => {
@@ -129,24 +131,34 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
         className="h-[28rem] overflow-hidden rounded-md border border-border bg-[#0b0f14] p-2"
       />
       {canOnServer(me, server, Permission.ServerConsoleWrite) && (
-        <CommandInput serverId={server.id} running={running} />
+        <CommandInput serverId={server.id} running={running} connected={server.nodeConnected} />
       )}
     </section>
   );
 }
 
+/**
+ * A command is one line without control characters (the panel refuses them): a pasted tab becomes a space, other
+ * control characters are dropped.
+ */
+function commandLine(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\t/g, ' ').replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
+}
+
 /** The command field: Enter sends, ↑/↓ walk through what was sent before (this page only). */
-function CommandInput({ serverId, running }: { serverId: string; running: boolean }) {
+function CommandInput({ serverId, running, connected }: { serverId: string; running: boolean; connected: boolean }) {
   const { t } = useTranslation();
   const send = useConsoleCommand();
   const [line, setLine] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [position, setPosition] = useState<number | null>(null);
+  const ready = running && connected;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const command = line.trim();
-    if (!command || !running) {
+    if (!command || !ready) {
       return;
     }
     send.mutate(
@@ -189,24 +201,30 @@ function CommandInput({ serverId, running }: { serverId: string; running: boolea
       <div className="flex gap-2">
         <Input
           aria-label={t('servers.console.command')}
-          placeholder={running ? t('servers.console.commandPlaceholder') : t('servers.console.notRunning')}
+          placeholder={
+            !connected
+              ? t('servers.nodeDisconnected')
+              : running
+                ? t('servers.console.commandPlaceholder')
+                : t('servers.console.notRunning')
+          }
           className="font-mono"
           maxLength={MAX_LENGTH}
           autoComplete="off"
           spellCheck={false}
-          disabled={!running}
+          disabled={!ready}
           value={line}
-          onChange={(e) => setLine(e.target.value)}
+          onChange={(e) => setLine(commandLine(e.target.value))}
           onKeyDown={browse}
         />
-        <Button type="submit" disabled={!running || !line.trim()} busy={send.isPending}>
+        <Button type="submit" disabled={!ready || !line.trim()} busy={send.isPending}>
           {t('servers.console.send')}
         </Button>
       </div>
       {send.isError && <Alert>{errorMessage(t, send.error)}</Alert>}
       {refused && (
         <p role="status" className="text-sm text-danger">
-          {t('servers.commandRefused', { status: send.data.status, code: send.data.errorCode ?? '' })}
+          {commandRefusal(t, send.data.status, send.data.errorCode)}
         </p>
       )}
     </form>

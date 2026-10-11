@@ -82,12 +82,14 @@ export function SettingsTab({ details }: { details: ServerDetails }) {
   if (settings.isPending) {
     return <Spinner label={t('common.loading')} />;
   }
-  if (settings.isError) {
+  // A failed reload keeps the form (and what is typed in it) with the settings loaded last.
+  if (settings.data === undefined) {
     return <Alert>{errorMessage(t, settings.error)}</Alert>;
   }
   // Keyed on the saved settings: a save starts the form again from what the panel stored.
   return (
     <div className="space-y-6">
+      {settings.isError && <Alert>{t('servers.stale', { error: errorMessage(t, settings.error) })}</Alert>}
       <SettingsForm key={JSON.stringify(settings.data)} server={details.server} settings={settings.data} save={save} />
       <LimitsCard key={JSON.stringify(details.limits)} details={details} save={saveLimits} />
       <SteamAccountCard key={details.steam?.accountId ?? 'anonymous'} details={details} />
@@ -109,7 +111,14 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
   const [memory, setMemory] = useState(limits.memoryMb?.toString() ?? '');
   const [databases, setDatabases] = useState(limits.databases.toString());
   const [databasesInvalid, setDatabasesInvalid] = useState(false);
+  // What the browser cannot read as a number ("1e") it reports as empty, which would remove the cap: refused instead.
+  const [unreadable, setUnreadable] = useState({ cpu: false, memory: false, databases: false });
+  const [showUnreadable, setShowUnreadable] = useState(false);
   const number = (text: string) => (text.trim() === '' ? null : Number(text));
+  const typed = (field: keyof typeof unreadable, input: HTMLInputElement) =>
+    setUnreadable((current) => ({ ...current, [field]: input.validity.badInput }));
+  const unreadableError = (field: keyof typeof unreadable) =>
+    showUnreadable && unreadable[field] ? t('servers.limits.notANumber') : undefined;
 
   return (
     <Card className="p-6">
@@ -132,6 +141,10 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
             noValidate
             onSubmit={(e) => {
               e.preventDefault();
+              setShowUnreadable(true);
+              if (unreadable.cpu || unreadable.memory || unreadable.databases) {
+                return;
+              }
               // Empty CPU and memory remove their caps; an empty database limit keeps the current one.
               const databaseLimit = number(databases);
               const invalid =
@@ -152,7 +165,7 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
             }}
           >
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field label={t('servers.limits.cpu')}>
+              <Field label={t('servers.limits.cpu')} error={unreadableError('cpu')}>
                 {(ids) => (
                   <Input
                     {...ids}
@@ -161,11 +174,14 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
                     max={100}
                     placeholder={t('servers.limits.none')}
                     value={cpu}
-                    onChange={(e) => setCpu(e.target.value)}
+                    onChange={(e) => {
+                      setCpu(e.target.value);
+                      typed('cpu', e.target);
+                    }}
                   />
                 )}
               </Field>
-              <Field label={t('servers.limits.memory')}>
+              <Field label={t('servers.limits.memory')} error={unreadableError('memory')}>
                 {(ids) => (
                   <Input
                     {...ids}
@@ -174,13 +190,18 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
                     step={128}
                     placeholder={t('servers.limits.none')}
                     value={memory}
-                    onChange={(e) => setMemory(e.target.value)}
+                    onChange={(e) => {
+                      setMemory(e.target.value);
+                      typed('memory', e.target);
+                    }}
                   />
                 )}
               </Field>
               <Field
                 label={t('servers.limits.databases')}
-                error={databasesInvalid ? t('servers.limits.databasesInvalid') : undefined}
+                error={
+                  unreadableError('databases') ?? (databasesInvalid ? t('servers.limits.databasesInvalid') : undefined)
+                }
               >
                 {(ids) => (
                   <Input
@@ -189,7 +210,10 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
                     min={0}
                     max={50}
                     value={databases}
-                    onChange={(e) => setDatabases(e.target.value)}
+                    onChange={(e) => {
+                      setDatabases(e.target.value);
+                      typed('databases', e.target);
+                    }}
                   />
                 )}
               </Field>

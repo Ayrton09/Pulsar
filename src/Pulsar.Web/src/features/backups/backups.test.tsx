@@ -8,6 +8,7 @@ import { App } from '../../app/App';
 import { initI18n } from '../../app/i18n';
 import { routes } from '../../app/routes';
 import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
+import { connections, openedConnection } from '../../test/fakeSignalR';
 import { serverActions, serverDisplayState } from '../servers/serverStatus';
 
 const serverId = '0192f1a0-0000-7000-8000-0000000000e1';
@@ -120,7 +121,8 @@ const list: Schemas['BackupList'] = {
       fileCount: null,
       sha256: null,
       durationSeconds: null,
-      errorMessage: 'Not enough disk space.',
+      errorMessage: 'There is not enough space on the disk.',
+      errorCode: 'files.disk_full',
     }),
   ],
 };
@@ -179,7 +181,9 @@ describe('backups tab', () => {
     expect(row('Before the update')).not.toHaveTextContent('Copied'); // the server was stopped: nothing to say
     expect(screen.getByRole('button', { name: 'Delete Nightly' })).toBeDisabled();
     expect(row('Broken')).toHaveTextContent('Failed');
-    expect(row('Broken')).toHaveTextContent('Not enough disk space.');
+    // Why, in the user's language; the code only as a tooltip.
+    expect(within(row('Broken')).getByText("The node's disk is full.")).toHaveAttribute('title', 'files.disk_full');
+    expect(row('Broken')).not.toHaveTextContent('There is not enough space on the disk.');
     expect(screen.queryByRole('link', { name: 'Download Broken' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Restore Broken' })).not.toBeInTheDocument();
   });
@@ -378,6 +382,31 @@ describe('backups tab', () => {
 
     await waitFor(() => expect(choices).toEqual([{ storageId }]));
     expect(await screen.findByText('Saved.')).toBeInTheDocument();
+  });
+
+  it('follows the retention limit and the remote storage another admin changes', async () => {
+    const storageId = '0192f1a0-0000-7000-8000-0000000000e9';
+    let current: Schemas['BackupList'] = { ...list, storages: [{ id: storageId, name: 'Cloudflare R2' }] };
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/backups`]: () => json(current),
+    });
+    const before = connections.length;
+    renderAt(`/servers/${serverId}?tab=backups`);
+    const live = await openedConnection(before);
+    expect(await screen.findByLabelText('Backups to keep')).toHaveValue(null);
+    expect(screen.getByLabelText('Copy new backups to')).toHaveValue('');
+
+    current = { ...current, limit: 5, storageId };
+    live.emit('ServersChanged', [serverId]);
+
+    await waitFor(() => expect(screen.getByLabelText('Backups to keep')).toHaveValue(5));
+    expect(screen.getByLabelText('Copy new backups to')).toHaveValue(storageId);
+    // Nothing to save: the fields show what is stored.
+    for (const button of screen.getAllByRole('button', { name: 'Save' })) {
+      expect(button).toBeDisabled();
+    }
   });
 
   it('shows only what a viewer may do', async () => {

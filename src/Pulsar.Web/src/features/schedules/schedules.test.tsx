@@ -252,6 +252,26 @@ describe('schedules tab', () => {
     ).toBeInTheDocument();
   });
 
+  it('edits a task in a time zone the browser does not know, showing its runs in UTC', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET ${schedulesPath}`]: () => json({ tasks: [task({ timeZone: 'Pulsar/Nowhere' })] }),
+      [`GET ${schedulesPath}/preview`]: () => json(preview),
+    });
+    renderAt(`/servers/${serverId}?tab=schedules`);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit Nightly restart' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Nightly restart' });
+
+    expect(
+      await within(dialog).findByText(
+        'Your browser does not know the time zone Pulsar/Nowhere: the next runs are shown in UTC.',
+      ),
+    ).toBeInTheDocument();
+    expect(await within(dialog).findByText(/October 4, 2026 at 8:30/)).toBeInTheDocument();
+  });
+
   it('runs a task now and shows its history', async () => {
     const ran: string[] = [];
     fakeApi({

@@ -396,9 +396,18 @@
     "addon": {
       "not_found": "El juego del servidor no tiene ese mod.",
       "unsupported": "El agente del nodo no puede instalar mods: actualizalo.",
-      "requires": "Ese mod necesita otro instalado antes.",
-      "conflicts": "Ese mod no se puede instalar junto con otro que ya está instalado: quitalo primero.",
-      "required_by": "Otro mod instalado necesita este: quitalo primero."
+      "requires": "Ese mod necesita otro instalado antes: {{detail}}",
+      "conflicts": "Ese mod no se puede instalar junto con otro que ya está instalado: {{detail}}",
+      "required_by": "Otro mod instalado necesita este: {{detail}}",
+      "unknown": "El juego del servidor no tiene ese mod.",
+      "unsupported_source": "El agente del nodo no puede descargar este mod: actualizá el agente.",
+      "no_release": "El mod no tiene una versión publicada para instalar.",
+      "no_asset": "La versión del mod no tiene un único archivo para descargar: {{detail}}",
+      "no_checksum": "La descarga del mod no tiene un checksum publicado, así que Pulsar no la instala.",
+      "download_failed": "No se pudo instalar el mod: {{detail}}",
+      "bad_archive": "La descarga del mod no es un archivo que Pulsar descomprima: {{detail}}",
+      "file_missing": "Falta un archivo que el mod modifica, o es demasiado grande: {{detail}}",
+      "file_too_large": "Un archivo del mod es más grande de lo que Pulsar lee: {{detail}}"
     },
     "api_key": {
       "name_invalid": "Poné un nombre de una línea, de hasta 64 caracteres.",
@@ -497,7 +506,20 @@
       "limits_unsupported": "El agente del nodo no puede limitar la CPU y la memoria de un servidor: actualizá el agente.",
       "limits_invalid": "Un límite de CPU va de 1 a 100 %; uno de memoria, de 128 MiB a 1 TiB.",
       "template_not_newer": "Un servidor solo puede pasar a una versión más nueva de la plantilla de su propio juego.",
-      "database_limit_invalid": "El límite de bases de datos es un número de 0 a 50."
+      "database_limit_invalid": "El límite de bases de datos es un número de 0 a 50.",
+      "create_forbidden": "No podés crear servidores en este nodo.",
+      "not_running": "El servidor no está en marcha.",
+      "running": "Primero detené el servidor.",
+      "unknown": "El nodo no tiene este servidor.",
+      "invalid_spec": "El agente del nodo rechazó la configuración del servidor: {{detail}}",
+      "invalid_short_id": "El agente del nodo rechazó el id corto del servidor.",
+      "spec_mismatch": "El agente del nodo rechazó el cambio: no puede cambiar el id corto ni el juego de un servidor.",
+      "record_unreadable": "El nodo no pudo leer el registro de este servidor: {{detail}}",
+      "domain_controller": "El nodo es un controlador de dominio: Pulsar no puede crear ahí la cuenta de Windows del servidor.",
+      "invalid_servers_root": "La carpeta de servidores del nodo no es válida: {{detail}}"
+    },
+    "console": {
+      "invalid_input": "Un comando es una línea sin caracteres de control (como tabulaciones)."
     },
     "template": {
       "version_exists": "Esa versión del juego ya está registrada. Las plantillas no cambian nunca: dale una versión nueva.",
@@ -508,7 +530,8 @@
       "not_cancellable": "Solo se pueden cancelar instalaciones, actualizaciones y backups en curso.",
       "forbidden": "No podés cancelar este tipo de operación en este servidor.",
       "cancelled": "La operación se canceló.",
-      "failed": "La operación falló."
+      "failed": "La operación falló.",
+      "interrupted": "El agente del nodo se reinició o perdió la operación antes de que terminara."
     },
     "files": {
       "invalid_path": "La ruta no es válida: {{detail}}",
@@ -527,7 +550,10 @@
       "failed": "El nodo no pudo hacerlo: {{detail}}",
       "unsupported": "El agente del nodo no tiene gestor de archivos. Actualizá el agente.",
       "length_required": "La subida no indicó su tamaño.",
-      "invalid_version": "La versión del archivo no es válida. Recargá el archivo."
+      "invalid_version": "La versión del archivo no es válida. Recargá el archivo.",
+      "open_failed": "El nodo no pudo abrir el archivo: {{detail}}",
+      "delete_failed": "El nodo no pudo borrarlo: {{detail}}",
+      "invalid_ticket": "El nodo rechazó la transferencia. Probá de nuevo."
     },
     "backups": {
       "not_found": "Ese backup no existe.",
@@ -617,7 +643,69 @@
       "password_unreadable": "La contraseña no se puede leer con las claves de este panel: cambiala para obtener una nueva."
     },
     "steamcmd": {
-      "account_required": "Solo una cuenta de Steam que tenga el servidor dedicado de este juego puede descargarlo: elegí una en la configuración del servidor."
+      "account_required": "Solo una cuenta de Steam que tenga el servidor dedicado de este juego puede descargarlo: elegí una en la configuración del servidor.",
+      "guard_required": "Steam pidió un código de Steam Guard: ingresalo para seguir.",
+      "login_failed": "Steam rechazó el inicio de sesión de la cuenta: revisá su nombre de usuario y su contraseña.",
+      "rate_limited": "Steam rechaza inicios de sesión por un tiempo después de demasiados intentos. Probá de nuevo más tarde.",
+      "disk": "El disco del nodo no tiene lugar para el juego.",
+      "app_unavailable": "Steam no le ofrece el servidor dedicado de este juego a esta cuenta.",
+      "download_failed": "No se pudo descargar SteamCMD: {{detail}}",
+      "untrusted": "El SteamCMD del nodo no está firmado por Valve, así que no se ejecutó.",
+      "failed": "SteamCMD falló: {{detail}}"
+    },
+    "install": {
+      "unsupported_step": "El agente del nodo no puede ejecutar un paso de la instalación de este juego: actualizá el agente.",
+      "copy_source_missing": "No existe un archivo que copia la instalación: {{detail}}",
+      "copy_too_large": "Un archivo que copia la instalación es demasiado grande: {{detail}}",
+      "invalid_path": "La instalación nombra una ruta fuera de la carpeta del servidor: {{detail}}",
+      "reparse_point": "La instalación escribiría a través de un enlace (junction o enlace simbólico): Pulsar no sigue enlaces.",
+      "test_game_unavailable": "El agente del nodo no se inició con el juego de prueba, así que no puede instalarlo."
+    },
+    "process": {
+      "start_failed": "No se pudo iniciar el juego: {{detail}}",
+      "executable_missing": "Falta el programa del juego: {{detail}}",
+      "directory_missing": "Falta una carpeta que el juego necesita: {{detail}}",
+      "invalid_executable": "Solo se pueden iniciar programas .exe.",
+      "invalid_path": "Una ruta del juego no es válida: {{detail}}",
+      "path_outside_server": "Una ruta del juego sale de la carpeta del servidor: {{detail}}",
+      "reparse_point": "Una ruta del juego pasa por un enlace (junction o enlace simbólico): Pulsar no sigue enlaces.",
+      "invalid_environment": "No se puede definir una variable de entorno del juego: {{detail}}",
+      "limits_failed": "No se pudieron aplicar los límites de CPU y memoria del servidor: {{detail}}"
+    },
+    "host": {
+      "start_failed": "No se pudo iniciar el proceso anfitrión del servidor: {{detail}}",
+      "unreachable": "El proceso anfitrión del servidor no responde.",
+      "incompatible": "El proceso anfitrión del servidor corre otra versión del agente.",
+      "protocol": "El proceso anfitrión del servidor respondió algo que el agente no entiende.",
+      "unexpected": "La conexión del servidor no la atiende su proceso anfitrión."
+    },
+    "config": {
+      "invalid": "Un archivo de configuración del juego no es válido: {{detail}}",
+      "too_large": "Un archivo de configuración del juego es demasiado grande: {{detail}}",
+      "write_failed": "No se pudo escribir un archivo de configuración del juego: {{detail}}"
+    },
+    "minecraft": {
+      "unknown_version": "Mojang no tiene esa versión de Minecraft en su lista.",
+      "no_checksum": "Mojang no publica un checksum para esa versión de Minecraft, así que Pulsar no la instala.",
+      "no_server": "Esa versión de Minecraft no tiene descarga de servidor dedicado.",
+      "no_java": "No se encontró un Java para Windows para esta versión de Minecraft.",
+      "bad_archive": "La descarga de Java no es lo que Pulsar esperaba: {{detail}}",
+      "download_failed": "No se pudo instalar Minecraft: {{detail}}"
+    },
+    "firewall": {
+      "failed": "No se pudieron cambiar las reglas del Firewall de Windows para los puertos del servidor: {{detail}}"
+    },
+    "command": {
+      "unsupported": "El agente del nodo no conoce este comando: actualizá el agente.",
+      "operation_required": "El agente del nodo solo lo ejecuta como operación.",
+      "expired": "El comando llegó tarde al nodo. Revisá que los relojes del panel y del nodo estén bien.",
+      "replayed": "El nodo rechazó el comando por repetir uno anterior. Probá de nuevo.",
+      "invalid_signature": "El nodo no pudo verificar la firma del panel en el comando.",
+      "unknown_key": "El nodo no confía en la clave con la que el panel firmó el comando.",
+      "invalid_panel_keys": "El nodo rechazó las claves nuevas del panel.",
+      "malformed": "El nodo no pudo leer el comando.",
+      "wrong_recipient": "El comando era para otro nodo.",
+      "unsupported_version": "El agente del nodo no admite esta versión del comando: actualizá el agente."
     },
     "steam_account": {
       "not_found": "Esa cuenta de Steam no existe.",
@@ -831,6 +919,15 @@
     },
     "killConfirm": "¿Forzar el cierre de {{name}} ahora? Sus procesos terminan sin guardar.",
     "commandRefused": "El nodo no aceptó el comando ({{status}} {{code}}).",
+    "ackStatuses": {
+      "accepted": "aceptado",
+      "alreadyInState": "ya estaba así",
+      "rejected": "rechazado",
+      "busy": "ocupado",
+      "unsupportedCommand": "comando desconocido",
+      "invalidSignature": "firma no válida"
+    },
+    "stale": "No se pudo actualizar esta página y muestra lo último que se cargó: {{error}}",
     "operations": {
       "title": "Operaciones recientes",
       "empty": "Todavía no hay operaciones.",
@@ -901,8 +998,7 @@
       "secretSet": "Ya tiene un valor; escribí uno nuevo para reemplazarlo.",
       "protected": "Solo quienes pueden editar la configuración del servidor pueden cambiarlo.",
       "unset": "Sin definir",
-      "outOfRange": "Fuera del rango permitido.",
-      "badFormat": "El formato no es válido para esta opción."
+      "outOfRange": "Fuera del rango permitido."
     },
     "workshop": {
       "empty": "No hay ítems del Workshop.",
@@ -961,7 +1057,8 @@
       "databases": "Bases de datos",
       "databasesValue_one": "Bases de datos: hasta {{count, number}}",
       "databasesValue_other": "Bases de datos: hasta {{count, number}}",
-      "databasesInvalid": "De 0 a 50."
+      "databasesInvalid": "De 0 a 50.",
+      "notANumber": "Escribí un número, o dejalo vacío para no poner límite."
     },
     "network": {
       "title": "Puertos",
@@ -973,6 +1070,7 @@
     "console": {
       "title": "Consola",
       "gap": "acá se perdió parte de la salida",
+      "dropped": "acá se descartó una secuencia que no terminaba",
       "reconnecting": "Se cortaron las actualizaciones en vivo; reconectando… La salida sigue donde quedó.",
       "refused": "No tenés permiso para ver esta consola.",
       "nodeOffline": "El nodo está desconectado: no llega salida hasta que se reconecte.",
@@ -1112,6 +1210,7 @@
     "deleteConfirm": "¿Eliminar {{name}}? No se puede deshacer.",
     "deleteFolderConfirm": "¿Eliminar la carpeta {{name}} y todo su contenido? No se puede deshacer.",
     "busy": "Una operación está modificando los archivos de este servidor: los cambios quedan bloqueados hasta que termine.",
+    "nodeOffline": "El nodo está desconectado: los archivos no se pueden cambiar hasta que se reconecte.",
     "nameProblems": {
       "empty": "Escribí un nombre.",
       "characters": "Los nombres no pueden tener \\ / : * ? \" < > | ni caracteres de control.",
@@ -1139,7 +1238,8 @@
       "overwrite": "Sobrescribir",
       "tooLarge": "Este archivo pesa más de 1 MB: descargalo.",
       "binary": "Este archivo no es de texto: descargalo.",
-      "mixedEndings": "Este archivo mezcla finales de línea de Windows y de Unix, y guardarlo acá los cambiaría: se muestra solo para leer. Descargalo para editarlo."
+      "mixedEndings": "Este archivo mezcla finales de línea de Windows y de Unix, y guardarlo acá los cambiaría: se muestra solo para leer. Descargalo para editarlo.",
+      "tabHint": "Tab indenta. Para salir del editor con el teclado, presioná Esc y después Tab, o Ctrl+M para que Tab mueva el foco."
     },
     "refresh": "Actualizar"
   },
@@ -1306,6 +1406,7 @@
     "cronHint": "Cinco campos: minuto, hora, día del mes, mes, día de la semana. Por ejemplo, 30 5 * * 1-5 son las 05:30 de lunes a viernes.",
     "timeZone": "Zona horaria",
     "timeZoneHint": "La tarea se ejecuta a esa hora allí, siguiendo su horario de verano.",
+    "timeZoneUnknown": "Tu navegador no conoce la zona horaria {{zone}}: las próximas ejecuciones se muestran en UTC.",
     "nextRuns": "Próximas ejecuciones",
     "enabled": "Activada",
     "runNow": "Ejecutar ahora",
@@ -1498,8 +1599,8 @@
     "bucket": "Bucket",
     "prefix": "Carpeta en el bucket",
     "prefixHint": "Cada backup va a <carpeta>/<servidor>/<backup>.zip.",
-    "accessKeyId": "Access key id",
-    "secret": "Secret access key",
+    "accessKeyId": "ID de clave de acceso",
+    "secret": "Clave de acceso secreta",
     "secretKeep": "Dejala vacía para mantener la clave guardada.",
     "pathStyle": "Bucket en la ruta (la mayoría de los servicios compatibles con S3 lo necesitan; AWS no)",
     "keysHint": "Dale a estas claves acceso solo a este bucket. Los nodos las reciben dentro de cada comando de backup y no guardan nada.",
@@ -1586,6 +1687,10 @@
     "userHostHint": "Desde dónde se pueden conectar los usuarios de las bases: % para cualquier lado, o una dirección o patrón como 10.0.0.%.",
     "nodes": "Nodos",
     "nodesHint": "Los servidores de estos nodos pueden usarlo. Ninguno marcado: todos los nodos.",
+    "nodesUnavailable": "No se pueden listar los nodos: {{error}}",
+    "nodesKept_one": "El host sigue limitado al nodo que tiene.",
+    "nodesKept_other": "El host sigue limitado a los {{count}} nodos que tiene.",
+    "nodesAll": "Sin ningún nodo marcado, los servidores de todos los nodos pueden usar este host.",
     "requireTls": "Exigir TLS",
     "requireTlsHint": "El panel se conecta solo con TLS (no verifica el certificado). Apagado, usa TLS si el servidor lo ofrece y texto plano si no, contraseña de su cuenta incluida. Prendido por defecto salvo que la dirección sea esta máquina o tu red local.",
     "tlsRequired": "Exige TLS",

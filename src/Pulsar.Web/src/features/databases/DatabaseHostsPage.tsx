@@ -248,6 +248,17 @@ function HostDialog({ host, onClose }: { host: DatabaseHost | null; onClose: () 
               }
             />
           ))}
+          {/* Listing nodes takes more than settings.manage: without the list, say what the host applies to. */}
+          {nodes.isError && (
+            <>
+              <Alert>{t('databaseHosts.nodesUnavailable', { error: errorMessage(t, nodes.error) })}</Alert>
+              <p className="text-xs text-muted">
+                {nodeIds.length === 0
+                  ? t('databaseHosts.nodesAll')
+                  : t('databaseHosts.nodesKept', { count: nodeIds.length })}
+              </p>
+            </>
+          )}
         </fieldset>
         {(save.error ?? remove.error) && <Alert>{errorMessage(t, save.error ?? remove.error)}</Alert>}
         <div className="flex items-center justify-between gap-2">

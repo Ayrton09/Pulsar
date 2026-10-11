@@ -157,6 +157,21 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
               )}
             </Field>
             {template.isPending && templateId && <Spinner label={t('common.loading')} />}
+            {/* Without the game's details there is no next step: say why, and let the user ask again. */}
+            {template.isError && (
+              <Alert>
+                <p>{errorMessage(t, template.error)}</p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="mt-2"
+                  busy={template.isFetching}
+                  onClick={() => void template.refetch()}
+                >
+                  {t('actions.retry')}
+                </Button>
+              </Alert>
+            )}
             {details && <Requirements details={details} />}
             <Field
               label={t('servers.descriptionLabel')}

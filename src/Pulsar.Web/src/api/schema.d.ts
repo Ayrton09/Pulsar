@@ -10902,6 +10902,7 @@ export interface components {
             copyMode: null | components["schemas"]["BackupCopyMode"];
             snapshotError: null | string;
             gameSave: null | components["schemas"]["GameSaveResult"];
+            errorCode?: null | string;
         };
         ChangePasswordRequest: {
             currentPassword: string;

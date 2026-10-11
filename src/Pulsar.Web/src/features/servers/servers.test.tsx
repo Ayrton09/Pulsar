@@ -263,6 +263,54 @@ describe('servers page', () => {
     });
   });
 
+  it('says when the chosen game cannot be loaded, and tries again', async () => {
+    let fail = true;
+    const game = {
+      id: installedOffline.templateId,
+      key: 'pulsar-test',
+      version: '1.0.0',
+      name: 'Pulsar test server',
+      description: null,
+      isTestGame: true,
+      source: 'bundled',
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([]),
+      'GET /api/v1/nodes': () =>
+        json([{ id: installedOffline.nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/templates': () => json([game]),
+      [`GET /api/v1/templates/${installedOffline.templateId}`]: () =>
+        fail
+          ? problem(500, 'unexpected')
+          : json({
+              template: game,
+              minDiskGb: null,
+              minMemoryMb: null,
+              variables: [],
+              ports: [],
+              allowExtraArguments: false,
+              canUpdate: false,
+              capabilities: { executable: 'x.exe', steamAppIds: [], configFiles: [], consoleMode: 'pty' },
+            }),
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Create server' }));
+    await user.type(screen.getByLabelText('Name'), 'Fresh');
+    await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
+    await user.selectOptions(await screen.findByLabelText('Game'), 'Pulsar test server 1.0.0');
+
+    const dialog = screen.getByRole('dialog');
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Something went wrong');
+    fail = false;
+    await user.click(within(dialog).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('This game has no settings.')).toBeInTheDocument();
+  });
+
   it('does not ask for a port that comes with another one', async () => {
     let body: unknown;
     const template = {
@@ -429,7 +477,7 @@ describe('server page', () => {
       [`POST /api/v1/servers/${running.id}/restart`]: () =>
         json({ status: 'rejected', errorCode: 'server.host_incompatible' }),
       [`POST /api/v1/servers/${running.id}/stop`]: () =>
-        json({ status: 'rejected', errorCode: 'server.something_new' }),
+        json({ status: 'unsupportedCommand', errorCode: 'server.something_new' }),
     });
     renderAt(`/servers/${running.id}`);
     const user = userEvent.setup();
@@ -442,12 +490,12 @@ describe('server page', () => {
     await user.click(screen.getByRole('button', { name: 'Stop' }));
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(
-        'The node did not accept the command (rejected server.something_new).',
+        'The node did not accept the command (unknown command server.something_new).',
       ),
     );
   });
 
-  it('shows the operations and why an install failed', async () => {
+  it('shows the operations and why one failed, in the user language', async () => {
     const failed: Schemas['OperationView'] = {
       ...installOperation,
       status: 'failed',
@@ -455,10 +503,25 @@ describe('server page', () => {
       errorMessage: 'This agent was not started with the test game server.',
       completedAt: '2026-10-02T12:01:00Z',
     };
+    const interrupted: Schemas['OperationView'] = {
+      ...installOperation,
+      id: '0192f1a0-0000-7000-8000-0000000000b2',
+      type: 'serverUpdate',
+      status: 'interrupted',
+      errorCode: 'operation.interrupted',
+      errorMessage: 'The agent restarted or lost the operation.',
+      completedAt: '2026-10-02T12:02:00Z',
+    };
+    const unknown: Schemas['OperationView'] = {
+      ...failed,
+      id: '0192f1a0-0000-7000-8000-0000000000b3',
+      errorCode: 'install.something_new',
+      errorMessage: 'Something new went wrong.',
+    };
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
       [`GET /api/v1/servers/${installedOffline.id}`]: () =>
-        json(details({ ...installedOffline, installState: 'failed' }, [failed])),
+        json(details({ ...installedOffline, installState: 'failed' }, [failed, interrupted, unknown])),
     });
 
     renderAt(`/servers/${installedOffline.id}`);
@@ -466,8 +529,38 @@ describe('server page', () => {
     const operations = await screen.findByRole('table', { name: 'Recent operations' });
     expect(operations).toHaveTextContent('Install');
     expect(operations).toHaveTextContent('Failed');
-    expect(operations).toHaveTextContent('This agent was not started with the test game server.');
+    // The code's translation, the code itself only as a tooltip.
+    const reason = within(operations).getByText(
+      "The node's agent was not started with the test game, so it cannot install it.",
+    );
+    expect(reason).toHaveAttribute('title', 'install.test_game_unavailable');
+    expect(operations).not.toHaveTextContent('This agent was not started with the test game server.');
+    expect(operations).not.toHaveTextContent('(install.test_game_unavailable)');
+    expect(operations).toHaveTextContent("The node's agent restarted or lost the operation before it ended.");
+    // A code without a translation: the agent's own words.
+    expect(within(operations).getByText('Something new went wrong.')).toHaveAttribute('title', 'install.something_new');
     expect(screen.getAllByText('Install failed').length).toBeGreaterThan(0);
+  });
+
+  it('keeps showing the server when a refresh fails', async () => {
+    let fail = false;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${running.id}`]: () => (fail ? problem(500, 'unexpected') : json(details(running))),
+    });
+    const before = connections.length;
+    renderAt(`/servers/${running.id}?tab=overview`);
+    const live = await openedConnection(before);
+    expect(await screen.findByRole('heading', { name: 'Surf' })).toBeInTheDocument();
+
+    fail = true;
+    live.emit('ServersChanged', [running.id]);
+
+    expect(
+      await screen.findByText(/This page could not be refreshed and shows what was loaded last/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Surf' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: 'Server sections' })).toBeInTheDocument();
   });
 
   it('explains a node conflict when deleting', async () => {

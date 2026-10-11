@@ -24,7 +24,37 @@ describe('ConsoleFilter', () => {
   it('drops a lone escape without the character after it', () => {
     const filter = new ConsoleFilter();
 
-    expect(filter.push(`foo${ESC}\nbar${ESC}\tbaz${ESC}(\rqux`)).toBe('foo\nbar\tbaz\rqux');
+    expect(filter.push(`foo${ESC}\nbar${ESC}\tbaz${ESC}(\r\nqux`)).toBe('foo\nbar\tbaz\r\nqux');
+  });
+
+  it('turns a carriage return without a line break into one, so later text cannot overwrite a row', () => {
+    const filter = new ConsoleFilter();
+
+    expect(filter.push('Admin: ban griefer\rPlayer: hi')).toBe('Admin: ban griefer\r\nPlayer: hi');
+    // A line break after it (in the next chunk too) is the same line break, not another one.
+    expect(filter.push('progress 10%\r')).toBe('progress 10%\r\n');
+    expect(filter.push('\nnext\r\n')).toBe('next\r\n');
+  });
+
+  it('drops a string sequence that never ends, says so and shows what follows', () => {
+    const filter = new ConsoleFilter('[dropped]');
+
+    // A title with no terminator: held while it may still end, up to the end of its line.
+    expect(filter.push(`before ${ESC}]0;title`)).toBe('before ');
+    expect(filter.push(' more\nafter')).toBe('[dropped]\nafter');
+
+    // Too long to be held: dropped, and later output is not held behind it.
+    expect(filter.push(`${ESC}]0;${'x'.repeat(3000)}`)).toBe('');
+    expect(filter.push('y'.repeat(2000))).toBe('[dropped]');
+    expect(filter.push('more')).toBe('more');
+  });
+
+  it('drops a control sequence that never ends, says so and shows what follows', () => {
+    const filter = new ConsoleFilter('[dropped]');
+
+    expect(filter.push(`a${ESC}[${'1;'.repeat(5000)}mb`)).toBe('a[dropped]b');
+    expect(filter.push(`c${ESC}[${'1;'.repeat(5000)}`)).toBe('c[dropped]');
+    expect(filter.push('d')).toBe('d');
   });
 
   it('turns a pseudo console moving to the next row into a line break', () => {

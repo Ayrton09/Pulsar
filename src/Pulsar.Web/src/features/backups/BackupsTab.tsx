@@ -9,6 +9,7 @@ import { useFormatDate, useFormatFileSize } from '../../lib/format';
 import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import type { ServerDetails } from '../servers/api';
+import { failureReason } from '../servers/serverStatus';
 import {
   backupDownloadUrl,
   useBackupLimit,
@@ -43,6 +44,9 @@ export function BackupsTab({ details }: { details: ServerDetails }) {
   const restore = useRestoreBackup(server.id);
   const lock = useLockBackup(server.id);
   const remove = useDeleteBackup(server.id);
+  // Here, not in their cards: a save remounts a card with what the panel stored, and the result must survive that.
+  const saveLimit = useBackupLimit(server.id);
+  const saveStorage = useBackupStorageChoice(server.id);
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState<BackupView | null>(null);
   const canCreate = canOnServer(me, server, Permission.ServerBackupsCreate);
@@ -119,9 +123,15 @@ export function BackupsTab({ details }: { details: ServerDetails }) {
         </Table>
       )}
 
-      {canDelete && <RetentionCard serverId={server.id} limit={backups.data.limit} />}
+      {/* Keyed on what is stored: a change made elsewhere (another admin) starts the field again from it. */}
+      {canDelete && <RetentionCard key={backups.data.limit ?? 'all'} limit={backups.data.limit} save={saveLimit} />}
       {canDelete && (
-        <RemoteCopyCard serverId={server.id} storageId={backups.data.storageId} storages={backups.data.storages} />
+        <RemoteCopyCard
+          key={backups.data.storageId ?? 'node'}
+          storageId={backups.data.storageId}
+          storages={backups.data.storages}
+          save={saveStorage}
+        />
       )}
       {creating && <CreateBackupDialog serverId={server.id} running={!stopped} onDone={() => setCreating(false)} />}
       {restoring && (
@@ -264,8 +274,10 @@ function BackupRow({
           </p>
         )}
         {completed && <CopyNote backup={backup} />}
-        {backup.status === 'failed' && backup.errorMessage && (
-          <p className="mt-1 text-xs break-words text-danger">{backup.errorMessage}</p>
+        {backup.status === 'failed' && (backup.errorCode || backup.errorMessage) && (
+          <p className="mt-1 text-xs break-words text-danger" title={backup.errorCode ?? undefined}>
+            {failureReason(t, backup.errorCode ?? null, backup.errorMessage)}
+          </p>
         )}
         {backup.remoteStatus !== 'none' && (
           <p className={`mt-1 text-xs ${backup.remoteStatus === 'failed' ? 'text-danger' : 'text-muted'}`}>
@@ -377,9 +389,8 @@ function CreateBackupDialog({ serverId, running, onDone }: { serverId: string; r
 }
 
 /** How many backups to keep; the oldest unlocked ones beyond it are deleted after each new backup. */
-function RetentionCard({ serverId, limit }: { serverId: string; limit: number | null }) {
+function RetentionCard({ limit, save }: { limit: number | null; save: ReturnType<typeof useBackupLimit> }) {
   const { t } = useTranslation();
-  const save = useBackupLimit(serverId);
   const [value, setValue] = useState(limit === null ? '' : String(limit));
   const parsed = value.trim() === '' ? null : Number(value);
   const invalid = parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_LIMIT);
@@ -439,16 +450,15 @@ function RetentionCard({ serverId, limit }: { serverId: string; limit: number | 
 
 /** Where new backups are copied besides the node: one of the panel's backup storages, or none. */
 function RemoteCopyCard({
-  serverId,
   storageId,
   storages,
+  save,
 }: {
-  serverId: string;
   storageId: string | null;
   storages: { id: string; name: string }[];
+  save: ReturnType<typeof useBackupStorageChoice>;
 }) {
   const { t } = useTranslation();
-  const save = useBackupStorageChoice(serverId);
   const [value, setValue] = useState(storageId ?? '');
   const changed = (value || null) !== storageId;
 

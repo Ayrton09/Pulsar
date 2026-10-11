@@ -398,7 +398,16 @@
       "unsupported": "The node's agent cannot install mods: update the agent.",
       "requires": "{{detail}}",
       "conflicts": "{{detail}}",
-      "required_by": "{{detail}}"
+      "required_by": "{{detail}}",
+      "unknown": "The server's game has no such mod.",
+      "unsupported_source": "The node's agent cannot download this mod: update the agent.",
+      "no_release": "The mod has no release to install.",
+      "no_asset": "The mod's release has no single file to download: {{detail}}",
+      "no_checksum": "The mod's download has no published checksum, so Pulsar does not install it.",
+      "download_failed": "The mod could not be installed: {{detail}}",
+      "bad_archive": "The mod's download is not an archive Pulsar unpacks: {{detail}}",
+      "file_missing": "A file the mod edits is missing or too large: {{detail}}",
+      "file_too_large": "A file of the mod is larger than Pulsar reads: {{detail}}"
     },
     "api_key": {
       "name_invalid": "Give the key a name of one line, up to 64 characters.",
@@ -497,7 +506,20 @@
       "limits_unsupported": "The node's agent cannot limit a server's CPU and memory: update the agent.",
       "limits_invalid": "A CPU limit goes from 1 to 100 %, a memory limit from 128 MiB to 1 TiB.",
       "template_not_newer": "A server can only move to a newer version of its own game's template.",
-      "database_limit_invalid": "The database limit is a number from 0 to 50."
+      "database_limit_invalid": "The database limit is a number from 0 to 50.",
+      "create_forbidden": "You may not create servers on this node.",
+      "not_running": "The server is not running.",
+      "running": "Stop the server first.",
+      "unknown": "The node does not have this server.",
+      "invalid_spec": "The node's agent refused the server's settings: {{detail}}",
+      "invalid_short_id": "The node's agent refused the server's short id.",
+      "spec_mismatch": "The node's agent refused the change: it cannot change a server's short id or game.",
+      "record_unreadable": "The node could not read this server's record: {{detail}}",
+      "domain_controller": "The node is a domain controller: Pulsar cannot create the server's Windows account there.",
+      "invalid_servers_root": "The node's servers folder is not valid: {{detail}}"
+    },
+    "console": {
+      "invalid_input": "A command is one line without control characters (such as tabs)."
     },
     "template": {
       "version_exists": "That game version is already registered. Templates never change: give it a new version.",
@@ -508,7 +530,8 @@
       "not_cancellable": "Only running installs, updates and backups can be cancelled.",
       "forbidden": "You may not cancel this kind of operation on this server.",
       "cancelled": "The operation was cancelled.",
-      "failed": "The operation failed."
+      "failed": "The operation failed.",
+      "interrupted": "The node's agent restarted or lost the operation before it ended."
     },
     "files": {
       "invalid_path": "That path is not valid: {{detail}}",
@@ -527,7 +550,10 @@
       "failed": "The node could not do it: {{detail}}",
       "unsupported": "The node's agent has no file manager. Update the agent.",
       "length_required": "The upload did not say its size.",
-      "invalid_version": "The file version is not valid. Reload the file."
+      "invalid_version": "The file version is not valid. Reload the file.",
+      "open_failed": "The node could not open the file: {{detail}}",
+      "delete_failed": "The node could not delete it: {{detail}}",
+      "invalid_ticket": "The transfer was refused by the node. Try again."
     },
     "backups": {
       "not_found": "That backup does not exist.",
@@ -617,7 +643,69 @@
       "password_unreadable": "The password cannot be read with this panel's keys: change it to get a new one."
     },
     "steamcmd": {
-      "account_required": "Only a Steam account that owns this game's dedicated server may download it: choose one in the server's settings."
+      "account_required": "Only a Steam account that owns this game's dedicated server may download it: choose one in the server's settings.",
+      "guard_required": "Steam asked for a Steam Guard code: enter it to go on.",
+      "login_failed": "Steam refused the account's sign-in: check its user name and password.",
+      "rate_limited": "Steam refuses sign-ins for a while after too many attempts. Try again later.",
+      "disk": "The node's disk has no room for the game.",
+      "app_unavailable": "Steam does not offer this game's dedicated server to this account.",
+      "download_failed": "SteamCMD could not be downloaded: {{detail}}",
+      "untrusted": "The SteamCMD on the node is not signed by Valve, so it was not run.",
+      "failed": "SteamCMD failed: {{detail}}"
+    },
+    "install": {
+      "unsupported_step": "The node's agent cannot run a step of this game's install: update the agent.",
+      "copy_source_missing": "A file the install copies does not exist: {{detail}}",
+      "copy_too_large": "A file the install copies is too large: {{detail}}",
+      "invalid_path": "The install names a path outside the server's folder: {{detail}}",
+      "reparse_point": "The install would write through a link (a junction or symbolic link): Pulsar does not follow links.",
+      "test_game_unavailable": "The node's agent was not started with the test game, so it cannot install it."
+    },
+    "process": {
+      "start_failed": "The game could not be started: {{detail}}",
+      "executable_missing": "The game's program is missing: {{detail}}",
+      "directory_missing": "A folder the game needs is missing: {{detail}}",
+      "invalid_executable": "Only .exe programs can be started.",
+      "invalid_path": "A path of the game is not valid: {{detail}}",
+      "path_outside_server": "A path of the game leads outside the server's folder: {{detail}}",
+      "reparse_point": "A path of the game goes through a link (a junction or symbolic link): Pulsar does not follow links.",
+      "invalid_environment": "An environment variable of the game cannot be set: {{detail}}",
+      "limits_failed": "The server's CPU and memory limits could not be applied: {{detail}}"
+    },
+    "host": {
+      "start_failed": "The server's host process could not be started: {{detail}}",
+      "unreachable": "The server's host process does not answer.",
+      "incompatible": "The server's host process runs another version of the agent.",
+      "protocol": "The server's host process answered something the agent does not understand.",
+      "unexpected": "The server's connection is not served by its host process."
+    },
+    "config": {
+      "invalid": "A configuration file of the game is not valid: {{detail}}",
+      "too_large": "A configuration file of the game is too large: {{detail}}",
+      "write_failed": "A configuration file of the game could not be written: {{detail}}"
+    },
+    "minecraft": {
+      "unknown_version": "Mojang does not list that Minecraft version.",
+      "no_checksum": "Mojang lists no checksum for that Minecraft version, so Pulsar does not install it.",
+      "no_server": "That Minecraft version has no dedicated server download.",
+      "no_java": "No Java runtime for this Minecraft version was found for Windows.",
+      "bad_archive": "The Java runtime download is not what Pulsar expected: {{detail}}",
+      "download_failed": "Minecraft could not be installed: {{detail}}"
+    },
+    "firewall": {
+      "failed": "The Windows Firewall rules for the server's ports could not be changed: {{detail}}"
+    },
+    "command": {
+      "unsupported": "The node's agent does not know this command: update the agent.",
+      "operation_required": "The node's agent only runs this as an operation.",
+      "expired": "The command reached the node too late. Check that the panel's and the node's clocks are right.",
+      "replayed": "The node refused the command as a repeat of an earlier one. Try again.",
+      "invalid_signature": "The node could not verify the panel's signature on the command.",
+      "unknown_key": "The node does not trust the key the panel signed the command with.",
+      "invalid_panel_keys": "The node refused the panel's new keys.",
+      "malformed": "The node could not read the command.",
+      "wrong_recipient": "The command was meant for another node.",
+      "unsupported_version": "The node's agent does not support this version of the command: update the agent."
     },
     "steam_account": {
       "not_found": "That Steam account does not exist.",
@@ -831,6 +919,15 @@
     },
     "killConfirm": "Kill {{name}} now? Its processes end without saving.",
     "commandRefused": "The node did not accept the command ({{status}} {{code}}).",
+    "ackStatuses": {
+      "accepted": "accepted",
+      "alreadyInState": "already so",
+      "rejected": "rejected",
+      "busy": "busy",
+      "unsupportedCommand": "unknown command",
+      "invalidSignature": "invalid signature"
+    },
+    "stale": "This page could not be refreshed and shows what was loaded last: {{error}}",
     "operations": {
       "title": "Recent operations",
       "empty": "No operations yet.",
@@ -901,8 +998,7 @@
       "secretSet": "A value is set; type a new one to replace it.",
       "protected": "Only users who can edit server settings can change it.",
       "unset": "Not set",
-      "outOfRange": "Out of the allowed range.",
-      "badFormat": "The format is not valid for this setting."
+      "outOfRange": "Out of the allowed range."
     },
     "workshop": {
       "empty": "No Workshop items.",
@@ -961,7 +1057,8 @@
       "databases": "Databases",
       "databasesValue_one": "Databases: up to {{count, number}}",
       "databasesValue_other": "Databases: up to {{count, number}}",
-      "databasesInvalid": "From 0 to 50."
+      "databasesInvalid": "From 0 to 50.",
+      "notANumber": "Type a number, or leave it empty for no limit."
     },
     "network": {
       "title": "Ports",
@@ -973,6 +1070,7 @@
     "console": {
       "title": "Console",
       "gap": "some output was lost here",
+      "dropped": "a sequence that never ended was dropped here",
       "reconnecting": "Live updates stopped; reconnecting… The output resumes where it stopped.",
       "refused": "You can't watch this console.",
       "nodeOffline": "The node is offline: no output until it reconnects.",
@@ -1112,6 +1210,7 @@
     "deleteConfirm": "Delete {{name}}? This cannot be undone.",
     "deleteFolderConfirm": "Delete the folder {{name}} and everything in it? This cannot be undone.",
     "busy": "An operation is changing this server's files: changes are blocked until it ends.",
+    "nodeOffline": "The node is offline: files cannot be changed until it reconnects.",
     "nameProblems": {
       "empty": "Enter a name.",
       "characters": "Names cannot contain \\ / : * ? \" < > | or control characters.",
@@ -1139,7 +1238,8 @@
       "overwrite": "Overwrite",
       "tooLarge": "This file is larger than 1 MB: download it instead.",
       "binary": "This file is not text: download it instead.",
-      "mixedEndings": "This file mixes Windows and Unix line endings, and saving it here would change them: it is shown read only. Download it to edit it."
+      "mixedEndings": "This file mixes Windows and Unix line endings, and saving it here would change them: it is shown read only. Download it to edit it.",
+      "tabHint": "Tab indents. To leave the editor with the keyboard, press Esc and then Tab, or Ctrl+M to make Tab move the focus."
     },
     "refresh": "Refresh"
   },
@@ -1306,6 +1406,7 @@
     "cronHint": "Five fields: minute, hour, day of month, month, day of week. For example, 30 5 * * 1-5 is 05:30 on weekdays.",
     "timeZone": "Time zone",
     "timeZoneHint": "The task runs at that time there, following its daylight saving time.",
+    "timeZoneUnknown": "Your browser does not know the time zone {{zone}}: the next runs are shown in UTC.",
     "nextRuns": "Next runs",
     "enabled": "Enabled",
     "runNow": "Run now",
@@ -1586,6 +1687,10 @@
     "userHostHint": "Where the database users may connect from: % for anywhere, or an address or pattern such as 10.0.0.%.",
     "nodes": "Nodes",
     "nodesHint": "Servers of these nodes may use it. None ticked: every node.",
+    "nodesUnavailable": "The nodes cannot be listed: {{error}}",
+    "nodesKept_one": "The host stays limited to the node it has.",
+    "nodesKept_other": "The host stays limited to the {{count}} nodes it has.",
+    "nodesAll": "With no node ticked, servers of every node may use this host.",
     "requireTls": "Require TLS",
     "requireTlsHint": "The panel connects only with TLS (it does not check the certificate). Off, it uses TLS when the server offers it and plain text otherwise, its account's password included. On by default unless the address is this machine or your local network.",
     "tlsRequired": "TLS required",
