@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pulsar.Application.Abstractions;
@@ -488,9 +489,14 @@ public sealed partial class AgentAccess(
         return AgentErrors.EnrollmentRejected;
     }
 
-    /// <summary>Without the characters that hide or break a line in what the panel shows or logs.</summary>
-    private static string Visible(string value) => new([.. value.Where(c => !char.IsControl(c) && CharUnicodeInfo.GetUnicodeCategory(c)
-        is not (UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator))]);
+    /// <summary>
+    /// Without the characters that hide or break a line in what the panel shows or logs, read by code point (tag
+    /// characters are format characters past the BMP).
+    /// </summary>
+    private static string Visible(string value) => string.Concat(value.EnumerateRunes()
+        .Where(r => !Rune.IsControl(r) && Rune.GetUnicodeCategory(r)
+            is not (UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator))
+        .Select(r => r.ToString()));
 
     /// <summary>At most <paramref name="max"/> characters, never half of a surrogate pair (PostgreSQL refuses it).</summary>
     private static string Truncate(string value, int max) =>

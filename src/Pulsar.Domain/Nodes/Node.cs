@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using Pulsar.Domain.Common;
 
 namespace Pulsar.Domain.Nodes;
@@ -254,9 +255,9 @@ public sealed class Node
     private static Result Validate(string name, string? description, string? publicHost)
     {
         // Nothing that would hide in it or break its line (zero-width spaces, direction overrides, line separators): a
-        // node's name says which machine it is.
+        // node's name says which machine it is. Read by code point: tag characters are format characters past the BMP.
         var trimmed = name?.Trim() ?? string.Empty;
-        if (trimmed.Length is 0 or > MaxNameLength || trimmed.Any(c => char.IsControl(c) || CharUnicodeInfo.GetUnicodeCategory(c)
+        if (trimmed.Length is 0 or > MaxNameLength || trimmed.EnumerateRunes().Any(r => Rune.IsControl(r) || Rune.GetUnicodeCategory(r)
                 is UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator))
         {
             return NodeErrors.NameInvalid;

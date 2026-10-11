@@ -800,6 +800,7 @@ public sealed partial class ServerManagement(
         }
 
         // Checked now, kept only once the node took it: a refused request changes nothing and is audited as refused.
+        var observed = (server.StateSequence, server.StateObservedAt);
         var changed = change(server);
         if (!changed.IsSuccess)
         {
@@ -832,10 +833,16 @@ public sealed partial class ServerManagement(
             }
             catch (DbUpdateConcurrencyException) when (attempt < 4)
             {
-                // The agent reports what the command does meanwhile: apply the request again on the fresh row (the node
-                // took it, so it is kept and audited whatever the fresh row says).
+                // The agent reports what the command does meanwhile. A decision it reported since the command was sent
+                // (the game could not start, crash-looped or exited by itself) stands; otherwise the request is applied
+                // again on the fresh row. The node took it either way, so it is audited.
                 await db.Entry(server).ReloadAsync(CancellationToken.None);
-                _ = change(server);
+                var decided = (server.StateSequence, server.StateObservedAt) != observed && server.LastStateReason is { } reason &&
+                    Server.StopsIntent(reason);
+                if (!decided)
+                {
+                    _ = change(server);
+                }
             }
         }
 

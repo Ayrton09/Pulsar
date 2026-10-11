@@ -1158,6 +1158,7 @@
     "usedBy": "Usada por",
     "notes": "Notas",
     "free": "Libre",
+    "inUse": "En uso",
     "add": "Agregar asignaciones",
     "addressLabel": "Dirección IPv4",
     "addressHint": "0.0.0.0 para todas las interfaces.",

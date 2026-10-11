@@ -89,6 +89,48 @@ public sealed class ServerCommandTests(PulsarApiFactory factory) : IClassFixture
     }
 
     [DatabaseFact]
+    public async Task AHelloLeavesAnInstallThatIsQueuedOrRunningAlone()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "install-under-way");
+        var queued = await InstalledServerAsync(admin, agent, "Install queued");
+        var running = await InstalledServerAsync(admin, agent, "Install running");
+        var lost = await InstalledServerAsync(admin, agent, "Install lost");
+        await SetAsync(lost, "UPDATE servers SET install_state = 'installing' WHERE id = {0}");
+        var runningInstall = Guid.Empty;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var now = DateTimeOffset.UtcNow;
+            foreach (var id in new[] { queued, running })
+            {
+                var server = await db.Servers.SingleAsync(s => s.Id == new ServerId(id), Ct);
+                var install = Operation.Create(OperationType.ServerInstall, server.NodeId, server.Id, null, OperationRequester.System, now);
+                Assert.True(server.BeginOperation(install, now).IsSuccess);
+                if (id == running)
+                {
+                    install.Started(now);
+                    runningInstall = install.Id.Value;
+                }
+
+                db.Operations.Add(install);
+            }
+
+            await db.SaveChangesAsync(Ct);
+        }
+
+        // The agent's Hello: it has the running install, and the queued one (not a minute old) may still be on its way.
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<AgentServerEvents>().ReconcileAsync(new NodeId(agent.Config!.NodeId), [], [runningInstall], Ct);
+        }
+
+        Assert.Equal(InstallState.Installing, (await ServerApi.GetAsync(admin, queued))!.Server.InstallState);
+        Assert.Equal(InstallState.Installing, (await ServerApi.GetAsync(admin, running))!.Server.InstallState);
+        Assert.Equal(InstallState.Failed, (await ServerApi.GetAsync(admin, lost))!.Server.InstallState);
+    }
+
+    [DatabaseFact]
     public async Task AStartTheNodeRefusesIsNeitherWantedNorAuditedAsDone()
     {
         using var admin = await factory.CreateAdminClientAsync();
@@ -110,6 +152,53 @@ public sealed class ServerCommandTests(PulsarApiFactory factory) : IClassFixture
         var entry = await db.AuditLog.AsNoTracking().SingleAsync(e => e.ServerId == new ServerId(id) && e.Action == AuditActions.Server.Started, Ct);
         Assert.Equal(AuditOutcome.Failure, entry.Outcome);
         Assert.Contains("server.busy", entry.Metadata, StringComparison.Ordinal);
+    }
+
+    [DatabaseFact]
+    public async Task AStartTheAgentGivesUpBeforeItIsSavedIsNotWantedAgain()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "failed-start");
+        var failed = await InstalledServerAsync(admin, agent, "Failed start");
+        var starting = await InstalledServerAsync(admin, agent, "Starting");
+        var node = new NodeId(agent.Config!.NodeId);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        // The node takes the start, and its report of what came of it is saved before the panel saves the start.
+        var connections = new InterceptedConnections(services.GetRequiredService<IAgentConnections>(), async (command, next, token) =>
+        {
+            if (command is not StartServerCommand start)
+            {
+                return await next(token);
+            }
+
+            await using var events = factory.Services.CreateAsyncScope();
+            var db = events.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            var sequence = (await db.Servers.AsNoTracking().SingleAsync(s => s.Id == new ServerId(start.ServerId), token)).StateSequence;
+            var change = start.ServerId == failed
+                ? new ServerStateChanged(start.ServerId, RuntimeState.Offline, RuntimeState.Starting, DateTimeOffset.UtcNow, sequence + 1, 1,
+                    StateChangeReason.StartFailed, "The executable is missing.")
+                : new ServerStateChanged(start.ServerId, RuntimeState.Starting, RuntimeState.Offline, DateTimeOffset.UtcNow, sequence + 1, null,
+                    StateChangeReason.Requested, null);
+            await events.ServiceProvider.GetRequiredService<AgentServerEvents>().StateChangedAsync(node, change, token);
+            return new CommandAck(Guid.CreateVersion7(), AckStatus.Accepted, null, null);
+        });
+        var servers = ActivatorUtilities.CreateInstance<ServerManagement>(services, (IAgentConnections)connections);
+
+        // The game could not start: the agent's decision stands, and the start the node took is still audited.
+        Assert.Equal(AckStatus.Accepted, (await servers.StartAsync(new ServerId(failed), Ct)).Value.Status);
+        var details = (await ServerApi.GetAsync(admin, failed))!.Server;
+        Assert.Equal(DesiredState.Stopped, details.DesiredState);
+        Assert.Equal(ServerStateReason.StartFailed, details.LastStateReason);
+        var db = services.GetRequiredService<IPulsarDbContext>();
+        var entry = await db.AuditLog.AsNoTracking().SingleAsync(e => e.ServerId == new ServerId(failed) && e.Action == AuditActions.Server.Started, Ct);
+        Assert.Equal(AuditOutcome.Success, entry.Outcome);
+
+        // The game is starting: the start is applied again on the fresh row.
+        Assert.Equal(AckStatus.Accepted, (await servers.StartAsync(new ServerId(starting), Ct)).Value.Status);
+        details = (await ServerApi.GetAsync(admin, starting))!.Server;
+        Assert.Equal(DesiredState.Running, details.DesiredState);
+        Assert.Equal(ServerRuntimeState.Starting, details.RuntimeState);
     }
 
     private static Operation Backup(Server server) =>

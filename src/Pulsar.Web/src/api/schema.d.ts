@@ -10775,6 +10775,7 @@ export interface components {
             serverName: null | string;
             portName: null | string;
             notes: null | string;
+            inUse: boolean;
         };
         ApiKeyView: {
             /** Format: uuid */

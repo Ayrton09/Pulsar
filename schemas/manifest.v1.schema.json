@@ -47,7 +47,10 @@
         "license": { "type": "string", "minLength": 1, "maxLength": 64, "description": "As the addon's authors state it; shown before installing." },
         "url": { "type": "string", "pattern": "^https://", "maxLength": 256, "description": "The addon's home page." },
         "source": { "$ref": "#/$defs/GitHubReleaseSource" },
-        "target": { "type": "string", "description": "Folder of the server the archive is unpacked into; empty for the server's folder." },
+        "target": {
+          "oneOf": [{ "const": "" }, { "$ref": "#/$defs/RelativePath" }],
+          "description": "Folder of the server the archive is unpacked into (a relative path, with its rules); empty for the server's folder."
+        },
         "requires": { "type": "array", "items": { "type": "string" } },
         "conflicts": { "type": "array", "items": { "type": "string" } },
         "reinstallAfterUpdate": { "type": "boolean", "default": false, "description": "The game's updates overwrite it: its latest release is installed again after each update." },

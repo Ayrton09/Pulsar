@@ -1158,6 +1158,7 @@
     "usedBy": "Used by",
     "notes": "Notes",
     "free": "Free",
+    "inUse": "In use",
     "add": "Add allocations",
     "addressLabel": "IPv4 address",
     "addressHint": "0.0.0.0 for every interface.",
