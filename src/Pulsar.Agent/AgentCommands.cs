@@ -22,6 +22,9 @@ internal static class AgentCommands
     /// <summary>Where <c>enroll</c> also takes its token from (the process list shows command lines, not environments).</summary>
     public const string TokenVariable = "PULSAR_ENROLLMENT_TOKEN";
 
+    /// <summary>How long unenroll waits for a service still stopping once the games it was waiting for are ended.</summary>
+    private static readonly TimeSpan s_stoppedAfterEndingHosts = TimeSpan.FromSeconds(30);
+
     public static int Help()
     {
         Console.WriteLine($"""
@@ -316,6 +319,7 @@ internal static class AgentCommands
         // Without a configuration, the service is this agent's when it runs with this state directory (a development
         // agent never runs as the service, and its own state directory is never the service's).
         var service = config is null ? ServiceRunsFrom(paths) : !config.Development;
+        var serviceStillStopping = false;
         if (config is null && !unreadable)
         {
             if (!service)
@@ -349,6 +353,7 @@ internal static class AgentCommands
                 // Removing the rest must not stop halfway: the service goes once it has stopped.
                 await Console.Error.WriteLineAsync($"The {AgentService.Name} service did not stop within {AgentService.StopTimeout.TotalSeconds:0} s " +
                     "(its game servers were still stopping). It is removed once it stops; the game servers still running are ended now.");
+                serviceStillStopping = true;
             }
         }
 
@@ -356,6 +361,19 @@ internal static class AgentCommands
         if (ended > 0)
         {
             Console.WriteLine($"Ended {ended} game server(s) the agent had left running.");
+        }
+
+        // With its games ended, a service that was waiting for them can finish: its state and accounts go only once it has.
+        if (serviceStillStopping)
+        {
+            try
+            {
+                AgentService.Stop(s_stoppedAfterEndingHosts);
+                serviceStillStopping = false;
+            }
+            catch (TimeoutException)
+            {
+            }
         }
 
         DeleteStopServersMarker(paths);
@@ -379,7 +397,7 @@ internal static class AgentCommands
             : new WindowsServerAccounts(NullLogger<WindowsServerAccounts>.Instance, paths.LogonLocksDirectory);
         RemoveServers(paths, config?.ServersRootOrDefault(paths) ?? (service ? AgentConfig.DefaultServersRoot(paths, development: false) : null),
             config?.BackupsRootOrDefault(paths) ?? paths.BackupsDirectory, new DpapiStateProtector(), accounts is null ? null : accounts.Delete,
-            WindowsServerFirewall.RemoveAll, Console.Out, Console.Error);
+            WindowsServerFirewall.RemoveAll, Console.Out, Console.Error, serviceStillStopping);
 
         if (config is not null)
         {
@@ -405,8 +423,10 @@ internal static class AgentCommands
     /// <param name="serversRoot">Null when it is not known (an unreadable configuration): the server records name the servers then.</param>
     /// <param name="deleteAccount">Deletes a server account (false: there was none); null when there are none to delete (a development agent's servers run as the current user).</param>
     /// <param name="removeFirewallRules">Removes the rules of the servers with these short ids; returns how many.</param>
+    /// <param name="serviceStillStopping">The service has not stopped yet: the accounts and the state are kept, and said so.</param>
     internal static void RemoveServers(AgentPaths paths, string? serversRoot, string? backupsRoot, IStateProtector protector,
-        Func<string, bool>? deleteAccount, Func<IReadOnlyCollection<string>, int> removeFirewallRules, TextWriter output, TextWriter errors)
+        Func<string, bool>? deleteAccount, Func<IReadOnlyCollection<string>, int> removeFirewallRules, TextWriter output, TextWriter errors,
+        bool serviceStillStopping = false)
     {
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(removeFirewallRules);
@@ -428,8 +448,24 @@ internal static class AgentCommands
             }
         }
 
+        // A service still stopping may yet save a server record (secrets included) or log on as a server account: those
+        // stay, said so, rather than come back after this said they were removed.
+        var state = Path.GetDirectoryName(paths.ServersStateDirectory)!;
+        var accountNames = deleteAccount is null ? [] : shortIds.Select(WindowsServerAccounts.AccountName).ToList();
+        if (serviceStillStopping)
+        {
+            var rulesRemoved = RemoveFirewallRules(shortIds, removeFirewallRules, errors);
+            output.WriteLine($"Removed {rulesRemoved} firewall rule(s).");
+            var keptAccounts = accountNames.Count > 0 ? $"the server accounts ({string.Join(", ", accountNames)}) and " : string.Empty;
+            errors.WriteLine($"The {AgentService.Name} service was still stopping, so {keptAccounts}{state} (the servers' passwords and the " +
+                "cached Steam logins) are kept. Once the service no longer shows in services.msc, delete them by hand" +
+                (accountNames.Count > 0 ? " (the accounts in Computer Management, Local Users and Groups)." : "."));
+            WriteKept(paths, serversRoot, backupsRoot, output);
+            return;
+        }
+
         var accounts = 0;
-        foreach (var account in deleteAccount is null ? [] : shortIds.Select(WindowsServerAccounts.AccountName))
+        foreach (var account in accountNames)
         {
             try
             {
@@ -441,19 +477,9 @@ internal static class AgentCommands
             }
         }
 
-        var rules = 0;
-        try
-        {
-            rules = removeFirewallRules(shortIds);
-        }
-        catch (Exception ex) when (ex is GameProcessException or System.Runtime.InteropServices.COMException or UnauthorizedAccessException)
-        {
-            errors.WriteLine($"The firewall rules of the game servers (group '{WindowsServerFirewall.Grouping}') could not be removed ({ex.Message}); " +
-                "remove them in Windows Defender Firewall from an elevated prompt.");
-        }
+        var rules = RemoveFirewallRules(shortIds, removeFirewallRules, errors);
 
         // Nothing reads the agent's state once the node is gone, and it holds secrets.
-        var state = Path.GetDirectoryName(paths.ServersStateDirectory)!;
         try
         {
             if (Directory.Exists(state))
@@ -467,6 +493,25 @@ internal static class AgentCommands
         }
 
         output.WriteLine($"Removed {accounts} server account(s), {rules} firewall rule(s), the server records and the cached Steam logins.");
+        WriteKept(paths, serversRoot, backupsRoot, output);
+    }
+
+    private static int RemoveFirewallRules(IReadOnlyCollection<string> shortIds, Func<IReadOnlyCollection<string>, int> removeFirewallRules, TextWriter errors)
+    {
+        try
+        {
+            return removeFirewallRules(shortIds);
+        }
+        catch (Exception ex) when (ex is GameProcessException or System.Runtime.InteropServices.COMException or UnauthorizedAccessException)
+        {
+            errors.WriteLine($"The firewall rules of the game servers (group '{WindowsServerFirewall.Grouping}') could not be removed ({ex.Message}); " +
+                "remove them in Windows Defender Firewall from an elevated prompt.");
+            return 0;
+        }
+    }
+
+    private static void WriteKept(AgentPaths paths, string? serversRoot, string? backupsRoot, TextWriter output)
+    {
         var kept = new List<string>();
         if (serversRoot is not null)
         {

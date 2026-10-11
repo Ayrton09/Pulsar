@@ -248,6 +248,12 @@ the game servers and the configuration are removed anyway, but the node key cann
 and stays in the machine's key store (`unenroll.log` says so; once you delete the node in the panel it opens nothing).
 Nor does a missing configuration: the service is still removed when it runs with that state directory.
 
+A service still stopping its game servers after a minute is removed once it stops: `unenroll` ends the games and gives
+it 30 s more. If it is still stopping then, it could yet save the servers' passwords or log on as their accounts, so the
+game servers' Windows accounts (`pulsar_<id>`) and `C:\ProgramData\Pulsar\Agent\state` stay and `unenroll.log` names
+them: once `PulsarAgent` no longer shows in `services.msc`, delete the accounts in Computer Management (Local Users and
+Groups) and the folder by hand.
+
 As a last resort, when `unenroll` keeps failing for a reason you cannot fix, remove what it would have removed by hand,
 in an elevated PowerShell, then uninstall again:
 
