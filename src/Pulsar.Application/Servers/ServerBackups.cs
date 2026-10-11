@@ -20,6 +20,10 @@ namespace Pulsar.Application.Servers;
 /// <param name="CopyMode">How the node read the files (null: made before Phase 15).</param>
 /// <param name="SnapshotError">Why a running game's files were read live rather than from a snapshot (a <c>snapshot.*</c> code).</param>
 /// <param name="GameSave">How the game answered when asked to save first (null: not asked).</param>
+/// <param name="ErrorCode">
+/// Why a failed backup failed, as its operation's code (the browser shows its translation, <see cref="ErrorMessage"/>
+/// without one); null when the panel ended it itself.
+/// </param>
 public sealed record BackupView(
     Guid Id,
     string Name,
@@ -39,7 +43,8 @@ public sealed record BackupView(
     string? RemoteError,
     BackupCopyMode? CopyMode,
     string? SnapshotError,
-    GameSaveResult? GameSave);
+    GameSaveResult? GameSave,
+    string? ErrorCode = null);
 
 /// <param name="Limit">How many backups retention keeps (locked ones besides); null keeps them all.</param>
 /// <summary>A storage a server can copy its backups to (its name only: the rest is the panel's settings).</summary>
@@ -430,7 +435,15 @@ public sealed partial class ServerBackups(
         var backups = await db.Backups.AsNoTracking().Where(b => b.ServerId == server.Id).OrderByDescending(b => b.CreatedAt).ToListAsync(cancellationToken);
         var options = await db.BackupStorages.AsNoTracking().OrderBy(s => s.Name).Select(s => new BackupStorageOption(s.Id.Value, s.Name))
             .ToListAsync(cancellationToken);
-        return new BackupList([.. backups.Select(View)], server.BackupLimit, server.BackupStorageId?.Value, options);
+        // A failed backup keeps its operation's message; the code, for the browser to translate, is the operation's.
+        var failed = backups.Where(b => b.Status == BackupStatus.Failed && b.OperationId is not null).Select(b => b.OperationId!.Value).ToList();
+        var codes = failed.Count == 0
+            ? []
+            : await db.Operations.AsNoTracking().Where(o => failed.Contains(o.Id) && o.ErrorCode != null)
+                .ToDictionaryAsync(o => o.Id, o => o.ErrorCode, cancellationToken);
+        return new BackupList(
+            [.. backups.Select(b => View(b) with { ErrorCode = b.OperationId is { } op ? codes.GetValueOrDefault(op) : null })],
+            server.BackupLimit, server.BackupStorageId?.Value, options);
     }
 
     private Result Connection(NodeId node, string capability)

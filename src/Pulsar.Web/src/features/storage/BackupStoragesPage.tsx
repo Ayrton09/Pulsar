@@ -7,7 +7,7 @@ import { Dialog } from '../../components/ui/Dialog';
 import { Alert, PageHeader, Table, Td, Th } from '../../components/ui/Display';
 import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
-import { adminKeys } from '../admin/api';
+import { useServersChanged } from '../servers/api';
 
 type Storage = Schemas['BackupStorageView'];
 type StorageRequest = Schemas['BackupStorageRequest'];
@@ -18,13 +18,11 @@ function useStorages() {
   return useQuery({ queryKey: storagesKey, queryFn: () => unwrap(api.GET('/api/v1/backup-storages')) });
 }
 
+/** Storages show up in their list, in the servers' Backups tabs (by name) and in the audit log. */
 function useStorageChanged() {
   const queryClient = useQueryClient();
-  return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: storagesKey }),
-      queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
-    ]);
+  const serversChanged = useServersChanged();
+  return () => Promise.all([queryClient.invalidateQueries({ queryKey: storagesKey }), serversChanged()]);
 }
 
 /** S3-compatible storages backups are copied to (settings.manage); servers choose one in their Backups tab. */

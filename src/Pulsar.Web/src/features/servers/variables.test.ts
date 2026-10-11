@@ -19,9 +19,17 @@ const map: TemplateVariable = {
 };
 
 describe('variableError', () => {
-  it('matches the pattern against the whole value, as the panel does', () => {
+  it('leaves the pattern to the panel, which matches it without backtracking', () => {
+    // A nested quantifier the browser's backtracking engine would take minutes over: not evaluated here.
+    const started = performance.now();
+    expect(variableError({ ...map, pattern: '(a+)+$' }, `${'a'.repeat(26)}!`)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(100);
+    expect(variableError(map, 'ok"; rcon_password x')).toBeNull();
+  });
+
+  it('checks what does not need the pattern', () => {
+    expect(variableError({ ...map, required: true }, '')).toBe('validation.required');
+    expect(variableError({ ...map, maxLength: 3 }, 'dust')).toBe('validation.tooLong');
     expect(variableError(map, 'de dust2')).toBeNull();
-    expect(variableError(map, 'ok"; rcon_password x')).toBe('servers.variables.badFormat');
-    expect(variableError({ ...map, pattern: '^[a-z]+$' }, 'abc')).toBeNull();
   });
 });

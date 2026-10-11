@@ -26,4 +26,35 @@ describe('locales', () => {
       ]),
     );
   });
+
+  it('name the codes operations, backups and refused commands end with', () => {
+    expect(keys(en)).toEqual(
+      expect.arrayContaining([
+        'errors.steamcmd.guard_required',
+        'errors.steamcmd.login_failed',
+        'errors.steamcmd.failed',
+        'errors.operation.interrupted',
+        'errors.install.test_game_unavailable',
+        'errors.process.start_failed',
+        'errors.addon.unknown',
+        'errors.addon.download_failed',
+        'errors.files.open_failed',
+        'errors.console.invalid_input',
+        'errors.server.not_running',
+        'errors.server.unknown',
+        'errors.server.running',
+        'errors.server.invalid_spec',
+        'errors.server.invalid_short_id',
+        'errors.server.spec_mismatch',
+        'errors.server.create_forbidden',
+        'servers.ackStatuses.rejected',
+      ]),
+    );
+  });
+
+  it('keep the details of a mod refusal in Spanish too', () => {
+    for (const code of ['requires', 'conflicts', 'required_by'] as const) {
+      expect(es.errors.addon[code]).toContain('{{detail}}');
+    }
+  });
 });

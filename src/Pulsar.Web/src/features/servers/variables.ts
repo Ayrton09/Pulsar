@@ -9,8 +9,10 @@ export function initialValue(variable: TemplateVariable): string {
 }
 
 /**
- * Checks a value as far as the browser can (the API checks again, with the manifest's own rules): required, range,
- * length and, when the browser understands it, the pattern. Returns a translation key or null.
+ * Checks a value as far as the browser can (the API checks again, with the manifest's own rules): required, range and
+ * length. Returns a translation key or null. The pattern is the API's alone: it matches it without backtracking, and
+ * the browser's backtracking engine could freeze the page on a nested quantifier; a value that does not match comes
+ * back as server.invalid_settings when saving.
  */
 export function variableError(variable: TemplateVariable, value: string, secretIsSet = false): string | null {
   if (value === '') {
@@ -28,16 +30,6 @@ export function variableError(variable: TemplateVariable, value: string, secretI
   }
   if (variable.maxLength != null && value.length > variable.maxLength) {
     return 'validation.tooLong';
-  }
-  if (variable.pattern) {
-    try {
-      // The whole value, as the panel matches it (anchored or not).
-      if (!new RegExp(`^(?:${variable.pattern})$`, 'u').test(value)) {
-        return 'servers.variables.badFormat';
-      }
-    } catch {
-      // A .NET pattern the browser cannot compile: the API decides.
-    }
   }
   return null;
 }

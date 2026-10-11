@@ -219,6 +219,8 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
 
         var failed = await WaitForBackupAsync(admin, server, lost, BackupStatus.Failed);
         Assert.Contains("restarted", failed.ErrorMessage, StringComparison.Ordinal);
+        // The code too, for the browser to say it in the user's language.
+        Assert.Equal("operation.interrupted", failed.ErrorCode);
         Assert.Null((await ServerApi.GetAsync(admin, server))!.Server.ActiveOperation);
         await ProblemAsync(await admin.PostAsync($"/api/v1/servers/{server}/backups/{lost}/restore"), HttpStatusCode.Conflict,
             ServerErrors.BackupNotCompleted.Code);

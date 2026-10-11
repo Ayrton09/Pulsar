@@ -1,4 +1,3 @@
-import type { TFunction } from 'i18next';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
@@ -33,7 +32,7 @@ import {
 import { NodeDisconnectedBadge, ServerStateBadge, StateReason } from './components';
 import { ConsoleTab } from './ConsoleTab';
 import { NetworkTab, OperationProgress, SettingsTab } from './ServerTabs';
-import { serverActions } from './serverStatus';
+import { commandRefusal, failureReason, serverActions } from './serverStatus';
 
 const allTabs = [
   'overview',
@@ -71,11 +70,28 @@ export function ServerPage() {
   );
   const requested = search.get('tab');
   const tab: Tab = tabs.find((name) => name === requested) ?? 'overview';
+  // The Files tab's folder and open file stay in the address: going back to it finds them again. Leaving an editor
+  // with unsaved changes asks first (FileEditor).
+  const openTab = (name: Tab) => {
+    const next = new URLSearchParams();
+    if (name !== 'overview') {
+      next.set('tab', name);
+    }
+    for (const key of ['path', 'file']) {
+      const value = search.get(key);
+      if (value !== null) {
+        next.set(key, value);
+      }
+    }
+    setSearch(next, { replace: true });
+  };
 
   if (details.isPending) {
     return <Spinner label={t('common.loading')} />;
   }
-  if (details.isError) {
+  // A failed refresh keeps the page with what was loaded last (an open editor included): only a first load that
+  // failed has nothing to show.
+  if (details.data === undefined) {
     return details.error instanceof ApiError && details.error.code === 'server.not_found' ? (
       <div className="py-16 text-center">
         <h1 className="text-xl font-semibold">{t('servers.notFound')}</h1>
@@ -96,6 +112,11 @@ export function ServerPage() {
           ← {t('servers.title')}
         </Link>
       </p>
+      {details.isError && (
+        <div className="mb-4">
+          <Alert>{t('servers.stale', { error: errorMessage(t, details.error) })}</Alert>
+        </div>
+      )}
       <PageHeader
         title={server.name}
         description={details.data.description ?? undefined}
@@ -123,7 +144,7 @@ export function ServerPage() {
             type="button"
             role="tab"
             aria-selected={tab === name}
-            onClick={() => setSearch(name === 'overview' ? {} : { tab: name }, { replace: true })}
+            onClick={() => openTab(name)}
             className={`-mb-px border-b-2 px-4 py-2 text-sm ${tab === name ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-text'}`}
           >
             {t(`servers.tabs.${name}`)}
@@ -243,17 +264,11 @@ function LifecycleActions({ details }: { details: ServerDetails }) {
       {command.isError && <Alert>{errorMessage(t, command.error)}</Alert>}
       {refused && (
         <p role="status" className="text-sm text-danger">
-          {refusal(t, command.data.status, command.data.errorCode)}
+          {commandRefusal(t, command.data.status, command.data.errorCode)}
         </p>
       )}
     </section>
   );
-}
-
-/** Why the agent refused a command: the translation of its code when there is one, the status and code otherwise. */
-function refusal(t: TFunction, status: string, code: string | null): string {
-  const generic = t('servers.commandRefused', { status, code: code ?? '' });
-  return code ? t(`errors.${code}`, { defaultValue: generic }) : generic;
 }
 
 function Facts({ items }: { items: [string, ReactNode][] }) {
@@ -395,8 +410,8 @@ function OperationsCard({ operations }: { operations: OperationView[] }) {
                     {t(`servers.operations.statuses.${operation.status}`)}
                   </Badge>
                   {operation.errorCode && (operation.status === 'failed' || operation.status === 'interrupted') && (
-                    <p className="mt-1 text-xs text-danger">
-                      {operation.errorMessage ?? operation.errorCode} <code>({operation.errorCode})</code>
+                    <p className="mt-1 text-xs text-danger" title={operation.errorCode}>
+                      {failureReason(t, operation.errorCode, operation.errorMessage)}
                     </p>
                   )}
                 </Td>

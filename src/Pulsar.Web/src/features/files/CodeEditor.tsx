@@ -1,4 +1,4 @@
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab, toggleTabFocusMode } from '@codemirror/commands';
 import { bracketMatching, defaultHighlightStyle, HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search';
 import { EditorState } from '@codemirror/state';
@@ -55,6 +55,8 @@ export interface CodeEditorProps {
 : kept as they are). */
   lineSeparator?: string | undefined;
   readOnly: boolean;
+  /** The id of the text that says how to leave the editor with the keyboard (Tab indents). */
+  describedBy?: string | undefined;
   onChange: (text: string) => void;
   onSave: () => void;
 }
@@ -69,6 +71,7 @@ export default function CodeEditor({
   initial,
   lineSeparator,
   readOnly,
+  describedBy,
   onChange,
   onSave,
 }: CodeEditorProps) {
@@ -102,7 +105,9 @@ export default function CodeEditor({
           theme,
           lineSeparator ? EditorState.lineSeparator.of(lineSeparator) : [],
           EditorState.readOnly.of(readOnly),
-          EditorView.contentAttributes.of({ 'aria-label': label }),
+          EditorView.contentAttributes.of(
+            describedBy ? { 'aria-label': label, 'aria-describedby': describedBy } : { 'aria-label': label },
+          ),
           keymap.of([
             {
               key: 'Mod-s',
@@ -112,7 +117,10 @@ export default function CodeEditor({
                 return true;
               },
             },
+            // Tab indents, so it does not move the focus: Escape then Tab does (CodeMirror), and Ctrl+M (Shift+Alt+M on a
+            // Mac) makes Tab move the focus until pressed again (WCAG 2.1.2; the page says so next to the editor).
             indentWithTab,
+            { key: 'Ctrl-m', mac: 'Shift-Alt-m', run: toggleTabFocusMode },
             ...defaultKeymap,
             ...historyKeymap,
             ...searchKeymap,

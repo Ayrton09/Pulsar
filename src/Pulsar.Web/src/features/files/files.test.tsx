@@ -18,17 +18,20 @@ vi.mock('./CodeEditor', () => ({
     label,
     initial,
     readOnly,
+    describedBy,
     onChange,
     onSave,
   }: {
     label: string;
     initial: string;
     readOnly: boolean;
+    describedBy?: string;
     onChange: (text: string) => void;
     onSave: () => void;
   }) => (
     <textarea
       aria-label={label}
+      aria-describedby={describedBy}
       defaultValue={initial}
       readOnly={readOnly}
       onChange={(e) => onChange(e.target.value)}
@@ -152,9 +155,11 @@ function written(path: string, size: number, version = 'v2'): { status: number; 
   return { status: 200, body: { entry: { name: path.split('/').pop(), kind: 'file', size, modifiedAt: at }, version } };
 }
 
-function renderAt(path: string) {
+function renderAt(path: string, staleTime = 0) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, refetchInterval: false, staleTime } },
+  });
   render(<App router={router} queryClient={queryClient} />);
   return router;
 }
@@ -343,6 +348,116 @@ describe('files tab', () => {
     expect(count('/files/content')).toBe(1);
     expect(screen.getByLabelText('Contents of server.cfg')).toHaveValue('sv_cheats 0 // mine');
     expect(screen.getByRole('status')).toHaveTextContent('Unsaved changes');
+  });
+
+  it('asks before leaving unsaved changes for another tab, and finds the file again there', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files/content`]: () =>
+        new Response('sv_cheats 0', { headers: { ETag: '"v1"' } }),
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const router = renderAt(`/servers/${serverId}?tab=files&file=server.cfg`);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText('Contents of server.cfg'), ' // mine');
+
+    await user.click(screen.getByRole('tab', { name: 'Overview' }));
+
+    // Kept: still editing, nothing lost.
+    expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
+    expect(screen.getByLabelText('Contents of server.cfg')).toHaveValue('sv_cheats 0 // mine');
+    expect(router.state.location.search).toBe('?tab=files&file=server.cfg');
+
+    await user.click(screen.getByRole('tab', { name: 'Overview' }));
+
+    await waitFor(() => expect(screen.queryByLabelText('Contents of server.cfg')).not.toBeInTheDocument());
+    expect(confirm).toHaveBeenCalledTimes(2);
+    // The open file stays in the address: back in Files, it opens again.
+    await user.click(screen.getByRole('tab', { name: 'Files' }));
+    expect(await screen.findByLabelText('Contents of server.cfg')).toHaveValue('sv_cheats 0');
+  });
+
+  it('asks once when closing unsaved changes', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+      [`GET /api/v1/servers/${serverId}/files/content`]: () =>
+        new Response('sv_cheats 0', { headers: { ETag: '"v1"' } }),
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderAt(`/servers/${serverId}?tab=files&file=server.cfg`);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText('Contents of server.cfg'), ' // mine');
+
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(await screen.findByRole('table', { name: 'Files' })).toBeInTheDocument();
+    expect(confirm).toHaveBeenCalledOnce();
+  });
+
+  it('says how to leave the editor with the keyboard', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files/content`]: () =>
+        new Response('sv_cheats 0', { headers: { ETag: '"v1"' } }),
+    });
+    renderAt(`/servers/${serverId}?tab=files&file=server.cfg`);
+
+    expect(await screen.findByLabelText('Contents of server.cfg')).toHaveAccessibleDescription(
+      'Tab indents. To leave the editor with the keyboard, press Esc and then Tab, or Ctrl+M to make Tab move the focus.',
+    );
+  });
+
+  it('refreshes the listing after a save and does not save an unchanged file', async () => {
+    const api = fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+      [`GET /api/v1/servers/${serverId}/files/content`]: () =>
+        new Response('sv_cheats 0', { headers: { ETag: '"v1"' } }),
+    });
+    const listed = () =>
+      api.mock.calls.filter(([input]) =>
+        new URL(input instanceof Request ? input.url : String(input)).pathname.endsWith('/files'),
+      ).length;
+    FakeXhr.handler = async () => written('server.cfg', 20);
+    // As in the app: a listing is fresh for 30 s.
+    renderAt(`/servers/${serverId}?tab=files`, 30_000);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'server.cfg' }));
+    const text = await screen.findByLabelText('Contents of server.cfg');
+
+    // Nothing changed: Ctrl+S writes nothing.
+    await user.click(text);
+    await user.keyboard('{Control>}s{/Control}');
+    expect(FakeXhr.sent).toHaveLength(0);
+
+    await user.type(text, ' // x');
+    await user.keyboard('{Control>}s{/Control}');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('All changes saved'));
+    const before = listed();
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+
+    await screen.findByRole('table', { name: 'Files' });
+    await waitFor(() => expect(listed()).toBeGreaterThan(before));
+  });
+
+  it('does not offer changes while the node is disconnected', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json({ ...details, server: { ...server, nodeConnected: false } }),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+    renderAt(`/servers/${serverId}?tab=files`);
+
+    await screen.findByRole('table', { name: 'Files' });
+    expect(screen.getByText('The node is offline: files cannot be changed until it reconnects.')).toBeInTheDocument();
+    for (const name of ['New folder', 'New file', 'Upload', 'Rename server.cfg', 'Delete server.cfg']) {
+      expect(screen.getByRole('button', { name })).toBeDisabled();
+    }
   });
 
   it('uploads files and asks before replacing one', async () => {

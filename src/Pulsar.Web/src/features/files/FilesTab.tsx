@@ -77,6 +77,7 @@ export function FilesTab({ details }: { details: ServerDetails }) {
       // Operations that rewrite files (provision, install, update, restore, delete): the node refuses changes meanwhile.
       // A backup only reads them.
       busy={server.activeOperation !== null && server.activeOperation.type !== 'backupCreate'}
+      connected={server.nodeConnected}
       onOpenFolder={(folder) => go({ path: folder })}
       onOpenFile={(target) => go({ file: target })}
     />
@@ -88,13 +89,15 @@ interface FileBrowserProps {
   path: string;
   canEdit: boolean;
   busy: boolean;
+  /** Changes go through the node: none while it is disconnected. */
+  connected: boolean;
   onOpenFolder: (path: string) => void;
   onOpenFile: (path: string) => void;
 }
 
 type NameAction = { kind: 'folder' } | { kind: 'file' } | { kind: 'rename'; entry: FileEntry };
 
-function FileBrowser({ serverId, path, canEdit, busy, onOpenFolder, onOpenFile }: FileBrowserProps) {
+function FileBrowser({ serverId, path, canEdit, busy, connected, onOpenFolder, onOpenFile }: FileBrowserProps) {
   const { t } = useTranslation();
   const formatDate = useFormatDate();
   const formatSize = useFormatFileSize();
@@ -103,6 +106,7 @@ function FileBrowser({ serverId, path, canEdit, busy, onOpenFolder, onOpenFile }
   const [naming, setNaming] = useState<NameAction | null>(null);
   const uploads = useUploads(serverId, path);
   const input = useRef<HTMLInputElement>(null);
+  const blocked = busy || !connected;
 
   const deleteEntry = (entry: FileEntry) => {
     const message = entry.kind === 'directory' ? 'files.deleteFolderConfirm' : 'files.deleteConfirm';
@@ -141,13 +145,13 @@ function FileBrowser({ serverId, path, canEdit, busy, onOpenFolder, onOpenFile }
           </Button>
           {canEdit && (
             <>
-              <Button variant="secondary" disabled={busy} onClick={() => setNaming({ kind: 'folder' })}>
+              <Button variant="secondary" disabled={blocked} onClick={() => setNaming({ kind: 'folder' })}>
                 {t('files.newFolder')}
               </Button>
-              <Button variant="secondary" disabled={busy} onClick={() => setNaming({ kind: 'file' })}>
+              <Button variant="secondary" disabled={blocked} onClick={() => setNaming({ kind: 'file' })}>
                 {t('files.newFile')}
               </Button>
-              <Button disabled={busy} onClick={() => input.current?.click()}>
+              <Button disabled={blocked} onClick={() => input.current?.click()}>
                 {t('files.upload')}
               </Button>
               <input
@@ -166,6 +170,7 @@ function FileBrowser({ serverId, path, canEdit, busy, onOpenFolder, onOpenFile }
         </div>
       </div>
 
+      {canEdit && !connected && <p className="text-sm text-muted">{t('files.nodeOffline')}</p>}
       {busy && <p className="text-sm text-muted">{t('files.busy')}</p>}
       {uploads.items.length > 0 && <UploadList uploads={uploads} />}
       {remove.isError && <Alert>{errorMessage(t, remove.error)}</Alert>}
@@ -267,7 +272,7 @@ function FileBrowser({ serverId, path, canEdit, busy, onOpenFolder, onOpenFile }
                             <Button
                               variant="ghost"
                               size="sm"
-                              disabled={busy}
+                              disabled={blocked}
                               aria-label={t('files.renameNamed', { name: entry.name })}
                               onClick={() => setNaming({ kind: 'rename', entry })}
                             >
@@ -276,7 +281,7 @@ function FileBrowser({ serverId, path, canEdit, busy, onOpenFolder, onOpenFile }
                             <Button
                               variant="ghost"
                               size="sm"
-                              disabled={busy || (remove.isPending && remove.variables === target)}
+                              disabled={blocked || (remove.isPending && remove.variables === target)}
                               aria-label={t('files.deleteNamed', { name: entry.name })}
                               onClick={() => deleteEntry(entry)}
                             >

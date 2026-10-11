@@ -1,4 +1,8 @@
+import type { TFunction } from 'i18next';
+import type { Schemas } from '../../api/client';
 import type { ServerSummary } from './api';
+
+type AckStatus = Schemas['AckStatus'];
 
 export type ServerDisplayState =
   | 'installing'
@@ -72,4 +76,25 @@ export function serverActions(server: StatusFields & Pick<ServerSummary, 'nodeCo
     reinstall: connected && idle && stopped,
     delete: connected && idle,
   };
+}
+
+/**
+ * Why the agent refused a command (lifecycle or console): the translation of its code when there is one, the status
+ * and code otherwise.
+ */
+export function commandRefusal(t: TFunction, status: AckStatus, code: string | null): string {
+  const generic = t('servers.commandRefused', {
+    status: t(`servers.ackStatuses.${status}`, { defaultValue: status }),
+    code: code ?? '',
+  });
+  return code ? t(`errors.${code}`, { defaultValue: generic, detail: '' }) : generic;
+}
+
+/**
+ * Why an operation or a backup failed, in the user's language: the translation of its code, the agent's own words
+ * (often English) when there is none. Translations that need the specifics show the agent's words as {{detail}}.
+ */
+export function failureReason(t: TFunction, code: string | null, message: string | null): string {
+  const words = message ?? code ?? '';
+  return code ? t(`errors.${code}`, { defaultValue: words, detail: words }) : words;
 }

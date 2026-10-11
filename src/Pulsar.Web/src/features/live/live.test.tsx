@@ -158,6 +158,57 @@ describe('server console', () => {
     expect(field).toHaveValue('say hello');
   });
 
+  it('says why the node refused a command, in the user language', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers/0192f1a0-0000-7000-8000-0000000000e2': () => json(details),
+      'POST /api/v1/servers/0192f1a0-0000-7000-8000-0000000000e2/console': () =>
+        json({ status: 'rejected', errorCode: 'server.not_running' }),
+    });
+    await renderAt(`/servers/${server.id}?tab=console`);
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByRole('textbox', { name: 'Command' }), 'say hello{Enter}');
+
+    expect(await screen.findByRole('status')).toHaveTextContent('The server is not running.');
+  });
+
+  it('sends a pasted tab as a space and drops other control characters', async () => {
+    const api = serverApi();
+    await renderAt(`/servers/${server.id}?tab=console`);
+    const user = userEvent.setup();
+    const field = await screen.findByRole('textbox', { name: 'Command' });
+
+    await user.click(field);
+    await user.paste('say\thi\u0007 there');
+    expect(field).toHaveValue('say hi there');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(field).toHaveValue(''));
+    const sent = api.mock.calls.map(([input]) => input as Request).find((request) => request.url.endsWith('/console'));
+    expect(await sent?.json()).toEqual({ command: 'say hi there' });
+  });
+
+  it('takes no commands while the node is disconnected', async () => {
+    serverApi(operator, { ...details, server: { ...server, nodeConnected: false } });
+    await renderAt(`/servers/${server.id}?tab=console`);
+
+    expect(await screen.findByRole('textbox', { name: 'Command' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+  });
+
+  it('marks a sequence that never ended and shows what follows', async () => {
+    serverApi();
+    answerNext({
+      WatchConsole: () => ({ entries: [entry(1, 'a\x1b]0;title\nnext\r\n')], nodeConnected: true }),
+    });
+    await renderAt(`/servers/${server.id}?tab=console`);
+
+    await waitFor(() => expect(consoleText()).toContain('a sequence that never ended was dropped here'));
+    expect(consoleText()).toMatch(/dropped here.*next/s);
+    expect(consoleText()).not.toContain('title');
+  });
+
   it('is read-only without the permission to type, and absent without the one to watch', async () => {
     serverApi({ ...operator, permissions: ['server.view', 'server.console.view'] });
     await renderAt(`/servers/${server.id}?tab=console`);

@@ -301,4 +301,42 @@ describe('database hosts page', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await vi.waitFor(() => expect(bodies).toMatchObject([{ host: 'db.example.com', requireTls: false }]));
   });
+
+  it('says when the nodes cannot be listed, and what the host then applies to', async () => {
+    const host: Schemas['DatabaseHostView'] = {
+      id: hostId,
+      name: 'LAN MariaDB',
+      host: '10.0.0.5',
+      port: 3306,
+      userName: 'pulsar',
+      serverAddress: null,
+      serverPort: null,
+      userHost: '%',
+      nodeIds: ['0192f1a0-0000-7000-8000-0000000000a1', '0192f1a0-0000-7000-8000-0000000000a2'],
+      requireTls: false,
+      databases: 0,
+      createdAt: '2026-10-09T12:00:00Z',
+      updatedAt: '2026-10-09T12:00:00Z',
+    };
+    fakeApi({
+      // Settings only: listing the nodes takes node.view, node.manage or server.create.
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['settings.manage'] }),
+      'GET /api/v1/nodes': () => problem(403, 'auth.forbidden'),
+      'GET /api/v1/database-hosts': () => json({ hosts: [host] }),
+    });
+    renderAt('/admin/database-hosts');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Add database host' }));
+    let dialog = screen.getByRole('dialog', { name: 'Add database host' });
+    expect(await within(dialog).findByText(/The nodes cannot be listed:/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('With no node ticked, servers of every node may use this host.'),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    dialog = screen.getByRole('dialog', { name: 'Edit database host' });
+    expect(await within(dialog).findByText('The host stays limited to the 2 nodes it has.')).toBeInTheDocument();
+  });
 });

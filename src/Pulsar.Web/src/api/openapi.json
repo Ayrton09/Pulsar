@@ -11787,6 +11787,12 @@
                 "$ref": "#/components/schemas/GameSaveResult"
               }
             ]
+          },
+          "errorCode": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

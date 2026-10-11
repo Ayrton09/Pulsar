@@ -88,6 +88,7 @@ function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
   render(<App router={router} queryClient={queryClient} />);
+  return queryClient;
 }
 
 beforeAll(async () => {
@@ -213,7 +214,9 @@ describe('steam accounts', () => {
         return json(account, 201);
       },
     });
-    renderAt('/admin/steam-accounts');
+    const queryClient = renderAt('/admin/steam-accounts');
+    // A server page seen before: it names its account, which may be this one.
+    queryClient.setQueryData(['servers', 'some-server'], { stale: false });
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('button', { name: 'Add Steam account' }));
@@ -225,5 +228,6 @@ describe('steam accounts', () => {
 
     expect(await screen.findByRole('table', { name: 'Steam accounts' })).toHaveTextContent('pulsar_servers');
     expect(bodies).toEqual([{ name: 'Servers account', userName: 'pulsar_servers', password: 'a password' }]);
+    expect(queryClient.getQueryState(['servers', 'some-server'])?.isInvalidated).toBe(true);
   });
 });

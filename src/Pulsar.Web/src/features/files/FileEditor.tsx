@@ -1,10 +1,12 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { lazy, Suspense, useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useBlocker } from 'react-router';
 import { ApiError } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Card } from '../../components/ui/Display';
 import { errorMessage } from '../../lib/errors';
-import { downloadUrl, readFile, writeFile, type OpenedFile } from './api';
+import { downloadUrl, fileKeys, readFile, writeFile, type OpenedFile } from './api';
 import { baseName } from './paths';
 import { decodeText, lineEndings } from './text';
 
@@ -26,7 +28,8 @@ type Loaded = { request: number } & ({ file: OpenedFile } | { error: unknown });
  * A text file of the server in the editor (docs/architecture/07, "Files"): opened with its version and saved against
  * it, so a save never overwrites a change made meanwhile (by someone else, or by the game) without the user choosing
  * to. Line endings and a byte order mark are kept as the file had them. The content is read once and again only when
- * the user asks: not a cached query, which the live channel would refresh under the user's edits.
+ * the user asks: not a cached query, which the live channel would refresh under the user's edits. Leaving unsaved
+ * changes (closing, another tab or page, reloading) asks first.
  */
 export function FileEditor({ serverId, path, canEdit, onClose }: FileEditorProps) {
   const { t } = useTranslation();
@@ -118,6 +121,8 @@ function LoadedEditor({
   onClose,
 }: LoadedEditorProps) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const hintId = useId();
   // The editor writes every line with one ending: a file that mixes them would be changed, so it is only shown.
   const endings = lineEndings(initial);
   const canEdit = mayEdit && endings !== 'mixed';
@@ -138,8 +143,24 @@ function LoadedEditor({
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
+  // Anything that leaves the editor inside the panel (Close, another tab, another page) asks first.
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      dirty && (currentLocation.pathname !== nextLocation.pathname || currentLocation.search !== nextLocation.search),
+  );
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      if (window.confirm(t('files.editor.discard'))) {
+        blocker.proceed();
+      } else {
+        blocker.reset();
+      }
+    }
+  }, [blocker, t]);
+
   const save = async (overwrite = false) => {
-    if (!canEdit || saving) {
+    // Ctrl+S on an unchanged file writes nothing (a conflict would be about a save the user never made).
+    if (!canEdit || saving || (!dirty && !overwrite)) {
       return;
     }
     setSaving(true);
@@ -151,6 +172,8 @@ function LoadedEditor({
       setVersion(result.version);
       setSaved(content);
       setConflict(false);
+      // Its size and date in the folder's listing.
+      void queryClient.invalidateQueries({ queryKey: fileKeys.all(serverId) });
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === 'files.changed') {
         setConflict(true);
@@ -159,12 +182,6 @@ function LoadedEditor({
       }
     } finally {
       setSaving(false);
-    }
-  };
-
-  const close = () => {
-    if (!dirty || window.confirm(t('files.editor.discard'))) {
-      onClose();
     }
   };
 
@@ -183,7 +200,7 @@ function LoadedEditor({
           <a href={downloadUrl(serverId, path)} className="px-2 text-sm text-accent hover:underline">
             {t('files.download')}
           </a>
-          <Button variant="secondary" onClick={close}>
+          <Button variant="secondary" onClick={onClose}>
             {t('actions.close')}
           </Button>
           {canEdit && (
@@ -215,10 +232,16 @@ function LoadedEditor({
           initial={initial}
           lineSeparator={endings === '\r\n' || endings === '\r' ? endings : undefined}
           readOnly={!canEdit}
+          describedBy={canEdit ? hintId : undefined}
           onChange={setText}
           onSave={() => void save()}
         />
       </Suspense>
+      {canEdit && (
+        <p id={hintId} className="text-xs text-muted">
+          {t('files.editor.tabHint')}
+        </p>
+      )}
     </div>
   );
 }

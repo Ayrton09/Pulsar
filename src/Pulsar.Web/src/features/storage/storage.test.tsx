@@ -30,6 +30,7 @@ function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } });
   render(<App router={router} queryClient={queryClient} />);
+  return queryClient;
 }
 
 beforeAll(async () => {
@@ -53,7 +54,9 @@ describe('backup storage page', () => {
       },
     });
     const user = userEvent.setup();
-    renderAt('/admin/backup-storage');
+    const queryClient = renderAt('/admin/backup-storage');
+    // A server's Backups tab seen before: it lists the storages by name.
+    queryClient.setQueryData(['servers', 'some-server', 'backups'], { stale: false });
 
     const table = await screen.findByRole('table', { name: 'Backup storage' });
     expect(table).toHaveTextContent('https://abc.r2.cloudflarestorage.com');
@@ -74,6 +77,7 @@ describe('backup storage page', () => {
       bucket: 'pulsar-backups',
       pathStyle: true,
     });
+    expect(queryClient.getQueryState(['servers', 'some-server', 'backups'])?.isInvalidated).toBe(true);
   });
 
   it('says why a storage in use cannot be deleted', async () => {

@@ -266,6 +266,19 @@ function weekday(language: string, day: number): string {
   );
 }
 
+/**
+ * Formats in the task's time zone; one the browser does not know (the panel accepts every zone .NET resolves) in UTC,
+ * and says it did.
+ */
+function zoneFormat(language: string, timeZone: string): [Intl.DateTimeFormat, boolean] {
+  const style = { dateStyle: 'full', timeStyle: 'short' } as const;
+  try {
+    return [new Intl.DateTimeFormat(language, { ...style, timeZone }), true];
+  } catch {
+    return [new Intl.DateTimeFormat(language, { ...style, timeZone: 'UTC' }), false];
+  }
+}
+
 interface TaskDialogProps {
   serverId: string;
   task: ScheduledTaskView | null;
@@ -319,11 +332,7 @@ function TaskDialog({ serverId, task, actions, onDone }: TaskDialogProps) {
     );
   };
 
-  const formatInZone = new Intl.DateTimeFormat(i18n.language, {
-    dateStyle: 'full',
-    timeStyle: 'short',
-    timeZone,
-  });
+  const [formatInZone, zoneKnown] = zoneFormat(i18n.language, timeZone);
 
   return (
     <Dialog
@@ -404,6 +413,7 @@ function TaskDialog({ serverId, task, actions, onDone }: TaskDialogProps) {
 
         <div aria-live="polite" className="rounded-md border border-border p-3 text-sm">
           <p className="font-medium">{t('schedules.nextRuns')}</p>
+          {!zoneKnown && <p className="mt-1 text-muted">{t('schedules.timeZoneUnknown', { zone: timeZone })}</p>}
           {preview.isError ? (
             <p className="mt-1 text-danger">{errorMessage(t, preview.error)}</p>
           ) : preview.data ? (
