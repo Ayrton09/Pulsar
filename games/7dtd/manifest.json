@@ -17,7 +17,7 @@
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 8, "min": 1, "max": 64 },
     { "key": "world", "label": "World", "type": "string", "default": "Navezgane", "maxLength": 64, "pattern": "^[A-Za-z0-9_ -]{1,64}$",
       "description": "Navezgane, a pregenerated world (Pregen06k01…) or RWG for a random one." },
-    { "key": "gameName", "label": "Save name", "type": "string", "default": "Pulsar", "maxLength": 64, "pattern": "^[A-Za-z0-9_. -]{1,64}$",
+    { "key": "gameName", "label": "Save name", "type": "string", "default": "Pulsar", "maxLength": 64, "pattern": "^[A-Za-z0-9_][A-Za-z0-9_. -]{0,63}$",
       "description": "Names the save. A new name starts a new game in the same world." },
     { "key": "visibility", "label": "Server list", "type": "enum", "default": "public",
       "options": [

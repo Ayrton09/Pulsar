@@ -205,34 +205,43 @@ public static partial class ConfigFileWriter
         {
             var commented = inComment;
             inComment = InComment(line, line.Length, commented);
-            // The first property element of the line that is not inside a comment.
-            var match = XmlProperty().Match(line);
-            while (match.Success && InComment(line, match.Index, commented))
+            // Every property element of the line that is not inside a comment and sets a declared key.
+            var patched = new StringBuilder();
+            var last = 0;
+            var removed = false;
+            foreach (Match match in XmlProperty().Matches(line))
             {
-                match = match.NextMatch();
-            }
-
-            if (!match.Success || !pending.TryGetValue(match.Groups["key"].Value, out var entry))
-            {
-                if (!commented && line.TrimStart().StartsWith($"</{file.Section}>", StringComparison.Ordinal))
+                if (InComment(line, match.Index, commented) || !pending.TryGetValue(match.Groups["key"].Value, out var entry))
                 {
-                    close = output.Count;
+                    continue;
                 }
 
-                output.Add(line);
+                patched.Append(line, last, match.Index - last);
+                if (entry.Value.Length > 0 && written.Add(entry.Key))
+                {
+                    patched.Append(XmlElement(entry));
+                }
+                else
+                {
+                    removed = true;
+                }
+
+                last = match.Index + match.Length;
+            }
+
+            var result = patched.Append(line, last, line.Length - last).ToString();
+            if (removed && result.Trim().Length == 0)
+            {
                 continue;
             }
 
-            var rest = line[..match.Index] + line[(match.Index + match.Length)..];
-            if (entry.Value.Length > 0 && written.Add(entry.Key))
+            // Other elements and the comment on the same line stay (a comment may go on over the next lines).
+            if (!commented && result.TrimStart().StartsWith($"</{file.Section}>", StringComparison.Ordinal))
             {
-                output.Add(line[..match.Index] + XmlElement(entry) + line[(match.Index + match.Length)..]);
+                close = output.Count;
             }
-            else if (rest.Trim().Length > 0)
-            {
-                // Other elements and the comment on the same line stay (a comment may go on over the next lines).
-                output.Add(rest);
-            }
+
+            output.Add(result);
         }
 
         var missing = file.Entries.Where(e => e.Value.Length > 0 && written.Add(e.Key)).Select(e => "\t" + XmlElement(e)).ToList();

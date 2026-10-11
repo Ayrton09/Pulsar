@@ -104,15 +104,15 @@ Manifests and schemas are MIT licensed so communities and hosting companies can 
 ### Identity and versioning
 
 - `schemaVersion`: version of the **format** (interpreted by `Pulsar.Manifests`). A new format means a new schema and validator; the old one keeps being read.
-- `key` (`^[a-z0-9][a-z0-9-]{1,63}$`) + `version` (semver) identify an immutable template. `pulsar-test` is reserved for Pulsar's test game.
+- `key` (`^[a-z0-9][a-z0-9-]{1,63}$`) + `version` (semver, ASCII digits only) identify an immutable template. `pulsar-test` is reserved for Pulsar's test game.
 - `requirements` (`minDiskGb`, `minMemoryMb`) are shown when creating a server, not enforced.
 
 ### Variables
 
 | Type | Mandatory constraints |
 |---|---|
-| `string` | `pattern` is **mandatory** when used in `arguments` or `configFiles` (enforced by the validator) and always matches the whole value (anchored or not); `maxLength`. |
-| `integer` | `min` and `max`. |
+| `string` | `pattern` is **mandatory** when used in `arguments` or `configFiles` (enforced by the validator) and always matches the whole value (anchored or not: it runs as `\A(?:pattern)\z`, and the validator compiles that same text); `maxLength`. |
+| `integer` | `min` and `max`. Rendered in its plain form (`+8` and `008` become `8`): after `+maxplayers`, `+8` would be a command of its own. |
 | `boolean` | — |
 | `enum` | Closed `options`; each option can map sub-values (`{{var.gameMode.gameType}}`); an enum used with a sub-value needs a `default` or `required`. |
 
@@ -120,7 +120,7 @@ Attributes: `secret` (strings only, no default; encrypted in the database, write
 
 `workshop` (Phase 12): `{ "appId": 108600, "separator": ";" }` on a string variable that is not secret says it lists Steam Workshop items of that game (the game's app id, not its dedicated server's), separated by `;` (the default) or `,`. The panel then offers an editor that shows each item by name and adds items by id or link (a collection adds its items), looking them up on Steam's public Workshop API; the value is still the plain list, checked by the variable's `pattern`, and the game downloads the items itself. Project Zomboid's `workshopItems` uses it.
 
-Additional default validation for `string` values used as arguments: no leading whitespace, no control characters, and they **cannot start with `-` or `+`**, nor can any word in them (a `-` or `+` after whitespace and before a letter): a value is one argument, but a game may split it at spaces, so it never becomes a flag or a Source console command (`EU - 24/7` and `+1` stay text). Regexes are evaluated with `RegexOptions.NonBacktracking` and a timeout (no ReDoS from a manifest).
+Additional default validation for `string` values used as arguments: no leading whitespace, no control characters, and they **cannot start with `-` or `+`**, nor can any word in them (a `-` or `+` after whitespace and before a letter): a value is one argument, but a game may split it at spaces, so it never becomes a flag or a Source console command (`EU - 24/7` and `+1` stay text). The words are read with the template's text after the value: `x -` before `?Port=7777` makes a `-?Port=7777` word and is refused. Where `+` arguments are console commands (`logfile+rcon`, or a manifest with `+` arguments of its own, as for extra arguments) a value has no `;` (it would start another command) and no `"`. Regexes are evaluated with `RegexOptions.NonBacktracking` and a timeout (no ReDoS from a manifest).
 
 ### Argument templates
 
@@ -140,7 +140,7 @@ A port can `follow` another: `"follows": { "port": "game", "offset": 1 }` says t
 
 ### Executable and paths
 
-- `executable` and `workingDirectory`: **relative** to the server directory, using `/`, no `..`, no root, no drive letter, no `:` (alternate data streams), no reserved names (`CON`, `NUL`, `COM1`…), no trailing dots/spaces.
+- `executable` and `workingDirectory`: **relative** to the server directory, using `/`, no `..`, no root, no drive letter, no `:` (alternate data streams), no reserved names (`CON`, `NUL`, `COM1`…, also before an extension and spaces: `nul.txt`, `CON .cfg`), no trailing dots/spaces, names of up to 255 characters (the file manager's rules). Every path of a manifest (and every backup glob) stays out of Pulsar's own `.pulsar` folder (SteamCMD, its login, addon records), whatever its case or an 8.3 short name (`PULSAR~1`) for it.
 - `.exe` only. `.bat`, `.cmd`, `.ps1`, `.vbs`, `.js` and `.msi` are forbidden: they involve interpreters or a shell.
 - (Post-v1) `executable: { "runtime": "java-21", "path": "bin/java.exe" }` for agent-managed runtimes (Minecraft). The schema reserves the slot but v1 does not implement it.
 
@@ -173,7 +173,7 @@ There is no `run`/`exec`/`script` step. If a game needed its own installer, it w
 - `unreal-ini` rejects `"` and `\` (Unreal reads `\` as an escape inside quotes); its keys and `struct` are `^[A-Za-z_][A-Za-z0-9_]{0,127}$`, and `section` is `^[A-Za-z0-9_./:-]{1,128}$`.
 - `properties` writes each backslash as `\\`; `source-cfg` keys are `^[A-Za-z0-9_.]{1,64}$`, `properties` keys `^[A-Za-z0-9_.-]{1,128}$`.
 - Phase 12: `key-value` writes `Key=Value` lines as they are, without escapes (Project Zomboid's `.ini`, where Build 42 writes mods as `\ModId`); `#` and `!` start comments, and only `=` separates the key.
-- Phase 12: `xml-properties` sets `<property name="Key" value="Value"/>` elements (7 Days to Die's `serverconfig.xml`), with values XML-escaped. Patch mode only: the first element of each key outside comments gets the new value and keeps the rest of its line (the game's own comment), repeats and empty values are removed (anything else on their line, a comment included, stays: a comment may go on over the next lines), and missing keys go before the closing tag of the root element named by `section` (a missing file starts as that empty root; a file without it stops the start). A commented-out element (`<!-- <property name="UserDataFolder" .../> -->`) is left as it is.
+- Phase 12: `xml-properties` sets `<property name="Key" value="Value"/>` elements (7 Days to Die's `serverconfig.xml`), with values XML-escaped. Patch mode only: every element of a line is seen (several may share one); the first element of each key outside comments gets the new value and keeps the rest of its line (the game's own comment), repeats and empty values are removed (anything else on their line, a comment included, stays: a comment may go on over the next lines), and missing keys go before the closing tag of the root element named by `section` (a missing file starts as that empty root; a file without it stops the start). A commented-out element (`<!-- <property name="UserDataFolder" .../> -->`) is left as it is.
 
 ### Console
 
@@ -249,7 +249,7 @@ As implemented (Phase 7): the globs match files only and ignore case (as Windows
 
 Mods and mod frameworks the game supports, installed on request from the server's **Mods** tab (never by the game's install). Each one has a `key` (`^[a-z0-9][a-z0-9-]{1,31}$`, unique), a `name`, its `license` and an https `url` shown before installing, and:
 
-- `source`: a closed set, like install steps. `githubRelease` takes the GitHub `repo` (`owner/name`), an `asset` regex (NonBacktracking, at most 200 characters) that must match exactly one asset of the release, and either a `tag` (a fixed release, such as Carbon's `production_build`) or `prerelease: true` (the newest release, pre-releases included: Metamod's only builds for CS2), or neither (the latest stable release). GitHub must publish the asset's SHA-256 (`digest`); without one the agent refuses it.
+- `source`: a closed set, like install steps. `githubRelease` takes the GitHub `repo` (`owner/name`, neither of them `.` or `..`), an `asset` regex (NonBacktracking, at most 200 characters) that must match exactly one asset of the release, and either a `tag` (a fixed release, such as Carbon's `production_build`; not `.` or `..`) or `prerelease: true` (the newest release, pre-releases included: Metamod's only builds for CS2), or neither (the latest stable release). GitHub must publish the asset's SHA-256 (`digest`); without one the agent refuses it.
 - `target`: the folder the zip is unpacked into ("" for the server's own folder).
 - `requires` / `conflicts`: other addons of the manifest. The panel refuses to install one before what it needs, or next to one it conflicts with (either side declaring it is enough), and to remove one another installed addon needs (`409`).
 - `reinstallAfterUpdate`: the game's updates overwrite it (Oxide replaces Rust's own files), so after every update the agent installs its latest release again, in the same operation.

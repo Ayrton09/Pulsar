@@ -11,7 +11,7 @@
   "requirements": { "minDiskGb": 30, "minMemoryMb": 16384 },
 
   "variables": [
-    { "key": "sessionName", "label": "Server name", "type": "string", "default": "Pulsar ARK", "maxLength": 63, "pattern": "^[^?\"\\\\]{1,63}$",
+    { "key": "sessionName", "label": "Server name", "type": "string", "default": "Pulsar ARK", "maxLength": 63, "pattern": "^[^?\";\\\\]{1,63}$",
       "description": "As players see it in the server list." },
     { "key": "map", "label": "Map", "type": "string", "default": "TheIsland_WP", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$",
       "description": "The map's name with its _WP suffix: TheIsland_WP, ScorchedEarth_WP, TheCenter_WP, Aberration_WP, Extinction_WP…" },

@@ -204,7 +204,8 @@ public sealed class Server
             return ServerErrors.NotInstalled;
         }
 
-        if (operation.Type is OperationType.ServerInstall or OperationType.ServerUpdate or OperationType.BackupRestore
+        // Provisioning rewrites the server's folder, account and spec: like the others, never under a running game.
+        if (operation.Type is OperationType.ServerProvision or OperationType.ServerInstall or OperationType.ServerUpdate or OperationType.BackupRestore
                 or OperationType.AddonInstall or OperationType.AddonRemove
             && RuntimeState is not (ServerRuntimeState.Offline or ServerRuntimeState.Crashed))
         {

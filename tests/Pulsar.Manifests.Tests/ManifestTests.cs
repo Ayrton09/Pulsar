@@ -74,6 +74,8 @@ public sealed class ManifestTests
     [InlineData("+rcon_password")]
     [InlineData("-insecure")]
     [InlineData(" de_dust2")]
+    [InlineData("de_dust2;rcon_password x")] // a second command on a Source command line
+    [InlineData("de_dust2\"x")]
     public void AVariableCanNeverBecomeAFlagOrAConsoleCommand(string map)
     {
         // A pattern that (wrongly) allows anything: the renderer still refuses values that would read as flags.
@@ -539,6 +541,118 @@ public sealed class ManifestTests
         Assert.Throws<LaunchPlanException>(() => Render(manifest, new Dictionary<string, string?> { ["hostname"] = hostname }));
         // A dash or plus on its own, or before a digit, is text: "EU - 24/7", "+1".
         Assert.Equal("Pulsar - EU +1 -5", Render(manifest, new Dictionary<string, string?> { ["hostname"] = "Pulsar - EU +1 -5" }).Arguments[^1]);
+    }
+
+    // The value is checked with the text the template puts around it: "x -" then "?Port=7777" is a "-?Port" word.
+    [Theory]
+    [InlineData("{{var.name}}?Port=7777", "x -", false)]
+    [InlineData("{{var.name}}-flag", "x ", false)]
+    [InlineData("{{var.name}}-flag", "x", true)]
+    [InlineData("{{var.name}} -5", "x -", true)]
+    [InlineData("{{var.name}}", "x -", true)]
+    public void AStringArgumentValueIsCheckedWithTheTextAroundIt(string argument, string name, bool renders)
+    {
+        var manifest = Parse(Manifest(m =>
+        {
+            m["variables"]!.AsArray().Add(new JsonObject { ["key"] = "name", ["label"] = "Name", ["type"] = "string", ["pattern"] = "^.{1,64}$" });
+            m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add(argument);
+        }));
+
+        var error = LaunchPlanRenderer.Check(manifest, ManifestValidator.WindowsX64, new ServerBinding("abcd1234", new Dictionary<string, string?> { ["name"] = name }));
+
+        Assert.Equal(renders, error is null);
+    }
+
+    [Fact]
+    public void ArkSessionNamesCannotEndInAFlag()
+    {
+        var binding = new ServerBinding("abcd1234", new Dictionary<string, string?> { ["sessionName"] = "x -" },
+            new Dictionary<string, PortAssignment> { ["game"] = new(PortAssignment.AnyAddress, 7777) });
+
+        Assert.NotNull(LaunchPlanRenderer.Check(TestManifests.Load("ark-sa"), ManifestValidator.WindowsX64, binding));
+        // An RCON console's command line: no ';', which its pattern says where the name is typed.
+        Assert.NotNull(VariableValues.Check(TestManifests.Load("ark-sa").VariableList.Single(v => v.Key == "sessionName"), "PvE; 2x"));
+        Assert.Null(LaunchPlanRenderer.Check(TestManifests.Load("ark-sa"), ManifestValidator.WindowsX64,
+            binding with { Values = new Dictionary<string, string?> { ["sessionName"] = "EU - PvE" } }));
+    }
+
+    // "+8" after "+maxplayers" would be read as a command of its own: integers are written in their plain form.
+    [Theory]
+    [InlineData("+5", "5")]
+    [InlineData("005", "5")]
+    [InlineData("-0", "0")]
+    public void IntegersAreRenderedInTheirPlainForm(string given, string rendered)
+    {
+        var plan = Render(TestManifest(), new Dictionary<string, string?> { ["readyAfterMs"] = given });
+
+        Assert.Equal(["--ready-after", rendered], plan.Arguments);
+        Assert.Equal(rendered, VariableValues.Resolve(TestManifest(), new Dictionary<string, string?> { ["readyAfterMs"] = given })["readyAfterMs"]);
+    }
+
+    // A pattern is used wrapped (\A(?:pattern)\z): one that only compiles bare, like an inline comment that swallows
+    // the wrapper's end, is refused when the manifest is imported, and never throws when a value is checked.
+    [Fact]
+    public void APatternIsValidatedAsItRuns()
+    {
+        const string pattern = "(?x)[a-z]+ # letters";
+        var errors = Errors(m => m["variables"]!.AsArray().Add(new JsonObject { ["key"] = "name", ["label"] = "Name", ["type"] = "string", ["pattern"] = pattern }));
+
+        Assert.Contains(errors, e => e.Path == "variables[3].pattern");
+        Assert.NotNull(VariableValues.Check(new VariableDefinition("name", "Name", VariableType.String, Pattern: pattern), "abc"));
+    }
+
+    // A manifest names files inside the server directory, never Pulsar's own (.pulsar: SteamCMD, its login, addon
+    // records), with the file manager's rules: a device name is one even before " .ext", names have up to 255 characters.
+    [Theory]
+    [InlineData("CON .cfg")]
+    [InlineData("cfg/nul .txt")]
+    [InlineData(".pulsar/steamcmd/steamcmd.exe")]
+    [InlineData(".PULSAR/addons/x.json")]
+    [InlineData(".pulsar")]
+    public void ConfigFilesFollowTheFileManagersRules(string path)
+    {
+        var errors = Errors(m => m["configFiles"] = new JsonArray(new JsonObject
+        {
+            ["path"] = path,
+            ["format"] = "properties",
+            ["mode"] = "patch",
+            ["set"] = new JsonObject { ["a"] = "b" },
+        }));
+
+        Assert.Contains(errors, e => e.Path == "configFiles[0].path");
+    }
+
+    [Fact]
+    public void PathSegmentsHaveAtMost255Characters()
+    {
+        Assert.True(ManifestValidator.IsValidRelativePath(new string('a', 255)));
+        Assert.False(ManifestValidator.IsValidRelativePath(new string('a', 256)));
+        Assert.False(ManifestValidator.IsValidRelativePath("cfg/CON .cfg"));
+        Assert.True(ManifestValidator.IsValidRelativePath("cfg/console.cfg"));
+        Assert.True(ManifestValidator.IsValidRelativePath(".pulsar-not/server.cfg"));
+    }
+
+    // Non-ASCII digits would sort as 0 ("١.٠.١" older than 1.0.0).
+    [Theory]
+    [InlineData("١.٠.١")]
+    [InlineData("1.0.١")]
+    public void VersionsUseAsciiDigits(string version)
+    {
+        Assert.Contains(Errors(m => m["version"] = version), e => e.Path == "version");
+    }
+
+    // 7 Days to Die names its save folder after the save name: "." and ".." would put it elsewhere.
+    [Theory]
+    [InlineData("..", false)]
+    [InlineData(".", false)]
+    [InlineData(" Pulsar", false)]
+    [InlineData("Pulsar 2.0", true)]
+    [InlineData("_save", true)]
+    public void SevenDaysSaveNamesStayInTheirFolder(string name, bool accepted)
+    {
+        var variable = TestManifests.Load("7dtd").VariableList.Single(v => v.Key == "gameName");
+
+        Assert.Equal(accepted, VariableValues.Check(variable, name) is null);
     }
 
     [Fact]

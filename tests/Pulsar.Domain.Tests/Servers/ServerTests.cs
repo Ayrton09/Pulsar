@@ -59,6 +59,30 @@ public sealed class ServerTests
     }
 
     [Fact]
+    public void ProvisioningNeedsAStoppedServer()
+    {
+        // Provisioning rewrites the server's folder, account and spec: never under a running game.
+        var server = NewServer();
+        Install(server);
+        server.Observe(ServerRuntimeState.Running, ServerStateReason.Ready, null, 1, s_now, snapshot: false);
+        var provision = Operation.Create(OperationType.ServerProvision, server.NodeId, server.Id, null, OperationRequester.User, s_now);
+        Assert.Equal(ServerErrors.MustBeStopped, server.BeginOperation(provision, s_now).Error);
+
+        server.Observe(ServerRuntimeState.Crashed, ServerStateReason.Crashed, 1, 2, s_now, snapshot: false);
+        Assert.True(server.BeginOperation(provision, s_now).IsSuccess);
+    }
+
+    [Fact]
+    public void ANewServerCanBeProvisioned()
+    {
+        var server = NewServer();
+        var provision = Operation.Create(OperationType.ServerProvision, server.NodeId, server.Id, null, OperationRequester.User, s_now);
+
+        Assert.True(server.BeginOperation(provision, s_now).IsSuccess);
+        Assert.Equal(InstallState.Installing, server.InstallState);
+    }
+
+    [Fact]
     public void ExtraArgumentsAreSingleBoundedLines()
     {
         var server = NewServer();
