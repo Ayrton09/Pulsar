@@ -14,29 +14,32 @@ import { tags } from '@lezer/highlight';
 import { useEffect, useRef } from 'react';
 import { languageFor } from './languages';
 
-// Colors from the panel's tokens, so the editor follows the light and dark themes.
-const theme = EditorView.theme({
-  '&': {
-    backgroundColor: 'var(--pulsar-bg)',
-    color: 'var(--pulsar-text)',
-    fontSize: '13px',
-    height: '100%',
+// Colors from the panel's tokens. The panel is dark only: CodeMirror's own parts (search panel, tooltips) are told so.
+const theme = EditorView.theme(
+  {
+    '&': {
+      backgroundColor: 'var(--pulsar-bg)',
+      color: 'var(--pulsar-text)',
+      fontSize: '13px',
+      height: '100%',
+    },
+    '.cm-scroller': { fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace' },
+    '.cm-content': { caretColor: 'var(--pulsar-accent)' },
+    '.cm-gutters': {
+      backgroundColor: 'var(--pulsar-surface)',
+      color: 'var(--pulsar-muted)',
+      borderRight: '1px solid var(--pulsar-border)',
+    },
+    '.cm-activeLine, .cm-activeLineGutter': {
+      backgroundColor: 'color-mix(in srgb, var(--pulsar-accent) 8%, transparent)',
+    },
+    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
+      backgroundColor: 'color-mix(in srgb, var(--pulsar-accent) 30%, transparent)',
+    },
+    '.cm-panels': { backgroundColor: 'var(--pulsar-surface)', color: 'var(--pulsar-text)' },
   },
-  '.cm-scroller': { fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace' },
-  '.cm-content': { caretColor: 'var(--pulsar-accent)' },
-  '.cm-gutters': {
-    backgroundColor: 'var(--pulsar-surface)',
-    color: 'var(--pulsar-muted)',
-    borderRight: '1px solid var(--pulsar-border)',
-  },
-  '.cm-activeLine, .cm-activeLineGutter': {
-    backgroundColor: 'color-mix(in srgb, var(--pulsar-accent) 8%, transparent)',
-  },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
-    backgroundColor: 'color-mix(in srgb, var(--pulsar-accent) 30%, transparent)',
-  },
-  '.cm-panels': { backgroundColor: 'var(--pulsar-surface)', color: 'var(--pulsar-text)' },
-});
+  { dark: true },
+);
 
 const highlight = HighlightStyle.define([
   { tag: tags.comment, color: 'var(--pulsar-muted)', fontStyle: 'italic' },

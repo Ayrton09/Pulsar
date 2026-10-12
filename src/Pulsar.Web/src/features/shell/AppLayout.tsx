@@ -1,6 +1,5 @@
 import * as RadixDialog from '@radix-ui/react-dialog';
 import {
-  Activity,
   Archive,
   Bell,
   Database,
@@ -21,6 +20,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, Outlet } from 'react-router';
 import { Button } from '../../components/ui/Button';
+import { Logo } from '../../components/ui/Logo';
 import { canAnywhere, Permission } from '../../lib/permissions';
 import { useCurrentUser, useLogout } from '../auth/api';
 import { InsecureConnectionBanner } from '../auth/InsecureConnectionBanner';
@@ -84,11 +84,8 @@ function LiveStatusNote() {
 
 function Brand({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
   return (
-    <Link to="/" onClick={onNavigate} className="flex items-center gap-2.5 rounded-md">
-      <span className="grid size-8 place-items-center rounded-lg bg-accent text-accent-contrast">
-        <Activity className="size-4.5" />
-      </span>
-      <span className="text-lg font-semibold tracking-tight">Pulsar</span>
+    <Link to="/" onClick={onNavigate} className="rounded-md">
+      <Logo />
     </Link>
   );
 }

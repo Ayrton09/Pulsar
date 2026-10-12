@@ -2,9 +2,11 @@
 
 /*
  * Design tokens. Components use the Tailwind utilities generated from @theme
- * (bg-surface, text-muted, …); the values switch with the color scheme.
+ * (bg-surface, text-muted, …). The panel has one theme, dark: the browser's
+ * own controls (scrollbars, date pickers) follow it through color-scheme.
  */
 :root {
+  color-scheme: dark;
   --pulsar-bg: #0b0d12;
   --pulsar-surface: #141821;
   --pulsar-surface-raised: #1c2130;
@@ -16,22 +18,6 @@
   --pulsar-danger: #f26d6d;
   --pulsar-success: #4cc38a;
   --pulsar-warning: #e2b04a;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    --pulsar-bg: #f6f7fb;
-    --pulsar-surface: #ffffff;
-    --pulsar-surface-raised: #eef0f6;
-    --pulsar-border: #dde1ea;
-    --pulsar-text: #141821;
-    --pulsar-muted: #5b6475;
-    --pulsar-accent: #5b3df5;
-    --pulsar-accent-contrast: #ffffff;
-    --pulsar-danger: #c62828;
-    --pulsar-success: #1e7a4f;
-    --pulsar-warning: #9a5b00;
-  }
 }
 
 @theme inline {
