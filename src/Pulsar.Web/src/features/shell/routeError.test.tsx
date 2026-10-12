@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, type RouteObject } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -51,7 +51,8 @@ describe('route errors', () => {
     renderFailing(new TypeError('Failed to fetch dynamically imported module: /assets/NodesPage-1a2b3c.js'));
 
     expect(await screen.findByRole('heading', { name: 'The panel was updated' })).toBeInTheDocument();
-    expect(reloadForNewBuild).toHaveBeenCalledOnce();
+    // The page asks from an effect, which the router's transition may run just after the heading shows.
+    await waitFor(() => expect(reloadForNewBuild).toHaveBeenCalledOnce());
   });
 
   it('offer to reload when reloading already did not help', async () => {
