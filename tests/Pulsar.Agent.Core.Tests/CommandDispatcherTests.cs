@@ -37,8 +37,34 @@ public sealed class CommandDispatcherTests : IDisposable
     [Fact]
     public void TheAgentAnnouncesWhatItHandles()
     {
-        Assert.Equal([AgentCapabilities.Ping, AgentCapabilities.RotateCredential, AgentCapabilities.UpdatePanelKeys],
+        Assert.Equal([AgentCapabilities.Ping, AgentCapabilities.RotateCredential, AgentCapabilities.UpdatePanelKeys, AgentCapabilities.UseAgentsAddress],
             _dispatcher.SupportedCommands.Order(StringComparer.Ordinal).ToArray().Order(StringComparer.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(0, null)]
+    [InlineData(70000, null)]
+    [InlineData(8444, "http://panel.example.com:8444")]
+    [InlineData(8444, "http://localhost:8444")]
+    [InlineData(8444, "https://panel.example.com:8444/agent")]
+    [InlineData(8444, "https://user@panel.example.com:8444")]
+    [InlineData(8444, "not an address")]
+    public void AnAgentsAddressWithoutAPortOrWithAnAddressThatIsNotAnHttpsOriginIsRefused(int port, string? url)
+    {
+        var ack = Execute(new UseAgentsAddressCommand(port, url));
+
+        Assert.Equal(AckStatus.Rejected, ack.Status);
+        Assert.Equal("command.invalid_agents_address", ack.ErrorCode);
+        Assert.Empty(_control.AgentsAddresses);
+    }
+
+    [Fact]
+    public void ThePortAndTheOperatorsAddressGoToTheConnection()
+    {
+        Assert.Equal(AckStatus.Accepted, Execute(new UseAgentsAddressCommand(8444)).Status);
+        Assert.Equal(AckStatus.Accepted, Execute(new UseAgentsAddressCommand(8444, "https://Agents.Example.com:9444")).Status);
+
+        Assert.Equal([(8444, null), (8444, new Uri("https://agents.example.com:9444/"))], _control.AgentsAddresses);
     }
 
     [Fact]
@@ -137,6 +163,14 @@ public sealed class CommandDispatcherTests : IDisposable
     private sealed class Control : IAgentControl
     {
         public IReadOnlyList<PanelKey> Keys { get; set; } = [];
+
+        public List<(int Port, Uri? Url)> AgentsAddresses { get; } = [];
+
+        public Task<CommandAck> UseAgentsAddressAsync(Guid commandId, int port, Uri? url)
+        {
+            AgentsAddresses.Add((port, url));
+            return Task.FromResult(new CommandAck(commandId, AckStatus.Accepted, null, null));
+        }
 
         public int RotationRequests { get; private set; }
 

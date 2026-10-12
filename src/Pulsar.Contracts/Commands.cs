@@ -52,6 +52,7 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(InstallAddonCommand), InstallAddonCommand.Type)]
 [JsonDerivedType(typeof(RemoveAddonCommand), RemoveAddonCommand.Type)]
 [JsonDerivedType(typeof(ForgetSteamLoginCommand), ForgetSteamLoginCommand.Type)]
+[JsonDerivedType(typeof(UseAgentsAddressCommand), UseAgentsAddressCommand.Type)]
 public abstract record AgentCommand;
 
 /// <summary>Round-trip check of the signed command path (the UI's "test connection").</summary>
@@ -76,6 +77,18 @@ public sealed record RotateCredentialCommand : AgentCommand
 public sealed record UpdatePanelKeysCommand(IReadOnlyList<PanelKey> Keys) : AgentCommand
 {
     public const string Type = "node.update_panel_keys";
+}
+
+/// <summary>
+/// The panel's agents' address (Phase 16), where the agent presents its node key as a TLS client certificate: the port of
+/// the agents' endpoint on the host the agent already reaches the panel by, or <paramref name="Url"/> (an https origin)
+/// when the panel's operator configured one. Never a host taken from a request, which a proxy could choose. The agent
+/// signs in there first and only then keeps it, with the address it used until now as a fallback; an address it cannot
+/// sign in at is refused (<c>agent.address_unreachable</c>) and changes nothing.
+/// </summary>
+public sealed record UseAgentsAddressCommand(int Port, string? Url = null) : AgentCommand
+{
+    public const string Type = "node.use_agents_address";
 }
 
 /// <summary>
@@ -490,6 +503,12 @@ public static class AgentCapabilities
     /// </summary>
     public const string ForgetSteamLogin = ForgetSteamLoginCommand.Type;
 
+    /// <summary>
+    /// The agent presents its node key as a TLS client certificate and can move to the panel's agents' address
+    /// (Phase 16): it gets <see cref="UseAgentsAddressCommand"/> and follows a signed <see cref="AgentError.AgentsAddress"/>.
+    /// </summary>
+    public const string UseAgentsAddress = UseAgentsAddressCommand.Type;
+
     /// <summary>The capability an agent must announce to receive <paramref name="command"/>.</summary>
     public static string Of(AgentCommand command) => command switch
     {
@@ -522,6 +541,7 @@ public static class AgentCapabilities
         InstallAddonCommand => InstallAddon,
         RemoveAddonCommand => RemoveAddon,
         ForgetSteamLoginCommand => ForgetSteamLogin,
+        UseAgentsAddressCommand => UseAgentsAddress,
         null => throw new ArgumentNullException(nameof(command)),
         _ => throw new ArgumentOutOfRangeException(nameof(command), command.GetType().Name, "Command without a capability."),
     };

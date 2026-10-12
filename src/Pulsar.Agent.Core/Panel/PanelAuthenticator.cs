@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Contracts;
 
@@ -9,15 +11,40 @@ namespace Pulsar.Agent.Core.Panel;
 /// </summary>
 public sealed class PanelAuthenticator(PanelTransport transport)
 {
+    /// <summary>Signs in at the configured panel address, the key presented as client certificate (<c>status --check</c>).</summary>
     public async Task<TokenResponse> AuthenticateAsync(AgentConfig config, INodeKey key, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(key);
-        var origin = PanelAddress.Origin(config.Panel);
-        using var http = transport.CreateClient(config.Panel);
+        using var certificate = NodeCertificate.TryCreate(key, out _);
+        return await AuthenticateAsync(config.Panel, config, key, certificate, cancellationToken);
+    }
 
-        var challenge = await PanelTransport.PostAsync<ChallengeRequest, ChallengeResponse>(http, AgentProtocol.ChallengePath,
-            new ChallengeRequest(config.NodeId, config.CredentialId), cancellationToken);
+    /// <summary>
+    /// Signs in at <paramref name="panel"/> (the configured address, its fallback, or an agents' address being tried),
+    /// presenting <paramref name="certificate"/> where the panel asks for a client certificate.
+    /// </summary>
+    public async Task<TokenResponse> AuthenticateAsync(Uri panel, AgentConfig config, INodeKey key, X509Certificate2? certificate,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(panel);
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(key);
+        var origin = PanelAddress.Origin(panel);
+        using var http = transport.CreateClient(panel, certificate);
+
+        // A refusal that sends the agent to the agents' address signs this back: an old refusal played back is not followed.
+        var nonce = RandomNumberGenerator.GetBytes(32);
+        ChallengeResponse challenge;
+        try
+        {
+            challenge = await PanelTransport.PostAsync<ChallengeRequest, ChallengeResponse>(http, AgentProtocol.ChallengePath,
+                new ChallengeRequest(config.NodeId, config.CredentialId, nonce), cancellationToken);
+        }
+        catch (CertificateRequiredException ex)
+        {
+            throw new CertificateRequiredException(ex.Message, ex.AgentsAddress, panel, nonce);
+        }
 
         // Signing a nonce bound to another origin would hand a relaying panel a valid login here.
         if (!string.Equals(challenge.PanelOrigin, origin, StringComparison.Ordinal))

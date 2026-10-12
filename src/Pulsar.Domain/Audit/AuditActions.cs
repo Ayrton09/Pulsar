@@ -111,6 +111,11 @@ public static class AuditActions
         public const string Retired = "panel_key.retired";
     }
 
+    public static class AgentTransport
+    {
+        public const string Changed = "agent_transport.changed";
+    }
+
     public static class BackupStorage
     {
         public const string Created = "backup_storage.created";

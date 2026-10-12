@@ -53,6 +53,16 @@ internal static class ApiServiceCollectionExtensions
         // that much before any check.
         services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(options =>
             options.Limits.MaxRequestBodySize = MaxRequestBodyBytes);
+
+        // The agents' endpoint (Phase 16), when Kestrel:Endpoints:Agents exists: client certificates, agent protocol only.
+        services.AddOptions<AgentsOptions>()
+            .Bind(configuration.GetSection(AgentsOptions.SectionName))
+            .Validate(o => AgentsOptions.IsValidUrl(o.PublicUrl), "Agents:PublicUrl must be an https origin, such as https://agents.example.com:8444.")
+            .ValidateOnStart();
+        services.AddSingleton<AgentsEndpoint>();
+        services.AddOptions<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>()
+            .Configure<AgentsEndpoint>((options, agents) =>
+                options.Configure(configuration.GetSection("Kestrel"), reloadOnChange: true).Endpoint(AgentsEndpoint.Name, agents.Configure));
         services.AddValidation();
         services.AddHttpContextAccessor();
         services.AddScoped<HttpRequestContext>();

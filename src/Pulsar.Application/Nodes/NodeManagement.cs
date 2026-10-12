@@ -38,6 +38,11 @@ public sealed record NodeMetricsView(DateTimeOffset At, double CpuPercent, long 
 
 /// <param name="EnrollmentTokenName">The reusable enrollment token that created the node, when one did (and still exists).</param>
 /// <param name="CredentialFingerprint">The fingerprint of the node's active key, to check a machine before approving it.</param>
+/// <param name="ConnectedWithCertificate">
+/// Whether the agent's last connection presented its node key as a TLS client certificate (Phase 16); null before it
+/// connected to a panel that records it.
+/// </param>
+/// <param name="AgentCanUseCertificate">Whether its agent can present one and move to the agents' address; null: unknown.</param>
 public sealed record NodeSummary(
     Guid Id,
     string Name,
@@ -51,7 +56,9 @@ public sealed record NodeSummary(
     DateTimeOffset CreatedAt,
     PanelKeyTrust PanelKeyTrust,
     string? EnrollmentTokenName,
-    string? CredentialFingerprint);
+    string? CredentialFingerprint,
+    bool? ConnectedWithCertificate,
+    bool? AgentCanUseCertificate);
 
 /// <summary>Whether the node's agent trusts the panel's active signing key (it may still pin only a retiring one).</summary>
 public enum PanelKeyTrust
@@ -379,7 +386,7 @@ public sealed class NodeManagement(
         var metrics = connection?.LastMetrics is { } m ? NodeMetricsView.From(m) : null;
         return new NodeSummary(node.Id.Value, node.Name, node.Description, node.PublicHost, node.Status, connection is not null,
             node.LastSeenAt, inventory, metrics, node.CreatedAt, Trust(connection?.PinnedPanelKeys ?? node.PinnedPanelKeys, activeKeyId),
-            enrollmentTokenName, credentialFingerprint);
+            enrollmentTokenName, credentialFingerprint, node.ConnectedWithCertificate, node.AgentCanUseCertificate);
     }
 
     private static PanelKeyTrust Trust(IReadOnlyList<string>? pinned, string activeKeyId) => pinned switch

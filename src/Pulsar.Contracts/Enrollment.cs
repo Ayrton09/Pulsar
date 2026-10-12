@@ -54,7 +54,11 @@ public sealed record EnrollmentResult(Guid NodeId, Guid CredentialId, string Pan
 public sealed record SignedMessage(string KeyId, byte[] Payload, byte[] Signature);
 
 /// <summary><c>POST /agent/v1/auth/challenge</c>.</summary>
-public sealed record ChallengeRequest(Guid NodeId, Guid CredentialId);
+/// <param name="Nonce">
+/// Phase 16: random bytes the agent sends with each challenge request (at most 64). A refusal that sends it to the agents'
+/// address signs them back (<see cref="AgentsAddress.Nonce"/>), so a refusal recorded once cannot be replayed later.
+/// </param>
+public sealed record ChallengeRequest(Guid NodeId, Guid CredentialId, byte[]? Nonce = null);
 
 /// <summary>
 /// A single-use nonce. <see cref="PanelOrigin"/> is part of the signed data, so a response obtained by another
@@ -80,7 +84,19 @@ public sealed record TokenResponse(string AccessToken, Guid SessionId, DateTimeO
 }
 
 /// <summary>Error body of the agent endpoints.</summary>
-public sealed record AgentError(string Code, string Message);
+/// <param name="AgentsAddress">
+/// With <c>agent.certificate_required</c> (Phase 16): where this node connects with its client certificate, an
+/// <see cref="Contracts.AgentsAddress"/> signed by a panel key the agent pins. Null otherwise (additive).
+/// </param>
+public sealed record AgentError(string Code, string Message, SignedMessage? AgentsAddress = null);
+
+/// <summary>
+/// Payload of <see cref="AgentError.AgentsAddress"/>, signed with <see cref="AgentProtocol.Purposes.AgentsAddress"/>: where
+/// one node finds the agents' endpoint, as <see cref="UseAgentsAddressCommand"/> says it (the port on the host the agent
+/// reached, or the operator's <paramref name="Url"/>), bound to that node and to the <paramref name="Nonce"/> of the
+/// challenge request it answers.
+/// </summary>
+public sealed record AgentsAddress(Guid NodeId, int Port, string? Url, byte[]? Nonce);
 
 /// <summary>
 /// <c>POST /agent/v1/credentials/rotate</c>, authenticated with the current session. <see cref="Proof"/> signs

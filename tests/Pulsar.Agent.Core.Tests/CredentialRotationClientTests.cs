@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Contracts;
@@ -34,7 +35,7 @@ public sealed class CredentialRotationClientTests : IDisposable
         var credentialId = Guid.NewGuid();
         var transport = Answering(new CredentialRotation(_config.NodeId, credentialId, ProtocolCrypto.Fingerprint(_newKey.PublicKey)));
 
-        Assert.Equal(credentialId, await new CredentialRotationClient(transport).RegisterAsync(_config, "token", Guid.NewGuid(), _newKey,
+        Assert.Equal(credentialId, await new CredentialRotationClient(transport).RegisterAsync(_config, _config.Panel, null, "token", Guid.NewGuid(), _newKey,
             TestContext.Current.CancellationToken));
     }
 
@@ -45,7 +46,7 @@ public sealed class CredentialRotationClientTests : IDisposable
         using var other = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var transport = Answering(new CredentialRotation(_config.NodeId, Guid.NewGuid(), ProtocolCrypto.Fingerprint(other.ExportSubjectPublicKeyInfo())));
 
-        var refused = await Assert.ThrowsAsync<AgentException>(() => new CredentialRotationClient(transport).RegisterAsync(_config, "token",
+        var refused = await Assert.ThrowsAsync<AgentException>(() => new CredentialRotationClient(transport).RegisterAsync(_config, _config.Panel, null, "token",
             Guid.NewGuid(), _newKey, TestContext.Current.CancellationToken));
 
         Assert.Contains("another key", refused.Message, StringComparison.Ordinal);
@@ -57,7 +58,7 @@ public sealed class CredentialRotationClientTests : IDisposable
         var credentialId = Guid.NewGuid();
         var transport = Answering(new CredentialRotation(_config.NodeId, credentialId));
 
-        Assert.Equal(credentialId, await new CredentialRotationClient(transport).RegisterAsync(_config, "token", Guid.NewGuid(), _newKey,
+        Assert.Equal(credentialId, await new CredentialRotationClient(transport).RegisterAsync(_config, _config.Panel, null, "token", Guid.NewGuid(), _newKey,
             TestContext.Current.CancellationToken));
     }
 
@@ -84,6 +85,8 @@ public sealed class CredentialRotationClientTests : IDisposable
         public byte[] PublicKey => _key.ExportSubjectPublicKeyInfo();
 
         public byte[] Sign(ReadOnlySpan<byte> data) => ProtocolCrypto.Sign(_key, data);
+
+        public X509Certificate2 CreateCertificate() => NodeCertificate.Create(_key);
 
         public void Dispose() => _key.Dispose();
     }

@@ -90,6 +90,8 @@ try
         return 0;
     }
 
+    // First: the agents' endpoint serves the agent protocol and nothing else.
+    app.UseAgentsEndpoint();
     app.UseSecurityHeaders();
     app.UseTransportSecurity(app.Services.GetRequiredService<SecurityOptions>());
     // Through the host's logger: left alone, request logging writes to the static startup logger (console only),

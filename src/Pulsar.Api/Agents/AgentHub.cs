@@ -28,6 +28,7 @@ internal sealed partial class AgentHub(
     IRealtimeNotifier notifier,
     IHubContext<PanelHub, IPanelClient> browsers,
     IServiceScopeFactory scopes,
+    AgentsEndpoint agents,
     TimeProvider clock,
     ILogger<AgentHub> logger) : Hub, IAgentHub
 {
@@ -86,10 +87,12 @@ internal sealed partial class AgentHub(
         }
 
         var panelKeys = await keys.GetPublicKeysAsync(Context.ConnectionAborted);
+        var canMove = hello.Capabilities.Contains(AgentCapabilities.UseAgentsAddress, StringComparer.Ordinal);
         var now = clock.GetUtcNow();
         for (var attempt = 0; ; attempt++)
         {
             node.Connected(AgentAccess.ToSnapshot(hello.Inventory, hello.AgentVersion, hello.ProtocolVersion), now);
+            node.ConnectedThrough(session.CertificateKey is not null, canMove);
             if (hello.PinnedPanelKeys is { } pinned)
             {
                 node.PanelKeysPinned(pinned);
@@ -128,6 +131,13 @@ internal sealed partial class AgentHub(
         if (hello.PinnedPanelKeys is not null)
         {
             _ = Task.Run(() => UpdatePanelKeysAsync(nodeId));
+        }
+
+        // An agent that can present its key as a client certificate, connected without one while the panel has an
+        // agents' endpoint, is told its address (Phase 16); it signs in there before it keeps it. Not awaited either.
+        if (session.CertificateKey is null && canMove && agents.Address is { } address)
+        {
+            _ = Task.Run(() => UseAgentsAddressAsync(nodeId, address));
         }
 
         // Consoles browsers were watching (before a reconnect or a panel restart) resume where the panel's copy ends. The
@@ -329,4 +339,23 @@ internal sealed partial class AgentHub(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not send the panel keys to node {NodeId}")]
     private partial void LogPanelKeysUpdateFailed(Exception exception, NodeId nodeId);
+
+    private async Task UseAgentsAddressAsync(NodeId nodeId, AgentsEndpointAddress address)
+    {
+        try
+        {
+            var ack = await connections.SendAsync(nodeId, new UseAgentsAddressCommand(address.Port, address.Url), null, CancellationToken.None);
+            LogAgentsAddressSent(nodeId, address.Port, address.Url, ack?.Status, ack?.ErrorCode);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or OperationCanceledException)
+        {
+            LogAgentsAddressFailed(ex, nodeId);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} was told the agents' address (port {Port}, address {Url}): {Status} {ErrorCode}")]
+    private partial void LogAgentsAddressSent(NodeId nodeId, int port, string? url, AckStatus? status, string? errorCode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not send the agents' address to node {NodeId}")]
+    private partial void LogAgentsAddressFailed(Exception exception, NodeId nodeId);
 }

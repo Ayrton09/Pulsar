@@ -257,7 +257,7 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
         var transport = Transport(agent);
         var session = await new PanelAuthenticator(transport).AuthenticateAsync(config, current, Ct);
         using var newKey = agent.Keys.Create($"PulsarAgent-{Guid.NewGuid():N}", NodeKeyScope.User);
-        var credentialId = await new CredentialRotationClient(transport).RegisterAsync(config, session.AccessToken, session.SessionId, newKey, Ct);
+        var credentialId = await new CredentialRotationClient(transport).RegisterAsync(config, config.Panel, null, session.AccessToken, session.SessionId, newKey, Ct);
         return new PendingRotation(newKey.Reference, credentialId, DateTimeOffset.UtcNow);
     }
 

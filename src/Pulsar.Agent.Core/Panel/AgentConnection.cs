@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -32,6 +33,12 @@ public sealed class AgentConnectionOptions
 
     /// <summary>Wait before trying again after a rotation that failed.</summary>
     public TimeSpan RotationRetryDelay { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// How long signing in at the panel's agents' address may take before the agent answers that it cannot (the panel
+    /// waits 10 s for the answer).
+    /// </summary>
+    public TimeSpan AgentsAddressTimeout { get; set; } = TimeSpan.FromSeconds(7);
 }
 
 /// <summary>
@@ -67,7 +74,12 @@ public sealed partial class AgentConnection(
     private readonly Lock _configLock = new();
     private AgentConfig _config = null!;
     private INodeKey _key = null!;
+    private X509Certificate2? _certificate;
+    private Uri? _sessionPanel;
+    private X509Certificate2? _sessionCertificate;
+    private Uri? _attemptPanel;
     private TaskCompletionSource _rotationRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private TaskCompletionSource _reconnectRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private DateTimeOffset _nextRotationAttempt = DateTimeOffset.MinValue;
 
     private enum SessionEnd
@@ -79,6 +91,9 @@ public sealed partial class AgentConnection(
 
     /// <summary>The live session, if any (for tests and diagnostics).</summary>
     public Guid? CurrentSessionId { get; private set; }
+
+    /// <summary>The address the live session was opened at: the configured one or its fallback (for tests and diagnostics).</summary>
+    public Uri? CurrentPanel => _sessionPanel;
 
     /// <summary>The configuration in use (it changes with key rotations and panel key updates).</summary>
     public AgentConfig? Config => _config;
@@ -136,6 +151,7 @@ public sealed partial class AgentConnection(
         }
 
         _config = config;
+        _certificate = CreateCertificate(_key);
         if (servers is not null)
         {
             // The first Hello reports every server.
@@ -166,9 +182,12 @@ public sealed partial class AgentConnection(
                     SessionEnd end;
                     do
                     {
-                        end = RotationDue() ? SessionEnd.Rotate : await current.WaitAsync(_rotationRequested.Task, stoppingToken);
+                        end = RotationDue() ? SessionEnd.Rotate : await current.WaitAsync(_rotationRequested.Task, _reconnectRequested.Task, stoppingToken);
                     }
                     while (end == SessionEnd.Rotate && !await RotateAsync(current, stoppingToken)); // failed: keep this session
+
+                    // A move asked for is carried out by whatever comes next (a renewal, a rotation, a reconnect).
+                    ResetReconnectRequest();
 
                     if (end == SessionEnd.Rotate)
                     {
@@ -227,6 +246,7 @@ public sealed partial class AgentConnection(
             }
 
             _key.Dispose();
+            _certificate?.Dispose();
         }
     }
 
@@ -247,6 +267,17 @@ public sealed partial class AgentConnection(
 
     private static bool IsExpected(Exception exception) => exception is AgentException or HttpRequestException or HubException
         or System.Net.WebSockets.WebSocketException or IOException or TimeoutException or TaskCanceledException;
+
+    private void ResetReconnectRequest()
+    {
+        lock (_configLock)
+        {
+            if (_reconnectRequested.Task.IsCompleted)
+            {
+                _reconnectRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+        }
+    }
 
     private void Stop()
     {
@@ -290,7 +321,8 @@ public sealed partial class AgentConnection(
         try
         {
             newKey = keys.Create($"PulsarAgent-{Guid.NewGuid():N}", config.Key.Scope);
-            var credentialId = await rotation.RegisterAsync(config, session.AccessToken, session.SessionId, newKey, cancellationToken);
+            var credentialId = await rotation.RegisterAsync(config, _sessionPanel ?? config.Panel, _sessionCertificate, session.AccessToken, session.SessionId,
+                newKey, cancellationToken);
             lock (_configLock)
             {
                 SaveConfig(_config with { PendingRotation = new PendingRotation(newKey.Reference, credentialId, clock.GetUtcNow()) });
@@ -341,21 +373,24 @@ public sealed partial class AgentConnection(
     /// activates it; the agent switches to it and deletes the old key), refusal abandons it, and a network error leaves
     /// it for the next attempt. A crash anywhere in between leaves one of the two keys working.
     /// </summary>
-    private async Task<TokenResponse> AuthenticateAsync(CancellationToken cancellationToken)
+    private async Task<(TokenResponse Token, Uri Panel)> AuthenticateAsync(bool fallbackFirst, CancellationToken cancellationToken)
     {
         if (_config.PendingRotation is { } pending)
         {
             INodeKey? newKey = null;
+            X509Certificate2? newCertificate = null;
             try
             {
                 newKey = keys.Open(pending.Key);
-                var token = await authenticator.AuthenticateAsync(_config with { CredentialId = pending.CredentialId }, newKey, cancellationToken);
-                CompleteRotation(pending, newKey);
-                return token;
+                newCertificate = CreateCertificate(newKey);
+                var signedIn = await SignInAsync(pending.CredentialId, newKey, newCertificate, fallbackFirst, cancellationToken);
+                CompleteRotation(pending, newKey, newCertificate);
+                return signedIn;
             }
             catch (Exception ex) when (ex is AgentRejectedException or CryptographicException)
             {
                 newKey?.Dispose();
+                newCertificate?.Dispose();
                 LogPendingKeyAbandoned(pending.CredentialId, ex.Message);
                 DeleteKey(pending.Key);
                 lock (_configLock)
@@ -366,24 +401,146 @@ public sealed partial class AgentConnection(
             catch
             {
                 newKey?.Dispose();
+                newCertificate?.Dispose();
                 throw;
             }
         }
 
-        return await authenticator.AuthenticateAsync(_config, _key, cancellationToken);
+        return await SignInAsync(_config.CredentialId, _key, _certificate, fallbackFirst, cancellationToken);
     }
 
-    private void CompleteRotation(PendingRotation pending, INodeKey newKey)
+    /// <summary>
+    /// Signs in at the configured address, at its fallback when nothing answers there (an agents' port closed later) or
+    /// when <paramref name="fallbackFirst"/>, and at the agents' address when a panel that requires client certificates
+    /// sends it there (Phase 16), keeping that address only once it signed in there.
+    /// </summary>
+    private async Task<(TokenResponse Token, Uri Panel)> SignInAsync(Guid credentialId, INodeKey key, X509Certificate2? certificate,
+        bool fallbackFirst, CancellationToken cancellationToken)
+    {
+        var config = _config with { CredentialId = credentialId };
+        var panel = fallbackFirst && config.FallbackPanel is { } first ? first : config.Panel;
+        _attemptPanel = panel;
+        try
+        {
+            return (await authenticator.AuthenticateAsync(panel, config, key, certificate, cancellationToken), panel);
+        }
+        catch (CertificateRequiredException ex) when (certificate is not null)
+        {
+            // Without a certificate of its own the agent has nowhere to go: the refusal stands.
+            if (ex.RefusedAt is null || AgentsAddressHint.Verify(ex.AgentsAddress, config, ex.RefusedAt, ex.ChallengeNonce) is not { } target)
+            {
+                LogAgentsAddressNotTrusted();
+                throw;
+            }
+
+            _attemptPanel = target;
+            var token = await authenticator.AuthenticateAsync(target, config, key, certificate, cancellationToken);
+            MoveTo(target);
+            return (token, target);
+        }
+        catch (Exception ex) when (panel == config.Panel && config.FallbackPanel is { } fallback && fallback != panel && IsUnreachable(ex, cancellationToken))
+        {
+            LogPanelUnreachable(panel, fallback, ex.Message);
+            return await SignInAsync(credentialId, key, certificate, fallbackFirst: true, cancellationToken);
+        }
+    }
+
+    /// <summary>The agents' address becomes the configured one; the address used until now stays as the fallback.</summary>
+    private void MoveTo(Uri address)
+    {
+        lock (_configLock)
+        {
+            SaveConfig(_config.MovedTo(address));
+        }
+
+        LogMovedToAgentsAddress(address, _config.FallbackPanel);
+    }
+
+    /// <summary>
+    /// The panel's agents' address from a command: <paramref name="port"/> on the host this session reached the panel by,
+    /// or the operator's <paramref name="url"/>. Kept only if the agent can sign in there now.
+    /// </summary>
+    public async Task<CommandAck> UseAgentsAddressAsync(Guid commandId, int port, Uri? url)
+    {
+        INodeKey key;
+        X509Certificate2? certificate;
+        AgentConfig config;
+        lock (_configLock)
+        {
+            key = _key;
+            certificate = _certificate;
+            config = _config;
+        }
+
+        if (certificate is null || PanelAddress.AgentsAddress(_sessionPanel ?? config.Panel, port, url?.ToString()) is not { } address)
+        {
+            return new CommandAck(commandId, AckStatus.Rejected, "agent.address_unreachable", "This agent has no client certificate to present there.");
+        }
+
+        if (address == config.Panel)
+        {
+            return new CommandAck(commandId, AckStatus.AlreadyInState, null, null);
+        }
+
+        try
+        {
+            using var timeout = new CancellationTokenSource(options.AgentsAddressTimeout, clock);
+            await authenticator.AuthenticateAsync(address, config, key, certificate, timeout.Token);
+            MoveTo(address);
+        }
+        catch (Exception ex) when (ex is AgentException or HttpRequestException or IOException or OperationCanceledException or ObjectDisposedException
+            or CryptographicException or System.Text.Json.JsonException or NotSupportedException or UnauthorizedAccessException)
+        {
+            // Nothing changed: a key rotated away meanwhile, a page that is not the panel's, a configuration not saved.
+            LogAgentsAddressUnreachable(address, ex.Message);
+            return new CommandAck(commandId, AckStatus.Rejected, "agent.address_unreachable", ex.Message);
+        }
+
+        // The session goes on at the new address: the next one opens there while this one still sends the answer.
+        _reconnectRequested.TrySetResult();
+        return new CommandAck(commandId, AckStatus.Accepted, null, null);
+    }
+
+    /// <summary>
+    /// Nothing answered at the address as the panel would (connection or TLS refused, no answer, a WebSocket refused, a
+    /// 404 or 5xx from whatever is there): not a refusal from the panel, which the fallback would only repeat.
+    /// </summary>
+    internal static bool IsUnreachable(Exception exception, CancellationToken cancellationToken) =>
+        exception is HttpRequestException or IOException or System.Security.Authentication.AuthenticationException
+            or System.Net.WebSockets.WebSocketException or PanelNotAnsweringException
+        || (exception is TaskCanceledException && !cancellationToken.IsCancellationRequested);
+
+    /// <summary>The key as a client certificate; without one the agent still works where the panel asks for none.</summary>
+    private X509Certificate2? CreateCertificate(INodeKey key)
+    {
+        var certificate = NodeCertificate.TryCreate(key, out var failure);
+        if (certificate is null)
+        {
+            LogNoCertificate(failure!);
+        }
+
+        return certificate;
+    }
+
+    private void CompleteRotation(PendingRotation pending, INodeKey newKey, X509Certificate2? newCertificate)
     {
         var old = _key;
+        var oldCertificate = _certificate;
         lock (_configLock)
         {
             SaveConfig(_config with { Key = pending.Key, CredentialId = pending.CredentialId, KeyCreatedAt = pending.CreatedAt, PendingRotation = null });
             _key = newKey;
+            _certificate = newCertificate;
         }
 
         DeleteKey(old.Reference);
         old.Dispose();
+        // The live session's transfers present the old one until the new session replaces it.
+        if (oldCertificate != _sessionCertificate)
+        {
+            oldCertificate?.Dispose();
+        }
+
         LogRotated(pending.CredentialId, pending.Key.Storage);
     }
 
@@ -402,19 +559,44 @@ public sealed partial class AgentConnection(
 
     private async Task<Session> ConnectAsync(CancellationToken cancellationToken)
     {
-        var token = await AuthenticateAsync(cancellationToken);
+        try
+        {
+            return await ConnectAtAsync(fallbackFirst: false, cancellationToken);
+        }
+        catch (Exception ex) when (_attemptPanel is { } attempted && attempted == _config.Panel && _config.FallbackPanel is { } fallback
+            && fallback != attempted && IsUnreachable(ex, cancellationToken))
+        {
+            // Signed in, but the hub's WebSocket did not open there: the fallback's may.
+            LogPanelUnreachable(attempted, fallback, ex.Message);
+            return await ConnectAtAsync(fallbackFirst: true, cancellationToken);
+        }
+    }
+
+    private async Task<Session> ConnectAtAsync(bool fallbackFirst, CancellationToken cancellationToken)
+    {
+        var (token, panel) = await AuthenticateAsync(fallbackFirst, cancellationToken);
         var config = _config;
+        var certificate = _certificate;
+        // Moving to the agents' address takes a certificate: an agent without one does not say it can.
+        IReadOnlySet<string> supported = certificate is null
+            ? dispatcher.SupportedCommands.Where(c => c != AgentCapabilities.UseAgentsAddress).ToHashSet(StringComparer.Ordinal)
+            : dispatcher.SupportedCommands;
         // Commands wait for the panel's clock offset: the panel sends its first ones as soon as Hello is answered.
-        var verifier = new CommandVerifier(config.NodeId, token.SessionId, () => _config.PanelKeys, dispatcher.SupportedCommands, clock)
+        var verifier = new CommandVerifier(config.NodeId, token.SessionId, () => _config.PanelKeys, supported, clock)
         {
             WaitsForClock = true,
         };
 
         var builder = new HubConnectionBuilder()
-            .WithUrl(new Uri(config.Panel, AgentProtocol.HubPath), HttpTransportType.WebSockets, o =>
+            .WithUrl(new Uri(panel, AgentProtocol.HubPath), HttpTransportType.WebSockets, o =>
             {
                 o.SkipNegotiation = true;
                 o.AccessTokenProvider = () => Task.FromResult<string?>(token.AccessToken);
+                if (certificate is not null)
+                {
+                    o.ClientCertificates!.Add(certificate);
+                }
+
                 transport.ConfigureHub(o);
             })
             .AddJsonProtocol(o => ProtocolJson.Configure(o.PayloadSerializerOptions));
@@ -431,7 +613,7 @@ public sealed partial class AgentConnection(
             await connection.StartAsync(cancellationToken);
 
             var hello = await connection.InvokeAsync<HelloAccepted>(nameof(IAgentHub.Hello),
-                new AgentHello(AgentInfo.Version, AgentProtocol.CurrentVersion, [.. dispatcher.SupportedCommands],
+                new AgentHello(AgentInfo.Version, AgentProtocol.CurrentVersion, [.. supported],
                     system.GetInventory(config.ServersRootOrDefault(configs.Paths)), [.. config.PanelKeys.Select(k => k.KeyId)],
                     servers?.Snapshots() ?? [], servers?.OperationsInFlight() ?? []),
                 cancellationToken);
@@ -450,7 +632,16 @@ public sealed partial class AgentConnection(
             // Consoles browsers were already watching: their output resumes where the panel's copy ends.
             servers?.SubscribeConsoles(hello.ConsoleSubscriptions ?? []);
             ForgetDeletedSteamAccounts(hello.SteamAccountIds);
-            await _channel.AttachAsync(connection, new PanelHttp(transport, config.Panel, token.AccessToken), cancellationToken);
+            await _channel.AttachAsync(connection, new PanelHttp(transport, panel, token.AccessToken, certificate), cancellationToken);
+            var previousCertificate = _sessionCertificate;
+            _sessionPanel = panel;
+            _sessionCertificate = certificate;
+            if (previousCertificate is not null && previousCertificate != certificate && previousCertificate != _certificate)
+            {
+                // The certificate of a key rotated away, kept until the session that used it was replaced.
+                previousCertificate.Dispose();
+            }
+
             return session;
         }
         catch
@@ -527,6 +718,21 @@ public sealed partial class AgentConnection(
     [LoggerMessage(Level = LogLevel.Information, Message = "Node key rotated: now using credential {CredentialId} ({Storage}); the previous key is deleted")]
     private partial void LogRotated(Guid credentialId, string storage);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The panel at {Panel} cannot be reached ({Reason}); signing in at the fallback address {Fallback}")]
+    private partial void LogPanelUnreachable(Uri panel, Uri fallback, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The panel requires a client certificate and sent no agents' address this agent can use (unsigned, for another node or request, or the address that refused)")]
+    private partial void LogAgentsAddressNotTrusted();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Moved to the panel's agents' address {Panel} (the node key as client certificate); {Fallback} is the fallback")]
+    private partial void LogMovedToAgentsAddress(Uri panel, Uri? fallback);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The panel's agents' address {Panel} did not work ({Reason}); staying at the current address")]
+    private partial void LogAgentsAddressUnreachable(Uri panel, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The node key cannot be presented as a client certificate ({Reason}): only addresses that ask for none will work")]
+    private partial void LogNoCertificate(string reason);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Node key rotation failed ({Reason}); the current key stays in use. Next attempt after {NextAttempt}")]
     private partial void LogRotationFailed(string reason, DateTimeOffset nextAttempt);
 
@@ -578,13 +784,16 @@ public sealed partial class AgentConnection(
             _metrics = SendMetricsAsync(_stop.Token);
         }
 
-        /// <summary>Until the connection closes, the session is due for renewal, or a key rotation is requested.</summary>
-        public async Task<SessionEnd> WaitAsync(Task rotationRequested, CancellationToken cancellationToken)
+        /// <summary>
+        /// Until the connection closes, the session is due for renewal (or asked to move: <paramref name="reconnectRequested"/>),
+        /// or a key rotation is requested.
+        /// </summary>
+        public async Task<SessionEnd> WaitAsync(Task rotationRequested, Task reconnectRequested, CancellationToken cancellationToken)
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var wait = _renewAt - clock.GetUtcNow();
             var renewal = Task.Delay(wait > TimeSpan.Zero ? wait : TimeSpan.Zero, clock, linked.Token);
-            var first = await Task.WhenAny(_closed.Task, renewal, rotationRequested);
+            var first = await Task.WhenAny(_closed.Task, renewal, rotationRequested, reconnectRequested);
             await linked.CancelAsync();
             cancellationToken.ThrowIfCancellationRequested();
             if (_closed.Task.IsCompleted)

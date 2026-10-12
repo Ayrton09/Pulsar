@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -27,16 +28,17 @@ namespace Pulsar.Api.Tests.Infrastructure;
 public sealed class InProcessAgent : IAsyncDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "pulsar-agent-tests", Guid.NewGuid().ToString("N"));
-    private readonly TestServerTransport _transport;
+    private readonly PanelTransport _transport;
     private readonly TimeProvider _clock;
     private readonly FixedNodeSystem _system = new();
     private AgentConnection? _connection;
     private ServerHost? _servers;
     private SteamCmdRunner? _steamCmd;
 
-    public InProcessAgent(WebApplicationFactory<Program> factory, TimeProvider? clock = null)
+    /// <param name="transport">Another way to the panel than TestServer (the real one, to a panel on Kestrel).</param>
+    public InProcessAgent(WebApplicationFactory<Program> factory, TimeProvider? clock = null, PanelTransport? transport = null)
     {
-        _transport = new TestServerTransport(factory.Server);
+        _transport = transport ?? new TestServerTransport(factory.Server);
         _clock = clock ?? TimeProvider.System;
         Configs = new AgentConfigStore(new AgentPaths(_root));
     }
@@ -58,6 +60,18 @@ public sealed class InProcessAgent : IAsyncDisposable
     public AgentConfig? Config { get; private set; }
 
     public Guid? CurrentSessionId => _connection?.CurrentSessionId;
+
+    /// <summary>The address of the live session: the configured one or its fallback.</summary>
+    public Uri? CurrentPanel => _connection?.CurrentPanel;
+
+    /// <summary>
+    /// The simulated agents' endpoint (<see cref="AgentsEndpointApiFactory"/>) stops answering, as a closed port does.
+    /// </summary>
+    public bool AgentsEndpointDown
+    {
+        get => (_transport as TestServerTransport)?.AgentsEndpointDown ?? false;
+        set => ((TestServerTransport)_transport).AgentsEndpointDown = value;
+    }
 
     /// <summary>The configuration the running agent uses (key rotations and panel key updates change it).</summary>
     public AgentConfig? LiveConfig => _connection?.Config;
@@ -234,6 +248,13 @@ public sealed class InProcessAgent : IAsyncDisposable
                 return ProtocolCrypto.Sign(key, data);
             }
 
+            // Loaded back from a PFX: SChannel signs a TLS handshake only with a key in a key container (KestrelPanelFactory).
+            public X509Certificate2 CreateCertificate()
+            {
+                using var certificate = NodeCertificate.Create(key);
+                return X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pfx, "node"), "node");
+            }
+
             public void Dispose() => key.Dispose();
         }
     }
@@ -275,11 +296,28 @@ public sealed class InProcessAgent : IAsyncDisposable
         public void StopApplication() => throw new InvalidOperationException("The agent asked to stop.");
     }
 
-    private sealed class ToLocalhost : DelegatingHandler
+    /// <summary>
+    /// Every request lands on https://localhost, whatever origin the agent was configured with (a relay, in effect),
+    /// except the simulated agents' endpoint: its port stays, and the client certificate travels as test headers.
+    /// </summary>
+    private sealed class ToLocalhost(TestServerTransport transport) : DelegatingHandler
     {
+        public X509Certificate2? Certificate { get; set; }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            request.RequestUri = new UriBuilder(request.RequestUri!) { Scheme = "https", Host = "localhost", Port = 443 }.Uri;
+            var agentsEndpoint = request.RequestUri!.Port == AgentsEndpointApiFactory.AgentsPort;
+            if (agentsEndpoint && transport.AgentsEndpointDown)
+            {
+                throw new HttpRequestException("No connection could be made: the agents' endpoint is down (test).");
+            }
+
+            request.RequestUri = new UriBuilder(request.RequestUri) { Scheme = "https", Host = "localhost", Port = agentsEndpoint ? request.RequestUri.Port : 443 }.Uri;
+            if (agentsEndpoint)
+            {
+                AgentsEndpointApiFactory.AddTransportHeaders(request.Headers, true, Certificate);
+            }
+
             return base.SendAsync(request, cancellationToken);
         }
     }
@@ -287,16 +325,37 @@ public sealed class InProcessAgent : IAsyncDisposable
     /// <summary>HTTP and WebSockets straight into the in-memory panel.</summary>
     private sealed class TestServerTransport(TestServer server) : PanelTransport
     {
-        /// <summary>Every request lands on https://localhost, whatever origin the agent was configured with (a relay, in effect).</summary>
-        public override HttpMessageHandler CreateHttpHandler() => new ToLocalhost { InnerHandler = server.CreateHandler() };
+        public bool AgentsEndpointDown { get; set; }
+
+        public override HttpMessageHandler CreateHttpHandler() => new ToLocalhost(this) { InnerHandler = server.CreateHandler() };
+
+        public override HttpMessageHandler WithClientCertificate(HttpMessageHandler handler, X509Certificate2 certificate)
+        {
+            ((ToLocalhost)handler).Certificate = certificate;
+            return handler;
+        }
 
         public override void ConfigureHub(HttpConnectionOptions options)
         {
             options.WebSocketFactory = async (context, cancellationToken) =>
             {
+                var agentsEndpoint = context.Uri.Port == AgentsEndpointApiFactory.AgentsPort;
+                if (agentsEndpoint && AgentsEndpointDown)
+                {
+                    throw new HttpRequestException("No connection could be made: the agents' endpoint is down (test).");
+                }
+
                 var token = await options.AccessTokenProvider!();
+                var certificate = options.ClientCertificates?.OfType<X509Certificate2>().FirstOrDefault();
                 var client = server.CreateWebSocketClient();
-                client.ConfigureRequest = request => request.Headers.Authorization = $"Bearer {token}";
+                client.ConfigureRequest = request =>
+                {
+                    request.Headers.Authorization = $"Bearer {token}";
+                    if (agentsEndpoint)
+                    {
+                        AgentsEndpointApiFactory.AddTransportHeaders(request.Headers, true, certificate);
+                    }
+                };
                 return await client.ConnectAsync(context.Uri, cancellationToken);
             };
         }

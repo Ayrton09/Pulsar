@@ -709,15 +709,52 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Nodes.AgentTransportSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("RequireClientCertificates")
+                        .HasColumnType("boolean")
+                        .HasColumnName("require_client_certificates");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_agent_transport_settings");
+
+                    b.ToTable("agent_transport_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_agent_transport_settings_singleton", "id = 1");
+                        });
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Nodes.Node", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool?>("AgentCanUseCertificate")
+                        .HasColumnType("boolean")
+                        .HasColumnName("agent_can_use_certificate");
+
                     b.Property<bool>("ApprovalRequired")
                         .HasColumnType("boolean")
                         .HasColumnName("approval_required");
+
+                    b.Property<bool?>("ConnectedWithCertificate")
+                        .HasColumnType("boolean")
+                        .HasColumnName("connected_with_certificate");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")

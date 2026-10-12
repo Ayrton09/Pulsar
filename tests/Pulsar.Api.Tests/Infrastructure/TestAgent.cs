@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -21,7 +22,30 @@ public sealed class TestAgent : IAsyncDisposable
     public TestAgent(WebApplicationFactory<Program> factory)
     {
         _factory = factory;
-        Http = factory.CreateDefaultClient(s_baseAddress);
+        Http = factory.CreateDefaultClient(s_baseAddress, new TransportHeaders(this));
+    }
+
+    /// <summary>
+    /// Requests go through the panel's agents' endpoint (Phase 16), as <see cref="AgentsEndpointApiFactory"/> simulates
+    /// it: TestServer has no TLS, so the endpoint and the client certificate travel as test headers.
+    /// </summary>
+    public bool ThroughAgentsEndpoint { get; set; }
+
+    /// <summary>The TLS client certificate the requests present (only the agents' endpoint asks for one).</summary>
+    public X509Certificate2? ClientCertificate { get; set; }
+
+    /// <summary>A self-signed certificate on <paramref name="key"/>, as the agent makes one on its node key.</summary>
+    public static X509Certificate2 CertificateFor(ECDsa key) =>
+        new CertificateRequest("CN=Pulsar node", key, HashAlgorithmName.SHA256)
+            .CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(10));
+
+    /// <summary>Signs in through the agents' endpoint with a certificate on the node key.</summary>
+    public Task<TokenResponse> AuthenticateWithCertificateAsync()
+    {
+        ThroughAgentsEndpoint = true;
+        ClientCertificate = CertificateFor(Key);
+        // TestServer's requests all say Host: localhost, whichever endpoint they simulate.
+        return AuthenticateAsync();
     }
 
     public HttpClient Http { get; }
@@ -77,8 +101,21 @@ public sealed class TestAgent : IAsyncDisposable
         AwaitingApproval = result.AwaitingApproval;
     }
 
-    public Task<HttpResponseMessage> PostChallengeAsync() =>
-        Http.PostAsJsonAsync(AgentProtocol.ChallengePath, new ChallengeRequest(NodeId, CredentialId), ProtocolJson.Options, Ct);
+    /// <param name="nonce">Sent with the request, signed back in a refusal that names the agents' address.</param>
+    /// <param name="host">The Host header, as a proxy in front of the panel could set it.</param>
+    public async Task<HttpResponseMessage> PostChallengeAsync(byte[]? nonce = null, string? host = null)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, AgentProtocol.ChallengePath)
+        {
+            Content = JsonContent.Create(new ChallengeRequest(NodeId, CredentialId, nonce), options: ProtocolJson.Options),
+        };
+        if (host is not null)
+        {
+            request.Headers.Host = host;
+        }
+
+        return await Http.SendAsync(request, Ct);
+    }
 
     public async Task<ChallengeResponse> ChallengeAsync()
     {
@@ -94,10 +131,10 @@ public sealed class TestAgent : IAsyncDisposable
         return Http.PostAsJsonAsync(AgentProtocol.TokenPath, new TokenRequest(challenge.ChallengeId, signature), ProtocolJson.Options, Ct);
     }
 
-    public async Task<TokenResponse> AuthenticateAsync()
+    public async Task<TokenResponse> AuthenticateAsync(string expectedOrigin = "https://localhost")
     {
         var challenge = await ChallengeAsync();
-        Assert.Equal("https://localhost", challenge.PanelOrigin);
+        Assert.Equal(expectedOrigin, challenge.PanelOrigin);
         using var response = await PostTokenAsync(challenge);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<TokenResponse>(ProtocolJson.Options, Ct))!;
@@ -114,7 +151,11 @@ public sealed class TestAgent : IAsyncDisposable
                 options.WebSocketFactory = async (context, cancellationToken) =>
                 {
                     var client = server.CreateWebSocketClient();
-                    client.ConfigureRequest = request => request.Headers.Authorization = $"Bearer {accessToken}";
+                    client.ConfigureRequest = request =>
+                    {
+                        request.Headers.Authorization = $"Bearer {accessToken}";
+                        AgentsEndpointApiFactory.AddTransportHeaders(request.Headers, ThroughAgentsEndpoint, ClientCertificate);
+                    };
                     return await client.ConnectAsync(context.Uri, cancellationToken);
                 };
             })
@@ -145,6 +186,15 @@ public sealed class TestAgent : IAsyncDisposable
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private sealed class TransportHeaders(TestAgent agent) : DelegatingHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            AgentsEndpointApiFactory.AddTransportHeaders(request.Headers, agent.ThroughAgentsEndpoint, agent.ClientCertificate);
+            return base.SendAsync(request, cancellationToken);
+        }
+    }
 
     private CommandAck Execute(SignedMessage message)
     {

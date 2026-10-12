@@ -1,3 +1,5 @@
+using Pulsar.Contracts;
+
 namespace Pulsar.Agent.Core.Panel;
 
 /// <summary>
@@ -25,6 +27,36 @@ public static class PanelAddress
         }
 
         return new Uri(Origin(uri) + "/");
+    }
+
+    /// <summary>An https origin ("https://panel.example.com:8444/"), or null: what an agents' address must be.</summary>
+    public static Uri? TryParseHttpsOrigin(string? value)
+    {
+        try
+        {
+            var address = Parse(value ?? string.Empty);
+            return address.Scheme == Uri.UriSchemeHttps ? address : null;
+        }
+        catch (AgentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The agents' address the panel told (Phase 16): its operator's <paramref name="url"/> when there is one, otherwise
+    /// <paramref name="port"/> on the host of <paramref name="reached"/>, the address this agent reached the panel by. The
+    /// host never comes from the panel, so a proxy that sets the request's host cannot pick it. Null when invalid.
+    /// </summary>
+    public static Uri? AgentsAddress(Uri reached, int port, string? url)
+    {
+        ArgumentNullException.ThrowIfNull(reached);
+        if (url is not null)
+        {
+            return TryParseHttpsOrigin(url);
+        }
+
+        return port is > 0 and <= 65535 ? TryParseHttpsOrigin(new UriBuilder(Uri.UriSchemeHttps, reached.Host, port).Uri.ToString()) : null;
     }
 
     /// <summary>"scheme://host[:port]" in lower case: what the panel binds into challenges and enrollment results.</summary>
@@ -75,6 +107,69 @@ public sealed class PanelBusyException : AgentException
 
     /// <summary>How long the panel asked to wait (its Retry-After), when it said.</summary>
     public TimeSpan? RetryAfter { get; }
+}
+
+/// <summary>
+/// The panel requires this agent to sign in on its agents' address with its node key as a TLS client certificate
+/// (Phase 16). <see cref="AgentsAddress"/> says where, signed for this node, when the refusal came with one.
+/// </summary>
+public sealed class CertificateRequiredException : AgentException
+{
+    public const string Code = "agent.certificate_required";
+
+    public CertificateRequiredException()
+    {
+    }
+
+    public CertificateRequiredException(string message)
+        : base(message)
+    {
+    }
+
+    public CertificateRequiredException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
+    public CertificateRequiredException(string message, SignedMessage? agentsAddress)
+        : base(message) => AgentsAddress = agentsAddress;
+
+    /// <param name="refusedAt">The address that refused (the agents' port goes on its host).</param>
+    /// <param name="challengeNonce">The nonce of the challenge request it refused, which a trustworthy address carries.</param>
+    public CertificateRequiredException(string message, SignedMessage? agentsAddress, Uri refusedAt, byte[] challengeNonce)
+        : base(message)
+    {
+        AgentsAddress = agentsAddress;
+        RefusedAt = refusedAt;
+        ChallengeNonce = challengeNonce;
+    }
+
+    public SignedMessage? AgentsAddress { get; }
+
+    public Uri? RefusedAt { get; }
+
+    public byte[]? ChallengeNonce { get; }
+}
+
+/// <summary>
+/// What answered is not the panel's agent protocol (404) or cannot serve it now (5xx): a port forwarded to something else,
+/// a proxy whose panel is down. Like no answer at all, it sends the agent to its fallback address.
+/// </summary>
+public sealed class PanelNotAnsweringException : AgentException
+{
+    public PanelNotAnsweringException()
+    {
+    }
+
+    public PanelNotAnsweringException(string message)
+        : base(message)
+    {
+    }
+
+    public PanelNotAnsweringException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }
 
 /// <summary>The panel refused this node's credential (revoked, node disabled or deleted). Retrying will not help soon.</summary>

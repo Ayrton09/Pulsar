@@ -42,6 +42,37 @@ public sealed class AgentConfigurationTests : IDisposable
     }
 
     [Fact]
+    public void TheFallbackAddressRoundTripsAndOlderConfigurationsHaveNone()
+    {
+        var store = new AgentConfigStore(new AgentPaths(_root));
+        var config = new AgentConfig(new Uri("https://panel.example.com:8444/"), Guid.NewGuid(), Guid.NewGuid(),
+            new NodeKeyReference("PulsarAgent-1", NodeKeyScope.Machine, NodeKeyStorage.Tpm), [], null, DateTimeOffset.UnixEpoch, Development: false);
+
+        store.Save(config);
+        Assert.Null(store.Load()!.FallbackPanel);
+        store.Save(config with { FallbackPanel = new Uri("https://panel.example.com:8443/") });
+
+        Assert.Equal(new Uri("https://panel.example.com:8443/"), store.Load()!.FallbackPanel);
+        Assert.Contains("\"fallbackPanel\": \"https://panel.example.com:8443/\"", File.ReadAllText(store.Paths.ConfigFile), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MovingKeepsTheAddressLeftAsFallbackButNeverTheNewOne()
+    {
+        var main = new Uri("https://panel.example.com:8443/");
+        var agents = new Uri("https://panel.example.com:8444/");
+        var config = new AgentConfig(main, Guid.NewGuid(), Guid.NewGuid(),
+            new NodeKeyReference("PulsarAgent-1", NodeKeyScope.Machine, NodeKeyStorage.Tpm), [], null, DateTimeOffset.UnixEpoch, Development: false);
+
+        var moved = config.MovedTo(agents);
+        Assert.Equal((agents, main), (moved.Panel, moved.FallbackPanel));
+        // Moved again: the first address stays the fallback.
+        Assert.Equal(main, moved.MovedTo(new Uri("https://agents.example.com:9444/")).FallbackPanel);
+        // Back where the fallback points: one address, no fallback to try in a loop.
+        Assert.Equal((main, (Uri?)null), (moved.MovedTo(main).Panel, moved.MovedTo(main).FallbackPanel));
+    }
+
+    [Fact]
     public void AConfigurationWrittenBeforeKeyRotationStillLoads()
     {
         // As written by the first Phase 2 agents: no keyCreatedAt, no pendingRotation.

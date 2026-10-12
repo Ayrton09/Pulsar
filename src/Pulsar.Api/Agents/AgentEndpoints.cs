@@ -131,25 +131,44 @@ internal static class AgentEndpoints
         $"{request.Scheme}://{request.Host}".ToLowerInvariant();
 
     private static async Task<Results<Ok<SignedMessage>, BadRequest<AgentError>>> EnrollAsync(
-        EnrollRequest request, HttpContext http, AgentAccess access, CancellationToken ct)
+        EnrollRequest request, HttpContext http, AgentAccess access, AgentsEndpoint agents, CancellationToken ct)
     {
-        var result = await access.EnrollAsync(request, PanelOrigin(http.Request), ct);
+        var result = await access.EnrollAsync(request, PanelOrigin(http.Request), agents.TransportOf(http), ct);
         return result.IsSuccess
             ? TypedResults.Ok(result.Value)
             : TypedResults.BadRequest(new AgentError(result.Error!.Code, result.Error.Message));
     }
 
-    private static async Task<Results<Ok<ChallengeResponse>, UnauthorizedHttpResult>> ChallengeAsync(
-        ChallengeRequest request, HttpContext http, AgentAccess access, CancellationToken ct)
+    private static async Task<Results<Ok<ChallengeResponse>, UnauthorizedHttpResult, JsonHttpResult<AgentError>>> ChallengeAsync(
+        ChallengeRequest request, HttpContext http, AgentAccess access, AgentsEndpoint agents, CancellationToken ct)
     {
-        var result = await access.ChallengeAsync(request, PanelOrigin(http.Request), ct);
-        return result.IsSuccess ? TypedResults.Ok(result.Value) : TypedResults.Unauthorized();
+        var transport = agents.TransportOf(http);
+        var result = await access.ChallengeAsync(request, PanelOrigin(http.Request), transport, ct);
+        if (result.IsSuccess)
+        {
+            return TypedResults.Ok(result.Value);
+        }
+
+        // Certificates are required: the agent is told where to present its own, signed for its node.
+        return result.Error == AgentErrors.CertificateRequired
+            ? CertificateRequired(await access.SignAgentsAddressAsync(request.NodeId, transport.Agents!, request.Nonce, ct))
+            : TypedResults.Unauthorized();
     }
 
-    private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult>> TokenAsync(
-        TokenRequest request, HttpContext http, AgentAccess access, CancellationToken ct)
+    private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, JsonHttpResult<AgentError>>> TokenAsync(
+        TokenRequest request, HttpContext http, AgentAccess access, AgentsEndpoint agents, CancellationToken ct)
     {
-        var result = await access.AuthenticateAsync(request, PanelOrigin(http.Request), ct);
-        return result.IsSuccess ? TypedResults.Ok(result.Value) : TypedResults.Unauthorized();
+        var result = await access.AuthenticateAsync(request, PanelOrigin(http.Request), agents.TransportOf(http), ct);
+        if (result.IsSuccess)
+        {
+            return TypedResults.Ok(result.Value);
+        }
+
+        // Only a challenge answered just before the switch gets here: the agent's next challenge gets the address.
+        return result.Error == AgentErrors.CertificateRequired ? CertificateRequired(null) : TypedResults.Unauthorized();
     }
+
+    private static JsonHttpResult<AgentError> CertificateRequired(SignedMessage? agentsAddress) => TypedResults.Json(
+        new AgentError(AgentErrors.CertificateRequired.Code, AgentErrors.CertificateRequired.Message, agentsAddress),
+        statusCode: StatusCodes.Status403Forbidden);
 }

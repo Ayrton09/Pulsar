@@ -24,6 +24,13 @@ public static class AgentErrors
 
     public static DomainError RotationRejected { get; } =
         new("agent.rotation_rejected", "The new key was not accepted: malformed, already registered, or its proof does not verify.");
+
+    /// <summary>
+    /// The panel requires agents to present their node key as a TLS client certificate on its agents' address (Phase 16).
+    /// The refusal carries that address, signed for the node, so an agent that can move goes there.
+    /// </summary>
+    public static DomainError CertificateRequired { get; } =
+        new("agent.certificate_required", "This panel requires agents to connect to its agents' address with their node key as a client certificate.");
 }
 
 /// <summary>
@@ -37,20 +44,31 @@ public sealed partial class AgentAccess(
     AgentSessionStore sessions,
     IAgentConnections connections,
     IAuditLog audit,
+    AgentTransportPolicy transportPolicy,
     TimeProvider clock,
     ILogger<AgentAccess> logger)
 {
     private const int MaxTokenLength = 128;
 
+    /// <summary>The longest nonce an agent may send with a challenge request (it is signed back in a refusal).</summary>
+    public const int MaxChallengeNonceLength = 64;
+
     /// <summary>The SQLSTATE of a unique index violation (PostgreSQL's, the standard one).</summary>
     private const string UniqueViolation = "23505";
 
-    public async Task<Result<SignedMessage>> EnrollAsync(EnrollRequest request, string panelOrigin, CancellationToken cancellationToken)
+    public async Task<Result<SignedMessage>> EnrollAsync(EnrollRequest request, string panelOrigin, AgentTransport transport, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(transport);
         if (!IsWellFormed(request, out var keyStorage, out var reason))
         {
             return await RejectEnrollmentAsync(null, reason, cancellationToken);
+        }
+
+        // Through the agents' endpoint the TLS connection holds the key being enrolled, as every later one will.
+        if (transport.ThroughAgentsEndpoint && !transport.PresentsKey(request.PublicKey))
+        {
+            return await RejectEnrollmentAsync(null, "client_certificate_mismatch", cancellationToken);
         }
 
         var now = clock.GetUtcNow();
@@ -216,27 +234,46 @@ public sealed partial class AgentAccess(
         return $"{Truncate(name, Node.MaxNameLength - 9)}-{Guid.NewGuid().ToString("N")[..8]}";
     }
 
-    public async Task<Result<ChallengeResponse>> ChallengeAsync(ChallengeRequest request, string panelOrigin, CancellationToken cancellationToken)
+    public async Task<Result<ChallengeResponse>> ChallengeAsync(ChallengeRequest request, string panelOrigin, AgentTransport transport,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(transport);
+        await transportPolicy.EnsureLoadedAsync(db, cancellationToken);
         var nodeId = new NodeId(request.NodeId);
+        if (request.Nonce is { Length: > MaxChallengeNonceLength })
+        {
+            LogAuthenticationRejected(nodeId, "challenge nonce too long");
+            return AgentErrors.AuthenticationRejected;
+        }
+
         // Pending credentials too: authenticating with one completes a rotation.
-        var allowed = await db.NodeCredentials.AnyAsync(c => c.Id == request.CredentialId && c.NodeId == nodeId
-            && (c.Status == NodeCredentialStatus.Active || c.Status == NodeCredentialStatus.Pending)
-            && db.Nodes.Any(n => n.Id == nodeId && n.Status == NodeStatus.Active), cancellationToken);
-        if (!allowed)
+        var key = await db.NodeCredentials.Where(c => c.Id == request.CredentialId && c.NodeId == nodeId
+                && (c.Status == NodeCredentialStatus.Active || c.Status == NodeCredentialStatus.Pending)
+                && db.Nodes.Any(n => n.Id == nodeId && n.Status == NodeStatus.Active))
+            .Select(c => c.PublicKey)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (key is null)
         {
             LogAuthenticationRejected(nodeId, "challenge for unknown/revoked credential or inactive node");
             return AgentErrors.AuthenticationRejected;
+        }
+
+        if (RefuseTransport(nodeId, key, transport) is { } refused)
+        {
+            return refused;
         }
 
         var challenge = challenges.Issue(nodeId, request.CredentialId, panelOrigin);
         return new ChallengeResponse(challenge.ChallengeId, challenge.Nonce, challenge.PanelOrigin);
     }
 
-    public async Task<Result<TokenResponse>> AuthenticateAsync(TokenRequest request, string panelOrigin, CancellationToken cancellationToken)
+    public async Task<Result<TokenResponse>> AuthenticateAsync(TokenRequest request, string panelOrigin, AgentTransport transport,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(transport);
+        await transportPolicy.EnsureLoadedAsync(db, cancellationToken);
         var challenge = challenges.Consume(request.ChallengeId);
         if (challenge is null || !string.Equals(challenge.PanelOrigin, panelOrigin, StringComparison.Ordinal))
         {
@@ -251,6 +288,12 @@ public sealed partial class AgentAccess(
         {
             LogAuthenticationRejected(challenge.NodeId, "credential revoked or node inactive after the challenge");
             return AgentErrors.AuthenticationRejected;
+        }
+
+        // Again: the token may come over another TLS connection than the challenge did.
+        if (RefuseTransport(node.Id, credential.PublicKey, transport) is { } refused)
+        {
+            return refused;
         }
 
         var signed = ProtocolCrypto.SignedData(AgentProtocol.Purposes.Authenticate,
@@ -299,8 +342,54 @@ public sealed partial class AgentAccess(
         }
 
         sessions.Prune();
-        var (token, session) = sessions.Create(node.Id, credential.Id);
+        var (token, session) = sessions.Create(node.Id, credential.Id, transport.ThroughAgentsEndpoint ? transport.ClientKeyFingerprint : null);
+
+        // Certificates became required while this sign-in ran: the switch ended the sessions without one before this
+        // one existed.
+        if (session.CertificateKey is null && transportPolicy.RequiresCertificateFor(transport))
+        {
+            sessions.End(session.SessionId);
+            return AgentErrors.CertificateRequired;
+        }
+
         return new TokenResponse(token, session.SessionId, session.ExpiresAt);
+    }
+
+    /// <summary>
+    /// The address of the agents' endpoint for one node (docs/architecture/03, "Client certificates"), signed with the
+    /// panel key, as a refusal with <see cref="AgentErrors.CertificateRequired"/> carries it.
+    /// </summary>
+    public Task<SignedMessage> SignAgentsAddressAsync(Guid nodeId, AgentsEndpointAddress agents, byte[]? nonce, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(agents);
+        return keys.SignAsync(AgentProtocol.Purposes.AgentsAddress, ProtocolJson.Serialize(new AgentsAddress(nodeId, agents.Port, agents.Url, nonce)),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Through the agents' endpoint the client certificate must be the credential's key. Elsewhere, an agent is sent
+    /// there while certificates are required.
+    /// </summary>
+    private DomainError? RefuseTransport(NodeId node, byte[] credentialKey, AgentTransport transport)
+    {
+        if (transport.ThroughAgentsEndpoint)
+        {
+            if (transport.PresentsKey(credentialKey))
+            {
+                return null;
+            }
+
+            LogAuthenticationRejected(node, "the client certificate is missing or is not the node key");
+            return AgentErrors.AuthenticationRejected;
+        }
+
+        if (transportPolicy.RequiresCertificateFor(transport))
+        {
+            LogSentToAgentsAddress(node);
+            return AgentErrors.CertificateRequired;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -514,6 +603,9 @@ public sealed partial class AgentAccess(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Agent authentication rejected for node {NodeId}: {Reason}")]
     private partial void LogAuthenticationRejected(NodeId? nodeId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} signed in without a client certificate, which this panel requires: sent to the agents' address")]
+    private partial void LogSentToAgentsAddress(NodeId nodeId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Credential rotation rejected for node {NodeId}: {Reason}")]
     private partial void LogRotationRejected(NodeId nodeId, string reason);

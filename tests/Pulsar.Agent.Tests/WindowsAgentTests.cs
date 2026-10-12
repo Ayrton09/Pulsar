@@ -1,7 +1,11 @@
+using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core;
@@ -69,6 +73,61 @@ public sealed class WindowsAgentTests
 
         Assert.ThrowsAny<CryptographicException>(() => store.Open(reference));
         store.Delete(reference); // deleting a missing key is a no-op
+    }
+
+    [WindowsFact]
+    public async Task ANodeKeyIsAClientCertificateThatSChannelSignsATlsHandshakeWith()
+    {
+        // The key in its store (the TPM when this machine has one): the certificate names its container, and SChannel
+        // signs the handshake there (Phase 16).
+        var store = new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance);
+        var key = store.Create($"PulsarAgentTest-{Guid.NewGuid():N}", NodeKeyScope.User);
+        try
+        {
+            using var certificate = key.CreateCertificate();
+            Assert.True(certificate.HasPrivateKey);
+            Assert.Equal(key.PublicKey, certificate.GetECDsaPublicKey()!.ExportSubjectPublicKeyInfo());
+
+            using var serverKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            using var ephemeral = new CertificateRequest("CN=localhost", serverKey, HashAlgorithmName.SHA256)
+                .CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+            using var serverCertificate = X509CertificateLoader.LoadPkcs12(ephemeral.Export(X509ContentType.Pfx, "test"), "test");
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            var server = Task.Run(async () =>
+            {
+                using var accepted = await listener.AcceptTcpClientAsync();
+                using var tls = new SslStream(accepted.GetStream());
+                await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
+                {
+                    ServerCertificate = serverCertificate,
+                    ClientCertificateRequired = true,
+                    RemoteCertificateValidationCallback = (_, presented, _, _) => presented is not null,
+                });
+                using var presented = new X509Certificate2(tls.RemoteCertificate!);
+                return presented.GetECDsaPublicKey()!.ExportSubjectPublicKeyInfo();
+            });
+
+            using var client = new TcpClient();
+            await client.ConnectAsync(IPAddress.Loopback, ((IPEndPoint)listener.LocalEndpoint).Port);
+            using var clientTls = new SslStream(client.GetStream());
+            await clientTls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
+            {
+                TargetHost = "localhost",
+                ClientCertificates = [certificate],
+                LocalCertificateSelectionCallback = (_, _, _, _, _) => certificate,
+                RemoteCertificateValidationCallback = (_, presented, _, _) => presented?.GetCertHashString() == serverCertificate.Thumbprint,
+            });
+
+            Assert.Equal(key.PublicKey, await server.WaitAsync(TimeSpan.FromSeconds(30)));
+            TestContext.Current.SendDiagnosticMessage($"Client certificate on a {key.Reference.Storage} node key");
+        }
+        finally
+        {
+            var reference = key.Reference;
+            key.Dispose();
+            store.Delete(reference);
+        }
     }
 
     [WindowsFact]

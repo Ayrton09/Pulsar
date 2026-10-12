@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Time.Testing;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Security;
@@ -229,6 +230,8 @@ public sealed class AgentEnrollmentTests : IDisposable
             public byte[] PublicKey => key.ExportSubjectPublicKeyInfo();
 
             public byte[] Sign(ReadOnlySpan<byte> data) => ProtocolCrypto.Sign(key, data);
+
+            public X509Certificate2 CreateCertificate() => NodeCertificate.Create(key);
 
             public void Dispose() => key.Dispose();
         }

@@ -41,6 +41,8 @@ public interface IPulsarDbContext
 
     DbSet<PanelSigningKey> PanelSigningKeys { get; }
 
+    DbSet<AgentTransportSettings> AgentTransportSettings { get; }
+
     DbSet<GameTemplate> GameTemplates { get; }
 
     DbSet<Server> Servers { get; }

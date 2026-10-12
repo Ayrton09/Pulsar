@@ -13,7 +13,8 @@ namespace Pulsar.Api.Agents;
 /// <c>/agent/v1/auth/token</c>. A browser cookie never authenticates here and an agent token never works on /api.
 /// </summary>
 internal sealed class AgentAuthenticationHandler(
-    IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, AgentSessionStore sessions)
+    IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, AgentSessionStore sessions,
+    AgentsEndpoint agents, AgentTransportPolicy transportPolicy)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public new const string Scheme = "PulsarAgent";
@@ -33,6 +34,16 @@ internal sealed class AgentAuthenticationHandler(
         if (session is null)
         {
             return Task.FromResult(AuthenticateResult.Fail("Unknown or expired agent session."));
+        }
+
+        // A session signed in with a client certificate needs it on every request: the token alone is worth nothing.
+        // One signed in without belongs to the main endpoint, while certificates are not required (Phase 16).
+        var transport = agents.TransportOf(Context);
+        if (session.CertificateKey is not null
+            ? !transport.ThroughAgentsEndpoint || transport.ClientKeyFingerprint != session.CertificateKey
+            : transport.ThroughAgentsEndpoint || transportPolicy.RequiresCertificateFor(transport))
+        {
+            return Task.FromResult(AuthenticateResult.Fail("The agent session does not match this connection's client certificate."));
         }
 
         var identity = new ClaimsIdentity(

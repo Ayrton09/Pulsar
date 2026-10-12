@@ -1,5 +1,6 @@
 using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Contracts;
@@ -99,6 +100,9 @@ public sealed partial class CngNodeKeyStore(ILogger<CngNodeKeyStore> logger) : I
         public byte[] PublicKey => _ecdsa.ExportSubjectPublicKeyInfo();
 
         public byte[] Sign(ReadOnlySpan<byte> data) => _ecdsa.SignData(data, HashAlgorithmName.SHA256, ProtocolCrypto.SignatureFormat);
+
+        // A persisted key: the certificate names its container, so SChannel signs the handshake with it (TPM included).
+        public X509Certificate2 CreateCertificate() => NodeCertificate.Create(_ecdsa);
 
         public void Dispose()
         {

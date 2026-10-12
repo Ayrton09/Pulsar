@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Security.Cryptography.X509Certificates;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Contracts;
 
@@ -11,8 +12,11 @@ namespace Pulsar.Agent.Core.Panel;
 /// </summary>
 public sealed class CredentialRotationClient(PanelTransport transport)
 {
+    /// <param name="panel">Where the session was opened (the configured address or its fallback).</param>
+    /// <param name="certificate">The current key's client certificate: a session opened with one needs it on every request.</param>
     /// <returns>The pending credential id of <paramref name="newKey"/>.</returns>
-    public async Task<Guid> RegisterAsync(AgentConfig config, string accessToken, Guid sessionId, INodeKey newKey, CancellationToken cancellationToken)
+    public async Task<Guid> RegisterAsync(AgentConfig config, Uri panel, X509Certificate2? certificate, string accessToken, Guid sessionId, INodeKey newKey,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(newKey);
@@ -20,7 +24,7 @@ public sealed class CredentialRotationClient(PanelTransport transport)
         var proof = newKey.Sign(ProtocolCrypto.SignedData(AgentProtocol.Purposes.RotateCredential, ProtocolCrypto.GuidBytes(config.NodeId),
             ProtocolCrypto.GuidBytes(config.CredentialId), ProtocolCrypto.GuidBytes(sessionId), publicKey));
 
-        using var http = transport.CreateClient(config.Panel);
+        using var http = transport.CreateClient(panel, certificate);
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         var signed = await PanelTransport.PostAsync<RotateCredentialRequest, SignedMessage>(http, AgentProtocol.RotateCredentialPath,
             new RotateCredentialRequest(publicKey, newKey.Reference.Storage, proof), cancellationToken);

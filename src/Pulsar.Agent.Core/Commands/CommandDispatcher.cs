@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
+using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Servers;
 using Pulsar.Agent.Core.Steam;
 using Pulsar.Contracts;
@@ -14,6 +15,13 @@ public interface IAgentControl
 
     /// <summary>Replaces the pinned panel keys; false when they are already these.</summary>
     bool ReplacePanelKeys(IReadOnlyList<PanelKey> keys);
+
+    /// <summary>
+    /// Signs in at the panel's agents' address (<paramref name="port"/> on the host the agent reaches the panel by, or the
+    /// operator's <paramref name="url"/>) and, if that works, keeps it, with the address in use as fallback (Phase 16).
+    /// <c>Rejected</c> with <c>agent.address_unreachable</c> when it cannot sign in there: nothing changes.
+    /// </summary>
+    Task<CommandAck> UseAgentsAddressAsync(Guid commandId, int port, Uri? url);
 }
 
 /// <summary>
@@ -26,7 +34,8 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger,
     /// <summary>Command types this agent handles (and features it has), announced as capabilities in its Hello.</summary>
     public IReadOnlySet<string> SupportedCommands { get; } = new HashSet<string>(
         [
-            AgentCapabilities.Ping, AgentCapabilities.RotateCredential, AgentCapabilities.UpdatePanelKeys, .. servers?.Capabilities ?? [],
+            AgentCapabilities.Ping, AgentCapabilities.RotateCredential, AgentCapabilities.UpdatePanelKeys, AgentCapabilities.UseAgentsAddress,
+            .. servers?.Capabilities ?? [],
             .. steamLogins is null ? [] : new[] { AgentCapabilities.ForgetSteamLogin },
         ],
         StringComparer.Ordinal);
@@ -68,6 +77,18 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger,
                 var keyIds = string.Join(", ", update.Keys.Select(k => k.KeyId));
                 LogPanelKeys(envelope.CommandId, keyIds, changed);
                 return Ack(envelope, changed ? AckStatus.Accepted : AckStatus.AlreadyInState);
+            case UseAgentsAddressCommand use:
+                var url = use.Url is null ? null : PanelAddress.TryParseHttpsOrigin(use.Url);
+                if (use.Port is <= 0 or > 65535 || (use.Url is not null && url is null))
+                {
+                    LogRefused(envelope.CommandId, AckStatus.Rejected, "command.invalid_agents_address");
+                    return new CommandAck(envelope.CommandId, AckStatus.Rejected, "command.invalid_agents_address",
+                        "The agents' address needs a port, and an address only as an https origin.");
+                }
+
+                var moved = await control.UseAgentsAddressAsync(envelope.CommandId, use.Port, url);
+                LogAgentsAddress(envelope.CommandId, use.Port, url, moved.Status, moved.ErrorCode);
+                return moved;
             // Whatever the server host announces goes to it: one list of server commands, not two to keep in step.
             case var command when servers is not null && servers.Capabilities.Contains(AgentCapabilities.Of(command), StringComparer.Ordinal):
                 var ack = await servers.ExecuteAsync(envelope);
@@ -126,6 +147,9 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger,
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Panel keys from command {CommandId}: {Keys} (changed: {Changed})")]
     private partial void LogPanelKeys(Guid commandId, string keys, bool changed);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Agents' address from the panel ({CommandId}): port {Port}, address {Url}: {Status} {ErrorCode}")]
+    private partial void LogAgentsAddress(Guid commandId, int port, Uri? url, AckStatus status, string? errorCode);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Steam account {AccountId} deleted in the panel ({CommandId}): cached login forgotten: {Forgotten}")]
     private partial void LogSteamLoginForgotten(Guid commandId, Guid accountId, bool forgotten);

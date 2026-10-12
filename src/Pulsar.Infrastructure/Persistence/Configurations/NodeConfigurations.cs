@@ -98,6 +98,18 @@ internal sealed class PanelSigningKeyConfiguration : IEntityTypeConfiguration<Pa
     }
 }
 
+internal sealed class AgentTransportSettingsConfiguration : IEntityTypeConfiguration<AgentTransportSettings>
+{
+    public void Configure(EntityTypeBuilder<AgentTransportSettings> builder)
+    {
+        builder.ToTable("agent_transport_settings", t =>
+            t.HasCheckConstraint("ck_agent_transport_settings_singleton", $"id = {AgentTransportSettings.SingletonId}"));
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.Id).ValueGeneratedNever();
+        builder.Property<uint>("Version").IsRowVersion();
+    }
+}
+
 internal sealed class ReusableEnrollmentTokenConfiguration : IEntityTypeConfiguration<ReusableEnrollmentToken>
 {
     public void Configure(EntityTypeBuilder<ReusableEnrollmentToken> builder)

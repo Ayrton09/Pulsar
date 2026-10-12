@@ -39,5 +39,6 @@ public static class AgentProtocol
         public const string Command = "pulsar-command-v1";
         public const string RotateCredential = "pulsar-rotate-credential-v1";
         public const string RotationResult = "pulsar-rotation-result-v1";
+        public const string AgentsAddress = "pulsar-agents-address-v1";
     }
 }

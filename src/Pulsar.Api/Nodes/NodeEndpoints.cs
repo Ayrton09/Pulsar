@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+using Pulsar.Api.Agents;
 using Pulsar.Api.Http;
 using Pulsar.Api.Security;
 using Pulsar.Application.Abstractions;
@@ -101,6 +102,13 @@ public static class NodeEndpoints
         panelKeys.MapGet("/", async (PanelKeyManagement keys, CancellationToken ct) => TypedResults.Ok(await keys.GetAsync(ct)));
         panelKeys.MapPost("/rotate", RotatePanelKeyAsync);
         panelKeys.MapPost("/{keyId}/retire", RetirePanelKeyAsync);
+
+        // Client certificates for agents (Phase 16): the agents' endpoint and the switch that requires it.
+        var transport = api.MapGroup("/agent-transport").WithTags("Agent transport").RequirePermission(Permissions.Settings.Manage);
+        transport.MapGet("/", async (HttpContext http, AgentTransportManagement t, AgentsEndpoint agents, CancellationToken ct) =>
+            TypedResults.Ok(await t.GetAsync(agents.AddressFor(http.Request), ct)));
+        transport.MapPut("/", async (UpdateAgentTransportRequest request, HttpContext http, AgentTransportManagement t, AgentsEndpoint agents,
+            CancellationToken ct) => (await t.SetAsync(request, agents.AddressFor(http.Request), ct)).ToHttp());
         return api;
     }
 

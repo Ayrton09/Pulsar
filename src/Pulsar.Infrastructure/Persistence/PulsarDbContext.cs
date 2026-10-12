@@ -43,6 +43,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<PanelSigningKey> PanelSigningKeys => Set<PanelSigningKey>();
 
+    public DbSet<AgentTransportSettings> AgentTransportSettings => Set<AgentTransportSettings>();
+
     public DbSet<GameTemplate> GameTemplates => Set<GameTemplate>();
 
     public DbSet<Server> Servers => Set<Server>();

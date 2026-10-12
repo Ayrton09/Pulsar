@@ -26,11 +26,13 @@ public static class DependencyInjection
         services.AddScoped<ApiKeys>();
         services.AddScoped<AuditQueries>();
         services.AddSingleton<AgentSessionStore>();
+        services.AddSingleton<AgentTransportPolicy>();
         services.AddSingleton<AgentChallengeStore>();
         services.AddScoped<AgentAccess>();
         services.AddScoped<NodeManagement>();
         services.AddScoped<EnrollmentTokens>();
         services.AddScoped<PanelKeyManagement>();
+        services.AddScoped<AgentTransportManagement>();
         services.AddScoped<TemplateCatalog>();
         services.AddScoped<IBundledTemplates>(sp => sp.GetRequiredService<TemplateCatalog>());
         services.AddScoped<ServerOperations>();

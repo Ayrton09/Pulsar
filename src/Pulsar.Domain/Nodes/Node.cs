@@ -79,6 +79,15 @@ public sealed class Node
     /// </summary>
     public IReadOnlyList<string>? PinnedPanelKeys { get; private set; }
 
+    /// <summary>
+    /// Whether the agent's last connection presented its node key as a TLS client certificate on the agents' endpoint
+    /// (Phase 16). Null until it connects to a panel that records it.
+    /// </summary>
+    public bool? ConnectedWithCertificate { get; private set; }
+
+    /// <summary>Whether its agent can present a client certificate and move to the agents' address, as it last said.</summary>
+    public bool? AgentCanUseCertificate { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -221,6 +230,13 @@ public sealed class Node
     }
 
     public void Seen(DateTimeOffset now) => LastSeenAt = now;
+
+    /// <summary>How the agent connected at its last Hello (docs/architecture/03, "Client certificates").</summary>
+    public void ConnectedThrough(bool certificate, bool agentCanUseCertificate)
+    {
+        ConnectedWithCertificate = certificate;
+        AgentCanUseCertificate = agentCanUseCertificate;
+    }
 
     public void PanelKeysPinned(IEnumerable<string> keyIds) => PinnedPanelKeys = [.. keyIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
 

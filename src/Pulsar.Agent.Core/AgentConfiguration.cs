@@ -75,6 +75,10 @@ public sealed class AgentPaths(string root)
 /// <param name="KeyCreatedAt">When the current node key was registered (null: at enrollment). Drives automatic rotation.</param>
 /// <param name="PendingRotation">A new key the panel registered but the agent has not authenticated with yet.</param>
 /// <param name="BackupsRoot">Where backups go, chosen at enrollment (null: inside the state directory).</param>
+/// <param name="FallbackPanel">
+/// The address the agent used before the panel moved it to its agents' address (Phase 16): tried when <paramref name="Panel"/>
+/// cannot be reached, so a closed agents' port never cuts the node off.
+/// </param>
 public sealed record AgentConfig(
     Uri Panel,
     Guid NodeId,
@@ -86,7 +90,8 @@ public sealed record AgentConfig(
     bool Development,
     DateTimeOffset? KeyCreatedAt = null,
     PendingRotation? PendingRotation = null,
-    string? BackupsRoot = null)
+    string? BackupsRoot = null,
+    Uri? FallbackPanel = null)
 {
     public DateTimeOffset CurrentKeyCreatedAt => KeyCreatedAt ?? EnrolledAt;
 
@@ -107,6 +112,17 @@ public sealed record AgentConfig(
         return development
             ? Path.Combine(paths.Root, "servers")
             : Path.Combine((Environment.GetEnvironmentVariable("SystemDrive") ?? "C:") + Path.DirectorySeparatorChar, "PulsarServers");
+    }
+
+    /// <summary>
+    /// <paramref name="address"/> becomes the panel's address, the one used until now the fallback (the first one stays
+    /// it after later moves), and never a fallback equal to the address: there would be nothing else to try.
+    /// </summary>
+    public AgentConfig MovedTo(Uri address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        var fallback = FallbackPanel ?? Panel;
+        return this with { Panel = address, FallbackPanel = fallback == address ? null : fallback };
     }
 
     /// <summary>Where backups go: out of the servers' reach (only SYSTEM and Administrators can open it).</summary>
