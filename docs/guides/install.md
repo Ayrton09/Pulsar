@@ -121,6 +121,29 @@ The panel's machine must accept connections on its port (the installer opens it 
 Private networks, see `-FirewallPublic` above; routers and cloud firewalls are up to you). Nodes only connect out to
 the panel.
 
+#### Agents' port: client certificates (optional)
+
+Add `-AgentsPort 8444` to the panel's install. Agents then present their node key as a TLS client certificate on that
+second port, so a stolen session token is useless without the node's key. You do nothing on the nodes: agents move there
+on their own and keep the main address as a fallback. Browsers keep using the main port and never see a certificate
+request. **Nodes → Agent connections** shows which nodes still connect without a certificate; once every node has
+moved, **Require client certificates** turns away agents that do not use one (agents too old to move cannot connect
+until you update them).
+
+- Open the agents' port wherever nodes reach the panel from (the installer opens it in Windows Firewall like the main
+  one). It must reach the panel directly: a reverse proxy that decrypts TLS in front of it cannot pass the certificate
+  on (a TCP pass-through can). When nodes reach it under another address (a port forwarded under another number), set
+  it in `appsettings.Production.json`: `"Agents": { "PublicUrl": "https://panel.example.com:9444" }`.
+- On a panel installed before, add the endpoint to `C:\Program Files\Pulsar\Panel\appsettings.Production.json`
+  with the same certificate as `Https`, open the port, and restart the panel:
+
+  ```json
+  "Kestrel": { "Endpoints": {
+    "Https": { "Url": "https://*:8443", "Certificate": { "Path": "...", "Password": "..." } },
+    "Agents": { "Url": "https://*:8444", "Certificate": { "Path": "...", "Password": "..." } }
+  } }
+  ```
+
 ### Many nodes at once
 
 To enroll many machines with one command, for example with Intune or a group policy, create a reusable token in the
