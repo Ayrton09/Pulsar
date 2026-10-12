@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
@@ -150,6 +151,19 @@ function Facts({ items }: { items: [string, ReactNode][] }) {
   );
 }
 
+/** How the agent connected last: with its node key as client certificate (Phase 16) or with the session token alone. */
+function connection(t: TFunction, node: NodeSummary): string {
+  if (node.connectedWithCertificate === true) {
+    return t('nodes.connectionCertificate');
+  }
+
+  if (node.connectedWithCertificate === false) {
+    return t(node.agentCanUseCertificate === false ? 'nodes.connectionTokenOldAgent' : 'nodes.connectionToken');
+  }
+
+  return t('nodes.connectionUnknown');
+}
+
 function MachineCard({ node }: { node: NodeSummary }) {
   const { t } = useTranslation();
   const formatGigabytes = useFormatGigabytes();
@@ -170,6 +184,7 @@ function MachineCard({ node }: { node: NodeSummary }) {
               t('nodes.agentVersion', { version: inventory.agentVersion, protocol: inventory.protocolVersion }),
             ],
             [t('nodes.publicHost'), node.publicHost ?? t('common.none')],
+            [t('nodes.connection'), connection(t, node)],
           ]}
         />
       ) : (

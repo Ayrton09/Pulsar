@@ -4867,6 +4867,152 @@
         }
       }
     },
+    "/api/v1/agent-transport": {
+      "get": {
+        "tags": [
+          "Agent transport"
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTransportOverview"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Agent transport"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentTransportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTransportOverview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/servers": {
       "get": {
         "tags": [
@@ -11189,6 +11335,44 @@
           }
         }
       },
+      "AgentTransportOverview": {
+        "required": [
+          "endpointConfigured",
+          "agentsUrl",
+          "requireClientCertificates",
+          "inEffect",
+          "nodesWithoutCertificateCount",
+          "nodesWithoutCertificate"
+        ],
+        "type": "object",
+        "properties": {
+          "endpointConfigured": {
+            "type": "boolean"
+          },
+          "agentsUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requireClientCertificates": {
+            "type": "boolean"
+          },
+          "inEffect": {
+            "type": "boolean"
+          },
+          "nodesWithoutCertificateCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "nodesWithoutCertificate": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeWithoutCertificate"
+            }
+          }
+        }
+      },
       "AllocationView": {
         "required": [
           "id",
@@ -13119,7 +13303,9 @@
           "createdAt",
           "panelKeyTrust",
           "enrollmentTokenName",
-          "credentialFingerprint"
+          "credentialFingerprint",
+          "connectedWithCertificate",
+          "agentCanUseCertificate"
         ],
         "type": "object",
         "properties": {
@@ -13192,6 +13378,45 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "connectedWithCertificate": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "agentCanUseCertificate": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "NodeWithoutCertificate": {
+        "required": [
+          "id",
+          "name",
+          "connected",
+          "agentCanUseCertificate"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "agentCanUseCertificate": {
+            "type": [
+              "null",
+              "boolean"
             ]
           }
         }
@@ -15511,6 +15736,17 @@
           }
         }
       },
+      "UpdateAgentTransportRequest": {
+        "required": [
+          "requireClientCertificates"
+        ],
+        "type": "object",
+        "properties": {
+          "requireClientCertificates": {
+            "type": "boolean"
+          }
+        }
+      },
       "UpdateGameRequest": {
         "required": [
           "validate"
@@ -15880,6 +16116,9 @@
     },
     {
       "name": "Panel keys"
+    },
+    {
+      "name": "Agent transport"
     },
     {
       "name": "Templates"

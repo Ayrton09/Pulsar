@@ -11,8 +11,12 @@ export type CreatedNode = Schemas['CreatedNode'];
 export type EnrollmentTokenView = Schemas['EnrollmentTokenView'];
 export type CreatedEnrollmentToken = Schemas['CreatedEnrollmentToken'];
 
+export type AgentTransportOverview = Schemas['AgentTransportOverview'];
+
 export const nodeKeys = {
   all: ['nodes'] as const,
+  /** Under nodes: what changes nodes changes who connects without a certificate. */
+  agentTransport: ['nodes', 'agent-transport'] as const,
   enrollmentTokens: ['enrollment-tokens'] as const,
   detail: (id: string) => ['nodes', id] as const,
   allocations: (id: string) => ['nodes', id, 'allocations'] as const,
@@ -182,6 +186,27 @@ export function useRetirePanelKey() {
     mutationFn: (keyId: string) =>
       unwrap(api.POST('/api/v1/panel-keys/{keyId}/retire', { params: { path: { keyId } } })),
     onSuccess: changed,
+  });
+}
+
+/** The agents' address and whether agents must use it with their node key as client certificate (Phase 16). */
+export function useAgentTransport() {
+  return useQuery({
+    queryKey: nodeKeys.agentTransport,
+    queryFn: () => unwrap(api.GET('/api/v1/agent-transport')),
+  });
+}
+
+export function useSetAgentTransport() {
+  const queryClient = useQueryClient();
+  const nodesChanged = useNodesChanged();
+  return useMutation({
+    mutationFn: (requireClientCertificates: boolean) =>
+      unwrap(api.PUT('/api/v1/agent-transport', { body: { requireClientCertificates } })),
+    onSuccess: async (overview: AgentTransportOverview) => {
+      await nodesChanged();
+      queryClient.setQueryData(nodeKeys.agentTransport, overview);
+    },
   });
 }
 

@@ -132,6 +132,8 @@ describe('one-time secrets', () => {
       panelKeyTrust: 'current',
       enrollmentTokenName: null,
       credentialFingerprint: null,
+      connectedWithCertificate: null,
+      agentCanUseCertificate: null,
     };
     fakeApi({
       'GET /api/v1/auth/session': session({

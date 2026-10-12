@@ -394,6 +394,9 @@
       "enrollment_token": {
         "created": "Creó un token de enrolamiento reutilizable",
         "revoked": "Revocó un token de enrolamiento reutilizable"
+      },
+      "agent_transport": {
+        "changed": "Cambió cómo se conectan los agentes"
       }
     }
   },
@@ -742,6 +745,9 @@
       "lifetime_invalid": "Un token vale de 1 hora a 90 días.",
       "too_many": "El panel ya tiene 50 tokens que se pueden usar: revocá uno primero.",
       "not_found": "Ese token ya no existe."
+    },
+    "agent_transport": {
+      "no_agents_endpoint": "El panel no tiene dirección de agentes: los agentes no tendrían adónde ir. Primero agregá el endpoint de Kestrel \"Agents\"."
     }
   },
   "account": {
@@ -867,7 +873,12 @@
       "approveOne": "Aprobar",
       "origin": "Token {{token}}, clave {{fingerprint}}",
       "selectAll": "Seleccionar todos"
-    }
+    },
+    "connection": "Conexión",
+    "connectionCertificate": "Certificado de cliente (clave del nodo)",
+    "connectionToken": "Solo token de sesión",
+    "connectionTokenOldAgent": "Solo token de sesión: actualizá el agente para usar certificado de cliente",
+    "connectionUnknown": "Todavía no lo informó"
   },
   "servers": {
     "title": "Servidores",
@@ -1772,5 +1783,28 @@
       "expired": "Vencido",
       "revoked": "Revocado"
     }
+  },
+  "agentTransport": {
+    "title": "Conexión de los agentes",
+    "description": "En la dirección de agentes del panel, cada agente presenta la clave de su nodo como certificado de cliente TLS: un token de sesión robado no sirve de nada sin la clave del nodo. Los agentes que pueden pasarse a esa dirección lo hacen solos y guardan la dirección principal como respaldo.",
+    "noEndpoint": "Este panel no tiene dirección de agentes. Agregá el endpoint de Kestrel \"Agents\" (-AgentsPort del instalador) para usar certificados de cliente.",
+    "notInEffect": "Los certificados son obligatorios, pero sin dirección de agentes la exigencia no se aplica.",
+    "address": "Dirección de agentes",
+    "required": "Certificados obligatorios",
+    "optional": "Certificados opcionales",
+    "allWithCertificate": "Todos los nodos enrolados se conectan con su certificado de cliente.",
+    "withoutCertificate_one": "{{count}} nodo todavía se conecta sin certificado de cliente:",
+    "withoutCertificate_other": "{{count}} nodos todavía se conectan sin certificado de cliente:",
+    "connected": "conectado",
+    "offline": "desconectado",
+    "updateAgent": "Actualizá el agente",
+    "andMore_one": "y {{count}} más",
+    "andMore_other": "y {{count}} más",
+    "requireHint": "Si son obligatorios, los agentes que llegan a la dirección principal se mandan a la dirección de agentes y se cierran las sesiones sin certificado. Los agentes demasiado viejos para pasarse no se pueden conectar hasta que los actualices.",
+    "require": "Exigir certificados de cliente",
+    "requireConfirm_one": "{{count}} nodo todavía se conecta sin certificado. Su sesión se cierra ahora; si el agente puede pasarse, va a la dirección de agentes, y si es viejo no se conecta hasta que lo actualices. ¿Exigir certificados?",
+    "requireConfirm_other": "{{count}} nodos todavía se conectan sin certificado. Sus sesiones se cierran ahora; los agentes que pueden pasarse van a la dirección de agentes y los viejos no se conectan hasta que los actualices. ¿Exigir certificados?",
+    "stopRequiring": "Dejar de exigirlos",
+    "stopRequiringConfirm": "¿Permitir otra vez que los agentes se conecten a la dirección principal solo con el token de sesión?"
   }
 }

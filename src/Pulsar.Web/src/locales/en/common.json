@@ -394,6 +394,9 @@
       "enrollment_token": {
         "created": "Created a reusable enrollment token",
         "revoked": "Revoked a reusable enrollment token"
+      },
+      "agent_transport": {
+        "changed": "Changed how agents connect"
       }
     }
   },
@@ -742,6 +745,9 @@
       "lifetime_invalid": "A token is valid for 1 hour to 90 days.",
       "too_many": "The panel already has 50 tokens that can be used: revoke one first.",
       "not_found": "That token does not exist any more."
+    },
+    "agent_transport": {
+      "no_agents_endpoint": "The panel has no agents' address: agents would have nowhere to go. Add the Kestrel endpoint \"Agents\" first."
     }
   },
   "account": {
@@ -867,7 +873,12 @@
       "approveOne": "Approve",
       "origin": "Token {{token}}, key {{fingerprint}}",
       "selectAll": "Select all"
-    }
+    },
+    "connection": "Connection",
+    "connectionCertificate": "Client certificate (node key)",
+    "connectionToken": "Session token only",
+    "connectionTokenOldAgent": "Session token only: update the agent to use a client certificate",
+    "connectionUnknown": "Not reported yet"
   },
   "servers": {
     "title": "Servers",
@@ -1772,5 +1783,28 @@
       "expired": "Expired",
       "revoked": "Revoked"
     }
+  },
+  "agentTransport": {
+    "title": "Agent connections",
+    "description": "On the panel's agents' address, every agent presents its node key as a TLS client certificate: a stolen session token is worth nothing without the node's key. Agents that can move there do so on their own and keep the main address as a fallback.",
+    "noEndpoint": "This panel has no agents' address. Add the Kestrel endpoint \"Agents\" (the installer's -AgentsPort) to use client certificates.",
+    "notInEffect": "Certificates are required, but without an agents' address the requirement is not in effect.",
+    "address": "Agents' address",
+    "required": "Certificates required",
+    "optional": "Certificates optional",
+    "allWithCertificate": "Every enrolled node connects with its client certificate.",
+    "withoutCertificate_one": "{{count}} node still connects without a client certificate:",
+    "withoutCertificate_other": "{{count}} nodes still connect without a client certificate:",
+    "connected": "connected",
+    "offline": "offline",
+    "updateAgent": "Update the agent",
+    "andMore_one": "and {{count}} more",
+    "andMore_other": "and {{count}} more",
+    "requireHint": "Required: agents that reach the main address are sent to the agents' address, and sessions without a certificate end. Agents too old to move cannot connect until they are updated.",
+    "require": "Require client certificates",
+    "requireConfirm_one": "{{count}} node still connects without a certificate. Its session ends now; an agent that can move goes to the agents' address, an older one cannot connect until it is updated. Require certificates?",
+    "requireConfirm_other": "{{count}} nodes still connect without a certificate. Their sessions end now; agents that can move go to the agents' address, older ones cannot connect until they are updated. Require certificates?",
+    "stopRequiring": "Stop requiring them",
+    "stopRequiringConfirm": "Let agents connect to the main address with the session token alone again?"
   }
 }

@@ -16,6 +16,7 @@ import { useApproveNodes, useCreateNode, useNodes, type CreatedNode, type NodeSu
 import { EnrollmentCommand, NodeStateBadge } from './components';
 import { EnrollmentTokensSection } from './EnrollmentTokensSection';
 import { nodeSchema, type NodeFormValues } from './nodeForm';
+import { AgentTransportSection } from './AgentTransportSection';
 import { PanelKeysSection } from './PanelKeysSection';
 
 export function NodesPage() {
@@ -105,6 +106,7 @@ export function NodesPage() {
       )}
       {can(me, Permission.NodeCredentialsManage) && <EnrollmentTokensSection />}
       {can(me, Permission.SettingsManage) && <PanelKeysSection />}
+      {can(me, Permission.SettingsManage) && <AgentTransportSection />}
       {creating && <CreateNodeDialog onClose={() => setCreating(false)} />}
     </>
   );

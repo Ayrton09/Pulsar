@@ -50,6 +50,8 @@ const online: Schemas['NodeSummary'] = {
   panelKeyTrust: 'current',
   enrollmentTokenName: null,
   credentialFingerprint: 'sha256:node-key-fingerprint',
+  connectedWithCertificate: false,
+  agentCanUseCertificate: true,
 };
 const offline = { ...online, id: '0192f1a0-0000-7000-8000-0000000000a2', name: 'Backup', connected: false };
 const pending: Schemas['NodeSummary'] = {
@@ -608,6 +610,7 @@ describe('key rotation', () => {
       'GET /api/v1/panel-keys': () =>
         json({ keys: [key('sha256:old', 'active', 2)], nodes: 2, nodesOutdated: 0, nodesUnknown: 0 }),
       'POST /api/v1/panel-keys/rotate': () => json(rotated),
+      'GET /api/v1/agent-transport': () => json(transport({})),
       // openapi-fetch encodes the ':' of the key id.
       'POST /api/v1/panel-keys/sha256%3Aold/retire': (request) => {
         retiredKey = new URL(request.url).pathname;
@@ -629,5 +632,103 @@ describe('key rotation', () => {
     await user.click(screen.getByRole('button', { name: 'Retire old key' }));
     await vi.waitFor(() => expect(retiredKey).toContain('/retire'));
     expect(await screen.findByRole('button', { name: 'Rotate panel key' })).toBeInTheDocument();
+  });
+});
+
+function transport(overrides: Partial<Schemas['AgentTransportOverview']>): Schemas['AgentTransportOverview'] {
+  return {
+    endpointConfigured: true,
+    agentsUrl: 'https://panel.example.com:8444',
+    requireClientCertificates: false,
+    inEffect: false,
+    nodesWithoutCertificateCount: 0,
+    nodesWithoutCertificate: [],
+    ...overrides,
+  };
+}
+
+describe('agent connections', () => {
+  const admin = { ...operator, permissions: [...operator.permissions, 'settings.manage'] };
+
+  it('names the nodes without a certificate and requires certificates once confirmed', async () => {
+    const waiting = transport({
+      nodesWithoutCertificateCount: 2,
+      nodesWithoutCertificate: [
+        { id: online.id, name: 'Buenos Aires 1', connected: true, agentCanUseCertificate: true },
+        { id: '0192f1a0-0000-7000-8000-0000000000a2', name: 'Backup', connected: false, agentCanUseCertificate: false },
+      ],
+    });
+    const put = vi.fn(async (request: Request) => {
+      expect(await request.json()).toEqual({ requireClientCertificates: true });
+      return json({ ...waiting, requireClientCertificates: true, inEffect: true });
+    });
+    const confirm = vi.fn(() => true);
+    fakeApi({
+      'GET /api/v1/auth/session': session(admin),
+      'GET /api/v1/nodes': () => json([online]),
+      'GET /api/v1/panel-keys': () => json({ keys: [], nodes: 1, nodesOutdated: 0, nodesUnknown: 0 }),
+      'GET /api/v1/agent-transport': () => json(waiting),
+      'PUT /api/v1/agent-transport': put,
+    });
+    vi.stubGlobal('confirm', confirm);
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('https://panel.example.com:8444')).toBeInTheDocument();
+    expect(screen.getByText('2 nodes still connect without a client certificate:')).toBeInTheDocument();
+    expect(screen.getByText('Update the agent')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Require client certificates' }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('2 nodes still connect without a certificate'));
+    expect(await screen.findByText('Certificates required')).toBeInTheDocument();
+    expect(put).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: 'Stop requiring them' })).toBeInTheDocument();
+  });
+
+  it('says how to add an agents address when the panel has none', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(admin),
+      'GET /api/v1/nodes': () => json([online]),
+      'GET /api/v1/panel-keys': () => json({ keys: [], nodes: 1, nodesOutdated: 0, nodesUnknown: 0 }),
+      'GET /api/v1/agent-transport': () => json(transport({ endpointConfigured: false, agentsUrl: null })),
+    });
+    renderAt('/nodes');
+
+    expect(await screen.findByText(/This panel has no agents' address/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Require client certificates' })).not.toBeInTheDocument();
+  });
+
+  it('offers to stop requiring certificates that are saved as required without an agents address', async () => {
+    const put = vi.fn(() => json(transport({ endpointConfigured: false, agentsUrl: null })));
+    fakeApi({
+      'GET /api/v1/auth/session': session(admin),
+      'GET /api/v1/nodes': () => json([online]),
+      'GET /api/v1/panel-keys': () => json({ keys: [], nodes: 1, nodesOutdated: 0, nodesUnknown: 0 }),
+      'GET /api/v1/agent-transport': () =>
+        json(transport({ endpointConfigured: false, agentsUrl: null, requireClientCertificates: true })),
+      'PUT /api/v1/agent-transport': put,
+    });
+    vi.stubGlobal('confirm', () => true);
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    expect(await screen.findByText(/the requirement is not in effect/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Stop requiring them' }));
+
+    expect(put).toHaveBeenCalledOnce();
+  });
+
+  it('shows on the node page how its agent connects', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(admin),
+      [`GET /api/v1/nodes/${online.id}`]: () =>
+        json({
+          node: { ...online, connectedWithCertificate: true, agentCanUseCertificate: true },
+          credentials: [credential],
+        }),
+    });
+    renderAt(`/nodes/${online.id}`);
+
+    expect(await screen.findByText('Client certificate (node key)')).toBeInTheDocument();
   });
 });

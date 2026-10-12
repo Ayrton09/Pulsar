@@ -168,6 +168,8 @@ describe('node usage history', () => {
     panelKeyTrust: 'current',
     enrollmentTokenName: null,
     credentialFingerprint: null,
+    connectedWithCertificate: null,
+    agentCanUseCertificate: null,
   };
   const nodeViewer = { ...adminUser, permissions: ['node.view'] };
 
