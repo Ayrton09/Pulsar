@@ -16,6 +16,19 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 };
 
+// Nor media queries: every query reports a narrow screen that never changes.
+window.matchMedia ??= (query: string) =>
+  ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent: () => false,
+  }) as MediaQueryList;
+
 // A page's first render loads its lazy route and its translations: on a busy machine (the .NET suite running alongside)
 // that can take longer than findBy's default second.
 configure({ asyncUtilTimeout: 5000 });

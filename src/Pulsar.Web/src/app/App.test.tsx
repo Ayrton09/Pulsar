@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -77,6 +77,23 @@ describe('routing', () => {
     for (const name of ['Users', 'Roles', 'Audit log']) {
       expect(nav).toContainElement(screen.getByRole('link', { name }));
     }
+  });
+
+  it('opens the navigation from the menu button on small screens and closes it after a choice', async () => {
+    fakeApi({ 'GET /api/v1/auth/session': session(adminUser) });
+    const router = renderAt('/');
+    const user = userEvent.setup();
+
+    const menu = await screen.findByRole('button', { name: 'Open menu' });
+    expect(menu).toHaveAttribute('aria-expanded', 'false');
+    await user.click(menu);
+
+    const drawer = screen.getByRole('dialog', { name: 'Menu' });
+    expect(menu).toHaveAttribute('aria-expanded', 'true');
+    await user.click(within(drawer).getByRole('link', { name: 'Audit log' }));
+
+    expect(router.state.location.pathname).toBe('/admin/audit');
+    expect(screen.queryByRole('dialog', { name: 'Menu' })).not.toBeInTheDocument();
   });
 
   it('hides pages and links the user has no permission for', async () => {

@@ -1,12 +1,23 @@
+import type { LucideIcon } from 'lucide-react';
 import type { ButtonHTMLAttributes } from 'react';
 
-type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
+type Variant = 'primary' | 'secondary' | 'danger' | 'dangerSubtle' | 'ghost';
 
 const variants: Record<Variant, string> = {
   primary: 'bg-accent text-accent-contrast hover:bg-accent/90',
   secondary: 'border border-border bg-surface hover:bg-surface-raised',
   danger: 'bg-danger text-white hover:bg-danger/90',
+  dangerSubtle: 'border border-danger/40 text-danger hover:bg-danger/10',
   ghost: 'hover:bg-surface-raised',
+};
+
+// A button that cannot be used loses its variant's fill: a faded accent still reads as "click me".
+const unavailable: Record<Variant, string> = {
+  primary: 'bg-surface-raised text-muted',
+  secondary: 'border border-border bg-surface text-muted',
+  danger: 'bg-surface-raised text-muted',
+  dangerSubtle: 'border border-border text-muted',
+  ghost: 'text-muted',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -14,17 +25,22 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: 'sm' | 'md';
   /** Disables the button and shows that the action is running. */
   busy?: boolean;
+  /** Shown before the label; the label stays the button's name. */
+  icon?: LucideIcon;
 }
 
 export function Button({
   variant = 'primary',
   size = 'md',
   busy = false,
+  icon: Icon,
   className = '',
   disabled,
   children,
   ...props
 }: ButtonProps) {
+  // While its action runs it keeps its look, with a spinner: it is busy, not unavailable.
+  const inactive = disabled === true && !busy;
   return (
     <button
       type="button"
@@ -34,13 +50,13 @@ export function Button({
       className={[
         'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-        'disabled:cursor-not-allowed disabled:opacity-60',
+        busy ? 'cursor-wait' : 'disabled:cursor-not-allowed',
         size === 'sm' ? 'h-8 px-3 text-sm' : 'h-10 px-4 text-sm',
-        variants[variant],
+        inactive ? unavailable[variant] : variants[variant],
         className,
       ].join(' ')}
     >
-      {busy && <Spinner />}
+      {busy ? <Spinner /> : Icon && <Icon className="size-4 shrink-0" />}
       {children}
     </button>
   );

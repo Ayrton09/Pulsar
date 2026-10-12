@@ -1,4 +1,28 @@
-import { useState, type ReactNode } from 'react';
+import {
+  Archive,
+  CalendarClock,
+  Clock,
+  Cpu,
+  Database,
+  Download,
+  FolderOpen,
+  LayoutDashboard,
+  Map as MapIcon,
+  MemoryStick,
+  Network,
+  OctagonX,
+  Play,
+  Puzzle,
+  RotateCcw,
+  RotateCw,
+  Settings,
+  Square,
+  Terminal,
+  Trash2,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ApiError } from '../../api/client';
@@ -46,6 +70,18 @@ const allTabs = [
   'network',
 ] as const;
 type Tab = (typeof allTabs)[number];
+
+const tabIcons: Record<Tab, LucideIcon> = {
+  overview: LayoutDashboard,
+  console: Terminal,
+  files: FolderOpen,
+  addons: Puzzle,
+  backups: Archive,
+  databases: Database,
+  schedules: CalendarClock,
+  settings: Settings,
+  network: Network,
+};
 
 /** One server: its state and live usage, the lifecycle actions, its console and its recent operations. */
 export function ServerPage() {
@@ -123,10 +159,10 @@ export function ServerPage() {
       <PageHeader
         title={server.name}
         description={details.data.description ?? undefined}
-        actions={
+        status={
           <>
-            {!server.nodeConnected && <NodeDisconnectedBadge />}
             <ServerStateBadge server={server} />
+            {!server.nodeConnected && <NodeDisconnectedBadge />}
           </>
         }
       />
@@ -140,24 +176,11 @@ export function ServerPage() {
         </div>
       )}
       <SteamGuardPrompt details={details.data} />
-      <div role="tablist" aria-label={t('servers.tabs.label')} className="mt-6 flex gap-1 border-b border-border">
-        {tabs.map((name) => (
-          <button
-            key={name}
-            type="button"
-            role="tab"
-            aria-selected={tab === name}
-            onClick={() => openTab(name)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm ${tab === name ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-text'}`}
-          >
-            {t(`servers.tabs.${name}`)}
-          </button>
-        ))}
-      </div>
-      <div role="tabpanel" className="mt-6">
+      <SectionTabs tabs={tabs} current={tab} onOpen={openTab} />
+      <div role="tabpanel" id="server-section" aria-labelledby={`server-tab-${tab}`} className="mt-6">
         {tab === 'overview' && (
           <>
-            <div className="grid gap-6 xl:grid-cols-2">
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
               <OverviewCard details={details.data} />
               {server.runtimeState === 'running' && metrics?.query && <PlayersCard query={metrics.query} />}
               <OperationsCard operations={details.data.recentOperations} />
@@ -179,6 +202,81 @@ export function ServerPage() {
   );
 }
 
+/**
+ * The server's sections as tabs. On a narrow screen they scroll sideways, keeping the open one in view. Only the open
+ * one is in the Tab order; the arrow keys, Home and End move between them (the WAI-ARIA tabs pattern).
+ */
+function SectionTabs({ tabs, current, onOpen }: { tabs: Tab[]; current: Tab; onOpen: (tab: Tab) => void }) {
+  const { t } = useTranslation();
+  const list = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const strip = list.current;
+    const open = strip?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!strip || !open) {
+      return;
+    }
+    // Scrolls the strip only, never the page (scrollIntoView would also bring the strip itself into view).
+    const margin = 24;
+    if (open.offsetLeft < strip.scrollLeft) {
+      strip.scrollLeft = open.offsetLeft - margin;
+    } else if (open.offsetLeft + open.offsetWidth > strip.scrollLeft + strip.clientWidth) {
+      strip.scrollLeft = open.offsetLeft + open.offsetWidth - strip.clientWidth + margin;
+    }
+  }, [current]);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const index = tabs.indexOf(current);
+    const target =
+      event.key === 'ArrowRight'
+        ? tabs[(index + 1) % tabs.length]
+        : event.key === 'ArrowLeft'
+          ? tabs[(index - 1 + tabs.length) % tabs.length]
+          : event.key === 'Home'
+            ? tabs[0]
+            : event.key === 'End'
+              ? tabs[tabs.length - 1]
+              : undefined;
+    if (target === undefined) {
+      return;
+    }
+    event.preventDefault();
+    onOpen(target);
+    document.getElementById(`server-tab-${target}`)?.focus();
+  };
+
+  return (
+    <div
+      ref={list}
+      role="tablist"
+      aria-label={t('servers.tabs.label')}
+      onKeyDown={onKeyDown}
+      className="relative mt-6 flex gap-1 overflow-x-auto shadow-[inset_0_-1px_0_var(--color-border)] [scrollbar-width:thin]"
+    >
+      {tabs.map((name) => {
+        const Icon = tabIcons[name];
+        const selected = current === name;
+        return (
+          <button
+            key={name}
+            id={`server-tab-${name}`}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            aria-controls="server-section"
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onOpen(name)}
+            className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-sm whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent sm:px-4 ${selected ? 'border-accent font-medium text-accent' : 'border-transparent text-muted hover:text-text'}`}
+          >
+            <Icon className="size-4" />
+            {t(`servers.tabs.${name}`)}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** CPU, memory and uptime of the running server, and its players when it answers queries, pushed every few seconds. */
 function ServerUsage({ metrics, limits }: { metrics: ServerMetrics; limits: ServerDetails['limits'] }) {
   const { t } = useTranslation();
@@ -188,14 +286,16 @@ function ServerUsage({ metrics, limits }: { metrics: ServerMetrics; limits: Serv
   const cpu = t('servers.usage.cpuValue', { value: metrics.cpuPercent });
   // With a memory limit, what it counts (committed memory) next to it; otherwise the working set, as Task Manager shows.
   const memoryLimit = limits.memoryMb == null ? null : limits.memoryMb * 1024 * 1024;
-  const items: [string, string][] = [
+  const items: [LucideIcon, string, string][] = [
     [
+      Cpu,
       t('servers.usage.cpu'),
       limits.cpuPercent == null
         ? cpu
         : t('servers.usage.ofLimit', { value: cpu, limit: t('servers.usage.cpuLimit', { value: limits.cpuPercent }) }),
     ],
     [
+      MemoryStick,
       t('servers.usage.memory'),
       memoryLimit == null
         ? formatBytes(metrics.memoryBytes)
@@ -204,24 +304,30 @@ function ServerUsage({ metrics, limits }: { metrics: ServerMetrics; limits: Serv
             limit: formatBytes(memoryLimit),
           }),
     ],
-    [t('servers.usage.uptime'), formatDuration(metrics.uptimeSeconds)],
+    [Clock, t('servers.usage.uptime'), formatDuration(metrics.uptimeSeconds)],
   ];
   if (query) {
     const players = t('servers.usage.playersValue', { players: query.players, max: query.maxPlayers });
     items.push([
+      Users,
       t('servers.usage.players'),
       query.bots > 0 ? `${players} ${t('servers.usage.bots', { count: query.bots })}` : players,
     ]);
     if (query.map) {
-      items.push([t('servers.usage.map'), query.map]);
+      items.push([MapIcon, t('servers.usage.map'), query.map]);
     }
   }
   return (
-    <dl aria-label={t('servers.usage.label')} className="mb-4 flex flex-wrap gap-x-8 gap-y-2 text-sm">
-      {items.map(([label, value]) => (
-        <div key={label}>
-          <dt className="text-xs text-muted">{label}</dt>
-          <dd className="font-medium tabular-nums">{value}</dd>
+    <dl aria-label={t('servers.usage.label')} className="mb-4 grid grid-cols-2 gap-2 text-sm sm:flex sm:flex-wrap">
+      {items.map(([Icon, label, value]) => (
+        <div key={label} className="min-w-0 rounded-lg border border-border bg-surface px-3 py-2 sm:min-w-32">
+          <dt className="flex items-center gap-1.5 text-xs text-muted">
+            <Icon className="size-3.5 shrink-0" />
+            {label}
+          </dt>
+          <dd className="mt-0.5 truncate font-medium tabular-nums" title={value}>
+            {value}
+          </dd>
         </div>
       ))}
     </dl>
@@ -235,11 +341,11 @@ function LifecycleActions({ details }: { details: ServerDetails }) {
   const { server } = details;
   const available = serverActions(server);
   const run = (name: ServerCommand) => command.mutate({ id: server.id, command: name });
-  const buttons: [ServerCommand, string, boolean][] = [
-    ['start', Permission.ServerStart, available.start],
-    ['stop', Permission.ServerStop, available.stop],
-    ['restart', Permission.ServerRestart, available.restart],
-    ['kill', Permission.ServerKill, available.kill],
+  const buttons: [ServerCommand, string, boolean, LucideIcon][] = [
+    ['start', Permission.ServerStart, available.start, Play],
+    ['stop', Permission.ServerStop, available.stop, Square],
+    ['restart', Permission.ServerRestart, available.restart, RotateCw],
+    ['kill', Permission.ServerKill, available.kill, OctagonX],
   ];
   const visible = buttons.filter(([, permission]) => canOnServer(me, server, permission));
   if (visible.length === 0) {
@@ -250,10 +356,12 @@ function LifecycleActions({ details }: { details: ServerDetails }) {
   return (
     <section aria-label={t('servers.actions')} className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        {visible.map(([name, , enabled]) => (
+        {visible.map(([name, , enabled, icon]) => (
           <Button
             key={name}
-            variant={name === 'kill' ? 'danger' : name === 'start' ? 'primary' : 'secondary'}
+            icon={icon}
+            // Killing loses unsaved progress: it looks dangerous, without outshouting the everyday actions.
+            variant={name === 'kill' ? 'dangerSubtle' : name === 'start' ? 'primary' : 'secondary'}
             disabled={!enabled || command.isPending}
             busy={command.isPending && command.variables.command === name}
             onClick={() =>
@@ -418,7 +526,7 @@ function OperationsCard({ operations }: { operations: OperationView[] }) {
                     </p>
                   )}
                 </Td>
-                <Td>{formatDate(operation.completedAt ?? operation.createdAt)}</Td>
+                <Td className="whitespace-nowrap">{formatDate(operation.completedAt ?? operation.createdAt)}</Td>
               </tr>
             ))}
           </tbody>
@@ -473,6 +581,7 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
         {canInstall && details.canUpdate && (
           <Button
             variant="secondary"
+            icon={Download}
             disabled={!available.reinstall || server.installState !== 'installed'}
             busy={update.isPending}
             onClick={() => update.mutate({ id: server.id, validate })}
@@ -483,6 +592,7 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
         {canInstall && (
           <Button
             variant="secondary"
+            icon={RotateCcw}
             disabled={!available.reinstall}
             busy={reinstall.isPending}
             onClick={() =>
@@ -495,6 +605,7 @@ function AdministrationSection({ details }: { details: ServerDetails }) {
         {canDelete && (
           <Button
             variant="danger"
+            icon={Trash2}
             disabled={!available.delete}
             busy={remove.isPending}
             onClick={() =>

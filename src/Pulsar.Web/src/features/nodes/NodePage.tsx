@@ -73,16 +73,16 @@ export function NodePage() {
       <PageHeader
         title={node.name}
         description={node.description ?? undefined}
-        actions={
+        status={
           <>
-            {node.panelKeyTrust === 'outdated' && <Badge tone="danger">{t('nodes.panelKeyOutdated')}</Badge>}
             <NodeStateBadge node={node} />
-            {canManage && node.connected && <PingButton nodeId={node.id} />}
+            {node.panelKeyTrust === 'outdated' && <Badge tone="danger">{t('nodes.panelKeyOutdated')}</Badge>}
           </>
         }
+        actions={canManage && node.connected && <PingButton nodeId={node.id} />}
       />
       {node.status === 'pendingApproval' && <ApprovalNotice node={node} canManage={canManage} />}
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <MachineCard node={node} />
         <UsageCard node={node} />
       </div>

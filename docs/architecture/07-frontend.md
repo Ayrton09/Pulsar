@@ -17,6 +17,7 @@
 | Real time | `@microsoft/signalr` | Same protocol as the backend. | Phase 2 |
 | Console | `@xterm/xterm` + `@xterm/addon-fit`, `@xterm/addon-search`, `@xterm/addon-web-links` | Requirement. The clipboard addon (OSC 52) is not loaded. | Phase 5 |
 | Components | Own shadcn-style components (copied into the repo) on Radix primitives | Accessibility without a full component library. | Phase 1 |
+| Icons | lucide-react (ISC) | One consistent stroke set; only the icons imported end up in the bundle. Icons are decoration (`aria-hidden`): a label always names the control. | UI pass after the audit |
 | Forms | react-hook-form + zod | Client validation (the server always re-validates). | Phase 1 |
 | Charts | uPlot (only for live CPU/RAM) | Very light and fast for time series. | Phase 5 |
 
@@ -180,7 +181,11 @@ The server page's Administration section says when a newer version of the server
 ## Visual design
 
 - Desktop first (suitable information density, sidebar), responsive down to tablet/phone for basic actions (power, console, status).
+  - From Tailwind's `md` breakpoint the sidebar is always shown and stays in view while the page scrolls. Below it, a top bar opens the same navigation in a menu panel: a Radix dialog, so focus stays inside and Escape closes it. Choosing a page closes it, and so does a screen that grows past the breakpoint.
+  - The server's sections are tabs with icons. On a narrow screen they scroll sideways and keep the open one in view. They follow the WAI-ARIA tabs pattern: only the open tab is in the Tab order, and the arrow keys, Home and End move between them.
+  - Grids of cards size their columns with `minmax(0, 1fr)` and cards have `min-width: 0`, so a wide table scrolls inside its card instead of widening the page. No page is wider than a 320 px screen.
+- A button that cannot be used loses its variant's fill (a faded accent still reads as "click me"). A busy one keeps its look, with a spinner. Killing a server is an outlined danger button, so it does not outshout the everyday actions.
 - Dark and light themes following `prefers-color-scheme`; design tokens as CSS variables mapped into Tailwind's `@theme`.
 - States shown with color **and** text/icon (accessibility).
 - The page's `lang` follows the interface's language, so screen readers read Spanish as Spanish.
-- Dashboard v1: cards for online/offline servers, connected nodes, global CPU/RAM, alerts (crash loop, node disconnected, low disk) and recent activity (audit). Nothing more. Disabled nodes are neither offline nor alerts: the nodes card counts them apart.
+- Dashboard v1: cards for online/offline servers, connected nodes, global CPU/RAM, alerts (crash loop, node disconnected, low disk) and recent activity (audit). Nothing more. Disabled nodes are neither offline nor alerts: the nodes card counts them apart. The CPU and memory cards draw how full they are as a bar. The bar turns amber from 75 % (the `warning` token) and red from 90 %; the value is written next to it, so the bar adds no text. With nothing to report, the alerts card is one quiet line.

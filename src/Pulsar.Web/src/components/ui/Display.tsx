@@ -3,25 +3,31 @@ import type { ReactNode } from 'react';
 export function PageHeader({
   title,
   description,
+  status,
   actions,
 }: {
   title: string;
   description?: string | undefined;
+  /** Badges shown next to the title (what state the thing is in). */
+  status?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
     <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight break-words">{title}</h1>
+          {status}
+        </div>
         {description && <p className="mt-1 text-sm text-muted">{description}</p>}
       </div>
-      {actions && <div className="flex gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </header>
   );
 }
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <section className={`rounded-xl border border-border bg-surface ${className}`}>{children}</section>;
+  return <section className={`min-w-0 rounded-xl border border-border bg-surface ${className}`}>{children}</section>;
 }
 
 type Tone = 'neutral' | 'accent' | 'success' | 'danger';

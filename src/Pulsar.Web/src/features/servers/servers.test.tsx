@@ -425,6 +425,34 @@ describe('server page', () => {
     expect(start).toHaveBeenCalledOnce();
   });
 
+  it('moves between its sections with the arrow keys, as tabs do', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${installedOffline.id}`]: () => json(details(installedOffline)),
+    });
+    renderAt(`/servers/${installedOffline.id}`);
+    const user = userEvent.setup();
+
+    const tabs = await screen.findByRole('tablist', { name: 'Server sections' });
+    const overview = within(tabs).getByRole('tab', { name: 'Overview' });
+    const second = within(tabs).getByRole('tab', { name: 'Settings' });
+    // Only the open section is in the Tab order; the arrows move between them.
+    expect(overview).toHaveAttribute('tabindex', '0');
+    expect(second).toHaveAttribute('tabindex', '-1');
+    overview.focus();
+
+    await user.keyboard('{ArrowRight}');
+    expect(second).toHaveFocus();
+    expect(second).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', second.id);
+
+    await user.keyboard('{End}');
+    expect(within(tabs).getAllByRole('tab').at(-1)).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    expect(overview).toHaveFocus();
+    expect(overview).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('shows what a role on this server allows, and only that', async () => {
     // No global permission: a role on this one server.
     const friend = {

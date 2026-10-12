@@ -80,7 +80,7 @@ export function AddonsTab({ details }: { details: ServerDetails }) {
       <p className="max-w-2xl text-sm text-muted">{t('addons.hint')}</p>
       {canChange && !changeable && <p className="text-sm text-muted">{t('addons.stopToChange')}</p>}
       {error && <Alert>{refusal() ?? errorMessage(t, error)}</Alert>}
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {list.map((addon) => (
           <AddonCard
             key={addon.key}

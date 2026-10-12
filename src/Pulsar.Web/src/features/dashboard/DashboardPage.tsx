@@ -1,3 +1,4 @@
+import { CircleCheck, Cpu, HardDrive, MemoryStick, Server, TriangleAlert, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
@@ -37,7 +38,7 @@ export function DashboardPage() {
           <p className="text-sm text-muted">{t('dashboard.nothing')}</p>
         </Card>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {servers && <ServersCard servers={servers} />}
         {nodes && <NodesCard nodes={nodes} />}
         {nodes && <UsageCards nodes={nodes} />}
@@ -61,20 +62,55 @@ function useNodesIf(enabled: boolean): NodeSummary[] | null {
   return enabled ? (nodes.data ?? null) : null;
 }
 
-function Stat({ title, value, detail, to }: { title: string; value: ReactNode; detail?: ReactNode; to?: string }) {
+function Stat({
+  title,
+  icon: Icon,
+  value,
+  detail,
+  usage,
+  to,
+}: {
+  title: string;
+  icon: LucideIcon;
+  value: ReactNode;
+  detail?: ReactNode;
+  /** A share in use (0–100), drawn as a bar under the value. */
+  usage?: number | null;
+  to?: string;
+}) {
   const body = (
     <Card className="h-full p-5">
-      <p className="text-sm text-muted">{title}</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm text-muted">{title}</p>
+        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent">
+          <Icon className="size-4" />
+        </span>
+      </div>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-      {detail && <p className="mt-1 text-xs text-muted">{detail}</p>}
+      {usage != null && <UsageBar percent={usage} />}
+      {detail && <p className="mt-2 text-xs text-muted">{detail}</p>}
     </Card>
   );
   return to ? (
-    <Link to={to} className="block rounded-lg hover:ring-1 hover:ring-accent">
+    <Link to={to} className="block rounded-xl hover:ring-1 hover:ring-accent">
       {body}
     </Link>
   ) : (
     body
+  );
+}
+
+/**
+ * How full a resource is. The value is written next to it, so the bar adds no text of its own; it turns amber and then
+ * red as the resource runs out.
+ */
+function UsageBar({ percent }: { percent: number }) {
+  const width = Math.min(100, Math.max(0, percent));
+  const tone = width >= 90 ? 'bg-danger' : width >= 75 ? 'bg-warning' : 'bg-accent';
+  return (
+    <div aria-hidden="true" className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-raised">
+      <div className={`h-full rounded-full transition-[width] duration-500 ${tone}`} style={{ width: `${width}%` }} />
+    </div>
   );
 }
 
@@ -84,6 +120,7 @@ function ServersCard({ servers }: { servers: ServerSummary[] }) {
   return (
     <Stat
       title={t('dashboard.servers')}
+      icon={Server}
       value={t('dashboard.runningOf', { running, total: servers.length })}
       detail={t('dashboard.serversOffline', { count: servers.length - running })}
       to="/servers"
@@ -101,6 +138,7 @@ function NodesCard({ nodes }: { nodes: NodeSummary[] }) {
   return (
     <Stat
       title={t('dashboard.nodes')}
+      icon={HardDrive}
       value={t('dashboard.onlineOf', { online, total: enrolled.length })}
       detail={disabled > 0 ? `${offline} · ${t('dashboard.nodesDisabled', { count: disabled })}` : offline}
       to="/nodes"
@@ -119,16 +157,21 @@ function UsageCards({ nodes }: { nodes: NodeSummary[] }) {
   const cpu = cores === 0 ? null : reporting.reduce((sum, n) => sum + n.metrics.cpuPercent * n.cores, 0) / cores;
   const used = reporting.reduce((sum, n) => sum + n.metrics.memoryUsedBytes, 0);
   const total = reporting.reduce((sum, n) => sum + n.metrics.memoryTotalBytes, 0);
+  const memory = total === 0 ? null : Math.round((100 * used) / total);
   return (
     <>
       <Stat
         title={t('dashboard.cpu')}
+        icon={Cpu}
         value={cpu === null ? '—' : t('nodes.cpuValue', { value: Math.round(cpu * 10) / 10 })}
+        usage={cpu}
         detail={t('dashboard.acrossNodes', { count: reporting.length })}
       />
       <Stat
         title={t('dashboard.memory')}
-        value={total === 0 ? '—' : `${Math.round((100 * used) / total)} %`}
+        icon={MemoryStick}
+        value={memory === null ? '—' : `${memory} %`}
+        usage={memory}
         detail={
           total === 0
             ? undefined
@@ -159,22 +202,30 @@ function Alerts({ servers, nodes }: { servers: ServerSummary[]; nodes: NodeSumma
         text: t('dashboard.alerts.nodeOffline', { name: n.name }),
       })),
   ];
-  return (
+  // All clear is one quiet line; problems get the room and the color.
+  return items.length === 0 ? (
+    <Card className="mt-6 flex items-center gap-3 px-6 py-4">
+      <CircleCheck className="size-5 shrink-0 text-success" />
+      <div className="text-sm">
+        <h2 className="font-semibold">{t('dashboard.alerts.title')}</h2>
+        <p className="text-muted">{t('dashboard.alerts.none')}</p>
+      </div>
+    </Card>
+  ) : (
     <Card className="mt-6 p-6">
-      <h2 className="mb-3 text-lg font-semibold">{t('dashboard.alerts.title')}</h2>
-      {items.length === 0 ? (
-        <p className="text-sm text-muted">{t('dashboard.alerts.none')}</p>
-      ) : (
-        <ul className="space-y-2 text-sm">
-          {items.map((item) => (
-            <li key={item.key}>
-              <Link to={item.to} className="text-danger hover:underline">
-                {item.text}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+      <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
+        <TriangleAlert className="size-5 text-danger" />
+        {t('dashboard.alerts.title')}
+      </h2>
+      <ul className="space-y-2 text-sm">
+        {items.map((item) => (
+          <li key={item.key}>
+            <Link to={item.to} className="text-danger hover:underline">
+              {item.text}
+            </Link>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }

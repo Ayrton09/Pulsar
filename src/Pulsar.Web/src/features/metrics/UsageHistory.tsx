@@ -22,7 +22,7 @@ export function ServerUsageHistory({ serverId }: { serverId: string }) {
         (data.points.length === 0 ? (
           <p className="text-sm text-muted">{t('history.empty')}</p>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <HistoryChart
               title={t('servers.usage.cpu')}
               points={data.points.map((p) => ({ at: p.at, average: p.cpuAverage, peak: p.cpuPeak }))}
@@ -73,7 +73,7 @@ export function NodeUsageHistory({ nodeId }: { nodeId: string }) {
         (data.points.length === 0 ? (
           <p className="text-sm text-muted">{t('history.emptyNode')}</p>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <HistoryChart
               title={t('nodes.cpu')}
               points={data.points.map((p) => ({ at: p.at, average: p.cpuAverage, peak: p.cpuPeak }))}

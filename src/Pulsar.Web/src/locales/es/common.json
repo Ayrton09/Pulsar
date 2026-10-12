@@ -31,7 +31,9 @@
     "notifications": "Notificaciones",
     "backupStorage": "Almacenamiento de backups",
     "databaseHosts": "Servidores de bases de datos",
-    "steamAccounts": "Cuentas de Steam"
+    "steamAccounts": "Cuentas de Steam",
+    "menu": "Menú",
+    "openMenu": "Abrir menú"
   },
   "auth": {
     "userName": "Usuario",

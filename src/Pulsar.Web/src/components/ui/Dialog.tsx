@@ -1,4 +1,5 @@
 import * as RadixDialog from '@radix-ui/react-dialog';
+import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -18,10 +19,10 @@ export function Dialog({ open, onOpenChange, title, description, children, size 
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
-        <RadixDialog.Overlay className="fixed inset-0 bg-black/60" />
+        <RadixDialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
         <RadixDialog.Content
           className={[
-            'fixed top-1/2 left-1/2 max-h-[90vh] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto',
+            'fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto',
             'rounded-xl border border-border bg-surface p-6 shadow-xl',
             size === 'lg' ? 'max-w-2xl' : 'max-w-md',
           ].join(' ')}
@@ -34,8 +35,11 @@ export function Dialog({ open, onOpenChange, title, description, children, size 
                 <RadixDialog.Description className="mt-1 text-sm text-muted">{description}</RadixDialog.Description>
               )}
             </div>
-            <RadixDialog.Close className="rounded-md px-2 text-muted hover:text-text" aria-label={t('actions.close')}>
-              ✕
+            <RadixDialog.Close
+              className="-mt-1 -mr-2 grid size-8 shrink-0 place-items-center rounded-md text-muted hover:bg-surface-raised hover:text-text"
+              aria-label={t('actions.close')}
+            >
+              <X className="size-4" />
             </RadixDialog.Close>
           </div>
           {children}

@@ -31,7 +31,9 @@
     "notifications": "Notifications",
     "backupStorage": "Backup storage",
     "databaseHosts": "Database hosts",
-    "steamAccounts": "Steam accounts"
+    "steamAccounts": "Steam accounts",
+    "menu": "Menu",
+    "openMenu": "Open menu"
   },
   "auth": {
     "userName": "User name",
