@@ -226,7 +226,15 @@ function SectionTabs({ tabs, current, onOpen }: { tabs: Tab[]; current: Tab; onO
   }, [current]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const index = tabs.indexOf(current);
+    // With a modifier the keys are the browser's (Alt+Left goes back, Ctrl+End scrolls the page).
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return;
+    }
+    // From the tab that has focus, which is not always the open one: leaving a Files editor with unsaved changes
+    // can be refused after focus moved on.
+    const focused = event.target instanceof HTMLElement ? event.target.id : '';
+    const at = tabs.findIndex((name) => `server-tab-${name}` === focused);
+    const index = at === -1 ? tabs.indexOf(current) : at;
     const target =
       event.key === 'ArrowRight'
         ? tabs[(index + 1) % tabs.length]

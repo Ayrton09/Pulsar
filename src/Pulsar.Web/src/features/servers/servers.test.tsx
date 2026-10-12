@@ -453,6 +453,45 @@ describe('server page', () => {
     expect(overview).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('moves on from the focused tab, even when the open section did not change (a blocked leave)', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${installedOffline.id}`]: () => json(details(installedOffline)),
+    });
+    renderAt(`/servers/${installedOffline.id}`);
+    const user = userEvent.setup();
+
+    const tabs = await screen.findByRole('tablist', { name: 'Server sections' });
+    const [overview, settings, network] = ['Overview', 'Settings', 'Network'].map((name) =>
+      within(tabs).getByRole('tab', { name }),
+    );
+    // Focus on Settings while Overview is still open, as after a leave the Files editor refused.
+    settings?.focus();
+
+    await user.keyboard('{ArrowRight}');
+    expect(network).toHaveFocus();
+    expect(network).toHaveAttribute('aria-selected', 'true');
+    expect(overview).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('leaves arrow keys with a modifier to the browser (Alt+Left goes back)', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${installedOffline.id}`]: () => json(details(installedOffline)),
+    });
+    renderAt(`/servers/${installedOffline.id}`);
+    const user = userEvent.setup();
+
+    const tabs = await screen.findByRole('tablist', { name: 'Server sections' });
+    const overview = within(tabs).getByRole('tab', { name: 'Overview' });
+    overview.focus();
+
+    await user.keyboard('{Alt>}{ArrowRight}{/Alt}');
+    await user.keyboard('{Control>}{End}{/Control}');
+    expect(overview).toHaveFocus();
+    expect(overview).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('shows what a role on this server allows, and only that', async () => {
     // No global permission: a role on this one server.
     const friend = {

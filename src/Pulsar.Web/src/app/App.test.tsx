@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -93,6 +93,27 @@ describe('routing', () => {
     await user.click(within(drawer).getByRole('link', { name: 'Audit log' }));
 
     expect(router.state.location.pathname).toBe('/admin/audit');
+    expect(screen.queryByRole('dialog', { name: 'Menu' })).not.toBeInTheDocument();
+  });
+
+  it('closes the menu panel when the screen grows wide enough for the sidebar', async () => {
+    const listeners: ((event: MediaQueryListEvent) => void)[] = [];
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: (_: string, listener: (event: MediaQueryListEvent) => void) => listeners.push(listener),
+      removeEventListener: () => {},
+    }));
+    fakeApi({ 'GET /api/v1/auth/session': session(adminUser) });
+    renderAt('/');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Open menu' }));
+    expect(screen.getByRole('dialog', { name: 'Menu' })).toBeInTheDocument();
+
+    // A tablet rotated to landscape: the sidebar shows, and the panel must not keep the page locked behind it.
+    act(() => listeners.forEach((listener) => listener({ matches: true } as MediaQueryListEvent)));
+
     expect(screen.queryByRole('dialog', { name: 'Menu' })).not.toBeInTheDocument();
   });
 
