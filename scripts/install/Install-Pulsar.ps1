@@ -50,6 +50,9 @@ param(
     [int] $PostgresPort = 5432,
     # The panel's HTTPS port.
     [ValidateRange(1, 65535)] [int] $Port = 8443,
+    # A second HTTPS port for agents only: there they present their node key as a TLS client certificate, and the panel
+    # moves the agents it knows there on its own. Browsers keep using -Port. 0 (the default): none.
+    [ValidateRange(0, 65535)] [int] $AgentsPort = 0,
     # Extra names for the self-signed certificate (the machine's name, its DNS name and localhost are always in it).
     [string[]] $HostName = @(),
     # A PFX certificate to use instead of a self-signed one.
@@ -506,6 +509,7 @@ function Write-PanelConfig([hashtable] $settings) {
 
 function Install-Panel {
     if (Test-Service $PanelService) { throw 'The panel is already installed on this machine. Use -Update to update it, or -Uninstall first.' }
+    if ($AgentsPort -and $AgentsPort -eq $Port) { throw '-AgentsPort must be another port than -Port: browsers must never be asked for a client certificate.' }
     $backup = $null
     if ($RestoreFrom) {
         $backup = @{
@@ -557,6 +561,9 @@ function Install-Panel {
         $thumbprint = (New-Object Security.Cryptography.X509Certificates.X509Certificate2($pfx, $tlsPassword)).Thumbprint
         $certificate = @{ Path = $pfx; Password = $tlsPassword; Cer = (Join-Path $PanelData 'tls\panel.cer'); SelfSigned = $true; Thumbprint = $thumbprint }
         $Port = [int]($old.Kestrel.Endpoints.Https.Url -replace '^.*:(\d+)/?$', '$1')
+        if ($old.Kestrel.Endpoints.PSObject.Properties['Agents']) {
+            $AgentsPort = [int]($old.Kestrel.Endpoints.Agents.Url -replace '^.*:(\d+)/?$', '$1')
+        }
         $keyRing = @{ Path = (Join-Path $PanelData 'keyring\keyring.pfx'); Password = $old.DataProtection.CertificatePassword }
     }
     else {
@@ -564,9 +571,15 @@ function Install-Panel {
         $keyRing = New-KeyRingCertificate
     }
 
+    $endpoints = @{ Https = @{ Url = "https://*:$Port"; Certificate = @{ Path = $certificate.Path; Password = $certificate.Password } } }
+    if ($AgentsPort) {
+        # The same certificate: agents already trust it.
+        $endpoints.Agents = @{ Url = "https://*:$AgentsPort"; Certificate = @{ Path = $certificate.Path; Password = $certificate.Password } }
+    }
+
     $settings = @{
         ConnectionStrings = @{ Pulsar = $connection }
-        Kestrel = @{ Endpoints = @{ Https = @{ Url = "https://*:$Port"; Certificate = @{ Path = $certificate.Path; Password = $certificate.Password } } } }
+        Kestrel = @{ Endpoints = $endpoints }
         DataProtection = @{ KeysPath = (Join-Path $PanelData 'keys'); CertificatePath = $keyRing.Path; CertificatePassword = $keyRing.Password }
         Pulsar = @{ LogsDirectory = (Join-Path $PanelData 'logs') }
     }
@@ -580,6 +593,12 @@ function Install-Panel {
         Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
         $null = New-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -DisplayName 'Pulsar Panel (HTTPS)' -Direction Inbound `
             -Protocol TCP -LocalPort $Port -Program $exe -Action Allow -Profile $profiles
+        Get-NetFirewallRule -Name 'Pulsar-Panel-Agents' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+        if ($AgentsPort) {
+            Write-Step "Allowing the agents' port ($AgentsPort) in Windows Firewall ($($profiles -join ', ') networks)"
+            $null = New-NetFirewallRule -Name 'Pulsar-Panel-Agents' -DisplayName 'Pulsar Panel (agents)' -Direction Inbound `
+                -Protocol TCP -LocalPort $AgentsPort -Program $exe -Action Allow -Profile $profiles
+        }
     }
 
     Invoke-PanelMigrations
@@ -623,6 +642,7 @@ function Uninstall-Panel {
     Stop-Service $PanelService -ErrorAction SilentlyContinue
     $null = Invoke-Native $Sc delete $PanelService
     Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    Get-NetFirewallRule -Name 'Pulsar-Panel-Agents' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     Start-Sleep -Seconds 2
     Remove-Item $PanelDir -Recurse -Force -ErrorAction SilentlyContinue
 }

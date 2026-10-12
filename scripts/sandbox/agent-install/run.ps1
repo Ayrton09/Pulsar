@@ -5,7 +5,9 @@
 # from Valve (about 2.5 GB), started and stopped over RCON as its account, with managed firewall rules. Then the agent
 # MSI: refused next to that agent, a refused token, install, a same-version rebuild, an upgrade with a game running, a
 # refused downgrade, Install-Pulsar.ps1 leaving it alone, uninstall. Last, Install-Pulsar.ps1 -Mode Agent trusting the
-# panel's certificate (one that can issue certificates refused) and -Uninstall removing that trust. Every check is
+# panel's certificate (one that can issue certificates refused) and -Uninstall removing that trust. The panel also has
+# an agents' port (Phase 16): the service moves there with its machine key as TLS client certificate, and from then on
+# the panel requires it, so everything after (rotation, games, backups, the MSI) runs over it. Every check is
 # written to report\summary.txt as PASS/FAIL; the last line is "done", and the exit code is 1 on any FAIL.
 # When the machine has a ready TPM, the node key must be in it.
 # Never run it on a machine you use: it installs a service and creates a machine key (removed again at the end).
@@ -43,6 +45,8 @@ function Wait-Until([scriptblock] $condition, [int] $seconds) {
 
 # HTTPS, as in production: a certificate made here and trusted machine-wide (the machine is disposable).
 $panel = 'https://localhost:5291'
+# The agents' port: agents present their node key as client certificate there (docs/architecture/03).
+$agentsUrl = 'https://localhost:5292'
 $setupToken = 'sandbox-setup-token-not-a-secret-0123456789'
 $admin = @{ userName = 'sandbox-admin'; password = 'sandbox admin password' }
 $agentSource = Join-Path $Bundle 'agent'
@@ -84,9 +88,12 @@ try {
     $env:InitialSetup__Token = $setupToken
     $env:Kestrel__Certificates__Default__Path = $pfx
     $env:Kestrel__Certificates__Default__Password = 'agent-install'
+    # Both endpoints from configuration, as the installer writes them (configured endpoints replace --urls).
+    $env:Kestrel__Endpoints__Main__Url = $panel
+    $env:Kestrel__Endpoints__Agents__Url = $agentsUrl
     $env:Pulsar__EnableTestGame = 'true'
     $panelDir = Join-Path $Bundle 'panel'
-    Start-Process (Join-Path $panelDir 'Pulsar.Api.exe') -ArgumentList '--contentRoot', "`"$panelDir`"", '--urls', $panel `
+    Start-Process (Join-Path $panelDir 'Pulsar.Api.exe') -ArgumentList '--contentRoot', "`"$panelDir`"" `
         -RedirectStandardOutput (Join-Path $report 'panel.txt') -RedirectStandardError (Join-Path $report 'panel-error.txt') -WindowStyle Hidden
     Check 'panel ready' (Wait-Until { (Invoke-WebRequest "$panel/health/ready" -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200 } 90)
 
@@ -156,7 +163,8 @@ try {
 
     $config = Get-Content (Join-Path $dataDir 'config\agent.json') -Raw | ConvertFrom-Json
     Check 'machine key in config' ($config.key.scope -eq 'machine' -and -not $config.development) "$($config.key.name) $($config.key.storage)"
-    Check 'agent talks to the panel over HTTPS' ($config.panel -eq "$panel/") $config.panel
+    # The agent may have moved to the agents' address already (checked below).
+    Check 'agent talks to the panel over HTTPS' ($config.panel -in "$panel/", "$agentsUrl/") $config.panel
     $provider = if ($config.key.storage -eq 'tpm') { [Security.Cryptography.CngProvider]::new('Microsoft Platform Crypto Provider') } else { [Security.Cryptography.CngProvider]::MicrosoftSoftwareKeyStorageProvider }
     $key = [Security.Cryptography.CngKey]::Open($config.key.name, $provider, [Security.Cryptography.CngKeyOpenOptions]::MachineKey)
     $descriptor = New-Object Security.AccessControl.RawSecurityDescriptor -ArgumentList ($key.GetProperty('Security Descr', [Security.Cryptography.CngPropertyOptions]4).GetValue()), 0
@@ -170,6 +178,22 @@ try {
     Set-Content (Join-Path $report 'status.txt') $status
     Check 'status --check' ($LASTEXITCODE -eq 0 -and $status -match 'Check:\s+OK' -and $status -match 'Service:\s+running') ($status.Trim() -replace '\s+', ' ')
     Check 'panel shows the same key fingerprint' ($status -match [regex]::Escape($credential.fingerprint)) $credential.fingerprint
+
+    # --- Client certificates (Phase 16): told the agents' address, the service signs in there with its machine key in
+    # the TLS handshake (SChannel, TPM included) and keeps the main address as its fallback ---
+    $moved = Wait-Until {
+        $now = Get-Content (Join-Path $dataDir 'config\agent.json') -Raw | ConvertFrom-Json
+        $now.panel -eq "$agentsUrl/" -and $now.fallbackPanel -eq "$panel/" -and (Api GET "/api/v1/nodes/$nodeId").node.connectedWithCertificate -eq $true
+    } 90
+    Check "agent moved to the agents' address, its machine key as client certificate" $moved
+    Check "signed ping over the agents' address" ((Api POST "/api/v1/nodes/$nodeId/ping").status -eq 'accepted')
+    $bare = try { $null = Invoke-WebRequest "$agentsUrl/agent/v1/panel-identity" -UseBasicParsing -TimeoutSec 10; 'answered' } catch { $_.Exception.Message }
+    Check "the agents' port turns away a client without certificate" ($bare -ne 'answered') $bare
+    $required = Api PUT '/api/v1/agent-transport' @{ requireClientCertificates = $true }
+    Check 'certificates required, every node has one' ($required.requireClientCertificates -and $required.inEffect -and $required.nodesWithoutCertificateCount -eq 0) "$($required.agentsUrl)"
+    Check 'still online with certificates required' (Wait-Until { (Api GET "/api/v1/nodes/$nodeId").node.connected -and (Api POST "/api/v1/nodes/$nodeId/ping").status -eq 'accepted' } 30)
+    $agentsStatus = Invoke-Native $agentExe status --check
+    Check "status --check through the agents' address" ($LASTEXITCODE -eq 0 -and $agentsStatus -match 'Check:\s+OK') ($agentsStatus.Trim() -replace '\s+', ' ')
 
     # --- Restart: the service comes back on its own ---
     Restart-Service PulsarAgent
