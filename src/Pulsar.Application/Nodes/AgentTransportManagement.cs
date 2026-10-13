@@ -87,7 +87,8 @@ public sealed class AgentTransportManagement(
             catch
             {
                 // The change may have committed before the call failed (cancelled as the answer came back): the switch in
-                // memory follows what is stored, read again; when even that fails, from the database at the next sign-in.
+                // memory follows what is stored, read again; when even that fails, it counts as on until the next sign-in
+                // reads it from the database.
                 await ApplyStoredAsync();
                 throw;
             }
@@ -107,14 +108,19 @@ public sealed class AgentTransportManagement(
         policy.Set(requireClientCertificates);
         if (requireClientCertificates)
         {
-            foreach (var node in sessions.EndWithoutCertificate())
+            EndSessionsWithoutCertificate();
+        }
+    }
+
+    private void EndSessionsWithoutCertificate()
+    {
+        foreach (var node in sessions.EndWithoutCertificate())
+        {
+            // Only a connection whose session just ended: a node that already moved keeps its connection with a
+            // certificate, though the session it left on the main endpoint was still there.
+            if (connections.Find(node) is { } connection && !sessions.IsActive(connection.SessionId))
             {
-                // Only a connection whose session just ended: a node that already moved keeps its connection with a
-                // certificate, though the session it left on the main endpoint was still there.
-                if (connections.Find(node) is { } connection && !sessions.IsActive(connection.SessionId))
-                {
-                    connections.Disconnect(node);
-                }
+                connections.Disconnect(node);
             }
         }
     }
@@ -129,7 +135,9 @@ public sealed class AgentTransportManagement(
         }
         catch (Exception ex) when (ex is DbException or InvalidOperationException or TimeoutException)
         {
+            // Unknown: taken as on until a sign-in reads it again, so a "require" that committed is in effect at once.
             policy.Forget();
+            EndSessionsWithoutCertificate();
         }
     }
 

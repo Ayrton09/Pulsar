@@ -97,6 +97,9 @@ public sealed partial class AgentAccess(
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
+        // With the node's row locked, as a rotation locks it: a key the old one registers meanwhile is found below.
+        await locks.LockNodeAsync(node.Id, cancellationToken);
+
         // Atomic consumption: two agents racing with the same token cannot both enroll.
         var consumed = await db.NodeEnrollmentTokens
             .Where(t => t.Id == token.Id && t.ConsumedAt == null)
@@ -326,6 +329,10 @@ public sealed partial class AgentAccess(
         }
         else
         {
+            // The node's row first, as a revocation and a rotation lock it before writing its keys: the save writes the
+            // key's row before the node's, and the other order against them is a deadlock.
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            await locks.LockNodeAsync(node.Id, cancellationToken);
             for (var attempt = 0; ; attempt++)
             {
                 try
@@ -341,6 +348,7 @@ public sealed partial class AgentAccess(
                     await db.Entry(credential).ReloadAsync(cancellationToken);
                     if (!credential.CanAuthenticate || !node.AcceptsConnections)
                     {
+                        await transaction.RollbackAsync(cancellationToken);
                         LogAuthenticationRejected(node.Id, "credential revoked or node inactive while signing in");
                         return await RefuseAsync(node.Id, "inactive_while_signing_in", credential.Id, cancellationToken);
                     }
@@ -349,6 +357,8 @@ public sealed partial class AgentAccess(
                     node.Seen(now);
                 }
             }
+
+            await transaction.CommitAsync(cancellationToken);
         }
 
         sessions.Prune();
