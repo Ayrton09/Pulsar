@@ -24,6 +24,7 @@ internal sealed partial class PanelKeyRing(
 
     private readonly SemaphoreSlim _loadLock = new(1, 1);
     private Loaded? _loaded;
+    private long _generation;
 
     public async Task<IReadOnlyList<PanelKey>> GetPublicKeysAsync(CancellationToken cancellationToken) =>
         (await LoadAsync(cancellationToken)).PublicKeys;
@@ -59,8 +60,14 @@ internal sealed partial class PanelKeyRing(
         }
     }
 
-    // The previous keys are not disposed here: a signature in progress may still be using them.
-    public void Reload() => Volatile.Write(ref _loaded, null);
+    // The previous keys are not disposed here: a signature in progress may still be using them. The generation goes up
+    // first (a full fence): a load that read the keys before the change sees it and reads them again, or publishes
+    // before this clears what it published.
+    public void Reload()
+    {
+        Interlocked.Increment(ref _generation);
+        Volatile.Write(ref _loaded, null);
+    }
 
     public void Dispose()
     {
@@ -82,38 +89,54 @@ internal sealed partial class PanelKeyRing(
         await _loadLock.WaitAsync(cancellationToken);
         try
         {
-            if (_loaded is not null)
+            while (true)
             {
-                return _loaded;
-            }
+                if (Volatile.Read(ref _loaded) is { } current)
+                {
+                    return current;
+                }
 
-            await using var scope = scopes.CreateAsyncScope();
-            var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
-            var stored = await db.PanelSigningKeys.AsNoTracking()
-                .Where(k => k.Status != PanelSigningKeyStatus.Retired)
-                .ToListAsync(cancellationToken);
-            if (!stored.Any(k => k.Status == PanelSigningKeyStatus.Active))
-            {
-                var created = CreateKey();
-                db.PanelSigningKeys.Add(created);
-                await db.SaveChangesAsync(cancellationToken);
-                stored.Add(created);
-                LogCreated(created.KeyId);
-            }
+                var generation = Volatile.Read(ref _generation);
+                var fresh = await ReadAsync(cancellationToken);
+                Interlocked.Exchange(ref _loaded, fresh);
+                if (Volatile.Read(ref _generation) == generation)
+                {
+                    return fresh;
+                }
 
-            var protector = dataProtection.CreateProtector(ProtectionPurpose);
-            var keys = stored
-                .OrderBy(k => k.Status == PanelSigningKeyStatus.Active ? 0 : 1)
-                .ThenByDescending(k => k.CreatedAt)
-                .Select(k => new SigningKey(k.KeyId, k.PublicKey, Import(protector, k)))
-                .ToList();
-            _loaded = new Loaded(keys, [.. keys.Select(k => new PanelKey(k.KeyId, k.PublicKey))]);
-            return _loaded;
+                // Reloaded while reading (a key retired or added meanwhile): what was read may be from before.
+                Interlocked.CompareExchange(ref _loaded, null, fresh);
+            }
         }
         finally
         {
             _loadLock.Release();
         }
+    }
+
+    private async Task<Loaded> ReadAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
+        var stored = await db.PanelSigningKeys.AsNoTracking()
+            .Where(k => k.Status != PanelSigningKeyStatus.Retired)
+            .ToListAsync(cancellationToken);
+        if (!stored.Any(k => k.Status == PanelSigningKeyStatus.Active))
+        {
+            var created = CreateKey();
+            db.PanelSigningKeys.Add(created);
+            await db.SaveChangesAsync(cancellationToken);
+            stored.Add(created);
+            LogCreated(created.KeyId);
+        }
+
+        var protector = dataProtection.CreateProtector(ProtectionPurpose);
+        var keys = stored
+            .OrderBy(k => k.Status == PanelSigningKeyStatus.Active ? 0 : 1)
+            .ThenByDescending(k => k.CreatedAt)
+            .Select(k => new SigningKey(k.KeyId, k.PublicKey, Import(protector, k)))
+            .ToList();
+        return new Loaded(keys, [.. keys.Select(k => new PanelKey(k.KeyId, k.PublicKey))]);
     }
 
     private static ECDsa Import(IDataProtector protector, PanelSigningKey stored)

@@ -92,7 +92,11 @@ public sealed class AgentTransportPolicy
         Interlocked.CompareExchange(ref _state, settings?.RequireClientCertificates == true ? On : Off, Unknown);
     }
 
-    // A full fence: a sign-in that creates a session after it sees the switch; the switch, ending the sessions after it,
-    // sees that session.
+    // A full fence between changing the switch and ending the sessions without a certificate; a sign-in has the other one
+    // between creating its session and reading the switch (AgentAccess.AuthenticateAsync). So either the sign-in sees
+    // the switch on, or the switch's sweep sees its session.
     internal void Set(bool requireClientCertificates) => Interlocked.Exchange(ref _state, requireClientCertificates ? On : Off);
+
+    /// <summary>A change whose outcome is unknown: the switch is read from the database again before the next sign-in.</summary>
+    internal void Forget() => Interlocked.Exchange(ref _state, Unknown);
 }

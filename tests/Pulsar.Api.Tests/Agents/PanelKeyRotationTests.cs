@@ -1,9 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
 using Pulsar.Domain.Nodes;
+using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Tests.Agents;
 
@@ -111,6 +114,31 @@ public sealed class PanelKeyRotationTests(PulsarApiFactory factory) : IClassFixt
         }
 
         await FinishPendingRotationAsync(admin);
+    }
+
+    [DatabaseFact]
+    public async Task AKeyRetiredWhileThePanelReadsItsKeysIsNotKept()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await FinishPendingRotationAsync(admin);
+        var retiring = Assert.Single((await PostAsync(admin, "/api/v1/panel-keys/rotate")).Keys, k => k.Status == PanelSigningKeyStatus.Retiring).KeyId;
+        var hook = new DatabaseHook();
+        using var app = factory.WithDatabaseHook(hook);
+        var ring = app.Services.GetRequiredService<IPanelKeyRing>();
+
+        // The retirement commits and tells the ring while the ring reads the keys: what it read is from before.
+        hook.AfterQuery("panel_signing_keys", async () =>
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
+            (await db.PanelSigningKeys.SingleAsync(k => k.KeyId == retiring, CancellationToken.None)).Retire(DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync(CancellationToken.None);
+            ring.Reload();
+        });
+        ring.Reload();
+        await ring.GetPublicKeysAsync(Ct);
+
+        Assert.DoesNotContain(retiring, (await ring.GetPublicKeysAsync(Ct)).Select(k => k.KeyId));
     }
 
     private static HashSet<string> Pins(InProcessAgent agent) => agent.LiveConfig is { } config ? Pins(config) : [];

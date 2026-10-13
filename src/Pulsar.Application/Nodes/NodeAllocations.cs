@@ -20,7 +20,7 @@ public sealed record AllocationView(Guid Id, string IpAddress, int Port, Guid? S
 /// The <c>ip:port</c> pairs of a node that servers can use (docs/architecture/02, "node_allocations"). Two allocations
 /// of a node never overlap: the same port on the same address, or on any address when one of them is every interface.
 /// </summary>
-public sealed class NodeAllocations(IPulsarDbContext db, VisibleResources visible, IAuditLog audit, TimeProvider clock)
+public sealed class NodeAllocations(IPulsarDbContext db, IRowLocks locks, VisibleResources visible, IAuditLog audit, TimeProvider clock)
 {
     public const int MaxPortsPerRequest = 1000;
 
@@ -75,6 +75,10 @@ public sealed class NodeAllocations(IPulsarDbContext db, VisibleResources visibl
             created.Add(allocation.Value);
         }
 
+        // Checked with the node's row locked: the unique index sees the same address only, not every interface against
+        // one address, so two requests at the same moment must take turns.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockNodeAsync(nodeId, cancellationToken);
         var portList = parsed.Value;
         var existing = await db.NodeAllocations.AsNoTracking().Where(a => a.NodeId == nodeId && portList.Contains(a.Port)).ToListAsync(cancellationToken);
         if (created.Any(c => existing.Any(e => e.Overlaps(c.IpAddress, c.Port))))
@@ -88,10 +92,11 @@ public sealed class NodeAllocations(IPulsarDbContext db, VisibleResources visibl
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
         catch (DbUpdateException)
         {
-            // Someone added the same pair meanwhile (unique index).
+            // Someone added the same pair meanwhile (unique index), without taking the lock.
             return NodeErrors.AllocationTaken;
         }
 

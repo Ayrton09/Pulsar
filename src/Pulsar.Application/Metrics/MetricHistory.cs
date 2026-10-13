@@ -77,6 +77,12 @@ public sealed class MetricHistory(IServiceScopeFactory scopes, TimeProvider cloc
 
     public const int MaxSamplesPerMinute = 600;
 
+    /// <summary>
+    /// A CPU share an agent reported, as the panel keeps and shows it: 0–100, and 0 for what is not a number. An agent's
+    /// JSON can carry an infinity (1e999), which no answer to a browser could.
+    /// </summary>
+    public static double CpuPercent(double reported) => double.IsFinite(reported) ? Math.Clamp(reported, 0, 100) : 0;
+
     /// <summary>Buckets a failed write keeps for the next one; older ones are given up.</summary>
     private static readonly TimeSpan s_keepUnwritten = TimeSpan.FromMinutes(30);
 
@@ -90,7 +96,7 @@ public sealed class MetricHistory(IServiceScopeFactory scopes, TimeProvider cloc
     public void RecordServer(ServerId server, double cpuPercent, long memoryBytes, int? players)
     {
         var minute = MinuteOf(clock.GetUtcNow());
-        var cpu = double.IsFinite(cpuPercent) ? Math.Clamp(cpuPercent, 0, 100) : 0;
+        var cpu = CpuPercent(cpuPercent);
         var memory = Math.Clamp(memoryBytes, 0, MaxMemoryBytes);
         lock (_lock)
         {
@@ -122,7 +128,7 @@ public sealed class MetricHistory(IServiceScopeFactory scopes, TimeProvider cloc
     public void RecordNode(NodeId node, double cpuPercent, long memoryUsedBytes, long memoryTotalBytes)
     {
         var minute = MinuteOf(clock.GetUtcNow());
-        var cpu = double.IsFinite(cpuPercent) ? Math.Clamp(cpuPercent, 0, 100) : 0;
+        var cpu = CpuPercent(cpuPercent);
         var used = Math.Clamp(memoryUsedBytes, 0, MaxMemoryBytes);
         lock (_lock)
         {

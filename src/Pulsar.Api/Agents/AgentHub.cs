@@ -154,8 +154,9 @@ internal sealed partial class AgentHub(
         {
             await connections.UpdatePanelKeysAsync(nodeId, CancellationToken.None);
         }
-        catch (Exception ex) when (ex is DbUpdateException or InvalidOperationException or OperationCanceledException)
+        catch (Exception ex)
         {
+            // Not awaited by anyone: whatever goes wrong is logged here or never seen (also in the follow-ups below).
             LogPanelKeysUpdateFailed(ex, nodeId);
         }
     }
@@ -163,8 +164,7 @@ internal sealed partial class AgentHub(
     public async Task NodeMetrics(NodeMetrics metrics)
     {
         ArgumentNullException.ThrowIfNull(metrics);
-        var nodeId = Context.User!.NodeId();
-        if (!connections.IsRegistered(nodeId, Context.ConnectionId))
+        if (RegisteredNode() is not { } nodeId)
         {
             return;
         }
@@ -236,7 +236,11 @@ internal sealed partial class AgentHub(
     public Task TransferCompleted(TransferResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
-        transfers.Complete(Context.User!.NodeId(), result);
+        if (RegisteredNode() is { } nodeId)
+        {
+            transfers.Complete(nodeId, result);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -254,7 +258,8 @@ internal sealed partial class AgentHub(
             .ToHashSet();
         foreach (var sample in batch.Servers.Where(s => own.Contains(new ServerId(s.ServerId))))
         {
-            var view = new ServerMetricsView(sample.ServerId, batch.At, sample.CpuPercent, sample.MemoryBytes, sample.ProcessCount, sample.Uptime.TotalSeconds,
+            var view = new ServerMetricsView(sample.ServerId, batch.At, MetricHistory.CpuPercent(sample.CpuPercent), sample.MemoryBytes, sample.ProcessCount,
+                sample.Uptime.TotalSeconds,
                 ServerQueryView.From(sample.Query), sample.CommittedBytes);
             liveMetrics.Update(view);
             history.RecordServer(new ServerId(sample.ServerId), view.CpuPercent, view.MemoryBytes, view.Query?.Players);
@@ -288,10 +293,11 @@ internal sealed partial class AgentHub(
         }
     }
 
+    /// <summary>The node, while this connection said Hello and its session lasts (a revocation or rotation ends it before the connection closes).</summary>
     private NodeId? RegisteredNode()
     {
         var nodeId = Context.User!.NodeId();
-        return connections.IsRegistered(nodeId, Context.ConnectionId) ? nodeId : null;
+        return connections.IsRegistered(nodeId, Context.ConnectionId) && sessions.IsActive(Context.User!.SessionId()) ? nodeId : null;
     }
 
     private async Task FollowUpAsync(ServerFollowUp followUp)
@@ -309,7 +315,7 @@ internal sealed partial class AgentHub(
                     CancellationToken.None);
             }
         }
-        catch (Exception ex) when (ex is DbUpdateException or InvalidOperationException or OperationCanceledException)
+        catch (Exception ex)
         {
             LogFollowUpFailed(ex, followUp.Kind, followUp.ServerId);
         }
@@ -347,7 +353,7 @@ internal sealed partial class AgentHub(
             var ack = await connections.SendAsync(nodeId, new UseAgentsAddressCommand(address.Port, address.Url), null, CancellationToken.None);
             LogAgentsAddressSent(nodeId, address.Port, address.Url, ack?.Status, ack?.ErrorCode);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or OperationCanceledException)
+        catch (Exception ex)
         {
             LogAgentsAddressFailed(ex, nodeId);
         }

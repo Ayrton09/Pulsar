@@ -44,26 +44,37 @@ public static class AccessRules
     }
 
     /// <summary>
-    /// Changing another user's account (disable, delete, reset password): nobody does it to themselves through user
-    /// management, and the target may not hold any global permission the actor lacks, so a <c>user.manage</c> holder
-    /// cannot lock out an administrator.
+    /// Changing another user's account (disable, delete, reset the password or two-factor, revoke API keys, change
+    /// roles): nobody does it to themselves through user management, and the target may not hold any permission the
+    /// actor lacks where the target holds it (globally, on a node, on a server), so a <c>user.manage</c> holder can
+    /// neither lock out an administrator nor sign in as someone who can do more somewhere.
     /// </summary>
-    public static Result CanManageUser(UserId actor, EffectivePermissions actorPermissions, UserId targetUser, EffectivePermissions targetPermissions)
+    /// <param name="serverNodes">The node of each server the target has a role on; a server missing here needs the permissions globally.</param>
+    public static Result CanManageUser(UserId actor, EffectivePermissions actorPermissions, UserId targetUser, EffectivePermissions targetPermissions,
+        IReadOnlyDictionary<ServerId, NodeId> serverNodes)
     {
         ArgumentNullException.ThrowIfNull(actorPermissions);
         ArgumentNullException.ThrowIfNull(targetPermissions);
+        ArgumentNullException.ThrowIfNull(serverNodes);
 
         if (actor == targetUser)
         {
             return AccessErrors.SelfChange;
         }
 
-        return EnsureHeld(targetPermissions.Global, actorPermissions.HasGlobal);
+        var missing = targetPermissions.Global.Where(p => !actorPermissions.HasGlobal(p))
+            .Concat(targetPermissions.Nodes.SelectMany(n => n.Value.Where(p => !actorPermissions.Has(p, AccessTarget.ForNode(n.Key)))))
+            .Concat(targetPermissions.Servers.SelectMany(s => s.Value.Where(p => serverNodes.TryGetValue(s.Key, out var node)
+                ? !actorPermissions.Has(p, AccessTarget.ForServer(s.Key, node))
+                : !actorPermissions.HasGlobal(p))));
+        return Refuse(missing);
     }
 
-    private static Result EnsureHeld(IEnumerable<string> permissions, Func<string, bool> holds)
+    private static Result EnsureHeld(IEnumerable<string> permissions, Func<string, bool> holds) => Refuse(permissions.Where(p => !holds(p)));
+
+    private static Result Refuse(IEnumerable<string> missing)
     {
-        var missing = permissions.Where(p => !holds(p)).Order(StringComparer.Ordinal).ToList();
-        return missing.Count == 0 ? Result.Success() : AccessErrors.Escalation(missing);
+        var sorted = missing.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        return sorted.Count == 0 ? Result.Success() : AccessErrors.Escalation(sorted);
     }
 }

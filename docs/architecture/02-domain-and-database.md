@@ -107,7 +107,7 @@ Effective permissions(user, server S on node N) =
 3. Holders of `role.manage`/`user.manage` **can only grant permissions they hold themselves** in that scope.
 4. Nobody can change their own assignments.
 5. Every role/access change is audited with the permission diff.
-6. `user.manage` can only disable, delete or reset the password of users whose global permissions the actor also holds, and never of themselves (a user manager cannot lock out an administrator).
+6. `user.manage` can only change users (edit, disable, delete, reset the password or two-factor, revoke API keys, change their global, node or server roles) who hold no permission the actor lacks where they hold it: every global one globally, every node one on that node, every server one on that server (with its node), and never themselves. A user manager can neither lock out an administrator nor reset the password of someone with a role on a node or server and sign in as them; nor strip such a user of a role both of them hold.
 
 There is no `Admin = true`: "administrator" is just a role.
 
@@ -361,7 +361,8 @@ CREATE TABLE node_allocations (
     UNIQUE (server_id, port_name),
     CHECK ((server_id IS NULL) = (port_name IS NULL))
 );
--- Conflicts between 0.0.0.0:P and 192.168.1.10:P on the same node are validated in the application.
+-- Conflicts between 0.0.0.0:P and 192.168.1.10:P on the same node are validated in the application, with the node's row
+-- locked (FOR UPDATE), so two requests at the same moment take turns.
 
 CREATE TABLE node_access (
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -609,6 +610,8 @@ CREATE INDEX ix_notification_deliveries_due ON notification_deliveries (next_att
 CREATE INDEX ix_notification_deliveries_subject ON notification_deliveries (channel_id, event, subject, created_at);
 -- Retries after 30 s, 2 min, 10 min, 30 min and 1 h, then failed; Discord's 429 waits as long as it asks; other
 -- refusals (a deleted webhook, a rejected address) fail at once. Sent and failed deliveries are kept 30 days.
+-- A sent or failed delivery stays so: a sender whose 2-minute lease ran out sends nothing once another one took it, and
+-- its outcome is not saved over theirs (the row version, xmin).
 
 -- ===================== Audit =====================
 CREATE TABLE audit_logs (
