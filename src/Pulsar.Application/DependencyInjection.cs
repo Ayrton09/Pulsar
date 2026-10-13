@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddSingleton<AgentTransportPolicy>();
         services.AddSingleton<AgentChallengeStore>();
         services.AddSingleton<AgentRefusalBudget>();
+        services.AddSingleton<EnrollmentRefusalBudget>();
         services.AddScoped<AgentAccess>();
         services.AddScoped<NodeManagement>();
         services.AddScoped<EnrollmentTokens>();

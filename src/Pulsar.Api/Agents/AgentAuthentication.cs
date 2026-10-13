@@ -12,7 +12,7 @@ namespace Pulsar.Api.Agents;
 /// Authentication of agents on the hub: <c>Authorization: Bearer &lt;session token&gt;</c> issued by
 /// <c>/agent/v1/auth/token</c>. A browser cookie never authenticates here and an agent token never works on /api.
 /// </summary>
-internal sealed class AgentAuthenticationHandler(
+internal sealed partial class AgentAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, AgentSessionStore sessions,
     AgentsEndpoint agents, AgentTransportPolicy transportPolicy)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
@@ -22,18 +22,18 @@ internal sealed class AgentAuthenticationHandler(
     public const string CredentialIdClaim = "pulsar:credential";
     public const string SessionIdClaim = "pulsar:session";
 
-    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var header = Request.Headers.Authorization.ToString();
         if (!header.StartsWith("Bearer ", StringComparison.Ordinal))
         {
-            return Task.FromResult(AuthenticateResult.NoResult());
+            return AuthenticateResult.NoResult();
         }
 
         var session = sessions.Find(header["Bearer ".Length..].Trim());
         if (session is null)
         {
-            return Task.FromResult(AuthenticateResult.Fail("Unknown or expired agent session."));
+            return AuthenticateResult.Fail("Unknown or expired agent session.");
         }
 
         // A session signed in with a client certificate needs it on every request: the token alone is worth nothing.
@@ -43,7 +43,11 @@ internal sealed class AgentAuthenticationHandler(
             ? !transport.ThroughAgentsEndpoint || transport.ClientKeyFingerprint != session.CertificateKey
             : transport.ThroughAgentsEndpoint || transportPolicy.RequiresCertificateFor(transport))
         {
-            return Task.FromResult(AuthenticateResult.Fail("The agent session does not match this connection's client certificate."));
+            // The theft client certificates defend against (a copied token, without the key it was issued with): the
+            // node's administrators should hear of it.
+            LogSessionCertificateMismatch(Logger, session.NodeId, session.SessionId, transport.ThroughAgentsEndpoint);
+            await Context.RequestServices.GetRequiredService<AgentAccess>().SessionRefusedAsync(session.NodeId, session.CredentialId, Context.RequestAborted);
+            return AuthenticateResult.Fail("The agent session does not match this connection's client certificate.");
         }
 
         var identity = new ClaimsIdentity(
@@ -56,8 +60,12 @@ internal sealed class AgentAuthenticationHandler(
         // The hub closes the connection when the session expires (CloseOnAuthenticationExpiration); the agent then
         // re-authenticates with a fresh challenge.
         var properties = new AuthenticationProperties { ExpiresUtc = session.ExpiresAt };
-        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), properties, Scheme)));
+        return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), properties, Scheme));
     }
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "A request presented the session token {SessionId} of node {NodeId} without the session's client certificate (through the agents' endpoint: {ThroughAgentsEndpoint}): refused")]
+    private static partial void LogSessionCertificateMismatch(ILogger logger, NodeId nodeId, Guid sessionId, bool throughAgentsEndpoint);
 }
 
 internal static class AgentClaims

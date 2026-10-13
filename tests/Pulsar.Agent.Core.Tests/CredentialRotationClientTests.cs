@@ -12,6 +12,7 @@ namespace Pulsar.Agent.Core.Tests;
 public sealed class CredentialRotationClientTests : IDisposable
 {
     private readonly ECDsa _panelKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+    private readonly TestNodeKey _currentKey = new();
     private readonly TestNodeKey _newKey = new();
     private readonly AgentConfig _config;
 
@@ -26,6 +27,7 @@ public sealed class CredentialRotationClientTests : IDisposable
     public void Dispose()
     {
         _panelKey.Dispose();
+        _currentKey.Dispose();
         _newKey.Dispose();
     }
 
@@ -35,7 +37,7 @@ public sealed class CredentialRotationClientTests : IDisposable
         var credentialId = Guid.NewGuid();
         var transport = Answering(new CredentialRotation(_config.NodeId, credentialId, ProtocolCrypto.Fingerprint(_newKey.PublicKey)));
 
-        Assert.Equal(credentialId, await new CredentialRotationClient(transport).RegisterAsync(_config, _config.Panel, null, "token", Guid.NewGuid(), _newKey,
+        Assert.Equal(credentialId, await new CredentialRotationClient(transport).RegisterAsync(_config, _config.Panel, null, "token", Guid.NewGuid(), _currentKey, _newKey,
             TestContext.Current.CancellationToken));
     }
 
@@ -47,7 +49,7 @@ public sealed class CredentialRotationClientTests : IDisposable
         var transport = Answering(new CredentialRotation(_config.NodeId, Guid.NewGuid(), ProtocolCrypto.Fingerprint(other.ExportSubjectPublicKeyInfo())));
 
         var refused = await Assert.ThrowsAsync<AgentException>(() => new CredentialRotationClient(transport).RegisterAsync(_config, _config.Panel, null, "token",
-            Guid.NewGuid(), _newKey, TestContext.Current.CancellationToken));
+            Guid.NewGuid(), _currentKey, _newKey, TestContext.Current.CancellationToken));
 
         Assert.Contains("another key", refused.Message, StringComparison.Ordinal);
     }
@@ -58,7 +60,7 @@ public sealed class CredentialRotationClientTests : IDisposable
         var credentialId = Guid.NewGuid();
         var transport = Answering(new CredentialRotation(_config.NodeId, credentialId));
 
-        Assert.Equal(credentialId, await new CredentialRotationClient(transport).RegisterAsync(_config, _config.Panel, null, "token", Guid.NewGuid(), _newKey,
+        Assert.Equal(credentialId, await new CredentialRotationClient(transport).RegisterAsync(_config, _config.Panel, null, "token", Guid.NewGuid(), _currentKey, _newKey,
             TestContext.Current.CancellationToken));
     }
 

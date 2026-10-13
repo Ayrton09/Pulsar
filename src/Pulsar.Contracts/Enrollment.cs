@@ -99,11 +99,13 @@ public sealed record AgentError(string Code, string Message, SignedMessage? Agen
 public sealed record AgentsAddress(Guid NodeId, int Port, string? Url, byte[]? Nonce);
 
 /// <summary>
-/// <c>POST /agent/v1/credentials/rotate</c>, authenticated with the current session. <see cref="Proof"/> signs
+/// <c>POST /agent/v1/credentials/rotate</c>, within the current session. <see cref="Proof"/> signs
 /// <c>SignedData(Purposes.RotateCredential, nodeId, currentCredentialId, sessionId, publicKey)</c> with the NEW private
-/// key: the session proves the old key, the proof proves the new one, and both are bound to this node and session.
+/// key; <see cref="CurrentKeyProof"/> signs <c>SignedData(Purposes.AuthorizeRotation, nodeId, currentCredentialId,
+/// sessionId, publicKey)</c> with the CURRENT one. The session token alone (a bearer token, which can be copied) never
+/// registers a key: the current key does, for this new key, node and session only.
 /// </summary>
-public sealed record RotateCredentialRequest(byte[] PublicKey, string KeyStorage, byte[] Proof);
+public sealed record RotateCredentialRequest(byte[] PublicKey, string KeyStorage, byte[] Proof, byte[] CurrentKeyProof);
 
 /// <summary>
 /// Payload of the panel's answer to a rotation, delivered as a <see cref="SignedMessage"/>. The new credential is

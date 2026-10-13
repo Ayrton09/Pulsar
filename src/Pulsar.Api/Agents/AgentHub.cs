@@ -164,6 +164,7 @@ internal sealed partial class AgentHub(
     public async Task NodeMetrics(NodeMetrics metrics)
     {
         ArgumentNullException.ThrowIfNull(metrics);
+        metrics = AgentInput.Metrics(metrics);
         if (RegisteredNode() is not { } nodeId)
         {
             return;
@@ -236,6 +237,7 @@ internal sealed partial class AgentHub(
     public Task TransferCompleted(TransferResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
+        result = AgentInput.Transfer(result);
         if (RegisteredNode() is { } nodeId)
         {
             transfers.Complete(nodeId, result);
@@ -270,6 +272,7 @@ internal sealed partial class AgentHub(
     public async Task OperationProgress(OperationProgress progress)
     {
         ArgumentNullException.ThrowIfNull(progress);
+        progress = AgentInput.Progress(progress);
         if (RegisteredNode() is { } nodeId)
         {
             await servers.OperationProgressAsync(nodeId, progress, CancellationToken.None);
@@ -280,6 +283,7 @@ internal sealed partial class AgentHub(
     public async Task OperationCompleted(OperationCompleted completed)
     {
         ArgumentNullException.ThrowIfNull(completed);
+        completed = AgentInput.Completed(completed);
         if (RegisteredNode() is not { } nodeId)
         {
             throw new HubException("Say Hello first.");

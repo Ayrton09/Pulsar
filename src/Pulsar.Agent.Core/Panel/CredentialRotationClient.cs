@@ -14,20 +14,24 @@ public sealed class CredentialRotationClient(PanelTransport transport)
 {
     /// <param name="panel">Where the session was opened (the configured address or its fallback).</param>
     /// <param name="certificate">The current key's client certificate: a session opened with one needs it on every request.</param>
+    /// <param name="currentKey">The key of <c>config.CredentialId</c>, which signed the session in: it authorizes the new one.</param>
     /// <returns>The pending credential id of <paramref name="newKey"/>.</returns>
-    public async Task<Guid> RegisterAsync(AgentConfig config, Uri panel, X509Certificate2? certificate, string accessToken, Guid sessionId, INodeKey newKey,
-        CancellationToken cancellationToken)
+    public async Task<Guid> RegisterAsync(AgentConfig config, Uri panel, X509Certificate2? certificate, string accessToken, Guid sessionId, INodeKey currentKey,
+        INodeKey newKey, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(currentKey);
         ArgumentNullException.ThrowIfNull(newKey);
         var publicKey = newKey.PublicKey;
         var proof = newKey.Sign(ProtocolCrypto.SignedData(AgentProtocol.Purposes.RotateCredential, ProtocolCrypto.GuidBytes(config.NodeId),
+            ProtocolCrypto.GuidBytes(config.CredentialId), ProtocolCrypto.GuidBytes(sessionId), publicKey));
+        var authorization = currentKey.Sign(ProtocolCrypto.SignedData(AgentProtocol.Purposes.AuthorizeRotation, ProtocolCrypto.GuidBytes(config.NodeId),
             ProtocolCrypto.GuidBytes(config.CredentialId), ProtocolCrypto.GuidBytes(sessionId), publicKey));
 
         using var http = transport.CreateClient(panel, certificate);
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         var signed = await PanelTransport.PostAsync<RotateCredentialRequest, SignedMessage>(http, AgentProtocol.RotateCredentialPath,
-            new RotateCredentialRequest(publicKey, newKey.Reference.Storage, proof), cancellationToken);
+            new RotateCredentialRequest(publicKey, newKey.Reference.Storage, proof, authorization), cancellationToken);
 
         var signer = config.PanelKeys.FirstOrDefault(k => k.KeyId == signed.KeyId);
         if (signer is null || !ProtocolCrypto.VerifyMessage(signed, AgentProtocol.Purposes.RotationResult, signer.PublicKey))

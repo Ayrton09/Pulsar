@@ -11,6 +11,12 @@ namespace Pulsar.Agent.Core.Panel;
 /// </summary>
 public sealed class PanelAuthenticator(PanelTransport transport)
 {
+    /// <summary>The longest challenge nonce the agent signs (the panel's are 32 bytes).</summary>
+    public const int MaxNonceLength = 64;
+
+    /// <summary>The longest session token the agent keeps (the panel's are 43 characters).</summary>
+    public const int MaxAccessTokenLength = 1024;
+
     /// <summary>Signs in at the configured panel address, the key presented as client certificate (<c>status --check</c>).</summary>
     public async Task<TokenResponse> AuthenticateAsync(AgentConfig config, INodeKey key, CancellationToken cancellationToken)
     {
@@ -46,6 +52,13 @@ public sealed class PanelAuthenticator(PanelTransport transport)
             throw new CertificateRequiredException(ex.Message, ex.AgentsAddress, panel, nonce);
         }
 
+        // Never the panel's: it is not signed, whatever it is.
+        if (challenge.Nonce is not { Length: > 0 and <= MaxNonceLength })
+        {
+            throw new PanelNotAnsweringException($"The address answered {AgentProtocol.ChallengePath} with a nonce of {challenge.Nonce?.Length ?? 0} bytes, " +
+                "which is not the agent protocol: no panel answers it there now.");
+        }
+
         // Signing a nonce bound to another origin would hand a relaying panel a valid login here.
         if (!string.Equals(challenge.PanelOrigin, origin, StringComparison.Ordinal))
         {
@@ -55,7 +68,11 @@ public sealed class PanelAuthenticator(PanelTransport transport)
 
         var signature = key.Sign(ProtocolCrypto.SignedData(AgentProtocol.Purposes.Authenticate,
             ProtocolCrypto.GuidBytes(config.NodeId), ProtocolCrypto.GuidBytes(config.CredentialId), challenge.Nonce, ProtocolCrypto.Utf8(origin)));
-        return await PanelTransport.PostAsync<TokenRequest, TokenResponse>(http, AgentProtocol.TokenPath,
+        var token = await PanelTransport.PostAsync<TokenRequest, TokenResponse>(http, AgentProtocol.TokenPath,
             new TokenRequest(challenge.ChallengeId, signature), cancellationToken);
+        return token.AccessToken is { Length: > 0 and <= MaxAccessTokenLength }
+            ? token
+            : throw new PanelNotAnsweringException($"The address answered {AgentProtocol.TokenPath} with a session token of {token.AccessToken?.Length ?? 0} " +
+                "characters, which is not the agent protocol: no panel answers it there now.");
     }
 }
