@@ -88,7 +88,8 @@ public sealed class PanelChannel
 
     /// <summary>
     /// An HTTP client authenticated with the current session, for calls that belong to it (file transfers); null
-    /// while disconnected. Without a timeout of its own: the caller bounds its requests. The caller disposes it.
+    /// while disconnected. Without a timeout of its own: the caller bounds its requests. Answers it reads whole are
+    /// bounded as the protocol's are; a file comes as a stream. The caller disposes it.
     /// </summary>
     public HttpClient? CreateHttpClient()
     {
@@ -107,6 +108,7 @@ public sealed class PanelChannel
         {
             BaseAddress = http.Panel,
             Timeout = Timeout.InfiniteTimeSpan,
+            MaxResponseContentBufferSize = PanelTransport.MaxResponseBytes,
         };
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", http.AccessToken);
         return client;

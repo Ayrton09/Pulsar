@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Nodes;
@@ -64,11 +65,36 @@ public sealed class AgentClientCertificateTests(AgentsEndpointApiFactory factory
         agent.ClientCertificate = null;
         using var rotate = new HttpRequestMessage(HttpMethod.Post, AgentProtocol.RotateCredentialPath)
         {
-            Content = JsonContent.Create(new RotateCredentialRequest([1], "software", [2]), options: ProtocolJson.Options),
+            Content = JsonContent.Create(new RotateCredentialRequest([1], "software", [2], [3]), options: ProtocolJson.Options),
         };
         rotate.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.AccessToken);
         using var rotated = await agent.Http.SendAsync(rotate, Ct);
         Assert.Equal(HttpStatusCode.Unauthorized, rotated.StatusCode);
+    }
+
+    [DatabaseFact]
+    public async Task ASessionTokenWithoutItsCertificateIsAudited()
+    {
+        await using var agent = await EnrolledAgentAsync("certificate-token-copied");
+        var token = await agent.AuthenticateWithCertificateAsync();
+
+        // The token copied, then tried without the key: on the main endpoint, and with a certificate of another key.
+        agent.ThroughAgentsEndpoint = false;
+        agent.ClientCertificate = null;
+        Assert.Equal(HttpStatusCode.Unauthorized, await TransferStatusAsync(agent, token));
+        Assert.Equal(HttpStatusCode.Unauthorized, await TransferStatusAsync(agent, token));
+        using var other = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        agent.ThroughAgentsEndpoint = true;
+        agent.ClientCertificate = TestAgent.CertificateFor(other);
+        Assert.Equal(HttpStatusCode.Unauthorized, await TransferStatusAsync(agent, token));
+
+        // One entry for the node a while (from one address), as for any refused sign-in.
+        await using var scope = factory.Services.CreateAsyncScope();
+        var nodeId = new Pulsar.Domain.Common.NodeId(agent.NodeId);
+        var entries = await scope.ServiceProvider.GetRequiredService<Pulsar.Infrastructure.Persistence.PulsarDbContext>().AuditLog
+            .Where(e => e.Action == Pulsar.Domain.Audit.AuditActions.Node.AuthenticationFailed && e.NodeId == nodeId)
+            .Select(e => e.Metadata).ToListAsync(Ct);
+        Assert.Single(entries, m => m!.Contains("\"session_certificate_mismatch\"", StringComparison.Ordinal));
     }
 
     [DatabaseFact]

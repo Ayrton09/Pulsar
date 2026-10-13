@@ -244,7 +244,7 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
             await db.SaveChangesAsync(Ct);
 
             var rotating = new CredentialRotationClient(Transport(agent))
-                .RegisterAsync(enrolled, enrolled.Panel, null, session.AccessToken, session.SessionId, newKey, Ct);
+                .RegisterAsync(enrolled, enrolled.Panel, null, session.AccessToken, session.SessionId, current, newKey, Ct);
             await Task.Delay(TimeSpan.FromSeconds(1), Ct); // the rotation is now waiting for the revocation, or past it
             await transaction.CommitAsync(Ct);
             await Assert.ThrowsAnyAsync<Exception>(() => rotating);
@@ -275,7 +275,7 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
         hook.BeforeSave(c => c.ChangeTracker.Entries<NodeEnrollmentToken>().Any(e => e.Entity.NodeId == nodeId), async () =>
         {
             rotating = new CredentialRotationClient(Transport(agent))
-                .RegisterAsync(enrolled, enrolled.Panel, null, session.AccessToken, session.SessionId, newKey, Ct);
+                .RegisterAsync(enrolled, enrolled.Panel, null, session.AccessToken, session.SessionId, current, newKey, Ct);
             await Task.WhenAny(rotating, Task.Delay(TimeSpan.FromSeconds(1), Ct)); // registered, or waiting for the re-enrollment
         });
         await reinstalled.EnrollAsync(instructions.Token, instructions.PanelKeyFingerprint);
@@ -330,11 +330,12 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
         await agent.ConnectAsync(session.AccessToken, AgentCapabilities.Ping);
         using var newKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var publicKey = newKey.ExportSubjectPublicKeyInfo();
-        var proof = ProtocolCrypto.Sign(newKey, ProtocolCrypto.SignedData(AgentProtocol.Purposes.RotateCredential,
-            ProtocolCrypto.GuidBytes(agent.NodeId), ProtocolCrypto.GuidBytes(agent.CredentialId), ProtocolCrypto.GuidBytes(session.SessionId), publicKey));
+        var proof = ProtocolCrypto.Sign(newKey, RotationData(AgentProtocol.Purposes.RotateCredential, agent.NodeId, agent.CredentialId, session.SessionId, publicKey));
+        var authorization = ProtocolCrypto.Sign(agent.Key,
+            RotationData(AgentProtocol.Purposes.AuthorizeRotation, agent.NodeId, agent.CredentialId, session.SessionId, publicKey));
         agent.Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
         Guid pending;
-        using (var rotated = await agent.Http.PostAsJsonAsync(AgentProtocol.RotateCredentialPath, new RotateCredentialRequest(publicKey, "software", proof),
+        using (var rotated = await agent.Http.PostAsJsonAsync(AgentProtocol.RotateCredentialPath, new RotateCredentialRequest(publicKey, "software", proof, authorization),
             ProtocolJson.Options, Ct))
         {
             Assert.Equal(HttpStatusCode.OK, rotated.StatusCode);
@@ -364,17 +365,19 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
         using var newKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var impostor = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var publicKey = newKey.ExportSubjectPublicKeyInfo();
-        var forgedProof = ProtocolCrypto.Sign(impostor, ProtocolCrypto.SignedData(AgentProtocol.Purposes.RotateCredential,
-            ProtocolCrypto.GuidBytes(enrolled.NodeId), ProtocolCrypto.GuidBytes(enrolled.CredentialId), ProtocolCrypto.GuidBytes(session.SessionId), publicKey));
+        var forgedProof = ProtocolCrypto.Sign(impostor,
+            RotationData(AgentProtocol.Purposes.RotateCredential, enrolled.NodeId, enrolled.CredentialId, session.SessionId, publicKey));
+        var authorization = current.Sign(RotationData(AgentProtocol.Purposes.AuthorizeRotation, enrolled.NodeId, enrolled.CredentialId, session.SessionId, publicKey));
+        var request = new RotateCredentialRequest(publicKey, "software", forgedProof, authorization);
         using var http = factory.CreateDefaultClient(new Uri("https://localhost"));
 
-        using (var anonymous = await http.PostAsJsonAsync(AgentProtocol.RotateCredentialPath, new RotateCredentialRequest(publicKey, "software", forgedProof), ProtocolJson.Options, Ct))
+        using (var anonymous = await http.PostAsJsonAsync(AgentProtocol.RotateCredentialPath, request, ProtocolJson.Options, Ct))
         {
             Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         }
 
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
-        using var forged = await http.PostAsJsonAsync(AgentProtocol.RotateCredentialPath, new RotateCredentialRequest(publicKey, "software", forgedProof), ProtocolJson.Options, Ct);
+        using var forged = await http.PostAsJsonAsync(AgentProtocol.RotateCredentialPath, request, ProtocolJson.Options, Ct);
 
         Assert.Equal(HttpStatusCode.BadRequest, forged.StatusCode);
         Assert.Equal("agent.rotation_rejected", (await forged.Content.ReadFromJsonAsync<AgentError>(ProtocolJson.Options, Ct))!.Code);
@@ -391,12 +394,12 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
         var session = await new PanelAuthenticator(Transport(agent)).AuthenticateAsync(enrolled, current, Ct);
         using var newKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var publicKey = newKey.ExportSubjectPublicKeyInfo();
-        var proof = ProtocolCrypto.Sign(newKey, ProtocolCrypto.SignedData(AgentProtocol.Purposes.RotateCredential,
-            ProtocolCrypto.GuidBytes(enrolled.NodeId), ProtocolCrypto.GuidBytes(enrolled.CredentialId), ProtocolCrypto.GuidBytes(session.SessionId), publicKey));
+        var proof = ProtocolCrypto.Sign(newKey, RotationData(AgentProtocol.Purposes.RotateCredential, enrolled.NodeId, enrolled.CredentialId, session.SessionId, publicKey));
+        var authorization = current.Sign(RotationData(AgentProtocol.Purposes.AuthorizeRotation, enrolled.NodeId, enrolled.CredentialId, session.SessionId, publicKey));
         using var http = factory.CreateDefaultClient(new Uri("https://localhost"));
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
 
-        using var response = await http.PostAsJsonAsync(AgentProtocol.RotateCredentialPath, new RotateCredentialRequest(publicKey, "software", proof),
+        using var response = await http.PostAsJsonAsync(AgentProtocol.RotateCredentialPath, new RotateCredentialRequest(publicKey, "software", proof, authorization),
             ProtocolJson.Options, Ct);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -404,6 +407,82 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
         var rotation = ProtocolJson.Deserialize<CredentialRotation>(signed.Payload);
         Assert.Equal(ProtocolCrypto.Fingerprint(publicKey), rotation.KeyFingerprint);
     }
+
+    [DatabaseFact]
+    public async Task ACopiedSessionTokenCannotRegisterAKeyWithoutTheCurrentKey()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-stolen-token");
+        using var current = agent.Keys.Open(enrolled.Key);
+        var session = await new PanelAuthenticator(Transport(agent)).AuthenticateAsync(enrolled, current, Ct);
+
+        // Whoever copied the token also sees the ids (a proxy that decrypts the traffic), and proves a key of their own;
+        // the current key's authorization is what they cannot make.
+        using var thief = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var publicKey = thief.ExportSubjectPublicKeyInfo();
+        var proof = ProtocolCrypto.Sign(thief, RotationData(AgentProtocol.Purposes.RotateCredential, enrolled.NodeId, enrolled.CredentialId, session.SessionId, publicKey));
+        var signedByThief = ProtocolCrypto.Sign(thief,
+            RotationData(AgentProtocol.Purposes.AuthorizeRotation, enrolled.NodeId, enrolled.CredentialId, session.SessionId, publicKey));
+        // The current key's signature over the same fields for another purpose: not an authorization.
+        var otherPurpose = current.Sign(RotationData(AgentProtocol.Purposes.RotateCredential, enrolled.NodeId, enrolled.CredentialId, session.SessionId, publicKey));
+        // The current key's authorization of this key for another session (one it signed earlier, played back).
+        var otherSession = current.Sign(RotationData(AgentProtocol.Purposes.AuthorizeRotation, enrolled.NodeId, enrolled.CredentialId, Guid.NewGuid(), publicKey));
+        using var http = factory.CreateDefaultClient(new Uri("https://localhost"));
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+
+        foreach (var request in new object[]
+        {
+            new { publicKey, keyStorage = "software", proof },
+            new RotateCredentialRequest(publicKey, "software", proof, signedByThief),
+            new RotateCredentialRequest(publicKey, "software", proof, otherPurpose),
+            new RotateCredentialRequest(publicKey, "software", proof, otherSession),
+        })
+        {
+            using var refused = await http.PostAsJsonAsync(AgentProtocol.RotateCredentialPath, request, ProtocolJson.Options, Ct);
+            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+            Assert.Equal("agent.rotation_rejected", (await refused.Content.ReadFromJsonAsync<AgentError>(ProtocolJson.Options, Ct))!.Code);
+        }
+
+        Assert.Single((await NodeApi.GetAsync(admin, enrolled.NodeId)).Credentials);
+    }
+
+    [DatabaseFact]
+    public async Task APendingKeyNotUsedWithinADayIsRefusedAndSuperseded()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-pending-expired");
+        var pending = await RegisterPendingKeyAsync(agent, enrolled);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var registeredAt = DateTimeOffset.UtcNow - NodeCredential.PendingLifetime - TimeSpan.FromMinutes(1);
+            await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().Database
+                .ExecuteSqlAsync($"UPDATE node_credentials SET created_at = {registeredAt} WHERE id = {pending.CredentialId}", Ct);
+        }
+
+        using (var key = agent.Keys.Open(pending.Key))
+        {
+            await Assert.ThrowsAsync<AgentRejectedException>(() =>
+                new PanelAuthenticator(Transport(agent)).AuthenticateAsync(enrolled with { CredentialId = pending.CredentialId, Key = pending.Key }, key, Ct));
+        }
+
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, pending.CredentialId, NodeCredentialStatus.Superseded);
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, enrolled.CredentialId, NodeCredentialStatus.Active);
+        using (var current = agent.Keys.Open(enrolled.Key))
+        {
+            await new PanelAuthenticator(Transport(agent)).AuthenticateAsync(enrolled, current, Ct);
+        }
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var nodeId = new NodeId(enrolled.NodeId);
+        var refusals = await check.ServiceProvider.GetRequiredService<PulsarDbContext>().AuditLog
+            .Where(e => e.Action == AuditActions.Node.AuthenticationFailed && e.NodeId == nodeId).ToListAsync(Ct);
+        Assert.Contains(refusals, e => e.Metadata.Contains("\"pending_credential_expired\"", StringComparison.Ordinal));
+    }
+
+    private static byte[] RotationData(string purpose, Guid nodeId, Guid credentialId, Guid sessionId, byte[] publicKey) =>
+        ProtocolCrypto.SignedData(purpose, ProtocolCrypto.GuidBytes(nodeId), ProtocolCrypto.GuidBytes(credentialId), ProtocolCrypto.GuidBytes(sessionId), publicKey);
 
     private static async Task AssertRotatedAsync(PanelClient admin, InProcessAgent agent, AgentConfig before, AgentConfig after)
     {
@@ -433,7 +512,7 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
         var transport = Transport(agent);
         var session = await new PanelAuthenticator(transport).AuthenticateAsync(config, current, Ct);
         using var newKey = agent.Keys.Create($"PulsarAgent-{Guid.NewGuid():N}", NodeKeyScope.User);
-        var credentialId = await new CredentialRotationClient(transport).RegisterAsync(config, config.Panel, null, session.AccessToken, session.SessionId, newKey, Ct);
+        var credentialId = await new CredentialRotationClient(transport).RegisterAsync(config, config.Panel, null, session.AccessToken, session.SessionId, current, newKey, Ct);
         return new PendingRotation(newKey.Reference, credentialId, DateTimeOffset.UtcNow);
     }
 

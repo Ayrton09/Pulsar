@@ -1,7 +1,12 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.Security;
+using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -102,6 +107,60 @@ public sealed class AgentsEndpointKestrelTests(KestrelPanelFactory factory) : IC
         var node = await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().Nodes.AsNoTracking()
             .SingleAsync(n => n.Id == new NodeId(config.NodeId), Ct);
         Assert.True(node.ConnectedWithCertificate);
+    }
+
+    [DatabaseFact]
+    public async Task AClientCertificateNeverMakesThePanelFetchItsAddresses()
+    {
+        factory.StartServer();
+
+        // Whatever the certificate names (its issuer's certificate, revocation lists, OCSP), here on loopback, would be an
+        // internal host or a cloud metadata address otherwise; each fetch also holds the handshake. The panel's are the
+        // fetches of this process: on Windows the client's SChannel completes its own chain in LSASS, which is not the
+        // panel's doing.
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var fetched = new ConcurrentQueue<string>();
+        var accepting = Task.Run(async () =>
+        {
+            while (true)
+            {
+                using var client = await listener.AcceptTcpClientAsync();
+                if (TcpOwners.ProcessOf((IPEndPoint)client.Client.RemoteEndPoint!) is { } owner && owner != Environment.ProcessId)
+                {
+                    continue;
+                }
+
+                var buffer = new byte[256];
+                using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+                var read = await client.GetStream().ReadAsync(buffer, wait.Token).AsTask().ContinueWith(t => t.IsCompletedSuccessfully ? t.Result : 0);
+                fetched.Enqueue(Encoding.ASCII.GetString(buffer, 0, read).Split('\r')[0]);
+            }
+        }, Ct);
+        var target = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/{Guid.NewGuid():N}";
+        using var issuerKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var issuerRequest = new CertificateRequest("CN=Unknown issuer", issuerKey, HashAlgorithmName.SHA256);
+        issuerRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        using var issuer = issuerRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var request = new CertificateRequest("CN=Pulsar node", key, HashAlgorithmName.SHA256);
+        request.CertificateExtensions.Add(new X509AuthorityInformationAccessExtension([$"{target}/ocsp"], [$"{target}/issuer.cer"]));
+        request.CertificateExtensions.Add(CertificateRevocationListBuilder.BuildCrlDistributionPointExtension([$"{target}/issuer.crl"]));
+        using var issued = request.Create(issuer, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10), RandomNumberGenerator.GetBytes(12));
+        using var withKey = issued.CopyWithPrivateKey(key);
+        using var certificate = X509CertificateLoader.LoadPkcs12(withKey.Export(X509ContentType.Pfx, KestrelPanelFactory.CertificatePassword),
+            KestrelPanelFactory.CertificatePassword);
+        using var handler = factory.Handler();
+        // Sent alone and never completed on this side: the client must not fetch anything either.
+        handler.SslOptions.ClientCertificateContext = SslStreamCertificateContext.Create(certificate, [], offline: true);
+        using var agents = new HttpClient(handler) { BaseAddress = factory.AgentsUrl };
+
+        Assert.Equal(HttpStatusCode.OK, (await agents.GetAsync(AgentProtocol.PanelIdentityPath.TrimStart('/'), Ct)).StatusCode);
+
+        await Task.Delay(TimeSpan.FromMilliseconds(500), Ct);
+        listener.Stop();
+        await Record.ExceptionAsync(() => accepting);
+        Assert.Empty(fetched);
     }
 
     private static async Task<HttpStatusCode> TransferStatusAsync(HttpClient http, TokenResponse token)

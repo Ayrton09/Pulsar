@@ -355,7 +355,7 @@ public sealed partial class AgentConnection(
         {
             newKey = keys.Create($"PulsarAgent-{Guid.NewGuid():N}", config.Key.Scope);
             var credentialId = await rotation.RegisterAsync(config, _sessionPanel ?? config.Panel, _sessionCertificate, session.AccessToken, session.SessionId,
-                newKey, cancellationToken);
+                _key, newKey, cancellationToken);
             lock (_configLock)
             {
                 SaveConfig(_config with { PendingRotation = new PendingRotation(newKey.Reference, credentialId, clock.GetUtcNow()) });
@@ -403,10 +403,14 @@ public sealed partial class AgentConnection(
 
     /// <summary>
     /// Authenticates with the pending key first when there is one: success completes the rotation (the panel
-    /// activates it; the agent switches to it and deletes the old key), refusal abandons it, and a network error leaves
-    /// it for the next attempt. A crash anywhere in between leaves one of the two keys working. An answer that is not the
-    /// panel's (an older panel's bare 401 for a credential it dropped) signs in with the current key for that attempt; after
-    /// <see cref="MaxPendingKeyMisses"/> such answers in a row, while the current key works, the pending key is abandoned.
+    /// activates it; the agent switches to it and deletes the old key), and a network error leaves it for the next
+    /// attempt. A refusal, or a key that fails to sign, signs in with the current key: the pending key is abandoned only
+    /// if that works, since only a working current key proves the panel did not activate the pending one (a refusal
+    /// forged after the panel took the request, a node disabled right after, a lost answer). With both refused, both are
+    /// kept and tried again after the backoff. A crash anywhere in between leaves one of the two keys working. An answer
+    /// that is not the panel's (an older panel's bare 401 for a credential it dropped) signs in with the current key for
+    /// that attempt; after <see cref="MaxPendingKeyMisses"/> such answers in a row, while the current key works, the
+    /// pending key is abandoned.
     /// </summary>
     private async Task<(TokenResponse Token, Uri Panel)> AuthenticateAsync(bool fallbackFirst, CancellationToken cancellationToken)
     {
@@ -427,7 +431,19 @@ public sealed partial class AgentConnection(
             {
                 newKey?.Dispose();
                 newCertificate?.Dispose();
+                (TokenResponse Token, Uri Panel) current;
+                try
+                {
+                    current = await SignInAsync(_config.CredentialId, _key, _certificate, fallbackFirst, cancellationToken);
+                }
+                catch (AgentRejectedException)
+                {
+                    LogBothKeysRefused(pending.CredentialId, ex.Message);
+                    throw;
+                }
+
                 AbandonPendingKey(pending, ex.Message);
+                return current;
             }
             catch (PanelNotAnsweringException ex)
             {
@@ -810,6 +826,10 @@ public sealed partial class AgentConnection(
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Abandoning the pending key of credential {CredentialId} ({Reason}); the current key stays in use. Next rotation attempt after {NextAttempt}")]
     private partial void LogPendingKeyAbandoned(Guid credentialId, string reason, DateTimeOffset nextAttempt);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "The pending key of credential {CredentialId} did not sign in ({Reason}) and the panel refuses the current key too: the panel may have activated the pending key, so both are kept and tried again")]
+    private partial void LogBothKeysRefused(Guid credentialId, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete the node key {KeyName}: {Reason}")]
     private partial void LogKeyNotDeleted(string keyName, string reason);

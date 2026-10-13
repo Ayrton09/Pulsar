@@ -97,8 +97,9 @@ internal sealed partial class AgentConnectionRegistry(
         timeout.CancelAfter(AckTimeout);
         try
         {
-            return await hub.Clients.Client(connection.ConnectionId)
-                .InvokeAsync<CommandAck>(nameof(IAgentClient.Execute), signed, timeout.Token);
+            // What the agent answers goes to the audit log, the panel's log and browsers: bounded here, once.
+            var ack = await hub.Clients.Client(connection.ConnectionId).InvokeAsync<CommandAck?>(nameof(IAgentClient.Execute), signed, timeout.Token);
+            return ack is null ? null : AgentInput.Ack(ack);
         }
         catch (Exception ex) when (ex is OperationCanceledException or IOException or HubException && !cancellationToken.IsCancellationRequested)
         {

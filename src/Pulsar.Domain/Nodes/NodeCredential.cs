@@ -30,6 +30,12 @@ public sealed class NodeCredential
     public const string Algorithm = "ecdsa-p256-sha256";
     public const int MaxRevokeReasonLength = 256;
 
+    /// <summary>
+    /// How long a pending credential waits for its first sign-in (docs/architecture/03, "Rotation"): an agent signs in
+    /// with its new key right after registering it, so one still pending a day later is never going to be used by it.
+    /// </summary>
+    public static readonly TimeSpan PendingLifetime = TimeSpan.FromHours(24);
+
     private NodeCredential()
     {
         // For EF Core materialization.
@@ -97,6 +103,9 @@ public sealed class NodeCredential
 
     /// <summary>Active credentials, and pending ones (whose first authentication completes a rotation).</summary>
     public bool CanAuthenticate => Status is NodeCredentialStatus.Active or NodeCredentialStatus.Pending;
+
+    /// <summary>Pending for longer than <see cref="PendingLifetime"/>: it can no longer complete its rotation.</summary>
+    public bool PendingExpired(DateTimeOffset now) => Status == NodeCredentialStatus.Pending && now >= CreatedAt + PendingLifetime;
 
     public DateTimeOffset? SupersededAt { get; private set; }
 

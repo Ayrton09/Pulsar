@@ -245,10 +245,9 @@ CREATE TABLE node_credentials (
     fingerprint    varchar(80) NOT NULL UNIQUE,  -- 'sha256:<base64url>'
     key_storage    text NOT NULL CHECK (key_storage IN ('tpm','software')),  -- informational
     status         text NOT NULL CHECK (status IN ('pending','active','superseded','revoked')),
-    created_at     timestamptz NOT NULL,
+    created_at     timestamptz NOT NULL,         -- a pending key expires 24 h after it
     activated_at   timestamptz,
     last_used_at   timestamptz,
-    expires_at     timestamptz,
     revoked_at     timestamptz,
     revoked_by     uuid REFERENCES users(id) ON DELETE SET NULL,
     revoke_reason  varchar(256)

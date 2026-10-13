@@ -91,6 +91,8 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
 
         endpoint.HttpsOptions.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
         endpoint.HttpsOptions.AllowAnyClientCertificate();
+        endpoint.HttpsOptions.CheckCertificateRevocation = false;
+        endpoint.HttpsOptions.OnAuthenticate = (_, ssl) => ssl.CertificateChainPolicy = ClientChainPolicy();
         endpoint.ListenOptions.Use(next => connection =>
         {
             connection.Features.Set(AgentsEndpointFeature.Instance);
@@ -98,6 +100,19 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
         });
         Listening(address.Port);
     }
+
+    /// <summary>
+    /// How TLS builds the chain of a client's certificate before Kestrel accepts any: with what the handshake brought
+    /// only. The panel checks the key, never the chain, and the certificate is anyone's choice before that: the URLs it
+    /// names (its issuer's certificate, revocation lists, OCSP) would make the panel connect wherever they say, and hold
+    /// the handshake while it does. No machine trust either: nothing in the panel's stores decides anything here.
+    /// </summary>
+    internal static X509ChainPolicy ClientChainPolicy() => new()
+    {
+        RevocationMode = X509RevocationMode.NoCheck,
+        DisableCertificateDownloads = true,
+        TrustMode = X509ChainTrustMode.CustomRootTrust,
+    };
 
     /// <summary>The certificate's key as SubjectPublicKeyInfo, re-encoded from the key; null without one or for another algorithm.</summary>
     private static byte[]? ClientKey(X509Certificate2? certificate)

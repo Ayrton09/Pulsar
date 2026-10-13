@@ -14,6 +14,12 @@ public class PanelTransport
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
+    /// The most of an answer the agent reads into memory (64 KiB): the protocol's answers are a few KiB at most, and
+    /// whatever answers at the address could otherwise make it buffer up to 2 GiB. Transfers stream their files.
+    /// </summary>
+    public const int MaxResponseBytes = 64 * 1024;
+
+    /// <summary>
     /// Never follows a redirect: a 307 or 308 would send an enrollment, a challenge's answer or a new key's proof on to
     /// wherever it says (an http:// address included).
     /// </summary>
@@ -52,7 +58,7 @@ public class PanelTransport
         certificate is null ? CreateHttpHandler() : WithClientCertificate(CreateHttpHandler(), certificate);
 
     internal HttpClient CreateClient(Uri panel, X509Certificate2? certificate = null) =>
-        new(CreateHttpHandler(certificate), disposeHandler: true) { BaseAddress = panel, Timeout = RequestTimeout };
+        new(CreateHttpHandler(certificate), disposeHandler: true) { BaseAddress = panel, Timeout = RequestTimeout, MaxResponseContentBufferSize = MaxResponseBytes };
 
     /// <summary>
     /// Posts a protocol request; a non-success answer becomes <see cref="AgentException"/> (rejected on the panel's 401),

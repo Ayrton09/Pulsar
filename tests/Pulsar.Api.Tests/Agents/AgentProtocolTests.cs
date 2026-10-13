@@ -273,6 +273,23 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
     }
 
     [DatabaseFact]
+    public async Task DrivesAnAgentReportsAreBoundedBeforeBrowsersSeeThem()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "node-many-drives");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken);
+        var disks = Enumerable.Range(0, 40).Select(i => new DiskUsage($"D:\\{i}\n" + new string('x', 300), 100, 50, ["servers"])).ToList();
+
+        await agent.Connection!.InvokeAsync(nameof(IAgentHub.NodeMetrics), new NodeMetrics(DateTimeOffset.UtcNow, 5, 1, 2, TimeSpan.FromHours(1), disks), Ct);
+
+        var metrics = (await GetNodeAsync(admin, agent.NodeId)).Node.Metrics;
+        Assert.Equal(AgentInput.MaxDisks, metrics!.Disks!.Count);
+        Assert.All(metrics.Disks, d => Assert.True(d.Root.Length <= AgentInput.MaxDiskRootLength && !d.Root.Any(char.IsControl), d.Root));
+    }
+
+    [DatabaseFact]
     public async Task RefusedSignInsOfANodeAreAuditedWithoutFloodingTheLog()
     {
         using var admin = await factory.CreateAdminClientAsync();

@@ -26,6 +26,7 @@ public sealed class PanelSessionTests : IAsyncDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "pulsar-session-tests", Guid.NewGuid().ToString("N"));
     private readonly FakePanel _panel = new();
     private AgentConnection? _connection;
+    private MemoryKeys? _keys;
 
     public async ValueTask DisposeAsync()
     {
@@ -97,10 +98,39 @@ public sealed class PanelSessionTests : IAsyncDisposable
         Assert.NotNull(_connection!.CurrentSessionId);
     }
 
-    private async Task StartAsync(AgentConnectionOptions options, PendingRotation? pending = null)
+    [Fact]
+    public async Task APendingKeyRefusedAfterThePanelActivatedItIsKeptUntilItSignsIn()
+    {
+        // A proxy passes the pending key's sign-in on (the panel activates it, superseding the current key), then forges
+        // the panel's refusal: deleting the pending key would leave this node with no key the panel accepts.
+        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
+        _panel.ActivatesBehindAForgedRefusal = pending.CredentialId;
+
+        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromSeconds(1) }, pending);
+
+        await EventuallyAsync(() => _connection!.Config is { PendingRotation: null } config && config.CredentialId == pending.CredentialId
+            && _connection.CurrentSessionId is not null, () => $"credential {_connection!.Config?.CredentialId}, pending {_connection.Config?.PendingRotation}");
+        Assert.Equal(["PulsarAgent-2"], _keys!.Names);
+    }
+
+    [Fact]
+    public async Task APendingKeyThatFailsToSignOnceIsKeptWhileTheCurrentKeyIsRefused()
+    {
+        // The panel activated the pending key at a sign-in whose answer was lost; at the next one the TPM fails once.
+        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
+        _panel.Activated = pending.CredentialId;
+
+        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromSeconds(1) }, pending, failSigningOnce: pending.Key.Name);
+
+        await EventuallyAsync(() => _connection!.Config is { PendingRotation: null } config && config.CredentialId == pending.CredentialId
+            && _connection.CurrentSessionId is not null, () => $"credential {_connection!.Config?.CredentialId}, pending {_connection.Config?.PendingRotation}");
+        Assert.Equal(["PulsarAgent-2"], _keys!.Names);
+    }
+
+    private async Task StartAsync(AgentConnectionOptions options, PendingRotation? pending = null, string? failSigningOnce = null)
     {
         var configs = new AgentConfigStore(new AgentPaths(_root));
-        var keys = new MemoryKeys();
+        var keys = _keys = new MemoryKeys();
         using (keys.Create("PulsarAgent-1", NodeKeyScope.Machine))
         {
         }
@@ -111,6 +141,8 @@ public sealed class PanelSessionTests : IAsyncDisposable
             {
             }
         }
+
+        keys.FailSigningOnce = failSigningOnce;
 
         configs.Save(new AgentConfig(FakePanel.Address, Guid.NewGuid(), Guid.NewGuid(), new NodeKeyReference("PulsarAgent-1", NodeKeyScope.Machine,
             NodeKeyStorage.Software), [], Path.Combine(_root, "servers"), DateTimeOffset.UtcNow, Development: true, KeyCreatedAt: DateTimeOffset.UtcNow,
@@ -143,6 +175,7 @@ public sealed class PanelSessionTests : IAsyncDisposable
         private readonly ConcurrentBag<Task> _served = [];
         private int _hellos;
         private int _pendingAttempts;
+        private readonly ConcurrentDictionary<Guid, Guid> _challenges = new();
 
         public bool AnswersHello { get; set; } = true;
 
@@ -155,6 +188,18 @@ public sealed class PanelSessionTests : IAsyncDisposable
 
         /// <summary>Challenges asked for <see cref="BareUnauthorizedFor"/>.</summary>
         public int PendingAttempts => Volatile.Read(ref _pendingAttempts);
+
+        /// <summary>
+        /// The credential the panel activated (a rotation completed): every other one is refused with the panel's error.
+        /// Null: any credential signs in.
+        /// </summary>
+        public Guid? Activated { get; set; }
+
+        /// <summary>
+        /// A credential whose first token request the panel accepts (it becomes <see cref="Activated"/>) while whatever is in
+        /// between answers the agent with a refusal in the panel's words.
+        /// </summary>
+        public Guid? ActivatesBehindAForgedRefusal { get; set; }
 
         public override HttpMessageHandler CreateHttpHandler() => new Handler(this);
 
@@ -269,35 +314,62 @@ public sealed class PanelSessionTests : IAsyncDisposable
             }
         }
 
-        private HttpResponseMessage Answer(HttpRequestMessage request) => request.RequestUri!.AbsolutePath switch
+        private async Task<HttpResponseMessage> AnswerAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            AgentProtocol.ChallengePath => Json(new ChallengeResponse(Guid.NewGuid(), RandomNumberGenerator.GetBytes(32), PanelAddress.Origin(Address))),
-            AgentProtocol.TokenPath => Json(new TokenResponse("session-token", Guid.NewGuid(), DateTimeOffset.UtcNow + SessionLifetime)),
-            _ => new HttpResponseMessage(HttpStatusCode.NotFound),
-        };
+            switch (request.RequestUri!.AbsolutePath)
+            {
+                case AgentProtocol.ChallengePath:
+                    var credential = (await request.Content!.ReadFromJsonAsync<ChallengeRequest>(ProtocolJson.Options, cancellationToken))!.CredentialId;
+                    if (credential == BareUnauthorizedFor)
+                    {
+                        Interlocked.Increment(ref _pendingAttempts);
+                        return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+                    }
+
+                    if (Activated is { } active && credential != active)
+                    {
+                        return Refused();
+                    }
+
+                    var challengeId = Guid.NewGuid();
+                    _challenges[challengeId] = credential;
+                    return Json(new ChallengeResponse(challengeId, RandomNumberGenerator.GetBytes(32), PanelAddress.Origin(Address)));
+                case AgentProtocol.TokenPath:
+                    var token = (await request.Content!.ReadFromJsonAsync<TokenRequest>(ProtocolJson.Options, cancellationToken))!;
+                    if (_challenges.TryRemove(token.ChallengeId, out var signedIn) && ActivatesBehindAForgedRefusal == signedIn && Activated != signedIn)
+                    {
+                        Activated = signedIn;
+                        return Refused();
+                    }
+
+                    return Json(new TokenResponse("session-token", Guid.NewGuid(), DateTimeOffset.UtcNow + SessionLifetime));
+                default:
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+            }
+        }
 
         private static HttpResponseMessage Json<T>(T value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value, options: ProtocolJson.Options) };
 
+        private static HttpResponseMessage Refused() => new(HttpStatusCode.Unauthorized)
+        {
+            Content = JsonContent.Create(new AgentError("agent.authentication_rejected", "The node cannot authenticate."), options: ProtocolJson.Options),
+        };
+
         private sealed class Handler(FakePanel panel) : HttpMessageHandler
         {
-            protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            {
-                if (panel.BareUnauthorizedFor is { } refused && request.RequestUri!.AbsolutePath == AgentProtocol.ChallengePath
-                    && await request.Content!.ReadFromJsonAsync<ChallengeRequest>(ProtocolJson.Options, cancellationToken) is { } challenge
-                    && challenge.CredentialId == refused)
-                {
-                    Interlocked.Increment(ref panel._pendingAttempts);
-                    return new HttpResponseMessage(HttpStatusCode.Unauthorized);
-                }
-
-                return panel.Answer(request);
-            }
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+                panel.AnswerAsync(request, cancellationToken);
         }
     }
 
     private sealed class MemoryKeys : INodeKeyStore
     {
         private readonly ConcurrentDictionary<string, ECParameters> _keys = new(StringComparer.Ordinal);
+
+        /// <summary>A key whose next signature fails, as a TPM that is busy for a moment.</summary>
+        public string? FailSigningOnce { get; set; }
+
+        public IReadOnlyList<string> Names => [.. _keys.Keys.Order(StringComparer.Ordinal)];
 
         public INodeKey Create(string name, NodeKeyScope scope)
         {
@@ -306,17 +378,26 @@ public sealed class PanelSessionTests : IAsyncDisposable
             return Open(new NodeKeyReference(name, scope, NodeKeyStorage.Software));
         }
 
-        public INodeKey Open(NodeKeyReference reference) => new Key(reference, ECDsa.Create(_keys[reference.Name]));
+        public INodeKey Open(NodeKeyReference reference) => new Key(reference, ECDsa.Create(_keys[reference.Name]), this);
 
         public void Delete(NodeKeyReference reference) => _keys.TryRemove(reference.Name, out _);
 
-        private sealed class Key(NodeKeyReference reference, ECDsa key) : INodeKey
+        private sealed class Key(NodeKeyReference reference, ECDsa key, MemoryKeys store) : INodeKey
         {
             public NodeKeyReference Reference { get; } = reference;
 
             public byte[] PublicKey => key.ExportSubjectPublicKeyInfo();
 
-            public byte[] Sign(ReadOnlySpan<byte> data) => ProtocolCrypto.Sign(key, data);
+            public byte[] Sign(ReadOnlySpan<byte> data)
+            {
+                if (store.FailSigningOnce == Reference.Name)
+                {
+                    store.FailSigningOnce = null;
+                    throw new CryptographicException("The TPM is busy.");
+                }
+
+                return ProtocolCrypto.Sign(key, data);
+            }
 
             public X509Certificate2 CreateCertificate() => NodeCertificate.Create(key);
 
