@@ -46,36 +46,39 @@ connection string with `-ConnectionString "Host=…;Port=5432;Database=…;Usern
 
    Both must show the same value. A release built by the project's release workflow also carries a provenance
    attestation, which you can check with the GitHub CLI: `gh attestation verify .\pulsar-<version>-windows-x64.zip --repo Ayrton09/Pulsar`.
-3. Extract it into a **new folder that only administrators can change**. Open **Windows PowerShell as administrator**
-   (Start → type *PowerShell* → *Run as administrator*), go to the download folder and run:
+3. Extract it into a **new folder in `C:\Program Files`**, which only administrators can change. Open **Windows
+   PowerShell as administrator** (Start → type *PowerShell* → *Run as administrator*), go to the download folder and
+   run:
 
    ```powershell
-   New-Item -ItemType Directory C:\PulsarSetup
-   icacls C:\PulsarSetup /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F"
+   New-Item -ItemType Directory "$env:ProgramFiles\PulsarSetup"
    Unblock-File .\pulsar-<version>-windows-x64.zip
-   Expand-Archive .\pulsar-<version>-windows-x64.zip C:\PulsarSetup
+   Expand-Archive .\pulsar-<version>-windows-x64.zip "$env:ProgramFiles\PulsarSetup"
    ```
 
-   `icacls` leaves the folder to Administrators (`S-1-5-32-544`) and SYSTEM (`S-1-5-18`) alone, and what is extracted
-   into it inherits that. Why: the installer runs as administrator, runs the agent from this folder and copies the
-   programs into `C:\Program Files\Pulsar`, where they run as services (the agent as SYSTEM). A folder made directly
-   under `C:\` lets every signed-in account change what is in it, game servers' accounts included: a game server's
-   plugin could replace a program there, or the installer itself, and take over the machine at your next install or
-   update. The installer checks this and refuses to run (changing nothing) when anyone but SYSTEM, Administrators and
-   TrustedInstaller could change its folder, what is in it or a folder above it. `New-Item` fails if `C:\PulsarSetup`
-   already exists: someone else may have made it, so delete it (or choose a new name) rather than reuse it. A folder
-   under `C:\Program Files` is also only administrators', and works as well.
+   This makes `C:\Program Files\PulsarSetup`. Why there: the installer runs as administrator, runs the agent from this
+   folder and copies the programs into `C:\Program Files\Pulsar`, where they run as services (the agent as SYSTEM).
+   Whoever could change what is in the folder, a program or the installer itself, would take over the machine at your
+   next install or update. A folder made in `C:\Program Files` gets that folder's permissions as it is made: other
+   accounts can read it, never change it, not even for a moment. Do not make it directly under `C:\` and restrict it
+   afterwards (with `icacls`, say): until its permissions change, every signed-in account may open it, game servers'
+   accounts included, and an account that opened it keeps what it was allowed then (a game server's plugin could move
+   the folder aside and put one of its own in its place). The installer checks the folder and refuses to run (changing
+   nothing) when anyone but SYSTEM, Administrators and TrustedInstaller could change it, what is in it or a folder
+   above it. That check catches a release extracted in the wrong place, but it is part of the installer it protects:
+   it cannot stop someone who already changed the installer, so the folder is what keeps you safe. `New-Item` fails if
+   the folder already exists: delete it (or choose a new name) rather than reuse it.
 
 The installer copies the programs to `C:\Program Files\Pulsar` (and `Backup-Pulsar.ps1` into the panel's folder there);
-the extracted folder is only needed while installing. For an update, extract the new release into a new folder made
-the same way ([update.md](update.md)).
+the extracted folder is only needed while installing, and can be deleted afterwards. For an update, extract the new
+release into a new folder made the same way ([update.md](update.md)).
 
 ## 3. Install
 
 In the **Windows PowerShell as administrator** of step 2, go to the extracted folder:
 
 ```powershell
-cd C:\PulsarSetup
+cd "$env:ProgramFiles\PulsarSetup"
 ```
 
 ### Panel and agent on this PC
@@ -91,8 +94,9 @@ It asks for the PostgreSQL `postgres` password (step 1) and for a password for P
 2. installs the panel in `C:\Program Files\Pulsar\Panel` as the **PulsarPanel** service, running as its own virtual
    account (`NT SERVICE\PulsarPanel`), with its data in `C:\ProgramData\Pulsar\Panel` (keys, logs, certificate);
 3. makes a self-signed HTTPS certificate for this PC's names and `localhost`, valid for 5 years, and trusts it on this
-   PC (the agent and this PC's browsers check it). It is marked as unable to issue other certificates, so trusting it
-   vouches only for the names it lists, never for other sites; the installer prints its thumbprint and names;
+   PC (the agent and this PC's browsers check it). It is marked as unable to issue other certificates and as good for
+   a web server's identity only (server authentication), so trusting it vouches only for the names it lists, never
+   for other sites, code or clients; the installer prints its thumbprint and names;
 4. opens the panel's port (**8443**, `-Port` chooses another) in Windows Firewall, on Domain and Private networks
    (`-FirewallPublic` also opens it on networks Windows treats as public; `-NoFirewall` leaves the firewall alone);
 5. starts the panel and creates the administrator;
@@ -111,7 +115,8 @@ powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Mode Panel
 ```
 
 To make the certificate valid for a name other machines use (a DNS name, or the address of a port forward), add
-`-HostName panel.example.com`. To use a real certificate instead of a self-signed one, pass it with
+`-HostName panel.example.com` (letters, digits, `.`, `-` and `_`, or a leading `*.` for a wildcard; several names are
+separated by commas). To use a real certificate instead of a self-signed one, pass it with
 `-CertificatePath C:\certs\panel.pfx -CertificatePassword (Read-Host -AsSecureString)`.
 
 Then, for each node: in the panel, **Nodes → Add node**, give it a name and copy the command it shows. On the node,
@@ -136,9 +141,21 @@ Make a new certificate like the installer's (Basic Constraints, critical, CA=fal
 `-TrustCertificateWithoutBasicConstraints` if you know it is the panel's own. It also refuses a certificate whose
 Subject Alternative Name does not list the host of `-PanelUrl` (a DNS name, a wildcard for its first label, or an IP
 address): the agent would not accept it there, and trusting it would vouch for names that are not the panel's. Install
-the panel with `-HostName` for the name nodes use. The node trusts the certificate exactly as it was read and checked,
-and the installer prints its subject, thumbprint and names: whoever holds its key can pass for those names to this
-machine. `-Uninstall` removes the trust it gave.
+the panel with `-HostName` for the name nodes use. A trusted certificate vouches for every name it lists and every use
+it allows, so it also refuses, unless told:
+
+- one that lists names other than the host of `-PanelUrl`, `localhost` and machine names (a name without a dot, such as
+  the panel machine's own, which the installer's certificate always lists): another site's name, a wildcard, another
+  IP address. Nodes that use one name of a panel known by several (its machine's full name in a domain, a
+  `-HostName`) meet the others here: add `-TrustCertificateWithOtherNames` if every name it lists is yours;
+- one that may be used for more than a web server's identity: an Extended Key Usage beyond server authentication, or
+  none at all (which allows every use, code signing included). Installers before this check also listed client
+  authentication; add `-TrustCertificateWithOtherUses` if you know it is the panel's own.
+
+A name with characters a DNS name cannot have (a line break, an escape, a space) is refused outright. The node trusts
+the certificate exactly as it was read and checked, and the installer prints its subject, thumbprint and names (with
+any control character shown as `?`): whoever holds its key can pass for those names to this machine. `-Uninstall`
+removes the trust it gave: only certificates it marked as its own when it trusted them.
 
 The panel's machine must accept connections on its port (the installer opens it in Windows Firewall on Domain and
 Private networks, see `-FirewallPublic` above; routers and cloud firewalls are up to you). Nodes only connect out to
@@ -280,7 +297,10 @@ powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Uninstall
 It removes the services, the programs (`Backup-Pulsar.ps1` in the panel's folder too), the firewall rules
 (`Pulsar-Panel-HTTPS`, and `Pulsar-Panel-Agents` for the agents' port) and the trust the script gave the panel's
 certificate (in all-in-one mode, or with `-TrustCertificate`; a certificate this machine trusted already stays
-trusted). It keeps the
+trusted). It removes only certificates it marked as its own when it trusted them: one that an install made before
+that mark only noted in the panel's data folder is named in a warning instead, for you to remove in `certlm.msc`
+(*Trusted Root Certification Authorities*) if it is the panel's (the panel's service account can change that note, so
+the script does not act on it). It keeps the
 database, `C:\ProgramData\Pulsar` and the game servers' folders. Delete game servers from the panel first: that also
 removes their Windows accounts. An agent installed with the MSI is not the script's to remove: it says so and removes
 only the panel, if this machine has one.

@@ -21,29 +21,41 @@ settings), not with Windows' machine DPAPI, so a backup can be restored on anoth
 On the panel's machine, in PowerShell as administrator, run the copy the installer keeps in the panel's folder:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Program Files\Pulsar\Panel\Backup-Pulsar.ps1" -Destination D:\Backups
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\Pulsar\Panel\Backup-Pulsar.ps1" -Destination D:\PulsarBackups
 ```
 
-It writes `D:\Backups\pulsar-backup-<date>` with the database dump (`pulsar.dump`), the keys and certificates
+It writes `D:\PulsarBackups\pulsar-backup-<date>` with the database dump (`pulsar.dump`), the keys and certificates
 (`panel-data`) and the settings. The panel keeps running. The folder holds secrets: only SYSTEM and Administrators can
 read it, so the destination must be on a drive that keeps permissions (NTFS or ReFS): on a FAT or exFAT drive (most
-USB sticks), or a share that ignores permissions, the script stops before writing anything. Choose a destination only
-administrators can change. Keep a copy away from the machine (another disk, another computer, offline storage).
+USB sticks), or a share that ignores permissions, the script stops before writing anything. Keep a copy away from the
+machine (another disk, another computer, offline storage).
+
+**The destination.** Give `-Destination` a folder that does not exist yet, directly on a drive (`D:\PulsarBackups`) or
+in a folder only administrators can change: the script makes it for SYSTEM and Administrators alone, and uses it again
+on later runs. Do not make it yourself (with `New-Item` or Explorer): a folder made directly on a drive lets every
+signed-in account change it, game servers' accounts included, and such an account could rename it aside while the
+database is dumped and put one of its own in its place, which would get the keys. The script refuses a destination that
+anyone but SYSTEM, Administrators and TrustedInstaller could change, rename or replace (a folder above it included),
+and checks it again before it copies the keys. A destination made as earlier versions of this guide had it
+(`D:\Backups`, which took the drive's permissions) is usually refused for that reason: give a new one, and move the
+old backups into it.
 
 To do it every night, create a task in Task Scheduler that runs, as SYSTEM:
 
 ```
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\Pulsar\Panel\Backup-Pulsar.ps1" -Destination D:\Backups
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\Pulsar\Panel\Backup-Pulsar.ps1" -Destination D:\PulsarBackups
 ```
 
 and delete old backup folders now and then. Point the task at that copy, never at one in a folder of your own (the
 extracted release, a download folder): the task runs the script as SYSTEM, so whoever can change the script gets the
 machine and the panel's secrets, and a folder made directly under `C:\` lets every signed-in account change it, game
 servers' accounts included. The installer puts the copy in the panel's folder, which only administrators can change,
-and replaces it with every update; the script itself refuses to run (backing up nothing) from a folder that accounts
-other than SYSTEM, Administrators and TrustedInstaller could change. If you made the task as earlier versions of this
-guide said, for `C:\PulsarSetup\Backup-Pulsar.ps1`, change its path to the one above and delete that folder: the old
-copy there does not check where it runs, and anyone could have changed it.
+and replaces it with every update; that folder is what protects it. The script also refuses to run (backing up
+nothing) from a folder that accounts other than SYSTEM, Administrators and TrustedInstaller could change, which catches
+a task pointed at the wrong copy, but that check is inside the script: whoever could already rewrite the script could
+take it out. If you made the task as earlier versions of this guide said, for `C:\PulsarSetup\Backup-Pulsar.ps1`,
+change its path to the one above and delete that folder: the old copy there does not check where it runs, and anyone
+could have changed it (`Install-Pulsar.ps1 -Update` warns about such tasks).
 
 If PostgreSQL runs on another machine, pass the folder of PostgreSQL's programs (`pg_dump.exe`, from a PostgreSQL
 installation of the same or a later major version) with `-PostgresBin`.
@@ -130,7 +142,7 @@ path* can. To move to another bucket, add a storage for it and choose it in the 
    ```powershell
    $bin = 'C:\Program Files\PostgreSQL\17\bin'
    & "$bin\psql.exe" -U postgres -c "DROP DATABASE IF EXISTS pulsar WITH (FORCE)" -c "CREATE DATABASE pulsar OWNER pulsar"
-   & "$bin\pg_restore.exe" -U postgres -d pulsar --no-owner --role=pulsar D:\Backups\pulsar-backup-<date>\pulsar.dump
+   & "$bin\pg_restore.exe" -U postgres -d pulsar --no-owner --role=pulsar D:\PulsarBackups\pulsar-backup-<date>\pulsar.dump
    ```
 
 3. Start the panel: `Start-Service PulsarPanel`.
@@ -138,11 +150,11 @@ path* can. To move to another bucket, add a storage for it and choose it in the 
 ### On a new machine
 
 1. Install PostgreSQL ([install.md](install.md), step 1) and extract the release ZIP of the **same or a later**
-   version of Pulsar.
+   version of Pulsar into a new folder in `C:\Program Files` ([install.md](install.md), step 2).
 2. Copy the backup folder to the new machine and run, in PowerShell as administrator:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Mode Panel -RestoreFrom D:\Backups\pulsar-backup-<date>
+   powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Mode Panel -RestoreFrom D:\PulsarBackups\pulsar-backup-<date>
    ```
 
    It creates the database in the local PostgreSQL (asking for the `postgres` password), restores the dump into it,
