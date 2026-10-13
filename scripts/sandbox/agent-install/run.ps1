@@ -86,9 +86,9 @@ try {
     Check 'postgresql' ($LASTEXITCODE -eq 0)
 
     # --- TLS certificate for localhost, trusted by the whole machine (the agent service runs as SYSTEM); like the
-    # installer's own, it cannot issue certificates ---
+    # installer's own, it cannot issue certificates and is for a web server only (server authentication) ---
     $certificate = New-SelfSignedCertificate -DnsName 'localhost' -CertStoreLocation 'Cert:\LocalMachine\My' -KeyExportPolicy Exportable -NotAfter (Get-Date).AddDays(2) `
-        -TextExtension @('2.5.29.19={critical}{text}ca=0')
+        -TextExtension @('2.5.29.19={critical}{text}ca=0', '2.5.29.37={text}1.3.6.1.5.5.7.3.1')
     $pfx = Join-Path $env:TEMP 'pulsar-panel.pfx'
     $null = Export-PfxCertificate -Cert $certificate -FilePath $pfx -Password (ConvertTo-SecureString 'agent-install' -AsPlainText -Force)
     $cer = Join-Path $env:TEMP 'pulsar-panel.cer'
@@ -503,9 +503,9 @@ try {
 
     # The ZIP's installer leaves an agent from the MSI alone (this machine has no panel service for it to handle). It runs
     # only from a folder administrators alone can change, as the install guide has the release extracted: not the bundle's.
-    $setup = 'C:\PulsarSetup'
+    # In C:\Program Files, whose permissions it takes as it is made.
+    $setup = Join-Path $env:ProgramFiles 'PulsarSetup'
     New-Item -ItemType Directory $setup | Out-Null
-    $null = icacls.exe $setup /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F'
     Copy-Item (Join-Path $Bundle 'Install-Pulsar.ps1') $setup
     Copy-Item (Join-Path $Bundle 'agent') $setup -Recurse
     $installScript = Join-Path $setup 'Install-Pulsar.ps1'

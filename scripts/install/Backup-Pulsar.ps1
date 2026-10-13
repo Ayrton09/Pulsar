@@ -13,13 +13,15 @@
     The database's secrets (game server tokens, two-factor keys, the panel's signing key) can only be read with the
     keys, so the three always go together. The folder holds secrets: keep it as private as the panel itself (it is
     readable only by SYSTEM and Administrators, so -Destination must be on a drive that keeps permissions: NTFS or
-    ReFS, not FAT or exFAT) and store a copy away from this machine.
+    ReFS, not FAT or exFAT) and store a copy away from this machine. Only SYSTEM, Administrators and TrustedInstaller
+    may change -Destination or rename or replace a folder above it; one that does not exist yet is made here for
+    SYSTEM and Administrators alone.
 
     Restore with: Install-Pulsar.ps1 -Mode Panel -RestoreFrom <the backup folder> (docs/guides/backup.md).
     Game servers' own backups stay on their nodes (C:\ProgramData\Pulsar\Agent\backups); copy them separately.
 
 .EXAMPLE
-    & 'C:\Program Files\Pulsar\Panel\Backup-Pulsar.ps1' -Destination D:\Backups
+    & 'C:\Program Files\Pulsar\Panel\Backup-Pulsar.ps1' -Destination D:\PulsarBackups
 #>
 param(
     [Parameter(Mandatory)] [string] $Destination,
@@ -41,6 +43,8 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 # SYSTEM and the panel's secrets. It runs only where nobody but SYSTEM, Administrators and TrustedInstaller may own or
 # modify it and its folder, or rename or replace a folder above it: the copy Install-Pulsar.ps1 keeps in the panel's
 # folder (C:\Program Files\Pulsar\Panel), or one in a folder made like that. The same functions as Install-Pulsar.ps1's.
+# The check lives in the script it protects: it stops a copy left where others can write, but not someone who already
+# rewrote this script. The control is where the task runs it from: the panel's folder, which only administrators can change.
 $TrustedWriters = @('S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
 # Write data and append data (in a folder: create files and folders), write extended attributes, delete children, write
 # attributes, delete, change permissions, take ownership, and the generic rights (all, write) that include them.
@@ -91,10 +95,64 @@ function Find-UntrustedWriters([string] $path) {
             }
         }
     }
+    Find-UntrustedAncestors $folder
+}
+
+# Who besides SYSTEM, Administrators and TrustedInstaller could rename or replace the folders above $folder.
+function Find-UntrustedAncestors([IO.DirectoryInfo] $folder) {
     for ($ancestor = $folder.Parent; $null -ne $ancestor; $ancestor = $ancestor.Parent) {
         $rights = $ReplaceRights
         if ($null -eq $ancestor.Parent) { $rights = $ReplaceRights -band (-bnot 0x10000) }
         Find-UntrustedWriter $ancestor $rights
+    }
+}
+
+# Who besides SYSTEM, Administrators and TrustedInstaller could change the destination (create, rename or replace what
+# is in it) or rename or replace a folder above it: the backup's secrets are written there by this script, after
+# pg_dump has run for a while, and a folder someone renamed away and replaced meanwhile would get them. For a
+# destination that does not exist yet, the folders above it (New-PrivateFolder makes it). Permissions that cannot be
+# read (a drive without them) count as anyone's.
+function Find-UntrustedDestination([string] $path) {
+    try {
+        $folder = New-Object IO.DirectoryInfo $path
+        if ($folder.Exists) { Find-UntrustedWriter $folder $ModifyRights }
+        elseif ($null -eq $folder.Parent -or -not $folder.Parent.Exists) { return "$($folder.Parent) does not exist" }
+        Find-UntrustedAncestors $folder
+    }
+    catch {
+        "the permissions of $path or a folder above it cannot be read ($($_.Exception.Message))"
+    }
+}
+
+# A new folder, SYSTEM's and Administrators' alone from the moment it exists: made first and restricted then, it would
+# have the permissions of the folder above it meanwhile, and whoever opened it then would keep that access. One that
+# already exists is refused: someone else may have made it.
+function New-PrivateFolder([string] $path) {
+    if (Test-Path -LiteralPath $path) { throw "$path already exists: someone else may have made it. Nothing was backed up." }
+    $security = New-Object Security.AccessControl.DirectorySecurity
+    $security.SetAccessRuleProtection($true, $false)
+    foreach ($sid in 'S-1-5-18', 'S-1-5-32-544') {
+        $security.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier $sid), 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+    }
+    $null = [IO.Directory]::CreateDirectory($path, $security)
+}
+
+# Whether a folder is as New-PrivateFolder makes it: not a link, owned by SYSTEM or Administrators, nothing inherited
+# and nobody else allowed in. Made by someone else meanwhile, or on a drive that keeps no permissions (FAT, exFAT, a
+# share that ignores them), it is not.
+function Test-PrivateFolder([string] $path) {
+    try {
+        $item = Get-Item -LiteralPath $path -Force
+        if ($item -isnot [IO.DirectoryInfo] -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+        $acl = Get-Acl -LiteralPath $path
+        $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier])
+        if ($null -eq $owner -or $owner.Value -notin 'S-1-5-18', 'S-1-5-32-544') { return $false }
+        $allowed = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object { $_.AccessControlType -eq 'Allow' } |
+            ForEach-Object { $_.IdentityReference.Value } | Select-Object -Unique)
+        return $acl.AreAccessRulesProtected -and $allowed.Count -gt 0 -and @($allowed | Where-Object { $_ -notin 'S-1-5-18', 'S-1-5-32-544' }).Count -eq 0
+    }
+    catch {
+        return $false
     }
 }
 
@@ -126,28 +184,31 @@ if (-not $PostgresBin) {
     if (-not $PostgresBin) { throw 'pg_dump.exe was not found: pass the folder of PostgreSQL''s programs with -PostgresBin.' }
 }
 
-$target = Join-Path $Destination ("pulsar-backup-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-New-Item -ItemType Directory -Force $Destination | Out-Null
-# A folder made here, never one that already exists (made in advance by someone else, who would own it).
-New-Item -ItemType Directory $target | Out-Null
-# SYSTEM and Administrators only, before anything is written in it: the backup holds the panel's secrets. icacls.exe by
-# full path (this runs elevated, and a program found through PATH could be anyone's); checked, as a native program's
-# failure does not stop the script, and so is the result: a drive without permissions (FAT, exFAT, some network
-# shares) cannot keep the backup private.
-$icacls = Join-Path ([Environment]::SystemDirectory) 'icacls.exe'
-$ErrorActionPreference = 'Continue'
-$output = & $icacls $target /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' /grant:r '*S-1-5-32-544:(OI)(CI)F' 2>&1
-$ErrorActionPreference = 'Stop'
-$isPrivate = $false
-if ($LASTEXITCODE -eq 0) {
-    $acl = Get-Acl $target
-    $allowed = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object { $_.AccessControlType -eq 'Allow' } |
-        ForEach-Object { $_.IdentityReference.Value } | Select-Object -Unique)
-    $isPrivate = $acl.AreAccessRulesProtected -and $allowed.Count -gt 0 -and @($allowed | Where-Object { $_ -notin 'S-1-5-18', 'S-1-5-32-544' }).Count -eq 0
+# The destination: one that only SYSTEM, Administrators and TrustedInstaller can change, rename or replace (made here,
+# for SYSTEM and Administrators alone, when it does not exist yet), on a drive that keeps permissions.
+$Destination = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Destination)
+function Assert-TrustedDestination {
+    $findings = @(Find-UntrustedDestination $Destination)
+    if ($findings.Count -gt 0) {
+        $shown = @($findings | Select-Object -First 10)
+        throw "The backup holds the panel's secrets, so it is written only where nobody but SYSTEM, Administrators and TrustedInstaller can change the destination or rename or replace a folder above it (someone who could would get the keys). Here:$([Environment]::NewLine)  $($shown -join "$([Environment]::NewLine)  ")$([Environment]::NewLine)Give -Destination a folder that does not exist yet, on an NTFS or ReFS drive, in a folder only administrators can change or directly on the drive (D:\PulsarBackups, say): this script makes it for SYSTEM and Administrators only (docs/guides/backup.md). Nothing was backed up."
+    }
 }
-if (-not $isPrivate) {
-    Remove-Item $target -Recurse -Force
-    throw "$Destination cannot keep the backup readable by SYSTEM and Administrators only (a drive without permissions, such as FAT or exFAT, or a share that ignores them): choose a folder on an NTFS or ReFS drive. $output"
+Assert-TrustedDestination
+if (-not (Test-Path -LiteralPath $Destination)) {
+    New-PrivateFolder $Destination
+    # Made by someone else in the meantime, it is theirs: refused.
+    Assert-TrustedDestination
+}
+
+# A folder made here, never one that already exists, for SYSTEM and Administrators from the start: the backup holds
+# the panel's secrets. Checked, as a drive without permissions (FAT, exFAT, some network shares) takes the folder and
+# drops its permissions.
+$target = Join-Path $Destination ("pulsar-backup-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+New-PrivateFolder $target
+if (-not (Test-PrivateFolder $target)) {
+    Remove-Item -LiteralPath $target -Recurse -Force
+    throw "$Destination cannot keep the backup readable by SYSTEM and Administrators only: the folder made there did not keep the permissions and owner it was made with (a drive without permissions, such as FAT or exFAT, or a share that ignores them). Choose a folder on an NTFS or ReFS drive. Nothing was backed up."
 }
 
 Write-Host '==> Dumping the database' -ForegroundColor Cyan
@@ -170,7 +231,11 @@ finally {
 }
 
 Write-Host '==> Copying the keys, certificates and settings' -ForegroundColor Cyan
-$data = New-Item -ItemType Directory -Force (Join-Path $target 'panel-data')
+# Checked again before the secrets go in: the backup folder and where it is must still be as they were made.
+Assert-TrustedDestination
+if (-not (Test-PrivateFolder $target)) { throw "$target changed while the database was dumped: the keys, certificates and settings were not copied." }
+# Not -Force: a panel-data folder already there is not this script's, and is refused.
+$data = New-Item -ItemType Directory (Join-Path $target 'panel-data')
 foreach ($folder in 'keys', 'keyring', 'tls') {
     if (Test-Path (Join-Path $panelData $folder)) { Copy-Item (Join-Path $panelData $folder) $data -Recurse }
 }

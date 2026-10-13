@@ -55,6 +55,9 @@ param(
     # moves the agents it knows there on its own. Browsers keep using -Port. 0 (the default): none.
     [ValidateRange(0, 65535)] [int] $AgentsPort = 0,
     # Extra names for the self-signed certificate (the machine's name, its DNS name and localhost are always in it).
+    # Letters, digits, '.', '-' and '_' (a leading '*.' for a wildcard), compared as written: ignoring case, the Kelvin
+    # sign would pass for a 'k'.
+    [ValidatePattern('^(\*\.)?[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.?$', Options = 'None')]
     [string[]] $HostName = @(),
     # A PFX certificate to use instead of a self-signed one.
     [string] $CertificatePath,
@@ -77,12 +80,19 @@ param(
     # Where game servers are installed (default: C:\PulsarServers).
     [string] $ServersRoot,
     # The panel's certificate (.cer), when it is self-signed: trusted by this machine so the agent accepts it (refused
-    # when it can issue certificates or does not name the -PanelUrl host; -Uninstall removes the trust).
+    # when it can issue certificates, does not name the -PanelUrl host, names others or serves more than a web server's
+    # identity; -Uninstall removes the trust).
     [string] $TrustCertificate,
     # Allows -TrustCertificate with a certificate that does not say whether it can issue certificates (no Basic
     # Constraints: made by an earlier installer, or by hand). Windows may take such a certificate for a certificate
     # authority; the default is to refuse it.
     [switch] $TrustCertificateWithoutBasicConstraints,
+    # Allows -TrustCertificate with a certificate that also lists names that are not the panel's (anything but the
+    # -PanelUrl host, localhost and machine names: a wildcard, another site's name): trusted, it vouches for them too.
+    [switch] $TrustCertificateWithOtherNames,
+    # Allows -TrustCertificate with a certificate that may be used for more than a web server's identity (an Extended Key
+    # Usage beyond server authentication, or none at all, which allows every use).
+    [switch] $TrustCertificateWithOtherUses,
 
     # --- Maintenance ---
     [Parameter(Mandatory, ParameterSetName = 'Update')] [switch] $Update,
@@ -106,6 +116,8 @@ $PanelConfig = Join-Path $PanelDir 'appsettings.Production.json'
 $TrustedName = 'Pulsar panel (trusted by Install-Pulsar.ps1)'
 # Where earlier installs noted the certificate they trusted.
 $TrustedMarker = Join-Path $PanelData 'tls\trusted-thumbprint.txt'
+# The Extended Key Usage of a web server's certificate (id-kp-serverAuth): the only use the panel's certificate needs.
+$ServerAuthentication = '1.3.6.1.5.5.7.3.1'
 # Windows' own programs by full path: this runs elevated, and a program found through PATH could be anyone's.
 $Icacls = Join-Path ([Environment]::SystemDirectory) 'icacls.exe'
 $Sc = Join-Path ([Environment]::SystemDirectory) 'sc.exe'
@@ -128,7 +140,9 @@ function Assert-Administrator {
 # The rule the agent applies before it runs as a service (src/Pulsar.Agent.Windows/ServiceBinarySecurity.cs): only
 # SYSTEM, Administrators and TrustedInstaller may own or modify what is used and the folder it is in, or rename or
 # replace a folder above it. Links are refused: the check would look at something other than what is used.
-# Backup-Pulsar.ps1 has the same functions.
+# Backup-Pulsar.ps1 has the same functions. The check lives in the script it protects: it stops a release extracted
+# where others can write, or changed in part (a program), but not someone who already rewrote this script. The control
+# is the folder itself, made where only administrators can change it (docs/guides/install.md, step 2).
 $TrustedWriters = @('S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
 # Write data and append data (in a folder: create files and folders), write extended attributes, delete children, write
 # attributes, delete, change permissions, take ownership, and the generic rights (all, write) that include them.
@@ -179,6 +193,11 @@ function Find-UntrustedWriters([string] $path) {
             }
         }
     }
+    Find-UntrustedAncestors $folder
+}
+
+# Who besides SYSTEM, Administrators and TrustedInstaller could rename or replace the folders above $folder.
+function Find-UntrustedAncestors([IO.DirectoryInfo] $folder) {
     for ($ancestor = $folder.Parent; $null -ne $ancestor; $ancestor = $ancestor.Parent) {
         $rights = $ReplaceRights
         if ($null -eq $ancestor.Parent) { $rights = $ReplaceRights -band (-bnot 0x10000) }
@@ -196,7 +215,7 @@ function Get-UntrustedWritersMessage([string[]] $findings) {
 function Assert-TrustedLocation {
     $findings = @(Find-UntrustedWriters $PSScriptRoot)
     if ($findings.Count -gt 0) {
-        throw "This script runs as administrator and installs the programs next to it to run as services, so it refuses to run from a folder that other accounts could change (a game server's account could replace a program, or this script, and take over the machine). Here, in ${PSScriptRoot}:$([Environment]::NewLine)$(Get-UntrustedWritersMessage $findings)$([Environment]::NewLine)Extract the release ZIP into a new folder only administrators can change, as docs/guides/install.md shows (step 2), and run this script from there. Nothing was changed."
+        throw "This script runs as administrator and installs the programs next to it to run as services, so it refuses to run from a folder that other accounts could change (a game server's account could replace a program, or this script, and take over the machine). Here, in ${PSScriptRoot}:$([Environment]::NewLine)$(Get-UntrustedWritersMessage $findings)$([Environment]::NewLine)Extract the release ZIP into a new folder in $env:ProgramFiles, which only administrators can change, as docs/guides/install.md shows (step 2), and run this script from there. Nothing was changed."
     }
 }
 
@@ -263,6 +282,40 @@ function New-Secret([int] $length = 32) {
 # as SYSTEM (docs/guides/backup.md). It goes with the panel when the panel is removed.
 function Copy-BackupScript {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Backup-Pulsar.ps1') -Destination $PanelDir -Force
+}
+
+# Scheduled tasks ($tasks, as Get-ScheduledTask gives them) that run a Backup-Pulsar.ps1 other than $expected, the copy
+# in the panel's folder: earlier guides had the nightly task run the one in the extracted release, which other accounts
+# could change, and the task runs it as SYSTEM. One line for each, fit to print.
+function Find-StaleBackupTasks([object[]] $tasks, [string] $expected) {
+    foreach ($task in $tasks) {
+        foreach ($action in @($task.Actions)) {
+            if ($null -eq $action -or -not $action.PSObject.Properties['Execute']) { continue }
+            $line = "$($action.Execute) $(if ($action.PSObject.Properties['Arguments']) { $action.Arguments })"
+            foreach ($match in [regex]::Matches($line, '"([^"]*Backup-Pulsar\.ps1)"|([^\s"]*Backup-Pulsar\.ps1)', 'IgnoreCase')) {
+                $scriptPath = if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
+                $full = $null
+                try {
+                    $folder = ''
+                    if ($action.PSObject.Properties['WorkingDirectory'] -and $action.WorkingDirectory) { $folder = $action.WorkingDirectory }
+                    $full = [IO.Path]::GetFullPath([IO.Path]::Combine($folder, $scriptPath))
+                }
+                catch { $full = $null }
+                if ($null -eq $full -or -not [string]::Equals($full, $expected, [StringComparison]::OrdinalIgnoreCase)) {
+                    ConvertTo-PrintableText "$($task.TaskPath)$($task.TaskName) runs $scriptPath"
+                }
+            }
+        }
+    }
+}
+
+# On an update: says which scheduled tasks still run Backup-Pulsar.ps1 from elsewhere than the panel's folder.
+function Write-StaleBackupTasks {
+    try { $tasks = @(Get-ScheduledTask -ErrorAction Stop) } catch { return }
+    $stale = @(Find-StaleBackupTasks $tasks (Join-Path $PanelDir 'Backup-Pulsar.ps1'))
+    if ($stale.Count -gt 0) {
+        Write-Warning "A scheduled task runs Backup-Pulsar.ps1 from elsewhere than the panel's folder, where other accounts may have changed it, and it runs as SYSTEM: point it at $(Join-Path $PanelDir 'Backup-Pulsar.ps1') and delete the old copy's folder (docs/guides/backup.md).$([Environment]::NewLine)  $($stale -join "$([Environment]::NewLine)  ")"
+    }
 }
 
 # Copies a release folder over an installed one, keeping the local settings file.
@@ -486,13 +539,17 @@ function New-PanelCertificate {
     Write-Step "Creating a self-signed HTTPS certificate for $($names -join ', ')"
     # Trusted machine-wide (here, and on nodes with -TrustCertificate), so it must not be able to issue certificates:
     # Basic Constraints, critical, CA=false. Without them Windows may take it for a certificate authority, and whoever
-    # holds its key could vouch for any site.
+    # holds its key could vouch for any site. And for a web server's identity only (Extended Key Usage: server
+    # authentication; New-SelfSignedCertificate adds client authentication unless told).
     $certificate = New-SelfSignedCertificate -DnsName $names -CertStoreLocation 'Cert:\LocalMachine\My' `
         -FriendlyName 'Pulsar panel' -KeyExportPolicy Exportable -KeyLength 2048 -NotAfter (Get-Date).AddYears(5) `
-        -TextExtension @('2.5.29.19={critical}{text}ca=0')
+        -TextExtension @('2.5.29.19={critical}{text}ca=0', "2.5.29.37={text}$ServerAuthentication")
     try {
         if ((Get-CertificateAuthority $certificate) -ne $false) {
             throw 'The self-signed certificate came out able to issue certificates (its Basic Constraints do not say CA=false).'
+        }
+        if (-not (Test-ServerAuthenticationOnly (Get-CertificateUses $certificate))) {
+            throw 'The self-signed certificate came out usable for more than a web server (its Extended Key Usage is not server authentication alone).'
         }
         $password = New-Secret 32
         $null = Export-PfxCertificate -Cert $certificate -FilePath $pfx -Password (ConvertTo-SecureString $password -AsPlainText -Force)
@@ -502,7 +559,7 @@ function New-PanelCertificate {
         # The panel reads the PFX file; the store copy is not needed.
         Remove-Item "Cert:\LocalMachine\My\$($certificate.Thumbprint)" -DeleteKey
     }
-    return @{ Path = $pfx; Password = $password; Thumbprint = $certificate.Thumbprint; Cer = $cer; SelfSigned = $true }
+    return @{ Path = $pfx; Password = $password; Thumbprint = $certificate.Thumbprint; Cer = $cer; SelfSigned = $true; Names = $names }
 }
 
 # What a certificate's Basic Constraints say: $true (it may issue certificates), $false (it may not), or $null when it
@@ -511,6 +568,26 @@ function Get-CertificateAuthority([Security.Cryptography.X509Certificates.X509Ce
     $extension = $certificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.19' } | Select-Object -First 1
     if (-not $extension) { return $null }
     return (New-Object Security.Cryptography.X509Certificates.X509BasicConstraintsExtension($extension, $extension.Critical)).CertificateAuthority
+}
+
+# What a certificate may be used for, by its Extended Key Usage: the purposes' identifiers, or $null when it has none
+# (then it may be used for anything).
+function Get-CertificateUses([Security.Cryptography.X509Certificates.X509Certificate2] $certificate) {
+    $extension = $certificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.37' } | Select-Object -First 1
+    if (-not $extension) { return $null }
+    $usages = (New-Object Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension($extension, $extension.Critical)).EnhancedKeyUsages
+    return , [string[]]@($usages | ForEach-Object { $_.Value })
+}
+
+# Whether those uses are a web server's identity and nothing else.
+function Test-ServerAuthenticationOnly([string[]] $uses) {
+    return $null -ne $uses -and $uses.Count -eq 1 -and $uses[0] -eq $ServerAuthentication
+}
+
+# Text from a certificate, fit to print: control and format characters (a carriage return or an escape sequence could
+# rewrite what the console shows, a direction override reorder it) become '?'.
+function ConvertTo-PrintableText([string] $text) {
+    return [regex]::Replace("$text", '\p{C}', '?')
 }
 
 # The certificate that encrypts the panel's Data Protection key ring. Unlike machine DPAPI, it works on any machine:
@@ -570,11 +647,14 @@ function Read-DerElement([byte[]] $data, [int] $position) {
     return [pscustomobject]@{ Tag = $data[$position]; Start = $start; Length = $length; Next = $start + $length }
 }
 
-# The DNS names and IP addresses in a certificate's Subject Alternative Name, read from its encoding (the extension's
-# text form is in Windows' display language).
+# The names in a certificate's Subject Alternative Name, read from its encoding (the extension's text form is in
+# Windows' display language): DNS names, IP addresses, and the kinds of the others (e-mail addresses, URIs...). A DNS
+# name must be one: letters, digits, '.', '-' and '_', with a leading '*.' for a wildcard; anything else (a line break
+# or an escape that would rewrite what is printed, a space) is refused.
 function Get-CertificateNames([Security.Cryptography.X509Certificates.X509Certificate2] $certificate) {
     $dns = @()
     $ips = @()
+    $others = @()
     $extension = $certificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.17' } | Select-Object -First 1
     if ($extension) {
         $data = $extension.RawData
@@ -587,12 +667,52 @@ function Get-CertificateNames([Security.Cryptography.X509Certificates.X509Certif
             $value = New-Object byte[] $name.Length
             [Array]::Copy($data, $name.Start, $value, 0, $name.Length)
             # [2] dNSName, [7] iPAddress (4 or 16 bytes).
-            if ($name.Tag -eq 0x82) { $dns += [Text.Encoding]::ASCII.GetString($value) }
-            elseif ($name.Tag -eq 0x87 -and $value.Length -in 4, 16) { $ips += New-Object Net.IPAddress (, $value) }
+            if ($name.Tag -eq 0x82) {
+                # Byte for byte, so that whatever is not a DNS name's character shows as one.
+                $text = [Text.Encoding]::GetEncoding(28591).GetString($value)
+                if ($text -cnotmatch '^(\*\.)?[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.?$') {
+                    throw "The certificate lists a DNS name that is not one: '$(ConvertTo-PrintableText $text)'."
+                }
+                $dns += $text
+            }
+            elseif ($name.Tag -eq 0x87) {
+                if ($value.Length -notin 4, 16) { throw 'The certificate is malformed.' }
+                $ips += New-Object Net.IPAddress (, $value)
+            }
+            else {
+                $kinds = @{ 0xA0 = 'another name'; 0x81 = 'an e-mail address'; 0xA3 = 'an X.400 address'; 0xA4 = 'a directory name'; 0xA5 = 'an EDI party name'; 0x86 = 'a URI'; 0x88 = 'a registered ID' }
+                $kind = $kinds[[int]$name.Tag]
+                if (-not $kind) { $kind = 'a name of an unknown kind' }
+                $others += $kind
+            }
             $position = $name.Next
         }
     }
-    return [pscustomobject]@{ Dns = $dns; Ips = $ips }
+    return [pscustomobject]@{ Dns = $dns; Ips = $ips; Others = $others }
+}
+
+# The names a certificate lists besides the panel's, as they would be printed: those in $panelNames (the -PanelUrl
+# host on a node; on the panel's own machine, the names its certificate was made for), localhost, and single-label
+# names (a machine's name on the local network, never an internet site's: the installer's certificate always lists the
+# panel machine's own) are the panel's. A wildcard stands for every name under it, so it never is, unless the panel's
+# own certificate was made for it (-HostName); neither are other kinds of names.
+function Get-ForeignCertificateNames($names, [string[]] $panelNames) {
+    $panel = @($panelNames | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('.').ToLowerInvariant() })
+    foreach ($listed in $names.Dns) {
+        $name = $listed.TrimEnd('.').ToLowerInvariant()
+        if ($name -in $panel) { continue }
+        if (-not $name.StartsWith('*.') -and ($name -eq 'localhost' -or -not $name.Contains('.'))) { continue }
+        ConvertTo-PrintableText $listed
+    }
+    foreach ($address in $names.Ips) {
+        $isPanel = $false
+        foreach ($panelName in $panel) {
+            $parsed = $null
+            if ([Net.IPAddress]::TryParse($panelName, [ref] $parsed) -and $parsed.Equals($address)) { $isPanel = $true }
+        }
+        if (-not $isPanel) { "$address" }
+    }
+    foreach ($other in $names.Others) { $other }
 }
 
 # Whether the certificate's Subject Alternative Name lists $hostName (as the agent checks it): a DNS name, a wildcard
@@ -612,10 +732,15 @@ function Test-CertificateNames($names, [string] $hostName) {
     return $false
 }
 
-# Checks that a panel's certificate may be trusted machine-wide: one that can issue certificates is refused, since
-# whoever holds its key could then vouch for any site to this machine, and so is one that does not name the panel's
-# host (the agent would refuse it anyway; trusted, it would vouch for names that are not the panel's).
-function Assert-TrustableCertificate([Security.Cryptography.X509Certificates.X509Certificate2] $certificate, [string] $cer, [string] $hostName) {
+# Checks that a panel's certificate may be trusted machine-wide, where it vouches for every name it lists and for every
+# use it allows: one that can issue certificates is refused, since whoever holds its key could then vouch for any site
+# to this machine, and so is one that does not name the panel's host (the agent would refuse it anyway), one that also
+# names others than the panel ($panelNames: the names the panel's own certificate was made for, when known) and one
+# whose uses go beyond a web server's identity, unless the switches for those say so.
+function Assert-TrustableCertificate([Security.Cryptography.X509Certificates.X509Certificate2] $certificate, [string] $cer, [string] $hostName, [string[]] $panelNames = @()) {
+    # An extension twice: what is checked here could be the one Windows does not use.
+    $repeated = @($certificate.Extensions | Group-Object { $_.Oid.Value } | Where-Object Count -gt 1)
+    if ($repeated.Count -gt 0) { throw "$cer is malformed: it has an extension more than once ($(($repeated | ForEach-Object Name) -join ', '))." }
     $authority = Get-CertificateAuthority $certificate
     if ($authority -eq $true) {
         throw "$cer can issue certificates (its Basic Constraints say CA=true): trusted by this machine, whoever holds its key could vouch for any site. Pass the panel's own certificate (panel.cer), not a certificate authority's."
@@ -629,20 +754,45 @@ function Assert-TrustableCertificate([Security.Cryptography.X509Certificates.X50
     }
     $names = Get-CertificateNames $certificate
     if (-not (Test-CertificateNames $names $hostName)) {
-        $listed = @($names.Dns) + @($names.Ips | ForEach-Object { "$_" })
+        $listed = @(Get-ListedNames $names)
         $listedText = 'no names in a Subject Alternative Name'
         if ($listed.Count -gt 0) { $listedText = $listed -join ', ' }
         throw "$cer is not made for $hostName, the panel's address here (it lists $listedText). Pass the panel's own certificate, made for the address nodes use (-HostName when the panel is installed)."
     }
+    $foreign = @(Get-ForeignCertificateNames $names (@($hostName) + $panelNames))
+    if ($foreign.Count -gt 0) {
+        $message = "$cer also names $($foreign -join ', '), which this check cannot tell are the panel's (only $hostName, localhost and machine names are): trusted by this machine, whoever holds its key could pass for them to it. Make the panel's certificate for the names nodes use and no others (-HostName when the panel is installed)"
+        if (-not $TrustCertificateWithOtherNames) {
+            throw "$message, or pass -TrustCertificateWithOtherNames if every name it lists is yours."
+        }
+        Write-Warning "$message. Trusted anyway, as -TrustCertificateWithOtherNames says."
+    }
+    $uses = Get-CertificateUses $certificate
+    if (-not (Test-ServerAuthenticationOnly $uses)) {
+        $usesText = 'it has no Extended Key Usage, so it allows every use'
+        if ($null -ne $uses) { $usesText = "its Extended Key Usage lists $(if ($uses.Count -gt 0) { $uses -join ', ' } else { 'nothing' })" }
+        $message = "$cer may be used for more than a web server's identity ($usesText): trusted by this machine, whoever holds its key could also vouch for code, e-mail or a client to it. The installer's own self-signed certificate lists server authentication ($ServerAuthentication) alone; make a new one like it"
+        if (-not $TrustCertificateWithOtherUses) {
+            throw "$message, or pass -TrustCertificateWithOtherUses if you know it is the panel's own."
+        }
+        Write-Warning "$message. Trusted anyway, as -TrustCertificateWithOtherUses says."
+    }
+}
+
+# A certificate's names as they would be printed.
+function Get-ListedNames($names) {
+    foreach ($name in $names.Dns) { ConvertTo-PrintableText $name }
+    foreach ($address in $names.Ips) { "$address" }
+    foreach ($other in $names.Others) { $other }
 }
 
 # Trusts a panel's certificate machine-wide (the agent runs as SYSTEM) for the panel at $hostName, marked so -Uninstall
 # removes it again. One that was already trusted is left unmarked: something else trusted it, and -Uninstall leaves it.
-function Add-TrustedCertificate([string] $cer, [string] $hostName) {
+function Add-TrustedCertificate([string] $cer, [string] $hostName, [string[]] $panelNames = @()) {
     $certificate = Read-Certificate $cer
-    Assert-TrustableCertificate $certificate $cer $hostName
+    Assert-TrustableCertificate $certificate $cer $hostName $panelNames
     $names = Get-CertificateNames $certificate
-    Write-Host "    $($certificate.Subject), thumbprint $($certificate.Thumbprint), for $((@($names.Dns) + @($names.Ips | ForEach-Object { "$_" })) -join ', ')"
+    Write-Host "    $(ConvertTo-PrintableText $certificate.Subject), thumbprint $($certificate.Thumbprint), for $(@(Get-ListedNames $names) -join ', ')"
     $trusted = "Cert:\LocalMachine\Root\$($certificate.Thumbprint)"
     if (Test-Path -LiteralPath $trusted) { return }
     # The certificate read and checked above, not the file again.
@@ -653,37 +803,42 @@ function Add-TrustedCertificate([string] $cer, [string] $hostName) {
     (Get-Item -LiteralPath $trusted).FriendlyName = $TrustedName
 }
 
-# The thumbprint an earlier install noted, if it may be used: a file anyone who could write there may have changed, so
-# only a thumbprint (Remove-Item takes wildcards, so a "*" would remove every trusted root certificate), and only the
-# panel's own certificate's while its certificate file is there ($panelThumbprint: '' when it could not be read, $null
-# when there is none). An empty file names nothing.
-function Get-NotedThumbprint([string] $noted, $panelThumbprint) {
+# The thumbprint an earlier install noted, if the note holds one: 40 hexadecimal characters (Remove-Item takes
+# wildcards, so a "*" would name every trusted root certificate). An empty note names nothing.
+function Get-NotedThumbprint([string] $noted) {
     $noted = "$noted".Trim()
     if ($noted -notmatch '^[0-9A-Fa-f]{40}$') {
         Write-Warning "$TrustedMarker does not hold a certificate thumbprint; it is ignored."
         return $null
     }
-    if ($null -ne $panelThumbprint -and $noted -ne $panelThumbprint) {
-        Write-Warning "$TrustedMarker names a certificate ($noted) that is not the panel's; it is ignored."
-        return $null
-    }
     return $noted.ToUpperInvariant()
 }
 
-# Removes the trust Add-TrustedCertificate gave (and what earlier installs noted in the panel's data folder).
-function Remove-TrustedCertificates {
-    $thumbprints = @(Get-ChildItem 'Cert:\LocalMachine\Root' | Where-Object { $_.FriendlyName -eq $TrustedName } | ForEach-Object Thumbprint)
-    if (Test-Path -LiteralPath $TrustedMarker) {
-        $panelCer = Join-Path $PanelData 'tls\panel.cer'
-        $panelThumbprint = $null
-        if (Test-Path -LiteralPath $panelCer) {
-            try { $panelThumbprint = (Read-Certificate $panelCer).Thumbprint } catch { $panelThumbprint = '' }
-        }
-        $noted = Get-NotedThumbprint "$(Get-Content -LiteralPath $TrustedMarker -Raw)" $panelThumbprint
-        if ($noted) { $thumbprints += $noted }
-        Remove-Item -LiteralPath $TrustedMarker
+# Which of the trusted root certificates -Uninstall removes: those Add-TrustedCertificate marked as the installer's
+# (only administrators can mark one), never one because an earlier install's note ($note, $null when there is none)
+# names it. The note is in the panel's data folder, which the panel's service account may change: a compromised panel
+# could name any root there, and replace tls\panel.cer to match it. A noted certificate that is not marked (trusted by
+# an install made before the mark) comes back as Unmarked, for the administrator to look at.
+function Select-TrustToRemove([object[]] $trusted, $note) {
+    $remove = @($trusted | Where-Object { $_.FriendlyName -eq $TrustedName } | ForEach-Object { $_.Thumbprint })
+    $unmarked = $null
+    if ($null -ne $note) {
+        $noted = Get-NotedThumbprint $note
+        if ($noted -and $noted -notin $remove) { $unmarked = $trusted | Where-Object { $_.Thumbprint -eq $noted } | Select-Object -First 1 }
     }
-    foreach ($thumbprint in $thumbprints | Select-Object -Unique) {
+    return [pscustomobject]@{ Remove = $remove; Unmarked = $unmarked }
+}
+
+# Removes the trust Add-TrustedCertificate gave; what an earlier install only noted is shown, not removed.
+function Remove-TrustedCertificates {
+    $note = $null
+    if (Test-Path -LiteralPath $TrustedMarker) { $note = "$(Get-Content -LiteralPath $TrustedMarker -Raw)" }
+    $selected = Select-TrustToRemove @(Get-ChildItem 'Cert:\LocalMachine\Root') $note
+    if ($selected.Unmarked) {
+        Write-Warning "An earlier install noted that it trusted the certificate $($selected.Unmarked.Thumbprint) ($(ConvertTo-PrintableText $selected.Unmarked.Subject)). It is not marked as the installer's, and the note is in a folder the panel's service account can change, so it stays trusted: if it is the panel's own certificate, remove it from Trusted Root Certification Authorities (certlm.msc)."
+    }
+    if (Test-Path -LiteralPath $TrustedMarker) { Remove-Item -LiteralPath $TrustedMarker }
+    foreach ($thumbprint in $selected.Remove | Select-Object -Unique) {
         Write-Step "No longer trusting the panel's certificate ($thumbprint)"
         Remove-Item -LiteralPath "Cert:\LocalMachine\Root\$thumbprint" -ErrorAction SilentlyContinue
     }
@@ -836,6 +991,7 @@ function Update-Panel {
     Copy-BackupScript
     Invoke-PanelMigrations
     Start-Panel
+    Write-StaleBackupTasks
 }
 
 function Uninstall-Panel {
@@ -959,7 +1115,7 @@ switch ($Mode) {
         $certificate = $installed.Certificate
         if ($certificate.SelfSigned) {
             Write-Step "Trusting the panel's certificate on this machine (the agent and this PC's browsers check it)"
-            Add-TrustedCertificate $certificate.Cer 'localhost'
+            Add-TrustedCertificate $certificate.Cer 'localhost' $certificate.Names
         }
         $enrollment = $installed.Node.enrollment
         Install-Agent "https://localhost:$Port" $enrollment.token $enrollment.panelKeyFingerprint

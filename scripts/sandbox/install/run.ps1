@@ -1,6 +1,7 @@
 # Installs Pulsar from the release ZIP with Install-Pulsar.ps1 on a disposable, elevated Windows (Windows Sandbox
 # through prepare.ps1, or a CI runner), as a user following docs/guides/install.md would: the release copied into
-# C:\PulsarSetup, made for administrators only (the installer refuses the bundle's own folder, which others can change),
+# C:\Program Files\PulsarSetup, which only administrators can change from the moment it exists (the installer refuses
+# the bundle's own folder, which others can change),
 # panel and agent on one PC, database created in the local PostgreSQL service. Then checks what the installer left,
 # backs up from the panel's folder, updates and uninstalls.
 # Every check is written to report\summary.txt as PASS/FAIL; the last line is "done", and the exit code is 1 on any FAIL.
@@ -33,7 +34,7 @@ function Wait-Until([scriptblock] $condition, [int] $seconds) {
 # The release as the guide has it extracted: in a new folder only administrators can change. The installer and the
 # backup script refuse any other, such as the bundle's own folder (a mapped folder in Windows Sandbox, C:\bundle in a VM).
 $bundled = Join-Path $Bundle 'release'
-$release = 'C:\PulsarSetup'
+$release = Join-Path $env:ProgramFiles 'PulsarSetup'
 $installer = Join-Path $release 'Install-Pulsar.ps1'
 $installedBackup = 'C:\Program Files\Pulsar\Panel\Backup-Pulsar.ps1'
 
@@ -69,11 +70,20 @@ try {
     # --- The release where the guide puts it (step 2); from where other accounts can change it, refused ---
     $refused = Invoke-Refused (Join-Path $bundled 'Install-Pulsar.ps1')
     Check 'installer refuses to run from a folder other accounts can change (nothing installed)' ($refused.ExitCode -ne 0 -and ($refused.Output -replace '\s', '') -match 'Nothingwaschanged' -and $null -eq (Get-Service PulsarPanel, PulsarAgent -ErrorAction SilentlyContinue)) "exit $($refused.ExitCode); $($refused.Output -replace '\s+', ' ')"
+    # In C:\Program Files, as the guide says: it takes that folder's permissions as it is made (made elsewhere and
+    # restricted afterwards, it would be open to every account in between).
     New-Item -ItemType Directory $release | Out-Null
-    $null = icacls.exe $release /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F'
     Copy-Item (Join-Path $bundled '*') $release -Recurse
-    $releaseSids = @((Get-Acl $release).GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | ForEach-Object { $_.IdentityReference.Value } | Select-Object -Unique | Sort-Object)
-    Check 'release folder: SYSTEM and Administrators only' (($releaseSids -join ',') -eq 'S-1-5-18,S-1-5-32-544') ($releaseSids -join ', ')
+    # Write data, append data, write extended attributes, delete children, write attributes, delete, change permissions,
+    # take ownership, generic all and generic write: nobody but SYSTEM, Administrators and TrustedInstaller, nor its owner.
+    $writeRights = 0x2 -bor 0x4 -bor 0x10 -bor 0x40 -bor 0x100 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x10000000 -bor 0x40000000
+    $trustedSids = @('S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
+    $releaseAcl = Get-Acl $release
+    $releaseWriters = @($releaseAcl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) |
+        Where-Object { $_.AccessControlType -eq 'Allow' -and ([int]$_.PropagationFlags -band 2) -eq 0 -and ([int]$_.FileSystemRights -band $writeRights) -ne 0 } |
+        ForEach-Object { $_.IdentityReference.Value } | Where-Object { $_ -notin $trustedSids } | Select-Object -Unique)
+    $releaseOwner = $releaseAcl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+    Check 'release folder: only SYSTEM, Administrators and TrustedInstaller can change it' ($releaseWriters.Count -eq 0 -and $releaseOwner -in $trustedSids) "owner $releaseOwner; others: $($releaseWriters -join ', ')"
 
     # --- Install, as the guide says (here with the passwords given instead of typed) ---
     $installed = $true
@@ -109,6 +119,9 @@ try {
     $constraints = $panelCertificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.19' }
     $endEntity = $null -ne $constraints -and $constraints.Critical -and -not (New-Object Security.Cryptography.X509Certificates.X509BasicConstraintsExtension($constraints, $true)).CertificateAuthority
     Check "panel's certificate cannot issue certificates (Basic Constraints: critical, CA=false)" $endEntity
+    $usage = $panelCertificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.37' }
+    $uses = if ($usage) { @((New-Object Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension($usage, $usage.Critical)).EnhancedKeyUsages | ForEach-Object { $_.Value }) } else { @() }
+    Check "panel's certificate is for a web server only (Extended Key Usage: server authentication)" (($uses -join ',') -eq '1.3.6.1.5.5.7.3.1') ($uses -join ', ')
     $trusted = Get-Item "Cert:\LocalMachine\Root\$thumbprint" -ErrorAction SilentlyContinue
     Check "panel's certificate trusted by this machine, marked as the installer's" ($null -ne $trusted -and $trusted.FriendlyName -eq 'Pulsar panel (trusted by Install-Pulsar.ps1)') "$thumbprint $($trusted.FriendlyName)"
     $firewall = Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue

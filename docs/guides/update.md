@@ -14,22 +14,25 @@ keep working while you get to each of them; an agent newer than its panel is ref
 
 ## Updating
 
-On each machine, download and check the new release ZIP as in [install.md](install.md) (step 2), and extract it into a
-new folder that only administrators can change, as step 2 shows, for example `C:\PulsarSetup-<version>`:
+On each machine, download and check the new release ZIP as in [install.md](install.md) (step 2), and extract it, in
+Windows PowerShell as administrator, into a new folder in `C:\Program Files`, as step 2 shows:
 
 ```powershell
-New-Item -ItemType Directory C:\PulsarSetup-<version>
-icacls C:\PulsarSetup-<version> /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F"
+New-Item -ItemType Directory "$env:ProgramFiles\PulsarSetup-<version>"
 Unblock-File .\pulsar-<version>-windows-x64.zip
-Expand-Archive .\pulsar-<version>-windows-x64.zip C:\PulsarSetup-<version>
+Expand-Archive .\pulsar-<version>-windows-x64.zip "$env:ProgramFiles\PulsarSetup-<version>"
 ```
 
 The update runs as administrator and copies the new programs into `C:\Program Files\Pulsar`, where they run as
 services: from a folder other accounts could change (a game server's account among them), whoever changed a program
-there would take over the machine, so the installer refuses such a folder and changes nothing. Then, in that
-PowerShell, go to the new folder and run:
+there would take over the machine. A folder made in `C:\Program Files` is administrators' from the moment it exists;
+one made directly under `C:\` and restricted afterwards is open to every account until then (install.md, step 2, says
+why that is not enough). The installer refuses a folder others could change and changes nothing, but that check is
+part of the installer: it cannot stop someone who already changed it. Then, in that PowerShell, go to the new folder
+and run:
 
 ```powershell
+cd "$env:ProgramFiles\PulsarSetup-<version>"
 powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Update
 ```
 
@@ -53,7 +56,9 @@ The settings files (`appsettings.Production.json`) are never replaced.
 
 A nightly backup task that runs `Backup-Pulsar.ps1` from an extracted release folder (`C:\PulsarSetup`, as this guide
 once said) should run the copy in `C:\Program Files\Pulsar\Panel` instead, and the old folder be deleted
-([backup.md](backup.md)): it runs as SYSTEM, and the old folder let any account change it.
+([backup.md](backup.md)): it runs as SYSTEM, and the old folder let any account change it. `-Update` warns about every
+scheduled task that runs a `Backup-Pulsar.ps1` other than that copy. Delete old setup folders made directly under
+`C:\` too: anyone could have changed what is in them.
 
 ## If something goes wrong
 

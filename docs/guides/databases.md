@@ -7,7 +7,14 @@ run yourself; it does not install MySQL or MariaDB.
 ## Add a database host
 
 1. Run MySQL 8 or MariaDB 10.6 or newer where both the panel and the game servers can reach it: on the panel's machine,
-   on a node, or anywhere on your network.
+   on a node, or anywhere on your network. **Use a database server for Pulsar's game databases only**, never one that
+   holds other applications' data (a website's, a forum's) or accounts: the account Pulsar needs (step 2) can change,
+   rename and drop the server's users (on MariaDB every one, `root` included: it could give `root@localhost` a new
+   password; MySQL 8 keeps it from accounts with `SYSTEM_USER`, such as `root`, but not from the others), and the
+   database names it may manage also match other applications' databases named like Pulsar's (a
+   name that starts with `s` and holds an underscore, such as `shop_data`). So whoever takes over the panel, or reads
+   that account's password from it, controls the whole database server; on a server of its own that is only the game
+   servers' data.
 2. Give Pulsar an account that may create databases and users and grant them, and nothing it does not need:
 
    ```sql
@@ -23,7 +30,9 @@ run yourself; it does not install MySQL or MariaDB.
    start with `s` and hold an underscore (`\_` is an underscore, not the one-character wildcard), which leaves out the
    server's own databases (`mysql`, `sys`, `information_schema`, `performance_schema`). Do not give it
    `ALL PRIVILEGES ON *.*`: that is the database server's root, which could read and change every other database and
-   account on it. This works on MySQL 8 and MariaDB 10.6 or newer, except on a MySQL with `partial_revokes` turned on,
+   account on it. These grants are as narrow as MySQL and MariaDB allow, not a boundary: `CREATE USER` cannot be
+   limited to some users, and `s%\_%` cannot tell Pulsar's databases from others named alike, hence a server of its own
+   (step 1). This works on MySQL 8 and MariaDB 10.6 or newer, except on a MySQL with `partial_revokes` turned on,
    which takes wildcards in grants literally (it is off unless someone turned it on).
 
 3. Remove what a fresh MariaDB opens to every user: it grants the `test` database to the `PUBLIC` role, which every
