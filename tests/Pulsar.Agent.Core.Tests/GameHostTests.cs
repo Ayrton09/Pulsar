@@ -764,8 +764,23 @@ internal sealed class InProcessHostLauncher(IGameProcessManager games, GameHostO
         ? throw new GameProcessException(GameHostManager.HostUnverifiable, "Access is denied.")
         : _hosts.TryGetValue(host.Pipe, out var running) && !running.Run.IsCompleted;
 
+    /// <summary>When set, a kill waits for it (ending a real host takes up to 10 s).</summary>
+    public ManualResetEventSlim? KillGate { get; set; }
+
+    /// <summary>Kills waiting for <see cref="KillGate"/> now.</summary>
+    public int KillsWaiting => Volatile.Read(ref _killsWaiting);
+
+    private int _killsWaiting;
+
     public bool Kill(GameHostReference host)
     {
+        if (KillGate is { } gate)
+        {
+            Interlocked.Increment(ref _killsWaiting);
+            gate.Wait(TimeSpan.FromSeconds(30));
+            Interlocked.Decrement(ref _killsWaiting);
+        }
+
         if (KillFails)
         {
             return false;

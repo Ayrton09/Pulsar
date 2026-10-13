@@ -274,18 +274,14 @@ public sealed partial class WindowsGameHostLauncher(Func<string> program, string
         {
             var error = Marshal.GetLastPInvokeError();
             process.Dispose();
-            return error == (int)WIN32_ERROR.ERROR_INVALID_PARAMETER
-                ? null
-                : throw new GameProcessException(GameHostManager.HostUnverifiable,
-                    $"The host process {host.ProcessId} could not be opened to check it: {new Win32Exception(error).Message} (Win32 error {error}).");
+            return IsGoneAfterFailedOpen(host, error, PipeExists) ? null : throw Unverifiable(host, error);
         }
 
         if (StartTime(process) is not { } started)
         {
             var error = Marshal.GetLastPInvokeError();
             process.Dispose();
-            throw new GameProcessException(GameHostManager.HostUnverifiable,
-                $"The start time of the host process {host.ProcessId} could not be read: {new Win32Exception(error).Message} (Win32 error {error}).");
+            return IsGoneAfterFailedOpen(host, error, PipeExists) ? null : throw Unverifiable(host, error);
         }
 
         if (started != host.ProcessStartedAt)
@@ -296,6 +292,36 @@ public sealed partial class WindowsGameHostLauncher(Func<string> program, string
 
         return process;
     }
+
+    /// <summary>
+    /// What a process that cannot be opened (or read) means. ERROR_INVALID_PARAMETER: there is no such process. Any other
+    /// failure (access denied: after a reboot a stale record's id may belong to a protected or SYSTEM process) says nothing
+    /// about our host, so a second test that needs no process handle decides: the host's named pipe. No pipe, no host
+    /// (it creates the pipe first thing and keeps it while it lives); a pipe, and it may well be running.
+    /// </summary>
+    /// <returns>True when the host is gone.</returns>
+    /// <exception cref="GameProcessException"><see cref="GameHostManager.HostUnverifiable"/>: the pipe exists.</exception>
+    internal static bool IsGoneAfterFailedOpen(GameHostReference host, int error, Func<string, bool> pipeExists) =>
+        error == (int)WIN32_ERROR.ERROR_INVALID_PARAMETER || !pipeExists(host.Pipe)
+            ? true
+            : throw Unverifiable(host, error);
+
+    /// <summary>Whether a named pipe exists, found by listing the pipe namespace: that needs no access to the pipe itself.</summary>
+    internal static bool PipeExists(string name)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(@"\\.\pipe\").Any(p => string.Equals(Path.GetFileName(p), name, StringComparison.Ordinal));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true; // cannot tell: not "gone"
+        }
+    }
+
+    private static GameProcessException Unverifiable(GameHostReference host, int error) =>
+        new(GameHostManager.HostUnverifiable,
+            $"The host process {host.ProcessId} could not be opened to check it, and its pipe exists: {new Win32Exception(error).Message} (Win32 error {error}).");
 
     private static DateTimeOffset? StartTime(SafeHandle process)
     {

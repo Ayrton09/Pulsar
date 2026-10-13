@@ -197,6 +197,20 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
         }
     }
 
+    /// <summary>Whether the host is gone, checked without touching it; false while it runs or cannot be checked.</summary>
+    public bool IsGone(GameHostReference host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        try
+        {
+            return !launcher.IsAlive(host);
+        }
+        catch (GameProcessException ex) when (ex.Code == HostUnverifiable)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Ends a host nobody will take over and says whether it is gone now: true when it was gone already or ended within
     /// the launcher's bounded wait; false when it could not be checked or ended, and the caller keeps its record.

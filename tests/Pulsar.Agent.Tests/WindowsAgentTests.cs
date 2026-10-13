@@ -357,6 +357,7 @@ public sealed class WindowsAgentTests
             var security = file.GetAccessControl();
             Assert.False(security.AreAccessRulesProtected);
             var rules = security.GetAccessRules(includeExplicit: true, includeInherited: true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToList();
+            Assert.NotEmpty(rules);
             Assert.All(rules, r => Assert.True(r.IsInherited));
             Assert.DoesNotContain(rules, r => r.IdentityReference.Equals(everyone));
         }
