@@ -24,7 +24,7 @@ import {
   type FileEntry,
 } from './api';
 import { FileEditor } from './FileEditor';
-import { baseName, breadcrumbs, joinPath, nameProblem, parentPath } from './paths';
+import { baseName, breadcrumbs, joinPath, nameProblem, parentPath, visibleName } from './paths';
 
 /**
  * The server's files (docs/architecture/07, "Files"): a folder at a time, with the folder and the open file in the
@@ -110,7 +110,7 @@ function FileBrowser({ serverId, path, canEdit, busy, connected, onOpenFolder, o
 
   const deleteEntry = (entry: FileEntry) => {
     const message = entry.kind === 'directory' ? 'files.deleteFolderConfirm' : 'files.deleteConfirm';
-    if (window.confirm(t(message, { name: entry.name }))) {
+    if (window.confirm(t(message, { name: visibleName(entry.name) }))) {
       remove.mutate(joinPath(path, entry.name));
     }
   };
@@ -126,14 +126,14 @@ function FileBrowser({ serverId, path, canEdit, busy, connected, onOpenFolder, o
             <span key={crumb.path} className="flex items-center gap-1">
               <span className="text-muted">/</span>
               {i === all.length - 1 ? (
-                <span aria-current="location">{crumb.name}</span>
+                <span aria-current="location">{visibleName(crumb.name)}</span>
               ) : (
                 <button
                   type="button"
                   onClick={() => onOpenFolder(crumb.path)}
                   className="rounded px-1 text-accent hover:underline"
                 >
-                  {crumb.name}
+                  {visibleName(crumb.name)}
                 </button>
               )}
             </span>
@@ -234,7 +234,7 @@ function FileBrowser({ serverId, path, canEdit, busy, connected, onOpenFolder, o
                             onClick={() => onOpenFolder(target)}
                             className="truncate font-mono text-accent hover:underline"
                           >
-                            {entry.name}/
+                            {visibleName(entry.name)}/
                           </button>
                         ) : editable ? (
                           <button
@@ -242,10 +242,10 @@ function FileBrowser({ serverId, path, canEdit, busy, connected, onOpenFolder, o
                             onClick={() => onOpenFile(target)}
                             className="truncate font-mono hover:underline"
                           >
-                            {entry.name}
+                            {visibleName(entry.name)}
                           </button>
                         ) : (
-                          <span className="truncate font-mono">{entry.name}</span>
+                          <span className="truncate font-mono">{visibleName(entry.name)}</span>
                         )}
                         {entry.kind === 'link' && <Badge>{t('files.link')}</Badge>}
                       </span>
@@ -262,7 +262,7 @@ function FileBrowser({ serverId, path, canEdit, busy, connected, onOpenFolder, o
                           <a
                             href={downloadUrl(serverId, target)}
                             className="inline-flex h-8 items-center rounded-md px-3 text-sm font-medium text-accent hover:bg-surface-raised"
-                            aria-label={t('files.downloadNamed', { name: entry.name })}
+                            aria-label={t('files.downloadNamed', { name: visibleName(entry.name) })}
                           >
                             {t('files.download')}
                           </a>
@@ -273,7 +273,7 @@ function FileBrowser({ serverId, path, canEdit, busy, connected, onOpenFolder, o
                               variant="ghost"
                               size="sm"
                               disabled={blocked}
-                              aria-label={t('files.renameNamed', { name: entry.name })}
+                              aria-label={t('files.renameNamed', { name: visibleName(entry.name) })}
                               onClick={() => setNaming({ kind: 'rename', entry })}
                             >
                               {t('files.rename')}
@@ -282,7 +282,7 @@ function FileBrowser({ serverId, path, canEdit, busy, connected, onOpenFolder, o
                               variant="ghost"
                               size="sm"
                               disabled={blocked || (remove.isPending && remove.variables === target)}
-                              aria-label={t('files.deleteNamed', { name: entry.name })}
+                              aria-label={t('files.deleteNamed', { name: visibleName(entry.name) })}
                               onClick={() => deleteEntry(entry)}
                             >
                               {t('actions.delete')}
@@ -340,7 +340,7 @@ function NameDialog({ serverId, directory, action, onDone }: NameDialogProps) {
       ? t('files.newFolder')
       : action.kind === 'file'
         ? t('files.newFile')
-        : t('files.renameTitle', { name: action.entry.name });
+        : t('files.renameTitle', { name: visibleName(action.entry.name) });
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -468,7 +468,7 @@ function UploadList({ uploads }: { uploads: ReturnType<typeof useUploads> }) {
         return (
           <div key={item.id} className="space-y-2 px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span className="truncate font-mono">{baseName(item.name)}</span>
+              <span className="truncate font-mono">{visibleName(baseName(item.name))}</span>
               <span className="text-muted">
                 {item.state === 'uploading' && t('files.uploads.progress', { percent })}
                 {item.state === 'done' && t('files.uploads.done')}
@@ -477,7 +477,7 @@ function UploadList({ uploads }: { uploads: ReturnType<typeof useUploads> }) {
             {item.state === 'uploading' && (
               <div
                 role="progressbar"
-                aria-label={t('files.uploads.label', { name: item.name })}
+                aria-label={t('files.uploads.label', { name: visibleName(item.name) })}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={percent}

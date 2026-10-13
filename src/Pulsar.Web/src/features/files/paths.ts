@@ -25,6 +25,30 @@ export function breadcrumbs(path: string): { name: string; path: string }[] {
   return parts.map((name, i) => ({ name, path: parts.slice(0, i + 1).join('/') }));
 }
 
+/**
+ * Characters that are invisible in a name and either reorder what follows (direction embeddings, overrides and
+ * isolates) or hide between letters (zero-width space, word joiner, invisible operators, byte order mark). Joiners,
+ * non-joiners and direction marks are left out: emoji sequences, Persian and Hebrew names need them.
+ */
+const HIDDEN = new Set([
+  0x200b, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2060, 0x2061, 0x2062, 0x2063, 0x2064, 0x2066, 0x2067, 0x2068,
+  0x2069, 0xfeff,
+]);
+
+/**
+ * A file name as the file manager shows it: any name is allowed on the server (games and players choose them), so a
+ * character in HIDDEN is shown as its code ("[U+202E]") instead of acting, and "invoice<U+202E>fdp.exe" cannot pass
+ * for "invoiceexe.pdf". Only for display: requests use the real name.
+ */
+export function visibleName(name: string): string {
+  let shown = '';
+  for (const character of name) {
+    const code = character.codePointAt(0) ?? 0;
+    shown += HIDDEN.has(code) ? `[U+${code.toString(16).toUpperCase().padStart(4, '0')}]` : character;
+  }
+  return shown;
+}
+
 const RESERVED = /^(con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³])$/i;
 
 export type NameProblem = 'empty' | 'characters' | 'dots' | 'reserved' | 'length';

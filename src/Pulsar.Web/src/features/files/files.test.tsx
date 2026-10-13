@@ -10,7 +10,7 @@ import { initI18n } from '../../app/i18n';
 import { routes } from '../../app/routes';
 import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
 import { connections, openedConnection } from '../../test/fakeSignalR';
-import { breadcrumbs, nameProblem } from './paths';
+import { breadcrumbs, nameProblem, visibleName } from './paths';
 import { decodeText, lineEndings } from './text';
 
 // CodeMirror needs a real layout: the tests type into a plain text area with the same contract.
@@ -93,6 +93,8 @@ const listings: Record<string, Schemas['FileEntry'][]> = {
     { name: 'de_dust2.bsp', kind: 'file', size: 80 * 1024 * 1024, modifiedAt: at },
   ],
   game: [{ name: 'csgo', kind: 'directory', size: 0, modifiedAt: at }],
+  // A name a game or a player chose: the direction override would show it as "invoiceexe.pdf".
+  odd: [{ name: `invoice${String.fromCodePoint(0x202e)}fdp.exe`, kind: 'file', size: 4, modifiedAt: at }],
 };
 
 function listing(request: Request): Response {
@@ -200,6 +202,20 @@ describe('file paths and text', () => {
     expect(nameProblem(name)).toBe(expected);
   });
 
+  it('shows the characters that would hide in a name or reorder it, and leaves the ones scripts need', () => {
+    const c = (code: number) => String.fromCodePoint(code);
+    expect(visibleName(`invoice${c(0x202e)}fdp.exe`)).toBe('invoice[U+202E]fdp.exe');
+    expect(visibleName(`a${c(0x2066)}b${c(0x2069)}`)).toBe('a[U+2066]b[U+2069]');
+    expect(visibleName(`ab${c(0x200b)}c${c(0xfeff)}`)).toBe('ab[U+200B]c[U+FEFF]');
+    // A family emoji (joined by ZWJ), Persian with a ZWNJ and Hebrew with a right-to-left mark are names as they are.
+    const family = `${c(0x1f468)}${c(0x200d)}${c(0x1f469)}${c(0x200d)}${c(0x1f467)}`;
+    const persian = `${c(0x0645)}${c(0x06cc)}${c(0x200c)}${c(0x0631)}${c(0x0648)}${c(0x0645)}`;
+    const hebrew = `${c(0x05e9)}${c(0x05dc)}${c(0x05d5)}${c(0x05dd)}${c(0x200f)}.txt`;
+    for (const name of [family, persian, hebrew, 'server.cfg']) {
+      expect(visibleName(name)).toBe(name);
+    }
+  });
+
   it('splits a path into breadcrumbs', () => {
     expect(breadcrumbs('')).toEqual([]);
     expect(breadcrumbs('game/csgo')).toEqual([
@@ -251,6 +267,31 @@ describe('files tab', () => {
     expect(screen.getByRole('navigation', { name: 'Location' })).toHaveTextContent('server/game');
     await userEvent.click(screen.getByRole('button', { name: '..' }));
     expect(await screen.findByRole('button', { name: 'game/' })).toBeInTheDocument();
+  });
+
+  it('shows a name that hides a direction override as it really is, and still acts on the real name', async () => {
+    const deleted: (string | null)[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+      [`DELETE /api/v1/servers/${serverId}/files`]: (request) => {
+        deleted.push(new URL(request.url).searchParams.get('path'));
+        return new Response(null, { status: 204 });
+      },
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderAt(`/servers/${serverId}?tab=files&path=odd`);
+
+    const table = await screen.findByRole('table', { name: 'Files' });
+    expect(within(table).getByText('invoice[U+202E]fdp.exe')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Download invoice[U+202E]fdp.exe' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Delete invoice[U+202E]fdp.exe' }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('invoice[U+202E]fdp.exe'));
+    await waitFor(() => expect(deleted).toEqual([`odd/invoice${String.fromCodePoint(0x202e)}fdp.exe`]));
+    confirm.mockRestore();
   });
 
   it('creates folders and deletes after asking', async () => {

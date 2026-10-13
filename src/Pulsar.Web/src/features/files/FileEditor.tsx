@@ -7,7 +7,7 @@ import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Card } from '../../components/ui/Display';
 import { errorMessage } from '../../lib/errors';
 import { downloadUrl, fileKeys, readFile, writeFile, type OpenedFile } from './api';
-import { baseName } from './paths';
+import { baseName, visibleName } from './paths';
 import { decodeText, lineEndings } from './text';
 
 // CodeMirror is loaded only when a file is opened.
@@ -189,8 +189,8 @@ function LoadedEditor({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="truncate font-mono text-sm font-semibold" title={path}>
-            {path}
+          <h2 className="truncate font-mono text-sm font-semibold" title={visibleName(path)}>
+            {visibleName(path)}
           </h2>
           <p role="status" className="text-xs text-muted">
             {!canEdit ? t('files.editor.readOnly') : dirty ? t('files.editor.unsaved') : t('files.editor.saved')}
@@ -227,7 +227,7 @@ function LoadedEditor({
       {error !== null && <Alert>{errorMessage(t, error)}</Alert>}
       <Suspense fallback={<Spinner label={t('common.loading')} />}>
         <CodeEditor
-          label={t('files.editor.label', { name: baseName(path) })}
+          label={t('files.editor.label', { name: visibleName(baseName(path)) })}
           fileName={baseName(path)}
           initial={initial}
           lineSeparator={endings === '\r\n' || endings === '\r' ? endings : undefined}
