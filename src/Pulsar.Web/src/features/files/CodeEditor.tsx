@@ -53,9 +53,7 @@ export interface CodeEditorProps {
   label: string;
   fileName: string;
   initial: string;
-  /** The file's line ending when it is not 
- (Windows files end lines with 
-: kept as they are). */
+  /** The file's line ending when it is not \n (Windows files end lines with \r\n: kept as they are). */
   lineSeparator?: string | undefined;
   readOnly: boolean;
   /** The id of the text that says how to leave the editor with the keyboard (Tab indents). */
@@ -127,7 +125,8 @@ export default function CodeEditor({
           ]),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
-              handlers.current.onChange(update.state.doc.toString());
+              // sliceDoc joins the lines with the state's line separator; Text.toString() always uses \n.
+              handlers.current.onChange(update.state.sliceDoc());
             }
           }),
         ],

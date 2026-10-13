@@ -18,15 +18,15 @@ export function AgentTransportSection() {
   const error = overview.error ?? change.error;
   const data = overview.data;
 
-  const require = () => {
-    if (!data) {
+  // The question counts the nodes as they are now: one may have connected without a certificate since the page loaded.
+  const require = async () => {
+    const fresh = await overview.refetch();
+    if (!fresh.data) {
       return;
     }
 
-    const confirmed =
-      data.nodesWithoutCertificateCount === 0 ||
-      window.confirm(t('agentTransport.requireConfirm', { count: data.nodesWithoutCertificateCount }));
-    if (confirmed) {
+    const count = fresh.data.nodesWithoutCertificateCount;
+    if (count === 0 || window.confirm(t('agentTransport.requireConfirm', { count }))) {
       change.mutate(true);
     }
   };
@@ -110,7 +110,12 @@ export function AgentTransportSection() {
                 {t('agentTransport.stopRequiring')}
               </Button>
             ) : (
-              <Button variant="secondary" icon={ShieldCheck} busy={change.isPending} onClick={require}>
+              <Button
+                variant="secondary"
+                icon={ShieldCheck}
+                busy={change.isPending || overview.isFetching}
+                onClick={() => void require()}
+              >
                 {t('agentTransport.require')}
               </Button>
             )}

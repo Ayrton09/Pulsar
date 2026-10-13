@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, unwrap, type Schemas } from '../../api/client';
 import { Button } from '../../components/ui/Button';
@@ -43,6 +43,8 @@ export function WorkshopField({ variable, value, disabled, onChange, control }: 
   const [text, setText] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const [collection, setCollection] = useState<WorkshopItem | null>(null);
+  // Added while Steam could not be asked: kept as typed, and said so in the list.
+  const [unchecked, setUnchecked] = useState<ReadonlySet<string>>(new Set());
 
   const details = useQuery({
     queryKey: ['workshop', appId, lookupIds],
@@ -103,8 +105,11 @@ export function WorkshopField({ variable, value, disabled, onChange, control }: 
         }
         append(id);
       },
-      // Steam could not be asked: the id still goes in, as typed.
-      onError: () => append(id),
+      // Steam could not be asked: the id still goes in, as typed, marked as not checked.
+      onError: () => {
+        setUnchecked((current) => new Set(current).add(id));
+        append(id);
+      },
     });
   };
 
@@ -126,6 +131,7 @@ export function WorkshopField({ variable, value, disabled, onChange, control }: 
               id={id}
               item={details.data?.get(id)}
               loading={details.isFetching && !details.data?.has(id)}
+              unchecked={unchecked.has(id)}
               disabled={disabled}
               onRemove={() => set(ids.filter((other) => other !== id))}
             />
@@ -180,18 +186,22 @@ function WorkshopRow({
   id,
   item,
   loading,
+  unchecked,
   disabled,
   onRemove,
 }: {
   id: string;
   item: WorkshopItem | undefined;
   loading: boolean;
+  /** Added while Steam could not be asked. */
+  unchecked: boolean;
   disabled: boolean;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
   const formatSize = useFormatFileSize();
   const formatDate = useFormatDate();
+  const noteId = useId();
   const name = item?.found ? (item.title ?? id) : id;
   const facts = item?.found
     ? [
@@ -204,17 +214,22 @@ function WorkshopRow({
       <div className="min-w-0">
         <a
           href={workshopUrl(id)}
+          aria-describedby={noteId}
           target="_blank"
           rel="noreferrer noopener"
           className="break-words hover:text-accent hover:underline"
         >
           {name}
         </a>
+        <span id={noteId} className="sr-only">
+          {t('common.opensInNewTab')}
+        </span>
         <p className="text-xs text-muted">
           {[
             item?.found ? id : null,
             ...facts,
             loading ? t('common.loading') : null,
+            !item && !loading && unchecked ? t('servers.workshop.notChecked') : null,
             item && !item.found ? t('servers.workshop.notFound') : null,
             item?.otherGame ? t('servers.workshop.otherGame') : null,
             item?.isCollection ? t('servers.workshop.isCollection') : null,

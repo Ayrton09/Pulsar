@@ -4,6 +4,7 @@
     "none": "Ninguno",
     "never": "Nunca",
     "actions": "Acciones",
+    "opensInNewTab": "(se abre en una pestaña nueva)",
     "refreshFailed": "No se pudo actualizar; se muestra lo que se había cargado. {{error}}"
   },
   "actions": {
@@ -875,6 +876,7 @@
       "selectAll": "Seleccionar todos"
     },
     "connection": "Conexión",
+    "lastConnection": "Última conexión",
     "connectionCertificate": "Certificado de cliente (clave del nodo)",
     "connectionToken": "Solo token de sesión",
     "connectionTokenOldAgent": "Solo token de sesión: actualizá el agente para usar certificado de cliente",
@@ -1025,7 +1027,8 @@
       "secretSet": "Ya tiene un valor; escribí uno nuevo para reemplazarlo.",
       "protected": "Solo quienes pueden editar la configuración del servidor pueden cambiarlo.",
       "unset": "Sin definir",
-      "outOfRange": "Fuera del rango permitido."
+      "outOfRange": "Fuera del rango permitido.",
+      "notANumber": "Escribí un número entero."
     },
     "workshop": {
       "empty": "No hay ítems del Workshop.",
@@ -1036,6 +1039,7 @@
       "invalid": "Eso no es un id ni un link del Workshop.",
       "duplicate": "Ese ítem ya está en la lista.",
       "tooMany": "Esta opción no admite más ítems.",
+      "notChecked": "Sin verificar en Steam",
       "notFound": "Steam no lo conoce (borrado, privado u otro id)",
       "otherGame": "No es del Workshop de este juego",
       "isCollection": "es una colección: agregá sus ítems",
@@ -1100,6 +1104,7 @@
       "dropped": "acá se descartó una secuencia que no terminaba",
       "reconnecting": "Se cortaron las actualizaciones en vivo; reconectando… La salida sigue donde quedó.",
       "refused": "No tenés permiso para ver esta consola.",
+      "failed": "No se pudo abrir la consola. Recargá la página para intentar de nuevo.",
       "nodeOffline": "El nodo está desconectado: no llega salida hasta que se reconecte.",
       "search": "Buscar en la consola",
       "previous": "Anterior",
@@ -1265,7 +1270,7 @@
       "reload": "Recargar",
       "overwrite": "Sobrescribir",
       "tooLarge": "Este archivo pesa más de 1 MB: descargalo.",
-      "binary": "Este archivo no es de texto: descargalo.",
+      "binary": "Este archivo no es texto UTF-8, así que no se puede editar acá: descargalo.",
       "mixedEndings": "Este archivo mezcla finales de línea de Windows y de Unix, y guardarlo acá los cambiaría: se muestra solo para leer. Descargalo para editarlo.",
       "tabHint": "Tab indenta. Para salir del editor con el teclado, presioná Esc y después Tab, o Ctrl+M (Shift+Alt+M en una Mac) para que Tab mueva el foco."
     },
@@ -1363,6 +1368,7 @@
       "keep": "Backups a guardar",
       "all": "Todos",
       "invalid": "Un número entero de 1 a {{max}}, o vacío para guardarlos todos.",
+      "notANumber": "Escribí un número entero, o dejalo vacío para guardarlos todos.",
       "confirm_one": "¿Guardar solo el backup más nuevo? Los anteriores sin bloquear se eliminan ahora.",
       "confirm_other": "¿Guardar solo los {{count}} backups más nuevos? Los anteriores sin bloquear se eliminan ahora.",
       "saved": "Guardado."
@@ -1549,8 +1555,6 @@
     },
     "servers": "Servidores",
     "allServers": "Todos los servidores",
-    "someServers_one": "{{count}} servidor",
-    "someServers_other": "{{count}} servidores",
     "onlySomeServers": "Solo algunos servidores",
     "serversHint": "Los eventos de servidores, solo de los elegidos. Los de nodos van a todos los canales que los quieran.",
     "language": "Idioma",

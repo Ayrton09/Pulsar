@@ -79,5 +79,6 @@ const languages: Record<string, () => LanguageSupport | StreamLanguage<unknown>>
 /** The syntax highlighting for a file name; none for formats the editor does not know. */
 export function languageFor(name: string): Extension {
   const extension = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : '';
-  return languages[extension]?.() ?? [];
+  // Own properties only: "notes.constructor" must not reach Object's.
+  return Object.hasOwn(languages, extension) ? (languages[extension]?.() ?? []) : [];
 }

@@ -51,6 +51,8 @@ export interface ConsoleState {
   joined: boolean;
   /** The user may not watch this console. */
   refused: boolean;
+  /** The panel failed to open the console (not a dropped connection, which joins again by itself). */
+  failed: boolean;
 }
 
 /**
@@ -61,7 +63,7 @@ export interface ConsoleState {
 export function useServerConsole(serverId: string, write: (entries: ConsoleEntry[]) => void): ConsoleState {
   const live = useLive();
   const writeRef = useRef(write);
-  const [state, setState] = useState<ConsoleState>({ joined: false, refused: false });
+  const [state, setState] = useState<ConsoleState>({ joined: false, refused: false, failed: false });
 
   useEffect(() => {
     writeRef.current = write;
@@ -107,9 +109,12 @@ export function useServerConsole(serverId: string, write: (entries: ConsoleEntry
           deliver(snapshot.entries);
         }
         deliver(pending.sort((a, b) => a.sequence - b.sequence));
-        setState({ joined: true, refused: !snapshot });
+        setState({ joined: true, refused: !snapshot, failed: false });
       } catch {
-        // The connection dropped meanwhile: the next reconnect joins again.
+        // A dropped connection joins again at the next reconnect; anything else is the panel refusing, said in the tab.
+        if (!disposed && live.isConnected) {
+          setState((current) => ({ ...current, failed: true }));
+        }
       } finally {
         joining = false;
         pending = [];

@@ -250,6 +250,59 @@ describe('creating a game server', () => {
   });
 });
 
+describe('changing the node of a server being created', () => {
+  it('forgets the ports chosen on the other node, whose allocations are not this one', async () => {
+    let body: unknown;
+    const otherNode = '0192f1a0-0000-7000-8000-0000000000a2';
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([]),
+      'GET /api/v1/nodes': () =>
+        json([
+          { id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' },
+          { id: otherNode, name: 'Córdoba 1', connected: true, status: 'active' },
+        ]),
+      'GET /api/v1/templates': () => json([template]),
+      [`GET /api/v1/templates/${templateId}`]: () => json(templateDetails),
+      [`GET /api/v1/nodes/${nodeId}/allocations`]: () => json(allocations),
+      [`GET /api/v1/nodes/${otherNode}/allocations`]: () =>
+        json([{ ...allocations[1], id: '0192f1a0-0000-7000-8000-0000000000d2', ipAddress: '10.0.0.2' }]),
+      'POST /api/v1/servers': async (request) => {
+        body = await request.json();
+        return json(details({ ...summary, installState: 'installing' }), 201);
+      },
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Create server' }));
+    await user.type(screen.getByLabelText('Name'), 'Retakes');
+    await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
+    await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source 1.0.0');
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+    const first = await screen.findByLabelText('SourceTV');
+    await within(first).findByRole('option', { name: '0.0.0.0:27020' });
+    await user.selectOptions(first, '0.0.0.0:27020');
+
+    // Back to the first step and another node.
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.selectOptions(screen.getByLabelText('Node'), 'Córdoba 1');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+    const second = await screen.findByLabelText('SourceTV');
+    await within(second).findByRole('option', { name: '10.0.0.2:27020' });
+    expect(second).toHaveValue('');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    await vi.waitFor(() => expect(body).toBeDefined());
+    expect(body).toMatchObject({ nodeId: otherNode });
+    expect((body as { ports: unknown }).ports).toEqual({});
+  });
+});
+
 describe('a game server page', () => {
   it('shows install progress live and cancels an update', async () => {
     const cancel = vi.fn(() => json(details()));
@@ -461,6 +514,38 @@ describe('a game server page', () => {
     expect(bodies).toEqual([]);
   });
 
+  it('does not put a variable back to its default when its field holds something that is not a number', async () => {
+    const bodies: unknown[] = [];
+    const settings: Schemas['ServerSettings'] = {
+      variables: [{ definition: maxPlayers, value: '24', hasValue: true }],
+      extraArguments: [],
+      allowExtraArguments: false,
+      autoStart: false,
+      restartOnCrash: true,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/settings`]: () => json(settings),
+      [`PUT /api/v1/servers/${serverId}/settings`]: async (request) => {
+        bodies.push(await request.json());
+        return json(settings);
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=settings`);
+    const user = userEvent.setup();
+    const slots = await screen.findByLabelText('Slots');
+
+    // A half-typed "1e": the browser reports the value as empty, and that it cannot read what is typed.
+    Object.defineProperty(slots, 'validity', { configurable: true, value: { badInput: true, valid: false } });
+    await user.clear(slots);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Type a whole number.')).toBeInTheDocument();
+    expect(slots).toHaveAttribute('aria-invalid', 'true');
+    expect(bodies).toEqual([]);
+  });
+
   it('keeps the settings form when reloading them fails', async () => {
     let fail = false;
     const settings: Schemas['ServerSettings'] = {
@@ -554,6 +639,22 @@ describe('a game server page', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await vi.waitFor(() => expect(body).toEqual({ ports: { game: allocationA, tv: allocationB } }));
+  });
+});
+
+describe('the network tab', () => {
+  it('does not ask for the node allocations of someone who may not see them', async () => {
+    const asked = vi.fn(() => json(allocations));
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['server.view'] }),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/nodes/${nodeId}/allocations`]: asked,
+    });
+    renderAt(`/servers/${serverId}?tab=network`);
+
+    expect(await screen.findByText('Game *')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(asked).not.toHaveBeenCalled();
   });
 });
 

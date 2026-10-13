@@ -132,7 +132,8 @@ function CreateApiKeyDialog({ open, onClose }: { open: boolean; onClose: () => v
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => !next && !created && close()}
+      // Not while the key is being created: closing detaches the request and its one-time value would be lost.
+      onOpenChange={(next) => !next && !created && !create.isPending && close()}
       title={created ? t('apiKeys.createdTitle') : t('apiKeys.create')}
       size="lg"
     >
@@ -237,7 +238,7 @@ function ApiKeyForm({
         </fieldset>
       )}
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={onCancel}>
+        <Button type="button" variant="ghost" disabled={create.isPending} onClick={onCancel}>
           {t('actions.cancel')}
         </Button>
         <Button type="submit" busy={create.isPending} disabled={name.trim() === '' || (limited && selected.size === 0)}>

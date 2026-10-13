@@ -5,7 +5,7 @@ import { Button, Spinner } from '../../components/ui/Button';
 import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { errorMessage } from '../../lib/errors';
 import { canAnywhere } from '../../lib/permissions';
-import { useLogout, useSession, useSessionRefresh } from './api';
+import { CurrentUserContext, useLogout, useSession, useSessionRefresh } from './api';
 import { AuthCard } from './AuthCard';
 import { safeReturnTo } from './returnTo';
 import { TwoFactorSetup } from './TwoFactor';
@@ -68,10 +68,10 @@ export function RequireSession() {
     return <Navigate to={returnTo === '/' ? '/login' : `/login?returnTo=${encodeURIComponent(returnTo)}`} replace />;
   }
   return (
-    <>
+    <CurrentUserContext value={session.data.user}>
       {session.isError && <StaleSession error={session.error} retry={() => void session.refetch()} />}
       {session.data.user.twoFactorSetupRequired ? <TwoFactorRequired /> : <Outlet />}
-    </>
+    </CurrentUserContext>
   );
 }
 
@@ -87,6 +87,11 @@ function TwoFactorRequired() {
         <Button variant="ghost" size="sm" onClick={() => logout.mutate()} busy={logout.isPending}>
           {t('actions.signOut')}
         </Button>
+        {logout.isError && (
+          <p role="alert" className="mt-2 text-sm text-danger">
+            {errorMessage(t, logout.error)}
+          </p>
+        )}
       </div>
     </AuthCard>
   );

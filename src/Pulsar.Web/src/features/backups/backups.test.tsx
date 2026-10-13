@@ -341,6 +341,31 @@ describe('backups tab', () => {
     expect(limits).toEqual([{ limit: 2 }]);
   });
 
+  it('does not remove the retention limit when the field holds something that is not a number', async () => {
+    const limits: unknown[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session(manager),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/backups`]: () => json({ ...list, limit: 5 }),
+      [`PUT /api/v1/servers/${serverId}/backups/settings`]: async (request) => {
+        limits.push(await request.json());
+        return json(list);
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=backups`);
+    const input = await screen.findByLabelText('Backups to keep');
+
+    // A half-typed "1e": the browser reports the value as empty, and that it cannot read what is typed.
+    Object.defineProperty(input, 'validity', { configurable: true, value: { badInput: true, valid: false } });
+    await userEvent.clear(input);
+
+    expect(screen.getByText('Type a whole number, or leave it empty to keep them all.')).toBeInTheDocument();
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await userEvent.type(input, '{Enter}');
+    expect(limits).toEqual([]);
+  });
+
   it('copies new backups to the chosen storage and shows how each copy went', async () => {
     const storageId = '0192f1a0-0000-7000-8000-0000000000e9';
     const choices: unknown[] = [];

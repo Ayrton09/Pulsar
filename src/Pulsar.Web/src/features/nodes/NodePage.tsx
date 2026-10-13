@@ -123,7 +123,9 @@ function PingButton({ nodeId }: { nodeId: string }) {
         <span role="status" className="text-xs text-muted">
           {ping.data.status === 'accepted'
             ? t('nodes.pingResult', { ms: Math.round(ping.data.roundTripMilliseconds) })
-            : t('nodes.pingRefused', { status: ping.data.status })}
+            : t('nodes.pingRefused', {
+                status: t(`servers.ackStatuses.${ping.data.status}`, { defaultValue: ping.data.status }),
+              })}
         </span>
       )}
       {ping.isError && (
@@ -184,7 +186,7 @@ function MachineCard({ node }: { node: NodeSummary }) {
               t('nodes.agentVersion', { version: inventory.agentVersion, protocol: inventory.protocolVersion }),
             ],
             [t('nodes.publicHost'), node.publicHost ?? t('common.none')],
-            [t('nodes.connection'), connection(t, node)],
+            [node.connected ? t('nodes.connection') : t('nodes.lastConnection'), connection(t, node)],
           ]}
         />
       ) : (
@@ -431,7 +433,9 @@ function AdministrationSection({
         <p role="status" className="text-sm text-muted">
           {rotate.data.status === 'accepted' || rotate.data.status === 'alreadyInState'
             ? t('nodes.rotateStarted')
-            : t('nodes.pingRefused', { status: rotate.data.status })}
+            : t('nodes.pingRefused', {
+                status: t(`servers.ackStatuses.${rotate.data.status}`, { defaultValue: rotate.data.status }),
+              })}
         </p>
       )}
       <div className="flex flex-wrap gap-2">

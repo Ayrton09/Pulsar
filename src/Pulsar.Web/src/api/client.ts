@@ -79,9 +79,14 @@ export function createApiClient(options: ApiClientOptions = {}) {
 
 export const api = createApiClient();
 
-/** Returns the data of an openapi-fetch call, or throws {@link ApiError}. */
+/**
+ * Returns the data of an openapi-fetch call, or throws {@link ApiError}. A request that never reached the panel (fetch
+ * rejects with a TypeError) is the same `http.network` error as a failed upload; a cancelled one stays an AbortError.
+ */
 export async function unwrap<T>(call: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
-  const { data, error, response } = await call;
+  const { data, error, response } = await call.catch((failure: unknown) => {
+    throw failure instanceof TypeError ? new ApiError(0, { title: 'Network error', code: 'http.network' }) : failure;
+  });
   if (!response.ok) {
     throw new ApiError(response.status, error as ConstructorParameters<typeof ApiError>[1]);
   }

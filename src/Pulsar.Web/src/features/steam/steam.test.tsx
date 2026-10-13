@@ -7,7 +7,7 @@ import type { Schemas } from '../../api/client';
 import { App } from '../../app/App';
 import { initI18n } from '../../app/i18n';
 import { routes } from '../../app/routes';
-import { adminUser, fakeApi, json, session } from '../../test/fakeApi';
+import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
 
 const serverId = '0192f1a0-0000-7000-8000-0000000000e1';
 const accountId = '0192f1a0-0000-7000-8000-0000000000b1';
@@ -126,6 +126,21 @@ describe('steam accounts', () => {
     expect(body).toEqual({ steamAccountId: accountId });
   });
 
+  it('keeps showing the account the server uses while the list loads, and says when it could not', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(host),
+      [`GET /api/v1/servers/${serverId}`]: () =>
+        json(details({ required: true, accountId, accountName: 'Servers account' })),
+      [`GET /api/v1/servers/${serverId}/settings`]: () => json(settings),
+      'GET /api/v1/steam-accounts': () => problem(500, 'unexpected'),
+    });
+    renderAt(`/servers/${serverId}?tab=settings`);
+
+    const card = await screen.findByRole('region', { name: /Steam account/ });
+    expect(await within(card).findByRole('alert')).toBeInTheDocument();
+    expect(within(card).getByLabelText('Account')).toHaveDisplayValue('Servers account');
+  });
+
   it('shows the account read-only without the right to change it', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(owner),
@@ -160,6 +175,27 @@ describe('steam accounts', () => {
     expect(retry).toBeDisabled();
     await user.type(within(prompt).getByLabelText('Steam Guard code'), '2Q');
     await user.click(retry);
+
+    await vi.waitFor(() => expect(body).toEqual({ steamGuardCode: 'F7K2Q' }));
+  });
+
+  it('sends the code in capitals, as Steam writes it, even if it was typed in lower case', async () => {
+    let body: unknown;
+    fakeApi({
+      'GET /api/v1/auth/session': session(owner),
+      [`GET /api/v1/servers/${serverId}`]: () =>
+        json(details({ required: true, accountId, accountName: 'Servers account' }, [operation({})])),
+      [`POST /api/v1/servers/${serverId}/install/steam-guard`]: async (request) => {
+        body = await request.json();
+        return json(details({ required: true, accountId, accountName: 'Servers account' }));
+      },
+    });
+    renderAt(`/servers/${serverId}`);
+    const user = userEvent.setup();
+
+    const prompt = await screen.findByRole('region', { name: 'Steam Guard' });
+    await user.type(within(prompt).getByLabelText('Steam Guard code'), 'f7k2q');
+    await user.click(within(prompt).getByRole('button', { name: 'Install again with the code' }));
 
     await vi.waitFor(() => expect(body).toEqual({ steamGuardCode: 'F7K2Q' }));
   });

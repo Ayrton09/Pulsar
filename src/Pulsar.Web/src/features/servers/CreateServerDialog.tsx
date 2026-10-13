@@ -12,7 +12,7 @@ import { useWatchNodes } from '../live/hooks';
 import { useAllocations, useNodes } from '../nodes/api';
 import { useCreateServer, useTemplate, useTemplates, type TemplateDetails, type TemplateVariable } from './api';
 import { VariableFields } from './VariableFields';
-import { initialValue, variableError, type VariableValues } from './variables';
+import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
 
 const steps = ['basics', 'settings', 'ports'] as const;
 type Step = (typeof steps)[number];
@@ -40,6 +40,7 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
   const [values, setValues] = useState<VariableValues>({});
   const [ports, setPorts] = useState<Record<string, string>>({});
   const [showErrors, setShowErrors] = useState(false);
+  const unreadable = useUnreadableNumbers();
   const template = useTemplate(templateId || undefined);
   const allocations = useAllocations(nodeId || undefined);
   const me = useCurrentUser();
@@ -51,6 +52,7 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
   const chooseTemplate = (id: string) => {
     setTemplateId(id);
     setValues({});
+    unreadable.reset();
     setPorts({});
   };
 
@@ -62,7 +64,7 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
     description: description.trim().length > 512 ? 'validation.tooLong' : null,
   };
   const settingsErrors = Object.fromEntries(
-    (details?.variables ?? []).map((v) => [v.key, variableError(v, valueOf(v))]),
+    (details?.variables ?? []).map((v) => [v.key, variableError(v, valueOf(v), false, unreadable.keys.has(v.key))]),
   ) as Record<string, string | null>;
   const stepValid = (current: Step) =>
     current === 'basics'
@@ -131,7 +133,15 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
               error={showErrors && basicsErrors.node ? t(basicsErrors.node) : undefined}
             >
               {(ids) => (
-                <Select {...ids} value={nodeId} onChange={(e) => setNodeId(e.target.value)}>
+                <Select
+                  {...ids}
+                  value={nodeId}
+                  onChange={(e) => {
+                    setNodeId(e.target.value);
+                    // The ports chosen are allocations of the node that was.
+                    setPorts({});
+                  }}
+                >
                   <option value="">{t('servers.chooseNode')}</option>
                   {connected.map((node) => (
                     <option key={node.id} value={node.id}>
@@ -195,6 +205,7 @@ export function CreateServerDialog({ onClose }: { onClose: () => void }) {
             values={Object.fromEntries(details.variables.map((v) => [v.key, valueOf(v)]))}
             onChange={(key, value) => setValues((current) => ({ ...current, [key]: value }))}
             errors={showErrors ? settingsErrors : undefined}
+            onUnreadable={unreadable.mark}
           />
         )}
 

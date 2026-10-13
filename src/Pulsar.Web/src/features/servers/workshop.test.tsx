@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Schemas } from '../../api/client';
 import { initI18n } from '../../app/i18n';
-import { fakeApi, json } from '../../test/fakeApi';
+import { fakeApi, json, problem } from '../../test/fakeApi';
 import type { TemplateVariable } from './api';
 import { VariableFields } from './VariableFields';
 import { parseWorkshopId } from './workshop';
@@ -147,6 +147,32 @@ describe('workshop editor', () => {
     expect(collection).toHaveTextContent('Survival pack is a collection of 3 items.');
     await userEvent.click(within(collection).getByRole('button', { name: 'Add its 3 items' }));
     expect(changes.at(-1)).toBe('111;444;501;502'); // 111 was there already
+  });
+
+  it('adds an item as typed when Steam cannot be asked, and marks it as not checked', async () => {
+    const changes: string[] = [];
+    fakeApi({ 'POST /api/v1/workshop/lookup': () => problem(503, 'workshop.unavailable') });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <Editor initial="" changes={changes} />
+      </QueryClientProvider>,
+    );
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Workshop items' }), '555{Enter}');
+
+    await waitFor(() => expect(changes).toEqual(['555']));
+    const list = screen.getByRole('list', { name: 'Workshop items' });
+    expect(await within(list).findByText(/Not checked on Steam/)).toBeInTheDocument();
+  });
+
+  it('tells screen readers that an item link opens a new tab', async () => {
+    renderEditor('111');
+
+    const link = await screen.findByRole('link', { name: 'True Water' });
+
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAccessibleDescription('(opens in a new tab)');
   });
 
   it('only shows the ids when the user may not change them, without asking Steam', async () => {

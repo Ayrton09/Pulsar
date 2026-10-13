@@ -6,6 +6,7 @@ import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Badge, Table, Td, Th } from '../../components/ui/Display';
 import { RefreshFailed } from '../../components/ui/RefreshFailed';
 import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
+import { commandLine } from '../../lib/commandLine';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
 import { canOnServer, Permission } from '../../lib/permissions';
@@ -380,7 +381,7 @@ function TaskDialog({ serverId, task, actions, onDone }: TaskDialogProps) {
                 value={command}
                 maxLength={MAX_COMMAND_LENGTH + 1}
                 className="font-mono"
-                onChange={(e) => setCommand(e.target.value)}
+                onChange={(e) => setCommand(commandLine(e.target.value))}
               />
             )}
           </Field>

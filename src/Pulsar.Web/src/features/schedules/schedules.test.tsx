@@ -226,6 +226,38 @@ describe('schedules tab', () => {
     expect(previews).toContain('30 5 * * * @ Europe/Madrid');
   });
 
+  it('writes a console command as one line, like the console does: a tab is a space, other control characters go', async () => {
+    const saved: unknown[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...manager,
+        permissions: [...manager.permissions, 'server.console.write'],
+      }),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET ${schedulesPath}`]: () => json({ tasks: [] }),
+      [`GET ${schedulesPath}/preview`]: () => json(preview),
+      [`POST ${schedulesPath}`]: async (request) => {
+        saved.push(await request.json());
+        return json(task(), 201);
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=schedules`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'New task' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New scheduled task' });
+    await user.type(within(dialog).getByLabelText('Name'), 'Announce');
+    await user.selectOptions(within(dialog).getByLabelText('Action'), 'consoleCommand');
+    const command = within(dialog).getByLabelText('Command');
+    await user.click(command);
+    await user.paste('say\thi\u0007 there');
+
+    expect(command).toHaveValue('say hi there');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]).toMatchObject({ action: 'consoleCommand', command: 'say hi there' });
+  });
+
   it('edits a custom schedule and shows what the panel refuses', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(manager),

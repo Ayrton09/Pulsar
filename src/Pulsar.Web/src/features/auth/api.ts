@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, unwrap, type Schemas } from '../../api/client';
+import { createContext, useContext } from 'react';
+import { ApiError, api, unwrap, type Schemas } from '../../api/client';
 
 export const sessionKey = ['session'] as const;
 
@@ -15,13 +16,21 @@ export function useSession() {
   });
 }
 
+/**
+ * The user the session guard (RequireSession) let in. It comes down from the guard rather than from the session query:
+ * when the session ends, the query's observers are told one by one, and a page below the guard that renders first
+ * (the sign-out button's own mutation just finished) would read a session without a user before the guard has
+ * unmounted it.
+ */
+export const CurrentUserContext = createContext<CurrentUser | null>(null);
+
 /** The signed-in user. Only use below the session guard, where it is always present. */
 export function useCurrentUser(): CurrentUser {
-  const { data } = useSession();
-  if (!data?.user) {
+  const user = useContext(CurrentUserContext);
+  if (!user) {
     throw new Error('useCurrentUser is only valid inside the signed-in layout.');
   }
-  return data.user;
+  return user;
 }
 
 /**
@@ -143,6 +152,8 @@ export function useLogout() {
   const identityChanged = useIdentityChange();
   return useMutation({
     mutationFn: () => unwrap(api.POST('/api/v1/auth/logout')),
-    onSettled: identityChanged,
+    onSuccess: identityChanged,
+    // A refused sign-out leaves the user signed in, and says so; a session that already ended is the same as success.
+    onError: (error) => (error instanceof ApiError && error.status === 401 ? identityChanged() : undefined),
   });
 }

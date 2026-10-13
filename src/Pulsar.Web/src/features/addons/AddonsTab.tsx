@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
@@ -120,16 +121,26 @@ function AddonCard({
 }) {
   const { t } = useTranslation();
   const formatDate = useFormatDate();
+  const noteId = useId();
   const installed = addon.installedRelease != null;
   return (
     <Card className="flex flex-col gap-3 p-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="font-semibold">
-            <a href={addon.url} target="_blank" rel="noreferrer noopener" className="hover:text-accent hover:underline">
+            <a
+              href={addon.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              aria-describedby={noteId}
+              className="hover:text-accent hover:underline"
+            >
               {addon.name}
             </a>
           </h3>
+          <span id={noteId} className="sr-only">
+            {t('common.opensInNewTab')}
+          </span>
           <p className="text-xs text-muted">{t('addons.license', { license: addon.license })}</p>
         </div>
         {installed ? (

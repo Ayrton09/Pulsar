@@ -128,6 +128,41 @@ describe('server console', () => {
     expect(consoleText()).toMatch(/lost here.*later/s);
   });
 
+  it('says so when the panel refuses to open the console, instead of leaving it blank', async () => {
+    serverApi();
+    answerNext({
+      WatchConsole: () => {
+        throw new Error('An unexpected error occurred invoking WatchConsole.');
+      },
+    });
+    await renderAt(`/servers/${server.id}?tab=console`);
+
+    expect(
+      await screen.findByText('The console could not be opened. Reload the page to try again.'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not report a console as failed when the connection dropped meanwhile', async () => {
+    serverApi();
+    let fail = true;
+    answerNext({
+      WatchConsole: () => {
+        if (fail) {
+          live.state = 'Reconnecting';
+          throw new Error('Connection lost.');
+        }
+        return { entries: [entry(1, 'back\r\n')], nodeConnected: true };
+      },
+    });
+    const live = await renderAt(`/servers/${server.id}?tab=console`);
+    await waitFor(() => expect(live.calls('WatchConsole')).toHaveLength(1));
+
+    expect(screen.queryByText(/could not be opened/)).not.toBeInTheDocument();
+    fail = false;
+    live.reconnect();
+    await waitFor(() => expect(consoleText()).toBe('back\r\n'));
+  });
+
   it('after a reconnect asks only for what came after the last entry it wrote', async () => {
     serverApi();
     answerNext({ WatchConsole: () => ({ entries: [entry(7, 'seven\r\n')], nodeConnected: true }) });

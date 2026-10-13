@@ -5,7 +5,7 @@ import { Alert, Card } from '../../components/ui/Display';
 import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatBytes } from '../../lib/format';
-import { canOnServer, Permission } from '../../lib/permissions';
+import { canOnNode, canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useAllocations } from '../nodes/api';
 import {
@@ -19,7 +19,7 @@ import {
   type ServerSettings,
 } from './api';
 import { VariableFields } from './VariableFields';
-import { initialValue, variableError, type VariableValues } from './variables';
+import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
 import { SteamAccountCard } from '../steam/SteamServerCards';
 
 /** The running operation: its stage, a progress bar when the agent reports one, and Cancel for installs and updates. */
@@ -274,11 +274,17 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
   const [autoStart, setAutoStart] = useState(settings.autoStart);
   const [restartOnCrash, setRestartOnCrash] = useState(settings.restartOnCrash);
   const [showErrors, setShowErrors] = useState(false);
+  const unreadable = useUnreadableNumbers();
 
   const errors = Object.fromEntries(
     definitions.map((v) => [
       v.key,
-      variableError(v, values[v.key] ?? '', secretsSet.has(v.key) && !clearSecrets.has(v.key)),
+      variableError(
+        v,
+        values[v.key] ?? '',
+        secretsSet.has(v.key) && !clearSecrets.has(v.key),
+        unreadable.keys.has(v.key),
+      ),
     ]),
   ) as Record<string, string | null>;
 
@@ -334,6 +340,7 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
         onChange={(key, value) => setValues((current) => ({ ...current, [key]: value }))}
         secretsSet={secretsSet}
         errors={showErrors ? errors : undefined}
+        onUnreadable={unreadable.mark}
         readOnly={(variable) => !canEdit || (!variable.userEditable && !canEditProtected)}
       />
       {canEdit && secretsSet.size > 0 && (
@@ -403,7 +410,15 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
 export function NetworkTab({ details }: { details: ServerDetails }) {
   const { t } = useTranslation();
   const me = useCurrentUser();
-  const allocations = useAllocations(details.server.nodeId);
+  // The node's allocations are for those who may list them (the API refuses anyone else).
+  const canListAllocations = canOnNode(
+    me,
+    details.server.nodeId,
+    Permission.NodeView,
+    Permission.NodeManage,
+    Permission.ServerCreate,
+  );
+  const allocations = useAllocations(canListAllocations ? details.server.nodeId : undefined);
   const save = useUpdateServerPorts();
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const { server } = details;

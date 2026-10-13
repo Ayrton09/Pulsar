@@ -397,6 +397,8 @@ function NameDialog({ serverId, directory, action, onDone }: NameDialogProps) {
 interface Upload {
   id: number;
   name: string;
+  /** The folder it goes to: the one open when it was chosen, not the one open when it is retried. */
+  directory: string;
   file: File;
   progress: number;
   state: 'uploading' | 'done' | 'failed' | 'exists';
@@ -413,16 +415,16 @@ function useUploads(serverId: string, directory: string) {
   const update = (id: number, change: Partial<Upload>) =>
     setItems((current) => current.map((item) => (item.id === id ? { ...item, ...change } : item)));
 
-  const run = (id: number, file: File, overwrite: boolean) => {
+  const run = ({ id, file, directory: target }: Upload, overwrite: boolean) => {
     queue.current = queue.current.then(async () => {
       update(id, { state: 'uploading', progress: 0, error: undefined });
       try {
-        await writeFile(serverId, joinPath(directory, file.name), file, {
+        await writeFile(serverId, joinPath(target, file.name), file, {
           createOnly: !overwrite,
           onProgress: (progress) => update(id, { progress }),
         });
         update(id, { state: 'done', progress: 1 });
-        await queryClient.invalidateQueries({ queryKey: fileKeys.listing(serverId, directory) });
+        await queryClient.invalidateQueries({ queryKey: fileKeys.listing(serverId, target) });
       } catch (error) {
         update(
           id,
@@ -433,11 +435,13 @@ function useUploads(serverId: string, directory: string) {
   };
 
   return {
-    items,
+    // A question about a name is asked in the folder it is about: elsewhere it would read as about that folder's files.
+    items: items.filter((item) => item.state !== 'exists' || item.directory === directory),
     start: (files: File[]) => {
       const added = files.map((file) => ({
         id: ++counter.current,
         name: file.name,
+        directory,
         file,
         progress: 0,
         state: 'uploading' as const,
@@ -447,10 +451,10 @@ function useUploads(serverId: string, directory: string) {
         ...added,
       ]);
       for (const item of added) {
-        run(item.id, item.file, false);
+        run(item, false);
       }
     },
-    replace: (item: Upload) => run(item.id, item.file, true),
+    replace: (item: Upload) => run(item, true),
     dismiss: (item: Upload) => setItems((current) => current.filter((other) => other.id !== item.id)),
   };
 }

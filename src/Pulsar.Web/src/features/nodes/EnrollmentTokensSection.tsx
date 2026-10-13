@@ -185,7 +185,8 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()} title={t('enrollmentTokens.create')}>
+    // Not while the token is being created: the dialog going away would lose its one-time value.
+    <Dialog open onOpenChange={(open) => !open && !create.isPending && onClose()} title={t('enrollmentTokens.create')}>
       <form onSubmit={submit} className="space-y-4" noValidate>
         {create.isError && <Alert>{errorMessage(t, create.error)}</Alert>}
         <Field label={t('enrollmentTokens.name')} hint={t('enrollmentTokens.nameHint')}>
@@ -219,7 +220,7 @@ function CreateTokenDialog({ onClose }: { onClose: () => void }) {
           {requireApproval ? t('enrollmentTokens.requireApprovalHint') : t('enrollmentTokens.noApprovalWarning')}
         </p>
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" disabled={create.isPending} onClick={onClose}>
             {t('actions.cancel')}
           </Button>
           <Button type="submit" busy={create.isPending} disabled={name.trim() === ''}>

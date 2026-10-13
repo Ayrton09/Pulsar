@@ -334,6 +334,55 @@ describe('database hosts page', () => {
     await vi.waitFor(() => expect(bodies).toMatchObject([{ host: 'db.example.com', requireTls: false }]));
   });
 
+  it('recomputes the TLS default when the address of an edited host moves outside the local network, until the box is touched', async () => {
+    const bodies: unknown[] = [];
+    const host: Schemas['DatabaseHostView'] = {
+      id: hostId,
+      name: 'LAN MariaDB',
+      host: '10.0.0.5',
+      port: 3306,
+      userName: 'pulsar',
+      serverAddress: null,
+      serverPort: null,
+      userHost: '%',
+      nodeIds: [],
+      requireTls: false,
+      databases: 0,
+      createdAt: '2026-10-09T12:00:00Z',
+      updatedAt: '2026-10-09T12:00:00Z',
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['settings.manage'] }),
+      'GET /api/v1/nodes': () => json([]),
+      'GET /api/v1/database-hosts': () => json({ hosts: [host] }),
+      [`PUT /api/v1/database-hosts/${hostId}`]: async (request) => {
+        bodies.push(await request.json());
+        return json(host);
+      },
+    });
+    renderAt('/admin/database-hosts');
+    const user = userEvent.setup();
+
+    await screen.findByRole('table', { name: 'Database hosts' });
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit database host' });
+    const tls = within(dialog).getByRole('checkbox', { name: 'Require TLS' });
+    expect(tls).not.toBeChecked();
+
+    // Untouched: it follows the address, as when adding.
+    await user.clear(within(dialog).getByLabelText('Address'));
+    await user.type(within(dialog).getByLabelText('Address'), 'db.example.com');
+    expect(tls).toBeChecked();
+
+    // A choice made is kept.
+    await user.click(tls);
+    await user.clear(within(dialog).getByLabelText('Address'));
+    await user.type(within(dialog).getByLabelText('Address'), 'other.example.com');
+    expect(tls).not.toBeChecked();
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await vi.waitFor(() => expect(bodies).toMatchObject([{ host: 'other.example.com', requireTls: false }]));
+  });
+
   it('says when the nodes cannot be listed, and what the host then applies to', async () => {
     const host: Schemas['DatabaseHostView'] = {
       id: hostId,

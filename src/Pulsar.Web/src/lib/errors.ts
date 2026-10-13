@@ -5,7 +5,9 @@ import { ApiError } from '../api/client';
 export function errorMessage(t: TFunction, error: unknown): string {
   if (error instanceof ApiError) {
     // Some messages carry the specifics (which variable, which manifest error): translations can show them as {{detail}}.
-    return t(`errors.${error.code}`, { defaultValue: error.message, detail: error.message });
+    // A status with no code of its own (an unhandled exception in the panel) has only the server's English title.
+    const fallback = /^http\.\d+$/.test(error.code) ? t('errors.unexpected') : error.message;
+    return t(`errors.${error.code}`, { defaultValue: fallback, detail: error.message });
   }
   return t('errors.unexpected');
 }

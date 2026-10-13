@@ -65,7 +65,15 @@ const pages: RouteObject[] = [
               const { NodesPage } = await import('../features/nodes/NodesPage');
               return {
                 element: (
-                  <RequirePermission anyOf={[Permission.NodeView, Permission.NodeManage]}>
+                  // The page also holds sections with their own rights: reusable tokens, panel keys, agent connections.
+                  <RequirePermission
+                    anyOf={[
+                      Permission.NodeView,
+                      Permission.NodeManage,
+                      Permission.NodeCredentialsManage,
+                      Permission.SettingsManage,
+                    ]}
+                  >
                     <NodesPage />
                   </RequirePermission>
                 ),

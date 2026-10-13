@@ -92,4 +92,48 @@ describe('API keys', () => {
     expect(await screen.findByText('You have no API keys.')).toBeInTheDocument();
     expect(revoked).not.toBeNull();
   });
+
+  it('stays open while the key is being created, so its value is not lost', async () => {
+    let finish: (() => void) | undefined;
+    fakeApi({
+      'GET /api/v1/auth/session': session(adminUser),
+      'GET /api/v1/auth/two-factor': () => json({ enabled: false, required: false, recoveryCodesLeft: 0 }),
+      'GET /api/v1/permissions': () => json(catalog),
+      'GET /api/v1/account/api-keys': () => json([]),
+      'POST /api/v1/account/api-keys': () =>
+        new Promise<Response>((resolve) => {
+          finish = () =>
+            resolve(
+              json(
+                {
+                  key: {
+                    id: '0192f1a0-0000-7000-8000-0000000000k1',
+                    name: 'Bot',
+                    prefix: value.slice(0, 13),
+                    permissions: null,
+                    createdAt: '2026-10-05T12:00:00Z',
+                    expiresAt: null,
+                    lastUsedAt: null,
+                  },
+                  value,
+                },
+                201,
+              ),
+            );
+        }),
+    });
+    renderAt('/account');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Create key' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('Name'), 'Bot');
+    await user.click(within(dialog).getByRole('button', { name: 'Create key' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    finish?.();
+    expect(await within(dialog).findByLabelText('API key')).toHaveTextContent(value);
+  });
 });

@@ -395,8 +395,10 @@ function CreateBackupDialog({ serverId, running, onDone }: { serverId: string; r
 function RetentionCard({ limit, save }: { limit: number | null; save: ReturnType<typeof useBackupLimit> }) {
   const { t } = useTranslation();
   const [value, setValue] = useState(limit === null ? '' : String(limit));
+  // What the browser cannot read as a number ("1e") it reports as empty, which would keep every backup: refused instead.
+  const [unreadable, setUnreadable] = useState(false);
   const parsed = value.trim() === '' ? null : Number(value);
-  const invalid = parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_LIMIT);
+  const invalid = unreadable || (parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_LIMIT));
   const changed = parsed !== limit;
 
   const submit = (event: FormEvent) => {
@@ -417,7 +419,13 @@ function RetentionCard({ limit, save }: { limit: number | null; save: ReturnType
         <div className="w-48">
           <Field
             label={t('backups.retention.keep')}
-            error={invalid ? t('backups.retention.invalid', { max: MAX_LIMIT }) : undefined}
+            error={
+              unreadable
+                ? t('backups.retention.notANumber')
+                : invalid
+                  ? t('backups.retention.invalid', { max: MAX_LIMIT })
+                  : undefined
+            }
           >
             {(control) => (
               <Input
@@ -428,7 +436,10 @@ function RetentionCard({ limit, save }: { limit: number | null; save: ReturnType
                 max={MAX_LIMIT}
                 placeholder={t('backups.retention.all')}
                 value={value}
-                onChange={(e) => setValue(e.target.value)}
+                onChange={(e) => {
+                  setValue(e.target.value);
+                  setUnreadable(e.target.validity.badInput);
+                }}
               />
             )}
           </Field>

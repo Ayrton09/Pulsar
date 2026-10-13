@@ -42,6 +42,11 @@ describe('safeReturnTo', () => {
     ['//evil.example', '/'],
     ['/\\evil.example', '/'],
     ['https://evil.example', '/'],
+    // Browsers strip tabs and line breaks from a URL: "/<tab>/evil.example" becomes "//evil.example".
+    ['/\t/evil.example', '/'],
+    ['/\n/evil.example', '/'],
+    ['/\r/evil.example', '/'],
+    ['/\t\\evil.example', '/'],
     [null, '/'],
   ])('maps %s to %s', (value, expected) => {
     expect(safeReturnTo(value)).toBe(expected);

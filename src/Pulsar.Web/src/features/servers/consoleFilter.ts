@@ -12,9 +12,9 @@ type Sequence =
 
 /**
  * What a game writes, made safe for the console view (docs/architecture/07, "Console"): text, line breaks, tabs,
- * colours (SGR) and web links (OSC 8) go through; every other control character or sequence (clearing the screen or
- * the scrollback, the alternate screen, cursor moves, a reset, titles) is dropped, so player or game text cannot wipe
- * or rewrite what the admin reads. A carriage return without a line break would let later text overwrite its row: it
+ * colours (SGR) go through; every other control character or sequence (clearing the screen or the scrollback, the
+ * alternate screen, cursor moves, a reset, titles, hyperlinks: their text stays, their target does not) is dropped, so
+ * player or game text cannot wipe or rewrite what the admin reads. A carriage return without a line break would let later text overwrite its row: it
  * becomes a line break. A pseudo console ends rows with a move to the start of the next one instead of a line break:
  * such a move becomes a line break (after text only, as the agent reads it). A sequence split between two chunks is
  * held until the rest arrives; one that never ends (too long, or a string cut by a line break) is dropped and replaced
@@ -75,8 +75,8 @@ export class ConsoleFilter {
       return sequence.cut ? dropped : '';
     }
     if (sequence.kind === 'osc') {
-      // Hyperlinks only: the terminal's link handler opens web links and nothing else.
-      return sequence.body.startsWith('8;') ? `${ESC}]${sequence.body}${ESC}\\` : '';
+      // Hyperlinks (OSC 8) too: the reader cannot see where they lead, and the text is the game's to word.
+      return '';
     }
     if (sequence.final === 'm' && /^[0-9;:]*$/.test(sequence.params)) {
       return `${ESC}[${sequence.params}m`;

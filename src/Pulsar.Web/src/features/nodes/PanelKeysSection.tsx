@@ -22,6 +22,22 @@ export function PanelKeysSection() {
   const keys = data?.keys.filter((k) => k.status !== 'retired') ?? [];
   const retiring = keys.find((k) => k.status === 'retiring');
 
+  // The question counts the nodes as they are now: one may have connected with only the old key since the page loaded.
+  const askToRetire = async (keyId: string) => {
+    const fresh = await overview.refetch();
+    if (
+      fresh.data &&
+      window.confirm(
+        t('panelKeys.retireConfirm', {
+          outdated: fresh.data.nodesOutdated,
+          unknown: fresh.data.nodesUnknown,
+        }),
+      )
+    ) {
+      retire.mutate(keyId);
+    }
+  };
+
   return (
     <section className="mt-10">
       <h2 className="mb-1 text-lg font-semibold">{t('panelKeys.title')}</h2>
@@ -53,12 +69,8 @@ export function PanelKeysSection() {
             {retiring ? (
               <Button
                 variant="secondary"
-                busy={retire.isPending}
-                onClick={() =>
-                  window.confirm(
-                    t('panelKeys.retireConfirm', { outdated: data.nodesOutdated, unknown: data.nodesUnknown }),
-                  ) && retire.mutate(retiring.keyId)
-                }
+                busy={retire.isPending || overview.isFetching}
+                onClick={() => void askToRetire(retiring.keyId)}
               >
                 {t('panelKeys.retire')}
               </Button>

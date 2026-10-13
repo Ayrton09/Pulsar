@@ -4,6 +4,7 @@
     "none": "None",
     "never": "Never",
     "actions": "Actions",
+    "opensInNewTab": "(opens in a new tab)",
     "refreshFailed": "Could not refresh; showing what was loaded before. {{error}}"
   },
   "actions": {
@@ -875,6 +876,7 @@
       "selectAll": "Select all"
     },
     "connection": "Connection",
+    "lastConnection": "Last connection",
     "connectionCertificate": "Client certificate (node key)",
     "connectionToken": "Session token only",
     "connectionTokenOldAgent": "Session token only: update the agent to use a client certificate",
@@ -1025,7 +1027,8 @@
       "secretSet": "A value is set; type a new one to replace it.",
       "protected": "Only users who can edit server settings can change it.",
       "unset": "Not set",
-      "outOfRange": "Out of the allowed range."
+      "outOfRange": "Out of the allowed range.",
+      "notANumber": "Type a whole number."
     },
     "workshop": {
       "empty": "No Workshop items.",
@@ -1036,6 +1039,7 @@
       "invalid": "That is not a Workshop id or link.",
       "duplicate": "That item is in the list already.",
       "tooMany": "This setting cannot hold more items.",
+      "notChecked": "Not checked on Steam",
       "notFound": "Steam does not know it (removed, private or another id)",
       "otherGame": "It is not in this game's Workshop",
       "isCollection": "a collection: add its items instead",
@@ -1100,6 +1104,7 @@
       "dropped": "a sequence that never ended was dropped here",
       "reconnecting": "Live updates stopped; reconnecting… The output resumes where it stopped.",
       "refused": "You can't watch this console.",
+      "failed": "The console could not be opened. Reload the page to try again.",
       "nodeOffline": "The node is offline: no output until it reconnects.",
       "search": "Search the console",
       "previous": "Previous",
@@ -1265,7 +1270,7 @@
       "reload": "Reload",
       "overwrite": "Overwrite",
       "tooLarge": "This file is larger than 1 MB: download it instead.",
-      "binary": "This file is not text: download it instead.",
+      "binary": "This file is not UTF-8 text, so it cannot be edited here: download it instead.",
       "mixedEndings": "This file mixes Windows and Unix line endings, and saving it here would change them: it is shown read only. Download it to edit it.",
       "tabHint": "Tab indents. To leave the editor with the keyboard, press Esc and then Tab, or Ctrl+M (Shift+Alt+M on a Mac) to make Tab move the focus."
     },
@@ -1363,6 +1368,7 @@
       "keep": "Backups to keep",
       "all": "All",
       "invalid": "A whole number from 1 to {{max}}, or empty to keep them all.",
+      "notANumber": "Type a whole number, or leave it empty to keep them all.",
       "confirm_one": "Keep only the newest backup? Older unlocked ones are deleted now.",
       "confirm_other": "Keep only the {{count}} newest backups? Older unlocked ones are deleted now.",
       "saved": "Saved."
@@ -1549,8 +1555,6 @@
     },
     "servers": "Servers",
     "allServers": "All servers",
-    "someServers_one": "{{count}} server",
-    "someServers_other": "{{count}} servers",
     "onlySomeServers": "Only some servers",
     "serversHint": "Server events only for the chosen servers. Node events go to every channel that wants them.",
     "language": "Language",

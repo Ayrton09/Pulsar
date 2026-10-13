@@ -9,7 +9,7 @@ import { Alert, Card, PageHeader, Table, Td, Th } from '../../components/ui/Disp
 import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage, fieldErrors } from '../../lib/errors';
 import { useFormatDate, useFormatGigabytes } from '../../lib/format';
-import { can, Permission } from '../../lib/permissions';
+import { can, canAnywhere, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useWatchNodes } from '../live/hooks';
 import { useApproveNodes, useCreateNode, useNodes, type CreatedNode, type NodeSummary } from './api';
@@ -22,8 +22,10 @@ import { PanelKeysSection } from './PanelKeysSection';
 export function NodesPage() {
   const { t } = useTranslation();
   const me = useCurrentUser();
-  const nodes = useNodes();
-  useWatchNodes();
+  // The page also serves those who only manage reusable tokens or settings: the node list is for node.view/node.manage.
+  const canList = canAnywhere(me, Permission.NodeView, Permission.NodeManage);
+  const nodes = useNodes(canList);
+  useWatchNodes(canList);
   const formatDate = useFormatDate();
   const formatGigabytes = useFormatGigabytes();
   const [creating, setCreating] = useState(false);
@@ -36,7 +38,7 @@ export function NodesPage() {
         description={t('nodes.description')}
         actions={canManage && <Button onClick={() => setCreating(true)}>{t('nodes.create')}</Button>}
       />
-      {nodes.isPending && <Spinner label={t('common.loading')} />}
+      {canList && nodes.isPending && <Spinner label={t('common.loading')} />}
       {nodes.isError && <Alert>{errorMessage(t, nodes.error)}</Alert>}
       {canManage && nodes.data && <ApprovalCard nodes={nodes.data.filter((n) => n.status === 'pendingApproval')} />}
       {nodes.data?.length === 0 && (
@@ -229,7 +231,8 @@ function CreateNodeDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()} title={t('nodes.create')}>
+    // Not while the node is being created: the dialog going away would lose its one-time command.
+    <Dialog open onOpenChange={(open) => !open && !create.isPending && onClose()} title={t('nodes.create')}>
       <form onSubmit={(e) => void onSubmit(e)} className="space-y-4" noValidate>
         {create.isError && <Alert>{errorMessage(t, create.error)}</Alert>}
         <Field label={t('nodes.name')} hint={t('nodes.nameHint')} error={message('name')}>
@@ -242,7 +245,7 @@ function CreateNodeDialog({ onClose }: { onClose: () => void }) {
           {(ids) => <Input {...ids} {...register('publicHost')} autoComplete="off" placeholder="play.example.com" />}
         </Field>
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" disabled={create.isPending} onClick={onClose}>
             {t('actions.cancel')}
           </Button>
           <Button type="submit" busy={create.isPending}>

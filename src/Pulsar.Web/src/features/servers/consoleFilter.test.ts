@@ -4,11 +4,20 @@ import { ConsoleFilter } from './consoleFilter';
 const ESC = '\x1b';
 
 describe('ConsoleFilter', () => {
-  it('keeps text, colours, line breaks and links', () => {
+  it('keeps text, colours and line breaks', () => {
     const filter = new ConsoleFilter();
-    const text = `${ESC}[1;31mError${ESC}[0m: disk\tfull\r\n${ESC}]8;;https://example.com${ESC}\\site${ESC}]8;;${ESC}\\\n`;
+    const text = `${ESC}[1;31mError${ESC}[0m: disk\tfull\r\nnext\n`;
 
     expect(filter.push(text)).toBe(text);
+  });
+
+  it('drops hyperlinks (OSC 8) and keeps their text: the reader cannot see where they lead', () => {
+    const filter = new ConsoleFilter();
+
+    expect(filter.push(`see ${ESC}]8;;https://evil.example${ESC}\\Server rules${ESC}]8;;${ESC}\\!\n`)).toBe(
+      'see Server rules!\n',
+    );
+    expect(filter.push(`${ESC}]8;id=1;https://evil.example\x07click${ESC}]8;;\x07\n`)).toBe('click\n');
   });
 
   it('drops what could clear or rewrite what the admin reads', () => {

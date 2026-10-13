@@ -11,8 +11,9 @@ export const MAX_EDITABLE_BYTES = 1024 * 1024;
 // Not under the servers' keys: the live channel refreshes those at every change of the server, and listing a folder
 // asks the node.
 export const fileKeys = {
-  all: (serverId: string) => ['serverFiles', serverId] as const,
-  listing: (serverId: string, path: string) => ['serverFiles', serverId, path] as const,
+  everyServer: ['serverFiles'] as const,
+  all: (serverId: string) => [...fileKeys.everyServer, serverId] as const,
+  listing: (serverId: string, path: string) => [...fileKeys.all(serverId), path] as const,
 };
 
 /** A directory of the server ('' is the server directory). Not live: refreshed after changes made here, or on demand. */

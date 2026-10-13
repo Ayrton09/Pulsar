@@ -37,6 +37,7 @@ export function SteamAccountCard({ details }: { details: ServerDetails }) {
           </p>
         </div>
         {save.isError && <Alert>{errorMessage(t, save.error)}</Alert>}
+        {accounts.isError && <Alert>{errorMessage(t, accounts.error)}</Alert>}
         {save.isSuccess && (
           <p role="status" className="text-sm text-success">
             {t('servers.steam.saved')}
@@ -55,6 +56,10 @@ export function SteamAccountCard({ details }: { details: ServerDetails }) {
                 {(ids) => (
                   <Select {...ids} value={chosen} onChange={(e) => setChosen(e.target.value)}>
                     <option value="">{t('servers.steam.anonymous')}</option>
+                    {/* The account in use is always there: the list may still be loading, or have failed. */}
+                    {steam.accountId && !accounts.data?.accounts.some((a) => a.id === steam.accountId) && (
+                      <option value={steam.accountId}>{steam.accountName ?? steam.accountId}</option>
+                    )}
                     {accounts.data?.accounts.map((account) => (
                       <option key={account.id} value={account.id}>
                         {account.name} ({account.userName})
@@ -104,7 +109,7 @@ export function SteamGuardPrompt({ details }: { details: ServerDetails }) {
     event.preventDefault();
     if (valid) {
       retry.mutate(
-        { id: server.id, kind, code: code.trim(), validate: kind === 'update' && validate },
+        { id: server.id, kind, code: code.trim().toUpperCase(), validate: kind === 'update' && validate },
         { onSuccess: () => setCode('') },
       );
     }

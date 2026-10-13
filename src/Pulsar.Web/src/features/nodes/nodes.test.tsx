@@ -9,6 +9,7 @@ import { initI18n } from '../../app/i18n';
 import { routes } from '../../app/routes';
 import { parseTimeSpan } from '../../lib/format';
 import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
+import { connections, openedConnection } from '../../test/fakeSignalR';
 import { nodeKeys } from './api';
 import { enrollCommand, msiCommand, nodeState } from './nodeStatus';
 
@@ -209,6 +210,125 @@ describe('nodes page', () => {
 
     expect(await screen.findByRole('table', { name: 'Nodes' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add node' })).not.toBeInTheDocument();
+  });
+});
+
+describe('creating while the request is pending', () => {
+  it('keeps the node dialog open until its one-time command arrives', async () => {
+    let finish: (() => void) | undefined;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/nodes': () => json([]),
+      'POST /api/v1/nodes': () =>
+        new Promise<Response>((resolve) => {
+          finish = () =>
+            resolve(
+              json(
+                {
+                  node: { ...pending, name: 'Córdoba 1' },
+                  enrollment: {
+                    token: 'one-time-token',
+                    expiresAt: '2026-10-01T12:30:00Z',
+                    panelKeyFingerprint: 'sha256:k',
+                  },
+                },
+                201,
+              ),
+            );
+        }),
+    });
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Add node' }));
+    await user.type(screen.getByLabelText('Name'), 'Córdoba 1');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    finish?.();
+    expect(await screen.findByLabelText('Enrollment command')).toHaveTextContent('-Token one-time-token');
+  });
+
+  it('keeps the reusable token dialog open until its one-time token arrives', async () => {
+    let finish: (() => void) | undefined;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/nodes': () => json([online]),
+      'POST /api/v1/enrollment-tokens': () =>
+        new Promise<Response>((resolve) => {
+          finish = () =>
+            resolve(
+              json(
+                {
+                  token: {
+                    id: '0192f1a0-0000-7000-8000-0000000000e1',
+                    name: 'Intune rollout',
+                    tokenPrefix: 'pulsar_enroll_abcdef',
+                    maxUses: 10,
+                    uses: 0,
+                    requireApproval: true,
+                    createdAt: '2026-10-09T12:00:00Z',
+                    expiresAt: '2026-10-16T12:00:00Z',
+                    lastUsedAt: null,
+                    revokedAt: null,
+                    usable: true,
+                  },
+                  value: 'pulsar_enroll_abcdef-secret',
+                  panelKeyFingerprint: 'sha256:panel-key',
+                  agentPackage: 'pulsar-agent-1.0.0-windows-x64.msi',
+                },
+                201,
+              ),
+            );
+        }),
+    });
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Create token' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Create token' });
+    await user.type(within(dialog).getByLabelText('Name'), 'Intune rollout');
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    finish?.();
+    expect(await screen.findByLabelText('Agent MSI (Intune, group policy)')).toHaveTextContent(
+      'pulsar_enroll_abcdef-secret',
+    );
+  });
+});
+
+describe('who reaches the nodes page', () => {
+  const requested = (api: ReturnType<typeof fakeApi>) =>
+    api.mock.calls.map(([input]) => new URL(input instanceof Request ? input.url : String(input)).pathname);
+
+  it('opens for those who only manage settings, with the panel keys and agent connections but no node list', async () => {
+    const api = fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['settings.manage'] }),
+      'GET /api/v1/panel-keys': () => json({ keys: [], nodes: 0, nodesOutdated: 0, nodesUnknown: 0 }),
+      'GET /api/v1/agent-transport': () => json(transport({})),
+    });
+    renderAt('/nodes');
+
+    expect(await screen.findByRole('heading', { name: 'Agent connections' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Nodes' })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Nodes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add node' })).not.toBeInTheDocument();
+    expect(requested(api)).not.toContain('/api/v1/nodes');
+  });
+
+  it('opens for those who only manage node credentials, with the reusable tokens', async () => {
+    const api = fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['node.credentials.manage'] }),
+    });
+    renderAt('/nodes');
+
+    expect(await screen.findByRole('button', { name: 'Create token' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Nodes' })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Nodes' })).not.toBeInTheDocument();
+    expect(requested(api)).not.toContain('/api/v1/nodes');
   });
 });
 
@@ -496,6 +616,32 @@ describe('node page', () => {
     expect(await screen.findByText('Answered in 42 ms')).toBeInTheDocument();
   });
 
+  it('says in words why the agent refused a ping', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/nodes/${online.id}`]: () => json({ node: online, credentials: [credential] }),
+      [`POST /api/v1/nodes/${online.id}/ping`]: () => json({ status: 'unsupportedCommand', roundTripMilliseconds: 0 }),
+    });
+    renderAt(`/nodes/${online.id}`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Test connection' }));
+
+    expect(await screen.findByText('The agent refused the command (unknown command)')).toBeInTheDocument();
+  });
+
+  it('calls how an offline agent connected its last connection', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/nodes/${online.id}`]: () =>
+        json({ node: { ...online, connected: false, connectedWithCertificate: true }, credentials: [credential] }),
+    });
+    renderAt(`/nodes/${online.id}`);
+
+    expect(await screen.findByText('Last connection')).toBeInTheDocument();
+    expect(screen.queryByText('Connection')).not.toBeInTheDocument();
+  });
+
   it('revokes a credential with a reason', async () => {
     let body: unknown;
     fakeApi({
@@ -557,6 +703,21 @@ describe('node page', () => {
 });
 
 describe('key rotation', () => {
+  it('says in words why the agent refused a key rotation', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/nodes/${online.id}`]: () => json({ node: online, credentials: [credential] }),
+      [`POST /api/v1/nodes/${online.id}/credentials/rotate`]: () =>
+        json({ status: 'unsupportedCommand', errorCode: null }),
+    });
+    renderAt(`/nodes/${online.id}`);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Rotate key' }));
+
+    expect(await screen.findByText('The agent refused the command (unknown command)')).toBeInTheDocument();
+  });
+
   it('asks a connected agent to rotate its key', async () => {
     let asked = false;
     fakeApi({
@@ -635,6 +796,77 @@ describe('key rotation', () => {
   });
 });
 
+describe('what depends on the nodes', () => {
+  const admin = { ...operator, permissions: [...operator.permissions, 'settings.manage'] };
+  const key = (keyId: string, status: Schemas['PanelSigningKeyStatus'], nodesTrusting: number) => ({
+    keyId,
+    status,
+    createdAt: '2026-09-01T12:00:00Z',
+    retiredAt: null,
+    nodesTrusting,
+  });
+  const retiring = (nodesOutdated: number) => ({
+    keys: [key('sha256:new', 'active', 2 - nodesOutdated), key('sha256:old', 'retiring', 2)],
+    nodes: 2,
+    nodesOutdated,
+    nodesUnknown: 0,
+  });
+
+  it('fetches the panel keys and the reusable tokens again when the nodes change', async () => {
+    const asked = { keys: 0, tokens: 0 };
+    fakeApi({
+      'GET /api/v1/auth/session': session(admin),
+      'GET /api/v1/nodes': () => json([online]),
+      'GET /api/v1/panel-keys': () => {
+        asked.keys++;
+        return json(retiring(0));
+      },
+      'GET /api/v1/enrollment-tokens': () => {
+        asked.tokens++;
+        return json([]);
+      },
+      'GET /api/v1/agent-transport': () => json(transport({})),
+    });
+    const before = connections.length;
+    renderAt('/nodes');
+    const live = await openedConnection(before);
+    await screen.findByText('Being retired');
+    const first = { ...asked };
+
+    live.emit('NodesChanged', [online.id]);
+
+    await vi.waitFor(() => expect(asked.keys).toBeGreaterThan(first.keys));
+    expect(asked.tokens).toBeGreaterThan(first.tokens);
+  });
+
+  it('counts the nodes that still trust only the old key when asking to retire it, not as the page last saw them', async () => {
+    let outdated = 0;
+    let retired = false;
+    fakeApi({
+      'GET /api/v1/auth/session': session(admin),
+      'GET /api/v1/nodes': () => json([online]),
+      'GET /api/v1/panel-keys': () => json(retiring(outdated)),
+      'POST /api/v1/panel-keys/sha256%3Aold/retire': () => {
+        retired = true;
+        return json(retiring(0));
+      },
+      'GET /api/v1/agent-transport': () => json(transport({})),
+    });
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    renderAt('/nodes');
+    const user = userEvent.setup();
+    const retire = await screen.findByRole('button', { name: 'Retire old key' });
+
+    outdated = 1; // a node connected meanwhile with only the old key
+    await user.click(retire);
+
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledOnce());
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('(1 outdated, 0 unknown)'));
+    expect(retired).toBe(false);
+  });
+});
+
 function transport(overrides: Partial<Schemas['AgentTransportOverview']>): Schemas['AgentTransportOverview'] {
   return {
     endpointConfigured: true,
@@ -683,6 +915,33 @@ describe('agent connections', () => {
     expect(await screen.findByText('Certificates required')).toBeInTheDocument();
     expect(put).toHaveBeenCalledOnce();
     expect(screen.getByRole('button', { name: 'Stop requiring them' })).toBeInTheDocument();
+  });
+
+  it('counts the nodes without a certificate when asking to require them, not as the page last saw them', async () => {
+    let waiting = transport({});
+    const confirm = vi.fn(() => false);
+    fakeApi({
+      'GET /api/v1/auth/session': session(admin),
+      'GET /api/v1/nodes': () => json([online]),
+      'GET /api/v1/panel-keys': () => json({ keys: [], nodes: 1, nodesOutdated: 0, nodesUnknown: 0 }),
+      'GET /api/v1/agent-transport': () => json(waiting),
+    });
+    vi.stubGlobal('confirm', confirm);
+    renderAt('/nodes');
+    const user = userEvent.setup();
+    const require = await screen.findByRole('button', { name: 'Require client certificates' });
+
+    // A node connected without a certificate after the page loaded.
+    waiting = transport({
+      nodesWithoutCertificateCount: 1,
+      nodesWithoutCertificate: [
+        { id: online.id, name: 'Buenos Aires 1', connected: true, agentCanUseCertificate: true },
+      ],
+    });
+    await user.click(require);
+
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledOnce());
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('1 node still connects without a certificate'));
   });
 
   it('says how to add an agents address when the panel has none', async () => {

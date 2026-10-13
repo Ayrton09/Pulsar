@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Display';
 import { Input } from '../../components/ui/Form';
+import { commandLine } from '../../lib/commandLine';
 import { errorMessage } from '../../lib/errors';
 import { canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
@@ -47,8 +48,6 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
       fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace',
       fontSize: 13,
       theme: { background: '#0b0f14', foreground: '#d6dde6' },
-      // Links written by the game (OSC 8) open only when they are web links, never in this tab.
-      linkHandler: { activate: (_event, uri) => openWebLink(uri), allowNonHttpProtocols: false },
     });
     const fit = new FitAddon();
     const finder = new SearchAddon();
@@ -82,7 +81,7 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
         if (entry.isGap) {
           filter.reset();
         }
-        // Game output is filtered: only text, colours and links reach the terminal (no clearing or cursor moves).
+        // Game output is filtered: only text and colours reach the terminal (no clearing or cursor moves).
         terminal.current?.write(
           entry.isGap ? `\r\n\x1b[2m—— ${t('servers.console.gap')} ——\x1b[0m\r\n` : filter.push(entry.text, dropped),
         );
@@ -97,6 +96,7 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
     <section aria-label={t('servers.console.title')} className="space-y-3">
       {status === 'reconnecting' && <Alert>{t('servers.console.reconnecting')}</Alert>}
       {stream.refused && <Alert>{t('servers.console.refused')}</Alert>}
+      {stream.failed && <Alert>{t('servers.console.failed')}</Alert>}
       {!server.nodeConnected && <p className="text-sm text-muted">{t('servers.console.nodeOffline')}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <Input
@@ -137,15 +137,6 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
       )}
     </section>
   );
-}
-
-/**
- * A command is one line without control characters (the panel refuses them): a pasted tab becomes a space, other
- * control characters are dropped.
- */
-function commandLine(text: string): string {
-  // eslint-disable-next-line no-control-regex
-  return text.replace(/\t/g, ' ').replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
 }
 
 /** The command field: Enter sends, ↑/↓ walk through what was sent before (this page only). */

@@ -11,12 +11,22 @@ interface VariableFieldsProps {
   /** Secret variables that already have a value (it is never sent to the browser). */
   secretsSet?: ReadonlySet<string> | undefined;
   errors?: Record<string, string | null> | undefined;
+  /** Told when an integer field holds text the browser cannot read as a number (it reports the value as empty). */
+  onUnreadable?: ((key: string, unreadable: boolean) => void) | undefined;
   /** Variables the user may not change (not user editable, without server.settings.edit). */
   readOnly?: ((variable: TemplateVariable) => boolean) | undefined;
 }
 
 /** One field per manifest variable, typed as the manifest says (docs/architecture/04, "Variables"). */
-export function VariableFields({ variables, values, onChange, secretsSet, errors, readOnly }: VariableFieldsProps) {
+export function VariableFields({
+  variables,
+  values,
+  onChange,
+  secretsSet,
+  errors,
+  onUnreadable,
+  readOnly,
+}: VariableFieldsProps) {
   const { t } = useTranslation();
   if (variables.length === 0) {
     return <p className="text-sm text-muted">{t('servers.variables.none')}</p>;
@@ -91,7 +101,12 @@ export function VariableFields({ variables, values, onChange, secretsSet, errors
                   placeholder={variable.secret && secretsSet?.has(variable.key) ? '••••••••' : (variable.default ?? '')}
                   value={value}
                   disabled={disabled}
-                  onChange={(e) => onChange(variable.key, e.target.value)}
+                  onChange={(e) => {
+                    onChange(variable.key, e.target.value);
+                    if (variable.type === 'integer') {
+                      onUnreadable?.(variable.key, e.target.validity.badInput);
+                    }
+                  }}
                 />
               )
             }

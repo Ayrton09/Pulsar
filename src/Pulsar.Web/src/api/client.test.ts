@@ -71,4 +71,24 @@ describe('api client', () => {
 
     expect(error.errors).toEqual({ password: ['Too short'] });
   });
+
+  it('reports a request that never reached the panel as a network error', async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new TypeError('Failed to fetch')));
+    const client = createApiClient({ baseUrl: 'http://panel.test', fetch: fetchMock as unknown as typeof fetch });
+
+    const error = await unwrap(client.GET('/api/v1/auth/session')).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 0, code: 'http.network' });
+  });
+
+  it('lets a cancelled request stay cancelled', async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new DOMException('Aborted', 'AbortError')));
+    const client = createApiClient({ baseUrl: 'http://panel.test', fetch: fetchMock as unknown as typeof fetch });
+
+    const error = await unwrap(client.GET('/api/v1/auth/session')).catch((e: unknown) => e);
+
+    expect(error).not.toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ name: 'AbortError' });
+  });
 });

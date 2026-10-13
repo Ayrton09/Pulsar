@@ -155,8 +155,12 @@ function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void 
     });
 
   const onSubmit = handleSubmit(({ name, description, scope: chosen }) => {
+    // Without the catalog every permission would be dropped: the role would be saved empty.
+    if (!catalog.data) {
+      return;
+    }
     // Only permissions valid for the chosen scope are sent (switching scope may leave others selected).
-    const permissions = (catalog.data ?? [])
+    const permissions = catalog.data
       .filter((p) => selected.has(p.key) && p.grantableScopes.includes(chosen))
       .map((p) => p.key);
     const body = { name, description: description || null, permissions };
@@ -199,6 +203,16 @@ function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void 
         <fieldset className="space-y-3">
           <legend className="text-sm font-medium">{t('roles.permissions')}</legend>
           {catalog.isPending && <Spinner label={t('common.loading')} />}
+          {catalog.isError && (
+            <Alert>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>{errorMessage(t, catalog.error)}</span>
+                <Button variant="secondary" size="sm" busy={catalog.isFetching} onClick={() => void catalog.refetch()}>
+                  {t('actions.retry')}
+                </Button>
+              </div>
+            </Alert>
+          )}
           {groupPermissions(catalog.data ?? [], scope).map(([group, permissions]) => (
             <div key={group} className="rounded-md border border-border p-3">
               <p className="mb-2 text-xs font-medium tracking-wide text-muted uppercase">
@@ -236,7 +250,7 @@ function RoleDialog({ role, onClose }: { role: Role | null; onClose: () => void 
             <Button variant="secondary" onClick={onClose}>
               {t('actions.cancel')}
             </Button>
-            <Button type="submit" busy={mutation.isPending}>
+            <Button type="submit" busy={mutation.isPending} disabled={!catalog.data}>
               {t('actions.save')}
             </Button>
           </div>

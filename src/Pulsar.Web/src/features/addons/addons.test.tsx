@@ -124,6 +124,9 @@ describe('mods tab', () => {
       'href',
       'https://www.metamodsource.net/',
     );
+    expect(within(card('Metamod:Source')).getByRole('link', { name: 'Metamod:Source' })).toHaveAccessibleDescription(
+      '(opens in a new tab)',
+    );
     expect(card('CounterStrikeSharp')).toHaveTextContent('Not installed');
     expect(card('CounterStrikeSharp')).toHaveTextContent('Needs Metamod:Source.');
     // Seeing them is not changing them.

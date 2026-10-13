@@ -130,6 +130,8 @@ function HostDialog({ host, onClose }: { host: DatabaseHost | null; onClose: () 
   const [nodeIds, setNodeIds] = useState<string[]>(host?.nodeIds ?? []);
   // Untouched on a new host: the panel's default, shown as the address is typed.
   const [requireTls, setRequireTls] = useState<boolean | null>(host ? host.requireTls : null);
+  const [tlsTouched, setTlsTouched] = useState(false);
+  const wantsTls = (value: string) => value.trim() !== '' && !isLocalAddress(value);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -161,7 +163,18 @@ function HostDialog({ host, onClose }: { host: DatabaseHost | null; onClose: () 
         <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
           <Field label={t('databaseHosts.address')} hint={t('databaseHosts.addressHint')}>
             {(control) => (
-              <Input {...control} placeholder="10.0.0.5" value={address} onChange={(e) => setAddress(e.target.value)} />
+              <Input
+                {...control}
+                placeholder="10.0.0.5"
+                value={address}
+                onChange={(e) => {
+                  setAddress(e.target.value);
+                  // An edited host holds its stored choice; until the admin makes one, the box follows the address.
+                  if (host && !tlsTouched) {
+                    setRequireTls(wantsTls(e.target.value));
+                  }
+                }}
+              />
             )}
           </Field>
           <Field label={t('databaseHosts.port')}>
@@ -226,8 +239,11 @@ function HostDialog({ host, onClose }: { host: DatabaseHost | null; onClose: () 
           <Checkbox
             label={t('databaseHosts.requireTls')}
             aria-describedby="database-host-tls-hint"
-            checked={requireTls ?? (address.trim() !== '' && !isLocalAddress(address))}
-            onChange={(e) => setRequireTls(e.target.checked)}
+            checked={requireTls ?? wantsTls(address)}
+            onChange={(e) => {
+              setTlsTouched(true);
+              setRequireTls(e.target.checked);
+            }}
           />
           <p id="database-host-tls-hint" className="text-xs text-muted">
             {t('databaseHosts.requireTlsHint')}

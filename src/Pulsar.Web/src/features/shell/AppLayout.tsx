@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, NavLink, Outlet } from 'react-router';
 import { Button } from '../../components/ui/Button';
 import { Logo } from '../../components/ui/Logo';
+import { errorMessage } from '../../lib/errors';
 import { canAnywhere, Permission } from '../../lib/permissions';
 import { useCurrentUser, useLogout } from '../auth/api';
 import { InsecureConnectionBanner } from '../auth/InsecureConnectionBanner';
@@ -124,7 +125,12 @@ function Sidebar({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
   const main = visible([
     { to: '/', label: t('nav.dashboard'), icon: LayoutDashboard, anyOf: [] },
     { to: '/servers', label: t('nav.servers'), icon: Server, anyOf: [Permission.ServerView] },
-    { to: '/nodes', label: t('nav.nodes'), icon: HardDrive, anyOf: [Permission.NodeView, Permission.NodeManage] },
+    {
+      to: '/nodes',
+      label: t('nav.nodes'),
+      icon: HardDrive,
+      anyOf: [Permission.NodeView, Permission.NodeManage, Permission.NodeCredentialsManage, Permission.SettingsManage],
+    },
     {
       to: '/templates',
       label: t('nav.templates'),
@@ -201,6 +207,11 @@ function Sidebar({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
         >
           {t('actions.signOut')}
         </Button>
+        {logout.isError && (
+          <p role="alert" className="mt-1 px-2 text-xs text-danger">
+            {errorMessage(t, logout.error)}
+          </p>
+        )}
       </div>
     </>
   );

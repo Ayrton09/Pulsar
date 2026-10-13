@@ -351,6 +351,41 @@ describe('files tab', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Unsaved changes');
   });
 
+  it('fetches the open folder again when the server changes (an install or a restore rewrites the files)', async () => {
+    const api = fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+    const listed = () =>
+      api.mock.calls.filter(([input]) =>
+        new URL(input instanceof Request ? input.url : String(input)).pathname.endsWith('/files'),
+      ).length;
+    const before = connections.length;
+    renderAt(`/servers/${serverId}?tab=files`);
+    const live = await openedConnection(before);
+    await screen.findByRole('table', { name: 'Files' });
+    const first = listed();
+
+    live.emit('ServersChanged', [serverId]);
+
+    await waitFor(() => expect(listed()).toBeGreaterThan(first));
+  });
+
+  it('says a file that is not UTF-8 is not UTF-8 text, and offers it for download', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      // Windows-1252 "ñ".
+      [`GET /api/v1/servers/${serverId}/files/content`]: () =>
+        new Response(new Uint8Array([0x61, 0xf1, 0x6f]), { headers: { ETag: '"v1"' } }),
+    });
+    renderAt(`/servers/${serverId}?tab=files&file=server.cfg`);
+
+    expect(await screen.findByText(/not UTF-8 text/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Download' })).toBeInTheDocument();
+  });
+
   it('asks before leaving unsaved changes for another tab, and finds the file again there', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(editor),
@@ -495,6 +530,33 @@ describe('files tab', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Replace' }));
     await waitFor(() => expect(screen.getAllByText('Uploaded')).toHaveLength(2));
     expect(FakeXhr.sent[2]?.headers['If-None-Match']).toBeUndefined();
+  });
+
+  it('replaces a file in the folder it was uploaded to, never in the one open when the button is pressed', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+    FakeXhr.handler = async (xhr) =>
+      xhr.headers['If-None-Match'] === '*'
+        ? { status: 409, body: { status: 409, code: 'files.exists' } }
+        : written(xhr.path ?? '', xhr.body?.size ?? 0);
+    renderAt(`/servers/${serverId}?tab=files`);
+    await screen.findByRole('table', { name: 'Files' });
+    await userEvent.upload(screen.getByLabelText('Upload'), [new File(['hostname "new"'], 'server.cfg')]);
+    await screen.findByRole('button', { name: 'Replace' });
+
+    // Another folder: the question belongs to the first one.
+    await userEvent.click(screen.getByRole('button', { name: 'game/' }));
+    await screen.findByRole('button', { name: 'csgo/' });
+    expect(screen.queryByRole('button', { name: 'Replace' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'server' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Replace' }));
+    await waitFor(() => expect(FakeXhr.sent).toHaveLength(2));
+    expect(FakeXhr.sent[1]?.path).toBe('server.cfg');
+    expect(FakeXhr.sent[1]?.headers['If-None-Match']).toBeUndefined();
   });
 
   it('tells which line endings a file has', () => {

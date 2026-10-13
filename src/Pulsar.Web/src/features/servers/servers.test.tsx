@@ -11,6 +11,13 @@ import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
 import { connections, openedConnection } from '../../test/fakeSignalR';
 import { serverActions, serverDisplayState } from './serverStatus';
 
+// CodeMirror needs a real layout: the editor is a plain text area with the same contract.
+vi.mock('../files/CodeEditor', () => ({
+  default: ({ label, initial, onChange }: { label: string; initial: string; onChange: (text: string) => void }) => (
+    <textarea aria-label={label} defaultValue={initial} onChange={(e) => onChange(e.target.value)} />
+  ),
+}));
+
 const operator = {
   ...adminUser,
   permissions: [
@@ -454,24 +461,37 @@ describe('server page', () => {
   });
 
   it('moves on from the focused tab, even when the open section did not change (a blocked leave)', async () => {
+    const editor = { ...adminUser, permissions: ['server.view', 'server.files.view', 'server.files.edit'] };
     fakeApi({
-      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/auth/session': session(editor),
       [`GET /api/v1/servers/${installedOffline.id}`]: () => json(details(installedOffline)),
+      [`GET /api/v1/servers/${installedOffline.id}/files/content`]: () =>
+        new Response('sv_cheats 0', { headers: { ETag: '"v1"' } }),
     });
-    renderAt(`/servers/${installedOffline.id}`);
+    // Unsaved changes in the editor: leaving asks first, and the user stays.
+    const stay = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderAt(`/servers/${installedOffline.id}?tab=files&file=server.cfg`);
     const user = userEvent.setup();
 
-    const tabs = await screen.findByRole('tablist', { name: 'Server sections' });
-    const [overview, settings, network] = ['Overview', 'Settings', 'Network'].map((name) =>
+    await user.type(await screen.findByLabelText('Contents of server.cfg'), ' // edited');
+    const tabs = screen.getByRole('tablist', { name: 'Server sections' });
+    const [files, settings, network] = ['Files', 'Settings', 'Network'].map((name) =>
       within(tabs).getByRole('tab', { name }),
     );
-    // Focus on Settings while Overview is still open, as after a leave the Files editor refused.
-    settings?.focus();
+    files?.focus();
 
     await user.keyboard('{ArrowRight}');
+    await waitFor(() => expect(stay).toHaveBeenCalledTimes(1));
+    // Refused: Files is still the open section, but focus moved on to the next tab...
+    expect(settings).toHaveFocus();
+    expect(files).toHaveAttribute('aria-selected', 'true');
+
+    // ...and the next arrow goes on from there, not back to the one after the open section.
+    await user.keyboard('{ArrowRight}');
+    await waitFor(() => expect(stay).toHaveBeenCalledTimes(2));
     expect(network).toHaveFocus();
-    expect(network).toHaveAttribute('aria-selected', 'true');
-    expect(overview).toHaveAttribute('aria-selected', 'false');
+    expect(files).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByLabelText('Contents of server.cfg')).toHaveValue('sv_cheats 0 // edited');
   });
 
   it('leaves arrow keys with a modifier to the browser (Alt+Left goes back)', async () => {
