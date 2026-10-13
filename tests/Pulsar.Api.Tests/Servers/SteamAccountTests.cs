@@ -46,6 +46,13 @@ public sealed class SteamAccountTests(PulsarApiFactory factory) : IClassFixture<
             Assert.Equal(HttpStatusCode.BadRequest, option.StatusCode);
         }
 
+        // The saved password is for the Steam user it was saved with: another user needs a password of its own.
+        using (var otherUser = await admin.PutAsync($"/api/v1/steam-accounts/{account.Id}", new SteamAccountRequest("Servers account", "someone_else", null)))
+        {
+            Assert.Contains("steam_account.password_required", await otherUser.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+            Assert.False(otherUser.IsSuccessStatusCode);
+        }
+
         var renamed = await PutAsync<SteamAccountView>(admin, $"/api/v1/steam-accounts/{account.Id}", new SteamAccountRequest("Renamed", "pulsar_servers", null));
         Assert.Equal("Renamed", renamed.Name);
 

@@ -109,8 +109,8 @@ public sealed class ScheduledTaskRun
         }
 
         Status = status;
-        ErrorCode = code is { Length: > MaxErrorCodeLength } ? code[..MaxErrorCodeLength] : code;
-        Message = message is { Length: > MaxMessageLength } ? message[..MaxMessageLength] : message;
+        ErrorCode = code is null ? null : TextLimits.Truncate(code, MaxErrorCodeLength);
+        Message = message is null ? null : TextLimits.Truncate(message, MaxMessageLength);
         FinishedAt = now;
     }
 }

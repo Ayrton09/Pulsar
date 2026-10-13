@@ -460,7 +460,9 @@ public sealed class GameDatabaseTests(PulsarApiFactory factory) : IClassFixture<
         Assert.All(entries, e =>
         {
             Assert.False(Dropped(e));
-            Assert.Contains("Unable to connect", e, StringComparison.Ordinal);
+            // What the host said (it names the panel's account there and the host's address) stays in the log.
+            Assert.DoesNotContain("Unable to connect", e, StringComparison.Ordinal);
+            Assert.Contains(DatabaseErrors.HostUnreachable.Code, e, StringComparison.Ordinal);
         });
     }
 

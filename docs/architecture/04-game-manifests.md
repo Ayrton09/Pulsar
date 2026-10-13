@@ -128,7 +128,7 @@ Additional default validation for `string` values used as arguments: no leading 
 - **Every array element is exactly one argument (argv) after substitution.** A value is never split into several arguments.
 - A single conditional: `{ "if": "var.x", "then": [...] }` (true for boolean `true` or a non-empty string) or `{ "if": "port.x", "then": [...] }` (an optional port that has an allocation), with an optional `"else": [...]` for when it does not hold (Rust turns its companion app off with `+app.port -1` when that port has no allocation). Optional ports can only be used inside their own condition, never in its `else`.
 - The agent builds the Windows command line with the MSVCRT/`CommandLineToArgvW` quoting algorithm (quotes and backslashes escaped correctly) and passes it to `CreateProcessAsUser` with an explicit `lpApplicationName`. Never through `cmd.exe`.
-- `allowExtraArguments`: when `true`, users with `server.startup.edit` can add arguments (each one argv, with the same control-character validation). No word of an extra argument may set what the manifest sets (`-port=…` included) or start with a sensitive prefix of the console; where `+` arguments are console commands (`logfile+rcon`, or a manifest with `+` arguments of its own) `;` and anything about RCON are refused too. When `false`, they cannot.
+- `allowExtraArguments`: when `true`, users with `server.startup.edit` can add arguments (each one argv, with the same control-character validation). No word of an extra argument may set what the manifest sets (`-port=…` included) or start with a sensitive prefix of the console; the same goes for the URL options a word carries (`?Key=value`, separated by `?` or `&`, the part before the first `?` aside), as Unreal Engine games take their settings (ARK: `Map?listen?SessionName=…?Port=…`): the keys the manifest's own arguments set are reserved, and a sensitive prefix bars a key like it bars a switch (`ark-sa` lists `ServerAdminPassword`, `ServerPassword` and `QueryPort` besides the console commands); where `+` arguments are console commands (`logfile+rcon`, or a manifest with `+` arguments of its own) `;` and anything about RCON are refused too. When `false`, they cannot.
 
 ### Ports
 
@@ -146,7 +146,7 @@ A port can `follow` another: `"follows": { "port": "game", "offset": 1 }` says t
 
 ### Environment
 
-`environment` sets variables with placeholders; names are unique ignoring case, as Windows reads them. Deny list: `PATH`, `PATHEXT`, `ComSpec`, `SystemRoot`, `windir`, `PSModulePath`, `TEMP`/`TMP` (set by the agent inside the server directory), `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`.
+`environment` sets variables with placeholders; names are unique ignoring case, as Windows reads them. Deny list: `PATH`, `PATHEXT`, `ComSpec`, `SystemRoot`, `windir`, `PSModulePath`, `TEMP`/`TMP` (set by the agent inside the server directory), `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`; and every name starting with `DOTNET_`, `COR_` or `CORECLR_` (the .NET runtime's own settings, `DOTNET_STARTUP_HOOKS` and the profiler variables among them, load any DLL into the game). A `string` variable in a value needs a `pattern`, as anywhere else.
 
 ### Install/update steps (closed set)
 
@@ -251,7 +251,7 @@ Mods and mod frameworks the game supports, installed on request from the server'
 
 - `source`: a closed set, like install steps. `githubRelease` takes the GitHub `repo` (`owner/name`, neither of them `.` or `..`), an `asset` regex (NonBacktracking, at most 200 characters) that must match exactly one asset of the release, and either a `tag` (a fixed release, such as Carbon's `production_build`; not `.` or `..`) or `prerelease: true` (the newest release, pre-releases included: Metamod's only builds for CS2), or neither (the latest stable release). GitHub must publish the asset's SHA-256 (`digest`); without one the agent refuses it.
 - `target`: the folder the zip is unpacked into ("" for the server's own folder).
-- `requires` / `conflicts`: other addons of the manifest. The panel refuses to install one before what it needs, or next to one it conflicts with (either side declaring it is enough), and to remove one another installed addon needs (`409`).
+- `requires` / `conflicts`: other addons of the manifest. The panel refuses to install one before what it needs, or next to one it conflicts with (either side declaring it is enough), and to remove one another installed addon needs (`409`). Addons cannot require each other in a cycle (`A` requires `B` requires `A`): none of them could ever be installed, so the manifest is refused.
 - `reinstallAfterUpdate`: the game's updates overwrite it (Oxide replaces Rust's own files), so after every update the agent installs its latest release again, in the same operation.
 - `lineEdits` (at most 8): lines the addon needs in the game's files. Before every start, while the addon is installed, the agent puts `line` right after the first line starting with `after` (spaces and tabs compared as one run, the anchor's indentation kept, never twice); a missing file fails the start (`addon.file_missing`), and so does a missing anchor (`config.invalid`). Removing the addon takes the line out. This is how Metamod stays in `gameinfo.gi`, which every CS2 update restores.
 
@@ -277,7 +277,7 @@ string ConfigFileWriter.Apply(RenderedConfigFile file, string? existing);       
 
 `ServerBinding` carries the variable values, the port allocations, the extra arguments and the RCON password. The published JSON Schema (`schemas/manifest.v1.schema.json`, draft 2020-12) describes the shape for editors and community CI; Pulsar validates more than a schema can express.
 
-Semantic rules (beyond the schema; every name pattern ends at `\z`, so a name with a final newline is refused): placeholders reference existing variables/ports; strings used in arguments have a `pattern` or are `enum`s; valid paths; `.exe` executable; no duplicate ports; regexes compile in NonBacktracking mode.
+Semantic rules (beyond the schema; every name pattern ends at `\z`, so a name with a final newline is refused): placeholders reference existing variables/ports; strings used in arguments, the environment or configuration files have a `pattern` or are `enum`s; a variable's `default` is a string, a number or a boolean (and passes the variable's own checks); addons require each other without a cycle; valid paths; `.exe` executable; no duplicate ports; regexes compile in NonBacktracking mode.
 
 Repository tests load **every** `games/*/manifest.json` and fail if any is invalid or does not match the schema, and check that the schema describes every part of the C# model (properties, required ones and enum values). Rendering tests include injection cases (`map = "de_dust2 +rcon_password x"`, values with quotes, `;`, line breaks, `-insecure`), and secret values never appear in error messages.
 

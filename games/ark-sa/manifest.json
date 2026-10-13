@@ -47,7 +47,7 @@
         "mode": "logfile+rcon",
         "logFile": "ShooterGame/Saved/Logs/ShooterGame.log",
         "rcon": { "protocol": "source", "port": "game" },
-        "sensitiveCommandPrefixes": ["ServerAdminPassword", "SetServerPassword"]
+        "sensitiveCommandPrefixes": ["ServerAdminPassword", "SetServerPassword", "ServerPassword", "QueryPort"]
       }
     }
   },

@@ -46,7 +46,7 @@ public sealed class FileTransfers(TimeProvider clock)
     public void Complete(NodeId node, TransferResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
-        if (_pending.TryGetValue(result.Ticket, out var transfer) && transfer.Node == node && transfer is Upload upload)
+        if (result.Ticket is { } ticket && _pending.TryGetValue(ticket, out var transfer) && transfer.Node == node && transfer is Upload upload)
         {
             upload.Finish(result);
         }

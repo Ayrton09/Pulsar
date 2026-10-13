@@ -91,9 +91,10 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
         await using var scope = scopes.CreateAsyncScope();
         var services = scope.ServiceProvider;
         var db = services.GetRequiredService<IPulsarDbContext>();
-        var run = await db.ScheduledTaskRuns.SingleAsync(r => r.Id == runId, cancellationToken);
-        var task = await db.ScheduledTasks.AsNoTracking().SingleOrDefaultAsync(t => t.Id == run.TaskId, cancellationToken);
-        if (task is null)
+        // Runs are deleted with their task or server: either may be gone since the run was taken.
+        var run = await db.ScheduledTaskRuns.SingleOrDefaultAsync(r => r.Id == runId, cancellationToken);
+        var task = run is null ? null : await db.ScheduledTasks.AsNoTracking().SingleOrDefaultAsync(t => t.Id == run.TaskId, cancellationToken);
+        if (run is null || task is null)
         {
             return; // deleted meanwhile, with its runs
         }
@@ -112,7 +113,12 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
         {
             LogRunFailed(ex, task.Id, task.ServerId, task.Action);
             db.ChangeTracker.Clear();
-            run = await db.ScheduledTaskRuns.SingleAsync(r => r.Id == runId, CancellationToken.None);
+            if (await db.ScheduledTaskRuns.SingleOrDefaultAsync(r => r.Id == runId, CancellationToken.None) is not { } failedRun)
+            {
+                return; // deleted while the action ran
+            }
+
+            run = failedRun;
             run.Failed("schedules.error", "The panel could not run the task; its log has the details.", clock.GetUtcNow());
         }
 
@@ -122,7 +128,15 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
             await services.GetRequiredService<Notifier>().ScheduledTaskFailedAsync(server, task.Name, run.Message ?? run.ErrorCode, CancellationToken.None);
         }
 
-        await db.SaveChangesAsync(CancellationToken.None);
+        try
+        {
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return; // the run was deleted with its task or server while the action ran: nothing left to record
+        }
+
         LogRun(task.Id, task.ServerId, task.Action, run.Status, run.ErrorCode);
     }
 

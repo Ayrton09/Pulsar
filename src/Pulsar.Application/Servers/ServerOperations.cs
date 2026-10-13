@@ -43,41 +43,77 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
         }
         catch (Exception ex)
         {
-            var failedAt = clock.GetUtcNow();
-            operation.Complete(OperationStatus.Failed, ServerErrors.CommandRejected.Code, "The panel could not send the command.", failedAt);
-            server.OperationCompleted(operation, failedAt);
             LogOperationRefused(operation.Id, operation.Type, server.Id, ex.GetType().Name);
-            await db.SaveChangesAsync(CancellationToken.None);
+            try
+            {
+                await SaveOutcomeAsync(server, operation, () =>
+                {
+                    var failedAt = clock.GetUtcNow();
+                    operation.Complete(OperationStatus.Failed, ServerErrors.CommandRejected.Code, "The panel could not send the command.", failedAt);
+                    server.OperationCompleted(operation, failedAt);
+                });
+            }
+            catch (Exception saving) when (saving is not OperationCanceledException)
+            {
+                // The send's own failure is what the caller needs to see, not the one of recording it.
+                LogOutcomeNotSaved(operation.Id, saving);
+            }
+
             throw;
         }
 
         var now = clock.GetUtcNow();
-        if (ack?.Status is AckStatus.Accepted or AckStatus.AlreadyInState)
+        string? refused = null;
+        if (ack?.Status is not (AckStatus.Accepted or AckStatus.AlreadyInState))
         {
-            operation.Started(now);
-        }
-        else
-        {
-            var code = ack?.ErrorCode ?? (ack is null ? NodeErrors.NotConnected.Code : ServerErrors.CommandRejected.Code);
-            operation.Complete(OperationStatus.Failed, code, ack?.Message, now);
-            server.OperationCompleted(operation, now);
-            LogOperationRefused(operation.Id, operation.Type, server.Id, code);
+            refused = ack?.ErrorCode ?? (ack is null ? NodeErrors.NotConnected.Code : ServerErrors.CommandRejected.Code);
+            LogOperationRefused(operation.Id, operation.Type, server.Id, refused);
         }
 
-        try
+        await SaveOutcomeAsync(server, operation, () =>
         {
-            await db.SaveChangesAsync(CancellationToken.None);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            // The agent already reported the result (a quick operation): it wins over "started". Both rows are read
-            // again (a deleted server becomes detached).
-            LogOperationAlreadyReported(operation.Id);
-            await db.Entry(operation).ReloadAsync(CancellationToken.None);
-            await db.Entry(server).ReloadAsync(CancellationToken.None);
-        }
+            if (refused is null)
+            {
+                operation.Started(now);
+            }
+            else
+            {
+                operation.Complete(OperationStatus.Failed, refused, ack?.Message, now);
+                server.OperationCompleted(operation, now);
+            }
+        });
 
         return operation;
+    }
+
+    /// <summary>
+    /// Applies what the node's answer means and saves it. When the agent changed the server meanwhile (a state event) or
+    /// reported the operation's result already (a quick operation: it wins over "started"), both rows are read again and
+    /// the outcome is applied on them, unless the operation has ended (a deleted row becomes detached).
+    /// </summary>
+    private async Task SaveOutcomeAsync(Server server, Operation operation, Action apply)
+    {
+        apply();
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await db.SaveChangesAsync(CancellationToken.None);
+                return;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < 4)
+            {
+                await db.Entry(operation).ReloadAsync(CancellationToken.None);
+                await db.Entry(server).ReloadAsync(CancellationToken.None);
+                if (!operation.IsActive || db.Entry(operation).State == EntityState.Detached)
+                {
+                    LogOperationAlreadyReported(operation.Id);
+                    return;
+                }
+
+                apply();
+            }
+        }
     }
 
     /// <summary>
@@ -103,6 +139,9 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Operation {OperationId} finished before its start was saved")]
     private partial void LogOperationAlreadyReported(OperationId operationId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Operation {OperationId} could not be recorded as failed after its command could not be sent")]
+    private partial void LogOutcomeNotSaved(OperationId operationId, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Operation {OperationId} ({Type}) on server {ServerId} not accepted by the node: {Code}")]
     private partial void LogOperationRefused(OperationId operationId, OperationType type, ServerId serverId, string code);

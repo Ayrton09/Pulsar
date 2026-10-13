@@ -37,6 +37,19 @@ public sealed class SchemaTests
     [InlineData("""{"addons": [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": ".pulsar", "source": {"type": "githubRelease", "repo": "a/b", "asset": "x"}}]}""")]
     [InlineData("""{"addons": [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": "cstrike/../..", "source": {"type": "githubRelease", "repo": "a/b", "asset": "x"}}]}""")]
     [InlineData("""{"addons": [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": "PULSAR~1", "source": {"type": "githubRelease", "repo": "a/b", "asset": "x"}}]}""")]
+    // The same paths the file manager refuses (ServerFilePath): an empty segment, a trailing slash, a device name, a name Windows would change
+    // (a trailing dot or space), a control character.
+    [InlineData("""{"configFiles": [{"path": "cstrike//server.cfg", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
+    [InlineData("""{"configFiles": [{"path": "cstrike/cfg/", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
+    [InlineData("""{"configFiles": [{"path": "cstrike/CON", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
+    [InlineData("""{"configFiles": [{"path": "cstrike/nul.txt", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
+    [InlineData("""{"configFiles": [{"path": "cstrike/Com1 .cfg", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
+    [InlineData("""{"configFiles": [{"path": "cstrike/server.", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
+    [InlineData("""{"configFiles": [{"path": "cstrike/server.cfg ", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
+    [InlineData("""{"configFiles": [{"path": "cstrike/ server.cfg", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
+    [InlineData("""{"configFiles": [{"path": "cstrike/ser\u0001ver.cfg", "format": "source-cfg", "mode": "patch", "set": {"a": "b"}}]}""")]
+    // A fixed release is not a pre-release.
+    [InlineData("""{"addons": [{"key": "x1", "name": "X", "license": "MIT", "url": "https://example.com/", "target": "cstrike", "source": {"type": "githubRelease", "repo": "a/b", "asset": "x", "tag": "v1", "prerelease": true}}]}""")]
     public void TheSchemaRefusesWhatTheParserRefuses(string overlay)
     {
         var json = TestManifests.Change("css", m =>
@@ -48,6 +61,18 @@ public sealed class SchemaTests
         });
 
         Assert.False(ManifestParser.Parse(System.Text.Encoding.UTF8.GetBytes(json)).IsValid);
+        Assert.False(Validator().Validate(json).IsValid);
+    }
+
+    [Theory]
+    [InlineData("""{"a": 1}""")]
+    [InlineData("""[1]""")]
+    public void AVariablesDefaultIsAScalarForTheSchemaAndTheParser(string value)
+    {
+        var json = TestManifests.Change("css", m => m["variables"]!.AsArray().First(v => v!["key"]!.GetValue<string>() == "map")!["default"] = JsonNode.Parse(value));
+
+        var result = ManifestParser.Parse(System.Text.Encoding.UTF8.GetBytes(json));
+        Assert.Contains(result.Errors, e => e.Path.EndsWith(".default", StringComparison.Ordinal));
         Assert.False(Validator().Validate(json).IsValid);
     }
 

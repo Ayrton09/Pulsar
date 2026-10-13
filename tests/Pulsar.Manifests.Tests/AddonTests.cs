@@ -50,6 +50,26 @@ public sealed class AddonTests
         Assert.Contains(errors, e => e.Path == path);
     }
 
+    [Fact]
+    public void AddonsThatRequireEachOtherInACycleAreRefused()
+    {
+        // metamod requires counterstrikesharp, which requires metamod: neither could ever be installed.
+        var errors = TestManifests.Errors(TestManifests.Change("cs2", m =>
+        {
+            var metamod = JsonNode.Parse(Metamod)!.AsObject();
+            metamod["requires"] = new JsonArray("counterstrikesharp");
+            m["addons"] = new JsonArray(metamod, JsonNode.Parse(Sharp));
+        }));
+
+        var cycle = Assert.Single(errors, e => e.Message.Contains("cycle", StringComparison.Ordinal));
+        Assert.Equal("addons[0]", cycle.Path);
+        Assert.Contains("metamod -> counterstrikesharp -> metamod", cycle.Message, StringComparison.Ordinal);
+
+        // A chain is fine.
+        var chain = TestManifests.Parse(WithAddons(Metamod, Sharp));
+        Assert.Equal(2, chain.AddonList.Count);
+    }
+
     [Theory]
     [InlineData("""{ "type": "githubRelease", "repo": "not a repo", "asset": "x" }""", "addons[0].source.repo")]
     [InlineData("""{ "type": "githubRelease", "repo": "a/b\n", "asset": "x" }""", "addons[0].source.repo")]

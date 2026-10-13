@@ -98,7 +98,7 @@ public sealed class NotificationDelivery
         ArgumentNullException.ThrowIfNull(channel);
         ArgumentNullException.ThrowIfNull(message);
         ArgumentException.ThrowIfNullOrWhiteSpace(subject);
-        return new NotificationDelivery(channel.Id, notificationEvent, subject.Length > MaxSubjectLength ? subject[..MaxSubjectLength] : subject,
+        return new NotificationDelivery(channel.Id, notificationEvent, TextLimits.Truncate(subject, MaxSubjectLength),
             message, now);
     }
 
@@ -139,6 +139,6 @@ public sealed class NotificationDelivery
     private static string Truncate(string error)
     {
         var text = string.IsNullOrWhiteSpace(error) ? "Unknown error." : error.Trim();
-        return text.Length > MaxErrorLength ? text[..MaxErrorLength] : text;
+        return TextLimits.Truncate(text, MaxErrorLength);
     }
 }

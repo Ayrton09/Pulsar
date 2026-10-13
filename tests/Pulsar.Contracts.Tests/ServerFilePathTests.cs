@@ -25,6 +25,11 @@ public sealed class ServerFilePathTests
         "server.cfg.", "server.cfg ", " server.cfg", "cfg./server.cfg", "cfg /server.cfg",
         // Control characters and characters Windows does not allow in names.
         "a\0b", "a\nb", "a\rb", "a\tb", "a\u001fb", "a\u007fb", "a\u0085b", "a<b", "a>b", "a\"b", "a|b", "a?b", "a*b",
+        // Characters that hide or reorder what a name shows ("invoice" + U+202E + "fdp.exe" reads as "invoiceexe.pdf"): format
+        // characters (direction marks and overrides, zero-width spaces, the byte order mark, tag characters) and line separators.
+        "invoice\U0000202Efdp.exe", "a\U0000200Bb", "a\U0000200Eb", "a\U0000200Fb", "a\U00002066b", "a\U00002069b", "a\U0000061Cb", "a\U0000FEFFb",
+        "a\U00002028b", "a\U00002029b",
+        "a\U000E0041b",
         // Broken UTF-16.
         "\ud800", "a/\udc00b", "x\ud83d",
     ];

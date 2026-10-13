@@ -61,7 +61,7 @@ Then:
    A game that writes its command line to its log would show secrets passed as arguments to whoever reads the console:
    put them in a configuration file. Spike [0001](../spikes/0001-console-capture.md) explains how to find
    out which a game needs; a launcher that starts the real server may hide its output (run the real executable). List in `sensitiveCommandPrefixes` the commands that carry secrets, so they are not audited
-   in clear.
+   in clear. They also keep users out of those settings in extra arguments (`-Name=…`, or `?Name=…` URL options as ARK takes them), which would store a secret in clear.
 7. **Configuration files**: settings the game reads from a file (`source-cfg`, `properties`, `unreal-ini`, `key-value`
    or `xml-properties`), written or patched by the agent before every start.
 8. **Readiness and stop**: how the agent knows the game is ready (a console pattern, RCON answering, the query

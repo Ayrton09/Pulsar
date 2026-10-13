@@ -47,7 +47,9 @@ public sealed class ConsoleCommands(
 
         var template = await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken);
         var prefixes = ServerSpecs.Parse(template).Runtime.GetValueOrDefault(ManifestValidator.WindowsX64)?.Console.SensitiveCommandPrefixes ?? [];
-        var ack = await connections.SendAsync(server.NodeId, new SendConsoleInputCommand(id.Value, line), request.UserId, cancellationToken);
+        // Once sent, the node's answer is waited for (it has its own timeout) even if the request goes away: what the
+        // node did must still be audited.
+        var ack = await connections.SendAsync(server.NodeId, new SendConsoleInputCommand(id.Value, line), request.UserId, CancellationToken.None);
         if (ack is null)
         {
             return NodeErrors.NotConnected;
@@ -57,7 +59,7 @@ public sealed class ConsoleCommands(
         audit.Record(AuditActions.Server.ConsoleCommand, accepted ? AuditOutcome.Success : AuditOutcome.Failure,
                 new { command = Redact(line, prefixes), errorCode = accepted ? null : ack.ErrorCode })
             .WithServer(server.Id, server.NodeId);
-        await db.SaveChangesAsync(cancellationToken);
+        await db.SaveChangesAsync(CancellationToken.None);
         return new AgentCommandResult(ack.Status, ack.ErrorCode);
     }
 

@@ -91,7 +91,7 @@ public sealed partial class DatabaseHost
 
     /// <summary>
     /// Replaces the settings; a null <paramref name="passwordProtected"/> keeps the current password (only while the
-    /// address, port and user name stay the same), a null <paramref name="requireTls"/> the current choice.
+    /// address, port and user name stay the same), a null <paramref name="requireTls"/> the current choice (see below for a move to a public address).
     /// </summary>
     public Result Change(string name, string host, int port, string userName, byte[]? passwordProtected, string? serverAddress, int? serverPort,
         string? userHost, IReadOnlyCollection<Guid> nodeIds, DateTimeOffset now, bool? requireTls = null)
@@ -134,6 +134,9 @@ public sealed partial class DatabaseHost
             return DatabaseErrors.HostPasswordRequired;
         }
 
+        // Not said: the current choice stays, except that a host moving from the local network to a public address gets
+        // what a new host there would (TLS required), so a plain-text connection never follows it onto the internet.
+        var tls = requireTls ?? (RequireTls || (Host is not null && IsLocalAddress(Host) && !IsLocalAddress(address)));
         Name = trimmed;
         Host = address;
         Port = port;
@@ -147,7 +150,7 @@ public sealed partial class DatabaseHost
         ServerPort = serverPort;
         UserHost = from;
         NodeIds = [.. nodeIds.Distinct()];
-        RequireTls = requireTls ?? RequireTls;
+        RequireTls = tls;
         UpdatedAt = now;
         return Result.Success();
     }

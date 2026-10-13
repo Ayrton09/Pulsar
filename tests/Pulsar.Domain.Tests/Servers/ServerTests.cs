@@ -92,6 +92,7 @@ public sealed class ServerTests
         Assert.True(server.AutoStart);
         Assert.Equal(ServerErrors.ExtraArgumentsInvalid, server.SetStartup(["a\nb"], false, true, s_now).Error);
         Assert.Equal(ServerErrors.ExtraArgumentsInvalid, server.SetStartup([""], false, true, s_now).Error);
+        Assert.Equal(ServerErrors.ExtraArgumentsInvalid, server.SetStartup([null!], false, true, s_now).Error); // a JSON null
         Assert.Equal(ServerErrors.ExtraArgumentsInvalid, server.SetStartup([.. Enumerable.Repeat("-x", 33)], false, true, s_now).Error);
     }
 
