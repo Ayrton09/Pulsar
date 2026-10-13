@@ -34,10 +34,23 @@ internal static class RconPeers
             return; // no way to tell on this platform (tests)
         }
 
-        if (socket.LocalEndPoint is IPEndPoint local && socket.RemoteEndPoint is IPEndPoint remote
-            && peers.PeerProcess(local, remote) is { } process && peers.RunsAs(process, owner))
+        try
         {
-            return;
+            if (socket.LocalEndPoint is IPEndPoint local && socket.RemoteEndPoint is IPEndPoint remote
+                && peers.PeerProcess(local, remote) is { } process && peers.RunsAs(process, owner))
+            {
+                return;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The system could not say who holds the connection (its table, an account it cannot look up): what cannot be
+            // verified is not sent the password, and the callers, which expect RconException, keep waiting for the game.
+            throw new RconException(
+                $"Pulsar could not check who listens at {endpoint.Address}:{endpoint.Port} ({ex.Message}), so it does not send it the password or commands.", ex)
+            {
+                NotTheGame = true,
+            };
         }
 
         throw new RconException(

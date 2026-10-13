@@ -424,15 +424,30 @@ internal static class AgentCommands
             config?.BackupsRootOrDefault(paths) ?? paths.BackupsDirectory, new DpapiStateProtector(), accounts is null ? null : accounts.Delete,
             WindowsServerFirewall.RemoveAll, Console.Out, Console.Error, serviceStillStopping);
 
-        if (config is not null)
+        return FinishUnenrollment(paths, config, new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance).Delete, service, Console.Out, Console.Error);
+    }
+
+    /// <summary>
+    /// The last step of unenroll: the node keys, then the configuration. A key that cannot be deleted fails the command and
+    /// keeps the configuration, which names the key: running unenroll again (every earlier step can be repeated) deletes it.
+    /// </summary>
+    internal static int FinishUnenrollment(AgentPaths paths, AgentConfig? config, Action<NodeKeyReference> deleteKey, bool service, TextWriter output,
+        TextWriter errors)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(errors);
+        if (config is not null && !DeleteNodeKeys(config, deleteKey, errors))
         {
-            DeleteNodeKeys(config, new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance).Delete, Console.Error);
+            errors.WriteLine($"The configuration ({paths.ConfigFile}) is kept because it names the key: fix what refuses the deletion and run unenroll " +
+                "again (what was removed before stays removed), or delete the key by hand and then the configuration.");
+            return 1;
         }
 
         File.Delete(paths.ConfigFile);
         var removed = (config is not null ? "the node key and " : string.Empty) + "the configuration are deleted" +
             (service ? " and the service is removed" : string.Empty);
-        Console.WriteLine($"""
+        output.WriteLine($"""
             This machine is no longer enrolled: {removed}.
             Delete {(config is not null ? $"node {config.NodeId}" : "its node")} in the panel too (or re-enroll this machine with a new command).
             """);
@@ -440,14 +455,16 @@ internal static class AgentCommands
     }
 
     /// <summary>
-    /// The node key, and the pending one of a rotation that never completed. One that cannot be deleted is said, not a
-    /// failure: unenroll goes on (it would fail the same way at every retry), and the panel no longer accepts it.
+    /// Deletes the node key, and the pending one of a rotation that never completed. A key that cannot be deleted is said
+    /// (the others still go) and the result is false: the panel keeps accepting its credential until the node is deleted
+    /// there, so the key must not be left behind unnoticed.
     /// </summary>
-    internal static void DeleteNodeKeys(AgentConfig config, Action<NodeKeyReference> delete, TextWriter errors)
+    internal static bool DeleteNodeKeys(AgentConfig config, Action<NodeKeyReference> delete, TextWriter errors)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(delete);
         ArgumentNullException.ThrowIfNull(errors);
+        var all = true;
         foreach (var key in new[] { config.Key, config.PendingRotation?.Key }.OfType<NodeKeyReference>())
         {
             try
@@ -456,10 +473,12 @@ internal static class AgentCommands
             }
             catch (CryptographicException ex)
             {
-                errors.WriteLine($"The node key {key.Name} could not be deleted ({ex.Message.Trim()}): the panel no longer accepts it; delete it " +
-                    "from the machine's key store by hand.");
+                all = false;
+                errors.WriteLine($"The node key {key.Name} could not be deleted ({ex.Message.Trim()}); it stays in the machine's key store (delete it from there by hand if need be).");
             }
         }
+
+        return all;
     }
 
     /// <summary>

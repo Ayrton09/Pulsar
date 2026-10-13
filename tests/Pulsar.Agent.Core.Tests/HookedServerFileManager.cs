@@ -19,7 +19,7 @@ internal sealed class HookedServerFileManager(IServerFileManager inner) : IServe
 
     public void EnsureDirectory(ProvisionedServer server, string path) => inner.EnsureDirectory(server, path);
 
-    public IReadOnlyList<TreeEntry> Walk(ProvisionedServer server) => inner.Walk(server);
+    public TreeWalk Walk(ProvisionedServer server) => inner.Walk(server);
 
     public void Move(ProvisionedServer server, string path, string destination) => inner.Move(server, path, destination);
 

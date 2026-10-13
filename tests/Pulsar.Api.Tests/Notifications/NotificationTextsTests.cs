@@ -19,6 +19,17 @@ public sealed class NotificationTextsTests
     }
 
     [Fact]
+    public void AClippedDetailNeverEndsInHalfAnEmoji()
+    {
+        var facts = new ServerFacts(Guid.NewGuid(), "Retakes", "Counter-Strike 2", "node-1");
+
+        var message = NotificationTexts.BackupFailed("en", facts, "nightly", new string('a', 299) + "\U0001F600 the rest", remoteCopy: false, link: null);
+
+        var error = message.Fields.Single(f => f.Name == "Error").Value;
+        Assert.Equal(new string('a', 299) + "…", error);
+    }
+
+    [Fact]
     public void ACrashLoopSaysTheServerWasLeftStopped()
     {
         var facts = new ServerFacts(Guid.NewGuid(), "Retakes", "Counter-Strike 2", "node-1");

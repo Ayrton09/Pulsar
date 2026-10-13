@@ -11,6 +11,8 @@ namespace Pulsar.Agent.Core.Servers;
 /// </summary>
 internal static class Utf8Text
 {
+    private const char ByteOrderMark = (char)0xFEFF;
+
     private static readonly UTF8Encoding s_strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     /// <exception cref="GameProcessException"><c>config.invalid</c>: the file is not UTF-8 text.</exception>
@@ -28,6 +30,6 @@ internal static class Utf8Text
             throw new GameProcessException("config.invalid", $"{path} is not UTF-8 text, so Pulsar does not change it: save it as UTF-8.", ex);
         }
 
-        return text.StartsWith('﻿') ? text[1..] : text;
+        return text.StartsWith(ByteOrderMark) ? text[1..] : text;
     }
 }

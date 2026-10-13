@@ -308,6 +308,30 @@ public abstract class ServerFileManagerContract : IDisposable
     }
 
     [ContractFact]
+    public void WalkReportsTheNamesItCannotNameInsteadOfDroppingThemSilently()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows names a file with a trailing dot or a device name through \\\\?\\ paths.");
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg"));
+        File.WriteAllText(Path.Combine(ServerDirectory, "cfg", "server.cfg"), "x");
+        var extended = @"\\?\" + ServerDirectory;
+        File.WriteAllText(extended + @"\cfg\trailing.", "x");
+        File.WriteAllText(extended + @"\nul.txt", "x");
+        Directory.CreateDirectory(extended + @"\bad.");
+        File.WriteAllText(extended + @"\bad.\inside.txt", "x");
+
+        var walk = Files.Walk(Server);
+
+        Assert.Equal(["cfg", "cfg/server.cfg"], walk.Select(e => e.Path).Order(StringComparer.Ordinal));
+        Assert.Equal(3, walk.Refused);
+        Assert.Equal(["bad.", "cfg/trailing.", "nul.txt"], walk.RefusedSample.Order(StringComparer.Ordinal));
+
+        // The test's cleanup cannot name these either.
+        File.Delete(extended + @"\cfg\trailing.");
+        File.Delete(extended + @"\nul.txt");
+        Directory.Delete(extended + @"\bad.", recursive: true);
+    }
+
+    [ContractFact]
     public void EnsuringADirectoryCreatesWhatIsMissingAndKeepsWhatIsThere()
     {
         Directory.CreateDirectory(Path.Combine(ServerDirectory, "addons"));

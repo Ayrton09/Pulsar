@@ -435,6 +435,21 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task NamesNoPathCanNameAreCountedAsSkippedInsteadOfLeftOutSilently()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows names a file with a trailing dot or a device name through \\\\?\\ paths.");
+        Write("cfg/server.cfg", "x");
+        File.WriteAllText(@"\\?\" + _serverDirectory + @"\cfg\trailing.", "y");
+        File.WriteAllText(@"\\?\" + _serverDirectory + @"\cfg\nul.txt", "y");
+        var location = Location();
+
+        var result = await _store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["cfg/server.cfg"], Entries(location.Archive));
+        Assert.Equal((1, 2), (result.FileCount, result.SkippedFiles));
+    }
+
+    [Fact]
     public async Task AFileThatGrowsWhileItIsReadLiveIsKeptAtItsListedSize()
     {
         // Read live (no snapshot): a log that grows as fast as it is read must not keep the backup going until the disk fills.

@@ -33,13 +33,12 @@ public sealed class UnenrollTests : IDisposable
     {
         var current = new NodeKeyReference("PulsarAgent-current", NodeKeyScope.Machine, NodeKeyStorage.Software);
         var pending = new NodeKeyReference("PulsarAgent-pending", NodeKeyScope.Machine, NodeKeyStorage.Software);
-        var config = new AgentConfig(new Uri("https://panel.example.com/"), Guid.NewGuid(), Guid.NewGuid(), current, [], null, DateTimeOffset.UtcNow,
-            Development: false, PendingRotation: new PendingRotation(pending, Guid.NewGuid(), DateTimeOffset.UtcNow));
+        var config = Config(current, pending);
         List<string> deleted = [];
         using var errors = new StringWriter();
 
-        // The current key cannot be deleted (a key store that refuses): the pending one still goes, and unenroll goes on.
-        AgentCommands.DeleteNodeKeys(config, key =>
+        // The current key cannot be deleted (a key store that refuses): the pending one still goes, and the failure is reported.
+        var all = AgentCommands.DeleteNodeKeys(config, key =>
         {
             if (key == current)
             {
@@ -49,10 +48,53 @@ public sealed class UnenrollTests : IDisposable
             deleted.Add(key.Name);
         }, errors);
 
+        Assert.False(all);
         Assert.Equal(["PulsarAgent-pending"], deleted);
         Assert.Contains("PulsarAgent-current", errors.ToString(), StringComparison.Ordinal);
         Assert.Contains("by hand", errors.ToString(), StringComparison.Ordinal);
+        // Unenroll is local: the credential stays valid in the panel until the node is deleted there.
+        Assert.DoesNotContain("no longer accepts", errors.ToString(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void AKeyThatCannotBeDeletedKeepsTheConfigurationAndFailsSoARetryCanDeleteIt()
+    {
+        var current = new NodeKeyReference("PulsarAgent-current", NodeKeyScope.Machine, NodeKeyStorage.Software);
+        var config = Config(current, null);
+        new AgentConfigStore(_paths).Save(config);
+        var refuse = true;
+        List<string> deleted = [];
+        using var output = new StringWriter();
+        using var errors = new StringWriter();
+        Action<NodeKeyReference> delete = key =>
+        {
+            if (refuse)
+            {
+                throw new System.Security.Cryptography.CryptographicException("Access is denied.");
+            }
+
+            deleted.Add(key.Name);
+        };
+
+        var first = AgentCommands.FinishUnenrollment(_paths, config, delete, service: true, output, errors);
+
+        Assert.Equal(1, first);
+        Assert.True(File.Exists(_paths.ConfigFile)); // the retry finds the key it names
+        Assert.DoesNotContain("are deleted", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("again", errors.ToString(), StringComparison.Ordinal);
+
+        refuse = false;
+        var retry = AgentCommands.FinishUnenrollment(_paths, new AgentConfigStore(_paths).Load(), delete, service: true, output, errors);
+
+        Assert.Equal(0, retry);
+        Assert.Equal(["PulsarAgent-current"], deleted);
+        Assert.False(File.Exists(_paths.ConfigFile));
+        Assert.Contains("the node key and the configuration are deleted and the service is removed", output.ToString(), StringComparison.Ordinal);
+    }
+
+    private static AgentConfig Config(NodeKeyReference key, NodeKeyReference? pending) =>
+        new(new Uri("https://panel.example.com/"), Guid.NewGuid(), Guid.NewGuid(), key, [], null, DateTimeOffset.UtcNow, Development: false,
+            PendingRotation: pending is null ? null : new PendingRotation(pending, Guid.NewGuid(), DateTimeOffset.UtcNow));
 
     [Fact]
     public void TheServersSecretsAccountsAndFirewallRulesGoTheirFoldersBackupsAndLogsStay()

@@ -163,6 +163,34 @@ public sealed class WindowsAgentTests
     }
 
     [WindowsFact]
+    public async Task UnenrollKeepsTheConfigurationWhenTheNodeKeyCannotBeDeleted()
+    {
+        var root = Directory.CreateTempSubdirectory("pulsar-unenroll-").FullName;
+        var logFile = Path.Combine(root, "logs", "unenroll.log");
+        try
+        {
+            var paths = new AgentPaths(root);
+            new AgentConfigStore(paths).Save(new AgentConfig(new Uri("https://panel.example.com/"), Guid.NewGuid(), Guid.NewGuid(),
+                new NodeKeyReference("PulsarAgentTest-missing", NodeKeyScope.User, "unknown-storage"), [], null, DateTimeOffset.UtcNow,
+                Development: true));
+
+            var exit = await AgentCommands.UnenrollAsync(CommandLine.Parse(["unenroll", "--data-dir", root, "--log-file", logFile],
+                AgentCommands.Flags));
+
+            // The key is named only by the configuration: it stays so that running unenroll again can delete the key.
+            Assert.Equal(1, exit);
+            var log = await File.ReadAllTextAsync(logFile, TestContext.Current.CancellationToken);
+            Assert.Contains("Unknown key storage 'unknown-storage'", log, StringComparison.Ordinal);
+            Assert.DoesNotContain("are deleted", log, StringComparison.Ordinal);
+            Assert.True(File.Exists(paths.ConfigFile));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [WindowsFact]
     public async Task UnenrollWritesWhyItFailedToItsLog()
     {
         // The MSI only keeps the log: an exception the runtime printed itself would be missing from it.
@@ -172,7 +200,7 @@ public sealed class WindowsAgentTests
         {
             var paths = new AgentPaths(root);
             new AgentConfigStore(paths).Save(new AgentConfig(new Uri("https://panel.example.com/"), Guid.NewGuid(), Guid.NewGuid(),
-                new NodeKeyReference("PulsarAgentTest-missing", NodeKeyScope.User, "unknown-storage"), [], null, DateTimeOffset.UtcNow,
+                new NodeKeyReference("PulsarAgentTest-missing", NodeKeyScope.User, NodeKeyStorage.Software), [], null, DateTimeOffset.UtcNow,
                 Development: true));
             File.SetAttributes(paths.ConfigFile, FileAttributes.ReadOnly); // it cannot be deleted
 
@@ -182,9 +210,7 @@ public sealed class WindowsAgentTests
             Assert.Equal(1, exit);
             var log = await File.ReadAllTextAsync(logFile, TestContext.Current.CancellationToken);
             Assert.Contains("PulsarAgent unenroll failed: System.UnauthorizedAccessException", log, StringComparison.Ordinal);
-            // A key that cannot be deleted is said and left behind: it would fail every retry the same way.
-            Assert.Contains("Unknown key storage 'unknown-storage'", log, StringComparison.Ordinal);
-            Assert.True(File.Exists(paths.ConfigFile)); // kept for a retry
+            Assert.True(File.Exists(paths.ConfigFile)); // it could not be deleted
         }
         finally
         {

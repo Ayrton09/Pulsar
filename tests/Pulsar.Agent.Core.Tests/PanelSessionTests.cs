@@ -67,7 +67,37 @@ public sealed class PanelSessionTests : IAsyncDisposable
         Assert.NotNull(_connection!.CurrentSessionId); // the session in hand goes on meanwhile
     }
 
-    private async Task StartAsync(AgentConnectionOptions options)
+    [Fact]
+    public async Task APendingKeyAnOlderPanelAnswersWithABareUnauthorizedDoesNotKeepTheAgentOffline()
+    {
+        // An older panel refuses an unknown credential with a 401 that has no error body, which reads as "not the panel".
+        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
+        _panel.BareUnauthorizedFor = pending.CredentialId;
+
+        await StartAsync(new AgentConnectionOptions(), pending);
+
+        await EventuallyAsync(() => _connection!.CurrentSessionId is not null, () => $"no session after {_panel.PendingAttempts} attempt(s) with the pending key");
+        Assert.NotNull(_connection!.CurrentSessionId);
+        Assert.NotNull(_connection!.Config!.PendingRotation); // one such answer is not yet a reason to give the key up
+    }
+
+    [Fact]
+    public async Task APendingKeyThePanelKeepsAnsweringWithoutItsErrorIsAbandonedForTheCurrentOne()
+    {
+        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
+        _panel.BareUnauthorizedFor = pending.CredentialId;
+        _panel.SessionLifetime = TimeSpan.FromMinutes(-1); // every session is due for renewal: sign-ins follow each other
+
+        await StartAsync(new AgentConnectionOptions { MinimumRenewalDelay = TimeSpan.FromMilliseconds(100), MaxBackoff = TimeSpan.FromSeconds(1) }, pending);
+
+        await EventuallyAsync(() => _connection!.Config is { PendingRotation: null }, () => $"pending key kept after {_panel.PendingAttempts} attempt(s)");
+        var attempts = _panel.PendingAttempts;
+        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        Assert.Equal(attempts, _panel.PendingAttempts); // not tried again
+        Assert.NotNull(_connection!.CurrentSessionId);
+    }
+
+    private async Task StartAsync(AgentConnectionOptions options, PendingRotation? pending = null)
     {
         var configs = new AgentConfigStore(new AgentPaths(_root));
         var keys = new MemoryKeys();
@@ -75,8 +105,16 @@ public sealed class PanelSessionTests : IAsyncDisposable
         {
         }
 
+        if (pending is not null)
+        {
+            using (keys.Create(pending.Key.Name, NodeKeyScope.Machine))
+            {
+            }
+        }
+
         configs.Save(new AgentConfig(FakePanel.Address, Guid.NewGuid(), Guid.NewGuid(), new NodeKeyReference("PulsarAgent-1", NodeKeyScope.Machine,
-            NodeKeyStorage.Software), [], Path.Combine(_root, "servers"), DateTimeOffset.UtcNow, Development: true, KeyCreatedAt: DateTimeOffset.UtcNow));
+            NodeKeyStorage.Software), [], Path.Combine(_root, "servers"), DateTimeOffset.UtcNow, Development: true, KeyCreatedAt: DateTimeOffset.UtcNow,
+            PendingRotation: pending));
         options.MetricsInterval = TimeSpan.FromMinutes(1);
         _connection = new AgentConnection(configs, keys, new FixedSystem(), _panel, new PanelAuthenticator(_panel), new CredentialRotationClient(_panel),
             new CommandDispatcher(NullLogger<CommandDispatcher>.Instance), options, TimeProvider.System, new StubLifetime(), NullLoggerFactory.Instance);
@@ -104,12 +142,19 @@ public sealed class PanelSessionTests : IAsyncDisposable
         private readonly CancellationTokenSource _stop = new();
         private readonly ConcurrentBag<Task> _served = [];
         private int _hellos;
+        private int _pendingAttempts;
 
         public bool AnswersHello { get; set; } = true;
 
         public TimeSpan SessionLifetime { get; set; } = TimeSpan.FromMinutes(15);
 
         public int Hellos => Volatile.Read(ref _hellos);
+
+        /// <summary>A credential refused with a bare 401, without the protocol's error body (what an older panel does).</summary>
+        public Guid? BareUnauthorizedFor { get; set; }
+
+        /// <summary>Challenges asked for <see cref="BareUnauthorizedFor"/>.</summary>
+        public int PendingAttempts => Volatile.Read(ref _pendingAttempts);
 
         public override HttpMessageHandler CreateHttpHandler() => new Handler(this);
 
@@ -235,8 +280,18 @@ public sealed class PanelSessionTests : IAsyncDisposable
 
         private sealed class Handler(FakePanel panel) : HttpMessageHandler
         {
-            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-                Task.FromResult(panel.Answer(request));
+            protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                if (panel.BareUnauthorizedFor is { } refused && request.RequestUri!.AbsolutePath == AgentProtocol.ChallengePath
+                    && await request.Content!.ReadFromJsonAsync<ChallengeRequest>(ProtocolJson.Options, cancellationToken) is { } challenge
+                    && challenge.CredentialId == refused)
+                {
+                    Interlocked.Increment(ref panel._pendingAttempts);
+                    return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+                }
+
+                return panel.Answer(request);
+            }
         }
     }
 

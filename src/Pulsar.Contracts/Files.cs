@@ -90,16 +90,6 @@ public static partial class ServerFilePath
                 && path.StartsWith(directory, StringComparison.OrdinalIgnoreCase);
     }
 
-    private const string InvisibleError = "Contains characters that hide or reorder text (direction marks, zero-width spaces, line separators).";
-
-    /// <summary>
-    /// Format characters (direction overrides and marks, zero-width spaces, the byte order mark, tag characters) and line
-    /// separators: a name with one can show as another ("invoice" + U+202E + "fdp.exe" reads as "invoiceexe.pdf").
-    /// </summary>
-    private static bool IsInvisible(System.Text.Rune rune) =>
-        System.Text.Rune.GetUnicodeCategory(rune) is System.Globalization.UnicodeCategory.Format or System.Globalization.UnicodeCategory.LineSeparator
-            or System.Globalization.UnicodeCategory.ParagraphSeparator;
-
     private static string? SegmentError(string segment)
     {
         if (segment.Length == 0 || segment is "." or "..")
@@ -127,20 +117,11 @@ public static partial class ServerFilePath
 
             if (char.IsHighSurrogate(c) && i + 1 < segment.Length && char.IsLowSurrogate(segment[i + 1]))
             {
-                if (IsInvisible(new System.Text.Rune(c, segment[i + 1])))
-                {
-                    return InvisibleError;
-                }
-
                 i++;
             }
             else if (char.IsSurrogate(c))
             {
                 return "Contains invalid text (a broken character).";
-            }
-            else if (IsInvisible(new System.Text.Rune(c)))
-            {
-                return InvisibleError;
             }
         }
 

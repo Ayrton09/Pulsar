@@ -168,6 +168,24 @@ public sealed class SourceRconTests
         Assert.True(error.NotTheGame);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task APeerCheckThatFailsIsNotTheGameEitherAndSendsNothing(bool failsFindingTheProcess)
+    {
+        // The operating system could not say who holds the connection (a table it would not return, an account it cannot look up).
+        await using var game = new FakeRconServer("secret", srcds: false);
+        var connector = new SourceRconConnector { Peers = new ThrowingPeers(failsFindingTheProcess) };
+
+        var error = await Assert.ThrowsAsync<RconException>(() => connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser,
+            TestContext.Current.CancellationToken));
+
+        Assert.True(error.NotTheGame);
+        Assert.IsType<System.ComponentModel.Win32Exception>(error.InnerException);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+        Assert.Empty(game.Logons);
+    }
+
     internal static int FreePort()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -192,6 +210,15 @@ internal sealed class FakePeers : ILocalPeers
     }
 
     public bool RunsAs(int processId, ProcessIdentity identity) => processId == Process && identity == Owner;
+}
+
+/// <summary>A machine that cannot tell who holds a connection.</summary>
+internal sealed class ThrowingPeers(bool failsFindingTheProcess) : ILocalPeers
+{
+    public int? PeerProcess(IPEndPoint local, IPEndPoint remote) =>
+        failsFindingTheProcess ? throw new System.ComponentModel.Win32Exception(5) : 4242;
+
+    public bool RunsAs(int processId, ProcessIdentity identity) => throw new System.ComponentModel.Win32Exception(1332);
 }
 
 /// <summary>A game's RCON: srcds answers authentication with an empty response first, CS2 does not.</summary>
@@ -478,6 +505,32 @@ public sealed class LogTailTests : IDisposable
 
         Assert.Equal("hello\n", await FirstAsync(new LogTail(files, _root, "console.log", Encoding.UTF8, TimeSpan.FromMilliseconds(20))));
         Assert.Equal(4, files.Opened);
+    }
+
+    [Fact]
+    public async Task AFileThatKeepsRefusingToOpenIsReportedOnceAndStillFollowedWhenItOpens()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_root, "console.log"), "hello\n", TestContext.Current.CancellationToken);
+        var files = new FlakyServerFiles(failures: 30, denied: true);
+        List<Exception> reported = [];
+        var tail = new LogTail(files, _root, "console.log", Encoding.UTF8, TimeSpan.FromMilliseconds(5), onUnreadable: reported.Add);
+
+        Assert.Equal("hello\n", await FirstAsync(tail));
+
+        var reason = Assert.Single(reported); // not on the first failures (the game may be creating it), and once only
+        Assert.IsType<UnauthorizedAccessException>(reason);
+    }
+
+    [Fact]
+    public async Task AFileThatOpensAfterAFewFailuresIsNotReported()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_root, "console.log"), "hello\n", TestContext.Current.CancellationToken);
+        List<Exception> reported = [];
+
+        Assert.Equal("hello\n", await FirstAsync(new LogTail(new FlakyServerFiles(failures: 3, denied: false), _root, "console.log", Encoding.UTF8,
+            TimeSpan.FromMilliseconds(5), onUnreadable: reported.Add)));
+
+        Assert.Empty(reported);
     }
 
     private sealed class FlakyServerFiles(int failures, bool denied) : IServerFiles
