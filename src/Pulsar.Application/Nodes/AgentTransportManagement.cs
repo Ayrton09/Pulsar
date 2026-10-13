@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
@@ -79,20 +80,19 @@ public sealed class AgentTransportManagement(
         await policy.Changing.WaitAsync(cancellationToken);
         try
         {
-            await SaveAsync(request, cancellationToken);
-            policy.Set(request.RequireClientCertificates);
-            if (request.RequireClientCertificates)
+            try
             {
-                foreach (var node in sessions.EndWithoutCertificate())
-                {
-                    // Only a connection whose session just ended: a node that already moved keeps its connection with a
-                    // certificate, though the session it left on the main endpoint was still there.
-                    if (connections.Find(node) is { } connection && !sessions.IsActive(connection.SessionId))
-                    {
-                        connections.Disconnect(node);
-                    }
-                }
+                await SaveAsync(request, cancellationToken);
             }
+            catch
+            {
+                // The change may have committed before the call failed (cancelled as the answer came back): the switch in
+                // memory follows what is stored, read again; when even that fails, from the database at the next sign-in.
+                await ApplyStoredAsync();
+                throw;
+            }
+
+            Apply(request.RequireClientCertificates);
         }
         finally
         {
@@ -100,6 +100,37 @@ public sealed class AgentTransportManagement(
         }
 
         return await GetAsync(agentsUrl, cancellationToken);
+    }
+
+    private void Apply(bool requireClientCertificates)
+    {
+        policy.Set(requireClientCertificates);
+        if (requireClientCertificates)
+        {
+            foreach (var node in sessions.EndWithoutCertificate())
+            {
+                // Only a connection whose session just ended: a node that already moved keeps its connection with a
+                // certificate, though the session it left on the main endpoint was still there.
+                if (connections.Find(node) is { } connection && !sessions.IsActive(connection.SessionId))
+                {
+                    connections.Disconnect(node);
+                }
+            }
+        }
+    }
+
+    private async Task ApplyStoredAsync()
+    {
+        try
+        {
+            db.ChangeTracker.Clear();
+            var stored = await db.AgentTransportSettings.AsNoTracking().SingleOrDefaultAsync(CancellationToken.None);
+            Apply(stored?.RequireClientCertificates == true);
+        }
+        catch (Exception ex) when (ex is DbException or InvalidOperationException or TimeoutException)
+        {
+            policy.Forget();
+        }
     }
 
     private async Task SaveAsync(UpdateAgentTransportRequest request, CancellationToken cancellationToken)

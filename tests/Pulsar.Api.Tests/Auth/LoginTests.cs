@@ -51,7 +51,8 @@ public sealed class LoginTests(PulsarApiFactory factory) : IClassFixture<PulsarA
             await SetupTests.AssertProblemAsync(wrongPassword, HttpStatusCode.Unauthorized, "auth.invalid_credentials");
         }
 
-        using (var unknown = await client.LoginAsync("nobody-here", "not the password at all"))
+        // A password typed in the user name field (the name of no user) is not kept.
+        using (var unknown = await client.LoginAsync("nobody-here-hunter2", "not the password at all"))
         {
             await SetupTests.AssertProblemAsync(unknown, HttpStatusCode.Unauthorized, "auth.invalid_credentials");
         }
@@ -59,8 +60,9 @@ public sealed class LoginTests(PulsarApiFactory factory) : IClassFixture<PulsarA
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
         var failures = await db.AuditLog.Where(e => e.Action == AuditActions.Auth.LoginFailed).ToListAsync(TestContext.Current.CancellationToken);
-        Assert.Contains(failures, e => e.Metadata.Contains("nobody-here", StringComparison.Ordinal) && e.TargetId is null);
-        Assert.Contains(failures, e => e.TargetType == "user");
+        Assert.Contains(failures, e => e.TargetId is null);
+        Assert.Contains(failures, e => e.TargetType == "user" && e.Metadata.Contains($"\"{PulsarApiFactory.AdminUserName}\"", StringComparison.Ordinal));
+        Assert.All(failures, e => Assert.DoesNotContain("hunter2", e.Metadata, StringComparison.Ordinal));
         Assert.All(failures, e => Assert.DoesNotContain("not the password", e.Metadata, StringComparison.Ordinal));
     }
 
@@ -134,6 +136,10 @@ public sealed class LoginTests(PulsarApiFactory factory) : IClassFixture<PulsarA
             .ConfigureTestServices(services => services.AddSingleton<TimeProvider>(clock)));
         using var admin = await factory.CreateAdminClientAsync();
         using var client = await PanelClient.CreateAsync(app);
+        foreach (var userName in Enumerable.Range(0, 5).Select(i => $"flood-{i}").Append("flood-later"))
+        {
+            await CreateUserAsync(userName); // the entries name only users that exist
+        }
 
         for (var i = 0; i < 5; i++)
         {

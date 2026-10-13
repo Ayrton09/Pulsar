@@ -152,6 +152,25 @@ public sealed class NotificationTests
     }
 
     [Fact]
+    public void ADeliveryThatEndedStaysAsItEnded()
+    {
+        // A sender whose lease ran out finishes after another one sent it.
+        var sent = NotificationDelivery.Create(Discord(), NotificationEvent.ServerCrashed, "server:1", Message(), s_now);
+        Assert.True(sent.Taken(s_now));
+        Assert.True(sent.Sent(s_now));
+        Assert.False(sent.AttemptFailed("timeout", retryable: false, retryAfter: null, s_now + TimeSpan.FromMinutes(3)));
+        Assert.False(sent.Taken(s_now + TimeSpan.FromMinutes(3)));
+        Assert.Equal((DeliveryStatus.Sent, 1, (string?)null, (DateTimeOffset?)s_now), (sent.Status, sent.Attempts, sent.LastError, sent.SentAt));
+
+        var failed = NotificationDelivery.Create(Discord(), NotificationEvent.ServerCrashed, "server:1", Message(), s_now);
+        failed.Taken(s_now);
+        failed.AttemptFailed("410 Gone", retryable: false, retryAfter: null, s_now);
+        Assert.False(failed.Sent(s_now));
+        Assert.Equal(DeliveryStatus.Failed, failed.Status);
+        Assert.Null(failed.SentAt);
+    }
+
+    [Fact]
     public void SettingsCheckTheirValues()
     {
         var settings = NotificationSettings.Default(s_now);

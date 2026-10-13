@@ -23,10 +23,10 @@ Hub protocol: JSON (System.Text.Json with source generators). MessagePack only i
 | `GET  /agent/v1/panel-identity` | Panel public key(s) + fingerprint. | Public |
 | `POST /agent/v1/enroll` | Enrollment with a single-use token. | Enrollment token |
 | `POST /agent/v1/auth/challenge` | Requests a nonce. | None (rate limited) |
-| `POST /agent/v1/auth/token` | Returns a session JWT (15 min) after verifying the signature. | Node signature |
+| `POST /agent/v1/auth/token` | Returns a session token (opaque, 15 min) after verifying the signature. | Node signature |
 | `POST /agent/v1/credentials/rotate` | Node key rotation. | Session token + proof with the new key |
-| `WSS  /agent/v1/hub` | Persistent channel. | JWT (`aud=pulsar-agent`) |
-| `GET/PUT /agent/v1/transfers/{ticket}` | Large transfers (uploads/downloads/backups). | JWT + single-use ticket |
+| `WSS  /agent/v1/hub` | Persistent channel. | Session token |
+| `GET/PUT /agent/v1/transfers/{ticket}` | Large transfers (uploads/downloads/backups). | Session token + single-use ticket |
 
 All of these live outside `/api/v1` with a different authentication policy: **a browser credential never works on agent endpoints and vice versa**. A panel with an agents' endpoint (Phase 16) serves them on its port too, with the node key as TLS client certificate ("Client certificates" below). `HttpConnectionDispatcherOptions.CloseOnAuthenticationExpiration = true` on the agent hub forces periodic re-authentication.
 
@@ -294,7 +294,7 @@ Agent                                         Panel
   │                                                 │ verifies signature with the registered key,
   │                                                 │ credential active, node not revoked/disabled,
   │                                                 │ consumes the nonce; updates last_used_at
-  │◄─ JWT {sub=nodeId, cid=credentialId, sid=sessionId, aud=pulsar-agent, exp=+15 min} ─│
+  │◄─ {accessToken (opaque), sessionId, expiresAt=+15 min} ─│ the session (node, credential) stays in the panel
   │── WSS /agent/v1/hub  (Authorization: Bearer …) ─►│ OnConnected: re-checks credential/node in the database;
   │                                                 │ registers the connection (closes a previous one for the same node)
   │── Hello(AgentHello) ───────────────────────────►│ reconciliation
@@ -305,6 +305,9 @@ Agent                                         Panel
 - **Implementation note (Phase 2):** the session is an opaque random token (stored as SHA-256, in memory) rather than a JWT. The panel is a single instance in v1 and keeps per-session state anyway (command sequence, immediate revocation), so a JWT would add signing-key management without removing that state. A panel restart ends every session; agents re-authenticate on reconnect.
 - The session token only works for the agent hub and transfers, lasts 15 minutes, and the connection closes when it expires (the agent re-authenticates transparently).
 - One active connection per node.
+- Once the session exists the panel reads the credential and the node once more: a disable, deletion or revocation that committed while the sign-in ran (and so ended the node's sessions before this one existed) ends it, and the sign-in is refused.
+- The hub hears a connection only after its `Hello` and while its session lasts: a connection whose session ended (a revocation, a rotation) is ignored until it closes.
+- Every refusal gives the agent the same answer; the panel log has the detail, and the audit log an entry `node.authentication_failed` with a reason (`credential_or_node_inactive`, `inactive_after_challenge`, `inactive_while_signing_in`, `invalid_signature`, `client_certificate_mismatch`, `challenge_origin_mismatch`, `challenge_nonce_too_long`, `rotation_without_active_session`) when the request names an existing node. An agent turned away keeps trying, so a node gets one entry per reason every 15 minutes, the next one saying how many were left out (`notRecordedBefore`); requests that name no existing node are only logged, and each address is held to the rate limit of these endpoints. Being sent to the agents' address (`agent.certificate_required`) is not a failure and is not audited.
 
 ### Client certificates (Phase 16)
 
@@ -323,8 +326,8 @@ An optional check at the TLS level, on the same node key, with no CA and no new 
 **Node key** — automatically once the key is 90 days old (checked at every connection), or when an administrator asks from the node page (`RotateCredentialCommand`, permission `node.credentials.manage`):
 
 1. The agent creates a new key in the same scope and provider preference (TPM first) and calls `POST /agent/v1/credentials/rotate` within its current session, with `proof = Sign_new("pulsar-rotate-credential-v1" ‖ nodeId ‖ currentCredentialId ‖ sessionId ‖ newPublicKey)`: the session proves the old key, the proof the new one, both bound to this node and session.
-2. The panel registers a `pending` credential (an earlier pending one is superseded) and answers with `CredentialRotation(nodeId, credentialId, keyFingerprint)` signed by a pinned panel key (`pulsar-rotation-result-v1`). The agent verifies the signature, the node and that the fingerprint is the new key's (so a signed answer to another rotation, replayed or mixed up, is refused), then saves the new key as `pendingRotation` in its configuration before using it. `keyFingerprint` is an optional field added within v1 (see "Protocol versioning"): an answer from an older panel has none and is still accepted, signed for this node; a credential registered for another key would then fail at its first sign-in, and the agent keeps its current key.
-3. The agent authenticates with the pending credential (challenge and token accept `pending` credentials). That first authentication makes the panel activate it and supersede the previous one in one transaction, and end the sessions of the old key; the agent's new connection replaces the old one at `Hello`. The agent then switches its configuration to the new key and deletes the old one.
+2. The panel registers a `pending` credential (an earlier pending one is superseded), with the node's row locked as a revocation locks it, so a revocation of the current key and the registration take turns; it answers with `CredentialRotation(nodeId, credentialId, keyFingerprint)` signed by a pinned panel key (`pulsar-rotation-result-v1`). The agent verifies the signature, the node and that the fingerprint is the new key's (so a signed answer to another rotation, replayed or mixed up, is refused), then saves the new key as `pendingRotation` in its configuration before using it. `keyFingerprint` is an optional field added within v1 (see "Protocol versioning"): an answer from an older panel has none and is still accepted, signed for this node; a credential registered for another key would then fail at its first sign-in, and the agent keeps its current key.
+3. The agent authenticates with the pending credential (challenge and token accept `pending` credentials). That first authentication makes the panel activate it and supersede the previous one in one transaction (with the node's row locked, and refused if the pending credential was revoked meanwhile), end the sessions of the old key and close the connection one of them opened; the agent then connects with the new key. The agent then switches its configuration to the new key and deletes the old one.
 
 At any interruption one of the two keys works: before step 3 the current credential is still active; after it, `pendingRotation` is still in the configuration, so the next start authenticates with it first. If the panel refuses a pending key (a later rotation superseded it, or it was revoked) the agent deletes it and keeps the current one. A failed rotation is retried after an hour.
 
@@ -336,9 +339,9 @@ At any interruption one of the two keys works: before step 3 the current credent
 
 ### Revocation and expiry
 
-- Revoke (UI, permission `node.credentials.manage`): credential → `revoked`, the node's active connection is aborted immediately, any later challenge fails. Audited.
-- Disabling a node: same effect without deleting the credential.
-- Enrollment tokens expire (30 min by default). Session JWTs: 15 min. Node credentials: automatic rotation; optional hard expiry by policy (`expires_at`).
+- Revoke (UI, permission `node.credentials.manage`): credential → `revoked`, the node's active connection is aborted immediately, any later challenge fails. Audited. Revoking the active credential also revokes a `pending` one: a rotation registered it from a session of the revoked key, so whoever stole that key may have (the audit entry lists it, `pendingRevoked`).
+- Disabling a node: same effect without deleting the credential. A disable or a deletion is applied again when the agent wrote the node's row meanwhile (`Hello`, last seen), so it is never lost.
+- Enrollment tokens expire (30 min by default). Session tokens: 15 min. Node credentials: automatic rotation; optional hard expiry by policy (`expires_at`).
 - Re-enrolling a node (e.g. Windows reinstall) = a new enrollment token for the same `Node`; the previous credential is revoked, and so is a pending one from an unfinished rotation.
 
 ### Agent local storage

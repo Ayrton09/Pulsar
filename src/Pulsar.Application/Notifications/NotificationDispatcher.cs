@@ -20,7 +20,7 @@ public sealed partial class NotificationDispatcher(IServiceScopeFactory scopes, 
     public async Task<bool> SendDueAsync(CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow();
-        List<NotificationDeliveryId> taken;
+        var taken = new List<(NotificationDeliveryId Id, int Attempt)>();
         await using (var scope = scopes.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
@@ -28,15 +28,17 @@ public sealed partial class NotificationDispatcher(IServiceScopeFactory scopes, 
             var due = await scope.ServiceProvider.GetRequiredService<INotificationClaims>().LockDueAsync(now, BatchSize, cancellationToken);
             foreach (var delivery in due)
             {
-                delivery.Taken(now);
+                if (delivery.Taken(now))
+                {
+                    taken.Add((delivery.Id, delivery.Attempts));
+                }
             }
 
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            taken = [.. due.Select(d => d.Id)];
         }
 
-        await Task.WhenAll(taken.Select(id => SendAsync(id, cancellationToken)));
+        await Task.WhenAll(taken.Select(t => SendAsync(t.Id, t.Attempt, cancellationToken)));
         return taken.Count == BatchSize;
     }
 
@@ -59,7 +61,8 @@ public sealed partial class NotificationDispatcher(IServiceScopeFactory scopes, 
             .ExecuteDeleteAsync(cancellationToken);
     }
 
-    private async Task SendAsync(NotificationDeliveryId id, CancellationToken cancellationToken)
+    /// <param name="attempt">The attempt this sender took (<see cref="NotificationDelivery.Attempts"/> after its take).</param>
+    private async Task SendAsync(NotificationDeliveryId id, int attempt, CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
         var services = scope.ServiceProvider;
@@ -69,6 +72,11 @@ public sealed partial class NotificationDispatcher(IServiceScopeFactory scopes, 
         if (delivery is null || channel is null)
         {
             return; // the channel was deleted, with its deliveries
+        }
+
+        if (delivery.Status != DeliveryStatus.Pending || delivery.Attempts != attempt)
+        {
+            return; // read after the lease ran out: another sender took it (and may have sent it) meanwhile
         }
 
         try
@@ -101,7 +109,7 @@ public sealed partial class NotificationDispatcher(IServiceScopeFactory scopes, 
         }
         catch (DbUpdateConcurrencyException)
         {
-            // Its lease ran out and another sender took it: that one records the outcome.
+            // Its lease ran out and another sender took it (the row version changed): that one records the outcome.
         }
     }
 

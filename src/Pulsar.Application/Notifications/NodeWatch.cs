@@ -55,7 +55,9 @@ public sealed class NodeWatch(IServiceScopeFactory scopes, TimeProvider clock)
 
         var notifier = services.GetRequiredService<Notifier>();
         var now = clock.GetUtcNow();
-        var connection = services.GetRequiredService<IAgentConnections>().Find(node.Id);
+        // A connection whose session ended (revocation, key rotation) is about to close or be replaced: not connected.
+        var connection = services.GetRequiredService<IAgentConnections>().Find(node.Id) is { } live
+            && services.GetRequiredService<AgentSessionStore>().IsActive(live.SessionId) ? live : null;
         if (connection is null)
         {
             // Approving or enabling the node (UpdatedAt) restarts the grace too: its agent was turned away until then, so

@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Nodes;
@@ -179,6 +182,136 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
     }
 
     [DatabaseFact]
+    public async Task ANodeDisabledWhileItSignsInGetsNoSession()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "node-disabled-at-sign-in");
+        var hook = new DatabaseHook();
+        using var app = factory.WithDatabaseHook(hook);
+        await using var agent = new TestAgent(app);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        var nodeId = new NodeId(agent.NodeId);
+        var challenge = await agent.ChallengeAsync();
+
+        // Disabled once the sign-in recorded its use of the key, before it has a session to end.
+        hook.AfterSave(c => c.ChangeTracker.Entries<NodeCredential>().Any(e => e.Entity.NodeId == nodeId), async () =>
+        {
+            await using var scope = app.Services.CreateAsyncScope();
+            Assert.True((await scope.ServiceProvider.GetRequiredService<NodeManagement>().DisableAsync(nodeId, CancellationToken.None)).IsSuccess);
+        });
+        using var signedIn = await agent.PostTokenAsync(challenge);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, signedIn.StatusCode);
+    }
+
+    [DatabaseFact]
+    public async Task AConnectionWhoseSessionEndedIsNotHeard()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "node-session-ended");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, AgentCapabilities.Ping);
+        var nodeId = new NodeId(agent.NodeId);
+        var connections = factory.Services.GetRequiredService<IAgentConnections>();
+        await agent.Connection!.InvokeAsync(nameof(IAgentHub.NodeMetrics), new NodeMetrics(DateTimeOffset.UtcNow, 5, 1, 2, TimeSpan.FromHours(1)), Ct);
+        Assert.Equal(5, connections.Find(nodeId)!.LastMetrics!.CpuPercent);
+
+        // As a rotation leaves the old key's connection until the new one says Hello.
+        factory.Services.GetRequiredService<AgentSessionStore>().EndAll(nodeId);
+        await agent.Connection!.InvokeAsync(nameof(IAgentHub.NodeMetrics), new NodeMetrics(DateTimeOffset.UtcNow, 50, 1, 2, TimeSpan.FromHours(1)), Ct);
+
+        Assert.Equal(5, connections.Find(nodeId)?.LastMetrics?.CpuPercent ?? 5);
+    }
+
+    [DatabaseFact]
+    public async Task UsageJsonCannotWriteIsNotPassedOn()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "node-infinite-cpu");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken);
+
+        // 1e999 reads as infinity, which no JSON answer can carry: the node's page would fail for everyone.
+        await agent.Connection!.InvokeAsync(nameof(IAgentHub.NodeMetrics),
+            new RawJson($$"""{"at":"{{DateTimeOffset.UtcNow:O}}","cpuPercent":1e999,"memoryUsedBytes":1,"memoryTotalBytes":2,"uptime":"01:00:00"}"""), Ct);
+
+        var metrics = (await GetNodeAsync(admin, agent.NodeId)).Node.Metrics;
+        Assert.Equal(0, metrics!.CpuPercent);
+    }
+
+    [DatabaseFact]
+    public async Task RefusedSignInsOfANodeAreAuditedWithoutFloodingTheLog()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "node-refused");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        var nodeId = new NodeId(agent.NodeId);
+        var challenge = await agent.ChallengeAsync();
+        using (var disable = await admin.PostAsync($"/api/v1/nodes/{agent.NodeId}/disable"))
+        {
+            await AccessScenario.EnsureSuccessAsync(disable);
+        }
+
+        // The agent of a disabled node keeps trying (once a minute at most): one entry says so for a while.
+        using (var token = await agent.PostTokenAsync(challenge))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, token.StatusCode);
+        }
+
+        for (var i = 0; i < 3; i++)
+        {
+            using var refused = await agent.PostChallengeAsync();
+            Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
+        }
+
+        // A node that does not exist is anyone's guess: logged, not audited.
+        using (var unknown = await agent.Http.PostAsJsonAsync(AgentProtocol.ChallengePath, new ChallengeRequest(Guid.NewGuid(), Guid.NewGuid(), null),
+            ProtocolJson.Options, Ct))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, unknown.StatusCode);
+        }
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
+        var entries = await db.AuditLog.Where(e => e.Action == AuditActions.Node.AuthenticationFailed && e.NodeId == nodeId).ToListAsync(Ct);
+        Assert.Equal(2, entries.Count);
+        Assert.All(entries, e => Assert.Equal(AuditOutcome.Failure, e.Outcome));
+        Assert.Single(entries, e => e.Metadata.Contains("\"credential_or_node_inactive\"", StringComparison.Ordinal));
+        Assert.Single(entries, e => e.Metadata.Contains("\"inactive_after_challenge\"", StringComparison.Ordinal));
+    }
+
+    [DatabaseFact]
+    public async Task DisablingOrDeletingANodeIsNotLostToItsAgentsWrites()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var disabled = new NodeId((await CreateNodeAsync(admin, "node-disable-while-seen")).Node.Id);
+        var deleted = new NodeId((await CreateNodeAsync(admin, "node-delete-while-seen")).Node.Id);
+        var hook = new DatabaseHook();
+        using var app = factory.WithDatabaseHook(hook);
+        await using var scope = app.Services.CreateAsyncScope();
+        var nodes = scope.ServiceProvider.GetRequiredService<NodeManagement>();
+
+        // The agent's Hello or metrics write the node's row between the panel's read and its save.
+        Func<Task> seen(NodeId id) => async () =>
+        {
+            await using var other = factory.Services.CreateAsyncScope();
+            await other.ServiceProvider.GetRequiredService<PulsarDbContext>().Nodes.Where(n => n.Id == id)
+                .ExecuteUpdateAsync(s => s.SetProperty(n => n.LastSeenAt, DateTimeOffset.UtcNow), CancellationToken.None);
+        };
+        hook.BeforeSave(c => c.ChangeTracker.Entries<Node>().Any(e => e.Entity.Id == disabled && e.State == EntityState.Modified), seen(disabled));
+        Assert.True((await nodes.DisableAsync(disabled, Ct)).IsSuccess);
+        hook.BeforeSave(c => c.ChangeTracker.Entries<Node>().Any(e => e.Entity.Id == deleted && e.State == EntityState.Deleted), seen(deleted));
+        Assert.True((await nodes.DeleteAsync(deleted, Ct)).IsSuccess);
+
+        Assert.Equal(NodeStatus.Disabled, (await GetNodeAsync(admin, disabled.Value)).Node.Status);
+        using var gone = await admin.GetAsync($"/api/v1/nodes/{deleted}");
+        Assert.Equal(HttpStatusCode.NotFound, gone.StatusCode);
+    }
+
+    [DatabaseFact]
     public async Task HubRefusesConnectionsWithoutAValidSession()
     {
         await using var agent = new TestAgent(factory);
@@ -212,5 +345,17 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var error = await response.Content.ReadFromJsonAsync<AgentError>(ProtocolJson.Options, Ct);
         Assert.Equal(code, error!.Code);
+    }
+
+    /// <summary>A hub argument sent as written, for what the agent's own serializer would never write.</summary>
+    [JsonConverter(typeof(RawJsonConverter))]
+    private sealed record RawJson(string Json);
+
+    private sealed class RawJsonConverter : JsonConverter<RawJson>
+    {
+        public override RawJson Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, RawJson value, JsonSerializerOptions options) =>
+            writer.WriteRawValue(value.Json, skipInputValidation: true);
     }
 }

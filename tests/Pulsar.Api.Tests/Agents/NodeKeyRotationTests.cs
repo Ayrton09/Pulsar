@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Security;
+using Pulsar.Api.Nodes;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
@@ -175,6 +176,92 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
         await AssertCredentialStatusAsync(admin, enrolled.NodeId, enrolled.CredentialId, NodeCredentialStatus.Revoked);
         await AssertCredentialStatusAsync(admin, enrolled.NodeId, pending.CredentialId, NodeCredentialStatus.Revoked);
         await AssertCredentialStatusAsync(admin, enrolled.NodeId, reenrolled.CredentialId, NodeCredentialStatus.Active);
+    }
+
+    [DatabaseFact]
+    public async Task RevokingTheActiveKeyRevokesAPendingKeyToo()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-then-revoke");
+        // Whoever holds the node key (a thief, say) registers a key of their own before the administrator revokes it.
+        var pending = await RegisterPendingKeyAsync(agent, enrolled);
+
+        using (var revoke = await admin.PostAsync($"/api/v1/nodes/{enrolled.NodeId}/credentials/{enrolled.CredentialId}/revoke",
+            new RevokeCredentialRequest("Key leaked")))
+        {
+            Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+        }
+
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, pending.CredentialId, NodeCredentialStatus.Revoked);
+        using var key = agent.Keys.Open(pending.Key);
+        await Assert.ThrowsAsync<AgentRejectedException>(() =>
+            new PanelAuthenticator(Transport(agent)).AuthenticateAsync(enrolled with { CredentialId = pending.CredentialId, Key = pending.Key }, key, Ct));
+    }
+
+    [DatabaseFact]
+    public async Task ARotationRacingARevocationLeavesNoKeyBehind()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-while-revoking");
+        using var current = agent.Keys.Open(enrolled.Key);
+        var session = await new PanelAuthenticator(Transport(agent)).AuthenticateAsync(enrolled, current, Ct);
+        using var newKey = agent.Keys.Create($"PulsarAgent-{Guid.NewGuid():N}", NodeKeyScope.User);
+        var nodeId = new NodeId(enrolled.NodeId);
+
+        // A revocation in progress, as the panel makes it: the node's row locked, the key revoked, not committed yet.
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
+        await using (var transaction = await db.Database.BeginTransactionAsync(Ct))
+        {
+            await db.Database.ExecuteSqlAsync($"SELECT 1 FROM nodes WHERE id = {enrolled.NodeId} FOR UPDATE", Ct);
+            var credential = await db.NodeCredentials.SingleAsync(c => c.Id == enrolled.CredentialId, Ct);
+            credential.Revoke(null, "Key leaked", DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync(Ct);
+
+            var rotating = new CredentialRotationClient(Transport(agent))
+                .RegisterAsync(enrolled, enrolled.Panel, null, session.AccessToken, session.SessionId, newKey, Ct);
+            await Task.Delay(TimeSpan.FromSeconds(1), Ct); // the rotation is now waiting for the revocation, or past it
+            await transaction.CommitAsync(Ct);
+            await Assert.ThrowsAnyAsync<Exception>(() => rotating);
+        }
+
+        Assert.False(await db.NodeCredentials.AnyAsync(c => c.NodeId == nodeId && c.Status == NodeCredentialStatus.Pending, Ct));
+    }
+
+    [DatabaseFact]
+    public async Task TheNewKeysFirstSignInClosesTheOldKeysConnection()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await NodeApi.CreateAsync(admin, "rotate-closes-old");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        var session = await agent.AuthenticateAsync();
+        await agent.ConnectAsync(session.AccessToken, AgentCapabilities.Ping);
+        using var newKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var publicKey = newKey.ExportSubjectPublicKeyInfo();
+        var proof = ProtocolCrypto.Sign(newKey, ProtocolCrypto.SignedData(AgentProtocol.Purposes.RotateCredential,
+            ProtocolCrypto.GuidBytes(agent.NodeId), ProtocolCrypto.GuidBytes(agent.CredentialId), ProtocolCrypto.GuidBytes(session.SessionId), publicKey));
+        agent.Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+        Guid pending;
+        using (var rotated = await agent.Http.PostAsJsonAsync(AgentProtocol.RotateCredentialPath, new RotateCredentialRequest(publicKey, "software", proof),
+            ProtocolJson.Options, Ct))
+        {
+            Assert.Equal(HttpStatusCode.OK, rotated.StatusCode);
+            pending = ProtocolJson.Deserialize<CredentialRotation>((await rotated.Content.ReadFromJsonAsync<SignedMessage>(ProtocolJson.Options, Ct))!.Payload)
+                .CredentialId;
+        }
+
+        agent.Http.DefaultRequestHeaders.Authorization = null;
+        agent.UseCredential(pending);
+        using (var signedIn = await agent.PostTokenAsync(await agent.ChallengeAsync(), newKey))
+        {
+            Assert.Equal(HttpStatusCode.OK, signedIn.StatusCode);
+        }
+
+        // The old key's session ended, and the connection it opened goes with it: it could otherwise still report.
+        await agent.ClosedSignal.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
     }
 
     [DatabaseFact]

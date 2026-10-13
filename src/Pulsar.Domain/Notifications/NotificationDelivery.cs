@@ -102,38 +102,59 @@ public sealed class NotificationDelivery
             message, now);
     }
 
-    /// <summary>A sender takes it for an attempt: nobody else takes it during <see cref="Lease"/>.</summary>
-    public void Taken(DateTimeOffset now)
+    /// <summary>
+    /// A sender takes it for an attempt: nobody else takes it during <see cref="Lease"/>. Like the outcomes below, only
+    /// while it is pending (false otherwise): a sender whose lease ran out never changes what another one recorded.
+    /// </summary>
+    public bool Taken(DateTimeOffset now)
     {
+        if (Status != DeliveryStatus.Pending)
+        {
+            return false;
+        }
+
         Attempts++;
         NextAttemptAt = now + Lease;
+        return true;
     }
 
-    public void Sent(DateTimeOffset now)
+    public bool Sent(DateTimeOffset now)
     {
+        if (Status != DeliveryStatus.Pending)
+        {
+            return false;
+        }
+
         Status = DeliveryStatus.Sent;
         SentAt = now;
         NextAttemptAt = null;
         LastError = null;
+        return true;
     }
 
     /// <summary>
     /// The attempt failed: tried again after the next delay (or <paramref name="retryAfter"/> when the receiver asked
     /// for longer), or failed for good when <paramref name="retryable"/> is false or the attempts are used up.
     /// </summary>
-    public void AttemptFailed(string error, bool retryable, TimeSpan? retryAfter, DateTimeOffset now)
+    public bool AttemptFailed(string error, bool retryable, TimeSpan? retryAfter, DateTimeOffset now)
     {
+        if (Status != DeliveryStatus.Pending)
+        {
+            return false;
+        }
+
         LastError = Truncate(error);
         if (!retryable || Attempts > RetryDelays.Count)
         {
             Status = DeliveryStatus.Failed;
             NextAttemptAt = null;
-            return;
+            return true;
         }
 
         var delay = RetryDelays[Math.Max(Attempts, 1) - 1];
         // The receiver's Retry-After is followed up to an hour: it cannot park a message for days.
         NextAttemptAt = now + (retryAfter > delay ? (retryAfter.Value > MaxRetryAfter ? MaxRetryAfter : retryAfter.Value) : delay);
+        return true;
     }
 
     private static string Truncate(string error)

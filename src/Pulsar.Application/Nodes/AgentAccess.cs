@@ -44,6 +44,8 @@ public sealed partial class AgentAccess(
     AgentSessionStore sessions,
     IAgentConnections connections,
     IAuditLog audit,
+    AgentRefusalBudget refusals,
+    IRowLocks locks,
     AgentTransportPolicy transportPolicy,
     TimeProvider clock,
     ILogger<AgentAccess> logger)
@@ -244,7 +246,7 @@ public sealed partial class AgentAccess(
         if (request.Nonce is { Length: > MaxChallengeNonceLength })
         {
             LogAuthenticationRejected(nodeId, "challenge nonce too long");
-            return AgentErrors.AuthenticationRejected;
+            return await RefuseAsync(nodeId, "challenge_nonce_too_long", request.CredentialId, cancellationToken);
         }
 
         // Pending credentials too: authenticating with one completes a rotation.
@@ -256,10 +258,10 @@ public sealed partial class AgentAccess(
         if (key is null)
         {
             LogAuthenticationRejected(nodeId, "challenge for unknown/revoked credential or inactive node");
-            return AgentErrors.AuthenticationRejected;
+            return await RefuseAsync(nodeId, "credential_or_node_inactive", request.CredentialId, cancellationToken);
         }
 
-        if (RefuseTransport(nodeId, key, transport) is { } refused)
+        if (await RefuseTransportAsync(nodeId, request.CredentialId, key, transport, cancellationToken) is { } refused)
         {
             return refused;
         }
@@ -275,10 +277,16 @@ public sealed partial class AgentAccess(
         ArgumentNullException.ThrowIfNull(transport);
         await transportPolicy.EnsureLoadedAsync(db, cancellationToken);
         var challenge = challenges.Consume(request.ChallengeId);
-        if (challenge is null || !string.Equals(challenge.PanelOrigin, panelOrigin, StringComparison.Ordinal))
+        if (challenge is null)
         {
-            LogAuthenticationRejected(challenge?.NodeId, "unknown, expired or reused challenge");
+            LogAuthenticationRejected(null, "unknown, expired or reused challenge");
             return AgentErrors.AuthenticationRejected;
+        }
+
+        if (!string.Equals(challenge.PanelOrigin, panelOrigin, StringComparison.Ordinal))
+        {
+            LogAuthenticationRejected(challenge.NodeId, "challenge issued for another panel address");
+            return await RefuseAsync(challenge.NodeId, "challenge_origin_mismatch", challenge.CredentialId, cancellationToken);
         }
 
         // Re-checked: the credential may have been revoked or the node disabled since the challenge.
@@ -287,11 +295,11 @@ public sealed partial class AgentAccess(
         if (credential is not { CanAuthenticate: true } || node is not { AcceptsConnections: true })
         {
             LogAuthenticationRejected(challenge.NodeId, "credential revoked or node inactive after the challenge");
-            return AgentErrors.AuthenticationRejected;
+            return await RefuseAsync(challenge.NodeId, "inactive_after_challenge", challenge.CredentialId, cancellationToken);
         }
 
         // Again: the token may come over another TLS connection than the challenge did.
-        if (RefuseTransport(node.Id, credential.PublicKey, transport) is { } refused)
+        if (await RefuseTransportAsync(node.Id, credential.Id, credential.PublicKey, transport, cancellationToken) is { } refused)
         {
             return refused;
         }
@@ -301,11 +309,8 @@ public sealed partial class AgentAccess(
             challenge.Nonce, ProtocolCrypto.Utf8(challenge.PanelOrigin));
         if (request.Signature is null || !ProtocolCrypto.Verify(credential.PublicKey, signed, request.Signature))
         {
-            audit.Record(AuditActions.Node.AuthenticationFailed, AuditOutcome.Failure, NodeActor(node), new { reason = "invalid_signature", credential = credential.Id })
-                .WithNode(node.Id).WithTarget("node", node.Id.ToString());
-            await db.SaveChangesAsync(cancellationToken);
             LogAuthenticationRejected(challenge.NodeId, "invalid signature");
-            return AgentErrors.AuthenticationRejected;
+            return await RefuseAsync(node.Id, "invalid_signature", credential.Id, cancellationToken);
         }
 
         var now = clock.GetUtcNow();
@@ -313,7 +318,11 @@ public sealed partial class AgentAccess(
         node.Seen(now);
         if (credential.Status == NodeCredentialStatus.Pending)
         {
-            await CompleteRotationAsync(node, credential, now, cancellationToken);
+            if (!await CompleteRotationAsync(node, credential, now, cancellationToken))
+            {
+                LogAuthenticationRejected(node.Id, "pending credential revoked or node inactive before the rotation completed");
+                return await RefuseAsync(node.Id, "inactive_while_signing_in", credential.Id, cancellationToken);
+            }
         }
         else
         {
@@ -332,7 +341,8 @@ public sealed partial class AgentAccess(
                     await db.Entry(credential).ReloadAsync(cancellationToken);
                     if (!credential.CanAuthenticate || !node.AcceptsConnections)
                     {
-                        return AgentErrors.AuthenticationRejected;
+                        LogAuthenticationRejected(node.Id, "credential revoked or node inactive while signing in");
+                        return await RefuseAsync(node.Id, "inactive_while_signing_in", credential.Id, cancellationToken);
                     }
 
                     credential.Used(now);
@@ -344,8 +354,23 @@ public sealed partial class AgentAccess(
         sessions.Prune();
         var (token, session) = sessions.Create(node.Id, credential.Id, transport.ThroughAgentsEndpoint ? transport.ClientKeyFingerprint : null);
 
+        // The node disabled or deleted, or the key revoked, between the checks above and the session: whoever did it
+        // ended the node's sessions before this one existed. Read once more now that it exists (they cut it off after
+        // committing, so either this read sees their change or their cut-off sees this session).
+        var stillAllowed = await db.NodeCredentials.AsNoTracking().AnyAsync(c => c.Id == credential.Id && c.NodeId == node.Id
+            && c.Status == NodeCredentialStatus.Active
+            && db.Nodes.Any(n => n.Id == node.Id && n.Status == NodeStatus.Active), cancellationToken);
+        if (!stillAllowed)
+        {
+            sessions.End(session.SessionId);
+            LogAuthenticationRejected(node.Id, "credential revoked or node inactive while signing in");
+            return await RefuseAsync(node.Id, "inactive_while_signing_in", credential.Id, cancellationToken);
+        }
+
         // Certificates became required while this sign-in ran: the switch ended the sessions without one before this
-        // one existed.
+        // one existed. A full fence between creating the session and reading the switch; the switch has the other one
+        // (AgentTransportPolicy.Set) between changing and ending the sessions.
+        Interlocked.MemoryBarrier();
         if (session.CertificateKey is null && transportPolicy.RequiresCertificateFor(transport))
         {
             sessions.End(session.SessionId);
@@ -368,9 +393,11 @@ public sealed partial class AgentAccess(
 
     /// <summary>
     /// Through the agents' endpoint the client certificate must be the credential's key. Elsewhere, an agent is sent
-    /// there while certificates are required.
+    /// there while certificates are required: not a failure (the Nodes page lists the nodes that have not moved), so it
+    /// is not audited.
     /// </summary>
-    private DomainError? RefuseTransport(NodeId node, byte[] credentialKey, AgentTransport transport)
+    private async Task<DomainError?> RefuseTransportAsync(NodeId node, Guid credentialId, byte[] credentialKey, AgentTransport transport,
+        CancellationToken cancellationToken)
     {
         if (transport.ThroughAgentsEndpoint)
         {
@@ -380,7 +407,7 @@ public sealed partial class AgentAccess(
             }
 
             LogAuthenticationRejected(node, "the client certificate is missing or is not the node key");
-            return AgentErrors.AuthenticationRejected;
+            return await RefuseAsync(node, "client_certificate_mismatch", credentialId, cancellationToken);
         }
 
         if (transportPolicy.RequiresCertificateFor(transport))
@@ -393,36 +420,64 @@ public sealed partial class AgentAccess(
     }
 
     /// <summary>
+    /// The agent's answer to a refused sign-in or rotation (<paramref name="answer"/>, the generic one by default),
+    /// audited when the request names an existing node: at most one entry per node and reason a while
+    /// (<see cref="AgentRefusalBudget"/>), so an agent that keeps trying cannot fill the log.
+    /// </summary>
+    private async Task<DomainError> RefuseAsync(NodeId node, string reason, Guid credential, CancellationToken cancellationToken,
+        string action = AuditActions.Node.AuthenticationFailed, DomainError? answer = null)
+    {
+        var name = await db.Nodes.AsNoTracking().Where(n => n.Id == node).Select(n => n.Name).SingleOrDefaultAsync(cancellationToken);
+        if (name is not null && refusals.TryRecord(node, reason, out var leftOut))
+        {
+            audit.Record(action, AuditOutcome.Failure, new AuditActor(AuditActorType.Node, null, name),
+                    leftOut == 0 ? new { reason, credential } : new { reason, credential, notRecordedBefore = leftOut })
+                .WithNode(node).WithTarget("node", node.ToString());
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        return answer ?? AgentErrors.AuthenticationRejected;
+    }
+
+    /// <summary>
     /// Registers the node's next key as a pending credential (docs/architecture/03, "Rotation"). The caller is the
     /// agent's current session, which proves the current key; the proof proves the new one. The node keeps using its
-    /// current credential until it authenticates with the new one.
+    /// current credential until it authenticates with the new one. The node's row is locked meanwhile: a revocation of
+    /// the current key (which also revokes pending ones) and this registration take turns, so none is left behind.
     /// </summary>
     public async Task<Result<SignedMessage>> RotateCredentialAsync(
         NodeId nodeId, Guid credentialId, Guid sessionId, RotateCredentialRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockNodeAsync(nodeId, cancellationToken);
         var session = sessions.Find(sessionId);
         var node = await db.Nodes.SingleOrDefaultAsync(n => n.Id == nodeId, cancellationToken);
         var current = await db.NodeCredentials.SingleOrDefaultAsync(c => c.Id == credentialId && c.NodeId == nodeId, cancellationToken);
         if (session is null || session.NodeId != nodeId || session.CredentialId != credentialId
             || node is not { AcceptsConnections: true } || current is not { IsActive: true })
         {
+            await transaction.RollbackAsync(cancellationToken);
             LogAuthenticationRejected(nodeId, "rotation from an ended session, inactive node or inactive credential");
-            return AgentErrors.AuthenticationRejected;
+            return await RefuseAsync(nodeId, "rotation_without_active_session", credentialId, cancellationToken);
         }
 
         if (!TryParseKeyStorage(request.KeyStorage, out var keyStorage) || request.PublicKey is null || request.Proof is null
             || !VerifyRotationProof(nodeId, credentialId, sessionId, request))
         {
+            await transaction.RollbackAsync(cancellationToken);
             LogRotationRejected(nodeId, "malformed request or invalid proof of the new key");
-            return AgentErrors.RotationRejected;
+            return await RefuseAsync(nodeId, "invalid_proof", credentialId, cancellationToken, AuditActions.Node.CredentialRotationStarted,
+                AgentErrors.RotationRejected);
         }
 
         var fingerprint = ProtocolCrypto.Fingerprint(request.PublicKey);
         if (await db.NodeCredentials.AnyAsync(c => c.Fingerprint == fingerprint, cancellationToken))
         {
+            await transaction.RollbackAsync(cancellationToken);
             LogRotationRejected(nodeId, "the new key is already registered");
-            return AgentErrors.RotationRejected;
+            return await RefuseAsync(nodeId, "key_already_registered", credentialId, cancellationToken, AuditActions.Node.CredentialRotationStarted,
+                AgentErrors.RotationRejected);
         }
 
         // Only the latest rotation can complete: an earlier pending key (the agent lost it) is dropped.
@@ -439,15 +494,34 @@ public sealed partial class AgentAccess(
                 new { fingerprint, keyStorage = keyStorage.ToString().ToLowerInvariant(), replaces = current.Fingerprint })
             .WithNode(nodeId).WithTarget("node", nodeId.ToString());
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         var result = new CredentialRotation(nodeId.Value, credential.Id, fingerprint);
         return await keys.SignAsync(AgentProtocol.Purposes.RotationResult, ProtocolJson.Serialize(result), cancellationToken);
     }
 
-    /// <summary>The first authentication with a pending credential: it becomes active and the previous one is superseded.</summary>
-    private async Task CompleteRotationAsync(Node node, NodeCredential credential, DateTimeOffset now, CancellationToken cancellationToken)
+    /// <summary>
+    /// The first authentication with a pending credential: it becomes active and the previous one is superseded. False
+    /// when it was revoked (a revocation of the current key revokes it too) or the node disabled since it was read.
+    /// </summary>
+    private async Task<bool> CompleteRotationAsync(Node node, NodeCredential credential, DateTimeOffset now, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        // With the node's row locked, as a revocation locks it: read both again, so a revocation that committed meanwhile
+        // is not overwritten by the activation.
+        await locks.LockNodeAsync(node.Id, cancellationToken);
+        await db.Entry(node).ReloadAsync(cancellationToken);
+        await db.Entry(credential).ReloadAsync(cancellationToken);
+        if (db.Entry(node).State == EntityState.Detached || db.Entry(credential).State == EntityState.Detached
+            || credential.Status != NodeCredentialStatus.Pending || !node.AcceptsConnections)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return false;
+        }
+
+        credential.Used(now);
+        node.Seen(now);
         var previous = await db.NodeCredentials.Where(c => c.NodeId == node.Id && c.Status == NodeCredentialStatus.Active).ToListAsync(cancellationToken);
         foreach (var old in previous)
         {
@@ -463,13 +537,20 @@ public sealed partial class AgentAccess(
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        // Sessions of the old key end now; the agent's new connection replaces its old one at Hello.
+        // Sessions of the old key end now, and the connection one of them opened closes: it would otherwise keep reporting
+        // until the agent's new connection says Hello (an agent that just signed in with its new key opens one at once).
         foreach (var old in previous)
         {
             sessions.EndCredential(old.Id);
         }
 
+        if (connections.Find(node.Id) is { } connection && !sessions.IsActive(connection.SessionId))
+        {
+            connections.Disconnect(node.Id);
+        }
+
         LogRotated(node.Id, credential.Fingerprint);
+        return true;
     }
 
     private static bool VerifyRotationProof(NodeId nodeId, Guid credentialId, Guid sessionId, RotateCredentialRequest request)

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
+using Pulsar.Domain.Nodes;
 
 namespace Pulsar.Api.Tests.Agents;
 
@@ -271,6 +272,30 @@ public sealed class AgentClientCertificateTests(AgentsEndpointApiFactory factory
             await restarted.EnsureLoadedAsync(scope.ServiceProvider.GetRequiredService<Pulsar.Application.Abstractions.IPulsarDbContext>(), Ct);
 
             Assert.True(restarted.RequireClientCertificates);
+        }
+        finally
+        {
+            await PutTransportAsync(admin, require: false);
+        }
+    }
+
+    [DatabaseFact]
+    public async Task ASwitchSavedByAChangeThatThenFailsIsTheOneInEffect()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var hook = new DatabaseHook();
+        using var app = factory.WithDatabaseHook(hook);
+        try
+        {
+            // The change commits, then its call fails (a request given up as the answer came back).
+            hook.AfterSave(c => c.ChangeTracker.Entries<AgentTransportSettings>().Any(), () => throw new OperationCanceledException());
+            await using (var scope = app.Services.CreateAsyncScope())
+            {
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => scope.ServiceProvider.GetRequiredService<AgentTransportManagement>()
+                    .SetAsync(new UpdateAgentTransportRequest(true), AgentsUrl, Ct));
+            }
+
+            Assert.True(app.Services.GetRequiredService<AgentTransportPolicy>().RequireClientCertificates);
         }
         finally
         {

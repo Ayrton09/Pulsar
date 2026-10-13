@@ -295,6 +295,31 @@ public sealed class NotificationTests(NotificationApiFactory factory) : IClassFi
     }
 
     [DatabaseFact]
+    public async Task ANodeWhoseSessionEndedIsOfflineThoughItsConnectionIsStillOpen()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var channel = await CreateAsync(admin, Channel("ended", NotificationKind.Email) with
+        {
+            Recipients = ["ops@example.com"],
+            Events = [NotificationEvent.NodeOffline],
+        });
+        var node = await NodeApi.CreateAsync(admin, "notifications-session-ended");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+        await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken);
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var watch = new NodeWatch(factory.Services.GetRequiredService<IServiceScopeFactory>(), clock);
+        var grace = (await GetJsonAsync<NotificationSettingsView>(admin, "/api/v1/notifications/settings")).NodeOfflineMinutes;
+
+        // Its session ended (its key revoked, say) and nothing has closed the connection yet: it is not connected.
+        factory.Services.GetRequiredService<AgentSessionStore>().EndAll(new NodeId(agent.NodeId));
+        clock.Advance(TimeSpan.FromMinutes(grace + 1));
+        await watch.SweepAsync(Ct);
+
+        Assert.Equal(["node:" + node.Node.Id + ":offline"], (await DeliveriesForAsync(channel.Id, node.Node.Id)).Select(d => d.Subject));
+    }
+
+    [DatabaseFact]
     public async Task ANodeApprovedAfterAWaitGetsTheWholeGraceToConnect()
     {
         using var admin = await factory.CreateAdminClientAsync();

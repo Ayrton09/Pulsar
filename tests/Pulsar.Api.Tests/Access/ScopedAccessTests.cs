@@ -163,6 +163,50 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task UserManagersCannotTakeOverUsersWhoseNodeOrServerRolesTheyLack()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(scenario.Admin, "takeover");
+        var node = agent.Config!.NodeId;
+        var server = (await ServerApi.CreateAsync(scenario.Admin, node, "Takeover")).Server.Id;
+        var keysRole = await CreateRoleAsync(scenario, "node-keys", PermissionScope.Node, Permissions.Node.CredentialsManage);
+        var viewRole = await CreateRoleAsync(scenario, "srv-view-only", PermissionScope.Server, Permissions.Server.View);
+        var filesRole = await CreateRoleAsync(scenario, "srv-files", PermissionScope.Server, Permissions.Server.View, Permissions.Server.FilesEdit);
+        var viewer = await scenario.CreateRoleAsync("takeover-viewer", Permissions.User.View);
+        var nodeUser = await scenario.CreateUserAsync("takeover-node", viewer);
+        await GrantAsync(scenario.Admin, nodeUser.Id, "nodes", node, keysRole.Id);
+        await GrantAsync(scenario.Admin, nodeUser.Id, "servers", server, viewRole.Id);
+        var serverUser = await scenario.CreateUserAsync("takeover-server");
+        await GrantAsync(scenario.Admin, serverUser.Id, "servers", server, filesRole.Id);
+        using var manager = await scenario.SignedInWithAsync("takeover-manager", Permissions.User.Manage, Permissions.User.View, Permissions.Server.View);
+
+        // Signing in as them would give the manager what they hold on that node or server.
+        foreach (var target in new[] { nodeUser.Id, serverUser.Id })
+        {
+            await AssertCodeAsync(manager.PostAsync($"/api/v1/users/{target}/password", new ResetPasswordRequest("a new password for tests")),
+                HttpStatusCode.Forbidden, "access.escalation");
+            await AssertCodeAsync(manager.PostAsync($"/api/v1/users/{target}/two-factor/reset"), HttpStatusCode.Forbidden, "access.escalation");
+            await AssertCodeAsync(manager.DeleteAsync($"/api/v1/users/{target}/api-keys"), HttpStatusCode.Forbidden, "access.escalation");
+        }
+
+        // Nor can they strip such a user of roles they hold themselves, globally or on a server.
+        await AssertCodeAsync(manager.PutAsync($"/api/v1/users/{nodeUser.Id}/roles", new SetUserRolesRequest([])), HttpStatusCode.Forbidden,
+            "access.escalation");
+        await AssertCodeAsync(manager.DeleteAsync($"/api/v1/users/{nodeUser.Id}/servers/{server}/roles/{viewRole.Id}"), HttpStatusCode.Forbidden,
+            "access.escalation");
+        await AssertCodeAsync(manager.DeleteAsync($"/api/v1/users/{serverUser.Id}"), HttpStatusCode.Forbidden, "access.escalation");
+
+        // Whoever holds those permissions there may.
+        using var host = await scenario.SignedInWithAsync("takeover-host", Permissions.User.Manage, Permissions.User.View, Permissions.Server.View,
+            Permissions.Node.CredentialsManage, Permissions.Server.FilesEdit);
+        foreach (var target in new[] { nodeUser.Id, serverUser.Id })
+        {
+            using var reset = await host.PostAsync($"/api/v1/users/{target}/password", new ResetPasswordRequest("a new password for tests"));
+            await AccessScenario.EnsureSuccessAsync(reset);
+        }
+    }
+
+    [DatabaseFact]
     public async Task OnlyRolesOnTheNodeOrEverywhereChangeAServersLimits()
     {
         var scenario = await AccessScenario.CreateAsync(factory);

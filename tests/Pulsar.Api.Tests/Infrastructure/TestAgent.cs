@@ -101,6 +101,9 @@ public sealed class TestAgent : IAsyncDisposable
         AwaitingApproval = result.AwaitingApproval;
     }
 
+    /// <summary>Signs in with another credential of the node from now on (one a rotation registered); pass its key to <see cref="PostTokenAsync"/>.</summary>
+    public void UseCredential(Guid credentialId) => CredentialId = credentialId;
+
     /// <param name="nonce">Sent with the request, signed back in a refusal that names the agents' address.</param>
     /// <param name="host">The Host header, as a proxy in front of the panel could set it.</param>
     public async Task<HttpResponseMessage> PostChallengeAsync(byte[]? nonce = null, string? host = null)

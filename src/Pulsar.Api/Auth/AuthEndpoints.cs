@@ -216,7 +216,8 @@ public static class AuthEndpoints
         {
             if (failures.TryRecord(out var leftOut))
             {
-                var userName = Truncate(request.UserName, 64);
+                // The name of an existing user only: what was typed may be a password typed in the wrong field.
+                var userName = known?.UserName;
                 var entry = audit.Record(AuditActions.Auth.LoginFailed, AuditOutcome.Failure,
                     leftOut == 0 ? new { userName, reason } : new { userName, reason, notRecordedBefore = leftOut });
                 if (known is not null)
@@ -290,6 +291,4 @@ public static class AuthEndpoints
             [.. permissions.Nodes.Select(n => new ScopedPermissions(n.Key.Value, [.. n.Value.Order(StringComparer.Ordinal)]))],
             [.. permissions.Servers.Select(s => new ScopedPermissions(s.Key.Value, [.. s.Value.Order(StringComparer.Ordinal)]))]);
     }
-
-    private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
 }

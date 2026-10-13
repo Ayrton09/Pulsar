@@ -12,6 +12,9 @@ internal sealed class RowLocks(PulsarDbContext db) : IRowLocks
     public Task LockUserAsync(UserId user, CancellationToken cancellationToken) =>
         LockAsync(() => db.Database.ExecuteSqlAsync($"SELECT 1 FROM users WHERE id = {user.Value} FOR UPDATE", cancellationToken));
 
+    public Task LockNodeAsync(NodeId node, CancellationToken cancellationToken) =>
+        LockAsync(() => db.Database.ExecuteSqlAsync($"SELECT 1 FROM nodes WHERE id = {node.Value} FOR UPDATE", cancellationToken));
+
     public Task LockBackupAsync(BackupId backup, CancellationToken cancellationToken) =>
         LockAsync(() => db.Database.ExecuteSqlAsync($"SELECT 1 FROM backups WHERE id = {backup.Value} FOR UPDATE", cancellationToken));
 

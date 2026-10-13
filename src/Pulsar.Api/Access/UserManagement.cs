@@ -233,14 +233,19 @@ public sealed class UserManagement(
         return TypedResults.NoContent();
     }
 
+    /// <summary>
+    /// Replaces the user's global roles: each one added or removed under the assignment rules, and only for a user the
+    /// actor may manage at all (nobody strips a more powerful user of the roles they share).
+    /// </summary>
     public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> SetRolesAsync(UserId id, SetUserRolesRequest input, CancellationToken ct)
     {
-        var user = await db.Users.SingleOrDefaultAsync(u => u.Id == id, ct);
-        if (user is null)
+        var (found, problem) = await FindManageableAsync(id, ct);
+        if (problem is not null)
         {
-            return ApiProblems.FromDomainError(AccessErrors.UserNotFound);
+            return problem;
         }
 
+        var user = found!;
         var actor = Actor;
         var actorPermissions = await evaluator.GetAsync(actor, ct);
         var desired = input.RoleIds.Distinct().Select(g => new RoleId(g)).ToHashSet();
@@ -294,18 +299,20 @@ public sealed class UserManagement(
 
     /// <summary>
     /// Grants (<paramref name="granted"/>) or revokes a node or server role of a user on <paramref name="targetId"/>,
-    /// under the same rules as global roles: nobody changes their own, the role must be of that scope, and the actor
-    /// must hold every permission of the role there. Repeating a grant or a revoke changes nothing. The user's live
-    /// connections are closed, so what they watch follows at once.
+    /// under the same rules as global roles: nobody changes their own, the user must be one the actor may manage, the
+    /// role must be of that scope, and the actor must hold every permission of the role there. Repeating a grant or a
+    /// revoke changes nothing. The user's live connections are closed, so what they watch follows at once.
     /// </summary>
     public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> SetAccessAsync(UserId id, PermissionScope scope, Guid targetId, RoleId roleId,
         bool granted, CancellationToken ct)
     {
-        var user = await db.Users.SingleOrDefaultAsync(u => u.Id == id, ct);
-        if (user is null)
+        var (found, problem) = await FindManageableAsync(id, ct);
+        if (problem is not null)
         {
-            return ApiProblems.FromDomainError(AccessErrors.UserNotFound);
+            return problem;
         }
+
+        var user = found!;
 
         if (await db.Roles.SingleOrDefaultAsync(r => r.Id == roleId, ct) is not { } role)
         {
@@ -415,7 +422,12 @@ public sealed class UserManagement(
             return (null, ApiProblems.FromDomainError(AccessErrors.UserNotFound));
         }
 
-        var allowed = AccessRules.CanManageUser(Actor, await evaluator.GetAsync(Actor, ct), id, await evaluator.GetAsync(id, ct));
+        var target = await evaluator.GetAsync(id, ct);
+        var servers = target.Servers.Keys.ToList();
+        var serverNodes = servers.Count == 0
+            ? []
+            : await db.Servers.Where(s => servers.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.NodeId, ct);
+        var allowed = AccessRules.CanManageUser(Actor, await evaluator.GetAsync(Actor, ct), id, target, serverNodes);
         return allowed.IsSuccess ? (user, null) : (null, ApiProblems.FromDomainError(allowed.Error!));
     }
 

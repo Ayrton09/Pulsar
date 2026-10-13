@@ -14,6 +14,12 @@ public interface IRowLocks
     /// <summary>The user's row: what they own (their API keys) is counted against what is there now.</summary>
     Task LockUserAsync(UserId user, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The node's row: its credentials (a rotation and a revocation take turns) and its allocations are checked against
+    /// what is there now. Its agent's writes to the row (Hello, last seen) wait meanwhile.
+    /// </summary>
+    Task LockNodeAsync(NodeId node, CancellationToken cancellationToken);
+
     /// <summary>The backup's row: locking it (by a user) waits until the transaction ends.</summary>
     Task LockBackupAsync(BackupId backup, CancellationToken cancellationToken);
 

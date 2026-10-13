@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
+using Pulsar.Application.Metrics;
 using Pulsar.Contracts;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
@@ -31,7 +32,7 @@ public sealed record NodeMetricsView(DateTimeOffset At, double CpuPercent, long 
     public static NodeMetricsView From(NodeMetrics metrics)
     {
         ArgumentNullException.ThrowIfNull(metrics);
-        return new NodeMetricsView(metrics.At, metrics.CpuPercent, metrics.MemoryUsedBytes, metrics.MemoryTotalBytes, metrics.Uptime,
+        return new NodeMetricsView(metrics.At, MetricHistory.CpuPercent(metrics.CpuPercent), metrics.MemoryUsedBytes, metrics.MemoryTotalBytes, metrics.Uptime,
             metrics.Disks?.Select(d => new DiskUsageView(d.Root, d.TotalBytes, d.FreeBytes, d.Uses)).ToList());
     }
 }
@@ -102,6 +103,7 @@ public sealed class NodeManagement(
     IPanelKeyRing keys,
     IAgentConnections connections,
     AgentSessionStore sessions,
+    IRowLocks locks,
     IRequestContext request,
     IAuditLog audit,
     VisibleResources visible,
@@ -169,14 +171,19 @@ public sealed class NodeManagement(
             return NodeErrors.NameTaken;
         }
 
-        var updated = node.Update(name ?? string.Empty, description, publicHost, clock.GetUtcNow());
+        var now = clock.GetUtcNow();
+        var updated = node.Update(name ?? string.Empty, description, publicHost, now);
         if (!updated.IsSuccess)
         {
             return updated.Error!;
         }
 
         audit.Record(AuditActions.Node.Updated, metadata: new { name = node.Name }).WithNode(node.Id).WithTarget("node", node.Id.ToString());
-        await db.SaveChangesAsync(cancellationToken);
+        if (!await SaveNodeAsync(node, n => n.Update(name ?? string.Empty, description, publicHost, now), cancellationToken))
+        {
+            return NodeErrors.NotFound;
+        }
+
         return await SummarizeAsync(node, cancellationToken);
     }
 
@@ -228,18 +235,39 @@ public sealed class NodeManagement(
         return instructions;
     }
 
+    /// <summary>
+    /// Revokes a node key and cuts the node off. Revoking the active key also revokes a key a rotation registered and
+    /// that has not signed in yet: the active key's sessions registered it, so whoever holds the revoked key (a thief)
+    /// may have. The node's row is locked, so a rotation registering a key meanwhile waits and then finds the key revoked.
+    /// </summary>
     public async Task<Result> RevokeCredentialAsync(NodeId id, Guid credentialId, string? reason, CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockNodeAsync(id, cancellationToken);
         var credential = await db.NodeCredentials.SingleOrDefaultAsync(c => c.Id == credentialId && c.NodeId == id, cancellationToken);
         if (credential is null)
         {
             return NodeErrors.NotFound;
         }
 
-        credential.Revoke(request.UserId, reason, clock.GetUtcNow());
-        audit.Record(AuditActions.Node.CredentialRevoked, metadata: new { credential = credential.Id, fingerprint = credential.Fingerprint, reason })
-            .WithNode(id).WithTarget("node", id.ToString());
+        var now = clock.GetUtcNow();
+        var pending = credential.IsActive
+            ? await db.NodeCredentials.Where(c => c.NodeId == id && c.Status == NodeCredentialStatus.Pending).ToListAsync(cancellationToken)
+            : [];
+        foreach (var key in pending.Prepend(credential))
+        {
+            key.Revoke(request.UserId, reason, now);
+        }
+
+        audit.Record(AuditActions.Node.CredentialRevoked, metadata: new
+        {
+            credential = credential.Id,
+            fingerprint = credential.Fingerprint,
+            reason,
+            pendingRevoked = pending.Select(p => p.Fingerprint).ToList(),
+        }).WithNode(id).WithTarget("node", id.ToString());
         await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         CutOff(id);
         return Result.Success();
     }
@@ -266,7 +294,11 @@ public sealed class NodeManagement(
 
         db.Nodes.Remove(node);
         audit.Record(AuditActions.Node.Deleted, metadata: new { name = node.Name }).WithNode(id).WithTarget("node", id.ToString());
-        await db.SaveChangesAsync(cancellationToken);
+        if (!await SaveNodeAsync(node, n => db.Nodes.Remove(n), cancellationToken))
+        {
+            return NodeErrors.NotFound;
+        }
+
         CutOff(id);
         return Result.Success();
     }
@@ -327,7 +359,11 @@ public sealed class NodeManagement(
 
         audit.Record(disable ? AuditActions.Node.Disabled : AuditActions.Node.Enabled, metadata: new { name = node.Name })
             .WithNode(id).WithTarget("node", id.ToString());
-        await db.SaveChangesAsync(cancellationToken);
+        if (!await SaveNodeAsync(node, n => _ = disable ? n.Disable(now) : n.Enable(now), cancellationToken))
+        {
+            return NodeErrors.NotFound;
+        }
+
         if (disable)
         {
             CutOff(id);
@@ -344,6 +380,33 @@ public sealed class NodeManagement(
             .WithNode(node.Id).WithTarget("node", node.Id.ToString());
         var panelKey = (await keys.GetPublicKeysAsync(cancellationToken))[0];
         return new EnrollmentInstructions(plain, token.ExpiresAt, panelKey.KeyId);
+    }
+
+    /// <summary>
+    /// Saves an administrator's change to the node. Its agent writes the same row (Hello, last seen), which makes a save
+    /// that read it before fail: the change is applied again to the fresh row, so a disable or a deletion is not lost.
+    /// False when the node was deleted meanwhile.
+    /// </summary>
+    private async Task<bool> SaveNodeAsync(Node node, Action<Node> apply, CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return true;
+            }
+            catch (DbUpdateConcurrencyException) when (attempt < 2)
+            {
+                await db.Entry(node).ReloadAsync(cancellationToken);
+                if (db.Entry(node).State == EntityState.Detached)
+                {
+                    return false;
+                }
+
+                apply(node);
+            }
+        }
     }
 
     /// <summary>Ends the node's sessions and closes its connection right away.</summary>
