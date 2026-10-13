@@ -975,7 +975,11 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private async Task TailLogAsync(LaunchPlan plan, int generation, Regex? readiness, long start, CancellationToken cancellationToken)
     {
         var tail = new LogTail(_files, _definition.Directory, plan.Console.LogFile!, TextEncoding(plan.Console.Encoding), _options.LogPollInterval,
-            start);
+            start, onUnreadable: ex =>
+            {
+                LogLogTailFailed(ServerId, ex.Message);
+                _console.Note($"Cannot open the log file {plan.Console.LogFile}: {ex.Message}", _clock.GetUtcNow());
+            });
         var lines = readiness is null ? null : new ConsoleLines();
         try
         {

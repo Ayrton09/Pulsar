@@ -78,6 +78,9 @@ public sealed partial class AgentConnection(
     /// <summary>Enough failures for the backoff to sit at its maximum.</summary>
     private const int MaxFailures = 30;
 
+    /// <summary>Answers without the panel's words to the pending key, in a row, after which it is given up (the current key works).</summary>
+    private const int MaxPendingKeyMisses = 3;
+
     /// <summary>How long a session must last for the reconnect backoff to start over.</summary>
     private static readonly TimeSpan s_stableSession = TimeSpan.FromMinutes(1);
 
@@ -93,6 +96,7 @@ public sealed partial class AgentConnection(
     private TaskCompletionSource _rotationRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TaskCompletionSource _reconnectRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private DateTimeOffset _nextRotationAttempt = DateTimeOffset.MinValue;
+    private int _pendingKeyMisses;
 
     private enum SessionEnd
     {
@@ -400,7 +404,9 @@ public sealed partial class AgentConnection(
     /// <summary>
     /// Authenticates with the pending key first when there is one: success completes the rotation (the panel
     /// activates it; the agent switches to it and deletes the old key), refusal abandons it, and a network error leaves
-    /// it for the next attempt. A crash anywhere in between leaves one of the two keys working.
+    /// it for the next attempt. A crash anywhere in between leaves one of the two keys working. An answer that is not the
+    /// panel's (an older panel's bare 401 for a credential it dropped) signs in with the current key for that attempt; after
+    /// <see cref="MaxPendingKeyMisses"/> such answers in a row, while the current key works, the pending key is abandoned.
     /// </summary>
     private async Task<(TokenResponse Token, Uri Panel)> AuthenticateAsync(bool fallbackFirst, CancellationToken cancellationToken)
     {
@@ -414,21 +420,27 @@ public sealed partial class AgentConnection(
                 newCertificate = CreateCertificate(newKey);
                 var signedIn = await SignInAsync(pending.CredentialId, newKey, newCertificate, fallbackFirst, cancellationToken);
                 CompleteRotation(pending, newKey, newCertificate);
+                _pendingKeyMisses = 0;
                 return signedIn;
             }
             catch (Exception ex) when (ex is AgentRejectedException or CryptographicException)
             {
                 newKey?.Dispose();
                 newCertificate?.Dispose();
-                // A rotation that failed like any other: the next one waits (a key due by age would otherwise start one
-                // again at once, and so on).
-                _nextRotationAttempt = clock.GetUtcNow() + options.RotationRetryDelay;
-                LogPendingKeyAbandoned(pending.CredentialId, ex.Message, _nextRotationAttempt);
-                DeleteKey(pending.Key);
-                lock (_configLock)
+                AbandonPendingKey(pending, ex.Message);
+            }
+            catch (PanelNotAnsweringException ex)
+            {
+                newKey?.Dispose();
+                newCertificate?.Dispose();
+                // Not a refusal the panel worded, so the key is kept: the current key says whether anything answers there.
+                var current = await SignInAsync(_config.CredentialId, _key, _certificate, fallbackFirst, cancellationToken);
+                if (++_pendingKeyMisses >= MaxPendingKeyMisses)
                 {
-                    SaveConfig(_config with { PendingRotation = null });
+                    AbandonPendingKey(pending, $"the panel answered {_pendingKeyMisses} times without recognizing it: {ex.Message}");
                 }
+
+                return current;
             }
             catch
             {
@@ -439,6 +451,20 @@ public sealed partial class AgentConnection(
         }
 
         return await SignInAsync(_config.CredentialId, _key, _certificate, fallbackFirst, cancellationToken);
+    }
+
+    private void AbandonPendingKey(PendingRotation pending, string reason)
+    {
+        _pendingKeyMisses = 0;
+        // A rotation that failed like any other: the next one waits (a key due by age would otherwise start one
+        // again at once, and so on).
+        _nextRotationAttempt = clock.GetUtcNow() + options.RotationRetryDelay;
+        LogPendingKeyAbandoned(pending.CredentialId, reason, _nextRotationAttempt);
+        DeleteKey(pending.Key);
+        lock (_configLock)
+        {
+            SaveConfig(_config with { PendingRotation = null });
+        }
     }
 
     /// <summary>

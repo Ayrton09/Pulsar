@@ -178,6 +178,19 @@ public sealed class WorkshopTests(WorkshopApiFactory factory) : IClassFixture<Wo
     }
 
     [DatabaseFact]
+    public async Task ALongTitleIsNotCutInTheMiddleOfAnEmoji()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        factory.Steam.Items["3806657189"] = FakeSteam.Item("3806657189", new string('x', 127) + "\U0001F600 and more", 108600);
+
+        using var response = await admin.PostAsync("/api/v1/workshop/lookup", new WorkshopLookupRequest(108600, ["3806657189"]));
+
+        await AccessScenario.EnsureSuccessAsync(response);
+        var items = (await response.Content.ReadFromJsonAsync<List<WorkshopItemView>>(AccessScenario.Json, Ct))!;
+        Assert.Equal(new string('x', 127), items[0].Title);
+    }
+
+    [DatabaseFact]
     public async Task SteamsAnswerIsReadWithinItsLimitsAndRedirectsAreNotFollowed()
     {
         using var admin = await factory.CreateAdminClientAsync();

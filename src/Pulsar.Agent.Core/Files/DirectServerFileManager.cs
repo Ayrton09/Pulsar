@@ -69,20 +69,21 @@ public sealed class DirectServerFileManager : IServerFileManager
         Guard(path, () => Directory.CreateDirectory(full));
     }
 
-    public IReadOnlyList<TreeEntry> Walk(ProvisionedServer server)
+    public TreeWalk Walk(ProvisionedServer server)
     {
         var root = Resolve(server, ServerFilePath.Root, allowRoot: true);
-        var entries = new List<TreeEntry>();
+        var entries = new TreeWalk();
         Guard(ServerFilePath.Root, () => WalkInto(root, ServerFilePath.Root, entries, 0));
         return entries;
     }
 
-    private static void WalkInto(string directory, string path, List<TreeEntry> entries, int depth)
+    private static void WalkInto(string directory, string path, TreeWalk entries, int depth)
     {
         foreach (var info in new DirectoryInfo(directory).EnumerateFileSystemInfos())
         {
             if (!ServerFilePath.IsValid(ServerFilePath.Join(path, info.Name)))
             {
+                entries.Refuse(ServerFilePath.Join(path, info.Name));
                 continue;
             }
 

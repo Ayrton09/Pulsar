@@ -103,18 +103,25 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         ArgumentNullException.ThrowIfNull(location);
         ArgumentNullException.ThrowIfNull(progress);
         await progress(BackupStages.Scanning, null);
-        var selected = Select(files.Walk(server), rules);
+        var walk = files.Walk(server);
+        var selected = Select(walk, rules);
         var collisions = DropCaseCollisions(selected);
         var total = selected.Sum(f => f.Size);
         System.IO.Directory.CreateDirectory(location.Directory);
         try
         {
             // A restore refuses an archive naming one path twice by any case (Windows would write both to one file), so a
-            // folder with per-directory case sensitivity must not put both in: the first in ordinal order stays.
-            int count = 0, skipped = collisions.Count;
+            // folder with per-directory case sensitivity must not put both in: the first in ordinal order stays. Names the
+            // walk could not name (created through extended paths) are not in the backup either: both count as left out.
+            int count = 0, skipped = collisions.Count + walk.Refused;
             foreach (var collision in collisions.Take(MaxLoggedSkips))
             {
                 LogSkipped(location.ShortId, collision.Path, "case_collision");
+            }
+
+            if (walk.Refused > 0)
+            {
+                LogUnnameable(location.ShortId, walk.Refused, string.Join(", ", walk.RefusedSample.Select(Printable)));
             }
 
             await using (var output = new FileStream(location.Partial, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, BufferSize,
@@ -463,6 +470,9 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         }
     }
 
+    /// <summary>A name for a log line: control characters, which a game could use to forge lines, are shown as '?'.</summary>
+    private static string Printable(string path) => new([.. path.Select(c => char.IsControl(c) ? '?' : c)]);
+
     /// <summary>The files a backup takes: matched by the manifest's globs, minus Pulsar's own; links and directories are not files.</summary>
     internal static List<TreeEntry> Select(IReadOnlyList<TreeEntry> tree, BackupDefinition? rules)
     {
@@ -741,6 +751,9 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Backup of {ShortId}: {Path} left out ({Code})")]
     private partial void LogSkipped(string shortId, string path, string code);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Backup of {ShortId}: {Count} entries left out because no path can name them (a trailing dot, a device name, a control character), e.g. {Paths}")]
+    private partial void LogUnnameable(string shortId, int count, string paths);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete {Path}: {Reason}")]
     private partial void LogNotDeleted(string path, string reason);

@@ -387,7 +387,7 @@ public sealed record AddonRelease(string Key, string? Release);
 /// <summary>A backup the node made.</summary>
 /// <param name="Size">Bytes of the archive.</param>
 /// <param name="FileCount">Files in it.</param>
-/// <param name="SkippedFiles">Files left out because the game held them open (a backup of a running server).</param>
+/// <param name="SkippedFiles">Files left out because the game held them open (a backup of a running server), or because no path can name them.</param>
 /// <param name="Sha256">The archive's SHA-256, lowercase hex: a restore checks it first.</param>
 /// <param name="RemoteCopied">The archive was copied to the command's remote storage.</param>
 /// <param name="RemoteError">Why the copy to remote storage failed (the backup itself is fine on the node).</param>

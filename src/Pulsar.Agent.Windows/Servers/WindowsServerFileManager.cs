@@ -55,15 +55,15 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
 
     public void EnsureDirectory(ProvisionedServer server, string path) => MakeDirectories(server, path, mustBeNew: false);
 
-    public IReadOnlyList<TreeEntry> Walk(ProvisionedServer server) => Run(server, root =>
+    public TreeWalk Walk(ProvisionedServer server) => Run(server, root =>
     {
-        var entries = new List<TreeEntry>();
+        var entries = new TreeWalk();
         WalkInto(root, ServerFilePath.Root, entries, 0);
         return entries;
     }, write: false);
 
     /// <summary>Lists each directory from its own checked handle; links are recorded, never opened as directories.</summary>
-    private static void WalkInto(ServerRoot root, string path, List<TreeEntry> entries, int depth)
+    private static void WalkInto(ServerRoot root, string path, TreeWalk entries, int depth)
     {
         List<FileEntry> children;
         using (var directory = root.OpenDirectory(path, ListDirectory | ReadAttributes | Synchronize))
@@ -79,6 +79,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             var childPath = ServerFilePath.Join(path, child.Name);
             if (!ServerFilePath.IsValid(childPath))
             {
+                entries.Refuse(childPath);
                 continue;
             }
 

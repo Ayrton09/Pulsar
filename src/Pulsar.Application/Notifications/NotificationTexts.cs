@@ -1,4 +1,5 @@
 using System.Globalization;
+using Pulsar.Domain.Common;
 using Pulsar.Domain.Notifications;
 
 namespace Pulsar.Application.Notifications;
@@ -148,7 +149,7 @@ public static class NotificationTexts
         .. extra.Where(f => !string.IsNullOrWhiteSpace(f.Value)).Select(f => new NotificationField(f.Name, Clip(f.Value!))),
     ];
 
-    private static string Clip(string value) => value.Length > 300 ? value[..300] + "…" : value;
+    private static string Clip(string value) => value.Length > 300 ? TextLimits.Truncate(value, 300) + "…" : value;
 }
 
 /// <summary>What messages say about a server.</summary>

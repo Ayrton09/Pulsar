@@ -14,8 +14,14 @@ namespace Pulsar.Agent.Core.Servers;
 /// exiting is not lost.
 /// </summary>
 /// <param name="start">Where to start reading: 0, or where an earlier run of the agent stopped (a game left running in its host).</param>
-public sealed class LogTail(IServerFiles files, string serverRoot, string relativePath, Encoding encoding, TimeSpan pollInterval, long start = 0)
+/// <param name="onUnreadable">Called once per <see cref="ReadAsync"/> when the file has refused to open at <see cref="OpenFailuresBeforeReport"/> polls
+/// in a row (a log nobody can read would otherwise go unnoticed); it is still tried at every poll.</param>
+public sealed class LogTail(IServerFiles files, string serverRoot, string relativePath, Encoding encoding, TimeSpan pollInterval, long start = 0,
+    Action<Exception>? onUnreadable = null)
 {
+    /// <summary>Polls in a row at which the file could not be opened before <c>onUnreadable</c> hears of it.</summary>
+    public const int OpenFailuresBeforeReport = 20;
+
     private const int BufferSize = 64 * 1024;
     private const int IdlePollsPerRotationCheck = 4;
     private const int SignatureLength = 256;
@@ -37,6 +43,8 @@ public sealed class LogTail(IServerFiles files, string serverRoot, string relati
         var tail = new List<byte>(4); // the last bytes read: where a character may be cut
         var lastRead = false;
         var idlePolls = 0;
+        var openFailures = 0;
+        var reported = false;
         try
         {
             while (true)
@@ -44,10 +52,17 @@ public sealed class LogTail(IServerFiles files, string serverRoot, string relati
                 try
                 {
                     stream ??= files.OpenRead(serverRoot, relativePath);
+                    openFailures = 0;
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    // Held without sharing for a moment (the game creating it), or not open to the agent yet: next poll.
+                    // Held without sharing for a moment (the game creating it), or not open to the agent yet: next poll. One
+                    // that never opens is said once, not at every poll.
+                    if (++openFailures >= OpenFailuresBeforeReport && !reported)
+                    {
+                        reported = true;
+                        onUnreadable?.Invoke(ex);
+                    }
                 }
 
                 var restart = stream is not null && stream.Length < position; // truncated

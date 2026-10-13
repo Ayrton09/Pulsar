@@ -23,9 +23,10 @@ public interface IServerFileManager
 
     /// <summary>
     /// Every entry below the server directory, each directory before what it holds. Links are reported and never
-    /// entered; entries whose names no <see cref="ServerFilePath"/> can name (a device name a game created) are left out.
+    /// entered; entries whose names no <see cref="ServerFilePath"/> can name (a device name a game created) are left out
+    /// and reported in <see cref="TreeWalk.Refused"/>.
     /// </summary>
-    IReadOnlyList<TreeEntry> Walk(ProvisionedServer server);
+    TreeWalk Walk(ProvisionedServer server);
 
     /// <summary>Renames or moves an entry; fails when <paramref name="destination"/> exists.</summary>
     void Move(ProvisionedServer server, string path, string destination);
@@ -47,6 +48,45 @@ public interface IServerFileManager
 /// <summary>An entry found by <see cref="IServerFileManager.Walk"/>.</summary>
 /// <param name="Path">From the server directory (a <see cref="ServerFilePath"/>).</param>
 public sealed record TreeEntry(string Path, FileEntryKind Kind, long Size, DateTimeOffset ModifiedAt);
+
+/// <summary>
+/// What <see cref="IServerFileManager.Walk"/> found: the entries, and how many it left out because no
+/// <see cref="ServerFilePath"/> can name them (a trailing dot, a device name or a control character, created through
+/// extended paths). A refused directory counts once; what it holds is not looked at.
+/// </summary>
+public sealed class TreeWalk : IReadOnlyList<TreeEntry>
+{
+    /// <summary>Most refused names kept to show.</summary>
+    public const int MaxRefusedSample = 20;
+
+    private readonly List<TreeEntry> _entries = [];
+    private readonly List<string> _sample = [];
+
+    public int Count => _entries.Count;
+
+    /// <summary>How many entries were left out.</summary>
+    public int Refused { get; private set; }
+
+    /// <summary>The paths of the first refused entries; may hold characters a log must not print as they are.</summary>
+    public IReadOnlyList<string> RefusedSample => _sample;
+
+    public TreeEntry this[int index] => _entries[index];
+
+    public void Add(TreeEntry entry) => _entries.Add(entry);
+
+    public void Refuse(string path)
+    {
+        Refused++;
+        if (_sample.Count < MaxRefusedSample)
+        {
+            _sample.Add(path);
+        }
+    }
+
+    public IEnumerator<TreeEntry> GetEnumerator() => _entries.GetEnumerator();
+
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+}
 
 public sealed class FileManagerException(string code, string message, Exception? inner = null) : Exception(message, inner)
 {

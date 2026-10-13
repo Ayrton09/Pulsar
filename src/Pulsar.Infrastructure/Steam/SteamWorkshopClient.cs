@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Pulsar.Application.Servers;
+using Pulsar.Domain.Common;
 
 namespace Pulsar.Infrastructure.Steam;
 
@@ -110,7 +111,7 @@ public sealed class SteamWorkshopClient(IHttpClientFactory clients) : ISteamWork
         }
 
         var cleaned = new string([.. title.Where(c => !char.IsControl(c) && CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.Format)]).Trim();
-        return cleaned.Length > MaxTitleLength ? cleaned[..MaxTitleLength] : cleaned;
+        return TextLimits.Truncate(cleaned, MaxTitleLength);
     }
 
     private static long? Number(JsonElement? value) => value switch

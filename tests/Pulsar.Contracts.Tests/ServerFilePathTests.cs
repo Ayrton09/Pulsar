@@ -25,11 +25,6 @@ public sealed class ServerFilePathTests
         "server.cfg.", "server.cfg ", " server.cfg", "cfg./server.cfg", "cfg /server.cfg",
         // Control characters and characters Windows does not allow in names.
         "a\0b", "a\nb", "a\rb", "a\tb", "a\u001fb", "a\u007fb", "a\u0085b", "a<b", "a>b", "a\"b", "a|b", "a?b", "a*b",
-        // Characters that hide or reorder what a name shows ("invoice" + U+202E + "fdp.exe" reads as "invoiceexe.pdf"): format
-        // characters (direction marks and overrides, zero-width spaces, the byte order mark, tag characters) and line separators.
-        "invoice\U0000202Efdp.exe", "a\U0000200Bb", "a\U0000200Eb", "a\U0000200Fb", "a\U00002066b", "a\U00002069b", "a\U0000061Cb", "a\U0000FEFFb",
-        "a\U00002028b", "a\U00002029b",
-        "a\U000E0041b",
         // Broken UTF-16.
         "\ud800", "a/\udc00b", "x\ud83d",
     ];
@@ -40,6 +35,11 @@ public sealed class ServerFilePathTests
         "\u00dcn\u00efc\u00f6d\u00e9/\u540d\u524d.cfg", "emoji\ud83d\ude00.txt", "COM10", "LPT10", "CONSOLE", "NULL", "auxiliary.cfg",
         "con_settings.cfg", "nul-sink", "$name", "~tmp", "#x", "[brackets]", "{braces}", "a;b", "a=b", "a,b", "a'b", "a&b",
         "a+b", "a@b", "a!b", "a%b", "a`b", "a^b", "PROGRA~1",
+        // Format characters and separators are legitimate in names (Persian and Hindi joiners, emoji sequences, direction
+        // marks, soft hyphens); the file manager shows them visibly instead of the agent refusing them.
+        "a\U0000200Cb", "a\U0000200Db", "family\U0001F468\U0000200D\U0001F469.png", "a\U0000200Eb", "a\U0000200Fb", "a\U000000ADb",
+        "invoice\U0000202Efdp.exe", "a\U0000200Bb", "a\U00002066b", "a\U0000061Cb", "a\U0000FEFFb", "a\U00002028b", "a\U00002029b",
+        "a\U000E0041b",
     ];
 
     [Theory]

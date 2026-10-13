@@ -12,13 +12,13 @@ public sealed class UrlOptionArgumentTests
     [InlineData("?ServerPassword=x")]
     [InlineData("?SetServerPassword=x")]
     [InlineData("?Port=7778")]
-    [InlineData("?QueryPort=27016")]
     [InlineData("?SessionName=Mine")]
     [InlineData("TheCenter_WP?SessionName=Mine")]
     [InlineData("?MaxPlayers=10?ServerAdminPassword=x")]
     [InlineData("?MaxPlayers=10&ServerAdminPassword=x")]
     [InlineData("-log ?ServerAdminPassword=x")]
-    [InlineData("-QueryPort=27016")]
+    [InlineData("?SpectatorPassword=x")]
+    [InlineData("-SpectatorPassword=x")]
     public void ExtraArgumentsCannotSetWhatPulsarOrTheGamesSettingsSet(string extra)
     {
         Assert.NotNull(Check([extra]));
@@ -28,6 +28,8 @@ public sealed class UrlOptionArgumentTests
     [InlineData("?AllowCrateSpawnsOnTopOfStructures=True")]
     [InlineData("?MaxPlayers=10")]
     [InlineData("-NoTransferFromFiltering")]
+    [InlineData("?QueryPort=27016")] // not a secret
+    [InlineData("-QueryPort=27016")]
     public void OtherExtraArgumentsAreAccepted(string extra)
     {
         Assert.Null(Check([extra]));

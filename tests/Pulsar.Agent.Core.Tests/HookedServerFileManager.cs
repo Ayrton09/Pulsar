@@ -22,7 +22,27 @@ internal sealed class HookedServerFileManager(IServerFileManager inner) : IServe
     /// <summary>Changes what a walk lists (an entry that differs from another only by case, as a case-sensitive folder can hold).</summary>
     public Func<IReadOnlyList<TreeEntry>, IReadOnlyList<TreeEntry>>? OnWalk { get; set; }
 
-    public IReadOnlyList<TreeEntry> Walk(ProvisionedServer server) => OnWalk is { } change ? change(inner.Walk(server)) : inner.Walk(server);
+    public TreeWalk Walk(ProvisionedServer server)
+    {
+        var walk = inner.Walk(server);
+        if (OnWalk is not { } change)
+        {
+            return walk;
+        }
+
+        var changed = new TreeWalk();
+        foreach (var entry in change(walk))
+        {
+            changed.Add(entry);
+        }
+
+        foreach (var path in walk.RefusedSample)
+        {
+            changed.Refuse(path);
+        }
+
+        return changed;
+    }
 
     public void Move(ProvisionedServer server, string path, string destination) => inner.Move(server, path, destination);
 
