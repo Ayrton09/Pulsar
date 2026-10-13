@@ -65,6 +65,23 @@ public sealed class ServerStoreTests : IDisposable
         Assert.Single(store.LoadAll());
     }
 
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("42")]
+    [InlineData("\"text\"")]
+    public void ARecordThatIsNotAJsonObjectIsSetAside(string content)
+    {
+        var store = new ServerStore(new AgentPaths(_root), new PlainStateProtector());
+        var spec = new ServerRuntimeSpec("abcd2345", "{}", new Dictionary<string, string?>(), [], AutoStart: false, RestartOnCrash: false);
+        var good = new ServerRecord(Guid.NewGuid(), spec, DesiredRunning: false, ResumeOnStart: false);
+        store.Save(good);
+        var odd = Guid.NewGuid();
+        File.WriteAllText(Path.Combine(_root, "state", "servers", $"{odd:N}.json"), content);
+
+        Assert.Equal(good.ServerId, Assert.Single(store.LoadAll()).ServerId);
+        Assert.True(File.Exists(Path.Combine(_root, "state", "servers", $"{odd:N}.json.unreadable")));
+    }
+
     [Fact]
     public void AnUnreadableResultIsSetAsideAndTheOthersAreStillPending()
     {

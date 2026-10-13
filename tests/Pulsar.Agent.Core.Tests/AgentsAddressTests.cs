@@ -109,6 +109,7 @@ public sealed class AgentsAddressTests : IDisposable
         Assert.True(AgentConnection.IsUnreachable(new System.Net.WebSockets.WebSocketException("closed"), running));
         Assert.True(AgentConnection.IsUnreachable(new PanelNotAnsweringException("502"), running));
         Assert.True(AgentConnection.IsUnreachable(new TaskCanceledException("timeout"), running));
+        Assert.True(AgentConnection.IsUnreachable(new TimeoutException("no Hello"), running));
 
         // The panel answered: the fallback would only say it again.
         Assert.False(AgentConnection.IsUnreachable(new AgentRejectedException("revoked"), running));
@@ -134,11 +135,63 @@ public sealed class AgentsAddressTests : IDisposable
         await Assert.ThrowsAsync<PanelNotAnsweringException>(() => PostAsync(HttpStatusCode.BadGateway, null));
     }
 
+    [Fact]
+    public async Task OnlyThePanelsOwnRefusalIsARefusal()
+    {
+        // The panel says why in the protocol's words: the agent stops trying there, and never takes it elsewhere.
+        var refused = await Assert.ThrowsAsync<AgentRejectedException>(() =>
+            PostAsync(HttpStatusCode.Unauthorized, new AgentError("agent.authentication_rejected", "The node cannot authenticate.")));
+        Assert.False(AgentConnection.IsUnreachable(refused, CancellationToken.None));
+
+        // Another service on that port (the agents' port given to something else): its refusals and pages send the agent
+        // to its fallback address like no answer at all.
+        foreach (var other in new Func<Task>[]
+        {
+            () => PostAsync(HttpStatusCode.Unauthorized, null),
+            () => PostAsync(HttpStatusCode.Forbidden, null),
+            () => PostTextAsync(HttpStatusCode.Unauthorized, "<html>Sign in</html>"),
+            () => PostTextAsync(HttpStatusCode.OK, "<html>Welcome</html>"),
+            () => PostTextAsync(HttpStatusCode.OK, "null"),
+            () => PostTextAsync(HttpStatusCode.OK, "{\"some\": \"thing\"} trailing"),
+        })
+        {
+            var notPanel = await Assert.ThrowsAsync<PanelNotAnsweringException>(other);
+            Assert.True(AgentConnection.IsUnreachable(notPanel, CancellationToken.None));
+        }
+    }
+
+    [Fact]
+    public async Task RedirectsAreNotFollowed()
+    {
+        // A 307 or 308 would send the enrollment, the challenge's answer or a new key's proof on to wherever it says.
+        using var handler = new PanelTransport().CreateHttpHandler();
+        Assert.False(Assert.IsType<SocketsHttpHandler>(handler).AllowAutoRedirect);
+
+        await Assert.ThrowsAsync<PanelNotAnsweringException>(() => PostAsync(HttpStatusCode.TemporaryRedirect, null));
+        await Assert.ThrowsAsync<PanelNotAnsweringException>(() => PostAsync(HttpStatusCode.PermanentRedirect, null));
+    }
+
     private static async Task PostAsync(HttpStatusCode status, AgentError? error)
     {
         using var http = new HttpClient(new Answering(status, error)) { BaseAddress = s_main };
         await PanelTransport.PostAsync<ChallengeRequest, ChallengeResponse>(http, AgentProtocol.ChallengePath,
             new ChallengeRequest(Guid.Empty, Guid.Empty), TestContext.Current.CancellationToken);
+    }
+
+    private static async Task PostTextAsync(HttpStatusCode status, string body)
+    {
+        using var http = new HttpClient(new AnsweringText(status, body)) { BaseAddress = s_main };
+        await PanelTransport.PostAsync<ChallengeRequest, ChallengeResponse>(http, AgentProtocol.ChallengePath,
+            new ChallengeRequest(Guid.Empty, Guid.Empty), TestContext.Current.CancellationToken);
+    }
+
+    private sealed class AnsweringText(HttpStatusCode status, string body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(status)
+            {
+                Content = new StringContent(body, System.Text.Encoding.UTF8, body.StartsWith('<') ? "text/html" : "application/json"),
+            });
     }
 
     private SignedMessage Sign(AgentsAddress address, ECDsa? key = null, string purpose = AgentProtocol.Purposes.AgentsAddress)

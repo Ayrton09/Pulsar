@@ -92,8 +92,8 @@ public sealed class SupervisorOptions
 /// readiness, stop steps, timeouts and crash backoff are timers that post messages back, and what the game itself must
 /// answer (console input, a usage sample, a kill of a game in its host) runs beside the loop with a deadline, so a kill
 /// is always handled right away. Only creating the process is awaited in the loop, within
-/// <see cref="SupervisorOptions.StartTimeout"/>. Messages from an earlier process (a late timer, an old exit) carry its
-/// generation and are ignored.
+/// <see cref="SupervisorOptions.StartTimeout"/> or until the agent stops. Messages from an earlier process (a late timer,
+/// an old exit) carry its generation and are ignored.
 /// </summary>
 public sealed partial class ServerSupervisor : IAsyncDisposable
 {
@@ -114,6 +114,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private readonly SemaphoreSlim _rconLock = new(1, 1); // console commands share one RCON session, one at a time
     private readonly Channel<Message> _mailbox = Channel.CreateUnbounded<Message>(new UnboundedChannelOptions { SingleReader = true });
     private readonly CancellationTokenSource _stopping = new();
+    private readonly CancellationTokenSource _agentStopping = new(); // a process still being created is not waited for
     private readonly Queue<DateTimeOffset> _restarts = new();
     private readonly List<TaskCompletionSource> _settledWaiters = [];
     private readonly Lock _gate = new(); // a start and an exclusive operation: whichever comes first keeps the other out
@@ -133,6 +134,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private int? _exitCode;
     private bool _desiredRunning;
     private bool _restartAfterStop;
+    private bool _startInterrupted; // the agent stopped while the game's process was being created
     private StateChangeReason? _stopReason;
     private int _restartTimer;
     private int? _deferredRestart; // the timer of a crash restart an exclusive operation refused: run when it ends
@@ -201,6 +203,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     /// </summary>
     public async Task<bool> DetachAsync()
     {
+        await _agentStopping.CancelAsync(); // see ShutdownAsync
         var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         await Post(new Detach(done));
         return await done.Task;
@@ -290,10 +293,13 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     /// <summary>
     /// The agent is stopping: a graceful stop within <paramref name="budget"/>, then the tree is killed. Completes when the
-    /// server is no longer running. Returns whether it was running (so the agent can start it again next time).
+    /// server is no longer running. Returns whether it was running (so the agent can start it again next time). A start
+    /// still creating its process is not waited for (that can take up to <see cref="SupervisorOptions.StartTimeout"/>):
+    /// it ends as a late start does, and counts as running.
     /// </summary>
     public async Task<bool> ShutdownAsync(TimeSpan budget)
     {
+        await _agentStopping.CancelAsync();
         var wasRunning = await Ask(tcs => new Shutdown(tcs, budget)) == AckStatus.Accepted;
         await WaitUntilSettledAsync();
         return wasRunning;
@@ -330,6 +336,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
 
         _settledWaiters.ForEach(w => w.TrySetResult());
+        _agentStopping.Dispose();
         StopWatchers();
         // A console command still running was cancelled above; its session goes once it let go of it.
         if (await _rconLock.WaitAsync(TimeSpan.FromSeconds(5)))
@@ -612,7 +619,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 // A stop the user asked for stays a stop; a restart was meant to run again.
                 return restarting ? AckStatus.Accepted : AckStatus.AlreadyInState;
             default:
-                return AckStatus.AlreadyInState;
+                // A start the agent's stop interrupted was meant to run.
+                return _startInterrupted ? AckStatus.Accepted : AckStatus.AlreadyInState;
         }
     }
 
@@ -679,6 +687,15 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             Transition(RuntimeState.Crashed, StateChangeReason.StartFailed, detail: ex.Code);
             return;
         }
+        catch (OperationCanceledException) when (_agentStopping.IsCancellationRequested && !_stopping.IsCancellationRequested)
+        {
+            // The agent is stopping (its stop has a budget the creation could take all of): the server stays wanted, so
+            // it starts with the agent's next run; a process that still shows up is ended.
+            LogStartInterrupted(ServerId);
+            _startInterrupted = true;
+            Transition(RuntimeState.Offline, StateChangeReason.AgentStopping);
+            return;
+        }
         catch (Exception ex) when (ex is not (OperationCanceledException or OutOfMemoryException))
         {
             // Anything else must not leave the server Starting with no process (no exit would ever end a stop).
@@ -706,15 +723,16 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     /// <summary>
     /// Creates the process within <see cref="SupervisorOptions.StartTimeout"/>: a creation that never returns (a profile
-    /// that never loads) must not keep stop and kill waiting behind it. A process that shows up after that is ended.
+    /// that never loads) must not keep stop and kill waiting behind it, nor the agent's stop (which cancels it). A
+    /// process that shows up after that is ended.
     /// </summary>
     private async Task<IGameProcess> StartProcessAsync(ProcessLaunchSpec spec)
     {
-        var starting = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
+        var starting = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token, _agentStopping.Token);
         var start = _processes.StartAsync(spec, starting.Token);
         try
         {
-            var process = await start.WaitAsync(_options.StartTimeout, _clock, _stopping.Token);
+            var process = await start.WaitAsync(_options.StartTimeout, _clock, starting.Token);
             starting.Dispose();
             return process;
         }
@@ -899,7 +917,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                             throw new GameProcessException("config.too_large", $"{file.Path} is larger than {ConfigFileWriter.MaximumSize / 1024} KiB.");
                         }
 
-                        existing = ReadText(stream, file.Path);
+                        existing = Utf8Text.Read(stream, file.Path);
                     }
                 }
 
@@ -918,7 +936,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                         throw new GameProcessException("addon.file_missing", $"{edits.Key}, which an installed addon edits, is missing or too large.");
                     }
 
-                    text = ReadText(stream, edits.Key);
+                    text = Utf8Text.Read(stream, edits.Key);
                 }
 
                 var edited = edits.Aggregate(text, LineEditor.Apply);
@@ -947,23 +965,6 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             throw new GameProcessException("config.write_failed", ex.Message, ex);
-        }
-    }
-
-    /// <summary>
-    /// A file the agent edits and writes back as UTF-8. One in another encoding (a server.cfg saved as Windows-1252) is
-    /// refused rather than rewritten: its other characters would become U+FFFD, and the user's own lines must stay as
-    /// they are.
-    /// </summary>
-    private static string ReadText(Stream stream, string path)
-    {
-        try
-        {
-            return new StreamReader(stream, new System.Text.UTF8Encoding(false, throwOnInvalidBytes: true)).ReadToEnd();
-        }
-        catch (System.Text.DecoderFallbackException ex)
-        {
-            throw new GameProcessException("config.invalid", $"{path} is not UTF-8 text, so Pulsar does not change it: save it as UTF-8.", ex);
         }
     }
 
@@ -1030,6 +1031,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private async Task QueryLoopAsync(QueryEndpoint endpoint, int generation, bool readiness, CancellationToken cancellationToken)
     {
         var failures = 0;
+        var unexpected = false; // logged once per run of the game
         while (!cancellationToken.IsCancellationRequested)
         {
             try
@@ -1054,6 +1056,15 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             {
                 return;
             }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // A bug reading an odd answer must not end the queries (a query-readiness server would wait for nothing).
+                if (!unexpected)
+                {
+                    unexpected = true;
+                    LogQueryFailedUnexpectedly(ex, ServerId);
+                }
+            }
 
             try
             {
@@ -1066,20 +1077,30 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         }
     }
 
-    /// <summary>The game counts as ready once it answers over RCON.</summary>
+    /// <summary>
+    /// The game counts as ready once it answers over RCON. Something else on its port (another server's account) is never
+    /// sent the password: the probe keeps waiting, and the readiness timeout decides.
+    /// </summary>
     private async Task ProbeRconAsync(RconEndpoint endpoint, int generation, CancellationToken cancellationToken)
     {
+        var warned = false;
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                await using var session = await _rcon.ConnectAsync(endpoint, cancellationToken);
+                await using var session = await _rcon.ConnectAsync(endpoint, _definition.Identity, cancellationToken);
                 _mailbox.Writer.TryWrite(new Ready(generation));
                 return;
             }
-            catch (RconException)
+            catch (RconException ex)
             {
                 // Not listening yet.
+                if (ex.NotTheGame && !warned)
+                {
+                    warned = true;
+                    LogRconNotTheGame(ServerId, endpoint.Port);
+                    _console.Note($"RCON: {ex.Message}", _clock.GetUtcNow());
+                }
             }
             catch (OperationCanceledException)
             {
@@ -1101,7 +1122,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     {
         try
         {
-            await using var session = await _rcon.ConnectAsync(endpoint, _stopping.Token);
+            await using var session = await _rcon.ConnectAsync(endpoint, _definition.Identity, _stopping.Token);
             await session.ExecuteAsync(command, _stopping.Token);
         }
         catch (Exception ex) when (ex is RconException or OperationCanceledException)
@@ -1286,17 +1307,17 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 if (!kept)
                 {
                     await CloseConsoleRconAsync();
-                    _consoleRcon = (generation, await _rcon.ConnectAsync(endpoint, cancellationToken));
+                    _consoleRcon = (generation, await _rcon.ConnectAsync(endpoint, _definition.Identity, cancellationToken));
                 }
 
                 try
                 {
                     return await _consoleRcon!.Value.Session.ExecuteAsync(line, cancellationToken);
                 }
-                catch (RconException ex) when (kept && ex.ConnectionLost)
+                catch (RconException ex) when (kept && ex.NotSent)
                 {
-                    // The game closed the session kept since an earlier command: once more on a fresh one. Never after
-                    // an answer that was late, since the game may have run the command.
+                    // The game closed the session kept since an earlier command: once more on a fresh one. Never once the
+                    // command was sent (an answer that was late, a connection lost after it), since the game may have run it.
                     await CloseConsoleRconAsync();
                 }
             }
@@ -1754,6 +1775,13 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId} does not answer its query: {Reason}")]
     private partial void LogQueryFailing(Guid serverId, string reason);
 
+    [LoggerMessage(Level = LogLevel.Error, Message = "Server {ServerId}: its query failed unexpectedly")]
+    private partial void LogQueryFailedUnexpectedly(Exception exception, Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Server {ServerId}: what listens on its RCON port {Port} does not run as the server's account; its password is not sent there")]
+    private partial void LogRconNotTheGame(Guid serverId, int port);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: cannot follow its log file: {Reason}")]
     private partial void LogLogTailFailed(Guid serverId, string reason);
 
@@ -1774,6 +1802,9 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: start ({Reason}) refused: an operation that keeps it stopped is running")]
     private partial void LogStartRefused(Guid serverId, StateChangeReason reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: the agent is stopping while its game's process is being created; it starts with the agent's next run")]
+    private partial void LogStartInterrupted(Guid serverId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: its process {ProcessId} was created after its start had failed; ended it")]
     private partial void LogLateProcessEnded(Guid serverId, int processId);

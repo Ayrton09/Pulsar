@@ -152,8 +152,9 @@ public sealed class CertificateRequiredException : AgentException
 }
 
 /// <summary>
-/// What answered is not the panel's agent protocol (404) or cannot serve it now (5xx): a port forwarded to something else,
-/// a proxy whose panel is down. Like no answer at all, it sends the agent to its fallback address.
+/// What answered is not the panel's agent protocol (a 404, a 401 or 403 without the panel's error, a page instead of its
+/// answer) or cannot serve it now (5xx): a port forwarded to something else, a proxy whose panel is down. Like no answer
+/// at all, it sends the agent to its fallback address.
 /// </summary>
 public sealed class PanelNotAnsweringException : AgentException
 {

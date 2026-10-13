@@ -88,6 +88,20 @@ public sealed class ServerQueryTests
     }
 
     [Fact]
+    public async Task CountsInOtherDigitsAreNotTaken()
+    {
+        // "cp٣١٢" (Arabic-Indic digits): the counts the info gave stay.
+        await using var game = new FakeA2sServer
+        {
+            Info = Info("Rust", "Procedural Map", players: 7, max: 50, bots: 0, "2593", keywords: "biweekly,cp٣١٢,mp٥٠٠,v2593"),
+        };
+
+        var info = await _query.QueryAsync(game.Endpoint, TestContext.Current.CancellationToken);
+
+        Assert.Equal((7, 50), (info.Players, info.MaxPlayers));
+    }
+
+    [Fact]
     public async Task AGameThatDoesNotAnswerIsAQueryFailure()
     {
         using var silent = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));

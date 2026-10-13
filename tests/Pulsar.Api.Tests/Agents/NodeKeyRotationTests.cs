@@ -159,6 +159,29 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
     }
 
     [DatabaseFact]
+    public async Task AnAbandonedRotationIsTriedAgainOnlyAfterItsRetryDelay()
+    {
+        // A key that is due by age, and new keys this machine cannot open again: each rotation is abandoned at the sign-in
+        // with its key. The next one waits, rather than making and registering keys in a loop.
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-retry-delay");
+        agent.Configs.Save(enrolled with { KeyCreatedAt = DateTimeOffset.UtcNow - TimeSpan.FromDays(91) });
+        agent.Keys.LoseCreatedKeys = true;
+        var enrolledWith = agent.Keys.Created;
+
+        await agent.StartAsync();
+
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(agent.Keys.Created > enrolledWith && agent.LiveConfig is { PendingRotation: null }),
+            "a rotation, abandoned");
+        await Task.Delay(TimeSpan.FromSeconds(3), Ct);
+        Assert.Equal(enrolledWith + 1, agent.Keys.Created);
+        Assert.Equal(enrolled.CredentialId, agent.LiveConfig!.CredentialId);
+        Assert.Equal([enrolled.Key.Name], agent.Keys.Names);
+        Assert.True((await NodeApi.GetAsync(admin, enrolled.NodeId)).Node.Connected);
+    }
+
+    [DatabaseFact]
     public async Task ReEnrollingRevokesAPendingKeyToo()
     {
         using var admin = await factory.CreateAdminClientAsync();

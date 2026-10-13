@@ -29,6 +29,32 @@ public sealed class UnenrollTests : IDisposable
     }
 
     [Fact]
+    public void TheNodeKeyAndAPendingOneAreDeletedAndOneThatCannotBeIsReported()
+    {
+        var current = new NodeKeyReference("PulsarAgent-current", NodeKeyScope.Machine, NodeKeyStorage.Software);
+        var pending = new NodeKeyReference("PulsarAgent-pending", NodeKeyScope.Machine, NodeKeyStorage.Software);
+        var config = new AgentConfig(new Uri("https://panel.example.com/"), Guid.NewGuid(), Guid.NewGuid(), current, [], null, DateTimeOffset.UtcNow,
+            Development: false, PendingRotation: new PendingRotation(pending, Guid.NewGuid(), DateTimeOffset.UtcNow));
+        List<string> deleted = [];
+        using var errors = new StringWriter();
+
+        // The current key cannot be deleted (a key store that refuses): the pending one still goes, and unenroll goes on.
+        AgentCommands.DeleteNodeKeys(config, key =>
+        {
+            if (key == current)
+            {
+                throw new System.Security.Cryptography.CryptographicException("Access is denied.");
+            }
+
+            deleted.Add(key.Name);
+        }, errors);
+
+        Assert.Equal(["PulsarAgent-pending"], deleted);
+        Assert.Contains("PulsarAgent-current", errors.ToString(), StringComparison.Ordinal);
+        Assert.Contains("by hand", errors.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheServersSecretsAccountsAndFirewallRulesGoTheirFoldersBackupsAndLogsStay()
     {
         var store = new ServerStore(_paths, new PlainStateProtector());

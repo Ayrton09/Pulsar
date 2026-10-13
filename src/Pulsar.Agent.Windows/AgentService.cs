@@ -28,9 +28,9 @@ public static class AgentService
     public const string Description = "Runs and supervises the game servers of this node for its Pulsar panel.";
 
     /// <summary>Installs (or reconfigures) the service to run <c>"&lt;exe&gt;" run [arguments]</c>.</summary>
-    public static unsafe void Install(string executable, string? arguments)
+    public static unsafe void Install(string executable, IReadOnlyList<string> arguments)
     {
-        var commandLine = $"\"{executable}\" run" + (string.IsNullOrEmpty(arguments) ? string.Empty : " " + arguments);
+        var commandLine = CommandLineFor(executable, arguments);
         using var manager = OpenManager();
         using var existing = PInvoke.OpenService(manager, Name, PInvoke.SERVICE_ALL_ACCESS);
         if (!existing.IsInvalid)
@@ -134,6 +134,13 @@ public static class AgentService
             Thread.Sleep(250);
         }
     }
+
+    /// <summary>
+    /// <c>"&lt;exe&gt;" run [arguments]</c>, each argument quoted so the program gets it back as it is (a folder that ends in
+    /// a backslash included: quoted as is, its backslash would escape the closing quote).
+    /// </summary>
+    public static string CommandLineFor(string executable, IReadOnlyList<string> arguments) =>
+        Processes.WindowsCommandLine.Build(executable, ["run", .. arguments]);
 
     /// <summary>The command line the service runs, null when it is not installed; reading it does not need administrator rights.</summary>
     public static string? CommandLine()

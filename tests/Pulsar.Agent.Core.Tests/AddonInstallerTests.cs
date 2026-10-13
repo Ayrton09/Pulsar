@@ -112,6 +112,61 @@ public sealed class AddonInstallerTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_root, ".pulsar", "addons", "metamod.json")));
     }
 
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("""{ "key": "oxide" }""")]
+    [InlineData("""{ "key": "oxide", "added": null, "replaced": null }""")]
+    public async Task ARecordWithoutItsListsIsReadAsEmptyAndOneWithoutItsKeyAsNoRecord(string json)
+    {
+        // The server's account can write .pulsar/addons: a record may lack anything.
+        await InstallAsync(s_oxide);
+        File.WriteAllText(Path.Combine(_root, ".pulsar", "addons", "oxide.json"), json);
+        var installer = new AddonInstaller(new DirectServerFiles(), _http);
+
+        var record = installer.Read(_root, "oxide");
+
+        if (json == "{}")
+        {
+            Assert.Null(record);
+        }
+        else
+        {
+            Assert.NotNull(record);
+            Assert.Empty(record.Added);
+            Assert.Empty(record.Replaced);
+        }
+
+        Assert.Empty(installer.Remove(_root, s_oxide));
+    }
+
+    [Fact]
+    public async Task RemovingAnAddonWhoseEditedFileIsNotUtf8FailsAndChangesNothing()
+    {
+        var zip = Zip(("addons/metamod/bin/win64/server.dll", "mm"));
+        _http.Routes["https://api.github.com/repos/alliedmodders/metamod-source/releases?per_page=10"] = () => Json(new object[]
+        {
+            new
+            {
+                tag_name = "2.0.0.1473", draft = false,
+                assets = new[] { new { name = "mmsource-2.0.0-git1473-windows.zip", browser_download_url = "https://github.com/x/mm.zip", digest = "sha256:" + Sha256(zip) } },
+            },
+        });
+        _http.Routes["https://github.com/x/mm.zip"] = () => Ok(zip);
+        Directory.CreateDirectory(Path.Combine(_root, "game", "csgo"));
+        await InstallAsync(s_metamod);
+        // Saved by hand as Windows-1252 ("é" is 0xE9), after the start added the addon's line.
+        var gameinfo = Path.Combine(_root, "game", "csgo", "gameinfo.gi");
+        byte[] ansi = [.. Encoding.ASCII.GetBytes("// caf"), 0xE9, .. Encoding.ASCII.GetBytes("\n\t\t\tGame_LowViolence\tcsgo_lv\n\t\t\tGame\tcsgo/addons/metamod\n")];
+        File.WriteAllBytes(gameinfo, ansi);
+
+        var failed = Assert.Throws<GameProcessException>(() => new AddonInstaller(new DirectServerFiles(), _http).Remove(_root, s_metamod));
+
+        Assert.Equal("config.invalid", failed.Code);
+        Assert.Equal(ansi, File.ReadAllBytes(gameinfo));
+        Assert.True(File.Exists(Path.Combine(_root, "game", "csgo", "addons", "metamod", "bin", "win64", "server.dll")));
+        Assert.NotNull(new AddonInstaller(new DirectServerFiles(), _http).Read(_root, "metamod"));
+    }
+
     [Fact]
     public async Task AGameFileAnOlderReleaseReplacedStaysReplacedWhenANewerOneNoLongerShipsIt()
     {
@@ -211,6 +266,28 @@ public sealed class AddonInstallerTests : IDisposable
         Release("2.0.7801", Zip((entry, "x")));
 
         Assert.Equal("addon.bad_archive", (await Assert.ThrowsAsync<GameProcessException>(() => InstallAsync(s_oxide))).Code);
+    }
+
+    [Fact]
+    public async Task AHostThatNeverAnswersIsGivenUpOn()
+    {
+        // The callers' clients have no timeout (a download takes as long as it keeps coming): the answer's headers do.
+        using var http = new HttpClient(new SilentHttp()) { Timeout = Timeout.InfiniteTimeSpan };
+        var downloader = new VerifiedDownloader(http, new HashSet<string> { "github.com" }, "addon", "addons") { HeadersTimeout = TimeSpan.FromMilliseconds(200) };
+
+        var failed = await Assert.ThrowsAsync<GameProcessException>(() => downloader.SendAsync(new Uri(Download), TestContext.Current.CancellationToken)
+            .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+        Assert.Equal("addon.download_failed", failed.Code);
+    }
+
+    private sealed class SilentHttp : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new InvalidOperationException("Never answered.");
+        }
     }
 
     [Fact]

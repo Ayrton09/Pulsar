@@ -193,9 +193,15 @@ public sealed class AgentConfigStore(AgentPaths paths)
     {
         ArgumentNullException.ThrowIfNull(config);
         Directory.CreateDirectory(Paths.ConfigDirectory);
-        // Write next to the target and swap, so a crash never leaves a half-written configuration.
+        // Write next to the target, on the disk, and swap, so a crash or a power loss never leaves a half-written or empty
+        // configuration (a key rotation deletes the old key right after saving the new one).
         var temporary = Paths.ConfigFile + ".tmp";
-        File.WriteAllBytes(temporary, JsonSerializer.SerializeToUtf8Bytes(config, s_options));
+        using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+        {
+            stream.Write(JsonSerializer.SerializeToUtf8Bytes(config, s_options));
+            stream.Flush(flushToDisk: true);
+        }
+
         File.Move(temporary, Paths.ConfigFile, overwrite: true);
     }
 }

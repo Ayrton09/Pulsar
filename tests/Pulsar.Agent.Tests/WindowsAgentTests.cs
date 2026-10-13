@@ -174,17 +174,25 @@ public sealed class WindowsAgentTests
             new AgentConfigStore(paths).Save(new AgentConfig(new Uri("https://panel.example.com/"), Guid.NewGuid(), Guid.NewGuid(),
                 new NodeKeyReference("PulsarAgentTest-missing", NodeKeyScope.User, "unknown-storage"), [], null, DateTimeOffset.UtcNow,
                 Development: true));
+            File.SetAttributes(paths.ConfigFile, FileAttributes.ReadOnly); // it cannot be deleted
 
             var exit = await AgentCommands.UnenrollAsync(CommandLine.Parse(["unenroll", "--data-dir", root, "--log-file", logFile],
                 AgentCommands.Flags));
 
             Assert.Equal(1, exit);
-            Assert.Contains("Unknown key storage 'unknown-storage'", await File.ReadAllTextAsync(logFile, TestContext.Current.CancellationToken),
-                StringComparison.Ordinal);
+            var log = await File.ReadAllTextAsync(logFile, TestContext.Current.CancellationToken);
+            Assert.Contains("PulsarAgent unenroll failed: System.UnauthorizedAccessException", log, StringComparison.Ordinal);
+            // A key that cannot be deleted is said and left behind: it would fail every retry the same way.
+            Assert.Contains("Unknown key storage 'unknown-storage'", log, StringComparison.Ordinal);
             Assert.True(File.Exists(paths.ConfigFile)); // kept for a retry
         }
         finally
         {
+            foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(file, FileAttributes.Normal);
+            }
+
             Directory.Delete(root, recursive: true);
         }
     }

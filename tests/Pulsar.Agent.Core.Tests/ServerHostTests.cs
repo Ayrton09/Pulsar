@@ -140,6 +140,68 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AResultThatCannotBeSavedStaysInFlightAndIsSavedLater()
+    {
+        var serverId = Stored("abcd2345");
+        var host = Host(options: new ServerHostOptions { ConsoleLog = null, MetricsInterval = TimeSpan.FromMilliseconds(50) });
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        // A full disk, say: the outbox cannot be written.
+        Directory.Delete(_configs.Paths.OutboxDirectory, recursive: true);
+        File.WriteAllText(_configs.Paths.OutboxDirectory, "not a folder");
+
+        var operation = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new InstallServerCommand(serverId), operation))).Status);
+        while ((await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null))).Status == AckStatus.Busy)
+        {
+            await Task.Delay(10, TestContext.Current.CancellationToken); // until the install ended
+        }
+
+        // Ended, but the panel must not take it as interrupted: its result is still to come.
+        Assert.Contains(operation, host.OperationsInFlight());
+
+        File.Delete(_configs.Paths.OutboxDirectory);
+        Assert.Equal(OperationOutcome.Succeeded, (await ResultAsync(operation)).Outcome);
+    }
+
+    [Fact]
+    public async Task ARunningServerIsNotProvisionedAgain()
+    {
+        // Provisioning makes a new RCON password: the running game was started with the old one.
+        var serverId = Stored("abcd2345");
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        await RunningAsync(host, serverId);
+        var spec = _store.Load(serverId)!.Spec;
+
+        var ack = await host.ExecuteAsync(Envelope(new ProvisionServerCommand(serverId, spec), Guid.NewGuid()));
+
+        Assert.Equal((AckStatus.Rejected, "server.running"), (ack.Status, ack.ErrorCode));
+        Assert.Equal(RuntimeState.Running, State(host, serverId));
+    }
+
+    [Fact]
+    public async Task AServerWhoseProvisioningFailedCanStillBeDeleted()
+    {
+        // Its folder (and account) may be there already: the delete must find what to clean up.
+        var host = Host();
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        var serverId = Guid.NewGuid();
+        var spec = new ServerRuntimeSpec("abcd2345", Manifest, new Dictionary<string, string?>(), [], AutoStart: false, RestartOnCrash: false);
+        _provisioner.FailNextProvision = true;
+
+        var provision = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new ProvisionServerCommand(serverId, spec), provision))).Status);
+        Assert.Equal(OperationOutcome.Failed, (await ResultAsync(provision)).Outcome);
+        Assert.True(Directory.Exists(Path.Combine(_root, "servers", "abcd2345")));
+
+        var delete = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new DeleteServerCommand(serverId), delete))).Status);
+        Assert.Equal(OperationOutcome.Succeeded, (await ResultAsync(delete)).Outcome);
+        Assert.Equal(1, _provisioner.Deprovisions);
+        Assert.False(_store.Exists(serverId));
+    }
+
+    [Fact]
     public async Task DeletingAServerWhoseRecordWasSetAsideSaysWhatIsLeftInsteadOfGone()
     {
         // Its record could not be read (corrupt, or protected on another machine): the short id naming its directory and
@@ -1056,12 +1118,20 @@ public sealed class ServerHostTests : IAsyncDisposable
     {
         public bool FailNextDeprovision { get; set; }
 
+        public bool FailNextProvision { get; set; }
+
         public int Deprovisions { get; private set; }
 
         public ProvisionedServer Provision(string serversRoot, string shortId)
         {
             var server = Describe(serversRoot, shortId);
             Directory.CreateDirectory(server.Directory);
+            if (FailNextProvision)
+            {
+                FailNextProvision = false;
+                throw new GameProcessException("provision.failed", "The account could not be created.");
+            }
+
             return server;
         }
 
@@ -1086,7 +1156,7 @@ public sealed class ServerHostTests : IAsyncDisposable
 
     private sealed class NoRcon : IRconConnector
     {
-        public Task<IRconSession> ConnectAsync(RconEndpoint endpoint, CancellationToken cancellationToken) =>
+        public Task<IRconSession> ConnectAsync(RconEndpoint endpoint, ProcessIdentity owner, CancellationToken cancellationToken) =>
             throw new RconException("No RCON here.");
     }
 }

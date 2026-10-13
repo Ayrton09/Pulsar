@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Contracts;
 
@@ -107,10 +108,18 @@ public sealed class AgentEnrollment(
             saved = true;
             AwaitingApproval = result.AwaitingApproval;
 
-            // Re-enrollment: the panel has already revoked the old credential, so its key is useless now.
-            if (previous is not null && previous.Key != key.Reference)
+            // Re-enrollment: the panel has already revoked the old credentials (a pending rotation's too), so their keys are
+            // useless now. One that cannot be deleted is said, not a failure: the enrollment is saved.
+            foreach (var old in new[] { previous?.Key, previous?.PendingRotation?.Key }.OfType<NodeKeyReference>().Where(k => k != key.Reference))
             {
-                keys.Delete(previous.Key);
+                try
+                {
+                    keys.Delete(old);
+                }
+                catch (CryptographicException ex)
+                {
+                    Warning?.Invoke($"The earlier node key {old.Name} could not be deleted ({ex.Message}); the panel no longer accepts it. Delete it by hand.");
+                }
             }
 
             return config;

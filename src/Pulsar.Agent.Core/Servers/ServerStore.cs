@@ -223,6 +223,11 @@ public sealed partial class ServerStore(AgentPaths paths, IStateProtector protec
         }
 
         using var document = JsonDocument.Parse(content);
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            throw new JsonException($"{Path.GetFileName(file)} is not a JSON object.");
+        }
+
         if (!document.RootElement.TryGetProperty("protection", out _))
         {
             return document.RootElement.Deserialize<ServerRecord>(s_options); // written before records were encrypted

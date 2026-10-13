@@ -20,6 +20,12 @@ public sealed class VerifiedDownloader(HttpClient client, IReadOnlySet<string> h
     /// <summary>A download that stops sending for this long is abandoned.</summary>
     public TimeSpan StallTimeout { get; init; } = TimeSpan.FromMinutes(1);
 
+    /// <summary>
+    /// How long a host may take to answer a request (its headers): the callers' clients have no timeout, since a download
+    /// takes as long as it keeps coming (<see cref="StallTimeout"/>).
+    /// </summary>
+    public TimeSpan HeadersTimeout { get; init; } = TimeSpan.FromMinutes(2);
+
     /// <summary>A small JSON document (checked against <paramref name="sha1"/> when the publisher lists one).</summary>
     public async Task<T> GetJsonAsync<T>(Uri uri, string? sha1, CancellationToken cancellationToken)
     {
@@ -102,7 +108,21 @@ public sealed class VerifiedDownloader(HttpClient client, IReadOnlySet<string> h
                 throw Failed("untrusted_host", $"Pulsar does not download {what} from {uri.GetLeftPart(UriPartial.Authority)}.");
             }
 
-            var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            HttpResponseMessage response;
+            using (var headers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                headers.CancelAfter(HeadersTimeout);
+                try
+                {
+                    response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, headers.Token);
+                }
+                catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw new GameProcessException($"{codePrefix}.download_failed", $"{uri.Host} did not answer within {HeadersTimeout.TotalSeconds:0} seconds.",
+                        ex);
+                }
+            }
+
             if ((int)response.StatusCode is >= 300 and < 400 && response.Headers.Location is { } location)
             {
                 uri = location.IsAbsoluteUri ? location : new Uri(uri, location);

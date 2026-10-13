@@ -101,9 +101,21 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
     /// Removes the files <paramref name="addon"/> added and its lines; returns the game files it had replaced (a
     /// validating update brings them back). Removing an addon that is not installed changes nothing.
     /// </summary>
+    /// <exception cref="GameProcessException"><c>config.invalid</c>: a file it edits is not UTF-8 text (nothing was removed).</exception>
     public IReadOnlyList<string> Remove(string serverDirectory, AddonDefinition addon)
     {
         ArgumentNullException.ThrowIfNull(addon);
+        // The files its lines are taken out of are read first, as the start reads them: one that is not UTF-8 is refused
+        // before anything is removed, and never rewritten.
+        var edited = new List<(string Path, string Text)>();
+        foreach (var edits in addon.LineEditList.GroupBy(e => e.Path, StringComparer.OrdinalIgnoreCase))
+        {
+            if (ReadText(serverDirectory, edits.Key, strict: true) is { } text && edits.Aggregate(text, LineEditor.Remove) is var without && without != text)
+            {
+                edited.Add((edits.Key, without));
+            }
+        }
+
         var record = Read(serverDirectory, addon.Key);
         foreach (var path in record?.Added ?? [])
         {
@@ -119,13 +131,10 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
             files.DeleteEmptyDirectory(serverDirectory, folder);
         }
 
-        foreach (var edits in addon.LineEditList.GroupBy(e => e.Path, StringComparer.OrdinalIgnoreCase))
+        foreach (var (path, text) in edited)
         {
-            if (ReadText(serverDirectory, edits.Key) is { } text && edits.Aggregate(text, LineEditor.Remove) is var edited && edited != text)
-            {
-                using var content = new MemoryStream(new UTF8Encoding(false).GetBytes(edited));
-                files.Write(serverDirectory, edits.Key, content);
-            }
+            using var content = new MemoryStream(new UTF8Encoding(false).GetBytes(text));
+            files.Write(serverDirectory, path, content);
         }
 
         Delete(serverDirectory, RecordPath(addon.Key));
@@ -144,11 +153,14 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
         {
             var record = JsonSerializer.Deserialize<AddonRecord>(text, s_json);
             // The server's account can write this folder: only paths an addon may own are ever touched (never SteamCMD
-            // or another addon's record under .pulsar).
-            return record is null ? null : record with
+            // or another addon's record under .pulsar), and a record may lack anything (one without its key is none).
+            return record?.Key is null ? null : record with
             {
-                Added = [.. record.Added.Where(IsAddonPath)],
-                Replaced = [.. record.Replaced.Where(IsAddonPath)],
+                Release = record.Release ?? "",
+                Asset = record.Asset ?? "",
+                Sha256 = record.Sha256 ?? "",
+                Added = [.. (record.Added ?? []).Where(p => p is not null && IsAddonPath(p))],
+                Replaced = [.. (record.Replaced ?? []).Where(p => p is not null && IsAddonPath(p))],
             };
         }
         catch (JsonException)
@@ -255,7 +267,8 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
         files.Write(serverDirectory, RecordPath(record.Key), content);
     }
 
-    private string? ReadText(string serverDirectory, string path)
+    /// <param name="strict">A game file the addon edits: refused when it is not UTF-8 (<see cref="Utf8Text"/>).</param>
+    private string? ReadText(string serverDirectory, string path, bool strict = false)
     {
         using var stream = files.OpenRead(serverDirectory, path);
         if (stream is null)
@@ -268,7 +281,7 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
             throw Failed("addon.file_too_large", $"{path} is larger than Pulsar reads.");
         }
 
-        return new StreamReader(stream, Encoding.UTF8).ReadToEnd();
+        return strict ? Utf8Text.Read(stream, path) : new StreamReader(stream, Encoding.UTF8).ReadToEnd();
     }
 
     private void Delete(string serverDirectory, string path)

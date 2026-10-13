@@ -488,6 +488,26 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AnUnexpectedQueryErrorDoesNotEndTheQueries()
+    {
+        // A bug reading an odd answer must not leave a query-readiness server Starting until its timeout.
+        var query = new FakeQuery { Answer = () => throw new FormatException("An odd answer.") };
+        var supervisor = Supervisor(plan => plan with { Readiness = new QueryReadiness(60), Query = new QueryEndpoint(QueryProtocol.A2s, "127.0.0.1", 27015) },
+            query: query);
+        await Started(supervisor);
+        await LogTailTests.Eventually(() => query.Endpoints.Count > 0, () => "never queried");
+
+        query.Answer = () => Answer("Pulsar");
+        for (var i = 0; i < 20 && supervisor.Snapshot.State == RuntimeState.Starting; i++)
+        {
+            _clock.Advance(TimeSpan.FromSeconds(2));
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+
+        await _events.WaitForAsync(RuntimeState.Running, StateChangeReason.Ready);
+    }
+
+    [Fact]
     public async Task AGameTakenOverWhileItWasStoppingEndsThatStopWhenItExits()
     {
         // The previous run of the agent died in the middle of a stop.
@@ -855,6 +875,40 @@ public sealed class ServerSupervisorTests : IAsyncDisposable
             Assert.Equal(AckStatus.AlreadyInState, await supervisor.StopAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
 
             // The process it started after all is ended at once.
+            gate.SetResult();
+            await LogTailTests.Eventually(() => _processes.Started.Count == 1 && _processes.Last.Disposed, () => "the late process was not ended");
+        }
+        finally
+        {
+            gate.TrySetResult();
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TheAgentStoppingDoesNotWaitForAStartStillCreatingItsProcess(bool detachFirst)
+    {
+        // The service control manager gives the agent ~30 s; creating the process may take up to its start timeout.
+        var supervisor = Supervisor();
+        var gate = _processes.Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _processes.GateIgnoresCancellation = true;
+        try
+        {
+            await supervisor.StartAsync();
+            await _events.WaitForAsync(RuntimeState.Starting);
+
+            if (detachFirst)
+            {
+                Assert.False(await supervisor.DetachAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            }
+
+            // Wanted running: it starts again with the agent.
+            Assert.True(await supervisor.ShutdownAsync(TimeSpan.FromSeconds(15)).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            Assert.Equal(RuntimeState.Offline, supervisor.Snapshot.State);
+            Assert.True(_events.DesiredRunning);
+
+            // The process it created after all is ended at once.
             gate.SetResult();
             await LogTailTests.Eventually(() => _processes.Started.Count == 1 && _processes.Last.Disposed, () => "the late process was not ended");
         }

@@ -23,7 +23,7 @@ public sealed class SourceRconTests
         await using var game = new FakeRconServer("secret", srcds);
         var connector = new SourceRconConnector { AnswerIdle = TimeSpan.FromMilliseconds(100) };
 
-        await using var session = await connector.ConnectAsync(game.Endpoint("secret"), TestContext.Current.CancellationToken);
+        await using var session = await connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
         var echo = await session.ExecuteAsync("echo hello", TestContext.Current.CancellationToken);
         var status = await session.ExecuteAsync("status", TestContext.Current.CancellationToken);
 
@@ -37,7 +37,7 @@ public sealed class SourceRconTests
     {
         await using var game = new FakeRconServer("secret", srcds: true);
 
-        var error = await Assert.ThrowsAsync<RconException>(() => new SourceRconConnector().ConnectAsync(game.Endpoint("wrong"),
+        var error = await Assert.ThrowsAsync<RconException>(() => new SourceRconConnector().ConnectAsync(game.Endpoint("wrong"), ProcessIdentity.CurrentUser,
             TestContext.Current.CancellationToken));
 
         Assert.True(error.AuthenticationFailed);
@@ -49,7 +49,7 @@ public sealed class SourceRconTests
         var port = FreePort();
 
         var error = await Assert.ThrowsAsync<RconException>(() => new SourceRconConnector().ConnectAsync(
-            new RconEndpoint(RconProtocol.Source, "127.0.0.1", port, "x"), TestContext.Current.CancellationToken));
+            new RconEndpoint(RconProtocol.Source, "127.0.0.1", port, "x"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken));
 
         Assert.False(error.AuthenticationFailed);
     }
@@ -60,7 +60,7 @@ public sealed class SourceRconTests
     public async Task CommandsAreSingleLines(string command)
     {
         await using var game = new FakeRconServer("secret", srcds: false);
-        await using var session = await new SourceRconConnector().ConnectAsync(game.Endpoint("secret"), TestContext.Current.CancellationToken);
+        await using var session = await new SourceRconConnector().ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
 
         await Assert.ThrowsAsync<ArgumentException>(() => session.ExecuteAsync(command, TestContext.Current.CancellationToken));
     }
@@ -71,7 +71,7 @@ public sealed class SourceRconTests
         // The idle wait that ends an answer must not cut a packet between its header and its body.
         await using var game = new FakeRconServer("secret", srcds: false);
         var connector = new SourceRconConnector { AnswerIdle = TimeSpan.FromMilliseconds(100) };
-        await using var session = await connector.ConnectAsync(game.Endpoint("secret"), TestContext.Current.CancellationToken);
+        await using var session = await connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
 
         Assert.Equal("part one, part two", await session.ExecuteAsync("split", TestContext.Current.CancellationToken));
         Assert.Equal("hello\n", await session.ExecuteAsync("echo hello", TestContext.Current.CancellationToken));
@@ -87,7 +87,7 @@ public sealed class SourceRconTests
     {
         await using var game = new FakeRconServer("secret", srcds: false);
         var connector = new SourceRconConnector { AnswerIdle = TimeSpan.FromMilliseconds(100), AnswerTimeout = TimeSpan.FromSeconds(1) };
-        await using var session = await connector.ConnectAsync(game.Endpoint("secret"), TestContext.Current.CancellationToken);
+        await using var session = await connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
 
         var answer = await session.ExecuteAsync(command, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(10),
             TestContext.Current.CancellationToken);
@@ -98,12 +98,100 @@ public sealed class SourceRconTests
         Assert.True(error.ConnectionLost);
     }
 
+    [Fact]
+    public async Task ASessionTheGameClosedSaysTheCommandWasNotSent()
+    {
+        await using var game = new FakeRconServer("secret", srcds: false);
+        var connector = new SourceRconConnector { AnswerIdle = TimeSpan.FromMilliseconds(100) };
+        await using var session = await connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
+        Assert.Equal("bye\n", await session.ExecuteAsync("bye", TestContext.Current.CancellationToken));
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+
+        var error = await Assert.ThrowsAsync<RconException>(() => session.ExecuteAsync("echo hello", TestContext.Current.CancellationToken));
+
+        Assert.True(error.ConnectionLost);
+        Assert.True(error.NotSent);
+        Assert.Equal(["bye"], game.Commands);
+    }
+
+    [Fact]
+    public async Task AConnectionLostAfterTheCommandWasSentSaysSo()
+    {
+        await using var game = new FakeRconServer("secret", srcds: false);
+        await using var session = await new SourceRconConnector().ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
+
+        var error = await Assert.ThrowsAsync<RconException>(() => session.ExecuteAsync("crash", TestContext.Current.CancellationToken));
+
+        Assert.True(error.ConnectionLost);
+        Assert.False(error.NotSent); // the game got it: it may have run
+    }
+
+    [Fact]
+    public async Task ThePasswordGoesOnlyToAProcessRunningAsTheServersAccount()
+    {
+        // Another server's account listening on this server's port while it was stopped (docs/architecture/08, T18).
+        await using var game = new FakeRconServer("secret", srcds: true);
+        var peers = new FakePeers { Owner = ProcessIdentity.Account("pulsar-other") };
+        var connector = new SourceRconConnector { Peers = peers };
+
+        var error = await Assert.ThrowsAsync<RconException>(() => connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.Account("pulsar-abcd2345"),
+            TestContext.Current.CancellationToken));
+
+        Assert.True(error.NotTheGame);
+        Assert.False(error.AuthenticationFailed);
+        Assert.Equal(game.Endpoint("secret").Port, peers.Asked!.Value.Remote.Port); // the game's end of this very connection
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+        Assert.Empty(game.Logons);
+    }
+
+    [Fact]
+    public async Task TheServersOwnGameGetsThePassword()
+    {
+        await using var game = new FakeRconServer("secret", srcds: false);
+        var connector = new SourceRconConnector { Peers = new FakePeers { Owner = ProcessIdentity.Account("pulsar-abcd2345") } };
+
+        await using var session = await connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.Account("pulsar-abcd2345"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(["secret"], game.Logons);
+    }
+
+    [Fact]
+    public async Task AConnectionNoLocalProcessHoldsIsNotTheGame()
+    {
+        await using var game = new FakeRconServer("secret", srcds: false);
+        var connector = new SourceRconConnector { Peers = new FakePeers { Owner = null } };
+
+        var error = await Assert.ThrowsAsync<RconException>(() => connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser,
+            TestContext.Current.CancellationToken));
+
+        Assert.True(error.NotTheGame);
+    }
+
     internal static int FreePort()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
+}
+
+/// <summary>Who listens: a process running as <see cref="Owner"/>, or none (null).</summary>
+internal sealed class FakePeers : ILocalPeers
+{
+    private const int Process = 4242;
+
+    public ProcessIdentity? Owner { get; init; }
+
+    public (IPEndPoint Local, IPEndPoint Remote)? Asked { get; private set; }
+
+    public int? PeerProcess(IPEndPoint local, IPEndPoint remote)
+    {
+        Asked = (local, remote);
+        return Owner is null ? null : Process;
+    }
+
+    public bool RunsAs(int processId, ProcessIdentity identity) => processId == Process && identity == Owner;
 }
 
 /// <summary>A game's RCON: srcds answers authentication with an empty response first, CS2 does not.</summary>
@@ -120,6 +208,9 @@ internal sealed class FakeRconServer : IAsyncDisposable
     }
 
     public List<string> Commands { get; } = [];
+
+    /// <summary>The passwords it was sent.</summary>
+    public List<string> Logons { get; } = [];
 
     public RconEndpoint Endpoint(string password) => new(RconProtocol.Source, "127.0.0.1", ((IPEndPoint)_listener.LocalEndpoint).Port, password);
 
@@ -147,6 +238,7 @@ internal sealed class FakeRconServer : IAsyncDisposable
             var (id, type, body) = await ReceiveAsync(stream);
             if (type == 3)
             {
+                Logons.Add(body);
                 if (srcds)
                 {
                     await SendAsync(stream, id, 0, "");
@@ -187,6 +279,14 @@ internal sealed class FakeRconServer : IAsyncDisposable
                     }
 
                     break;
+                case "bye":
+                    // Answered, then the session is closed once idle (a game that drops idle RCON clients).
+                    await SendAsync(stream, id, 0, "bye\n");
+                    await Task.Delay(300, _stop.Token);
+                    return;
+                case "crash":
+                    return; // closed before answering
+
                 default:
                     await SendAsync(stream, id, 0, body.StartsWith("echo ", StringComparison.Ordinal) ? body[5..] + "\n" : "");
                     break;
@@ -367,6 +467,44 @@ public sealed class LogTailTests : IDisposable
         await reading;
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AFileThatCannotBeOpenedYetIsTriedAgainAtTheNextPoll(bool denied)
+    {
+        // Held by the game without sharing for a moment (or its rules not set yet): the log is still followed.
+        await File.WriteAllTextAsync(Path.Combine(_root, "console.log"), "hello\n", TestContext.Current.CancellationToken);
+        var files = new FlakyServerFiles(failures: 3, denied);
+
+        Assert.Equal("hello\n", await FirstAsync(new LogTail(files, _root, "console.log", Encoding.UTF8, TimeSpan.FromMilliseconds(20))));
+        Assert.Equal(4, files.Opened);
+    }
+
+    private sealed class FlakyServerFiles(int failures, bool denied) : IServerFiles
+    {
+        private readonly DirectServerFiles _inner = new();
+
+        public int Opened { get; private set; }
+
+        public Stream? OpenRead(string serverRoot, string relativePath)
+        {
+            if (++Opened <= failures)
+            {
+                throw denied ? new UnauthorizedAccessException("denied") : new IOException("in use");
+            }
+
+            return _inner.OpenRead(serverRoot, relativePath);
+        }
+
+        public void Write(string serverRoot, string relativePath, Stream content) => _inner.Write(serverRoot, relativePath, content);
+
+        public void Delete(string serverRoot, string relativePath) => _inner.Delete(serverRoot, relativePath);
+
+        public void CreateDirectory(string serverRoot, string relativePath) => _inner.CreateDirectory(serverRoot, relativePath);
+
+        public bool DeleteEmptyDirectory(string serverRoot, string relativePath) => _inner.DeleteEmptyDirectory(serverRoot, relativePath);
+    }
+
     internal static async Task Eventually(Func<bool> condition, Func<string> what)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
@@ -416,6 +554,28 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
             TestContext.Current.CancellationToken));
         Assert.Equal("gone", logAtStart);
         Assert.Equal(ConsoleMode.Pty, _processes.Specs[0].ConsoleMode); // srcds needs a console even though it writes nothing to it
+    }
+
+    [Fact]
+    public async Task SomethingElseOnItsRconPortNeverMakesItReady()
+    {
+        // Another server's account listens there: no password goes to it, and the console says why it waits.
+        var supervisor = Supervisor(new RconReadiness(60));
+        _rcon.Listening = true;
+        _rcon.NotTheGame = true;
+        await supervisor.StartAsync();
+        await _events.WaitForAsync(RuntimeState.Starting);
+        for (var i = 0; i < 3; i++)
+        {
+            _clock.Advance(TimeSpan.FromSeconds(2));
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        }
+
+        await supervisor.FlushAsync();
+        Assert.Equal(RuntimeState.Starting, supervisor.Snapshot.State);
+        Assert.Null(_rcon.LastPassword);
+        await EventuallyAsync(() => Text(supervisor).Contains("is not the server's game", StringComparison.Ordinal));
+        Assert.Single(Text(supervisor).Split('\n'), line => line.Contains("is not the server's game", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -489,6 +649,28 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         Assert.Equal(latin, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
         Assert.Empty(_processes.Started);
         Assert.Contains("cstrike/cfg/server.cfg is not UTF-8 text, so Pulsar does not change it: save it as UTF-8.", Text(supervisor), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("utf-16")]
+    [InlineData("utf-16BE")]
+    [InlineData("utf-32")]
+    public async Task AConfigurationFileInAnotherUnicodeEncodingIsLeftAsItIsAndFailsTheStart(string encoding)
+    {
+        // Its byte order mark says what it is, but it is not UTF-8: rewriting it as UTF-8 would change its encoding.
+        var path = Path.Combine(_root, "cstrike", "cfg", "server.cfg");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var unicode = Encoding.GetEncoding(encoding);
+        byte[] content = [.. unicode.GetPreamble(), .. unicode.GetBytes("hostname \"old\"\n")];
+        await File.WriteAllBytesAsync(path, content, TestContext.Current.CancellationToken);
+        var supervisor = Supervisor(new RconReadiness(60));
+
+        await supervisor.StartAsync();
+
+        var failed = await _events.WaitForAsync(RuntimeState.Crashed, StateChangeReason.StartFailed);
+        Assert.Equal("config.invalid", failed.Detail);
+        Assert.Equal(content, await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken));
+        Assert.Empty(_processes.Started);
     }
 
     [Fact]
@@ -581,6 +763,44 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status", TestContext.Current.CancellationToken));
 
         await EventuallyAsync(() => Text(supervisor).Contains("[Pulsar] RCON: Not listening.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ACommandOnAKeptSessionTheGameHadClosedIsSentOnceMoreOnAFreshOne()
+    {
+        var supervisor = await RunningAsync();
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status", TestContext.Current.CancellationToken));
+        await EventuallyAsync(() => _rcon.Commands.Count == 1);
+        var refusals = 1; // the kept session: the game closed it meanwhile
+        _rcon.Refuse = _ => refusals-- > 0 ? new RconException("The RCON connection was closed.") { ConnectionLost = true, NotSent = true } : null;
+
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("say hi", TestContext.Current.CancellationToken));
+
+        await EventuallyAsync(() => _rcon.Commands.Count == 2);
+        Assert.Equal(["status", "say hi"], _rcon.Commands);
+        Assert.Equal(3, _rcon.Connections); // the probe's, the kept one, the fresh one
+    }
+
+    [Fact]
+    public async Task ACommandWhoseAnswerWasCutOffIsNotSentAgain()
+    {
+        // The game took the command and the connection broke before its answer: it may have run, so it never runs twice.
+        var supervisor = await RunningAsync();
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("status", TestContext.Current.CancellationToken));
+        await EventuallyAsync(() => _rcon.Commands.Count == 1);
+        _rcon.OnCommand = command =>
+        {
+            if (command == "say hi")
+            {
+                throw new RconException("The RCON connection was closed.") { ConnectionLost = true };
+            }
+        };
+
+        Assert.Equal(AckStatus.Accepted, await supervisor.SendInputAsync("say hi", TestContext.Current.CancellationToken));
+
+        await EventuallyAsync(() => Text(supervisor).Contains("[Pulsar] RCON: The RCON connection was closed.", StringComparison.Ordinal));
+        Assert.Equal(["status", "say hi"], _rcon.Commands);
+        Assert.Equal(2, _rcon.Connections);
     }
 
     [Fact]
@@ -690,9 +910,15 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
     {
         public volatile bool Listening;
 
+        /// <summary>Something else than the game listens (another server's account).</summary>
+        public volatile bool NotTheGame;
+
         public List<string> Commands { get; } = [];
 
         public Action<string>? OnCommand { get; set; }
+
+        /// <summary>A failure before the game got the command (a session it had closed).</summary>
+        public Func<string, RconException?>? Refuse { get; set; }
 
         public string? LastPassword { get; private set; }
 
@@ -700,11 +926,16 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
 
         public int Connections { get; private set; }
 
-        public Task<IRconSession> ConnectAsync(RconEndpoint endpoint, CancellationToken cancellationToken)
+        public Task<IRconSession> ConnectAsync(RconEndpoint endpoint, ProcessIdentity owner, CancellationToken cancellationToken)
         {
             if (!Listening)
             {
                 throw new RconException("Not listening.");
+            }
+
+            if (NotTheGame)
+            {
+                throw new RconException("What listens at 127.0.0.1:27015 is not the server's game.") { NotTheGame = true };
             }
 
             LastPassword = endpoint.Password;
@@ -716,6 +947,11 @@ public sealed class LogfileRconSupervisorTests : IAsyncDisposable
         {
             public Task<string> ExecuteAsync(string command, CancellationToken cancellationToken)
             {
+                if (owner.Refuse?.Invoke(command) is { } refused)
+                {
+                    throw refused;
+                }
+
                 lock (owner.Commands)
                 {
                     owner.Commands.Add(command);

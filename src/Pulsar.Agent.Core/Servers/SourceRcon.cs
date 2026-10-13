@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Text;
+using Pulsar.Agent.Core.Processes;
 using Pulsar.Manifests;
 
 namespace Pulsar.Agent.Core.Servers;
@@ -8,8 +9,14 @@ namespace Pulsar.Agent.Core.Servers;
 /// <summary>Opens remote console sessions to the games the agent runs (<c>logfile+rcon</c> consoles).</summary>
 public interface IRconConnector
 {
-    /// <exception cref="RconException">The game refused the connection or the password, or did not answer.</exception>
-    Task<IRconSession> ConnectAsync(RconEndpoint endpoint, CancellationToken cancellationToken);
+    /// <param name="owner">
+    /// The account the server's game runs as: what listens at <paramref name="endpoint"/> must run as it before the
+    /// password is sent (docs/architecture/08, T18).
+    /// </param>
+    /// <exception cref="RconException">
+    /// The game refused the connection or the password, or did not answer; or what listens there is not the game.
+    /// </exception>
+    Task<IRconSession> ConnectAsync(RconEndpoint endpoint, ProcessIdentity owner, CancellationToken cancellationToken);
 }
 
 public interface IRconSession : IAsyncDisposable
@@ -40,6 +47,12 @@ public sealed class RconException : Exception
 
     /// <summary>The connection was closed (as opposed to an answer that did not come in time).</summary>
     public bool ConnectionLost { get; init; }
+
+    /// <summary>What listens at the endpoint is not the server's game: nothing was sent to it.</summary>
+    public bool NotTheGame { get; init; }
+
+    /// <summary>The command never left the agent (the connection was closed already): sending it again cannot run it twice.</summary>
+    public bool NotSent { get; init; }
 }
 
 /// <summary>
@@ -62,9 +75,13 @@ public sealed class SourceRconConnector : IRconConnector
     /// <summary>How long after the last packet an answer is considered complete.</summary>
     public TimeSpan AnswerIdle { get; init; } = TimeSpan.FromMilliseconds(250);
 
-    public async Task<IRconSession> ConnectAsync(RconEndpoint endpoint, CancellationToken cancellationToken)
+    /// <summary>Who listens where (Windows' TCP table); null checks nothing (tests).</summary>
+    public ILocalPeers? Peers { get; init; }
+
+    public async Task<IRconSession> ConnectAsync(RconEndpoint endpoint, ProcessIdentity owner, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentNullException.ThrowIfNull(owner);
         var client = new TcpClient { NoDelay = true };
         try
         {
@@ -81,6 +98,7 @@ public sealed class SourceRconConnector : IRconConnector
                 }
             }
 
+            RconPeers.Verify(Peers, client.Client, endpoint, owner);
             var session = new SourceRconSession(client, AnswerTimeout, AnswerIdle);
             await session.AuthenticateAsync(endpoint.Password, cancellationToken);
             return session;
@@ -139,9 +157,9 @@ internal sealed class SourceRconSession(TcpClient client, TimeSpan answerTimeout
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            if (_closed)
+            if (_closed || PeerClosed())
             {
-                throw new RconException("The RCON connection was closed.") { ConnectionLost = true };
+                throw new RconException("The RCON connection was closed.") { ConnectionLost = true, NotSent = true };
             }
 
             await SendAsync(_nextId++, ExecCommand, command, cancellationToken);
@@ -193,6 +211,22 @@ internal sealed class SourceRconSession(TcpClient client, TimeSpan answerTimeout
         _closed = true;
         await _stream.DisposeAsync();
         client.Dispose();
+    }
+
+    /// <summary>
+    /// Whether the game closed the connection while it was idle: readable with nothing to read is its end. Without this
+    /// check the command would be written into the closed connection, and its loss only seen once it was sent.
+    /// </summary>
+    private bool PeerClosed()
+    {
+        try
+        {
+            return client.Client.Poll(0, SelectMode.SelectRead) && client.Client.Available == 0;
+        }
+        catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
+        {
+            return true;
+        }
     }
 
     private static CancellationTokenSource Timeout(TimeSpan after, CancellationToken cancellationToken)
