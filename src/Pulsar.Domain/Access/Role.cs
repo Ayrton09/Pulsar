@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Pulsar.Domain.Common;
 
 namespace Pulsar.Domain.Access;
@@ -127,8 +129,10 @@ public sealed class Role
     {
         normalized = new SortedSet<string>(StringComparer.Ordinal);
 
+        // Nothing that would hide in it or break its line, as for node names: the role list and the audit log show it.
         var trimmed = name?.Trim() ?? string.Empty;
-        if (trimmed.Length is 0 or > MaxNameLength)
+        if (trimmed.Length is 0 or > MaxNameLength || trimmed.EnumerateRunes().Any(r => Rune.IsControl(r) || Rune.GetUnicodeCategory(r)
+                is UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator))
         {
             return AccessErrors.RoleNameInvalid;
         }

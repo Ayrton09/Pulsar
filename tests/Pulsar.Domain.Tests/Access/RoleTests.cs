@@ -32,6 +32,22 @@ public sealed class RoleTests
         Assert.Equal(AccessErrors.RoleNameInvalid, result.Error);
     }
 
+    [Theory]
+    [InlineData("Mod\nerator")]
+    [InlineData("Mod\terator")]
+    [InlineData("Mod\U0000200Berator")]
+    [InlineData("Admin\U0000202Erotca")]
+    [InlineData("Mod\U00002028erator")]
+    [InlineData("Mod\U000E0041erator")]
+    public void CreateAndUpdateRejectNamesWithHiddenOrLineBreakingCharacters(string name)
+    {
+        Assert.Equal(AccessErrors.RoleNameInvalid, Role.Create(name, null, PermissionScope.Global, [], s_now).Error);
+
+        var role = Role.Create("Moderator", null, PermissionScope.Global, [], s_now).Value;
+        Assert.Equal(AccessErrors.RoleNameInvalid, role.Update(name, null, [], s_now).Error);
+        Assert.Equal("Moderator", role.Name);
+    }
+
     [Fact]
     public void CreateRejectsLongNamesAndDescriptions()
     {
