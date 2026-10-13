@@ -105,6 +105,34 @@ public static class AgentService
         }
     }
 
+    /// <summary>
+    /// Starts the service and waits for it to run: StartService returns while the service is still starting (opening a node
+    /// key in the TPM takes seconds). Returns <see cref="AgentServiceState.Running"/>, <see cref="AgentServiceState.Stopped"/>
+    /// when it stopped as it started (its log says why), or the state it is still in when <paramref name="timeout"/> ran out.
+    /// </summary>
+    public static AgentServiceState StartAndWait(TimeSpan timeout)
+    {
+        using var manager = OpenManager();
+        using var service = OpenExisting(manager);
+        if (!PInvoke.StartService(service, []) && (WIN32_ERROR)Marshal.GetLastPInvokeError()
+            != WIN32_ERROR.ERROR_SERVICE_ALREADY_RUNNING)
+        {
+            throw new Win32Exception();
+        }
+
+        var deadline = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            var state = State(service);
+            if (state is AgentServiceState.Running or AgentServiceState.Stopped || DateTime.UtcNow > deadline)
+            {
+                return state;
+            }
+
+            Thread.Sleep(250);
+        }
+    }
+
     /// <summary>Asks the service to stop and waits for it (no-op when not installed or already stopped).</summary>
     public static void Stop(TimeSpan timeout)
     {

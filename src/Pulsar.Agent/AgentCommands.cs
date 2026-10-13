@@ -25,6 +25,9 @@ internal static class AgentCommands
     /// <summary>How long unenroll waits for a service still stopping once the games it was waiting for are ended.</summary>
     private static readonly TimeSpan s_stoppedAfterEndingHosts = TimeSpan.FromSeconds(30);
 
+    /// <summary>How long enroll waits for the service it installed to run (it says so when that takes longer).</summary>
+    private static readonly TimeSpan s_serviceStartTimeout = TimeSpan.FromSeconds(60);
+
     public static int Help()
     {
         Console.WriteLine($"""
@@ -168,8 +171,20 @@ internal static class AgentCommands
         else if (installService)
         {
             AgentService.Install(Environment.ProcessPath!, ServiceArguments(paths));
-            AgentService.Start();
-            Console.WriteLine($"The {AgentService.Name} service is installed and running.");
+            switch (AgentService.StartAndWait(s_serviceStartTimeout))
+            {
+                case AgentServiceState.Running:
+                    Console.WriteLine($"The {AgentService.Name} service is installed and running.");
+                    break;
+                case AgentServiceState.Stopped:
+                    Console.Error.WriteLine($"The {AgentService.Name} service is installed but stopped as it started: its log in " +
+                        $"{paths.LogsDirectory} says why; then start it with 'PulsarAgent service start'.");
+                    return (1, true);
+                default:
+                    Console.WriteLine($"The {AgentService.Name} service is installed and still starting: 'PulsarAgent status' says when it runs.");
+                    break;
+            }
+
             return (0, true);
         }
 
@@ -201,8 +216,12 @@ internal static class AgentCommands
     {
         try
         {
-            AgentService.Start();
-            Console.WriteLine($"The {AgentService.Name} service is started again.");
+            Console.WriteLine(AgentService.StartAndWait(s_serviceStartTimeout) switch
+            {
+                AgentServiceState.Running => $"The {AgentService.Name} service is started again.",
+                AgentServiceState.Stopped => $"The {AgentService.Name} service stopped as it started again: its log says why.",
+                _ => $"The {AgentService.Name} service is starting again.",
+            });
         }
         catch (System.ComponentModel.Win32Exception ex)
         {

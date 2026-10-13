@@ -295,10 +295,15 @@ function Invoke-Check([string] $check, [pscredential] $credential) {
                 -RedirectStandardOutput 'C:\bundle\console.txt' -RedirectStandardError 'C:\bundle\console-error.txt'
             $null = $process.Handle # keeps the exit code readable after the process ends
             $process.WaitForExit()
+            # The agent install check's panel is still running and writing report\panel*.txt, which a copy out of the VM
+            # cannot read while it is open: end it (the VM is thrown away anyway).
+            Get-Process -Name 'Pulsar.Api' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Get-Process -Name 'Pulsar.Api' -ErrorAction SilentlyContinue | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
             $process.ExitCode
         } -ArgumentList (, $arguments)
 
-        Copy-Item 'C:\bundle\report' -Destination $result -Recurse -FromSession $session
+        # A file still held open in the VM must not keep the rest of the report (summary.txt above all) from coming out.
+        Copy-Item 'C:\bundle\report' -Destination $result -Recurse -FromSession $session -ErrorAction Continue
         Copy-Item 'C:\bundle\console.txt', 'C:\bundle\console-error.txt' -Destination $result -FromSession $session -ErrorAction SilentlyContinue
         $lines = Get-Content (Join-Path $result 'report\summary.txt')
         $pass = @($lines | Where-Object { $_ -like 'PASS *' }).Count
