@@ -79,7 +79,11 @@ internal static class AgentHost
             // Game servers (docs/architecture/05 and 06).
             builder.Services.AddSingleton(services => new WindowsServerAccounts(services.GetRequiredService<ILogger<WindowsServerAccounts>>(),
                 paths.LogonLocksDirectory));
-            builder.Services.AddSingleton<IGameProcessManager, WindowsGameProcessManager>();
+            // Only an agent enrolled with --dev starts servers as its own account (the service is SYSTEM): the default refuses it.
+            static bool IsDevelopment(IServiceProvider services) => services.GetRequiredService<AgentConfigStore>().Load()?.Development ?? false;
+            builder.Services.AddSingleton<IGameProcessManager>(services => new WindowsGameProcessManager(services.GetRequiredService<WindowsServerAccounts>(),
+                services.GetRequiredService<TimeProvider>(), services.GetRequiredService<ILogger<WindowsGameProcessManager>>(),
+                allowCurrentUser: IsDevelopment(services)));
             // Each game in a host process of its own, so games outlive the agent (docs/architecture/06, "Server hosts").
             // Pulsar:ServerHosts false runs them inside the agent, as before Phase 14 (they then stop with it); the hosts
             // an earlier run left are still ended.
@@ -90,7 +94,8 @@ internal static class AgentHost
                 () => serverHosts
                     ? GameHostProgram.Prepare(AppContext.BaseDirectory, executable, paths.HostProgramsDirectory)
                     : Path.Combine(AppContext.BaseDirectory, executable),
-                paths.Root, paths.HostProgramsDirectory, services.GetRequiredService<ILogger<WindowsGameHostLauncher>>()));
+                paths.Root, paths.HostProgramsDirectory, services.GetRequiredService<ILogger<WindowsGameHostLauncher>>(),
+                IsDevelopment(services)));
             builder.Services.AddSingleton(services => new GameHostManager(services.GetRequiredService<IGameProcessManager>(),
                 services.GetRequiredService<IGameHostLauncher>(), services.GetRequiredService<ILogger<GameHostManager>>()));
 

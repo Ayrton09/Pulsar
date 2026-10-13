@@ -104,11 +104,19 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         ArgumentNullException.ThrowIfNull(progress);
         await progress(BackupStages.Scanning, null);
         var selected = Select(files.Walk(server), rules);
+        var collisions = DropCaseCollisions(selected);
         var total = selected.Sum(f => f.Size);
         System.IO.Directory.CreateDirectory(location.Directory);
         try
         {
-            int count = 0, skipped = 0;
+            // A restore refuses an archive naming one path twice by any case (Windows would write both to one file), so a
+            // folder with per-directory case sensitivity must not put both in: the first in ordinal order stays.
+            int count = 0, skipped = collisions.Count;
+            foreach (var collision in collisions.Take(MaxLoggedSkips))
+            {
+                LogSkipped(location.ShortId, collision.Path, "case_collision");
+            }
+
             await using (var output = new FileStream(location.Partial, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, BufferSize,
                 FileOptions.Asynchronous))
             {
@@ -339,9 +347,10 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
     /// <summary>
     /// Brings a backup the node no longer has back from remote storage (before a restore), checked against the SHA-256
-    /// the node made it with. The archive stays on the node.
+    /// the node made it with. The archive stays on the node. A copy larger than <paramref name="sizeBytes"/> (the
+    /// archive's size when it was made; null: unknown) is refused while it downloads, before it fills the disk.
     /// </summary>
-    public async Task FetchAsync(BackupLocation location, RemoteBackupTarget target, string sha256, BackupProgress progress,
+    public async Task FetchAsync(BackupLocation location, RemoteBackupTarget target, string sha256, long? sizeBytes, BackupProgress progress,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(location);
@@ -355,7 +364,12 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         try
         {
             await progress(BackupStages.Downloading, 0);
-            await Remote.DownloadAsync(target, location.Partial, percent => progress(BackupStages.Downloading, percent), cancellationToken);
+            await Remote.DownloadAsync(target, location.Partial, sizeBytes, percent => progress(BackupStages.Downloading, percent), cancellationToken);
+            if (sizeBytes is { } expected && new FileInfo(location.Partial).Length > expected)
+            {
+                throw new BackupException(BackupErrors.Corrupt, "The copy in remote storage is larger than the backup the node made.");
+            }
+
             var (_, hash) = await HashAsync(location.Partial, cancellationToken);
             if (!string.Equals(hash, sha256, StringComparison.OrdinalIgnoreCase))
             {
@@ -461,6 +475,24 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         var root = Path.GetFullPath(Path.DirectorySeparatorChar.ToString());
         var matched = matcher.Match(root, candidates.Select(e => e.Path)).Files.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
         return [.. candidates.Where(e => matched.Contains(e.Path)).OrderBy(e => e.Path, StringComparer.Ordinal)];
+    }
+
+    /// <summary>Removes from <paramref name="selected"/> (in path order) every file whose path equals an earlier one ignoring case, and returns them.</summary>
+    private static List<TreeEntry> DropCaseCollisions(List<TreeEntry> selected)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var dropped = new List<TreeEntry>();
+        selected.RemoveAll(file =>
+        {
+            if (seen.Add(file.Path))
+            {
+                return false;
+            }
+
+            dropped.Add(file);
+            return true;
+        });
+        return dropped;
     }
 
     /// <summary>

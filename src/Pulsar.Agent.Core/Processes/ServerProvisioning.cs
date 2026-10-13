@@ -37,6 +37,7 @@ public static partial class ServerShortId
         }
     }
 
-    [GeneratedRegex("^[a-z0-9]{4,12}$", RegexOptions.CultureInvariant)]
+    // \z, not $: $ also matches before a final line feed.
+    [GeneratedRegex(@"^[a-z0-9]{4,12}\z", RegexOptions.CultureInvariant)]
     private static partial Regex Pattern();
 }

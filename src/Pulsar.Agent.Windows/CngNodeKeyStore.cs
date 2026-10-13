@@ -20,20 +20,51 @@ public sealed partial class CngNodeKeyStore(ILogger<CngNodeKeyStore> logger) : I
     private const CngPropertyOptions DaclSecurityInformation = (CngPropertyOptions)0x4;
     private const string SecurityDescriptorProperty = "Security Descr";
 
+    // A TPM that is not ready yet (the service starting at boot, a busy TPM) answers a moment later: tried again a few
+    // times over a few seconds before a key that never leaves the machine's hardware is given up for a software one.
+    private static readonly TimeSpan[] s_tpmRetryDelays = [TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2)];
+
+    /// <summary>Tests: creates the key in a provider (the real one by default).</summary>
+    internal Func<CngProvider, string, string, NodeKeyScope, INodeKey>? CreateKey { get; init; }
+
+    /// <summary>Tests: waits between the TPM's attempts.</summary>
+    internal Action<TimeSpan> Sleep { get; init; } = Thread.Sleep;
+
     public INodeKey Create(string name, NodeKeyScope scope)
     {
-        try
+        for (var attempt = 0; ; attempt++)
         {
-            return Create(s_platformProvider, NodeKeyStorage.Tpm, name, scope);
-        }
-        catch (CryptographicException ex)
-        {
-            // No TPM, TPM disabled or not ready, or a TPM without ECDSA P-256: the software provider is the fallback.
-            LogNoTpm(ex.Message);
+            try
+            {
+                return CreateIn(s_platformProvider, NodeKeyStorage.Tpm, name, scope);
+            }
+            catch (CryptographicException ex) when (IsTransient(ex) && attempt < s_tpmRetryDelays.Length)
+            {
+                LogTpmNotReady(ex.HResult, ex.Message, attempt + 1);
+                Sleep(s_tpmRetryDelays[attempt]);
+            }
+            catch (CryptographicException ex)
+            {
+                // No TPM, TPM disabled, or a TPM without ECDSA P-256 (or one that stays not ready): the software provider
+                // is the fallback, and the reason is in the log (the key's storage is also shown by 'status').
+                LogNoTpm(ex.HResult, ex.Message);
+                break;
+            }
         }
 
-        return Create(CngProvider.MicrosoftSoftwareKeyStorageProvider, NodeKeyStorage.Software, name, scope);
+        return CreateIn(CngProvider.MicrosoftSoftwareKeyStorageProvider, NodeKeyStorage.Software, name, scope);
     }
+
+    private INodeKey CreateIn(CngProvider provider, string storage, string name, NodeKeyScope scope) =>
+        CreateKey is { } create ? create(provider, storage, name, scope) : Create(provider, storage, name, scope);
+
+    /// <summary>
+    /// Errors that say "not now" rather than "not here": the device is not ready (NTE_DEVICE_NOT_READY), or the TPM base
+    /// services are starting, busy or out of contexts (TBS_E_SERVICE_NOT_RUNNING, _TOO_MANY_TBS_CONTEXTS,
+    /// _TOO_MANY_RESOURCES, _SERVICE_START_PENDING, _COMMAND_CANCELED).
+    /// </summary>
+    private static bool IsTransient(CryptographicException ex) => unchecked((uint)ex.HResult) is
+        0x80090030 or 0x80284008 or 0x80284009 or 0x8028400A or 0x8028400B or 0x8028400D;
 
     public INodeKey Open(NodeKeyReference reference)
     {
@@ -87,8 +118,12 @@ public sealed partial class CngNodeKeyStore(ILogger<CngNodeKeyStore> logger) : I
     private static CngKeyOpenOptions OpenOptions(NodeKeyScope scope) =>
         scope == NodeKeyScope.Machine ? CngKeyOpenOptions.MachineKey : CngKeyOpenOptions.None;
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "No usable TPM for the node key ({Reason}); using the software key storage provider")]
-    private partial void LogNoTpm(string reason);
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "No usable TPM for the node key (error 0x{HResult:X8}: {Reason}); using the software key storage provider")]
+    private partial void LogNoTpm(int hResult, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The TPM is not ready for the node key (error 0x{HResult:X8}: {Reason}); trying again (attempt {Attempt})")]
+    private partial void LogTpmNotReady(int hResult, string reason, int attempt);
 
     private sealed class CngNodeKey(NodeKeyReference reference, CngKey key) : INodeKey
     {

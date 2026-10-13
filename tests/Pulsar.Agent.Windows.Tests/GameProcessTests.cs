@@ -36,6 +36,21 @@ public sealed class GameProcessTests : IDisposable
     }
 
     [WindowsFact]
+    public async Task ServersRunAsTheAgentsOwnAccountOnlyInDevelopment()
+    {
+        // In production the agent is SYSTEM: a spec without a server account would run the game as SYSTEM. Fails closed.
+        var production = new WindowsGameProcessManager(TestAccounts.Create(), TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<WindowsGameProcessManager>.Instance);
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() => production.StartAsync(_server.Spec(ConsoleMode.Pipes), TestContext.Current.CancellationToken));
+
+        Assert.Equal("process.identity_refused", error.Code);
+        Assert.Contains("--dev", error.Message, StringComparison.Ordinal);
+        await using var process = await Start(ConsoleMode.Pipes); // the tests' manager is a development agent's
+        Assert.True(process.ProcessId > 0);
+    }
+
+    [WindowsFact]
     public async Task PipesCaptureStandardOutputAndErrorAndTakeInput()
     {
         await using var process = await Start(ConsoleMode.Pipes);

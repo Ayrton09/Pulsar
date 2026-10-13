@@ -11,6 +11,9 @@ public sealed class MemoryRemoteBackups : IRemoteBackupStore
 
     public ConcurrentBag<string> SecretsSeen { get; } = [];
 
+    /// <summary>The size limit each download was given (the backup's size, from the panel's restore command).</summary>
+    public ConcurrentBag<long?> MaxBytesSeen { get; } = [];
+
     /// <summary>Uploads fail with this, as remote storage answers.</summary>
     public string? FailUploads { get; set; }
 
@@ -28,8 +31,9 @@ public sealed class MemoryRemoteBackups : IRemoteBackupStore
         await progress(100);
     }
 
-    public async Task DownloadAsync(RemoteBackupTarget target, string file, Func<double, Task> progress, CancellationToken cancellationToken)
+    public async Task DownloadAsync(RemoteBackupTarget target, string file, long? maxBytes, Func<double, Task> progress, CancellationToken cancellationToken)
     {
+        MaxBytesSeen.Add(maxBytes);
         await File.WriteAllBytesAsync(file, Get(target), cancellationToken);
         await progress(100);
     }

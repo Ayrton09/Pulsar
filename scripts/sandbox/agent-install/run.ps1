@@ -43,6 +43,20 @@ function Wait-Until([scriptblock] $condition, [int] $seconds) {
     return $false
 }
 
+# What a failed request says about why the server refused it: "tls <status>" when the TLS handshake failed (what a server
+# that requires a client certificate does to a client with none: Windows PowerShell reports a send, receive or secure
+# channel failure, PowerShell 7 an authentication or IO exception), "http 401"/"http 403" for an explicit refusal, and
+# "other: <message>" for anything else (no listener, a timeout, an unresolved name, a 404): that proves nothing.
+function Get-Refusal([Exception] $exception) {
+    $chain = @()
+    for ($e = $exception; $null -ne $e; $e = $e.InnerException) { $chain += $e }
+    $web = $chain | Where-Object { $_ -is [Net.WebException] } | Select-Object -First 1
+    if ($web -and $web.Response -and ([int]$web.Response.StatusCode) -in 401, 403) { return "http $([int]$web.Response.StatusCode)" }
+    if ($web -and "$($web.Status)" -in 'SecureChannelFailure', 'SendFailure', 'ReceiveFailure', 'ConnectionClosed') { return "tls $($web.Status)" }
+    if (-not $web -and ($chain | Where-Object { $_ -is [Security.Authentication.AuthenticationException] -or $_ -is [IO.IOException] })) { return 'tls handshake failed' }
+    return "other: $($exception.Message)"
+}
+
 # HTTPS, as in production: a certificate made here and trusted machine-wide (the machine is disposable).
 $panel = 'https://localhost:5291'
 # The agents' port: agents present their node key as client certificate there (docs/architecture/03).
@@ -187,10 +201,15 @@ try {
     } 90
     Check "agent moved to the agents' address, its machine key as client certificate" $moved
     Check "signed ping over the agents' address" ((Api POST "/api/v1/nodes/$nodeId/ping").status -eq 'accepted')
-    $bare = try { $null = Invoke-WebRequest "$agentsUrl/agent/v1/panel-identity" -UseBasicParsing -TimeoutSec 10; 'answered' } catch { $_.Exception.Message }
-    Check "the agents' port turns away a client without certificate" ($bare -ne 'answered') $bare
+    # Refused for lack of a certificate: the TLS handshake fails (the endpoint requires one), or the answer is an explicit
+    # 401/403. Any other failure (nothing listens, a timeout, a name that does not resolve) or an answer says nothing.
+    $bare = try { $null = Invoke-WebRequest "$agentsUrl/agent/v1/panel-identity" -UseBasicParsing -TimeoutSec 10; 'answered' } catch { Get-Refusal $_.Exception }
+    Check "the agents' port turns away a client without certificate" ($bare -match '^(tls|http) ') "$bare"
     $required = Api PUT '/api/v1/agent-transport' @{ requireClientCertificates = $true }
     Check 'certificates required, every node has one' ($required.requireClientCertificates -and $required.inEffect -and $required.nodesWithoutCertificateCount -eq 0) "$($required.agentsUrl)"
+    # The browsers' port never asks for a certificate, not even now that agents must have one: it answers without any.
+    $browserReady = try { (Invoke-WebRequest "$panel/health/ready" -UseBasicParsing -TimeoutSec 10).StatusCode } catch { Get-Refusal $_.Exception }
+    Check "the browsers' port answers without a client certificate" ($browserReady -eq 200) "$browserReady"
     Check 'still online with certificates required' (Wait-Until { (Api GET "/api/v1/nodes/$nodeId").node.connected -and (Api POST "/api/v1/nodes/$nodeId/ping").status -eq 'accepted' } 30)
     $agentsStatus = Invoke-Native $agentExe status --check
     Check "status --check through the agents' address" ($LASTEXITCODE -eq 0 -and $agentsStatus -match 'Check:\s+OK') ($agentsStatus.Trim() -replace '\s+', ' ')
@@ -350,7 +369,11 @@ try {
         $steamOwner = (Get-Acl (Join-Path $gameDir 'srcds.exe')).Owner
         Check 'css: game files written by the server account (SteamCMD ran as it)' ($steamOwner -like "*$gameAccount") $steamOwner
         $signature = Get-AuthenticodeSignature (Join-Path $dataDir 'steamcmd\steamcmd.exe')
-        Check 'css: SteamCMD bootstrapper signed by Valve' ($signature.Status -eq 'Valid' -and $signature.SignerCertificate.Subject -match 'O=Valve') $signature.SignerCertificate.Subject
+        # The organization (O) compared whole, as the agent does (SteamCmdBootstrapper.VerifyValveSignature): "Valve" or "Valve Corp.",
+        # not any name that merely contains "O=Valve" ("O=Valve Software Fake", "OU=O=Valve...").
+        $subject = "$($signature.SignerCertificate.Subject)"
+        $organization = if ($subject -match '(?:^|,\s*)O=(?:"((?:[^"]|"")*)"|([^,]*))') { if ($Matches[1]) { $Matches[1] -replace '""', '"' } else { $Matches[2].Trim() } } else { $null }
+        Check 'css: SteamCMD bootstrapper signed by Valve' ($signature.Status -eq 'Valid' -and $organization -in @('Valve', 'Valve Corp.')) "O=$organization; $subject"
 
         $null = Api POST "/api/v1/servers/$gameId/start"
         Check 'css: ready over RCON' (Wait-Until { (GameServer).server.runtimeState -eq 'running' } 300) "reason: $((GameServer).server.lastStateReason)"
@@ -568,6 +591,18 @@ finally {
     }
     catch {
         Add-Content $summary "note: the agent's logs were not copied ($($_.Exception.Message))"
+    }
+    # The panel's test certificate and its private key stay on a CI runner otherwise (the sandbox is thrown away anyway).
+    try {
+        if ($certificate) {
+            Remove-Item "Cert:\LocalMachine\My\$($certificate.Thumbprint)" -DeleteKey -ErrorAction SilentlyContinue
+            Remove-Item "Cert:\LocalMachine\Root\$($certificate.Thumbprint)" -ErrorAction SilentlyContinue
+        }
+        if ($pfx) { Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue }
+        if ($cer) { Remove-Item -LiteralPath $cer -Force -ErrorAction SilentlyContinue }
+    }
+    catch {
+        Add-Content $summary "note: the test certificate was not removed ($($_.Exception.Message))"
     }
     Stop-Transcript | Out-Null
     Add-Content $summary 'done'

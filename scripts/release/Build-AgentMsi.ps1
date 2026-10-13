@@ -264,6 +264,10 @@ try {
     # A SERVERSROOT ending in a backslash escapes the closing quote (D:\PulsarServers\" reaches the agent as
     # D:\PulsarServers", which the agent trims), and the argument runs to the end of the line: it stays last.
     Insert 'CustomAction' @('Action', 'Type', 'Source', 'Target', 'ExtendedType') @('SetServersRootArgument', 51, 'SERVERSROOTARGUMENT', ' --servers-root "[SERVERSROOT]"', $null)
+    # The token is on enroll's command line: Windows Installer gives an executable action nothing else (no environment,
+    # no standard input, no way to read a property from the program), and a script action or an Environment-table entry
+    # would only move it somewhere worse (docs/architecture/08, "Packaging"). It stays out of the installer's log
+    # (MsiHiddenProperties, +8192) but administrators see it while enroll runs, as they see TOKEN= on msiexec's own line.
     # What the agent's commands print goes to logs next to the agent's (a custom action has no console).
     $logs = '[CommonAppDataFolder]Pulsar\Agent\logs'
     Insert 'CustomAction' @('Action', 'Type', 'Source', 'Target', 'ExtendedType') @('EnrollAgent', (18 + 1024 + 2048 + 8192), $exe.Key,

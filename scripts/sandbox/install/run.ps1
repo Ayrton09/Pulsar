@@ -69,8 +69,13 @@ try {
     $agent = Get-CimInstance Win32_Service -Filter "Name='PulsarAgent'"
     Check 'agent service: LocalSystem, running' ($agent.StartName -eq 'LocalSystem' -and $agent.State -eq 'Running') "$($agent.StartName) $($agent.State)"
 
-    $configAcl = (Get-Acl 'C:\Program Files\Pulsar\Panel\appsettings.Production.json').Access | ForEach-Object { $_.IdentityReference.Value }
-    Check "panel settings readable only by SYSTEM, Administrators and the panel's account" (-not ($configAcl | Where-Object { $_ -match 'Users|Everyone|Authenticated' })) ($configAcl -join ', ')
+    # By SID against what is allowed (any other principal fails, whatever its name): SYSTEM, Administrators and the panel's
+    # virtual account.
+    $panelSid = (New-Object Security.Principal.NTAccount 'NT SERVICE\PulsarPanel').Translate([Security.Principal.SecurityIdentifier]).Value
+    $configAcl = (Get-Acl 'C:\Program Files\Pulsar\Panel\appsettings.Production.json').GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) |
+        ForEach-Object { $_.IdentityReference.Value } | Select-Object -Unique
+    $configOthers = @($configAcl | Where-Object { $_ -notin @('S-1-5-18', 'S-1-5-32-544', $panelSid) })
+    Check "panel settings readable only by SYSTEM, Administrators and the panel's account" ($configAcl.Count -gt 0 -and $configOthers.Count -eq 0) "others: $($configOthers -join ', '); all: $($configAcl -join ', ')"
     $settings = Get-Content 'C:\Program Files\Pulsar\Panel\appsettings.Production.json' -Raw | ConvertFrom-Json
     Check 'setup token removed from the settings' ($null -eq $settings.PSObject.Properties['InitialSetup'])
     # Written in a private folder next to it and moved into place: none left behind.

@@ -24,7 +24,9 @@ namespace Pulsar.Agent.Windows.Processes;
 /// and the hosts that run are still found, watched and ended.
 /// </param>
 /// <param name="hostPrograms">Where those copies are (null: the executable is not a copy, as in tests).</param>
-public sealed partial class WindowsGameHostLauncher(Func<string> program, string dataDirectory, string? hostPrograms, ILogger<WindowsGameHostLauncher> logger)
+/// <param name="development">The agent was enrolled with <c>--dev</c>: its hosts may start games as the agent's own account (<c>--dev</c> on their command line).</param>
+public sealed partial class WindowsGameHostLauncher(Func<string> program, string dataDirectory, string? hostPrograms, ILogger<WindowsGameHostLauncher> logger,
+    bool development = false)
     : IGameHostLauncher
 {
     private const uint SddlRevision1 = 1;
@@ -35,11 +37,11 @@ public sealed partial class WindowsGameHostLauncher(Func<string> program, string
         $"D:P(A;;GA;;;SY)(A;;GA;;;{WindowsIdentity.GetCurrent().User!.Value})(A;;0x00101001;;;BA)";
 
     private readonly Lock _lock = new();
-    private bool _breakawayRefused;
     private string? _executable;
 
-    public WindowsGameHostLauncher(string executable, string dataDirectory, string? hostPrograms, ILogger<WindowsGameHostLauncher> logger)
-        : this(() => executable, dataDirectory, hostPrograms, logger)
+    public WindowsGameHostLauncher(string executable, string dataDirectory, string? hostPrograms, ILogger<WindowsGameHostLauncher> logger,
+        bool development = false)
+        : this(() => executable, dataDirectory, hostPrograms, logger, development)
     {
     }
 
@@ -78,7 +80,8 @@ public sealed partial class WindowsGameHostLauncher(Func<string> program, string
         }
 
         var executable = Executable;
-        var commandLine = WindowsCommandLine.Build(executable, ["host", "--server", serverId.ToString("D"), "--pipe", pipe, "--data-dir", dataDirectory]);
+        string[] arguments = ["host", "--server", serverId.ToString("D"), "--pipe", pipe, "--data-dir", dataDirectory];
+        var commandLine = WindowsCommandLine.Build(executable, development ? [.. arguments, "--dev"] : arguments);
         PSECURITY_DESCRIPTOR descriptor;
         fixed (char* sddl = s_processSddl)
         {
@@ -91,23 +94,19 @@ public sealed partial class WindowsGameHostLauncher(Func<string> program, string
         try
         {
             var security = new SECURITY_ATTRIBUTES { nLength = (uint)sizeof(SECURITY_ATTRIBUTES), lpSecurityDescriptor = descriptor.Value };
-            var flags = PROCESS_CREATION_FLAGS.DETACHED_PROCESS | PROCESS_CREATION_FLAGS.CREATE_NEW_PROCESS_GROUP;
-            if (!_breakawayRefused)
-            {
-                flags |= PROCESS_CREATION_FLAGS.CREATE_BREAKAWAY_FROM_JOB;
-            }
-
+            var flags = PROCESS_CREATION_FLAGS.DETACHED_PROCESS | PROCESS_CREATION_FLAGS.CREATE_NEW_PROCESS_GROUP
+                | PROCESS_CREATION_FLAGS.CREATE_BREAKAWAY_FROM_JOB;
             if (!TryCreate(executable, commandLine, flags, &security, out var info, out var error))
             {
-                if (error != (int)WIN32_ERROR.ERROR_ACCESS_DENIED || !flags.HasFlag(PROCESS_CREATION_FLAGS.CREATE_BREAKAWAY_FROM_JOB))
+                if (error != (int)WIN32_ERROR.ERROR_ACCESS_DENIED)
                 {
                     throw new Win32Exception(error, "CreateProcess(host) failed.");
                 }
 
-                // The agent runs in a Job that forbids leaving it (some service wrappers, test runners): hosts then end
-                // with that Job, as games did before hosts.
-                _breakawayRefused = true;
-                LogNoBreakaway();
+                // The agent runs in a Job that forbids leaving it (some service wrappers, test runners): this host then ends
+                // with that Job, as games did before hosts. Only this one: access denied may be anything else too (a
+                // transient failure, a filter driver), and breakaway is tried again at the next launch.
+                LogNoBreakaway(error);
                 flags &= ~PROCESS_CREATION_FLAGS.CREATE_BREAKAWAY_FROM_JOB;
                 if (!TryCreate(executable, commandLine, flags, &security, out info, out error))
                 {
@@ -134,28 +133,59 @@ public sealed partial class WindowsGameHostLauncher(Func<string> program, string
         return process is not null && PInvoke.WaitForSingleObject(process, 0) == WAIT_EVENT.WAIT_TIMEOUT;
     }
 
-    public void Kill(GameHostReference host)
+    public bool Kill(GameHostReference host)
     {
         ArgumentNullException.ThrowIfNull(host);
-        using var process = Open(host,
-            PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_ACCESS_RIGHTS.PROCESS_SYNCHRONIZE | PROCESS_ACCESS_RIGHTS.PROCESS_TERMINATE);
-        if (process is null)
+        SafeFileHandle? process;
+        try
         {
-            return;
+            process = Open(host,
+                PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_ACCESS_RIGHTS.PROCESS_SYNCHRONIZE | PROCESS_ACCESS_RIGHTS.PROCESS_TERMINATE);
+        }
+        catch (GameProcessException ex) when (ex.Code == GameHostManager.HostUnverifiable)
+        {
+            LogNotChecked(host.ProcessId, ex.Message);
+            return false;
         }
 
-        LogKilled(host.ProcessId);
-        PInvoke.TerminateProcess(process, 1);
-        // Gone (and its Job closed, so its game too) before the caller goes on.
-        PInvoke.WaitForSingleObject(process, 10_000);
+        if (process is null)
+        {
+            return true; // gone already
+        }
+
+        using (process)
+        {
+            LogKilled(host.ProcessId);
+            var terminated = PInvoke.TerminateProcess(process, 1);
+            var error = terminated ? 0 : Marshal.GetLastPInvokeError();
+            // Gone (and its Job closed, so its game too) before the caller goes on.
+            var gone = PInvoke.WaitForSingleObject(process, 10_000) == WAIT_EVENT.WAIT_OBJECT_0;
+            if (!gone)
+            {
+                LogNotKilled(host.ProcessId, terminated, error);
+            }
+
+            return gone;
+        }
     }
 
     public bool Serves(PipeStream pipe, GameHostReference host)
     {
         ArgumentNullException.ThrowIfNull(pipe);
         ArgumentNullException.ThrowIfNull(host);
-        return PInvoke.GetNamedPipeServerProcessId(pipe.SafePipeHandle, out var serverProcess) && serverProcess == (uint)host.ProcessId
-            && IsAlive(host);
+        if (!PInvoke.GetNamedPipeServerProcessId(pipe.SafePipeHandle, out var serverProcess) || serverProcess != (uint)host.ProcessId)
+        {
+            return false;
+        }
+
+        try
+        {
+            return IsAlive(host);
+        }
+        catch (GameProcessException ex) when (ex.Code == GameHostManager.HostUnverifiable)
+        {
+            return false; // not proven to be the host: not trusted
+        }
     }
 
     public void CleanUpPrograms(IEnumerable<GameHostReference> running)
@@ -183,7 +213,17 @@ public sealed partial class WindowsGameHostLauncher(Func<string> program, string
     public static string? ProgramOf(GameHostReference host)
     {
         ArgumentNullException.ThrowIfNull(host);
-        using var process = Open(host, PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION);
+        SafeFileHandle? process;
+        try
+        {
+            process = Open(host, PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION);
+        }
+        catch (GameProcessException ex) when (ex.Code == GameHostManager.HostUnverifiable)
+        {
+            return null; // cannot be told; its program's copy is in use anyway and cannot be deleted
+        }
+
+        using var _ = process;
         if (process is null)
         {
             return null;
@@ -222,12 +262,35 @@ public sealed partial class WindowsGameHostLauncher(Func<string> program, string
     }
 
     /// <summary>The process if it is the host (same id and start time); null when that process is gone.</summary>
+    /// <exception cref="GameProcessException">
+    /// <see cref="GameHostManager.HostUnverifiable"/>: the process could not be opened or read for any reason but being
+    /// gone (access denied, say). Only ERROR_INVALID_PARAMETER means there is no such process: anything else is "could
+    /// not check", and a host that runs must never be taken for one that does not.
+    /// </exception>
     private static SafeFileHandle? Open(GameHostReference host, PROCESS_ACCESS_RIGHTS access)
     {
         var process = PInvoke.OpenProcess_SafeHandle(access, false, (uint)host.ProcessId);
-        if (process.IsInvalid || StartTime(process) != host.ProcessStartedAt)
+        if (process.IsInvalid)
         {
+            var error = Marshal.GetLastPInvokeError();
             process.Dispose();
+            return error == (int)WIN32_ERROR.ERROR_INVALID_PARAMETER
+                ? null
+                : throw new GameProcessException(GameHostManager.HostUnverifiable,
+                    $"The host process {host.ProcessId} could not be opened to check it: {new Win32Exception(error).Message} (Win32 error {error}).");
+        }
+
+        if (StartTime(process) is not { } started)
+        {
+            var error = Marshal.GetLastPInvokeError();
+            process.Dispose();
+            throw new GameProcessException(GameHostManager.HostUnverifiable,
+                $"The start time of the host process {host.ProcessId} could not be read: {new Win32Exception(error).Message} (Win32 error {error}).");
+        }
+
+        if (started != host.ProcessStartedAt)
+        {
+            process.Dispose(); // the id was reused by another process
             return null;
         }
 
@@ -256,6 +319,13 @@ public sealed partial class WindowsGameHostLauncher(Func<string> program, string
     private partial void LogKilled(int hostProcessId);
 
     [LoggerMessage(Level = LogLevel.Warning,
-        Message = "The agent runs in a Job its processes cannot leave: game servers end with the agent here instead of outliving it")]
-    private partial void LogNoBreakaway();
+        Message = "CreateProcess refused to start a host outside the agent's Job (Win32 error {Error}): if the Job forbids leaving it, this game " +
+            "server ends with the agent instead of outliving it; breakaway is tried again at the next start")]
+    private partial void LogNoBreakaway(int error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The host process {HostProcessId} could not be ended (TerminateProcess: {Terminated}, Win32 error {Error}) and is still running")]
+    private partial void LogNotKilled(int hostProcessId, bool terminated, int error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not tell whether the host process {HostProcessId} runs ({Reason})")]
+    private partial void LogNotChecked(int hostProcessId, string reason);
 }

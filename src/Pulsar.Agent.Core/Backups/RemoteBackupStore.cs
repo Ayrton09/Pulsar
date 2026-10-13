@@ -21,7 +21,8 @@ public interface IRemoteBackupStore
 {
     Task UploadAsync(RemoteBackupTarget target, string file, string sha256, Func<double, Task> progress, CancellationToken cancellationToken);
 
-    Task DownloadAsync(RemoteBackupTarget target, string file, Func<double, Task> progress, CancellationToken cancellationToken);
+    /// <param name="maxBytes">The most the copy may be (the backup's size): a download that exceeds it stops and fails; null: no limit.</param>
+    Task DownloadAsync(RemoteBackupTarget target, string file, long? maxBytes, Func<double, Task> progress, CancellationToken cancellationToken);
 
     Task<RemoteBackup> OpenAsync(RemoteBackupTarget target, CancellationToken cancellationToken);
 
@@ -100,24 +101,53 @@ public sealed class S3RemoteBackupStore : IRemoteBackupStore
         await progress(100);
     }
 
-    public async Task DownloadAsync(RemoteBackupTarget target, string file, Func<double, Task> progress, CancellationToken cancellationToken)
+    public async Task DownloadAsync(RemoteBackupTarget target, string file, long? maxBytes, Func<double, Task> progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(progress);
         using var client = await ClientAsync(target, cancellationToken);
         using var response = await CallAsync(() => client.GetObjectAsync(target.Bucket, target.Key, cancellationToken), cancellationToken);
-        var reported = -1;
-        response.WriteObjectProgressEvent += (_, e) =>
-        {
-            if (e.PercentDone > Volatile.Read(ref reported))
-            {
-                Volatile.Write(ref reported, e.PercentDone);
-                _ = progress(e.PercentDone);
-            }
-        };
-        await CallAsync(() => response.WriteResponseStreamToFileAsync(file, append: false, cancellationToken), cancellationToken);
+        await CallAsync(() => CopyAtMostAsync(response.ResponseStream, response.ContentLength, file, maxBytes, progress, cancellationToken), cancellationToken);
         await progress(100);
     }
+
+    /// <summary>
+    /// Writes <paramref name="source"/> to <paramref name="file"/>, but never more than <paramref name="maxBytes"/>: the
+    /// storage's word for the object's size is not trusted, so a bucket serving a huge object cannot fill the node's disk.
+    /// </summary>
+    /// <param name="length">The size the storage announced (null: unknown); over the limit, nothing is read.</param>
+    internal static async Task CopyAtMostAsync(Stream source, long? length, string file, long? maxBytes, Func<double, Task> progress,
+        CancellationToken cancellationToken)
+    {
+        if (maxBytes is { } announced && length > announced)
+        {
+            throw TooLarge(announced);
+        }
+
+        await using var output = new FileStream(file, FileMode.Create, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous);
+        var buffer = new byte[81920];
+        long copied = 0;
+        var reported = -1;
+        int read;
+        while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            copied += read;
+            if (maxBytes is { } limit && copied > limit)
+            {
+                throw TooLarge(limit);
+            }
+
+            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            if (length is > 0 && (int)(copied * 100 / length.Value) is var percent && percent > reported)
+            {
+                reported = percent;
+                await progress(percent);
+            }
+        }
+    }
+
+    private static BackupException TooLarge(long limit) =>
+        new(BackupErrors.Corrupt, $"The copy in remote storage is larger than the backup the node made ({limit} bytes): it was not downloaded.");
 
     public async Task<RemoteBackup> OpenAsync(RemoteBackupTarget target, CancellationToken cancellationToken)
     {

@@ -130,6 +130,10 @@ internal sealed class WindowsGameProcess : IGameProcess
         {
             _job.SetLimits(limits);
         }
+        catch (ObjectDisposedException)
+        {
+            // Disposed meanwhile (the limits update runs beside the supervisor's loop): nothing left to cap.
+        }
         catch (System.ComponentModel.Win32Exception ex)
         {
             throw new GameProcessException("process.limits_failed", $"The server's limits could not be applied: {ex.Message}", ex);

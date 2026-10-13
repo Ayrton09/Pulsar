@@ -195,7 +195,7 @@ public sealed class RemoteBackupStoreTests : IDisposable
 
         Assert.Contains(100, percents);
         var copy = Path.Combine(_root, "copy.zip");
-        await store.DownloadAsync(target, copy, _ => Task.CompletedTask, Ct);
+        await store.DownloadAsync(target, copy, null, _ => Task.CompletedTask, Ct);
         Assert.Equal(SHA256.HashData(content), SHA256.HashData(await File.ReadAllBytesAsync(copy, Ct)));
 
         var opened = await store.OpenAsync(target, Ct);
@@ -209,7 +209,7 @@ public sealed class RemoteBackupStoreTests : IDisposable
 
         await store.DeleteAsync(target, Ct);
         await store.DeleteAsync(target, Ct); // already gone: fine
-        var gone = await Assert.ThrowsAsync<BackupException>(() => store.DownloadAsync(target, copy, _ => Task.CompletedTask, Ct));
+        var gone = await Assert.ThrowsAsync<BackupException>(() => store.DownloadAsync(target, copy, null, _ => Task.CompletedTask, Ct));
         Assert.Equal(BackupErrors.RemoteFailed, gone.Code);
         Assert.Equal("The backup's copy is not in remote storage.", gone.Message);
     }
@@ -277,19 +277,128 @@ public sealed class RemoteBackupStoreTests : IDisposable
         var store = new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance, remote);
         var location = new BackupLocation(_root, "abcd1234", Guid.NewGuid());
 
-        var wrong = await Assert.ThrowsAsync<BackupException>(() => store.FetchAsync(location, Target(), new string('0', 64), Progress, Ct));
+        var wrong = await Assert.ThrowsAsync<BackupException>(() => store.FetchAsync(location, Target(), new string('0', 64), content.Length, Progress, Ct));
         Assert.Equal(BackupErrors.Corrupt, wrong.Code);
         Assert.False(File.Exists(location.Archive));
         Assert.False(File.Exists(location.Partial));
 
-        await store.FetchAsync(location, Target(), Convert.ToHexStringLower(SHA256.HashData(content)), Progress, Ct);
+        await store.FetchAsync(location, Target(), Convert.ToHexStringLower(SHA256.HashData(content)), content.Length, Progress, Ct);
         Assert.Equal(content, await File.ReadAllBytesAsync(location.Archive, Ct));
         Assert.Contains(_progress, p => p.Stage == BackupStages.Downloading);
 
         // The node has it again: nothing is downloaded.
         remote.Downloads = 0;
-        await store.FetchAsync(location, Target(), Convert.ToHexStringLower(SHA256.HashData(content)), Progress, Ct);
+        await store.FetchAsync(location, Target(), Convert.ToHexStringLower(SHA256.HashData(content)), content.Length, Progress, Ct);
         Assert.Equal(0, remote.Downloads);
+    }
+
+    [Fact]
+    public async Task ACopyLargerThanTheBackupWasIsRefusedAndLeavesNothing()
+    {
+        // A bucket serving a huge object must not fill the node's disk: the panel says how big the backup was.
+        var content = new byte[1000];
+        var remote = new FakeRemote { Content = content };
+        var store = new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance, remote);
+        var location = new BackupLocation(_root, "abcd1234", Guid.NewGuid());
+
+        var error = await Assert.ThrowsAsync<BackupException>(() =>
+            store.FetchAsync(location, Target(), Convert.ToHexStringLower(SHA256.HashData(content)), 10, Progress, Ct));
+
+        Assert.Equal(BackupErrors.Corrupt, error.Code);
+        Assert.Equal(10, remote.MaxBytes); // handed to the storage client, which stops the download there
+        Assert.False(File.Exists(location.Archive));
+        Assert.False(File.Exists(location.Partial));
+    }
+
+    [Fact]
+    public async Task WithoutASizeFromTheOlderPanelTheDownloadHasNoLimit()
+    {
+        var content = new byte[1000];
+        var remote = new FakeRemote { Content = content };
+        var store = new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance, remote);
+        var location = new BackupLocation(_root, "abcd1234", Guid.NewGuid());
+
+        await store.FetchAsync(location, Target(), Convert.ToHexStringLower(SHA256.HashData(content)), null, Progress, Ct);
+
+        Assert.Null(remote.MaxBytes);
+        Assert.True(File.Exists(location.Archive));
+    }
+
+    [Fact]
+    public async Task ADownloadStopsOnceTheObjectExceedsTheLimit()
+    {
+        var file = Path.Combine(_root, "download.zip");
+        using var endless = new EndlessStream();
+
+        var error = await Assert.ThrowsAsync<BackupException>(() =>
+            S3RemoteBackupStore.CopyAtMostAsync(endless, length: null, file, maxBytes: 1_000_000, _ => Task.CompletedTask, Ct));
+
+        Assert.Equal(BackupErrors.Corrupt, error.Code);
+        Assert.True(new FileInfo(file).Length <= 1_000_000);
+        Assert.True(endless.Served < 2_000_000, $"{endless.Served} bytes were read before it stopped");
+
+        // Announced larger than the limit: nothing is read at all.
+        using var announced = new EndlessStream();
+        await Assert.ThrowsAsync<BackupException>(() =>
+            S3RemoteBackupStore.CopyAtMostAsync(announced, length: 5_000_000, Path.Combine(_root, "other.zip"), maxBytes: 1_000_000, _ => Task.CompletedTask, Ct));
+        Assert.Equal(0, announced.Served);
+    }
+
+    [Fact]
+    public async Task ADownloadWithinTheLimitIsWrittenWholeAndReportsProgress()
+    {
+        var file = Path.Combine(_root, "download.zip");
+        var content = RandomNumberGenerator.GetBytes(300_000);
+        var percents = new List<double>();
+
+        await S3RemoteBackupStore.CopyAtMostAsync(new MemoryStream(content), content.Length, file, maxBytes: content.Length, p =>
+        {
+            percents.Add(p);
+            return Task.CompletedTask;
+        }, Ct);
+
+        Assert.Equal(content, await File.ReadAllBytesAsync(file, Ct));
+        Assert.Equal(100, percents[^1]);
+    }
+
+    /// <summary>A stream that never ends (a bucket serving a huge object).</summary>
+    private sealed class EndlessStream : Stream
+    {
+        public long Served { get; private set; }
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            Served += count;
+            return count;
+        }
+
+        public override int Read(Span<byte> buffer)
+        {
+            Served += buffer.Length;
+            return buffer.Length;
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => ValueTask.FromResult(Read(buffer.Span));
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private static RemoteBackupTarget Target() => new(null, "us-east-1", "bucket", "key", "id", "secret", PathStyle: false);
@@ -314,14 +423,18 @@ public sealed class RemoteBackupStoreTests : IDisposable
 
         public int Downloads { get; set; }
 
+        /// <summary>The limit the last download was given.</summary>
+        public long? MaxBytes { get; private set; }
+
         public Task UploadAsync(RemoteBackupTarget target, string file, string sha256, Func<double, Task> progress, CancellationToken cancellationToken) =>
             Cancel ? throw new OperationCanceledException()
             : Fail is { } reason ? throw new BackupException(BackupErrors.RemoteFailed, reason)
             : progress(100);
 
-        public async Task DownloadAsync(RemoteBackupTarget target, string file, Func<double, Task> progress, CancellationToken cancellationToken)
+        public async Task DownloadAsync(RemoteBackupTarget target, string file, long? maxBytes, Func<double, Task> progress, CancellationToken cancellationToken)
         {
             Downloads++;
+            MaxBytes = maxBytes;
             await File.WriteAllBytesAsync(file, Content, cancellationToken);
             await progress(100);
         }

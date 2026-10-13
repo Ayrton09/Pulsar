@@ -121,7 +121,9 @@ public sealed class FileCommandsTests : IDisposable
     [Theory]
     [InlineData("PULSAR~1", true)]
     [InlineData("pulsar~12/steamcmd", true)]
-    [InlineData("AB~3/x.cfg", true)]
+    [InlineData("MODS~1", false)] // a folder of the server's own that merely looks like a short name
+    [InlineData("AB~3/x.cfg", false)]
+    [InlineData("PULSAR~1x", false)]
     [InlineData("PULSAR~", false)]
     [InlineData("~1", false)]
     [InlineData("TOOLONG~1", false)]
@@ -129,8 +131,8 @@ public sealed class FileCommandsTests : IDisposable
     [InlineData("cfg/PULSAR~1", false)]
     public void ShortNamesCouldBePulsarsFolderAndAreTreatedAsIt(string path, bool pulsars)
     {
-        // Windows names a folder ".pulsar" PULSAR~1 too (an 8.3 alias) on volumes that keep short names: whichever
-        // folder such a name stands for, the file manager cannot tell from the name alone.
+        // Windows names a folder ".pulsar" PULSAR~N (an 8.3 alias) on volumes that keep short names: only that
+        // shape stands for it, and the file manager cannot tell from the name alone which folder it is.
         Assert.Equal(pulsars, FileCommands.IsPulsarFolder(path));
         Assert.Equal(pulsars, FileCommands.IsSteamLogin(ServerFilePath.Join(path.Split('/')[0], "steamcmd/config/config.vdf")));
     }

@@ -681,6 +681,163 @@ public sealed class SteamCmdRunnerTests : IDisposable
         Assert.Equal(3, _processes.Started.Count);
     }
 
+    [Fact]
+    public async Task ALoginTheServersOwnProcessMayHavePlantedIsNotKept()
+    {
+        // A process of the server's account that outlived the sweep before the install could write config.vdf itself.
+        var account = Guid.NewGuid();
+        _processes.StraysKilled = 1;
+        _processes.OnStarted = (process, _) =>
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(CachedLogin)!);
+            File.WriteAllText(CachedLogin, "planted");
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        await runner.RunAsync(Job() with { Login = new SteamLogin(account, "servers", "hunter2-password") }, Report, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, _processes.StraySweeps);
+        Assert.Null(Cached(account));
+        Assert.False(File.Exists(CachedLogin));
+    }
+
+    [Fact]
+    public async Task ALoginIsKeptWhenNothingOutsideTheJobWasRunning()
+    {
+        var account = Guid.NewGuid();
+        _processes.OnStarted = (process, _) =>
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(CachedLogin)!);
+            File.WriteAllText(CachedLogin, "token");
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        await runner.RunAsync(Job() with { Login = new SteamLogin(account, "servers", "hunter2-password") }, Report, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, _processes.StraySweeps);
+        Assert.Equal("token", Cached(account));
+    }
+
+    [Theory]
+    [InlineData("Steam Gu", "ard code:")] // split across reads
+    [InlineData("Steam \u001b[0mGuard code", ":")] // a VT sequence inside
+    [InlineData("\u001b[1mSteam Guar", "d code:")]
+    public async Task ASteamGuardPromptSplitAcrossReadsIsStillSeen(string first, string second)
+    {
+        _processes.OnStarted = async (process, _) =>
+        {
+            process.Print(first);
+            await Task.Delay(50);
+            process.Print(second);
+        };
+        using var runner = new SteamCmdRunner(_processes, _source, new DirectServerFiles(), new DirectServerFileManager(), _logins,
+            new SteamCmdOptions { RetryDelays = [TimeSpan.Zero], StallTimeout = TimeSpan.FromSeconds(3) }, TimeProvider.System, NullLogger<SteamCmdRunner>.Instance);
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() =>
+            runner.RunAsync(Job() with { Login = new SteamLogin(Guid.NewGuid(), "servers", "hunter2-password") }, Report, TestContext.Current.CancellationToken));
+
+        Assert.Equal("steamcmd.guard_required", error.Code);
+        Assert.Equal(1, Assert.Single(_processes.Started).TerminatedWith);
+    }
+
+    [Fact]
+    public async Task AGuardLineWhoseEndArrivesInALaterReadStopsSteamCmdToo()
+    {
+        // The line completes in the read after the one that began it: no read holds the phrase whole, and nothing follows it.
+        _processes.OnStarted = async (process, _) =>
+        {
+            process.Print("This computer has not been authenticated for your account using Steam ");
+            await Task.Delay(50);
+            process.Print("Guard.\r\n");
+        };
+        using var runner = new SteamCmdRunner(_processes, _source, new DirectServerFiles(), new DirectServerFileManager(), _logins,
+            new SteamCmdOptions { RetryDelays = [TimeSpan.Zero], StallTimeout = TimeSpan.FromMinutes(5) }, TimeProvider.System,
+            NullLogger<SteamCmdRunner>.Instance);
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        limit.CancelAfter(TimeSpan.FromSeconds(10));
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() =>
+            runner.RunAsync(Job() with { Login = new SteamLogin(Guid.NewGuid(), "servers", "hunter2-password") }, Report, limit.Token));
+
+        Assert.Equal("steamcmd.guard_required", error.Code);
+    }
+
+    [Fact]
+    public async Task TheBetaPasswordIsBlankedOutOfWhatIsReported()
+    {
+        _processes.OnStarted = (process, _) =>
+        {
+            process.Print("ERROR! Failed to install app '232330' (Invalid Password: s3cretbeta)\r\n");
+            process.Exit(8);
+        };
+        using var runner = Runner();
+
+        var error = await Assert.ThrowsAsync<GameProcessException>(() =>
+            runner.RunAsync(Job() with { Beta = "public_beta", BetaPassword = "s3cretbeta" }, Report, TestContext.Current.CancellationToken));
+
+        Assert.DoesNotContain("s3cretbeta", error.Message, StringComparison.Ordinal);
+        Assert.Contains("***", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("x +quit")]
+    [InlineData("+quit")]
+    [InlineData("-x")]
+    [InlineData("a\"b")]
+    [InlineData("tab\there")]
+    [InlineData("12345678901234567890123456789012345678901234567890123456789012345")]
+    public async Task AnAccountPasswordSteamCmdWouldNotReceiveWholeFailsBeforeItStarts(string password)
+    {
+        _processes.OnStarted = (process, _) => process.Exit(8);
+        using var runner = Runner();
+
+        var failed = await Assert.ThrowsAsync<GameProcessException>(() =>
+            runner.RunAsync(Job() with { Login = new SteamLogin(Guid.NewGuid(), "servers", password) }, Report, TestContext.Current.CancellationToken));
+
+        Assert.Equal("steamcmd.login_failed", failed.Code);
+        Assert.DoesNotContain(password, failed.Message, StringComparison.Ordinal);
+        Assert.Empty(_processes.Specs);
+        Assert.Throws<GameProcessException>(() => SteamCmdRunner.Arguments(Job() with { Login = new SteamLogin(Guid.NewGuid(), "servers", password) }));
+    }
+
+    [Theory]
+    [InlineData("ab c1")]
+    [InlineData("+quit")]
+    [InlineData("12")]
+    [InlineData("1234567")]
+    [InlineData("ab\"12")]
+    public async Task AGuardCodeThatIsNotFiveLettersOrDigitsFailsBeforeSteamCmdStarts(string code)
+    {
+        _processes.OnStarted = (process, _) => process.Exit(8);
+        using var runner = Runner();
+
+        var failed = await Assert.ThrowsAsync<GameProcessException>(() =>
+            runner.RunAsync(Job() with { Login = new SteamLogin(Guid.NewGuid(), "servers", "hunter2-password", code) }, Report,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal("steamcmd.guard_required", failed.Code);
+        Assert.DoesNotContain(code, failed.Message, StringComparison.Ordinal);
+        Assert.Empty(_processes.Specs);
+    }
+
+    [Fact]
+    public void ALaunchSpecPrintsNeitherItsArgumentsNorItsEnvironment()
+    {
+        var spec = new ProcessLaunchSpec(Guid.NewGuid(), _root, SteamCmdRunner.Executable, ["+login", "servers", "hunter2-password"], ".",
+            new Dictionary<string, string> { ["TOKEN"] = "env-secret" }, ConsoleMode.Pty, ConsoleEncoding.Utf8, ProcessIdentity.CurrentUser);
+
+        var text = spec.ToString();
+
+        Assert.DoesNotContain("hunter2", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("env-secret", text, StringComparison.Ordinal);
+        Assert.Contains(SteamCmdRunner.Executable, text, StringComparison.Ordinal);
+        Assert.Contains("3", text, StringComparison.Ordinal);
+    }
+
     private string CachedLogin => Path.Combine(_root, "server", ".pulsar", "steamcmd", "config", "config.vdf");
 
     /// <summary>The login the agent keeps for the account, while its password is still hunter2-password.</summary>

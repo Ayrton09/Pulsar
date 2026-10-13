@@ -53,6 +53,15 @@ switch ($Action) {
     'Init' {
         if (Test-Path $data) { throw "$data already exists; refusing to overwrite an existing cluster" }
         New-Item -ItemType Directory -Force $Root | Out-Null
+        # connection.txt and initdb.pw hold the passwords: nobody but this user (and SYSTEM) may open the folder, or
+        # what is created in it. Done before anything is written there.
+        $private = New-Object Security.AccessControl.DirectorySecurity
+        $private.SetAccessRuleProtection($true, $false)
+        $owners = @([Security.Principal.WindowsIdentity]::GetCurrent().User, (New-Object Security.Principal.SecurityIdentifier 'S-1-5-18'))
+        foreach ($sid in $owners) {
+            $private.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+        }
+        Set-Acl -LiteralPath $Root -AclObject $private
 
         $superPassword = New-Password
         $devPassword = New-Password

@@ -754,14 +754,29 @@ internal sealed class InProcessHostLauncher(IGameProcessManager games, GameHostO
         return reference;
     }
 
-    public bool IsAlive(GameHostReference host) => _hosts.TryGetValue(host.Pipe, out var running) && !running.Run.IsCompleted;
+    /// <summary>True: no host can be told from gone (a process that cannot be opened).</summary>
+    public bool Unverifiable { get; set; }
 
-    public void Kill(GameHostReference host)
+    /// <summary>True: a kill leaves the host running (a process that does not end, or whose end cannot be seen).</summary>
+    public bool KillFails { get; set; }
+
+    public bool IsAlive(GameHostReference host) => Unverifiable
+        ? throw new GameProcessException(GameHostManager.HostUnverifiable, "Access is denied.")
+        : _hosts.TryGetValue(host.Pipe, out var running) && !running.Run.IsCompleted;
+
+    public bool Kill(GameHostReference host)
     {
+        if (KillFails)
+        {
+            return false;
+        }
+
         if (_hosts.TryGetValue(host.Pipe, out var running))
         {
             running.Kill.Cancel();
         }
+
+        return true;
     }
 
     public bool Serves(PipeStream pipe, GameHostReference host) => Trusted && _hosts.ContainsKey(host.Pipe);
@@ -828,10 +843,11 @@ internal sealed class ScriptedHostLauncher(Func<HostRequest, HostReply?> answer)
 
     public bool IsAlive(GameHostReference host) => !Killed;
 
-    public void Kill(GameHostReference host)
+    public bool Kill(GameHostReference host)
     {
         Killed = true;
         _stop.Cancel();
+        return true;
     }
 
     public bool Serves(PipeStream pipe, GameHostReference host) => true;

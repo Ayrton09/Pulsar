@@ -167,7 +167,7 @@ public sealed partial class ServerBackups(
         var operation = Operation.Create(OperationType.BackupRestore, server.NodeId, server.Id, request.UserId, OperationRequester.User, clock.GetUtcNow());
         var remote = await RemoteOfAsync(backup, cancellationToken);
         var run = await operations.RunAsync(server, operation,
-            new RestoreBackupCommand(server.Id.Value, backup.Id.Value, Convert.ToHexStringLower(sha256), remote, clean),
+            new RestoreBackupCommand(server.Id.Value, backup.Id.Value, Convert.ToHexStringLower(sha256), remote, clean, backup.SizeBytes),
             () => audit.Record(AuditActions.Server.BackupRestoreRequested, metadata: new { backup = backup.Id.Value, backup.Name, clean })
                 .WithServer(server.Id, server.NodeId),
             cancellationToken);

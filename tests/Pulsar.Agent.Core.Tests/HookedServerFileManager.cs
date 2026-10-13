@@ -19,7 +19,10 @@ internal sealed class HookedServerFileManager(IServerFileManager inner) : IServe
 
     public void EnsureDirectory(ProvisionedServer server, string path) => inner.EnsureDirectory(server, path);
 
-    public IReadOnlyList<TreeEntry> Walk(ProvisionedServer server) => inner.Walk(server);
+    /// <summary>Changes what a walk lists (an entry that differs from another only by case, as a case-sensitive folder can hold).</summary>
+    public Func<IReadOnlyList<TreeEntry>, IReadOnlyList<TreeEntry>>? OnWalk { get; set; }
+
+    public IReadOnlyList<TreeEntry> Walk(ProvisionedServer server) => OnWalk is { } change ? change(inner.Walk(server)) : inner.Walk(server);
 
     public void Move(ProvisionedServer server, string path, string destination) => inner.Move(server, path, destination);
 

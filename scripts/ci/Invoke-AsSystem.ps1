@@ -21,9 +21,19 @@ param(
 $ErrorActionPreference = 'Stop'
 $FilePath = (Resolve-Path $FilePath).Path
 $id = [guid]::NewGuid().ToString('N')
-# A folder both this user and SYSTEM can write to (SYSTEM's own temp is not readable here).
-$work = Join-Path $env:SystemDrive "PulsarAsSystem\$id"
-New-Item -ItemType Directory -Force $work | Out-Null
+# A folder both this (elevated) user and SYSTEM can write to (SYSTEM's own temp is not readable here), and nobody
+# else: run.cmd in it runs as SYSTEM, so a folder every user can write to would let any of them run code as SYSTEM.
+# Created with those rules, not changed after: the name never exists with the drive's inherited ones. A name of
+# its own (no shared parent folder a user could have made first).
+$work = Join-Path $env:SystemDrive "PulsarAsSystem-$id"
+$private = New-Object Security.AccessControl.DirectorySecurity
+$private.SetAccessRuleProtection($true, $false)
+foreach ($sidText in 'S-1-5-18', 'S-1-5-32-544') {
+    $private.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier $sidText),
+        'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+}
+if ($PSVersionTable.PSEdition -eq 'Core') { [IO.FileSystemAclExtensions]::Create((New-Object IO.DirectoryInfo $work), $private) }
+else { (New-Object IO.DirectoryInfo $work).Create($private) }
 $log = Join-Path $work 'output.log'
 $exitFile = Join-Path $work 'exit.txt'
 

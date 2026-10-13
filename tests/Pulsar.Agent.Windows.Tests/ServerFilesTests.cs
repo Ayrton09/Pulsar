@@ -64,6 +64,38 @@ public sealed class ServerFilesTests : IDisposable
     }
 
     [WindowsFact]
+    public void AJunctionInThePathIsRefusedBeforeAnythingBelowItIsOpened()
+    {
+        // Opened level by level through handles: the junction itself is refused, not the file it leads to (which a
+        // CreateFile on the whole path would have opened first, with the agent's rights, only to find it outside).
+        Directory.CreateDirectory(Path.Combine(_server, "game", "csgo"));
+        Run("mklink", "/J", Path.Combine(_server, "game", "csgo", "cfg"), _outside);
+        Run("mklink", "/J", Path.Combine(_server, "top"), _outside);
+
+        foreach (var path in new[] { "game/csgo/cfg/secret.cfg", "top/secret.cfg" })
+        {
+            Assert.Equal("files.reparse_point", Assert.Throws<GameProcessException>(() => _files.OpenRead(_server, path)).Code);
+            Assert.Equal("files.reparse_point", Assert.Throws<GameProcessException>(() => _files.Delete(_server, path)).Code);
+            Assert.Equal("files.reparse_point", Assert.Throws<GameProcessException>(() => _files.DeleteEmptyDirectory(_server, path)).Code);
+        }
+
+        Assert.Equal("rcon_password other-server", File.ReadAllText(Path.Combine(_outside, "secret.cfg")));
+    }
+
+    [WindowsFact]
+    public void AFolderThatDoesNotExistOrIsAFileInThePathMeansNothingIsThere()
+    {
+        File.WriteAllText(Path.Combine(_server, "afile"), "x");
+
+        Assert.Null(_files.OpenRead(_server, "missing/deeper/file.cfg"));
+        Assert.Null(_files.OpenRead(_server, "afile/below.cfg"));
+        _files.Delete(_server, "missing/deeper/file.cfg");
+        _files.Delete(_server, "afile/below.cfg");
+        Assert.False(_files.DeleteEmptyDirectory(_server, "missing/deeper"));
+        Assert.False(Directory.Exists(Path.Combine(_server, "missing"))); // reading never creates a folder
+    }
+
+    [WindowsFact]
     public void AFolderSwappedForAJunctionWhileWritingLeavesNothingOutside()
     {
         // The server's account swaps a folder the agent has just checked for a junction to somewhere else.
