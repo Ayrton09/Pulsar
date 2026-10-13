@@ -278,7 +278,9 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   await expect.poll(() => agentOutput, { timeout: 15_000 }).toContain('deleted from this node');
   expect(readdirSync(join(dataDir, 'backups'))).toEqual([]);
 
-  expect(testGameProcesses()).toBe(0);
+  // The game runs from the shared test game folder, not the server's: it ends with its host's Job, a moment after the
+  // host itself, so the count is waited for rather than read once.
+  await expect.poll(() => testGameProcesses(), { timeout: 10_000 }).toBe(0);
   expect(agentOutput).not.toMatch(/\] (ERR|FTL)/);
   expect(cspViolations, 'Content Security Policy violations').toEqual([]);
 });
