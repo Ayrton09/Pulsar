@@ -117,7 +117,13 @@ powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Mode Panel
 To make the certificate valid for a name other machines use (a DNS name, or the address of a port forward), add
 `-HostName panel.example.com` (letters, digits, `.`, `-` and `_`, or a leading `*.` for a wildcard; several names are
 separated by commas). To use a real certificate instead of a self-signed one, pass it with
-`-CertificatePath C:\certs\panel.pfx -CertificatePassword (Read-Host -AsSecureString)`.
+`-CertificatePath C:\certs\panel.pfx -CertificatePassword (Read-Host -AsSecureString)`. Agents check the panel's
+certificate without downloading anything (so whoever answers at the panel's address cannot make them fetch addresses
+of its choosing): the PFX must contain the intermediate certificates (the full chain), and each node must already trust
+the authority's root in **Local Computer → Trusted Root Certification Authorities**. On a fresh Windows a public
+authority's root may be missing until something validates a site with it: open the panel's address once in Edge on the
+node, or import the root. The agent's log then says `PartialChain` (an intermediate is missing) or `UntrustedRoot`
+(the root is).
 
 Then, for each node: in the panel, **Nodes → Add node**, give it a name and copy the command it shows. On the node,
 extract the same ZIP into a folder only administrators can change (step 2), open PowerShell as administrator in it and
@@ -174,6 +180,8 @@ until you update them).
   one). It must reach the panel directly: a reverse proxy that decrypts TLS in front of it cannot pass the certificate
   on (a TCP pass-through can). When nodes reach it under another address (a port forwarded under another number), set
   it in `appsettings.Production.json`: `"Agents": { "PublicUrl": "https://panel.example.com:9444" }`.
+- `"Agents": { "MaxConnections": 1000 }` (the default, about four per node) caps the connections the agents' port holds
+  at once, so a flood of handshakes cannot take the panel's resources: raise it for more than about 250 nodes.
 - On a panel installed before, add the endpoint to `C:\Program Files\Pulsar\Panel\appsettings.Production.json`
   with the same certificate as `Https`, open the port, and restart the panel:
 
@@ -283,7 +291,9 @@ Back up the panel as described in [backup.md](backup.md): without its keys, the 
 - **The panel does not start**: `C:\ProgramData\Pulsar\Panel\logs\panel-<date>.log` says why (database unreachable,
   port in use…). `Get-Service PulsarPanel` shows its state.
 - **A node stays offline**: on the node, `& 'C:\Program Files\Pulsar\Agent\PulsarAgent.exe' status --check` checks the
-  connection to the panel; its log is in `C:\ProgramData\Pulsar\Agent\logs`.
+  connection to the panel; its log is in `C:\ProgramData\Pulsar\Agent\logs`. `PartialChain` there means the panel's
+  certificate file lacks its intermediate certificates; `UntrustedRoot`, that the node does not trust its authority's
+  root yet (see "Panel and nodes on different machines").
 - **The browser warns about the certificate**: expected with the self-signed certificate on other computers. Trust
   `panel.cer` on them, or install a real certificate (`-CertificatePath` when installing; to change it later, edit
   `Kestrel:Endpoints:Https:Certificate` in the panel's `appsettings.Production.json` and restart the service).
