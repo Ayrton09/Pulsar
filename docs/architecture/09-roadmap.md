@@ -202,9 +202,135 @@ A read of the whole codebase, not just a phase's changes, in eight areas (agent 
 - *Reviewed again:* seven reviewers on the fixes found 21 more (0 high, 7 medium, 14 low): 20 fixed, and one (a command arriving before Hello's answer blocking the SignalR client) shown not to happen by a test that now guards it; among them a start the node had already given up being wanted again after a save conflict, a refused start killing an install's processes, and a command the agent had refused still reaching a game that thawed. Two flaky tests turned out to be a real ordering bug (an operation counted as ended before its result reached the outbox) and a timed test (now counted).
 - *Checks:* the .NET suite (1575 tests, 13 skipped), vitest (256), the E2E suite (8), and both Windows Sandbox runs (the panel installer, and the agent installed as a service with its MSI).
 
+## UI pass after the audit · *done* (2026-10-12)
+
+From screenshots of every page, in dark and light and at phone width:
+- On a phone, the navigation is a menu panel opened from a top bar. The server's tabs scroll sideways, and no page is wider than a 320 px screen.
+- A button that cannot be used loses its fill. The sidebar stays in view, with icons (lucide-react). The server's state sits next to its name. The dashboard draws CPU and memory as bars. The server tabs follow the WAI-ARIA tabs pattern.
+- The panel is dark only now, at the user's request.
+- Reviewed: 3 findings (1 medium: the tabs' arrow keys counted from the open tab, not the focused one), all fixed.
+- *Checks:* vitest (264) and the E2E suite (8).
+
+## Phase 16 — Client certificates for agents · *done* (2026-10-12)
+
+The optional mTLS mode, on the node key every agent already has: no CA, no new enrollment (docs 03 "Client certificates", ADR-0003's addendum).
+- An agents' endpoint (Kestrel `Agents`, the installer's `-AgentsPort`). It asks every client for a certificate and serves only the agent protocol, so browsers never see a certificate request.
+- Each node presents a certificate it signs itself on its key, and the panel checks the key against the node's credential. A session opened there is bound to that key: its token is useless without it.
+- Agents move there on their own: told the port by a signed command, they put it on the host they already reach the panel by. They keep the old address as a fallback for when the port stops answering.
+- A switch on the Nodes page, off by default, requires certificates. It ends the sessions without one and sends agents to the agents' address with a refusal signed for the node and the nonce of its request. The page first lists the nodes still connecting without a certificate and whether their agent can move.
+
+**Done when:** an agent installed as a service moves to the agents' port on its own, its machine key presented in the TLS handshake (in the TPM when the machine has one), and keeps working with certificates required; a session token alone is refused there; a closed agents' port sends it back to its fallback. *Met on 2026-10-12.*
+
+- *Spike:* a client certificate on a persisted CNG key reaches Kestrel's `RequireCertificate` through SChannel over HTTP/1.1, HTTP/2 and WebSockets.
+- *Tests:*
+  - The panel's checks run through TestServer with a simulated endpoint.
+  - The real agent core moves, falls back, follows a signed refusal, enrolls and rotates its key on the agents' address.
+  - Real Kestrel with real TLS, the real agent transport included.
+  - A real CNG key signs a TLS handshake through SChannel.
+- *Windows Sandbox (`scripts/sandbox/agent-install`):*
+  - The service, with its software machine key, moved to the agents' port; then the panel required certificates for the rest of the run: key rotation, games, backups, the MSI's re-enrollments (which followed the signed refusal) and `Install-Pulsar.ps1 -Mode Agent`.
+  - 88 checks, all passed, before and after the review's fixes (82 before this phase, and 6 new: the move, a signed ping there, a client without a certificate turned away, the switch, still online, `status --check` through the agents' address).
+- *TPM:* a Hyper-V VM with a virtual TPM (Windows Server 2022, `scripts/hyperv`), 91 checks.
+  - The service's machine key was created in the TPM, non-exportable, and the agent moved to the agents' port with it as its client certificate. A signed ping went through there, and the rotated key was in the TPM too.
+  - The run found that `enroll` reported the service as running before it was, since with a TPM key it starts seconds later. It now waits for the service.
+- *Review:* two reviewers, one per side.
+  - 13 findings (1 high, 4 medium, 8 low), all fixed. The high one: without `Agents:PublicUrl` the panel signed an address built from the request's `Host` header, which a proxy in front of the panel could choose to move nodes to a host of its own. Now only the port (or the operator's address) is signed, the agent supplies the host, and refusals carry the agent's nonce.
+  - Among the rest: an agent that cannot make a certificate no longer says it can move; a signed address is kept only after signing in there; a 404, 5xx or a hub that does not open also sends the agent to its fallback.
+  - The fixes were reviewed again: one more low finding (a fallback equal to the address), fixed.
+  - A new test found that the agent read a refusal's body twice.
+- *Checks:* the .NET suite (1626 tests, 13 skipped), vitest (268) and the E2E suite (8).
+
+## Second full audit after Phase 16 · *done* (2026-10-13)
+
+A second read of the whole codebase in ten areas, the UI pass and Phase 16 included: the agent's servers; its processes, backups, files and Steam; its connection and host; its Windows layer and the scripts; the API and infrastructure; the application's server side and its node and access side; domain, contracts and manifests; the web's server pages and the rest of the web.
+- *Found and fixed:* 115 findings (5 high, 22 medium, 88 low).
+  - The high ones:
+    - A global `user.manage` holder could reset the password and second factor of a user with only node or server roles, and take over that user's powers. Now a user manager must hold every grant of the user it changes, at that node or server.
+    - Revoking a node's key left a key it was rotating to usable.
+    - The agent sent a game's RCON or telnet password to whatever listened on its port, such as another server's plugin. Now the process at the other end must run as the server's account.
+    - Upload "Replace" wrote into the folder open at that moment.
+    - The editor saved Windows line endings as Unix ones.
+  - Among the rest:
+    - ARK's `?ServerAdminPassword=` passed the extra-argument check.
+    - A database host moved to a public address kept plain connections.
+    - Refused agent sign-ins went unaudited.
+    - A role saved before the permission catalog loaded lost every permission.
+    - A host that could not be opened was taken for gone, so its game could start twice.
+    - S3 restores had no size cap.
+    - Two files differing only by case made a backup unrestorable.
+    - The enrollment token was on the installer's command line.
+  - Not fixed in code: two are documented instead. The edit-version check races the rename by microseconds, and NTFS has no compare-and-swap. The MSI's enroll action must get the token on its command line.
+- *Reviewed again:* five reviewers on the fixes found 30 more (1 high, 8 medium, 21 low), all fixed.
+  - The high one: the first fix for misleading file names refused format characters in every name, which left such files out of backups. Names are free again, and the web shows hidden characters as their code (`[U+202E]`).
+  - Also: a deadlock between an agent's sign-in and a key revocation, proven with PostgreSQL's 40P01 and fixed by locking the node first everywhere; and a host left stuck after a reboot, now judged by its named pipe.
+- *Checks:*
+  - The .NET suite: 1880 tests, 13 skipped.
+  - vitest: 325.
+  - The E2E suite: 8.
+  - Windows Sandbox, the panel installer: 35 checks.
+  - Windows Sandbox, the agent installed as a service with a real Counter-Strike: Source server: 100 checks. srcds became ready over RCON and stopped over RCON while it ran as its own account, so the RCON peer check holds in production. The browsers' port asks for no certificate.
+  - The Hyper-V VM with a virtual TPM: 91 checks (see Phase 16).
+
+## Phase 17 — SFTP access to server files · *next* (essential, at the user's request)
+
+Like AMP, TCAdmin or Pterodactyl, every server's files can be reached with an SFTP client (WinSCP, FileZilla, Windows' own `sftp`), not only through the web file manager. Uploading many maps or mods and syncing folders needs this.
+
+**Decided with the user (2026-10-13):**
+- Users sign in with their own panel user name and password.
+- They see only their own servers: those where they hold `server.files.view`.
+- No plain FTP: it sends passwords in clear.
+
+**Design (proposed; the spike settles the open points):**
+- *Where it runs: the panel, one port for every node.*
+  - Nodes accept no inbound connections in Pulsar's design (the agent connects out; nodes may be behind NAT), and the panel already pipes file bytes between browsers and agents through transfers (doc 03, "Large transfers").
+  - So the panel hosts the SFTP server and each operation becomes the file commands and transfers the web file manager uses. The agent still checks every path and acts as the server's Windows account, the panel still checks permissions and audits, and no new trust is given to anything.
+  - Port 2022 by default (22 is usually the machine's own SSH), configurable, with its own firewall rule from the installer (`-SftpPort`) and a switch to turn SFTP off.
+  - A direct per-node SFTP, as Pterodactyl's Wings does, is left for later, for heavy traffic.
+- *Sign-in.*
+  - User name and password go through the same checks as the browser sign-in: Identity's lockout, disabled users, the per-address rate limit, and the "failed sign-in" audit. A user who must use two-factor authentication (their own choice or a role's) is asked for the code with keyboard-interactive authentication after the password; WinSCP, FileZilla and OpenSSH support it. SFTP must never be a way around two-factor authentication.
+  - Optional later in the phase: SSH public keys added on the account page, like API keys.
+  - User name `name` shows every server of the user; `name.<shortId>` opens that one server as the root, which is handy for a bookmark per server.
+- *What the user sees.*
+  - The root lists one folder per server the user may see, named after the server (made safe for a file name) with its short id.
+  - Write operations need `server.files.edit` on that server.
+  - Permissions are checked at every operation, and a change of roles or a disabled user closes their SFTP sessions, as it does their browser connections.
+  - The same rules as the web file manager apply: `.pulsar` and the Steam login folder hidden, links listed but never followed, changes refused while an install, update or restore runs (`server.busy`), and a server on a node that is offline answers with an error, not an empty folder.
+- *SSH library.*
+  - The candidates:
+    - `Microsoft.DevTunnels.Ssh` (MIT, Microsoft): a maintained SSH2 client and server over any stream, with modern algorithms (ECDH and DH-group14/16 key exchange, ECDSA and RSA-SHA2 host keys, AES-GCM). It has no SFTP, and its server-side password and keyboard-interactive hooks must be confirmed.
+    - An SFTP version 3 server over the SSH channel. Either our own, with a small protocol and full control over each request, or `SFTPServer` (MIT, small and little maintained, with an `ISFTPHandler` for a virtual file system), to be judged on its code.
+  - Fallbacks: a Go sidecar on `golang.org/x/crypto/ssh` and `pkg/sftp`, which is what Wings uses; a commercial library such as Rebex does not fit an AGPL project.
+  - SSH.NET (MIT, client only) drives the automated tests.
+- *What the agent protocol needs (additive, behind an agent capability; older agents' servers say SFTP needs an agent update):*
+  - listings by pages, since SFTP must list every entry and the web listing stops at 2,000;
+  - a `stat` of one path;
+  - downloads from an offset, for resumed downloads and clients that read in parallel (requests within a window are reordered, and a seek back opens a new transfer);
+  - uploads of unknown length up to a limit, committed when the handle closes (the temporary file and single rename are kept), plus an append mode for resumed uploads (FileZilla writes at the end of the existing file; WinSCP uploads to `.filepart` and renames);
+  - a rename that may replace (`posix-rename@openssh.com`);
+  - setting a file's modification time (clients preserve times; permissions are accepted and ignored, Windows has none to set).
+  - Refused: symbolic links, and every channel that is not the `sftp` subsystem (no shell, exec, port or agent forwarding).
+- *Security (doc 08 gets a threat entry):*
+  - The host key is generated at install, kept with the panel's keys, and its SHA-256 fingerprint is shown on the account page and by the installer, so users can check it at their first connection.
+  - Only modern algorithms are offered.
+  - Bounded sessions per user and per address, open handles per session and idle time.
+  - The same upload limit as the web.
+  - Audit as in the web file manager (uploads, deletions, renames, folders, downloads, sign-ins), with the actor's address.
+- *Web:* the account page and the Files tab show how to connect (`sftp://name@host:2022/<server folder>`, a copy button, the host key's fingerprint). The panel's settings let an administrator turn SFTP on or off and change its port and public host.
+
+**Done when:**
+1. WinSCP, FileZilla and Windows' `sftp` sign in with a panel user's name and password and see only that user's servers.
+2. A user who may only look downloads but cannot change anything.
+3. A two-factor user is asked for the code.
+4. A 2 GB map uploads and downloads, and both resume after a dropped connection.
+5. `server.cfg` edited in WinSCP's editor is saved over the original.
+6. A folder sync works.
+7. Every change is in the audit log.
+8. Shell, exec and port forwarding are refused, and repeated wrong passwords lock the account like the browser sign-in.
+9. The tests drive it with SSH.NET against the real agent, and the Sandbox installs the panel with its SFTP port open.
+
 ## Post-v1 (tentative order)
 
-Optional mTLS mode → Linux agent. (Server hosts and bulk enrollment: Phase 14; backups of running games: Phase 15.)
+Linux agent. (Server hosts and bulk enrollment: Phase 14; backups of running games: Phase 15; client certificates for agents: Phase 16; SFTP: Phase 17.)
 
 ## Before the first public release
 
