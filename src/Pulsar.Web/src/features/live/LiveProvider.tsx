@@ -25,12 +25,17 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       void queryClient.invalidateQueries({ queryKey: serverKeys.all, predicate: notServerSettings });
       // The dashboard's latest activity: what changes servers and nodes is audited.
       void queryClient.invalidateQueries({ queryKey: [...adminKeys.audit, 'recent'] });
-      // An install, an update or a restore rewrites the files; the open editor's content is not a query.
-      void queryClient.invalidateQueries({ queryKey: fileKeys.everyServer });
     };
     let reconnect = false;
     const offs = [
-      live.on<[string[]]>('ServersChanged', refreshServers),
+      live.on<[string[]]>('ServersChanged', (serverIds) => {
+        refreshServers();
+        // An install, an update or a restore rewrites the files: the listings of the servers named (the open editor's
+        // content is not a query). Not at every node notice, which names no server.
+        for (const id of serverIds) {
+          void queryClient.invalidateQueries({ queryKey: fileKeys.all(id) });
+        }
+      }),
       live.on<[string[]]>('NodesChanged', () => {
         void queryClient.invalidateQueries({ queryKey: nodeKeys.all });
         // Who trusts which panel key, and how many times a reusable token was used, change with the nodes.

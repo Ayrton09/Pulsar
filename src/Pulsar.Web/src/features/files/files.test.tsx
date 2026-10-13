@@ -158,9 +158,11 @@ function written(path: string, size: number, version = 'v2'): { status: number; 
   return { status: 200, body: { entry: { name: path.split('/').pop(), kind: 'file', size, modifiedAt: at }, version } };
 }
 
+let queryClient: QueryClient;
+
 function renderAt(path: string, staleTime = 0) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  const queryClient = new QueryClient({
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchInterval: false, staleTime } },
   });
   render(<App router={router} queryClient={queryClient} />);
@@ -207,6 +209,13 @@ describe('file paths and text', () => {
     expect(visibleName(`invoice${c(0x202e)}fdp.exe`)).toBe('invoice[U+202E]fdp.exe');
     expect(visibleName(`a${c(0x2066)}b${c(0x2069)}`)).toBe('a[U+2066]b[U+2069]');
     expect(visibleName(`ab${c(0x200b)}c${c(0xfeff)}`)).toBe('ab[U+200B]c[U+FEFF]');
+    // Every other format character, the line and paragraph separators and the invisible fillers.
+    expect(visibleName(`a${c(0x061c)}b`)).toBe('a[U+061C]b');
+    expect(visibleName(`a${c(0xe0041)}b`)).toBe('a[U+E0041]b');
+    expect(visibleName(`a${c(0x00ad)}b`)).toBe('a[U+00AD]b');
+    expect(visibleName(`a${c(0x3164)}b${c(0x115f)}${c(0x1160)}`)).toBe('a[U+3164]b[U+115F][U+1160]');
+    expect(visibleName(`a${c(0x2028)}b${c(0x2029)}`)).toBe('a[U+2028]b[U+2029]');
+    expect(visibleName(`a${c(0x180e)}b${c(0x206a)}${c(0x206f)}`)).toBe('a[U+180E]b[U+206A][U+206F]');
     // A family emoji (joined by ZWJ), Persian with a ZWNJ and Hebrew with a right-to-left mark are names as they are.
     const family = `${c(0x1f468)}${c(0x200d)}${c(0x1f469)}${c(0x200d)}${c(0x1f467)}`;
     const persian = `${c(0x0645)}${c(0x06cc)}${c(0x200c)}${c(0x0631)}${c(0x0648)}${c(0x0645)}`;
@@ -408,6 +417,12 @@ describe('files tab', () => {
     await screen.findByRole('table', { name: 'Files' });
     const first = listed();
 
+    // Another server changed, or only a node did: this server's files did not.
+    live.emit('ServersChanged', ['0192f1a0-0000-7000-8000-0000000000ff']);
+    live.emit('NodesChanged', [server.nodeId]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(listed()).toBe(first);
+
     live.emit('ServersChanged', [serverId]);
 
     await waitFor(() => expect(listed()).toBeGreaterThan(first));
@@ -573,7 +588,7 @@ describe('files tab', () => {
     expect(FakeXhr.sent[2]?.headers['If-None-Match']).toBeUndefined();
   });
 
-  it('replaces a file in the folder it was uploaded to, never in the one open when the button is pressed', async () => {
+  it('asks about a name that exists only in the folder it was uploaded to', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(editor),
       [`GET /api/v1/servers/${serverId}`]: () => json(details),
@@ -598,6 +613,84 @@ describe('files tab', () => {
     await waitFor(() => expect(FakeXhr.sent).toHaveLength(2));
     expect(FakeXhr.sent[1]?.path).toBe('server.cfg');
     expect(FakeXhr.sent[1]?.headers['If-None-Match']).toBeUndefined();
+  });
+
+  it('finishes an upload in the folder it started in, and refreshes that folder, after another one was opened', async () => {
+    const api = fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+    const listed = (folder: string) =>
+      api.mock.calls.filter(([input]) => {
+        const url = new URL(input instanceof Request ? input.url : String(input));
+        return url.pathname.endsWith('/files') && url.searchParams.get('path') === folder;
+      }).length;
+    let finish: (() => void) | undefined;
+    FakeXhr.handler = (xhr) =>
+      new Promise((resolve) => {
+        finish = () => resolve(written(xhr.path ?? '', xhr.body?.size ?? 0));
+      });
+    renderAt(`/servers/${serverId}?tab=files&path=game`);
+    await screen.findByRole('button', { name: 'csgo/' });
+
+    await userEvent.upload(screen.getByLabelText('Upload'), [new File(['map'], 'de_test.bsp')]);
+    await waitFor(() => expect(FakeXhr.sent).toHaveLength(1));
+    // Still uploading when the root folder is opened.
+    await userEvent.click(screen.getByRole('button', { name: 'server' }));
+    await screen.findByRole('button', { name: 'game/' });
+    const rootListings = listed('');
+    const gameListings = listed('game');
+
+    finish?.();
+    await waitFor(() => expect(queryClient.getQueryState(['serverFiles', serverId, 'game'])?.isInvalidated).toBe(true));
+
+    expect(FakeXhr.sent.map((x) => x.path)).toEqual(['game/de_test.bsp']);
+    // The folder written to is the one marked stale; the open one is not fetched again for it.
+    expect(queryClient.getQueryState(['serverFiles', serverId, ''])?.isInvalidated).toBe(false);
+    expect(listed('')).toBe(rootListings);
+    expect(listed('game')).toBe(gameListings);
+  });
+
+  it('says what a name with hidden characters really reads when renaming it, and sends the name as it is', async () => {
+    const bodies: unknown[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+      [`POST /api/v1/servers/${serverId}/files/move`]: async (request) => {
+        bodies.push(await request.json());
+        return json({});
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=files&path=odd`);
+    const real = `invoice${String.fromCodePoint(0x202e)}fdp.exe`;
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Rename invoice[U+202E]fdp.exe' }));
+    const dialog = await screen.findByRole('dialog');
+    const field = within(dialog).getByLabelText('Name');
+
+    expect(field).toHaveValue(real);
+    expect(
+      within(dialog).getByText('This name has hidden characters. It reads: invoice[U+202E]fdp.exe'),
+    ).toBeInTheDocument();
+    await userEvent.type(field, 'x');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Rename' }));
+    await waitFor(() => expect(bodies).toEqual([{ path: `odd/${real}`, destination: `odd/${real}x` }]));
+  });
+
+  it('does not add a note to an ordinary name when renaming it', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+    renderAt(`/servers/${serverId}?tab=files`);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Rename server.cfg' }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).queryByText(/hidden characters/)).not.toBeInTheDocument();
   });
 
   it('tells which line endings a file has', () => {

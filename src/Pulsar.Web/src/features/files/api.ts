@@ -8,11 +8,10 @@ export type FileDetails = Schemas['FileDetails'];
 /** Largest file the editor opens or saves (the panel refuses larger ones with files.too_large). */
 export const MAX_EDITABLE_BYTES = 1024 * 1024;
 
-// Not under the servers' keys: the live channel refreshes those at every change of the server, and listing a folder
-// asks the node.
+// Not under the servers' keys, which the live channel refreshes at every change of any server: listing a folder asks
+// the node. The channel invalidates these only for the servers a ServersChanged notice names.
 export const fileKeys = {
-  everyServer: ['serverFiles'] as const,
-  all: (serverId: string) => [...fileKeys.everyServer, serverId] as const,
+  all: (serverId: string) => ['serverFiles', serverId] as const,
   listing: (serverId: string, path: string) => [...fileKeys.all(serverId), path] as const,
 };
 

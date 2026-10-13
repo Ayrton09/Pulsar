@@ -839,6 +839,30 @@ describe('what depends on the nodes', () => {
     expect(asked.tokens).toBeGreaterThan(first.tokens);
   });
 
+  it('asks nothing when the nodes that trust the old key cannot be counted again', async () => {
+    let failing = false;
+    const retire = vi.fn(() => json(retiring(0)));
+    const confirm = vi.fn(() => true);
+    fakeApi({
+      'GET /api/v1/auth/session': session(admin),
+      'GET /api/v1/nodes': () => json([online]),
+      'GET /api/v1/panel-keys': () => (failing ? problem(500, 'unexpected') : json(retiring(0))),
+      'POST /api/v1/panel-keys/sha256%3Aold/retire': retire,
+      'GET /api/v1/agent-transport': () => json(transport({})),
+    });
+    vi.stubGlobal('confirm', confirm);
+    renderAt('/nodes');
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'Retire old key' });
+
+    failing = true;
+    await user.click(button);
+
+    await vi.waitFor(() => expect(screen.getAllByText('Something went wrong. Try again.').length).toBeGreaterThan(0));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(retire).not.toHaveBeenCalled();
+  });
+
   it('counts the nodes that still trust only the old key when asking to retire it, not as the page last saw them', async () => {
     let outdated = 0;
     let retired = false;
@@ -942,6 +966,30 @@ describe('agent connections', () => {
 
     await vi.waitFor(() => expect(confirm).toHaveBeenCalledOnce());
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('1 node still connects without a certificate'));
+  });
+
+  it('asks nothing, and says so, when the nodes without a certificate cannot be counted again', async () => {
+    let failing = false;
+    const put = vi.fn(() => json(transport({ requireClientCertificates: true })));
+    const confirm = vi.fn(() => true);
+    fakeApi({
+      'GET /api/v1/auth/session': session(admin),
+      'GET /api/v1/nodes': () => json([online]),
+      'GET /api/v1/panel-keys': () => json({ keys: [], nodes: 1, nodesOutdated: 0, nodesUnknown: 0 }),
+      'GET /api/v1/agent-transport': () => (failing ? problem(500, 'unexpected') : json(transport({}))),
+      'PUT /api/v1/agent-transport': put,
+    });
+    vi.stubGlobal('confirm', confirm);
+    renderAt('/nodes');
+    const user = userEvent.setup();
+    const require = await screen.findByRole('button', { name: 'Require client certificates' });
+
+    failing = true;
+    await user.click(require);
+
+    expect(await screen.findByText('Something went wrong. Try again.')).toBeInTheDocument();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
   });
 
   it('says how to add an agents address when the panel has none', async () => {

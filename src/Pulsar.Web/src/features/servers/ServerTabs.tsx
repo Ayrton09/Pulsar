@@ -475,6 +475,12 @@ export function NetworkTab({ details }: { details: ServerDetails }) {
               >
                 {!port.required && <option value="">{t('servers.wizard.noPort')}</option>}
                 {port.required && current === '' && <option value="">—</option>}
+                {/* The allocation it has is always there: the list may be missing (not allowed) or still loading. */}
+                {current !== '' && !options.some((a) => a.id === current) && (
+                  <option value={current}>
+                    {port.ipAddress}:{port.port}
+                  </option>
+                )}
                 {options.map((allocation) => (
                   <option key={allocation.id} value={allocation.id}>
                     {allocation.ipAddress}:{allocation.port}

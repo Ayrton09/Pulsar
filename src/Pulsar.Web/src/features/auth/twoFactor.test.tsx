@@ -228,6 +228,33 @@ describe('two-factor setup', () => {
     expect(dialog).not.toBeInTheDocument();
   });
 
+  it('stays open while new recovery codes are being made, so the codes the server applied are shown', async () => {
+    let finish: (() => void) | undefined;
+    fakeApi({
+      'GET /api/v1/auth/session': () =>
+        json({ setupRequired: false, user: { ...adminUser, twoFactorEnabled: true }, insecureConnection: false }),
+      'GET /api/v1/auth/two-factor': () => json({ enabled: true, required: false, recoveryCodesLeft: 3 }),
+      'GET /api/v1/account/api-keys': () => json([]),
+      'POST /api/v1/auth/two-factor/recovery-codes': () =>
+        new Promise<Response>((resolve) => {
+          finish = () => resolve(json({ recoveryCodes: codes }));
+        }),
+    });
+    renderAt('/account');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'New recovery codes' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('Current password'), 'my password here');
+    await user.click(within(dialog).getByRole('button', { name: 'New recovery codes' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    finish?.();
+    expect(await screen.findByText('ABCDE-FGHIJ')).toBeInTheDocument();
+  });
+
   it('does not offer turning it off while a role requires it', async () => {
     fakeApi({
       'GET /api/v1/auth/session': () =>

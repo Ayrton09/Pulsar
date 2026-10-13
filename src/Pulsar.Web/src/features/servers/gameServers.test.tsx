@@ -653,6 +653,8 @@ describe('the network tab', () => {
     renderAt(`/servers/${serverId}?tab=network`);
 
     expect(await screen.findByText('Game *')).toBeInTheDocument();
+    // Without the list, the select still names the allocation the port has.
+    expect(screen.getByLabelText('Game *')).toHaveDisplayValue('0.0.0.0:27015');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(asked).not.toHaveBeenCalled();
   });

@@ -27,13 +27,19 @@ export function breadcrumbs(path: string): { name: string; path: string }[] {
 
 /**
  * Characters that are invisible in a name and either reorder what follows (direction embeddings, overrides and
- * isolates) or hide between letters (zero-width space, word joiner, invisible operators, byte order mark). Joiners,
- * non-joiners and direction marks are left out: emoji sequences, Persian and Hebrew names need them.
+ * isolates, the Arabic letter mark) or hide between letters (zero-width space, soft hyphen, word joiner, invisible
+ * operators, byte order mark, tag characters, the Mongolian vowel separator): the Unicode format category. Joiners,
+ * non-joiners and the left-to-right and right-to-left marks are left out, since emoji sequences, Persian and Hebrew
+ * names need them. The line and paragraph separators and the invisible Hangul fillers are not format characters but
+ * hide the same way.
  */
-const HIDDEN = new Set([
-  0x200b, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2060, 0x2061, 0x2062, 0x2063, 0x2064, 0x2066, 0x2067, 0x2068,
-  0x2069, 0xfeff,
-]);
+const HIDDEN_FORMAT = /\p{Cf}/u;
+const HIDDEN_OTHER = new Set([0x2028, 0x2029, 0x115f, 0x1160, 0x3164]);
+const NEEDED = new Set([0x200c, 0x200d, 0x200e, 0x200f]);
+
+function isHidden(code: number, character: string): boolean {
+  return !NEEDED.has(code) && (HIDDEN_OTHER.has(code) || HIDDEN_FORMAT.test(character));
+}
 
 /**
  * A file name as the file manager shows it: any name is allowed on the server (games and players choose them), so a
@@ -44,7 +50,7 @@ export function visibleName(name: string): string {
   let shown = '';
   for (const character of name) {
     const code = character.codePointAt(0) ?? 0;
-    shown += HIDDEN.has(code) ? `[U+${code.toString(16).toUpperCase().padStart(4, '0')}]` : character;
+    shown += isHidden(code, character) ? `[U+${code.toString(16).toUpperCase().padStart(4, '0')}]` : character;
   }
   return shown;
 }

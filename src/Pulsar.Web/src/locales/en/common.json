@@ -1239,6 +1239,7 @@
     "rename": "Rename",
     "renameNamed": "Rename {{name}}",
     "renameTitle": "Rename {{name}}",
+    "hiddenInName": "This name has hidden characters. It reads: {{name}}",
     "deleteNamed": "Delete {{name}}",
     "deleteConfirm": "Delete {{name}}? This cannot be undone.",
     "deleteFolderConfirm": "Delete the folder {{name}} and everything in it? This cannot be undone.",

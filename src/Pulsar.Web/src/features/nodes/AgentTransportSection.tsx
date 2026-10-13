@@ -21,7 +21,8 @@ export function AgentTransportSection() {
   // The question counts the nodes as they are now: one may have connected without a certificate since the page loaded.
   const require = async () => {
     const fresh = await overview.refetch();
-    if (!fresh.data) {
+    // A refetch that failed resolves with the old data: no question about counts that are not current.
+    if (fresh.isError || !fresh.data) {
       return;
     }
 

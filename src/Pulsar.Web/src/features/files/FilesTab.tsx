@@ -334,6 +334,7 @@ function NameDialog({ serverId, directory, action, onDone }: NameDialogProps) {
   const [error, setError] = useState<unknown>(null);
   const [touched, setTouched] = useState(false);
   const problem = nameProblem(name);
+  const shown = visibleName(name);
   const pending = createDirectory.isPending || move.isPending || creating;
   const title =
     action.kind === 'folder'
@@ -376,7 +377,12 @@ function NameDialog({ serverId, directory, action, onDone }: NameDialogProps) {
     <Dialog open onOpenChange={(open) => !open && onDone()} title={title}>
       <form onSubmit={(event) => void submit(event)} className="space-y-4" noValidate>
         {error !== null && <Alert>{errorMessage(t, error)}</Alert>}
-        <Field label={t('files.name')} error={touched && problem ? t(`files.nameProblems.${problem}`) : undefined}>
+        <Field
+          label={t('files.name')}
+          error={touched && problem ? t(`files.nameProblems.${problem}`) : undefined}
+          // An input draws direction controls: the field alone could show a spoofed name under a safe title.
+          hint={shown !== name ? t('files.hiddenInName', { name: shown }) : undefined}
+        >
           {(ids) => (
             <Input {...ids} autoFocus value={name} onChange={(e) => setName(e.target.value)} className="font-mono" />
           )}

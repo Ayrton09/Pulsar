@@ -259,7 +259,8 @@ function PasswordDialog({
   return (
     <Dialog
       open
-      onOpenChange={(open) => !open && onClose()}
+      // Not while the request is pending: the new recovery codes are applied by the server and shown only once.
+      onOpenChange={(open) => !open && !mutation.isPending && onClose()}
       title={action === 'disable' ? t('twoFactor.turnOffTitle') : t('twoFactor.newCodesTitle')}
       description={action === 'disable' ? t('twoFactor.turnOffDescription') : t('twoFactor.newCodesDescription')}
     >
@@ -278,7 +279,7 @@ function PasswordDialog({
           )}
         </Field>
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" disabled={mutation.isPending} onClick={onClose}>
             {t('actions.cancel')}
           </Button>
           <Button

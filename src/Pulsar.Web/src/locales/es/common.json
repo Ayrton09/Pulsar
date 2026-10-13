@@ -1239,6 +1239,7 @@
     "rename": "Renombrar",
     "renameNamed": "Renombrar {{name}}",
     "renameTitle": "Renombrar {{name}}",
+    "hiddenInName": "Este nombre tiene caracteres ocultos. Se lee: {{name}}",
     "deleteNamed": "Eliminar {{name}}",
     "deleteConfirm": "¿Eliminar {{name}}? No se puede deshacer.",
     "deleteFolderConfirm": "¿Eliminar la carpeta {{name}} y todo su contenido? No se puede deshacer.",

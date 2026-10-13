@@ -26,6 +26,7 @@ export function PanelKeysSection() {
   const askToRetire = async (keyId: string) => {
     const fresh = await overview.refetch();
     if (
+      !fresh.isError &&
       fresh.data &&
       window.confirm(
         t('panelKeys.retireConfirm', {
