@@ -64,6 +64,17 @@ public sealed class FileTransfersTests
     }
 
     [Fact]
+    public void AReportWithoutATicketIsIgnored()
+    {
+        using var content = new MemoryStream();
+        using var upload = _transfers.BeginUpload(s_node, content, 0);
+
+        _transfers.Complete(s_node, new TransferResult(null!, FileErrors.Failed, "no ticket", null));
+
+        Assert.False(upload.Result.IsCompleted);
+    }
+
+    [Fact]
     public async Task ADownloadHandsTheAgentsContentToTheBrowserAndReleasesTheAgentAfter()
     {
         using var download = _transfers.BeginDownload(s_node);

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Ayrton09/Pulsar/blob/main/schemas/manifest.v1.schema.json",
+  "$id": "https://raw.githubusercontent.com/Ayrton09/Pulsar/main/schemas/manifest.v1.schema.json",
   "title": "Pulsar game manifest (schema version 1)",
   "description": "Describes how Pulsar installs, starts, watches and stops a game server. Declarative and closed: there is no shell, script or expression anywhere. Pulsar validates more than this schema can express (placeholders, regular expressions, paths); see docs/architecture/04-game-manifests.md.",
   "$ref": "#/$defs/GameManifest",
@@ -61,7 +61,8 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "repo", "asset"],
-      "description": "A zip asset of a GitHub release, checked against the SHA-256 GitHub publishes for it.",
+      "description": "A zip asset of a GitHub release, checked against the SHA-256 GitHub publishes for it. A fixed 'tag' cannot go with 'prerelease': true (that only picks the newest release).",
+      "not": { "required": ["tag", "prerelease"], "properties": { "prerelease": { "const": true } } },
       "properties": {
         "type": { "const": "githubRelease" },
         "repo": { "type": "string", "pattern": "^(?!\\.\\.?/)[A-Za-z0-9_.-]{1,100}/(?!\\.\\.?$)[A-Za-z0-9_.-]{1,100}$" },
@@ -98,7 +99,7 @@
         "key": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$" },
         "label": { "type": "string", "minLength": 1, "maxLength": 64 },
         "type": { "enum": ["string", "integer", "boolean", "enum"] },
-        "default": { "type": ["string", "integer", "boolean"] },
+        "default": { "type": ["string", "number", "boolean"], "description": "A scalar; its text is checked like a value users enter." },
         "required": { "type": "boolean", "default": false },
         "secret": { "type": "boolean", "default": false, "description": "Encrypted at rest, write-only in the API, masked in the UI and logs. String variables only, without a default." },
         "userEditable": { "type": "boolean", "default": true },
@@ -423,8 +424,8 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 260,
-      "pattern": "^(?![/\\\\])(?!.*:)(?!.*\\\\)(?!(.*/)?\\.\\.?(/|$))(?![.][pP][uU][lL][sS][aA][rR](/|$))(?![^./~]{1,6}~[0-9]+(/|$))(?!.*[^/]{256})[^<>\"|?*]+$",
-      "description": "Relative to the server directory, with forward slashes; no '..', root, drive or stream, nothing in Pulsar's own .pulsar folder, names of up to 255 characters."
+      "pattern": "^(?![/\\\\])(?!.*:)(?!.*\\\\)(?!.*//)(?!.*/$)(?!(.*/)?\\.\\.?(/|$))(?!(.*/)?[^/]*[. ](/|$))(?!(.*/)? )(?![.][pP][uU][lL][sS][aA][rR](/|$))(?![^./~]{1,6}~[0-9]+(/|$))(?!(.*/)?([cC][oO][nN]|[pP][rR][nN]|[aA][uU][xX]|[nN][uU][lL]|[cC][oO][nN][iI][nN]\\$|[cC][oO][nN][oO][uU][tT]\\$|[cC][oO][mM][0-9¹²³]|[lL][pP][tT][0-9¹²³]) *(\\.[^/]*)?(/|$))(?!.*[^/]{256})[^<>\"|?*\\u0000-\\u001f\\u007f-\\u009f]+$",
+      "description": "Relative to the server directory, with forward slashes; no empty, '.' or '..' segments, root, drive or stream, no Windows device names (CON, NUL, COM1…), no name that starts with a space or ends with a dot or a space, no control characters, nothing in Pulsar's own .pulsar folder, names of up to 255 characters."
     }
   }
 }

@@ -143,5 +143,5 @@ public sealed class Operation
         return true;
     }
 
-    private static string Truncate(string value, int length) => value.Length <= length ? value : value[..length];
+    private static string Truncate(string value, int length) => TextLimits.Truncate(value, length);
 }

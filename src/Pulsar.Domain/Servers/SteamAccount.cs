@@ -54,7 +54,7 @@ public sealed class SteamAccount
         return set.IsSuccess ? account : set.Error!;
     }
 
-    /// <summary>Replaces the settings; a null <paramref name="passwordProtected"/> keeps the current password.</summary>
+    /// <summary>Replaces the settings; a null <paramref name="passwordProtected"/> keeps the current password (only while the Steam user stays the same).</summary>
     public Result Change(string name, string userName, byte[]? passwordProtected, DateTimeOffset now)
     {
         var trimmed = name?.Trim() ?? string.Empty;
@@ -68,6 +68,12 @@ public sealed class SteamAccount
         if (user.Length is < 3 or > MaxUserNameLength || !user.All(c => char.IsAsciiLetterOrDigit(c) || c == '_'))
         {
             return SteamAccountErrors.UserNameInvalid;
+        }
+
+        // The saved password belongs to one Steam account: never sent to another one.
+        if (passwordProtected is null && !string.Equals(UserName, user, StringComparison.Ordinal))
+        {
+            return SteamAccountErrors.PasswordRequired;
         }
 
         Name = trimmed;

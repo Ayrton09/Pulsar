@@ -27,6 +27,9 @@ public static partial class ManifestValidator
         "PATH", "PATHEXT", "ComSpec", "SystemRoot", "windir", "PSModulePath", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
     };
 
+    // The .NET runtime's own settings (DOTNET_STARTUP_HOOKS, COR_PROFILER_PATH…) can load any DLL into the game's process.
+    private static readonly string[] s_codeLoadingEnvironment = ["DOTNET_", "COR_", "CORECLR_"];
+
     /// <summary>Where a template is used: what it may reference depends on it.</summary>
     private enum TemplateUse
     {
@@ -235,6 +238,45 @@ public static partial class ManifestValidator
             }
         }
 
+        // An addon is installed once what it requires is: a cycle (A requires B, B requires A) could never be installed.
+        var requires = addons.GroupBy(a => a.Key, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().RequiresList, StringComparer.Ordinal);
+        var done = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < addons.Count; i++)
+        {
+            if (FindCycle(addons[i].Key, []) is { } cycle)
+            {
+                error($"addons[{i}]", $"Addons cannot require each other in a cycle: {string.Join(" -> ", cycle)}.");
+                break;
+            }
+        }
+
+        List<string>? FindCycle(string key, List<string> trail)
+        {
+            if (trail.Contains(key))
+            {
+                return [.. trail.SkipWhile(k => k != key), key];
+            }
+
+            if (done.Contains(key) || !requires.TryGetValue(key, out var needed))
+            {
+                return null;
+            }
+
+            trail.Add(key);
+            foreach (var next in needed)
+            {
+                if (FindCycle(next, trail) is { } found)
+                {
+                    return found;
+                }
+            }
+
+            trail.RemoveAt(trail.Count - 1);
+            done.Add(key);
+            return null;
+        }
+
         static bool IsLabel(string text, int max) => text.Trim().Length > 0 && text.Length <= max && !text.Any(char.IsControl);
 
         static bool IsLine(string text) => text.Trim().Length > 0 && text.Length <= 256 && !text.Any(c => char.IsControl(c) && c != '\t');
@@ -403,7 +445,11 @@ public static partial class ManifestValidator
                 error(path, "'pattern' and 'maxLength' apply to string variables only.");
             }
 
-            if (variable.Default is { } value && VariableValues.Check(variable, VariableValues.FromJson(value)) is { } defaultError)
+            if (variable.Default is { ValueKind: System.Text.Json.JsonValueKind.Object or System.Text.Json.JsonValueKind.Array })
+            {
+                error($"{path}.default", "A string, a number or true or false.");
+            }
+            else if (variable.Default is { } value && VariableValues.Check(variable, VariableValues.FromJson(value)) is { } defaultError)
             {
                 error($"{path}.default", defaultError);
             }
@@ -584,6 +630,10 @@ public static partial class ManifestValidator
             {
                 context.Error($"{path}.environment.{name}", "Reserved or invalid environment variable name.");
             }
+            else if (s_codeLoadingEnvironment.Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            {
+                context.Error($"{path}.environment.{name}", "Environment variables that make the .NET runtime load code or profilers are not allowed.");
+            }
 
             ValidateTemplate($"{path}.environment.{name}", value, context, TemplateUse.Environment, guardedPorts: s_noPorts);
         }
@@ -710,9 +760,9 @@ public static partial class ManifestValidator
                         // Unset, there would be no option to take the sub-value from.
                         context.Error(path, $"Enum variable '{key}' is used with a sub-value, so it needs a default or to be required.");
                     }
-                    else if (use != TemplateUse.Environment && variable.Type == VariableType.String && variable.Pattern is null)
+                    else if (variable.Type == VariableType.String && variable.Pattern is null)
                     {
-                        context.Error(path, $"String variable '{key}' is used in arguments or configuration files, so it needs a 'pattern'.");
+                        context.Error(path, $"String variable '{key}' is used in arguments, the environment or configuration files, so it needs a 'pattern'.");
                     }
                     else if (use == TemplateUse.Environment && variable.Secret)
                     {

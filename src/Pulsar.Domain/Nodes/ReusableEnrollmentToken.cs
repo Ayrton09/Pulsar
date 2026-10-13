@@ -93,11 +93,20 @@ public sealed class ReusableEnrollmentToken
 
     public bool IsUsable(DateTimeOffset now) => RevokedAt is null && now < ExpiresAt && Uses < MaxUses;
 
-    /// <summary>Records a use (the atomic count itself happens in the database, so two machines never share the last one).</summary>
-    public void Used(DateTimeOffset now)
+    /// <summary>
+    /// Records a use on the loaded row; false (and nothing recorded) when the token is not usable. The count that counts
+    /// happens in the database, atomically, so two machines never share the last use.
+    /// </summary>
+    public bool Used(DateTimeOffset now)
     {
+        if (!IsUsable(now))
+        {
+            return false;
+        }
+
         Uses++;
         LastUsedAt = now;
+        return true;
     }
 
     public void Revoke(DateTimeOffset now) => RevokedAt ??= now;

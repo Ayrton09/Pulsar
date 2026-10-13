@@ -250,15 +250,17 @@ public sealed partial class ServerDatabases(
         ArgumentNullException.ThrowIfNull(server);
         await locks.LockServerAsync(server.Id, cancellationToken);
         var databases = await db.ServerDatabases.Where(d => d.ServerId == server.Id).ToListAsync(cancellationToken);
-        var failed = new Dictionary<DatabaseHostId, string>();
+        // Why a host was left alone: an error code for the audit log, the host's own words (they name the panel's account
+        // and the host's address) for the panel's log only.
+        var failed = new Dictionary<DatabaseHostId, (string Code, string Detail)?>();
         foreach (var database in databases)
         {
             var host = await db.DatabaseHosts.AsNoTracking().SingleAsync(h => h.Id == database.HostId, cancellationToken);
-            if (!failed.TryGetValue(host.Id, out var leftBecause))
+            if (!failed.TryGetValue(host.Id, out var left))
             {
                 if (hosts.Connection(host) is not { } connection)
                 {
-                    leftBecause = failed[host.Id] = DatabaseErrors.HostPasswordUnreadable.Message;
+                    left = failed[host.Id] = (DatabaseErrors.HostPasswordUnreadable.Code, DatabaseErrors.HostPasswordUnreadable.Message);
                 }
                 else
                 {
@@ -268,14 +270,15 @@ public sealed partial class ServerDatabases(
                     }
                     catch (DatabaseHostException ex)
                     {
-                        leftBecause = failed[host.Id] = ex.Message;
+                        left = failed[host.Id] = (DatabaseErrors.HostUnreachable.Code, ex.Message);
                     }
                 }
             }
 
+            var leftBecause = left?.Code;
             if (leftBecause is not null)
             {
-                LogDatabaseLeft(database.Name, host.Name, leftBecause);
+                LogDatabaseLeft(database.Name, host.Name, left!.Value.Detail);
             }
 
             db.ServerDatabases.Remove(database);

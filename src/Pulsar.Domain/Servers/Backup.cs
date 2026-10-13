@@ -243,7 +243,7 @@ public sealed class Backup
         }
     }
 
-    private static string Truncate(string text) => text.Length > MaxErrorMessageLength ? text[..MaxErrorMessageLength] : text;
+    private static string Truncate(string text) => TextLimits.Truncate(text, MaxErrorMessageLength);
 
     /// <summary>A locked backup is kept until it is unlocked: retention skips it and deleting it is refused.</summary>
     public Result SetLocked(bool locked)

@@ -48,7 +48,9 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                 return;
             }
 
-            if (!server.Observe(Map(change.State), Map(change.Reason), change.ExitCode, change.StateSequence, change.At, snapshot: false))
+            // Stamped with the panel's clock: an agent whose clock is off would write times in the future. The order of events
+            // is the agent's sequence, not its time.
+            if (!server.Observe(Map(change.State), Map(change.Reason), change.ExitCode, change.StateSequence, clock.GetUtcNow(), snapshot: false))
             {
                 return;
             }
@@ -86,6 +88,7 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         ArgumentNullException.ThrowIfNull(progress);
         // The agent's number is not trusted: not a number (or infinite) is left out, the rest kept within 0–100.
         var percent = progress.Percent is { } p && double.IsFinite(p) ? (decimal?)Math.Round((decimal)Math.Clamp(p, 0, 100), 2) : null;
+        var stage = progress.Stage ?? string.Empty; // absent in the JSON of a faulty agent
         var operation = await db.Operations.SingleOrDefaultAsync(o => o.Id == new OperationId(progress.OperationId) && o.NodeId == nodeId,
             cancellationToken);
         if (operation is not { IsActive: true })
@@ -95,15 +98,15 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
 
         if (operation.ServerId is { } serverId)
         {
-            notifier.OperationProgress(serverId, progress.OperationId, progress.Stage, percent);
+            notifier.OperationProgress(serverId, progress.OperationId, stage, percent);
         }
 
-        if (!progressCache.Update(progress.OperationId, progress.Stage, percent))
+        if (!progressCache.Update(progress.OperationId, stage, percent))
         {
             return;
         }
 
-        operation.Progressed(progress.Stage, percent);
+        operation.Progressed(stage, percent);
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -375,11 +378,11 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
         _ => null,
     };
 
-    private static byte[]? Sha256(string hex)
+    private static byte[]? Sha256(string? hex)
     {
         try
         {
-            return hex.Length == 64 ? Convert.FromHexString(hex) : null;
+            return hex?.Length == 64 ? Convert.FromHexString(hex) : null;
         }
         catch (FormatException)
         {

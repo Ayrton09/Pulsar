@@ -47,5 +47,5 @@ public sealed class ServerAddon
         UpdatedAt = now;
     }
 
-    private static string Truncate(string release) => release.Length > MaxReleaseLength ? release[..MaxReleaseLength] : release;
+    private static string Truncate(string release) => TextLimits.Truncate(release, MaxReleaseLength);
 }

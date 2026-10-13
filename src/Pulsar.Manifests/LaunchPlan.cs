@@ -438,6 +438,10 @@ public static class LaunchPlanRenderer
                 case ArgumentText { Text: ['-' or '+', ..] text } when !ArgumentName(text).Contains("{{", StringComparison.Ordinal):
                     names.Add(ArgumentName(text));
                     break;
+                case ArgumentText text:
+                    // URL options ("Map?listen?SessionName=…?Port=…"), as Unreal Engine games take their settings.
+                    names.UnionWith(UrlOptionKeys(text.Text).Where(k => !k.Contains("{{", StringComparison.Ordinal)).Select(k => $"?{k}"));
+                    break;
                 case ArgumentCondition condition:
                     names.UnionWith(ReservedArgumentNames(condition.Then));
                     names.UnionWith(ReservedArgumentNames(condition.Else ?? []));
@@ -469,14 +473,29 @@ public static class LaunchPlanRenderer
 
             var name = ArgumentName(word);
             var setting = name.TrimStart('-', '+');
-            if (reserved.Contains(name)
-                || (runtime.Console.SensitiveCommandPrefixes ?? []).Any(p => setting.StartsWith(p, StringComparison.OrdinalIgnoreCase))
-                || (commands && setting.Contains("rcon", StringComparison.OrdinalIgnoreCase)))
+            if (reserved.Contains(name) || IsSensitive(setting, runtime, commands))
             {
                 throw new LaunchPlanException($"The extra argument '{name}' is set by Pulsar or by the game's settings.");
             }
         }
+
+        // The URL options in a word ("?Port=7778", "Map?ServerAdminPassword=x") are settings like any other.
+        foreach (var key in extra.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).SelectMany(UrlOptionKeys))
+        {
+            if (reserved.Contains($"?{key}") || IsSensitive(key, runtime, commands))
+            {
+                throw new LaunchPlanException($"The extra argument option '?{key}' is set by Pulsar or by the game's settings.");
+            }
+        }
     }
+
+    private static bool IsSensitive(string setting, RuntimeDefinition runtime, bool commands) =>
+        (runtime.Console.SensitiveCommandPrefixes ?? []).Any(p => setting.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+        || (commands && setting.Contains("rcon", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The names of the <c>?Name=value</c> options of a word (also <c>&amp;</c>-separated); what comes before the first '?' is not one.</summary>
+    private static IEnumerable<string> UrlOptionKeys(string word) =>
+        word.Split('?', '&').Skip(1).Select(option => option.Split('=')[0].Trim()).Where(key => key.Length > 0);
 
     /// <summary>
     /// Source-like command lines ('+' arguments are console commands, as on RCON consoles): ';' starts another command

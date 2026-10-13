@@ -84,6 +84,26 @@ public sealed class GameDatabaseTests
         Assert.Equal(required, host.RequireTls);
     }
 
+    [Fact]
+    public void MovingAHostFromTheLocalNetworkToAPublicAddressRequiresTlsUnlessSaidOtherwise()
+    {
+        var host = DatabaseHost.Create("Main", "127.0.0.1", 3306, "root", s_password, null, null, null, [], s_now).Value;
+        Assert.False(host.RequireTls);
+
+        // Another local address: the choice stays.
+        Assert.True(host.Change("Main", "10.0.0.5", 3306, "root", s_password, null, null, null, [], s_now).IsSuccess);
+        Assert.False(host.RequireTls);
+
+        // A public one: a new host there would require TLS, so does this one now.
+        Assert.True(host.Change("Main", "203.0.113.8", 3306, "root", s_password, null, null, null, [], s_now).IsSuccess);
+        Assert.True(host.RequireTls);
+
+        // Said explicitly, it is what was said.
+        host = DatabaseHost.Create("Main", "127.0.0.1", 3306, "root", s_password, null, null, null, [], s_now).Value;
+        Assert.True(host.Change("Main", "203.0.113.8", 3306, "root", s_password, null, null, null, [], s_now, requireTls: false).IsSuccess);
+        Assert.False(host.RequireTls);
+    }
+
     [Theory]
     [InlineData("main", "sk3x7m2qa_main")]
     [InlineData("logs_2026", "sk3x7m2qa_logs_2026")]

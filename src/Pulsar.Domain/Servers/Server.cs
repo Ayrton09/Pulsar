@@ -291,6 +291,16 @@ public sealed class Server
     public Result RequestRestart(DateTimeOffset now) => RequestStart(now);
 
     /// <summary>
+    /// A start its node already took: the game is wanted running whatever the server looks like now. Unlike
+    /// <see cref="RequestStart"/> it checks nothing, for when the check has been made and the row changed since.
+    /// </summary>
+    public void WantsRunning(DateTimeOffset now)
+    {
+        DesiredState = DesiredState.Running;
+        UpdatedAt = now;
+    }
+
+    /// <summary>
     /// Moves the server to a newer version of its game's template (docs/architecture/02, "Template upgrades"), while
     /// it is stopped and nothing else runs on it. Values of variables the new version no longer has are dropped; the
     /// caller checks the rest against the new manifest and installs the server again with it.
@@ -374,7 +384,7 @@ public sealed class Server
     {
         ArgumentNullException.ThrowIfNull(extraArguments);
         if (extraArguments.Count > MaxExtraArguments
-            || extraArguments.Any(a => a.Length is 0 or > MaxExtraArgumentLength || a.Any(char.IsControl)))
+            || extraArguments.Any(a => a is null || a.Length is 0 or > MaxExtraArgumentLength || a.Any(char.IsControl)))
         {
             return ServerErrors.ExtraArgumentsInvalid;
         }

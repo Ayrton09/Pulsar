@@ -94,6 +94,12 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
             }
         }
 
+        // A value stored in clear for a variable that is secret now (a template upgrade made it so) is encrypted.
+        foreach (var variable in server.Variables.Where(v => v.Value is not null && definitions.TryGetValue(v.Key, out var definition) && definition.Secret).ToList())
+        {
+            server.SetSecretVariable(variable.Key, protector.Protect(variable.Value!), by, now);
+        }
+
         // Required values (and defaults) must still make a valid whole.
         try
         {

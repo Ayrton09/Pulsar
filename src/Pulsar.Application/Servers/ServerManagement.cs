@@ -417,8 +417,12 @@ public sealed partial class ServerManagement(
     /// Changes variables (only the given keys; null or empty goes back to the default), extra arguments and the restart
     /// policy. They apply at the next start: the panel sends the spec to the agent before every start.
     /// </summary>
-    public async Task<Result<ServerSettings>> UpdateSettingsAsync(ServerId id, IReadOnlyDictionary<string, string?> variables,
-        IReadOnlyList<string> extraArguments, bool autoStart, bool restartOnCrash, CancellationToken cancellationToken)
+    public Task<Result<ServerSettings>> UpdateSettingsAsync(ServerId id, IReadOnlyDictionary<string, string?> variables,
+        IReadOnlyList<string> extraArguments, bool autoStart, bool restartOnCrash, CancellationToken cancellationToken) =>
+        UpdateSettingsAsync(id, variables, extraArguments, autoStart, restartOnCrash, attempt: 0, cancellationToken);
+
+    private async Task<Result<ServerSettings>> UpdateSettingsAsync(ServerId id, IReadOnlyDictionary<string, string?> variables,
+        IReadOnlyList<string> extraArguments, bool autoStart, bool restartOnCrash, int attempt, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(variables);
         var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
@@ -452,7 +456,17 @@ public sealed partial class ServerManagement(
         // Keys only: values may be secrets.
         audit.Record(AuditActions.Server.SettingsChanged, metadata: new { variables = variables.Keys.Order(StringComparer.Ordinal).ToList(), autoStart, restartOnCrash })
             .WithServer(server.Id, server.NodeId);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex) when (attempt < 2 && ex.Entries.Any(e => e.Entity is Server))
+        {
+            // The agent reported a state change in between: apply the settings to the fresh row (its checks run again).
+            db.ChangeTracker.Clear();
+            return await UpdateSettingsAsync(id, variables, extraArguments, autoStart, restartOnCrash, attempt + 1, cancellationToken);
+        }
+
         await SyncSpecAsync(id, cancellationToken); // best effort now; it is sent again before the next start anyway
         return Settings(server, manifest);
     }
@@ -839,9 +853,12 @@ public sealed partial class ServerManagement(
                 await db.Entry(server).ReloadAsync(CancellationToken.None);
                 var decided = (server.StateSequence, server.StateObservedAt) != observed && server.LastStateReason is { } reason &&
                     Server.StopsIntent(reason);
-                if (!decided)
+                if (!decided && !change(server).IsSuccess)
                 {
-                    _ = change(server);
+                    // Only a start or restart is ever refused here. The node took it, so the game is on its way: what the
+                    // user wants stays true even if the fresh row (an operation began, the install failed) would refuse it.
+                    server.WantsRunning(clock.GetUtcNow());
+                    LogIntentKept(server.Id, action);
                 }
             }
         }
@@ -910,6 +927,9 @@ public sealed partial class ServerManagement(
         return new(o.Id.Value, o.Type, o.Status, live?.Stage ?? o.ProgressStage, live is { } l ? l.Percent : o.ProgressPercent, o.ErrorCode,
             o.ErrorMessage, o.CreatedAt, o.CompletedAt, o.IsCancellable, o.CancelRequestedAt is not null);
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: the node took {Action}, but the server changed meanwhile so that it would be refused now")]
+    private partial void LogIntentKept(ServerId serverId, string action);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ServerId}: the agent refused its spec: {Code} ({Reason})")]
     private partial void LogSpecRefused(ServerId serverId, string? code, string? reason);

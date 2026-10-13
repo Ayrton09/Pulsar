@@ -74,7 +74,7 @@ public sealed class ServerFiles(
             return target.Error!;
         }
 
-        var ack = await SendAsync(target.Value, new ListFilesCommand(id.Value, path), cancellationToken);
+        var ack = await SendAsync(target.Value, new ListFilesCommand(id.Value, path));
         if (!ack.IsSuccess)
         {
             return ack.Error!;
@@ -124,7 +124,7 @@ public sealed class ServerFiles(
         var download = transfers.BeginDownload(target.Value.NodeId);
         try
         {
-            var ack = await SendAsync(target.Value, new SendFileCommand(id.Value, path, download.Ticket, maxSize ?? long.MaxValue), cancellationToken);
+            var ack = await SendAsync(target.Value, new SendFileCommand(id.Value, path, download.Ticket, maxSize ?? long.MaxValue));
             if (!ack.IsSuccess || ack.Value.Result is not FileEntryResult file)
             {
                 download.Dispose();
@@ -193,23 +193,38 @@ public sealed class ServerFiles(
         }
 
         Result<FileDetails> result;
+        var abandoned = false;
         using (var upload = transfers.BeginUpload(target.Value.NodeId, content, length))
         {
-            result = await ReceiveAsync(target.Value, upload, new ReceiveFileCommand(id.Value, path, upload.Ticket, length, overwrite, expectedVersion),
-                cancellationToken);
+            try
+            {
+                result = await ReceiveAsync(target.Value, upload, new ReceiveFileCommand(id.Value, path, upload.Ticket, length, overwrite, expectedVersion),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // The browser went away after the node was told: the node may have written the file, so this is audited.
+                result = ServerErrors.FileTransferFailed;
+                abandoned = true;
+            }
         }
 
         audit.Record(AuditActions.Server.FileWritten, result.IsSuccess ? AuditOutcome.Success : AuditOutcome.Failure,
                 new { path, size = length, replace = overwrite || expectedVersion is not null, errorCode = result.Error?.Code })
             .WithServer(target.Value.Id, target.Value.NodeId);
         await db.SaveChangesAsync(CancellationToken.None);
+        if (abandoned)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
         return result;
     }
 
     private async Task<Result<FileDetails>> ReceiveAsync(Server server, FileTransfers.Upload upload, ReceiveFileCommand command,
         CancellationToken cancellationToken)
     {
-        var ack = await SendAsync(server, command, cancellationToken);
+        var ack = await SendAsync(server, command);
         if (!ack.IsSuccess)
         {
             return ack.Error!;
@@ -247,7 +262,7 @@ public sealed class ServerFiles(
             return target.Error!;
         }
 
-        var ack = await SendAsync(target.Value, command, cancellationToken);
+        var ack = await SendAsync(target.Value, command);
         audit.Record(action, ack.IsSuccess ? AuditOutcome.Success : AuditOutcome.Failure, details(ack.Error?.Code))
             .WithServer(target.Value.Id, target.Value.NodeId);
         await db.SaveChangesAsync(CancellationToken.None);
@@ -270,9 +285,11 @@ public sealed class ServerFiles(
         return live.Capabilities.Contains(AgentCapabilities.ListFiles, StringComparer.Ordinal) ? server : ServerErrors.FilesUnsupported;
     }
 
-    private async Task<Result<CommandAck>> SendAsync(Server server, AgentCommand command, CancellationToken cancellationToken)
+    private async Task<Result<CommandAck>> SendAsync(Server server, AgentCommand command)
     {
-        var ack = await connections.SendAsync(server.NodeId, command, request.UserId, cancellationToken);
+        // Once sent, the node's answer is waited for (it has its own timeout) even if the request goes away: what the
+        // node did must still be audited.
+        var ack = await connections.SendAsync(server.NodeId, command, request.UserId, CancellationToken.None);
         return ack switch
         {
             null => NodeErrors.NotConnected,

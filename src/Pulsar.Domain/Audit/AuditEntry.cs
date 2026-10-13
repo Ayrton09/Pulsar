@@ -147,5 +147,5 @@ public sealed class AuditEntry
     }
 
     private static string? Truncate(string? value, int maxLength) =>
-        value is null || value.Length <= maxLength ? value : value[..maxLength];
+        value is null ? null : TextLimits.Truncate(value, maxLength);
 }

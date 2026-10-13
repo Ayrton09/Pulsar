@@ -43,12 +43,18 @@ public sealed class ReusableEnrollmentTokenTests
         var (token, _) = ReusableEnrollmentToken.Issue("Fleet", 2, TimeSpan.FromHours(1), false, null, s_now).Value;
         Assert.True(token.IsUsable(s_now));
 
-        token.Used(s_now);
-        token.Used(s_now);
+        Assert.True(token.Used(s_now));
+        Assert.True(token.Used(s_now));
         Assert.False(token.IsUsable(s_now));
+
+        // Never past its limit, an expired or a revoked token.
+        Assert.False(token.Used(s_now));
+        Assert.Equal(2, token.Uses);
 
         var (expiring, _) = ReusableEnrollmentToken.Issue("Fleet", 2, TimeSpan.FromHours(1), false, null, s_now).Value;
         Assert.False(expiring.IsUsable(s_now.AddHours(1)));
+        Assert.False(expiring.Used(s_now.AddHours(1)));
+        Assert.Equal(0, expiring.Uses);
 
         var (revoked, _) = ReusableEnrollmentToken.Issue("Fleet", 2, TimeSpan.FromHours(1), false, null, s_now).Value;
         revoked.Revoke(s_now);

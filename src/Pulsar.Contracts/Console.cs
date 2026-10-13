@@ -69,7 +69,7 @@ public static class QueryText
     public const int MaxPlayers = 256;
 
     /// <summary>
-    /// Control characters, direction overrides and colour codes (Minecraft's <c>§a</c>) removed, whitespace trimmed, cut
+    /// Control characters, direction overrides and marks, and colour codes (Minecraft's <c>§a</c>) removed, whitespace trimmed, cut
     /// to <see cref="MaxLength"/>; null when nothing is left.
     /// </summary>
     public static string? Clean(string? text)
@@ -89,8 +89,8 @@ public static class QueryText
                 continue;
             }
 
-            // Direction overrides would let a player's name reorder the text shown after it.
-            if (char.IsControl(c) || c is >= '‪' and <= '‮' or >= '⁦' and <= '⁩'
+            // Direction overrides and marks would let a player's name reorder the text shown after it.
+            if (char.IsControl(c) || c is >= '\x202A' and <= '\x202E' or >= '\x2066' and <= '\x2069' or '\x200E' or '\x200F' or '\x061C'
                 || char.IsSurrogate(c) && !(char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1])))
             {
                 continue;
