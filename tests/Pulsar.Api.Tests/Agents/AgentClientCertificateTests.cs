@@ -304,6 +304,40 @@ public sealed class AgentClientCertificateTests(AgentsEndpointApiFactory factory
     }
 
     [DatabaseFact]
+    public async Task ASwitchWhoseOutcomeIsUnknownIsTakenAsOn()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await NodeApi.CreateAsync(admin, "certificate-unknown-switch");
+        var hook = new DatabaseHook();
+        using var app = factory.WithDatabaseHook(hook);
+        await using var agent = new TestAgent(app);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        var token = await agent.AuthenticateAsync();
+        Assert.Equal(HttpStatusCode.NotFound, await TransferStatusAsync(agent, token));
+        try
+        {
+            // The change commits, its call fails, and reading the switch again fails too.
+            hook.AfterSave(c => c.ChangeTracker.Entries<AgentTransportSettings>().Any(), () =>
+            {
+                hook.AfterQuery("agent_transport_settings", () => throw new TimeoutException());
+                throw new OperationCanceledException();
+            });
+            await using (var scope = app.Services.CreateAsyncScope())
+            {
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => scope.ServiceProvider.GetRequiredService<AgentTransportManagement>()
+                    .SetAsync(new UpdateAgentTransportRequest(true), AgentsUrl, Ct));
+            }
+
+            // Until it is read again, a session without a certificate is refused.
+            Assert.Equal(HttpStatusCode.Unauthorized, await TransferStatusAsync(agent, token));
+        }
+        finally
+        {
+            await PutTransportAsync(admin, require: false);
+        }
+    }
+
+    [DatabaseFact]
     public async Task UnknownNodesGetNoAddress()
     {
         using var admin = await factory.CreateAdminClientAsync();

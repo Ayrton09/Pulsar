@@ -254,6 +254,72 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
     }
 
     [DatabaseFact]
+    public async Task ARotationRacingAReEnrollmentLeavesNoKeyBehind()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-while-reenrolling");
+        using var current = agent.Keys.Open(enrolled.Key);
+        var session = await new PanelAuthenticator(Transport(agent)).AuthenticateAsync(enrolled, current, Ct);
+        using var newKey = agent.Keys.Create($"PulsarAgent-{Guid.NewGuid():N}", NodeKeyScope.User);
+        var nodeId = new NodeId(enrolled.NodeId);
+        using var tokenResponse = await admin.PostAsync($"/api/v1/nodes/{enrolled.NodeId}/enrollment-tokens");
+        await AccessScenario.EnsureSuccessAsync(tokenResponse);
+        var instructions = (await tokenResponse.Content.ReadFromJsonAsync<EnrollmentInstructions>(AccessScenario.Json, Ct))!;
+        var hook = new DatabaseHook();
+        using var app = factory.WithDatabaseHook(hook);
+        await using var reinstalled = new InProcessAgent(app);
+
+        // The re-enrollment has read the node's keys, and not saved yet, when the old key's session registers a new one.
+        Task? rotating = null;
+        hook.BeforeSave(c => c.ChangeTracker.Entries<NodeEnrollmentToken>().Any(e => e.Entity.NodeId == nodeId), async () =>
+        {
+            rotating = new CredentialRotationClient(Transport(agent))
+                .RegisterAsync(enrolled, enrolled.Panel, null, session.AccessToken, session.SessionId, newKey, Ct);
+            await Task.WhenAny(rotating, Task.Delay(TimeSpan.FromSeconds(1), Ct)); // registered, or waiting for the re-enrollment
+        });
+        await reinstalled.EnrollAsync(instructions.Token, instructions.PanelKeyFingerprint);
+        var refused = await Record.ExceptionAsync(() => rotating!);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
+        Assert.False(await db.NodeCredentials.AnyAsync(c => c.NodeId == nodeId && c.Status == NodeCredentialStatus.Pending, Ct));
+        Assert.NotNull(refused);
+    }
+
+    [DatabaseFact]
+    public async Task APendingKeyRevokedWhileItSignsInIsNotActivated()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var hook = new DatabaseHook();
+        using var app = factory.WithDatabaseHook(hook);
+        await using var agent = new InProcessAgent(app);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-revoked-at-sign-in");
+        var pending = await RegisterPendingKeyAsync(agent, enrolled);
+        var nodeId = new NodeId(enrolled.NodeId);
+
+        // Revoked once the sign-in with the pending key has read it, before the rotation completes.
+        hook.AfterQuery("challenge_CredentialId", async () =>
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            Assert.True((await scope.ServiceProvider.GetRequiredService<NodeManagement>()
+                .RevokeCredentialAsync(nodeId, pending.CredentialId, "Not ours", CancellationToken.None)).IsSuccess);
+        });
+        using (var key = agent.Keys.Open(pending.Key))
+        {
+            await Assert.ThrowsAsync<AgentRejectedException>(() =>
+                new PanelAuthenticator(Transport(agent)).AuthenticateAsync(enrolled with { CredentialId = pending.CredentialId, Key = pending.Key }, key, Ct));
+        }
+
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, pending.CredentialId, NodeCredentialStatus.Revoked);
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, enrolled.CredentialId, NodeCredentialStatus.Active);
+        await using var check = factory.Services.CreateAsyncScope();
+        var db = check.ServiceProvider.GetRequiredService<PulsarDbContext>();
+        var refusals = await db.AuditLog.Where(e => e.Action == AuditActions.Node.AuthenticationFailed && e.NodeId == nodeId).ToListAsync(Ct);
+        Assert.Contains(refusals, e => e.Metadata.Contains("\"inactive_while_signing_in\"", StringComparison.Ordinal));
+    }
+
+    [DatabaseFact]
     public async Task TheNewKeysFirstSignInClosesTheOldKeysConnection()
     {
         using var admin = await factory.CreateAdminClientAsync();

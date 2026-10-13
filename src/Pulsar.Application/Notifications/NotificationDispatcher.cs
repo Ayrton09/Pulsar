@@ -76,7 +76,10 @@ public sealed partial class NotificationDispatcher(IServiceScopeFactory scopes, 
 
         if (delivery.Status != DeliveryStatus.Pending || delivery.Attempts != attempt)
         {
-            return; // read after the lease ran out: another sender took it (and may have sent it) meanwhile
+            // Read after the lease ran out: another sender took it (and may have sent it) meanwhile. Rare, as this read
+            // follows the take; a send slower than the lease is not caught here, and the next sender may repeat it (at
+            // least once: only the final outcome is protected, by the save below).
+            return;
         }
 
         try

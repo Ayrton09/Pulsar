@@ -194,14 +194,44 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
         var nodeId = new NodeId(agent.NodeId);
         var challenge = await agent.ChallengeAsync();
 
-        // Disabled once the sign-in recorded its use of the key, before it has a session to end.
-        hook.AfterSave(c => c.ChangeTracker.Entries<NodeCredential>().Any(e => e.Entity.NodeId == nodeId), async () =>
+        // Disabled once the sign-in recorded its use of the key (and let the node's row go), before it has a session to end.
+        hook.AfterCommit(c => c.ChangeTracker.Entries<NodeCredential>().Any(e => e.Entity.NodeId == nodeId), async () =>
         {
             await using var scope = app.Services.CreateAsyncScope();
             Assert.True((await scope.ServiceProvider.GetRequiredService<NodeManagement>().DisableAsync(nodeId, CancellationToken.None)).IsSuccess);
         });
         using var signedIn = await agent.PostTokenAsync(challenge);
 
+        Assert.Equal(HttpStatusCode.Unauthorized, signedIn.StatusCode);
+    }
+
+    [DatabaseFact]
+    public async Task ASignInRacingARevocationOfItsKeyIsRefusedWithoutADeadlock()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "node-revoked-at-sign-in");
+        var hook = new DatabaseHook();
+        using var app = factory.WithDatabaseHook(hook);
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        var nodeId = new NodeId(agent.NodeId);
+        var challenge = await agent.ChallengeAsync();
+
+        // The revocation holds the node's row and has read the key when the sign-in records its use of the key and marks
+        // the node seen; the revocation then writes the key.
+        Task<HttpResponseMessage>? signingIn = null;
+        hook.AfterQuery("FROM node_credentials", async () =>
+        {
+            signingIn = agent.PostTokenAsync(challenge);
+            await WaitForALockWaitAsync();
+        });
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            Assert.True((await scope.ServiceProvider.GetRequiredService<NodeManagement>()
+                .RevokeCredentialAsync(nodeId, agent.CredentialId, "Key leaked", Ct)).IsSuccess);
+        }
+
+        using var signedIn = await signingIn!;
         Assert.Equal(HttpStatusCode.Unauthorized, signedIn.StatusCode);
     }
 
@@ -285,11 +315,12 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
     }
 
     [DatabaseFact]
-    public async Task DisablingOrDeletingANodeIsNotLostToItsAgentsWrites()
+    public async Task ChangingDisablingOrDeletingANodeIsNotLostToItsAgentsWrites()
     {
         using var admin = await factory.CreateAdminClientAsync();
         var disabled = new NodeId((await CreateNodeAsync(admin, "node-disable-while-seen")).Node.Id);
         var deleted = new NodeId((await CreateNodeAsync(admin, "node-delete-while-seen")).Node.Id);
+        var renamed = new NodeId((await CreateNodeAsync(admin, "node-rename-while-seen")).Node.Id);
         var hook = new DatabaseHook();
         using var app = factory.WithDatabaseHook(hook);
         await using var scope = app.Services.CreateAsyncScope();
@@ -306,10 +337,14 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
         Assert.True((await nodes.DisableAsync(disabled, Ct)).IsSuccess);
         hook.BeforeSave(c => c.ChangeTracker.Entries<Node>().Any(e => e.Entity.Id == deleted && e.State == EntityState.Deleted), seen(deleted));
         Assert.True((await nodes.DeleteAsync(deleted, Ct)).IsSuccess);
+        hook.BeforeSave(c => c.ChangeTracker.Entries<Node>().Any(e => e.Entity.Id == renamed && e.State == EntityState.Modified), seen(renamed));
+        Assert.True((await nodes.UpdateAsync(renamed, "node-renamed-while-seen", "Renamed", null, Ct)).IsSuccess);
 
         Assert.Equal(NodeStatus.Disabled, (await GetNodeAsync(admin, disabled.Value)).Node.Status);
         using var gone = await admin.GetAsync($"/api/v1/nodes/{deleted}");
         Assert.Equal(HttpStatusCode.NotFound, gone.StatusCode);
+        var node = (await GetNodeAsync(admin, renamed.Value)).Node;
+        Assert.Equal(("node-renamed-while-seen", "Renamed"), (node.Name, node.Description));
     }
 
     [DatabaseFact]
@@ -346,6 +381,20 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
         Assert.Equal(status, response.StatusCode);
         var error = await response.Content.ReadFromJsonAsync<AgentError>(ProtocolJson.Options, Ct);
         Assert.Equal(code, error!.Code);
+    }
+
+    /// <summary>Until a connection to the test's database waits for a lock another one holds.</summary>
+    private async Task WaitForALockWaitAsync()
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        while (await db.Database.SqlQuery<int>(
+            $"SELECT count(*)::int AS \"Value\" FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'").SingleAsync(Ct) == 0)
+        {
+            Assert.True(DateTimeOffset.UtcNow < deadline, "Nothing waited for a lock.");
+            await Task.Delay(TimeSpan.FromMilliseconds(20), Ct);
+        }
     }
 
     /// <summary>A hub argument sent as written, for what the agent's own serializer would never write.</summary>

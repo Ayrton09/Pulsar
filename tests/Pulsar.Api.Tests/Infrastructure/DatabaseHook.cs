@@ -10,20 +10,23 @@ namespace Pulsar.Api.Tests.Infrastructure;
 
 /// <summary>
 /// Puts a concurrent change at an exact point of a panel's database work: an action run once, right before or right
-/// after the save of a context that matches, or right after a query whose text matches (its rows are those of before).
-/// Armed again for each use.
+/// after the save of a context that matches, right after the commit of a transaction of a context that matches, or right
+/// after a query whose text matches (its rows are those of before). Armed again for each use.
 /// </summary>
-public sealed class DatabaseHook : DbCommandInterceptor, ISaveChangesInterceptor
+public sealed class DatabaseHook : DbCommandInterceptor, ISaveChangesInterceptor, IDbTransactionInterceptor
 {
     private readonly Lock _lock = new();
     private Func<DbContext, bool>? _beforeSave;
     private Func<DbContext, bool>? _afterSave;
+    private Func<DbContext, bool>? _afterCommit;
     private string? _afterQuery;
     private Func<Task>? _action;
 
     public void BeforeSave(Func<DbContext, bool> when, Func<Task> action) => Arm(() => _beforeSave = when, action);
 
     public void AfterSave(Func<DbContext, bool> when, Func<Task> action) => Arm(() => _afterSave = when, action);
+
+    public void AfterCommit(Func<DbContext, bool> when, Func<Task> action) => Arm(() => _afterCommit = when, action);
 
     public void AfterQuery(string sqlFragment, Func<Task> action) => Arm(() => _afterQuery = sqlFragment, action);
 
@@ -46,6 +49,15 @@ public sealed class DatabaseHook : DbCommandInterceptor, ISaveChangesInterceptor
         }
 
         return result;
+    }
+
+    async Task IDbTransactionInterceptor.TransactionCommittedAsync(DbTransaction transaction, TransactionEndEventData eventData,
+        CancellationToken cancellationToken)
+    {
+        if (eventData.Context is { } context && Take(ref _afterCommit, context) is { } action)
+        {
+            await action();
+        }
     }
 
     public override async ValueTask<DbDataReader> ReaderExecutedAsync(DbCommand command, CommandExecutedEventData eventData, DbDataReader result,

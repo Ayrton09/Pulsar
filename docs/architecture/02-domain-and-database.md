@@ -610,8 +610,9 @@ CREATE INDEX ix_notification_deliveries_due ON notification_deliveries (next_att
 CREATE INDEX ix_notification_deliveries_subject ON notification_deliveries (channel_id, event, subject, created_at);
 -- Retries after 30 s, 2 min, 10 min, 30 min and 1 h, then failed; Discord's 429 waits as long as it asks; other
 -- refusals (a deleted webhook, a rejected address) fail at once. Sent and failed deliveries are kept 30 days.
--- A sent or failed delivery stays so: a sender whose 2-minute lease ran out sends nothing once another one took it, and
--- its outcome is not saved over theirs (the row version, xmin).
+-- A sent or failed delivery stays so: a sender whose 2-minute lease ran out does not save its outcome over the one of
+-- the sender that took it next (the row version, xmin). Delivery is at least once: a send slower than the lease can be
+-- repeated by the next sender, so the message may arrive twice.
 
 -- ===================== Audit =====================
 CREATE TABLE audit_logs (

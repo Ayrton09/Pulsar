@@ -55,7 +55,8 @@ public sealed record AgentTransport(bool ThroughAgentsEndpoint, byte[]? ClientKe
 /// Whether agent sessions need a client certificate (the switch on the Nodes page), kept in memory for the request
 /// paths and changed only by <see cref="AgentTransportManagement"/>; the panel is a single instance. It is read from
 /// the database before the first sign-in needs it: a session without a certificate only comes from a sign-in, so the
-/// checks of later requests always see it loaded.
+/// checks of later requests always see it loaded. While it is unknown (not read yet, or a change whose outcome is
+/// unknown, until it is read again) it counts as on: a session's requests are refused rather than let through.
 /// </summary>
 public sealed class AgentTransportPolicy
 {
@@ -65,7 +66,7 @@ public sealed class AgentTransportPolicy
 
     private int _state;
 
-    public bool RequireClientCertificates => Volatile.Read(ref _state) == On;
+    public bool RequireClientCertificates => Volatile.Read(ref _state) != Off;
 
     /// <summary>One change at a time, so the switch in memory is the one saved last.</summary>
     internal SemaphoreSlim Changing { get; } = new(1, 1);
@@ -97,6 +98,9 @@ public sealed class AgentTransportPolicy
     // the switch on, or the switch's sweep sees its session.
     internal void Set(bool requireClientCertificates) => Interlocked.Exchange(ref _state, requireClientCertificates ? On : Off);
 
-    /// <summary>A change whose outcome is unknown: the switch is read from the database again before the next sign-in.</summary>
+    /// <summary>
+    /// A change whose outcome is unknown: the switch counts as on until it is read from the database again, before the
+    /// next sign-in. A full fence, as <see cref="Set"/> has.
+    /// </summary>
     internal void Forget() => Interlocked.Exchange(ref _state, Unknown);
 }
