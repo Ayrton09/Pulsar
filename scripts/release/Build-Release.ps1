@@ -57,7 +57,8 @@ Pulsar $Version for Windows (x64)
 
 Install: open PowerShell as administrator in this folder and run
     powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1
-The guide is docs\install.md. Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas under MIT.
+This folder must be one only administrators can change (docs\install.md, step 2 shows how to make it): the installer
+refuses to run from any other. The guide is docs\install.md. Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas under MIT.
 "@ | Set-Content (Join-Path $staging 'README.txt') -Encoding UTF8
 
 $zip = Join-Path $Output "$name.zip"

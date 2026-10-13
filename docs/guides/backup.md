@@ -18,10 +18,10 @@ settings), not with Windows' machine DPAPI, so a backup can be restored on anoth
 
 ## Backing up the panel
 
-On the panel's machine, in PowerShell as administrator, from the folder of the extracted release ZIP:
+On the panel's machine, in PowerShell as administrator, run the copy the installer keeps in the panel's folder:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Backup-Pulsar.ps1 -Destination D:\Backups
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\Pulsar\Panel\Backup-Pulsar.ps1" -Destination D:\Backups
 ```
 
 It writes `D:\Backups\pulsar-backup-<date>` with the database dump (`pulsar.dump`), the keys and certificates
@@ -33,10 +33,17 @@ administrators can change. Keep a copy away from the machine (another disk, anot
 To do it every night, create a task in Task Scheduler that runs, as SYSTEM:
 
 ```
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\PulsarSetup\Backup-Pulsar.ps1 -Destination D:\Backups
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\Pulsar\Panel\Backup-Pulsar.ps1" -Destination D:\Backups
 ```
 
-and delete old backup folders now and then.
+and delete old backup folders now and then. Point the task at that copy, never at one in a folder of your own (the
+extracted release, a download folder): the task runs the script as SYSTEM, so whoever can change the script gets the
+machine and the panel's secrets, and a folder made directly under `C:\` lets every signed-in account change it, game
+servers' accounts included. The installer puts the copy in the panel's folder, which only administrators can change,
+and replaces it with every update; the script itself refuses to run (backing up nothing) from a folder that accounts
+other than SYSTEM, Administrators and TrustedInstaller could change. If you made the task as earlier versions of this
+guide said, for `C:\PulsarSetup\Backup-Pulsar.ps1`, change its path to the one above and delete that folder: the old
+copy there does not check where it runs, and anyone could have changed it.
 
 If PostgreSQL runs on another machine, pass the folder of PostgreSQL's programs (`pg_dump.exe`, from a PostgreSQL
 installation of the same or a later major version) with `-PostgresBin`.

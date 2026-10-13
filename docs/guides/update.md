@@ -14,8 +14,20 @@ keep working while you get to each of them; an agent newer than its panel is ref
 
 ## Updating
 
-On each machine, download and check the new release ZIP as in [install.md](install.md) (step 2), extract it to a new
-folder, open PowerShell as administrator there and run:
+On each machine, download and check the new release ZIP as in [install.md](install.md) (step 2), and extract it into a
+new folder that only administrators can change, as step 2 shows, for example `C:\PulsarSetup-<version>`:
+
+```powershell
+New-Item -ItemType Directory C:\PulsarSetup-<version>
+icacls C:\PulsarSetup-<version> /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F"
+Unblock-File .\pulsar-<version>-windows-x64.zip
+Expand-Archive .\pulsar-<version>-windows-x64.zip C:\PulsarSetup-<version>
+```
+
+The update runs as administrator and copies the new programs into `C:\Program Files\Pulsar`, where they run as
+services: from a folder other accounts could change (a game server's account among them), whoever changed a program
+there would take over the machine, so the installer refuses such a folder and changes nothing. Then, in that
+PowerShell, go to the new folder and run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Update
@@ -23,8 +35,9 @@ powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Update
 
 It updates whatever this machine has, the panel, the agent or both:
 
-- **Panel**: the PulsarPanel service stops, its programs are replaced and it starts again, applying any database
-  changes at start. Browsers reconnect on their own; signed-in users stay signed in.
+- **Panel**: the PulsarPanel service stops, its programs are replaced (the copy of `Backup-Pulsar.ps1` in its folder
+  too, which a nightly backup task runs) and it starts again, applying any database changes at start. Browsers
+  reconnect on their own; signed-in users stay signed in.
 - **Agent**: the PulsarAgent service stops, its programs are replaced and it starts again. **The node's game servers
   keep running**: each runs in a host process of its own, which the agent takes over again when it starts, and players
   stay connected, and their consoles continue where they were. (With `Pulsar:ServerHosts` set to `false` in the agent's
@@ -37,6 +50,10 @@ Intune and group policies can deploy the new package the same way. An older pack
 updates only the panel, if the machine has one): the MSI and the script each maintain only the agents they installed.
 
 The settings files (`appsettings.Production.json`) are never replaced.
+
+A nightly backup task that runs `Backup-Pulsar.ps1` from an extracted release folder (`C:\PulsarSetup`, as this guide
+once said) should run the copy in `C:\Program Files\Pulsar\Panel` instead, and the old folder be deleted
+([backup.md](backup.md)): it runs as SYSTEM, and the old folder let any account change it.
 
 ## If something goes wrong
 

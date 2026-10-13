@@ -65,7 +65,7 @@ public sealed class ApiKey
         DateTimeOffset? expiresAt, DateTimeOffset now)
     {
         var trimmed = name?.Trim();
-        if (string.IsNullOrEmpty(trimmed) || trimmed.Length > MaxNameLength || trimmed.Any(char.IsControl))
+        if (string.IsNullOrEmpty(trimmed) || trimmed.Length > MaxNameLength || !DisplayNames.IsDisplayable(trimmed))
         {
             return AccessErrors.ApiKeyNameInvalid;
         }

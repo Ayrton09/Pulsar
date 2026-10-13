@@ -501,8 +501,14 @@ try {
         } 120)
     Check 'msi: enrollment kept' (Test-Path $agentConfig)
 
-    # The ZIP's installer leaves an agent from the MSI alone (this machine has no panel service for it to handle).
-    $installScript = Join-Path $Bundle 'Install-Pulsar.ps1'
+    # The ZIP's installer leaves an agent from the MSI alone (this machine has no panel service for it to handle). It runs
+    # only from a folder administrators alone can change, as the install guide has the release extracted: not the bundle's.
+    $setup = 'C:\PulsarSetup'
+    New-Item -ItemType Directory $setup | Out-Null
+    $null = icacls.exe $setup /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F'
+    Copy-Item (Join-Path $Bundle 'Install-Pulsar.ps1') $setup
+    Copy-Item (Join-Path $Bundle 'agent') $setup -Recurse
+    $installScript = Join-Path $setup 'Install-Pulsar.ps1'
     foreach ($arguments in @(@('-Update'), @('-Uninstall'), @('-Mode', 'Agent', '-PanelUrl', $panel, '-Token', 'unused', '-PanelKey', 'unused'))) {
         $refused = & {
             $ErrorActionPreference = 'Continue'

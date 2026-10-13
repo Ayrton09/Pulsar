@@ -90,9 +90,10 @@ Superuser:             Host=localhost;Port=$Port;Username=postgres;Password=$sup
         Invoke-PgCtl @('start', '-D', $data, '-l', $logFile, '-w')
         $env:PGPASSWORD = $superPassword
         try {
-            Invoke-Native 'psql.exe' @('-h', 'localhost', '-p', $Port, '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1',
-                '-c', "CREATE ROLE pulsar_dev LOGIN CREATEDB PASSWORD '$devPassword';",
-                '-c', 'CREATE DATABASE pulsar OWNER pulsar_dev;')
+            # On standard input, not the command line: every process on this machine can read command lines.
+            "CREATE ROLE pulsar_dev LOGIN CREATEDB PASSWORD '$devPassword';`nCREATE DATABASE pulsar OWNER pulsar_dev;" |
+                & (Join-Path $bin 'psql.exe') -h localhost -p $Port -U postgres -d postgres -v ON_ERROR_STOP=1 -f -
+            if ($LASTEXITCODE -ne 0) { throw "psql.exe failed with exit code $LASTEXITCODE" }
         }
         finally {
             Remove-Item Env:PGPASSWORD

@@ -110,7 +110,7 @@ public sealed class ScheduledTask
     {
         ArgumentNullException.ThrowIfNull(payload);
         var trimmed = name?.Trim() ?? string.Empty;
-        if (trimmed.Length is 0 or > MaxNameLength || trimmed.Any(char.IsControl))
+        if (trimmed.Length is 0 or > MaxNameLength || !DisplayNames.IsDisplayable(trimmed))
         {
             return ScheduleErrors.NameInvalid;
         }

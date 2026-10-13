@@ -1,7 +1,9 @@
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using Microsoft.Extensions.Logging;
+using Microsoft.Win32.SafeHandles;
 
 namespace Pulsar.Agent.Core.Processes;
 
@@ -106,7 +108,7 @@ public sealed partial class GameHostService(
 
                 if (broken)
                 {
-                    Reset(server);
+                    GameHostPipes.Reset(server);
                     try
                     {
                         await Task.Delay(s_brokenPipePause, clock, stopping.Token).ConfigureAwait(false);
@@ -122,26 +124,13 @@ public sealed partial class GameHostService(
                 await ServeAsync(server, stopping.Token).ConfigureAwait(false);
                 // Also when the client already left (the pipe is broken, not connected): until it is disconnected, the
                 // next wait for a connection fails, which would end the host and its game.
-                Reset(server);
+                GameHostPipes.Reset(server);
             }
         }
 
         await EndGameAsync().ConfigureAwait(false);
         LogEnded(serverId);
         return 0;
-    }
-
-    /// <summary>Readies the pipe for the next connection, whatever state the last one left it in.</summary>
-    private static void Reset(NamedPipeServerStream server)
-    {
-        try
-        {
-            server.Disconnect();
-        }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
-        {
-            // Never connected, or already disconnected.
-        }
     }
 
     private async Task ServeAsync(NamedPipeServerStream stream, CancellationToken cancellationToken)
@@ -697,4 +686,30 @@ public static class GameHostPipes
     /// </summary>
     public static NamedPipeClientStream CreateClient(string name) =>
         new(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+
+    /// <summary>
+    /// Readies the host's end for the next connection, whatever state the last one left it in: also after a client that
+    /// connected and left before the host waited for it (the agent looking at the pipe's owner, say), which .NET does not
+    /// disconnect as it never saw it connect. Left so, the pipe would fail every wait and no agent could reach the host.
+    /// </summary>
+    internal static void Reset(NamedPipeServerStream server)
+    {
+        try
+        {
+            server.Disconnect();
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            // Never connected as .NET saw it, or already disconnected: the pipe itself may still hold a client that left.
+            if (OperatingSystem.IsWindows())
+            {
+                _ = DisconnectNamedPipe(server.SafePipeHandle);
+            }
+        }
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DisconnectNamedPipe(SafePipeHandle pipe);
 }

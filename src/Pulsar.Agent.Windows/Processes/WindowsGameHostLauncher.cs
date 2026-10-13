@@ -5,10 +5,14 @@ using System.Security.Principal;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
 using Pulsar.Agent.Core.Processes;
+using Windows.Wdk.System.SystemInformation;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.Security;
+using Windows.Win32.Security.Authorization;
+using Windows.Win32.Storage.FileSystem;
 using Windows.Win32.System.Threading;
+using Windows.Win32.System.WindowsProgramming;
 
 namespace Pulsar.Agent.Windows.Processes;
 
@@ -30,6 +34,7 @@ public sealed partial class WindowsGameHostLauncher(Func<string> program, string
     : IGameHostLauncher
 {
     private const uint SddlRevision1 = 1;
+    private const uint ReadControl = 0x00020000;
 
     // The creator (SYSTEM, or the developer) owns it; Administrators may end it and wait for it (PROCESS_TERMINATE |
     // PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE).
@@ -274,14 +279,14 @@ public sealed partial class WindowsGameHostLauncher(Func<string> program, string
         {
             var error = Marshal.GetLastPInvokeError();
             process.Dispose();
-            return IsGoneAfterFailedOpen(host, error, PipeExists) ? null : throw Unverifiable(host, error);
+            return IsGoneAfterFailedOpen(host, error, MayBeRunning) ? null : throw Unverifiable(host, error);
         }
 
         if (StartTime(process) is not { } started)
         {
             var error = Marshal.GetLastPInvokeError();
             process.Dispose();
-            return IsGoneAfterFailedOpen(host, error, PipeExists) ? null : throw Unverifiable(host, error);
+            return IsGoneAfterFailedOpen(host, error, MayBeRunning) ? null : throw Unverifiable(host, error);
         }
 
         if (started != host.ProcessStartedAt)
@@ -296,32 +301,151 @@ public sealed partial class WindowsGameHostLauncher(Func<string> program, string
     /// <summary>
     /// What a process that cannot be opened (or read) means. ERROR_INVALID_PARAMETER: there is no such process. Any other
     /// failure (access denied: after a reboot a stale record's id may belong to a protected or SYSTEM process) says nothing
-    /// about our host, so a second test that needs no process handle decides: the host's named pipe. No pipe, no host
-    /// (it creates the pipe first thing and keeps it while it lives); a pipe, and it may well be running.
+    /// about our host, so tests that need no process handle decide (<see cref="MayBeRunning(GameHostReference)"/>).
     /// </summary>
     /// <returns>True when the host is gone.</returns>
-    /// <exception cref="GameProcessException"><see cref="GameHostManager.HostUnverifiable"/>: the pipe exists.</exception>
-    internal static bool IsGoneAfterFailedOpen(GameHostReference host, int error, Func<string, bool> pipeExists) =>
-        error == (int)WIN32_ERROR.ERROR_INVALID_PARAMETER || !pipeExists(host.Pipe)
+    /// <exception cref="GameProcessException"><see cref="GameHostManager.HostUnverifiable"/>: the host may be running.</exception>
+    internal static bool IsGoneAfterFailedOpen(GameHostReference host, int error, Func<GameHostReference, bool> mayBeRunning) =>
+        error == (int)WIN32_ERROR.ERROR_INVALID_PARAMETER || !mayBeRunning(host)
             ? true
             : throw Unverifiable(host, error);
 
-    /// <summary>Whether a named pipe exists, found by listing the pipe namespace: that needs no access to the pipe itself.</summary>
-    internal static bool PipeExists(string name)
+    /// <summary>
+    /// Whether a host whose process cannot be opened may still run, told by its named pipe: it creates the pipe first
+    /// thing and keeps it while it lives. Any account can create a pipe under a name it saw in the pipe namespace, so the
+    /// name alone proves nothing: a host's pipe lets the agent's account in and is owned by the agent's default owner (the
+    /// owner the agent's end requires, <see cref="GameHostPipes.CreateClient"/>; for SYSTEM the Administrators group),
+    /// which no game server's account can give a pipe of its own. When the owner cannot be read (every instance busy, as
+    /// anyone can keep a pipe of their own), the system's process list decides: a process with the host's id and start
+    /// time, which no other process can have. When neither can tell, the host may be running.
+    /// </summary>
+    internal static bool MayBeRunning(GameHostReference host)
     {
+        using var identity = WindowsIdentity.GetCurrent();
+        return MayBeRunning(host, ProbePipe, identity.Owner, IsListed);
+    }
+
+    internal static bool MayBeRunning(GameHostReference host, Func<string, (PipeProbe Probe, SecurityIdentifier? Owner)> probe,
+        SecurityIdentifier? defaultOwner, Func<GameHostReference, bool?> listed)
+    {
+        var (found, owner) = probe(host.Pipe);
+        return found switch
+        {
+            PipeProbe.Missing or PipeProbe.Refused => false,
+            PipeProbe.Owned => defaultOwner is null || owner == defaultOwner,
+            _ => listed(host) ?? true,
+        };
+    }
+
+    /// <summary>
+    /// Whether the system's process list has a process with the host's id and start time, read without a handle to any
+    /// process. Null when the list cannot be read.
+    /// </summary>
+    internal static unsafe bool? IsListed(GameHostReference host)
+    {
+        const int InfoLengthMismatch = unchecked((int)0xC0000004);
+        // The process's creation time, in winternl.h's Reserved1 (CreateTime in the full structure, the same on every
+        // architecture: two 64-bit fields and two 32-bit ones come before it).
+        const int CreateTimeOffset = 24;
+        var size = 1024u * 1024;
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var buffer = (byte*)NativeMemory.Alloc(size);
+            try
+            {
+                uint needed = 0;
+                var status = global::Windows.Wdk.PInvoke.NtQuerySystemInformation(SYSTEM_INFORMATION_CLASS.SystemProcessInformation, buffer, size, &needed);
+                if (status.Value == InfoLengthMismatch)
+                {
+                    size = Math.Max(size * 2, needed + (64 * 1024));
+                    continue;
+                }
+
+                if (status.Value < 0)
+                {
+                    return null;
+                }
+
+                for (var entry = buffer; ; entry += ((SYSTEM_PROCESS_INFORMATION*)entry)->NextEntryOffset)
+                {
+                    var process = (SYSTEM_PROCESS_INFORMATION*)entry;
+                    if ((nint)process->UniqueProcessId.Value == host.ProcessId)
+                    {
+                        var created = *(long*)((byte*)&process->Reserved1 + CreateTimeOffset);
+                        return DateTimeOffset.FromFileTime(created).ToUniversalTime() == host.ProcessStartedAt;
+                    }
+
+                    if (process->NextEntryOffset == 0)
+                    {
+                        return false;
+                    }
+                }
+            }
+            finally
+            {
+                NativeMemory.Free(buffer);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Opens a pipe by name to read its owner, and nothing else: no data access, and anonymous to whoever serves it (which
+    /// cannot then act as the agent). An instance that is free is connected to for that moment; when every instance is
+    /// busy, the owner cannot be read.
+    /// </summary>
+    internal static unsafe (PipeProbe Probe, SecurityIdentifier? Owner) ProbePipe(string name)
+    {
+        if (name.Length == 0 || name.Any(c => !char.IsAsciiLetterOrDigit(c) && c != '-'))
+        {
+            return (PipeProbe.Unknown, null);
+        }
+
+        using var handle = PInvoke.CreateFile(@"\\.\pipe\" + name, ReadControl, FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE,
+            null, FILE_CREATION_DISPOSITION.OPEN_EXISTING,
+            FILE_FLAGS_AND_ATTRIBUTES.SECURITY_SQOS_PRESENT | FILE_FLAGS_AND_ATTRIBUTES.SECURITY_ANONYMOUS, null);
+        if (handle.IsInvalid)
+        {
+            return (WIN32_ERROR)Marshal.GetLastPInvokeError() switch
+            {
+                WIN32_ERROR.ERROR_FILE_NOT_FOUND or WIN32_ERROR.ERROR_PATH_NOT_FOUND => (PipeProbe.Missing, null),
+                // A host's pipe always lets the agent's account in: one that refuses it is someone else's.
+                WIN32_ERROR.ERROR_ACCESS_DENIED => (PipeProbe.Refused, null),
+                _ => (PipeProbe.Unknown, null), // every instance busy, or anything else
+            };
+        }
+
+        PSID owner;
+        PSECURITY_DESCRIPTOR descriptor;
+        if (PInvoke.GetSecurityInfo((HANDLE)handle.DangerousGetHandle(), SE_OBJECT_TYPE.SE_KERNEL_OBJECT, OBJECT_SECURITY_INFORMATION.OWNER_SECURITY_INFORMATION,
+                &owner, null, null, null, &descriptor) != WIN32_ERROR.ERROR_SUCCESS)
+        {
+            return (PipeProbe.Unknown, null);
+        }
+
         try
         {
-            return Directory.EnumerateFiles(@"\\.\pipe\").Any(p => string.Equals(Path.GetFileName(p), name, StringComparison.Ordinal));
+            return owner.Value is null ? (PipeProbe.Unknown, null) : (PipeProbe.Owned, new SecurityIdentifier((nint)owner.Value));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        finally
         {
-            return true; // cannot tell: not "gone"
+            PInvoke.LocalFree((HLOCAL)descriptor.Value);
         }
+    }
+
+    /// <summary>What opening a pipe for its owner found.</summary>
+    internal enum PipeProbe
+    {
+        Missing,
+        Refused,
+        Owned,
+        Unknown,
     }
 
     private static GameProcessException Unverifiable(GameHostReference host, int error) =>
         new(GameHostManager.HostUnverifiable,
-            $"The host process {host.ProcessId} could not be opened to check it, and its pipe exists: {new Win32Exception(error).Message} (Win32 error {error}).");
+            $"The host process {host.ProcessId} could not be opened to check it, and it may be running: {new Win32Exception(error).Message} (Win32 error {error}).");
 
     private static DateTimeOffset? StartTime(SafeHandle process)
     {

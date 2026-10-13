@@ -373,11 +373,22 @@ public sealed partial class SteamCmdRunner(
     /// <see cref="TakeBack"/> once nothing of the server's account runs outside the run's Job. The sweep before the
     /// install happened before SteamCMD started: a process of the server that outlived it could write its own
     /// <c>config.vdf</c> meanwhile, and the agent would lend that to every server using the account. If the sweep killed
-    /// anything the file is deleted and not kept.
+    /// anything, or failed, the file is deleted and not kept.
     /// </summary>
     private byte[]? TakeBackIfAlone(SteamCmdJob job)
     {
-        var killed = processes.TerminateStrayProcesses(job.Identity);
+        int killed;
+        try
+        {
+            killed = processes.TerminateStrayProcesses(job.Identity);
+        }
+        catch
+        {
+            // Nobody can say what ran beside the run: the login still leaves the server's folder, and is not kept.
+            TakeBack(job);
+            throw;
+        }
+
         var cached = TakeBack(job);
         if (killed > 0)
         {

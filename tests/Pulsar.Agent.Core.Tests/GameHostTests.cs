@@ -328,6 +328,29 @@ public sealed class GameHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task APipeAClientLeftBeforeTheHostWaitedTakesTheNextConnection()
+    {
+        // The agent looks at a pipe's owner by opening it (WindowsGameHostLauncher.ProbePipe), as a client that leaves at
+        // once; a free instance it opens before the host waits is left broken, and every wait fails until it is reset.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows named pipes.");
+        var name = GameHostProtocol.NewPipeName(Guid.NewGuid());
+        await using var server = GameHostPipes.CreateServer(name);
+        await using (var early = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous))
+        {
+            await early.ConnectAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
+
+        await Assert.ThrowsAsync<IOException>(() => server.WaitForConnectionAsync(TestContext.Current.CancellationToken));
+        GameHostPipes.Reset(server);
+
+        var waiting = server.WaitForConnectionAsync(TestContext.Current.CancellationToken);
+        await using var next = GameHostPipes.CreateClient(name);
+        await next.ConnectAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        await waiting.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.True(server.IsConnected);
+    }
+
+    [Fact]
     public async Task AHostThatAcceptsTheConnectionButNeverAnswersIsKilled()
     {
         await using var launcher = new ScriptedHostLauncher(_ => null);
