@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -30,6 +31,43 @@ public sealed partial class CngNodeKeyStore(ILogger<CngNodeKeyStore> logger) : I
     /// <summary>Tests: waits between the TPM's attempts.</summary>
     internal Action<TimeSpan> Sleep { get; init; } = Thread.Sleep;
 
+    /// <summary>
+    /// Whether there may be a TPM (the TPM Base Services' answer), asked only when an attempt failed with a "not now" code.
+    /// Tests replace it.
+    /// </summary>
+    internal Func<bool> TpmPresent { get; init; } = AskTbs;
+
+    /// <summary>
+    /// What <c>Tbsi_GetDeviceInfo</c> answered, as to whether a TPM may be there: TBS_E_TPM_NOT_FOUND and TBS_E_SERVICE_DISABLED
+    /// say there is none to wait for; success, or a service that is not running or starting, says there may be.
+    /// </summary>
+    internal static bool TpmMayBePresent(int tbsResult) => unchecked((uint)tbsResult) is not (0x8028400F or 0x80284010);
+
+    private static bool AskTbs()
+    {
+        try
+        {
+            var info = default(TpmDeviceInfo);
+            return TpmMayBePresent(unchecked((int)Tbsi_GetDeviceInfo((uint)Marshal.SizeOf<TpmDeviceInfo>(), ref info)));
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return false; // no TPM Base Services
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TpmDeviceInfo
+    {
+        public uint StructVersion;
+        public uint TpmVersion;
+        public uint TpmInterfaceType;
+        public uint TpmImpRevision;
+    }
+
+    [LibraryImport("tbs.dll")]
+    private static partial uint Tbsi_GetDeviceInfo(uint size, ref TpmDeviceInfo info);
+
     public INodeKey Create(string name, NodeKeyScope scope)
     {
         for (var attempt = 0; ; attempt++)
@@ -38,7 +76,7 @@ public sealed partial class CngNodeKeyStore(ILogger<CngNodeKeyStore> logger) : I
             {
                 return CreateIn(s_platformProvider, NodeKeyStorage.Tpm, name, scope);
             }
-            catch (CryptographicException ex) when (IsTransient(ex) && attempt < s_tpmRetryDelays.Length)
+            catch (CryptographicException ex) when (IsTransient(ex) && attempt < s_tpmRetryDelays.Length && TpmPresent())
             {
                 LogTpmNotReady(ex.HResult, ex.Message, attempt + 1);
                 Sleep(s_tpmRetryDelays[attempt]);
@@ -61,7 +99,7 @@ public sealed partial class CngNodeKeyStore(ILogger<CngNodeKeyStore> logger) : I
     /// <summary>
     /// Errors that say "not now" rather than "not here": the device is not ready (NTE_DEVICE_NOT_READY), or the TPM base
     /// services are starting, busy or out of contexts (TBS_E_SERVICE_NOT_RUNNING, _TOO_MANY_TBS_CONTEXTS,
-    /// _TOO_MANY_RESOURCES, _SERVICE_START_PENDING, _COMMAND_CANCELED).
+    /// _TOO_MANY_RESOURCES, _SERVICE_START_PENDING, _COMMAND_CANCELED). Retried only when a TPM may be there (see TpmPresent).
     /// </summary>
     private static bool IsTransient(CryptographicException ex) => unchecked((uint)ex.HResult) is
         0x80090030 or 0x80284008 or 0x80284009 or 0x8028400A or 0x8028400B or 0x8028400D;

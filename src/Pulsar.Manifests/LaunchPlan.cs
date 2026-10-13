@@ -21,9 +21,6 @@ public sealed record LaunchPlan(
     /// <summary>The server's allocations, one per manifest port it was given.</summary>
     public IReadOnlyList<BoundPort> Ports { get; init; } = [];
 
-    /// <summary>Every port the manifest declares, bound or not (firewall rules of unbound ones are removed).</summary>
-    public IReadOnlyList<string> PortNames { get; init; } = [];
-
     /// <summary>Written before every start (<see cref="ConfigFileWriter"/>).</summary>
     public IReadOnlyList<RenderedConfigFile> ConfigFiles { get; init; } = [];
 
@@ -338,7 +335,6 @@ public static class LaunchPlanRenderer
         {
             // Internal ports (a console only the agent uses) are never opened in the firewall.
             Ports = [.. manifest.PortList.Where(p => ports.ContainsKey(p.Name) && !p.Internal).Select(p => new BoundPort(p.Name, ports[p.Name].IpAddress, ports[p.Name].Port, p.Protocols))],
-            PortNames = [.. manifest.PortList.Select(p => p.Name)],
             ConfigFiles = configFiles,
             Rcon = rcon,
             Query = manifest.Query is { } query ? QueryEndpointFor(query, ports) : null,

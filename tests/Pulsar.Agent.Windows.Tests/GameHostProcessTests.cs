@@ -105,7 +105,14 @@ public sealed class GameHostProcessTests : IAsyncDisposable
     {
         // The System process (id 4) cannot be opened without elevation: "access denied" says nothing about whether a host
         // runs, and only "no such process" means it does not.
-        var system = new GameHostReference("pulsar-host-none", 4, DateTimeOffset.UtcNow);
+        // Without a pipe of that name the host is gone (a stale record whose id a protected process has now); with one it may
+        // be running. (The mapping itself is tested without privileges above; this is the real thing where pid 4 is denied.)
+        var pipeName = "pulsar-host-" + Guid.NewGuid().ToString("N")[..16];
+        var system = new GameHostReference(pipeName, 4, DateTimeOffset.UtcNow);
+        Assert.False(_launcher.IsAlive(system));
+        Assert.True(_hosts.End(system));
+
+        using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
         var error = Record.Exception(() => _launcher.IsAlive(system));
         Assert.SkipWhen(error is null, "Elevated: the System process can be opened, so there is nothing that cannot be checked.");
 
@@ -119,6 +126,43 @@ public sealed class GameHostProcessTests : IAsyncDisposable
         Assert.False(_launcher.IsAlive(gone));
         Assert.True(_launcher.Kill(gone));
         Assert.True(_hosts.End(gone));
+    }
+
+    [Theory]
+    [InlineData(87, false, true)] // ERROR_INVALID_PARAMETER: no such process
+    [InlineData(87, true, true)] // ... whatever the pipe says
+    [InlineData(5, false, true)] // access denied, and the host's pipe is gone: the host is gone (a stale record, a reused id)
+    [InlineData(5, true, false)] // access denied, and the pipe exists: it may well be running
+    [InlineData(31, false, true)] // any other failure is judged the same way
+    [InlineData(31, true, false)]
+    public void WhatAFailedOpenMeansDependsOnTheErrorAndTheHostsPipe(int error, bool pipeExists, bool gone)
+    {
+        // The mapping on its own, so it is checked whatever rights the tests run with (pid 4 opens when elevated).
+        var host = new GameHostReference("pulsar-host-0123456789abcdef", 4, DateTimeOffset.UtcNow);
+
+        if (gone)
+        {
+            Assert.True(WindowsGameHostLauncher.IsGoneAfterFailedOpen(host, error, _ => pipeExists));
+        }
+        else
+        {
+            var unverifiable = Assert.Throws<GameProcessException>(() => WindowsGameHostLauncher.IsGoneAfterFailedOpen(host, error, _ => pipeExists));
+            Assert.Equal(GameHostManager.HostUnverifiable, unverifiable.Code);
+        }
+    }
+
+    [WindowsFact]
+    public async Task AHostsPipeIsFoundByNameEvenWhenItsAccessIsNotOurs()
+    {
+        var name = "pulsar-host-" + Guid.NewGuid().ToString("N")[..16];
+        Assert.False(WindowsGameHostLauncher.PipeExists(name));
+
+        await using (var pipe = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous))
+        {
+            Assert.True(WindowsGameHostLauncher.PipeExists(name));
+        }
+
+        Assert.False(WindowsGameHostLauncher.PipeExists(name));
     }
 
     [WindowsFact]

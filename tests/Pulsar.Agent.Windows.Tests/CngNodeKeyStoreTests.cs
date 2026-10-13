@@ -13,6 +13,7 @@ public sealed class CngNodeKeyStoreTests
 
     private readonly List<(LogLevel Level, string Message)> _log = [];
     private readonly List<TimeSpan> _slept = [];
+    private bool _tpmPresent = true;
 
     [Fact]
     public void ATpmThatIsNotReadyYetIsRetriedBeforeTheSoftwareKeyIsUsed()
@@ -57,6 +58,51 @@ public sealed class CngNodeKeyStoreTests
     }
 
     [Fact]
+    public void AMachineWithoutATpmDoesNotWaitForOneEvenWhenTheProviderSaysNotReady()
+    {
+        // The Platform Crypto Provider often answers NTE_DEVICE_NOT_READY where there is no usable TPM at all (VMs, CI, PCs
+        // without one): enrollment and rotation must not wait 3.5 s for a device that is not there.
+        _tpmPresent = false;
+        var tpmAttempts = 0;
+        var store = Store((provider, storage) =>
+        {
+            if (storage == NodeKeyStorage.Tpm)
+            {
+                tpmAttempts++;
+                throw new CryptographicException(DeviceNotReady);
+            }
+
+            return new FakeKey(storage);
+        });
+
+        var key = store.Create("pulsar-node", NodeKeyScope.Machine);
+
+        Assert.Equal(NodeKeyStorage.Software, key.Reference.Storage);
+        Assert.Equal(1, tpmAttempts);
+        Assert.Empty(_slept);
+        Assert.Single(_log, l => l.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public void ATbsCodeThatMeansThereIsNoTpmIsRecognizedAndAnythingElseIsTreatedAsAPossibleTpm()
+    {
+        Assert.False(CngNodeKeyStore.TpmMayBePresent(unchecked((int)0x8028400F))); // TBS_E_TPM_NOT_FOUND
+        Assert.False(CngNodeKeyStore.TpmMayBePresent(unchecked((int)0x80284010))); // TBS_E_SERVICE_DISABLED
+        Assert.True(CngNodeKeyStore.TpmMayBePresent(0)); // a device
+        Assert.True(CngNodeKeyStore.TpmMayBePresent(unchecked((int)0x80284008))); // the service is not running (yet)
+        Assert.True(CngNodeKeyStore.TpmMayBePresent(unchecked((int)0x8028400B))); // starting
+    }
+
+    [WindowsFact]
+    public void TheRealTbsQuestionAnswersOnAnyMachine()
+    {
+        // P/Invoke into tbs.dll with the right struct: no exception whether or not this machine has a TPM.
+        var answer = new CngNodeKeyStore(new ListLogger(_log)).TpmPresent();
+
+        _log.Add((LogLevel.Information, $"TBS says a TPM may be present: {answer}"));
+    }
+
+    [Fact]
     public void AnErrorThatMeansThereIsNoTpmFallsBackAtOnceAndSaysSo()
     {
         var tpmAttempts = 0;
@@ -84,6 +130,7 @@ public sealed class CngNodeKeyStoreTests
         {
             CreateKey = (provider, storage, _, _) => create(provider, storage),
             Sleep = _slept.Add,
+            TpmPresent = () => _tpmPresent,
         };
 
     private sealed class FakeKey(string storage) : INodeKey

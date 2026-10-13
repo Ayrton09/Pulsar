@@ -534,6 +534,81 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AHostThatCannotBeCheckedIsNotAnEarlierVersionAndIsCheckedAgainByAnyCommand()
+    {
+        _launcher = new InProcessHostLauncher(_games);
+        var serverId = Stored("abcd2345");
+        var running = _launcher.Launch(serverId, GameHostProtocol.NewPipeName(serverId));
+        _store.SaveHost(new GameHostRecord(serverId, running, 0, 0, Ready: true));
+        _launcher.Unverifiable = true;
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        // Not "runs under an earlier version of the agent": nothing is known about the version.
+        var restart = await host.ExecuteAsync(Envelope(new RestartServerCommand(serverId), null));
+        Assert.Equal((AckStatus.Rejected, "server.host_not_ended"), (restart.Status, restart.ErrorCode));
+
+        // The host goes (its pipe is gone): the next command of any kind finds out, instead of the server staying parked.
+        _launcher.Unverifiable = false;
+        _launcher.Kill(running);
+        await _launcher.WaitEndedAsync(running);
+        var again = await host.ExecuteAsync(Envelope(new RestartServerCommand(serverId), null));
+
+        Assert.NotEqual("server.host_not_ended", again.ErrorCode);
+        Assert.NotEqual("server.host_incompatible", again.ErrorCode);
+        Assert.Empty(_store.LoadHosts());
+    }
+
+    [Fact]
+    public async Task EndingAnUnverifiableHostSaysNothingAboutAnEarlierVersion()
+    {
+        _launcher = new InProcessHostLauncher(_games);
+        var serverId = Stored("abcd2345");
+        var running = _launcher.Launch(serverId, GameHostProtocol.NewPipeName(serverId));
+        _store.SaveHost(new GameHostRecord(serverId, running, 0, 0, Ready: true));
+        _launcher.Unverifiable = true;
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        _launcher.Unverifiable = false;
+
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new StopServerCommand(serverId), null))).Status);
+
+        await _launcher.WaitEndedAsync(running);
+        Assert.DoesNotContain("earlier version", Text(host, serverId), StringComparison.Ordinal);
+        Assert.Contains("could not be checked", Text(host, serverId), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhileAStrandedHostIsBeingEndedNoSecondCopyOfTheServerStarts()
+    {
+        _launcher = new InProcessHostLauncher(_games);
+        var serverId = Stored("abcd2345");
+        var stranded = _launcher.Launch(serverId, GameHostProtocol.NewPipeName(serverId),
+            new GameHostOptions { Protocol = GameHostProtocol.Version + 1 });
+        _store.SaveHost(new GameHostRecord(serverId, stranded, 0, 0, Ready: true));
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        using var gate = new ManualResetEventSlim();
+        _launcher.KillGate = gate;
+
+        // Ending it takes a while (up to 10 s for a real host); a start arrives meanwhile.
+        var stop = Task.Run(() => host.ExecuteAsync(Envelope(new StopServerCommand(serverId), null)), TestContext.Current.CancellationToken);
+        await WaitUntilAsync(() => _launcher.KillsWaiting > 0);
+        var start = Task.Run(() => host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null)), TestContext.Current.CancellationToken);
+        await Task.Delay(300, TestContext.Current.CancellationToken);
+
+        Assert.Empty(_games.Started); // the survivor is still there: nothing starts beside it
+        gate.Set();
+        await Task.WhenAll(stop, start).WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
+
+        Assert.Equal(AckStatus.Accepted, (await stop).Status);
+        await _launcher.WaitEndedAsync(stranded);
+        Assert.Equal(AckStatus.Accepted, (await start).Status);
+        await StartedAsync(); // once it is gone, the start goes ahead
+        Assert.Single(_games.Started);
+    }
+
+    [Fact]
     public async Task AHostThatSurvivesItsKillKeepsItsRecordAndTheStartIsRefused()
     {
         _launcher = new InProcessHostLauncher(_games);

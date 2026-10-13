@@ -12,12 +12,11 @@ public interface IServerFirewall
     /// <summary>Whether the agent manages rules on this node (announced to the panel).</summary>
     bool Enabled { get; }
 
-    /// <summary>Replaces the server's rules with ones for <paramref name="ports"/> (before every start).</summary>
-    /// <param name="portNames">Every port name of the server's manifest: rules of ports no longer bound are removed.</param>
-    void Allow(string shortId, string executablePath, IReadOnlyList<BoundPort> ports, IReadOnlyCollection<string> portNames);
+    /// <summary>Replaces every rule of the server (whatever ports it had) with ones for <paramref name="ports"/> (before every start).</summary>
+    void Allow(string shortId, string executablePath, IReadOnlyList<BoundPort> ports);
 
     /// <summary>Removes the server's rules (when it is deleted).</summary>
-    void Remove(string shortId, IReadOnlyCollection<string> portNames);
+    void Remove(string shortId);
 }
 
 /// <summary>The node's firewall is left to its administrator.</summary>
@@ -25,11 +24,11 @@ public sealed class UnmanagedFirewall : IServerFirewall
 {
     public bool Enabled => false;
 
-    public void Allow(string shortId, string executablePath, IReadOnlyList<BoundPort> ports, IReadOnlyCollection<string> portNames)
+    public void Allow(string shortId, string executablePath, IReadOnlyList<BoundPort> ports)
     {
     }
 
-    public void Remove(string shortId, IReadOnlyCollection<string> portNames)
+    public void Remove(string shortId)
     {
     }
 }

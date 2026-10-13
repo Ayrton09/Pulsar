@@ -25,7 +25,7 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
     public static string RuleName(string shortId, string portName, PortProtocol protocol) =>
         $"Pulsar {shortId} {portName} {(protocol == PortProtocol.Udp ? "udp" : "tcp")}";
 
-    public void Allow(string shortId, string executablePath, IReadOnlyList<BoundPort> ports, IReadOnlyCollection<string> portNames)
+    public void Allow(string shortId, string executablePath, IReadOnlyList<BoundPort> ports)
     {
         ArgumentNullException.ThrowIfNull(ports);
         if (!enabled)
@@ -72,7 +72,7 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
         LogRulesApplied(shortId, ports.Count);
     }
 
-    public void Remove(string shortId, IReadOnlyCollection<string> portNames)
+    public void Remove(string shortId)
     {
         if (!enabled)
         {
@@ -91,16 +91,16 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
     public static int RemoveAll(IReadOnlyCollection<string> shortIds)
     {
         ArgumentNullException.ThrowIfNull(shortIds);
-        return shortIds.Count == 0 ? 0 : RemoveWhere(name => shortIds.Any(id => IsRuleOf(id, Grouping, name)));
+        return shortIds.Count == 0 ? 0 : RemoveWhere(name => shortIds.Any(id => IsRuleOf(id, name)));
     }
 
     /// <summary>
-    /// Whether a rule is one the agent made for the server: of the agent's grouping and named <c>Pulsar &lt;shortId&gt; …</c>
-    /// (see <see cref="RuleName"/>), for whatever port: a game update may drop a port from its manifest, and its rule must
-    /// not outlive the manifest that named it.
+    /// Whether a rule (of the agent's grouping, which the caller has checked) is one the agent made for the server: named
+    /// <c>Pulsar &lt;shortId&gt; …</c> (see <see cref="RuleName"/>), for whatever port: a game update may drop a port from its
+    /// manifest, and its rule must not outlive the manifest that named it.
     /// </summary>
-    internal static bool IsRuleOf(string shortId, string grouping, string name) =>
-        grouping == Grouping && name.StartsWith($"{Grouping} {shortId} ", StringComparison.Ordinal);
+    internal static bool IsRuleOf(string shortId, string name) =>
+        name.StartsWith($"{Grouping} {shortId} ", StringComparison.Ordinal);
 
     /// <summary>Removes the rules of the agent's grouping whose name matches.</summary>
     internal static int RemoveWhere(Func<string, bool> match)
@@ -113,7 +113,7 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
     /// <summary>Every rule of the server, by prefix, whatever ports the manifest names now.</summary>
     private static void RemoveRules(dynamic rules, string shortId)
     {
-        Func<string, bool> match = name => IsRuleOf(shortId, Grouping, name); // (a lambda cannot be passed along a dynamic argument)
+        Func<string, bool> match = name => IsRuleOf(shortId, name); // (a lambda cannot be passed along a dynamic argument)
         RemoveMatching(rules, match);
     }
 

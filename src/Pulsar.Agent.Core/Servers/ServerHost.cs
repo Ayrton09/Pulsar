@@ -108,7 +108,7 @@ public sealed partial class ServerHost(
     private readonly ConcurrentDictionary<Guid, OperationCompleted> _unsavedResults = new(); // operation → result a failed write left in memory
     private readonly Lock _hostLock = new();
     private readonly ConcurrentDictionary<Guid, GameHostRecord> _savedHosts = new(); // host records as last written
-    private readonly ConcurrentDictionary<Guid, GameHostRecord> _strandedHosts = new(); // hosts of another protocol version, left running
+    private readonly ConcurrentDictionary<Guid, StrandedHost> _strandedHosts = new(); // hosts left running that this agent cannot drive
     private readonly ConsoleRelay _relay = new(panel, clock);
     private AgentConfig? _config;
     private Task _metrics = Task.CompletedTask;
@@ -429,7 +429,7 @@ public sealed partial class ServerHost(
             // Its record stays for an agent that speaks its protocol (or can check it); the server must not start beside it
             // meanwhile. A host that could not be checked is handled the same way: it may well be running.
             _savedHosts[record.ServerId] = host;
-            _strandedHosts[record.ServerId] = host;
+            _strandedHosts[record.ServerId] = new StrandedHost(host, unverifiable: ex.Code == GameHostManager.HostUnverifiable);
             return true;
         }
 
@@ -507,36 +507,75 @@ public sealed partial class ServerHost(
         }
     }
 
-    /// <summary>Ends the host of another protocol version a server's game was left in (a stop, kill or delete of the server).</summary>
-    private bool EndStrandedHost(Guid serverId)
+    /// <summary>
+    /// Ends the host a server's game was left in that this agent cannot drive (another protocol version, or a host that could
+    /// not be checked): a stop, kill or delete of the server. The entry stays until the host is really gone, and one command
+    /// at a time ends it (ending can take seconds): a start that arrives meanwhile waits, and finds it gone or still there.
+    /// </summary>
+    private bool EndStrandedHost(Guid serverId) => EndStrandedHost(serverId, out _);
+
+    private bool EndStrandedHost(Guid serverId, out StrandedHost? ended)
     {
-        if (!_strandedHosts.TryRemove(serverId, out var stranded))
+        ended = null;
+        if (!_strandedHosts.TryGetValue(serverId, out var stranded))
         {
             return false;
         }
 
-        LogStrandedHostEnded(serverId, stranded.Host.ProcessId);
-        if (!hosts!.End(stranded.Host))
+        lock (stranded)
         {
-            // Still there, or it cannot be checked: its record stays, and the server does not start beside it.
-            _strandedHosts[serverId] = stranded;
-            return false;
+            if (!_strandedHosts.TryGetValue(serverId, out var current) || current != stranded)
+            {
+                return false; // another command ended it while this one waited
+            }
+
+            LogStrandedHostEnded(serverId, stranded.Record.Host.ProcessId);
+            if (!hosts!.End(stranded.Record.Host))
+            {
+                return false; // still there, or it cannot be checked: its record stays, and the server does not start beside it
+            }
+
+            _strandedHosts.TryRemove(serverId, out _);
+            ForgetHost(serverId);
+            ended = stranded;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// A host that could not be checked is looked at again, whatever the command: gone (its pipe is, or its process is), its
+    /// record is dropped and the server is as after any agent restart. Nothing is killed here.
+    /// </summary>
+    private void RecheckUnverifiableHost(Guid serverId)
+    {
+        if (!_strandedHosts.TryGetValue(serverId, out var stranded) || !stranded.Unverifiable)
+        {
+            return;
         }
 
-        ForgetHost(serverId);
-        return true;
+        lock (stranded)
+        {
+            if (_strandedHosts.TryGetValue(serverId, out var current) && current == stranded && hosts!.IsGone(stranded.Record.Host))
+            {
+                _strandedHosts.TryRemove(serverId, out _);
+                ForgetHost(serverId);
+            }
+        }
     }
 
     /// <summary>As above, for a server that stays: its console tells the user what became of the game they could not see.</summary>
     private bool EndStrandedHost(Server server)
     {
-        if (!EndStrandedHost(server.Supervisor.ServerId))
+        if (!EndStrandedHost(server.Supervisor.ServerId, out var ended))
         {
             return false;
         }
 
-        server.Supervisor.Console.Note("An earlier version of the agent had left this server's game running, which this version cannot manage: " +
-            "ended the game (killed, without saving).", clock.GetUtcNow());
+        server.Supervisor.Console.Note(ended!.Unverifiable
+            ? "The agent had lost track of this server's game, left running by an earlier run, and it could not be checked: it is ended now " +
+              "(killed, without saving, if it still ran)."
+            : "An earlier version of the agent had left this server's game running, which this version cannot manage: " +
+              "ended the game (killed, without saving).", clock.GetUtcNow());
         return true;
     }
 
@@ -999,7 +1038,7 @@ public sealed partial class ServerHost(
                 // An earlier delete stopped the server but failed to clean up (the account could not be deleted, say):
                 // its record is still here, so this retry finishes the job.
                 return RunOperation(envelope, command.ServerId, operationId, _ignored =>
-                    CleanUpDeletedAsync(command.ServerId, record.Spec.ShortId, [.. Parse(record.Spec).PortList.Select(p => p.Name)]));
+                    CleanUpDeletedAsync(command.ServerId, record.Spec.ShortId));
             }
 
             if (store.SetAsideRecord(command.ServerId) is { } setAside)
@@ -1028,7 +1067,7 @@ public sealed partial class ServerHost(
             _servers.TryRemove(command.ServerId, out _);
             _relay.Unsubscribe(command.ServerId);
             await server.Supervisor.Console.DisposeAsync();
-            await CleanUpDeletedAsync(command.ServerId, server.ShortId, [.. server.Manifest.PortList.Select(p => p.Name)]);
+            await CleanUpDeletedAsync(command.ServerId, server.ShortId);
         });
     }
 
@@ -1036,14 +1075,14 @@ public sealed partial class ServerHost(
     /// What a deleted server leaves on disk, its record last: until everything else is gone, the record lets a retry of
     /// the delete (or the next start of the agent) find the server again.
     /// </summary>
-    private async Task CleanUpDeletedAsync(Guid serverId, string shortId, IReadOnlyList<string> portNames)
+    private async Task CleanUpDeletedAsync(Guid serverId, string shortId)
     {
         EndStrandedHost(serverId);
         DeleteConsoleLogs(shortId);
         var root = _config!.ServersRootOrDefault(configs.Paths);
         // Before the account goes: a process of a deleted account would keep running unnoticed.
         TerminateStrays(serverId, provisioner.Describe(root, shortId).Identity);
-        firewall.Remove(shortId, portNames);
+        firewall.Remove(shortId);
         await Task.Run(() => provisioner.Deprovision(root, shortId), CancellationToken.None); // never left half done
         DeleteBackups(shortId);
         ForgetHost(serverId);
@@ -1216,7 +1255,8 @@ public sealed partial class ServerHost(
             return new CommandAck(envelope.CommandId, AckStatus.Busy, "server.busy", "An operation is running on this server.");
         }
 
-        if (_strandedHosts.ContainsKey(serverId))
+        RecheckUnverifiableHost(serverId);
+        if (_strandedHosts.TryGetValue(serverId, out var stranded))
         {
             // Its game still runs in a host this agent cannot drive, and the panel shows the server offline (this agent
             // reports no game): a stop or kill ends that host (and the game); a start, the one action the panel offers
@@ -1232,9 +1272,11 @@ public sealed partial class ServerHost(
 
             if (envelope.Command is not StartServerCommand)
             {
-                return Rejected(envelope, "server.host_incompatible",
-                    "The server's game still runs in a host process of another version of the agent, which this agent cannot manage. Stop or " +
-                    "start the server to end it.");
+                return stranded.Unverifiable
+                    ? HostNotEnded(envelope)
+                    : Rejected(envelope, "server.host_incompatible",
+                        "The server's game still runs in a host process of another version of the agent, which this agent cannot manage. Stop or " +
+                        "start the server to end it.");
             }
 
             EndStrandedHost(server);
@@ -1560,6 +1602,17 @@ public sealed partial class ServerHost(
     private static CommandAck HostNotEnded(CommandEnvelope envelope) =>
         Rejected(envelope, "server.host_not_ended", "The server's game still runs in a host process that could not be ended or checked " +
             "(see the agent's log); try again. It is never started a second time beside it.");
+
+    /// <summary>
+    /// A game left running in a host this agent cannot drive: one of another protocol version, or one that could not be
+    /// checked (its process cannot be opened). It is also the lock of the commands that end it.
+    /// </summary>
+    private sealed class StrandedHost(GameHostRecord record, bool unverifiable)
+    {
+        public GameHostRecord Record { get; } = record;
+
+        public bool Unverifiable { get; } = unverifiable;
+    }
 
     private sealed record RunningOperation(Guid Id, bool Exclusive)
     {
