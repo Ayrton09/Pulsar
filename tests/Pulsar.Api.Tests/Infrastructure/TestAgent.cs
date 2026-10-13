@@ -66,6 +66,11 @@ public sealed class TestAgent : IAsyncDisposable
 
     public static NodeInventory Inventory { get; } = new("TEST-NODE", "Windows 11 Pro", "26200", "Test CPU", 8, 16L * 1024 * 1024 * 1024, @"D:\PulsarServers");
 
+    /// <summary>What the Hello says about the machine and the agent.</summary>
+    public NodeInventory HelloInventory { get; init; } = Inventory;
+
+    public string AgentVersion { get; init; } = "0.1.0-test";
+
     /// <summary>The machine name this agent reports (reusable tokens name their nodes after it).</summary>
     public string Hostname { get; init; } = Inventory.Hostname;
 
@@ -174,7 +179,7 @@ public sealed class TestAgent : IAsyncDisposable
 
         await Connection.StartAsync(Ct);
         return await Connection.InvokeAsync<HelloAccepted>(nameof(IAgentHub.Hello),
-            new AgentHello("0.1.0-test", AgentProtocol.CurrentVersion, capabilities, Inventory), Ct);
+            new AgentHello(AgentVersion, AgentProtocol.CurrentVersion, capabilities, HelloInventory), Ct);
     }
 
     public async ValueTask DisposeAsync()

@@ -384,12 +384,13 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
         await ChooseStorageAsync(admin, server, storage.Id);
         await EnsureAsync(await admin.PostAsync("/api/v1/notifications/channels", new NotificationChannelRequest("Backups", NotificationKind.Email, true,
             [NotificationEvent.BackupFailed], [server], "en", null, ["ops@example.com"])));
-        agent.RemoteBackups.FailUploads = "Remote storage refused the credentials or the bucket (AccessDenied).";
+        // Worded by remote storage, so anything: the panel cleans what the node passes on (docs/architecture/08, T32).
+        agent.RemoteBackups.FailUploads = "Remote storage refused the credentials or the bucket (AccessDenied).\r\n[12:00:00 WRN] forged‮";
 
         var made = await MadeAsync(admin, server, "Local only");
         var backup = await WaitForAsync(admin, server, made.Id, b => b.RemoteStatus == RemoteCopyStatus.Failed, "copy failed");
         Assert.Equal(BackupStatus.Completed, backup.Status);
-        Assert.Equal("Remote storage refused the credentials or the bucket (AccessDenied).", backup.RemoteError);
+        Assert.Equal("Remote storage refused the credentials or the bucket (AccessDenied).[12:00:00 WRN] forged", backup.RemoteError);
         Assert.True(File.Exists(Archive(agent, server, backup.Id)));
 
         await using var scope = factory.Services.CreateAsyncScope();

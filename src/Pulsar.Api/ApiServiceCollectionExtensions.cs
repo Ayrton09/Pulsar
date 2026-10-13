@@ -58,6 +58,7 @@ internal static class ApiServiceCollectionExtensions
         services.AddOptions<AgentsOptions>()
             .Bind(configuration.GetSection(AgentsOptions.SectionName))
             .Validate(o => AgentsOptions.IsValidUrl(o.PublicUrl), "Agents:PublicUrl must be an https origin, such as https://agents.example.com:8444.")
+            .Validate(o => o.MaxConnections > 0, "Agents:MaxConnections must be at least 1.")
             .ValidateOnStart();
         services.AddSingleton<AgentsEndpoint>();
         services.AddOptions<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>()

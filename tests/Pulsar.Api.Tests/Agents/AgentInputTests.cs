@@ -60,6 +60,33 @@ public sealed class AgentInputTests
     }
 
     [Fact]
+    public void AMegabyteMessageCostsNoMoreThanWhatIsKept()
+    {
+        // A line break up front, so it is not kept as it is: cleaned rune by rune, and cut once the message is full.
+        var message = "\n" + string.Concat(Enumerable.Repeat("message \U0001F600 ", 1024 * 1024 / 11));
+        _ = AgentInput.Text(message, AgentInput.MaxMessageLength);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var text = AgentInput.Text(message, AgentInput.MaxMessageLength);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.True(allocated < 16 * 1024, $"{allocated} bytes allocated");
+        Assert.StartsWith("message \U0001F600 message", text, StringComparison.Ordinal);
+        Assert.True(text.Length <= AgentInput.MaxMessageLength);
+        Assert.False(char.IsHighSurrogate(text[^1]));
+    }
+
+    [Fact]
+    public void TextWithNothingToRemoveIsKeptAsItIs()
+    {
+        const string message = "The server could not start: port 27015 is in use (ñandú).";
+
+        Assert.Same(message, AgentInput.Text(message, AgentInput.MaxMessageLength));
+        Assert.Equal("�x", AgentInput.Text("\uD800x", AgentInput.MaxMessageLength)); // half of a pair is not text
+        Assert.Equal(string.Empty, AgentInput.Text(null, 10));
+    }
+
+    [Fact]
     public void NodeMetricsListAFewDrivesWithShortNames()
     {
         var disks = Enumerable.Range(0, 100)

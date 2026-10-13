@@ -73,6 +73,16 @@ public sealed class InProcessAgent : IAsyncDisposable
         set => ((TestServerTransport)_transport).AgentsEndpointDown = value;
     }
 
+    /// <summary>
+    /// What stands between the agent's HTTP requests and the panel (a TLS-terminating proxy, in effect): it gets each
+    /// request and the way to pass it on, and answers in its place. Null passes everything on.
+    /// </summary>
+    public Func<HttpRequestMessage, Func<Task<HttpResponseMessage>>, Task<HttpResponseMessage>>? Proxy
+    {
+        get => ((TestServerTransport)_transport).Proxy;
+        set => ((TestServerTransport)_transport).Proxy = value;
+    }
+
     /// <summary>The configuration the running agent uses (key rotations and panel key updates change it).</summary>
     public AgentConfig? LiveConfig => _connection?.Config;
 
@@ -99,6 +109,9 @@ public sealed class InProcessAgent : IAsyncDisposable
 
     public ScriptedQuery Query => field ??= new ScriptedQuery(_clock);
 
+    /// <summary>The running agent's hub connection, for messages a test sends as the agent.</summary>
+    public PanelChannel? Channel { get; private set; }
+
     /// <summary>The agent's downloads (addons, Minecraft): set before <see cref="StartAsync"/> to fake the sites; null for the real ones.</summary>
     public HttpMessageHandler? Http { get; set; }
 
@@ -120,7 +133,7 @@ public sealed class InProcessAgent : IAsyncDisposable
         Directory.CreateDirectory(testGame);
         await File.WriteAllTextAsync(Path.Combine(testGame, "Pulsar.TestGameServer.exe"), "not a real executable", TestContext.Current.CancellationToken);
 
-        var channel = new PanelChannel();
+        var channel = Channel = new PanelChannel();
         var install = Http is null ? new InstallOptions { TestGameDirectory = testGame } : new InstallOptions { TestGameDirectory = testGame, HttpHandler = Http };
         var files = new DirectServerFiles();
         _steamCmd = new SteamCmdRunner(Processes, new ScriptedSteamCmdSource(Path.Combine(_root, "steamcmd.exe")), files, new DirectServerFileManager(), SteamLogins,
@@ -335,7 +348,7 @@ public sealed class InProcessAgent : IAsyncDisposable
                 AgentsEndpointApiFactory.AddTransportHeaders(request.Headers, true, Certificate);
             }
 
-            return base.SendAsync(request, cancellationToken);
+            return transport.Proxy is { } proxy ? proxy(request, () => base.SendAsync(request, cancellationToken)) : base.SendAsync(request, cancellationToken);
         }
     }
 
@@ -343,6 +356,8 @@ public sealed class InProcessAgent : IAsyncDisposable
     private sealed class TestServerTransport(TestServer server) : PanelTransport
     {
         public bool AgentsEndpointDown { get; set; }
+
+        public Func<HttpRequestMessage, Func<Task<HttpResponseMessage>>, Task<HttpResponseMessage>>? Proxy { get; set; }
 
         public override HttpMessageHandler CreateHttpHandler() => new ToLocalhost(this) { InnerHandler = server.CreateHandler() };
 

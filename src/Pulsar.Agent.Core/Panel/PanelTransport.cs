@@ -1,4 +1,6 @@
 using System.Net.Http.Json;
+using System.Net.Security;
+using System.Net.WebSockets;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Http.Connections.Client;
 using Pulsar.Contracts;
@@ -21,13 +23,26 @@ public class PanelTransport
 
     /// <summary>
     /// Never follows a redirect: a 307 or 308 would send an enrollment, a challenge's answer or a new key's proof on to
-    /// wherever it says (an http:// address included).
+    /// wherever it says (an http:// address included). Checks the panel's certificate with <see cref="PanelChainPolicy"/>.
     /// </summary>
     public virtual HttpMessageHandler CreateHttpHandler() => new SocketsHttpHandler
     {
         AllowAutoRedirect = false,
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
         ConnectTimeout = TimeSpan.FromSeconds(15),
+        SslOptions = new SslClientAuthenticationOptions { CertificateChainPolicy = PanelChainPolicy() },
+    };
+
+    /// <summary>
+    /// How the panel's certificate chain is built: from the machine's trusted roots and the certificates the handshake
+    /// brought, nothing fetched (docs/architecture/03, "Transport"). Whoever answers at the panel's address chooses the
+    /// URLs a certificate names (its issuer's, revocation lists, OCSP), and the agent, SYSTEM, would connect wherever
+    /// they say before refusing it; so the panel sends its intermediates. No revocation check, as without a policy.
+    /// </summary>
+    public static X509ChainPolicy PanelChainPolicy() => new()
+    {
+        DisableCertificateDownloads = true,
+        RevocationMode = X509RevocationMode.NoCheck,
     };
 
     /// <summary>
@@ -47,11 +62,35 @@ public class PanelTransport
     }
 
     /// <summary>
-    /// Hook for the hub connection options (transport, authentication header, URL and client certificate are already
-    /// set).
+    /// Hook for the hub connection options (transport, authentication header, URL, client certificate and the
+    /// WebSocket, <see cref="ConnectHubAsync"/>, are already set).
     /// </summary>
     public virtual void ConfigureHub(HttpConnectionOptions options)
     {
+    }
+
+    /// <summary>
+    /// Opens the hub's WebSocket through <see cref="CreateHttpHandler()"/>, so it checks the panel's certificate as
+    /// every other request to the panel does and presents <paramref name="certificate"/> the same way (the WebSocket's own
+    /// options cannot set how the chain is built).
+    /// </summary>
+    public async ValueTask<WebSocket> ConnectHubAsync(Uri hub, string accessToken, X509Certificate2? certificate, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(hub);
+        var socket = new ClientWebSocket();
+        socket.Options.SetRequestHeader("Authorization", $"Bearer {accessToken}");
+        // Only for the upgrade: the connection it hands over stays with the WebSocket.
+        using var invoker = new HttpMessageInvoker(CreateHttpHandler(certificate), disposeHandler: true);
+        try
+        {
+            await socket.ConnectAsync(hub, invoker, cancellationToken);
+            return socket;
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
     }
 
     internal HttpMessageHandler CreateHttpHandler(X509Certificate2? certificate) =>

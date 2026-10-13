@@ -15,7 +15,7 @@ namespace Pulsar.Api.Tests.Infrastructure;
 /// The panel on real Kestrel with real TLS, as installed: a main endpoint and the agents' endpoint (Phase 16) on two
 /// loopback ports, both with a self-signed server certificate the tests trust by thumbprint.
 /// </summary>
-public sealed class KestrelPanelFactory : PulsarApiFactory
+public class KestrelPanelFactory : PulsarApiFactory
 {
     private readonly string _directory = Directory.CreateTempSubdirectory("pulsar-kestrel-").FullName;
 
@@ -109,6 +109,8 @@ public sealed class KestrelPanelFactory : PulsarApiFactory
         {
             // Kestrel may still hold the certificate file for a moment; the temporary folder goes with the next cleanup.
         }
+
+        GC.SuppressFinalize(this);
     }
 
     private static int FreePort()
