@@ -124,6 +124,45 @@ public sealed class AgentEnrollmentTests : IDisposable
         Assert.True((await RunAsync(Enrollment(panel).EnrollAsync(Request(), TestContext.Current.CancellationToken))).Development);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReEnrollingDeletesTheEarlierKeysAndOneThatCannotBeDeletedIsOnlyReported(bool refuseDelete)
+    {
+        // The earlier key and the pending one of a rotation that never completed: the panel has revoked both.
+        var panel = new FakePanel(this, busyAnswers: 0, retryAfter: null);
+        var configs = new AgentConfigStore(new AgentPaths(_root));
+        var earlier = await RunAsync(Enrollment(panel).EnrollAsync(Request(), TestContext.Current.CancellationToken));
+        using (var pending = _keys.Create("PulsarAgent-pending", NodeKeyScope.User))
+        {
+            configs.Save(earlier with { PendingRotation = new PendingRotation(pending.Reference, Guid.NewGuid(), DateTimeOffset.UtcNow) });
+        }
+
+        if (refuseDelete)
+        {
+            _keys.Undeletable.Add(earlier.Key.Name);
+        }
+
+        var enrollment = Enrollment(panel);
+        List<string> warnings = [];
+        enrollment.Warning = warnings.Add;
+
+        var config = await RunAsync(enrollment.EnrollAsync(Request(), TestContext.Current.CancellationToken));
+
+        Assert.Equal(config.Key, configs.Load()!.Key);
+        Assert.DoesNotContain("PulsarAgent-pending", _keys.Names);
+        if (refuseDelete)
+        {
+            Assert.Equal(new[] { config.Key.Name, earlier.Key.Name }.Order(StringComparer.Ordinal), _keys.Names.Order(StringComparer.Ordinal));
+            Assert.Contains(earlier.Key.Name, Assert.Single(warnings), StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Equal([config.Key.Name], _keys.Names);
+            Assert.Empty(warnings);
+        }
+    }
+
     [Fact]
     public async Task AnUnreadablePreviousConfigurationIsReplacedWithAWarning()
     {
@@ -212,6 +251,9 @@ public sealed class AgentEnrollmentTests : IDisposable
 
         public IReadOnlyCollection<string> Names => [.. _keys.Keys];
 
+        /// <summary>Keys the key store refuses to delete (as CNG does for a key another account holds).</summary>
+        public HashSet<string> Undeletable { get; } = new(StringComparer.Ordinal);
+
         public INodeKey Create(string name, NodeKeyScope scope)
         {
             using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -221,7 +263,15 @@ public sealed class AgentEnrollmentTests : IDisposable
 
         public INodeKey Open(NodeKeyReference reference) => new Key(reference, ECDsa.Create(_keys[reference.Name]));
 
-        public void Delete(NodeKeyReference reference) => _keys.TryRemove(reference.Name, out _);
+        public void Delete(NodeKeyReference reference)
+        {
+            if (Undeletable.Contains(reference.Name))
+            {
+                throw new CryptographicException("Access is denied.");
+            }
+
+            _keys.TryRemove(reference.Name, out _);
+        }
 
         private sealed class Key(NodeKeyReference reference, ECDsa key) : INodeKey
         {

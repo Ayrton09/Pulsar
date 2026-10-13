@@ -39,6 +39,18 @@ public sealed class AgentConnectionOptions
     /// waits 10 s for the answer).
     /// </summary>
     public TimeSpan AgentsAddressTimeout { get; set; } = TimeSpan.FromSeconds(7);
+
+    /// <summary>
+    /// How long opening the hub, its Hello and what waited for a connection may take: a panel or proxy that keeps the
+    /// connection alive but never answers must not hold the agent there.
+    /// </summary>
+    public TimeSpan SessionStartTimeout { get; set; } = PanelTransport.RequestTimeout;
+
+    /// <summary>
+    /// The least a session waits before it is renewed: one whose token is already due (a clock far off, a token issued
+    /// about to expire) is not renewed in a loop.
+    /// </summary>
+    public TimeSpan MinimumRenewalDelay { get; set; } = TimeSpan.FromSeconds(5);
 }
 
 /// <summary>
@@ -86,6 +98,7 @@ public sealed partial class AgentConnection(
     {
         Closed,
         Renew,
+        Move,
         Rotate,
     }
 
@@ -196,18 +209,34 @@ public sealed partial class AgentConnection(
                         continue;
                     }
 
-                    if (end == SessionEnd.Renew)
+                    if (end == SessionEnd.Move)
                     {
-                        LogRenewing(current.SessionId);
                         failures = 0;
                         continue;
                     }
 
-                    LogDisconnected(current.CloseReason?.Message ?? "closed by the panel");
-                    CurrentSessionId = null;
-                    await current.DisposeAsync();
-                    current = null;
-                    failures = FailuresAfterSession(failures, clock.GetUtcNow() - connectedAt);
+                    var lasted = clock.GetUtcNow() - connectedAt;
+                    if (end == SessionEnd.Renew)
+                    {
+                        LogRenewing(current.SessionId);
+                        if (lasted >= s_stableSession)
+                        {
+                            failures = 0;
+                            continue;
+                        }
+
+                        // Due right after it opened (a token issued about to expire, a clock far off): the next one
+                        // opens after the backoff, while this one goes on, rather than in a loop of sign-ins.
+                        failures = Math.Min(failures + 1, MaxFailures);
+                    }
+                    else
+                    {
+                        LogDisconnected(current.CloseReason?.Message ?? "closed by the panel");
+                        CurrentSessionId = null;
+                        await current.DisposeAsync();
+                        current = null;
+                        failures = FailuresAfterSession(failures, lasted);
+                    }
                 }
                 catch (AgentRejectedException ex)
                 {
@@ -391,7 +420,10 @@ public sealed partial class AgentConnection(
             {
                 newKey?.Dispose();
                 newCertificate?.Dispose();
-                LogPendingKeyAbandoned(pending.CredentialId, ex.Message);
+                // A rotation that failed like any other: the next one waits (a key due by age would otherwise start one
+                // again at once, and so on).
+                _nextRotationAttempt = clock.GetUtcNow() + options.RotationRetryDelay;
+                LogPendingKeyAbandoned(pending.CredentialId, ex.Message, _nextRotationAttempt);
                 DeleteKey(pending.Key);
                 lock (_configLock)
                 {
@@ -507,7 +539,7 @@ public sealed partial class AgentConnection(
     /// </summary>
     internal static bool IsUnreachable(Exception exception, CancellationToken cancellationToken) =>
         exception is HttpRequestException or IOException or System.Security.Authentication.AuthenticationException
-            or System.Net.WebSockets.WebSocketException or PanelNotAnsweringException
+            or System.Net.WebSockets.WebSocketException or PanelNotAnsweringException or TimeoutException
         || (exception is TaskCanceledException && !cancellationToken.IsCancellationRequested);
 
     /// <summary>The key as a client certificate; without one the agent still works where the panel asks for none.</summary>
@@ -605,18 +637,23 @@ public sealed partial class AgentConnection(
 
         var session = new Session(connection, token.SessionId, token.AccessToken, system, options, clock, _logger, _channel,
             () => DiskUsageSampler.Sample(config.ServersRootOrDefault(configs.Paths), config.BackupsRootOrDefault(configs.Paths)));
+        // A panel or proxy that keeps the connection alive (it answers pings) but never completes the upgrade or answers
+        // Hello must not hold the agent here: the session start has a deadline (in real time, as a request's timeout),
+        // then counts as a failed connection.
+        using var limit = new CancellationTokenSource(options.SessionStartTimeout);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, limit.Token);
         try
         {
             // The client does not await handlers that return a result before reading on, so a command waiting for the
             // clock never holds back Hello's answer (CommandBeforeHelloTests).
             connection.On<SignedMessage, CommandAck>(nameof(IAgentClient.Execute), message => dispatcher.ExecuteAsync(verifier, message, this));
-            await connection.StartAsync(cancellationToken);
+            await connection.StartAsync(deadline.Token);
 
             var hello = await connection.InvokeAsync<HelloAccepted>(nameof(IAgentHub.Hello),
                 new AgentHello(AgentInfo.Version, AgentProtocol.CurrentVersion, [.. supported],
                     system.GetInventory(config.ServersRootOrDefault(configs.Paths)), [.. config.PanelKeys.Select(k => k.KeyId)],
                     servers?.Snapshots() ?? [], servers?.OperationsInFlight() ?? []),
-                cancellationToken);
+                deadline.Token);
 
             var now = clock.GetUtcNow();
             verifier.PanelClockOffset = hello.ServerTime - now;
@@ -627,12 +664,14 @@ public sealed partial class AgentConnection(
 
             var lifetimeLeft = token.ExpiresAt - hello.ServerTime;
             var lead = options.RenewalLead < lifetimeLeft / 2 ? options.RenewalLead : lifetimeLeft / 2;
-            session.Started(now + lifetimeLeft - lead);
+            // Never at once: a token already due (a clock far off) would otherwise be renewed in a loop.
+            var renewAt = now + lifetimeLeft - lead;
+            session.Started(renewAt > now + options.MinimumRenewalDelay ? renewAt : now + options.MinimumRenewalDelay);
             LogConnected(token.SessionId, verifier.PanelClockOffset);
             // Consoles browsers were already watching: their output resumes where the panel's copy ends.
             servers?.SubscribeConsoles(hello.ConsoleSubscriptions ?? []);
             ForgetDeletedSteamAccounts(hello.SteamAccountIds);
-            await _channel.AttachAsync(connection, new PanelHttp(transport, panel, token.AccessToken, certificate), cancellationToken);
+            await _channel.AttachAsync(connection, new PanelHttp(transport, panel, token.AccessToken, certificate), deadline.Token);
             var previousCertificate = _sessionCertificate;
             _sessionPanel = panel;
             _sessionCertificate = certificate;
@@ -643,6 +682,12 @@ public sealed partial class AgentConnection(
             }
 
             return session;
+        }
+        catch (OperationCanceledException ex) when (limit.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            verifier.Abandon();
+            await session.DisposeAsync();
+            throw new TimeoutException($"The panel did not open the session within {options.SessionStartTimeout.TotalSeconds:0} seconds.", ex);
         }
         catch
         {
@@ -736,8 +781,9 @@ public sealed partial class AgentConnection(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Node key rotation failed ({Reason}); the current key stays in use. Next attempt after {NextAttempt}")]
     private partial void LogRotationFailed(string reason, DateTimeOffset nextAttempt);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Abandoning the pending key of credential {CredentialId} ({Reason}); the current key stays in use")]
-    private partial void LogPendingKeyAbandoned(Guid credentialId, string reason);
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Abandoning the pending key of credential {CredentialId} ({Reason}); the current key stays in use. Next rotation attempt after {NextAttempt}")]
+    private partial void LogPendingKeyAbandoned(Guid credentialId, string reason, DateTimeOffset nextAttempt);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete the node key {KeyName}: {Reason}")]
     private partial void LogKeyNotDeleted(string keyName, string reason);
@@ -801,7 +847,7 @@ public sealed partial class AgentConnection(
                 return SessionEnd.Closed;
             }
 
-            return first == rotationRequested ? SessionEnd.Rotate : SessionEnd.Renew;
+            return first == rotationRequested ? SessionEnd.Rotate : first == reconnectRequested ? SessionEnd.Move : SessionEnd.Renew;
         }
 
         public async ValueTask DisposeAsync()

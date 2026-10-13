@@ -121,6 +121,10 @@ TerminateProcess
 WaitForSingleObject
 QueryFullProcessImageName
 
+// RCON: the process at the other end of a local connection, before the password is sent (docs/architecture/08, T18)
+GetExtendedTcpTable
+TCP_TABLE_CLASS
+
 // Backup snapshots: the Volume Shadow Copy service (docs/architecture/06, "Backup snapshots")
 CreateVssBackupComponentsInternal
 VssFreeSnapshotPropertiesInternal

@@ -1,6 +1,8 @@
+using System.Runtime.InteropServices;
+
 namespace Pulsar.Agent.Tests;
 
-public sealed class CommandLineTests
+public sealed partial class CommandLineTests
 {
     [Fact]
     public void ParsesTheEnrollCommandThePanelShows()
@@ -172,6 +174,66 @@ public sealed class CommandLineTests
         Assert.Throws<UsageException>(() => AgentCommands.DirectoryOption(CommandLine.Parse(["enroll", "--servers-root", "\""], AgentCommands.Flags),
             "servers-root"));
     }
+
+    [Theory]
+    [InlineData(@"D:\Agent", @"D:\Agent")]
+    [InlineData(@"D:\Agent\", @"D:\Agent")]
+    [InlineData(@"D:\Agent""", @"D:\Agent")] // "D:\Agent\" quoted: the backslash escaped the quote (services installed that way before)
+    [InlineData(@"D:\Agent Data\", @"D:\Agent Data")]
+    [InlineData(@"D:\", @"D:\")]
+    public void TheStateDirectoryIsAFullPathWithoutATrailingSeparatorOrQuote(string value, string expected)
+    {
+        Assert.Equal(expected, AgentCommands.Paths(CommandLine.Parse(["run", "--data-dir", value], AgentCommands.Flags)).Root);
+    }
+
+    [Theory]
+    [InlineData(@"D:\Agent\")]
+    [InlineData(@"D:\Agent Data\")]
+    [InlineData(@"D:\")]
+    public void TheServiceRunsWithTheStateDirectoryItWasInstalledFor(string dataDirectory)
+    {
+        // enroll --data-dir "D:\Agent\" once installed the service with --data-dir "D:\Agent\", which it read as D:\Agent".
+        var paths = AgentCommands.Paths(CommandLine.Parse(["enroll", "--data-dir", dataDirectory], AgentCommands.Flags));
+        var commandLine = Windows.AgentService.CommandLineFor(@"C:\Program Files\Pulsar\Agent\PulsarAgent.exe", AgentCommands.ServiceArguments(paths));
+
+        string[] arguments = [.. SplitLikeTheRuntime(commandLine).Skip(1)];
+        Assert.Equal(["run", "--data-dir", paths.Root], arguments);
+        Assert.Equal(paths.Root, AgentCommands.Paths(CommandLine.Parse(arguments, AgentCommands.Flags)).Root);
+        Assert.Equal(paths.Root, AgentCommands.ServiceDataDirectory(commandLine));
+    }
+
+    [Fact]
+    public async Task AServiceThatDoesNotStopForAReEnrollmentIsSaidAndNothingIsEnrolled()
+    {
+        using var errors = new StringWriter();
+
+        var stopped = await AgentCommands.StopForReEnrollmentAsync(_ => throw new TimeoutException("The PulsarAgent service did not stop within 30 s."), errors);
+
+        Assert.False(stopped);
+        Assert.Contains("did not stop within 30 s", errors.ToString(), StringComparison.Ordinal);
+        Assert.Contains("PulsarAgent service start", errors.ToString(), StringComparison.Ordinal);
+        Assert.True(await AgentCommands.StopForReEnrollmentAsync(_ => { }, errors));
+    }
+
+    /// <summary>The arguments a program gets from a command line (<c>CommandLineToArgvW</c>, as the .NET runtime parses it).</summary>
+    private static string[] SplitLikeTheRuntime(string commandLine)
+    {
+        var argv = CommandLineToArgv(commandLine, out var count);
+        try
+        {
+            return [.. Enumerable.Range(0, count).Select(i => Marshal.PtrToStringUni(Marshal.ReadIntPtr(argv, i * IntPtr.Size))!)];
+        }
+        finally
+        {
+            LocalFree(argv);
+        }
+    }
+
+    [LibraryImport("shell32.dll", EntryPoint = "CommandLineToArgvW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial IntPtr CommandLineToArgv(string commandLine, out int count);
+
+    [LibraryImport("kernel32.dll")]
+    private static partial IntPtr LocalFree(IntPtr memory);
 
     [Theory]
     [InlineData(new string[0], "help")]

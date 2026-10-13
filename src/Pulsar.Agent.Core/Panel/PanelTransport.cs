@@ -13,8 +13,13 @@ public class PanelTransport
 {
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// Never follows a redirect: a 307 or 308 would send an enrollment, a challenge's answer or a new key's proof on to
+    /// wherever it says (an http:// address included).
+    /// </summary>
     public virtual HttpMessageHandler CreateHttpHandler() => new SocketsHttpHandler
     {
+        AllowAutoRedirect = false,
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
         ConnectTimeout = TimeSpan.FromSeconds(15),
     };
@@ -49,21 +54,36 @@ public class PanelTransport
     internal HttpClient CreateClient(Uri panel, X509Certificate2? certificate = null) =>
         new(CreateHttpHandler(certificate), disposeHandler: true) { BaseAddress = panel, Timeout = RequestTimeout };
 
-    /// <summary>Posts a protocol request; a non-success answer becomes <see cref="AgentException"/> (or rejected on 401).</summary>
+    /// <summary>
+    /// Posts a protocol request; a non-success answer becomes <see cref="AgentException"/> (rejected on the panel's 401),
+    /// and one that is not the protocol's (another service's page or refusal), <see cref="PanelNotAnsweringException"/>.
+    /// </summary>
     internal static async Task<TResponse> PostAsync<TRequest, TResponse>(HttpClient http, string path, TRequest request, CancellationToken cancellationToken)
     {
         using var response = await http.PostAsJsonAsync(path.TrimStart('/'), request, ProtocolJson.Options, cancellationToken);
         await EnsureSuccessAsync(response, path, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<TResponse>(ProtocolJson.Options, cancellationToken)
-            ?? throw new AgentException($"The panel sent an empty answer to {path}.");
+        return await ReadAsync<TResponse>(response, path, cancellationToken);
     }
 
     internal static async Task<TResponse> GetAsync<TResponse>(HttpClient http, string path, CancellationToken cancellationToken)
     {
         using var response = await http.GetAsync(new Uri(path.TrimStart('/'), UriKind.Relative), cancellationToken);
         await EnsureSuccessAsync(response, path, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<TResponse>(ProtocolJson.Options, cancellationToken)
-            ?? throw new AgentException($"The panel sent an empty answer to {path}.");
+        return await ReadAsync<TResponse>(response, path, cancellationToken);
+    }
+
+    private static async Task<TResponse> ReadAsync<TResponse>(HttpResponseMessage response, string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await response.Content.ReadFromJsonAsync<TResponse>(ProtocolJson.Options, cancellationToken)
+                ?? throw new PanelNotAnsweringException($"The address sent an empty answer to {path}: no panel answers the agent protocol there now.");
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
+        {
+            // A page of whatever else answers there (a port given to another service later).
+            throw new PanelNotAnsweringException($"The address answered {path} with something that is not the agent protocol: no panel answers it there now.", ex);
+        }
     }
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, string path, CancellationToken cancellationToken)
@@ -73,12 +93,7 @@ public class PanelTransport
             return;
         }
 
-        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-        {
-            throw new AgentRejectedException("The panel rejected this node's credential (revoked, disabled or deleted node).");
-        }
-
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound || (int)response.StatusCode >= 500)
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound || (int)response.StatusCode >= 500 || (int)response.StatusCode is >= 300 and < 400)
         {
             throw new PanelNotAnsweringException($"The address answered {(int)response.StatusCode} {response.ReasonPhrase} to {path}: no panel answers the agent protocol there now.");
         }
@@ -93,6 +108,17 @@ public class PanelTransport
 
         // Read once: the body cannot be read again.
         var error = await ReadErrorAsync(response, cancellationToken);
+        if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden && error is null)
+        {
+            // The panel says why in the protocol's words; a refusal without them is another service's (docs/architecture/03, "Fallback").
+            throw new PanelNotAnsweringException($"The address answered {(int)response.StatusCode} {response.ReasonPhrase} to {path} without the panel's error: no panel answers the agent protocol there now.");
+        }
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            throw new AgentRejectedException("The panel rejected this node's credential (revoked, disabled or deleted node).");
+        }
+
         if (response.StatusCode == System.Net.HttpStatusCode.Forbidden && error is { Code: CertificateRequiredException.Code })
         {
             throw new CertificateRequiredException(error.Message, error.AgentsAddress);
@@ -112,9 +138,10 @@ public class PanelTransport
 
         try
         {
-            return await response.Content.ReadFromJsonAsync<AgentError>(ProtocolJson.Options, cancellationToken);
+            var error = await response.Content.ReadFromJsonAsync<AgentError>(ProtocolJson.Options, cancellationToken);
+            return string.IsNullOrEmpty(error?.Code) ? null : error;
         }
-        catch (System.Text.Json.JsonException)
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
         {
             // Not an agent error body (e.g. a proxy page); report the status alone.
             return null;

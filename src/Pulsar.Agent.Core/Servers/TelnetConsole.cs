@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
+using Pulsar.Agent.Core.Processes;
 using Pulsar.Manifests;
 
 namespace Pulsar.Agent.Core.Servers;
@@ -9,18 +10,19 @@ namespace Pulsar.Agent.Core.Servers;
 /// The remote consoles the agent speaks, by the manifest's protocol: Source RCON, or a telnet console
 /// (<see cref="TelnetConsoleConnector"/>).
 /// </summary>
-public sealed class RconConnectors(IRconConnector? source = null, IRconConnector? telnet = null) : IRconConnector
+/// <param name="peers">Who listens where, checked before anything is sent (docs/architecture/08, T18); null checks nothing.</param>
+public sealed class RconConnectors(IRconConnector? source = null, IRconConnector? telnet = null, ILocalPeers? peers = null) : IRconConnector
 {
-    private readonly IRconConnector _source = source ?? new SourceRconConnector();
-    private readonly IRconConnector _telnet = telnet ?? new TelnetConsoleConnector();
+    private readonly IRconConnector _source = source ?? new SourceRconConnector { Peers = peers };
+    private readonly IRconConnector _telnet = telnet ?? new TelnetConsoleConnector { Peers = peers };
 
-    public Task<IRconSession> ConnectAsync(RconEndpoint endpoint, CancellationToken cancellationToken)
+    public Task<IRconSession> ConnectAsync(RconEndpoint endpoint, ProcessIdentity owner, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         return endpoint.Protocol switch
         {
-            RconProtocol.Telnet => _telnet.ConnectAsync(endpoint, cancellationToken),
-            _ => _source.ConnectAsync(endpoint, cancellationToken),
+            RconProtocol.Telnet => _telnet.ConnectAsync(endpoint, owner, cancellationToken),
+            _ => _source.ConnectAsync(endpoint, owner, cancellationToken),
         };
     }
 }
@@ -41,9 +43,13 @@ public sealed class TelnetConsoleConnector : IRconConnector
     /// <summary>How long after the last text an answer is considered complete.</summary>
     public TimeSpan AnswerIdle { get; init; } = TimeSpan.FromMilliseconds(400);
 
-    public async Task<IRconSession> ConnectAsync(RconEndpoint endpoint, CancellationToken cancellationToken)
+    /// <summary>Who listens where (Windows' TCP table); null checks nothing (tests).</summary>
+    public ILocalPeers? Peers { get; init; }
+
+    public async Task<IRconSession> ConnectAsync(RconEndpoint endpoint, ProcessIdentity owner, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentNullException.ThrowIfNull(owner);
         var client = new TcpClient { NoDelay = true };
         try
         {
@@ -60,6 +66,7 @@ public sealed class TelnetConsoleConnector : IRconConnector
                 }
             }
 
+            RconPeers.Verify(Peers, client.Client, endpoint, owner);
             var session = new TelnetConsoleSession(client, AnswerTimeout, AnswerIdle);
             await session.LogOnAsync(endpoint.Password, cancellationToken);
             return session;
@@ -150,6 +157,12 @@ internal sealed partial class TelnetConsoleSession : IRconSession
         await _lock.WaitAsync(cancellationToken);
         try
         {
+            if (_closed)
+            {
+                // The reader saw the game close it: the command is not written into a closed connection.
+                throw new RconException("The telnet console closed the connection.") { ConnectionLost = true, NotSent = true };
+            }
+
             var (mark, lines) = Mark();
             await WriteLineAsync(command, cancellationToken);
             var started = DateTimeOffset.UtcNow;

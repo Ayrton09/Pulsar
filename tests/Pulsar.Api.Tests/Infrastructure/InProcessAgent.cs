@@ -207,6 +207,16 @@ public sealed class InProcessAgent : IAsyncDisposable
         /// <summary>Set when a held key starts waiting to sign.</summary>
         public ManualResetEventSlim SigningHeld { get; } = new();
 
+        /// <summary>Keys created from now on cannot be opened again (a key storage provider that loses them).</summary>
+        public bool LoseCreatedKeys { get; set; }
+
+        /// <summary>How many keys were created.</summary>
+        public int Created => Volatile.Read(ref _created);
+
+        private int _created;
+
+        private readonly ConcurrentDictionary<string, bool> _lost = new(StringComparer.Ordinal);
+
         public INodeKey Create(string name, NodeKeyScope scope)
         {
             if (RefuseCreate)
@@ -216,16 +226,23 @@ public sealed class InProcessAgent : IAsyncDisposable
 
             using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             _keys[name] = key.ExportParameters(includePrivateParameters: true);
+            Interlocked.Increment(ref _created);
             if (HoldSigning is { } hold)
             {
                 _held[name] = hold;
             }
 
-            return Open(new NodeKeyReference(name, scope, NodeKeyStorage.Software));
+            var created = Open(new NodeKeyReference(name, scope, NodeKeyStorage.Software));
+            if (LoseCreatedKeys)
+            {
+                _lost[name] = true;
+            }
+
+            return created;
         }
 
         public INodeKey Open(NodeKeyReference reference) =>
-            _keys.TryGetValue(reference.Name, out var parameters)
+            _keys.TryGetValue(reference.Name, out var parameters) && !_lost.ContainsKey(reference.Name)
                 ? new MemoryKey(reference, ECDsa.Create(parameters), this)
                 : throw new CryptographicException($"Key {reference.Name} does not exist.");
 

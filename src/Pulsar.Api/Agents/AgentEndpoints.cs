@@ -111,7 +111,7 @@ internal static class AgentEndpoints
         return await download.DeliverAsync(http.Request.Body, length) ? Results.NoContent() : Results.StatusCode(StatusCodes.Status410Gone);
     }
 
-    private static async Task<Results<Ok<SignedMessage>, BadRequest<AgentError>, UnauthorizedHttpResult>> RotateCredentialAsync(
+    private static async Task<Results<Ok<SignedMessage>, BadRequest<AgentError>, JsonHttpResult<AgentError>>> RotateCredentialAsync(
         RotateCredentialRequest request, HttpContext http, AgentAccess access, CancellationToken ct)
     {
         var principal = http.User;
@@ -122,7 +122,7 @@ internal static class AgentEndpoints
         }
 
         return result.Error == AgentErrors.AuthenticationRejected
-            ? TypedResults.Unauthorized()
+            ? Rejected()
             : TypedResults.BadRequest(new AgentError(result.Error!.Code, result.Error.Message));
     }
 
@@ -139,7 +139,7 @@ internal static class AgentEndpoints
             : TypedResults.BadRequest(new AgentError(result.Error!.Code, result.Error.Message));
     }
 
-    private static async Task<Results<Ok<ChallengeResponse>, UnauthorizedHttpResult, JsonHttpResult<AgentError>>> ChallengeAsync(
+    private static async Task<Results<Ok<ChallengeResponse>, JsonHttpResult<AgentError>>> ChallengeAsync(
         ChallengeRequest request, HttpContext http, AgentAccess access, AgentsEndpoint agents, CancellationToken ct)
     {
         var transport = agents.TransportOf(http);
@@ -152,10 +152,10 @@ internal static class AgentEndpoints
         // Certificates are required: the agent is told where to present its own, signed for its node.
         return result.Error == AgentErrors.CertificateRequired
             ? CertificateRequired(await access.SignAgentsAddressAsync(request.NodeId, transport.Agents!, request.Nonce, ct))
-            : TypedResults.Unauthorized();
+            : Rejected();
     }
 
-    private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, JsonHttpResult<AgentError>>> TokenAsync(
+    private static async Task<Results<Ok<TokenResponse>, JsonHttpResult<AgentError>>> TokenAsync(
         TokenRequest request, HttpContext http, AgentAccess access, AgentsEndpoint agents, CancellationToken ct)
     {
         var result = await access.AuthenticateAsync(request, PanelOrigin(http.Request), agents.TransportOf(http), ct);
@@ -165,8 +165,15 @@ internal static class AgentEndpoints
         }
 
         // Only a challenge answered just before the switch gets here: the agent's next challenge gets the address.
-        return result.Error == AgentErrors.CertificateRequired ? CertificateRequired(null) : TypedResults.Unauthorized();
+        return result.Error == AgentErrors.CertificateRequired ? CertificateRequired(null) : Rejected();
     }
+
+    /// <summary>
+    /// 401 with the protocol's error (its generic message): an agent tells the panel's refusal, which it must not retry
+    /// elsewhere, from a 401 of whatever else answers at an address (docs/architecture/03, "Fallback").
+    /// </summary>
+    private static JsonHttpResult<AgentError> Rejected() => TypedResults.Json(
+        new AgentError(AgentErrors.AuthenticationRejected.Code, AgentErrors.AuthenticationRejected.Message), statusCode: StatusCodes.Status401Unauthorized);
 
     private static JsonHttpResult<AgentError> CertificateRequired(SignedMessage? agentsAddress) => TypedResults.Json(
         new AgentError(AgentErrors.CertificateRequired.Code, AgentErrors.CertificateRequired.Message, agentsAddress),

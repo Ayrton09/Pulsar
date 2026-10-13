@@ -121,7 +121,8 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
         var challenge = await agent.ChallengeAsync();
         using (var wrongKey = await agent.PostTokenAsync(challenge, signer: impostor))
         {
-            Assert.Equal(HttpStatusCode.Unauthorized, wrongKey.StatusCode);
+            // Said in the protocol's words: an agent tells the panel's refusal from a 401 of whatever else answers there.
+            await AssertAgentErrorAsync(wrongKey, "agent.authentication_rejected", HttpStatusCode.Unauthorized);
         }
 
         // Even with the right key now, that challenge is gone.
@@ -149,7 +150,7 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
 
         await agent.ClosedSignal.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
         using var challenge = await agent.PostChallengeAsync();
-        Assert.Equal(HttpStatusCode.Unauthorized, challenge.StatusCode);
+        await AssertAgentErrorAsync(challenge, "agent.authentication_rejected", HttpStatusCode.Unauthorized);
         Assert.False((await GetNodeAsync(admin, agent.NodeId)).Node.Connected);
     }
 
@@ -340,9 +341,9 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
     private static async Task<NodeDetails> GetNodeAsync(PanelClient admin, Guid id) =>
         (await admin.Http.GetFromJsonAsync<NodeDetails>(new Uri($"/api/v1/nodes/{id}", UriKind.Relative), AccessScenario.Json, Ct))!;
 
-    private static async Task AssertAgentErrorAsync(HttpResponseMessage response, string code)
+    private static async Task AssertAgentErrorAsync(HttpResponseMessage response, string code, HttpStatusCode status = HttpStatusCode.BadRequest)
     {
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(status, response.StatusCode);
         var error = await response.Content.ReadFromJsonAsync<AgentError>(ProtocolJson.Options, Ct);
         Assert.Equal(code, error!.Code);
     }

@@ -67,6 +67,11 @@ public sealed class ServerQuery(TimeProvider clock) : IServerQuery
         {
             throw new QueryException($"Cannot query {endpoint.Address}:{endpoint.Port}: {ex.Message}", ex);
         }
+        catch (Exception ex) when (ex is FormatException or OverflowException)
+        {
+            // An answer the readers did not expect: unreadable, like any other.
+            throw new QueryException($"An unreadable answer from {endpoint.Address}:{endpoint.Port}: {ex.Message}", ex);
+        }
     }
 }
 
@@ -362,10 +367,11 @@ internal static partial class A2sQuery
         return players;
     }
 
-    [GeneratedRegex(@"(?:^|,)cp(\d{1,6})(?:,|$)", RegexOptions.CultureInvariant)]
+    // ASCII digits only: \d also matches other scripts' digits, which int.Parse refuses.
+    [GeneratedRegex(@"(?:^|,)cp([0-9]{1,6})(?:,|$)", RegexOptions.CultureInvariant)]
     private static partial Regex CurrentPlayers();
 
-    [GeneratedRegex(@"(?:^|,)mp(\d{1,6})(?:,|$)", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"(?:^|,)mp([0-9]{1,6})(?:,|$)", RegexOptions.CultureInvariant)]
     private static partial Regex MaximumPlayers();
 
     private ref struct Reader(ReadOnlySpan<byte> data)

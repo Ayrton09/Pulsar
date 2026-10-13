@@ -101,7 +101,11 @@ internal static class AgentCommands
         {
             // Re-enrollment: the running agent would keep using the credential the panel is about to revoke.
             Console.WriteLine("Stopping the running PulsarAgent service...");
-            AgentService.Stop(TimeSpan.FromSeconds(30));
+            if (!await StopForReEnrollmentAsync(AgentService.Stop, Console.Error))
+            {
+                return 1;
+            }
+
             restartService = true;
         }
 
@@ -170,6 +174,27 @@ internal static class AgentCommands
         }
 
         return (0, false);
+    }
+
+    /// <summary>
+    /// Stops the running service before a re-enrollment; false, said on <paramref name="errors"/>, when it is still stopping
+    /// after 30 s: nothing is enrolled then (the token is not used up), and the service goes on stopping.
+    /// </summary>
+    internal static async Task<bool> StopForReEnrollmentAsync(Action<TimeSpan> stop, TextWriter errors)
+    {
+        ArgumentNullException.ThrowIfNull(stop);
+        ArgumentNullException.ThrowIfNull(errors);
+        try
+        {
+            stop(TimeSpan.FromSeconds(30));
+            return true;
+        }
+        catch (TimeoutException ex)
+        {
+            await errors.WriteLineAsync($"{ex.Message} Nothing was enrolled. It goes on stopping: run this again once it has stopped, or start it " +
+                $"again with 'PulsarAgent service start' to keep the current enrollment.");
+            return false;
+        }
     }
 
     private static void RestartService()
@@ -401,7 +426,7 @@ internal static class AgentCommands
 
         if (config is not null)
         {
-            new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance).Delete(config.Key);
+            DeleteNodeKeys(config, new CngNodeKeyStore(NullLogger<CngNodeKeyStore>.Instance).Delete, Console.Error);
         }
 
         File.Delete(paths.ConfigFile);
@@ -412,6 +437,29 @@ internal static class AgentCommands
             Delete {(config is not null ? $"node {config.NodeId}" : "its node")} in the panel too (or re-enroll this machine with a new command).
             """);
         return 0;
+    }
+
+    /// <summary>
+    /// The node key, and the pending one of a rotation that never completed. One that cannot be deleted is said, not a
+    /// failure: unenroll goes on (it would fail the same way at every retry), and the panel no longer accepts it.
+    /// </summary>
+    internal static void DeleteNodeKeys(AgentConfig config, Action<NodeKeyReference> delete, TextWriter errors)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(delete);
+        ArgumentNullException.ThrowIfNull(errors);
+        foreach (var key in new[] { config.Key, config.PendingRotation?.Key }.OfType<NodeKeyReference>())
+        {
+            try
+            {
+                delete(key);
+            }
+            catch (CryptographicException ex)
+            {
+                errors.WriteLine($"The node key {key.Name} could not be deleted ({ex.Message.Trim()}): the panel no longer accepts it; delete it " +
+                    "from the machine's key store by hand.");
+            }
+        }
     }
 
     /// <summary>
@@ -742,13 +790,19 @@ internal static class AgentCommands
         return false;
     }
 
-    public static AgentPaths Paths(CommandLine line) => new(line.Value("data-dir") ?? AgentPaths.DefaultRoot);
+    /// <summary>
+    /// The state directory: <c>--data-dir</c> as a full path without a trailing separator, or the default one. A stray
+    /// quote at its end is dropped as for the other folders (<see cref="DirectoryOption"/>): a service installed with
+    /// <c>--data-dir "D:\Agent\"</c> gets <c>D:\Agent"</c>.
+    /// </summary>
+    public static AgentPaths Paths(CommandLine line) =>
+        new(DirectoryOption(line, "data-dir") is { } directory ? Path.TrimEndingDirectorySeparator(directory) : AgentPaths.DefaultRoot);
 
     /// <summary>Extra service arguments: only a non-default state directory needs to be passed on.</summary>
-    private static string? ServiceArguments(AgentPaths paths) =>
+    internal static IReadOnlyList<string> ServiceArguments(AgentPaths paths) =>
         string.Equals(paths.Root, Path.GetFullPath(AgentPaths.DefaultRoot), StringComparison.OrdinalIgnoreCase)
-            ? null
-            : $"--data-dir \"{paths.Root}\"";
+            ? []
+            : ["--data-dir", paths.Root];
 
     private static string DescribeService()
     {

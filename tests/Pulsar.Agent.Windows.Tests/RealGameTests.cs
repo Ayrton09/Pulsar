@@ -76,6 +76,18 @@ public sealed class RealGameTests : IDisposable
         await Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.False(process.Exited.IsCompleted, "srcds exited after reporting it was ready.");
 
+        // Its RCON (TCP, on the game port): the agent sends the password only to a process running as the server's account
+        // (docs/architecture/08, T18), which srcds is, and SYSTEM is not.
+        using (var rcon = new System.Net.Sockets.TcpClient())
+        {
+            await rcon.ConnectAsync(System.Net.IPAddress.Loopback, 27215, TestContext.Current.CancellationToken);
+            var peers = new WindowsLocalPeers();
+            var peer = peers.PeerProcess((System.Net.IPEndPoint)rcon.Client.LocalEndPoint!, (System.Net.IPEndPoint)rcon.Client.RemoteEndPoint!);
+            Assert.NotNull(peer);
+            Assert.True(peers.RunsAs(peer.Value, server.Identity));
+            Assert.False(peers.RunsAs(peer.Value, ProcessIdentity.CurrentUser));
+        }
+
         process.TerminateTree(1);
         Assert.Equal(1, await process.Exited.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
         Assert.Equal(0, process.CountProcesses());

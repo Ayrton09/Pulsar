@@ -254,7 +254,8 @@ public sealed class ScriptedRcon(ScriptedProcessManager processes) : Pulsar.Agen
 {
     public List<string> Commands { get; } = [];
 
-    public Task<Pulsar.Agent.Core.Servers.IRconSession> ConnectAsync(Pulsar.Manifests.RconEndpoint endpoint, CancellationToken cancellationToken)
+    public Task<Pulsar.Agent.Core.Servers.IRconSession> ConnectAsync(Pulsar.Manifests.RconEndpoint endpoint, Pulsar.Agent.Core.Processes.ProcessIdentity owner,
+        CancellationToken cancellationToken)
     {
         var game = processes.Started.LastOrDefault(p => p.IsAlive && !p.IsSteamCmd && p.GamePort == endpoint.Port)
             ?? throw new Pulsar.Agent.Core.Servers.RconException("Not listening.");

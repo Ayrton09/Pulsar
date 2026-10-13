@@ -105,6 +105,7 @@ public sealed partial class ServerHost(
     private readonly CancellationTokenSource _endingOperations = new(); // the agent stops: operations end first
     private readonly Lock _recordLock = new();
     private readonly ConcurrentDictionary<Guid, Func<ServerRecord, ServerRecord>> _unsavedRecords = new(); // changes a failed write left
+    private readonly ConcurrentDictionary<Guid, OperationCompleted> _unsavedResults = new(); // operation → result a failed write left in memory
     private readonly Lock _hostLock = new();
     private readonly ConcurrentDictionary<Guid, GameHostRecord> _savedHosts = new(); // host records as last written
     private readonly ConcurrentDictionary<Guid, GameHostRecord> _strandedHosts = new(); // hosts of another protocol version, left running
@@ -198,7 +199,8 @@ public sealed partial class ServerHost(
     /// Operations still running, and finished ones whose result waits in the outbox: the panel must not mark those as
     /// interrupted, since the result follows right after the Hello.
     /// </summary>
-    public IReadOnlyList<Guid> OperationsInFlight() => [.. _operations.Values.Select(o => o.Id), .. store.PendingResults().Select(r => r.OperationId)];
+    public IReadOnlyList<Guid> OperationsInFlight() =>
+        [.. _operations.Values.Select(o => o.Id).Concat(_unsavedResults.Keys).Concat(store.PendingResults().Select(r => r.OperationId)).Distinct()];
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -725,20 +727,27 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.invalid_spec", ex.Message);
         }
 
-        // A new RCON password at every provisioning (a reinstall rotates it): generated here, never chosen by anyone.
+        // A new RCON password at every provisioning (a reinstall rotates it): generated here, never chosen by anyone. So the
+        // server must be stopped, as for an install: a running game (or one taken over after the agent restarts) keeps
+        // the password it was started with.
         var rconPassword = manifest.Runtime.GetValueOrDefault(Platform)?.Console.Rcon is null ? null : NewRconPassword();
+        const string stopFirst = "Stop the server before provisioning it again.";
+        if (_servers.TryGetValue(command.ServerId, out var current) && current.Supervisor.Snapshot.State is not (RuntimeState.Offline or RuntimeState.Crashed))
+        {
+            return Rejected(envelope, "server.running", stopFirst);
+        }
 
-        return RunOperation(envelope, command.ServerId, operationId, async _ignored =>
+        return RunOperation(envelope, command.ServerId, operationId, stoppedMessage: stopFirst, work: async _ignored =>
         {
             var root = _config!.ServersRootOrDefault(configs.Paths);
-            await Task.Run(() => provisioner.Provision(root, spec.ShortId));
-            var desired = false;
+            // The record first: should creating the folder or the account fail midway, a delete still finds what to remove.
             lock (_recordLock)
             {
-                desired = store.Load(command.ServerId)?.DesiredRunning ?? false;
+                var desired = store.Load(command.ServerId)?.DesiredRunning ?? false;
                 store.Save(new ServerRecord(command.ServerId, spec, desired, ResumeOnStart: false, rconPassword));
             }
 
+            await Task.Run(() => provisioner.Provision(root, spec.ShortId));
             if (_servers.TryGetValue(command.ServerId, out var server))
             {
                 await server.Supervisor.UpdateAsync(Definition(command.ServerId, spec, rconPassword));
@@ -995,7 +1004,7 @@ public sealed partial class ServerHost(
 
             // Already gone (a retried delete): report success so the panel can finish.
             var gone = new OperationCompleted(operationId, command.ServerId, OperationOutcome.Succeeded, null, null);
-            store.SaveResult(gone);
+            KeepResult(gone);
             _ = DeliverResultAsync(gone);
             return new CommandAck(envelope.CommandId, AckStatus.AlreadyInState, null, null);
         }
@@ -1293,17 +1302,10 @@ public sealed partial class ServerHost(
                 gate?.EndExclusive();
             }
 
-            try
-            {
-                // In the outbox before the operation counts as ended: an agent that stops now still reports it.
-                store.SaveResult(result);
-            }
-            finally
-            {
-                _operations.TryRemove(new KeyValuePair<Guid, RunningOperation>(serverId, running));
-                running.Ended.TrySetResult();
-            }
-
+            // In the outbox before the operation counts as ended: an agent that stops now still reports it.
+            KeepResult(result);
+            _operations.TryRemove(new KeyValuePair<Guid, RunningOperation>(serverId, running));
+            running.Ended.TrySetResult();
             await DeliverResultAsync(result);
         });
         return new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null);
@@ -1324,26 +1326,69 @@ public sealed partial class ServerHost(
         }
     }
 
-    /// <summary>Sends a result already in the outbox, and removes it from there once the panel has it.</summary>
+    /// <summary>
+    /// Puts an operation's result in the outbox. One that cannot be written (a full disk) is logged and kept in memory:
+    /// it is still delivered, counts as in flight for the Hello, and its write is retried with the records'
+    /// (<see cref="RetryUnsavedResults"/>).
+    /// </summary>
+    private void KeepResult(OperationCompleted result)
+    {
+        try
+        {
+            store.SaveResult(result);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _unsavedResults[result.OperationId] = result;
+            LogResultNotSaved(result.OperationId, ex.Message);
+        }
+    }
+
+    private void RetryUnsavedResults()
+    {
+        foreach (var (operationId, result) in _unsavedResults)
+        {
+            try
+            {
+                store.SaveResult(result);
+                if (!_unsavedResults.TryRemove(new KeyValuePair<Guid, OperationCompleted>(operationId, result)))
+                {
+                    store.DeleteResult(operationId); // delivered meanwhile
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                LogResultNotSaved(operationId, ex.Message);
+            }
+        }
+    }
+
+    /// <summary>Sends a result kept in the outbox (or in memory), and removes it from there once the panel has it.</summary>
     private async Task DeliverResultAsync(OperationCompleted result)
     {
         if (await panel.DeliverAsync(nameof(IAgentHub.OperationCompleted), result, _stopping.Token))
         {
-            store.DeleteResult(result.OperationId);
+            Delivered(result.OperationId);
         }
     }
 
     private async Task DeliverPendingResultsAsync(CancellationToken cancellationToken)
     {
-        foreach (var result in store.PendingResults())
+        foreach (var result in store.PendingResults().Concat(_unsavedResults.Values).DistinctBy(r => r.OperationId))
         {
             if (!await panel.DeliverAsync(nameof(IAgentHub.OperationCompleted), result, cancellationToken))
             {
                 return;
             }
 
-            store.DeleteResult(result.OperationId);
+            Delivered(result.OperationId);
         }
+    }
+
+    private void Delivered(Guid operationId)
+    {
+        _unsavedResults.TryRemove(operationId, out _);
+        store.DeleteResult(operationId);
     }
 
     /// <summary>
@@ -1487,6 +1532,8 @@ public sealed partial class ServerHost(
         {
             UpdateRecord(serverId, r => r);
         }
+
+        RetryUnsavedResults();
     }
 
     private static CommandAck Rejected(CommandEnvelope envelope, string code, string message) =>
@@ -1535,6 +1582,10 @@ public sealed partial class ServerHost(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Server {ServerId}: its record could not be saved ({Reason}); trying again in a few seconds")]
     private partial void LogRecordNotSaved(Guid serverId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "The result of operation {OperationId} could not be saved ({Reason}); it is delivered from memory, and saving it is tried again in a few seconds")]
+    private partial void LogResultNotSaved(Guid operationId, string reason);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Server {ServerId}: its record could not be read to change it")]
     private partial void LogRecordNotChanged(Exception exception, Guid serverId);

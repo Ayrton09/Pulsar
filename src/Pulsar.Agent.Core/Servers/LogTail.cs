@@ -6,7 +6,8 @@ namespace Pulsar.Agent.Core.Servers;
 
 /// <summary>
 /// Follows the log file a game writes its console to (<c>logfile+rcon</c>, spike 0001): the text appended since the
-/// last read, from the start of the file. The agent deletes the file before each start, so the game creates it anew;
+/// last read, from the start of the file. The agent deletes the file before each start, so the game creates it anew
+/// (one that cannot be opened yet is tried again at the next poll);
 /// a file that shrinks (truncated) is read again from its start, and so is a new file under the same name (a game that
 /// rotates its log: renames it and starts another), which a reader that is idle checks for every few polls. A byte
 /// order mark is skipped. Cancelling ends the enumeration after one last read, so what the game wrote just before
@@ -40,7 +41,15 @@ public sealed class LogTail(IServerFiles files, string serverRoot, string relati
         {
             while (true)
             {
-                stream ??= files.OpenRead(serverRoot, relativePath);
+                try
+                {
+                    stream ??= files.OpenRead(serverRoot, relativePath);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Held without sharing for a moment (the game creating it), or not open to the agent yet: next poll.
+                }
+
                 var restart = stream is not null && stream.Length < position; // truncated
                 if (stream is not null && !restart && ++idlePolls % IdlePollsPerRotationCheck == 0 && Replacement(stream, position) is { } replacement)
                 {
