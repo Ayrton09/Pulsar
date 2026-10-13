@@ -76,20 +76,51 @@ internal sealed class JobObject : IDisposable
     {
         get
         {
-            if (_handle.IsClosed)
+            Lease lease;
+            try
+            {
+                lease = new Lease(_handle);
+            }
+            catch (ObjectDisposedException)
             {
                 return 0;
             }
 
-            JOBOBJECT_BASIC_ACCOUNTING_INFORMATION info;
-            if (!PInvoke.QueryInformationJobObject((HANDLE)_handle.DangerousGetHandle(), JOBOBJECTINFOCLASS.JobObjectBasicAccountingInformation,
-                    &info, (uint)sizeof(JOBOBJECT_BASIC_ACCOUNTING_INFORMATION), null))
+            using (lease)
             {
-                throw new Win32Exception(Marshal.GetLastPInvokeError(), "QueryInformationJobObject failed.");
-            }
+                JOBOBJECT_BASIC_ACCOUNTING_INFORMATION info;
+                if (!PInvoke.QueryInformationJobObject(lease.Value, JOBOBJECTINFOCLASS.JobObjectBasicAccountingInformation,
+                        &info, (uint)sizeof(JOBOBJECT_BASIC_ACCOUNTING_INFORMATION), null))
+                {
+                    throw new Win32Exception(Marshal.GetLastPInvokeError(), "QueryInformationJobObject failed.");
+                }
 
-            return (int)info.ActiveProcesses;
+                return (int)info.ActiveProcesses;
+            }
         }
+    }
+
+    /// <summary>
+    /// Keeps the job's handle open for one call that needs the raw value: a <see cref="Dispose"/> meanwhile waits for the
+    /// last lease to end, so the value is never used after the handle was closed (when another job may have been given
+    /// the same value).
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The job is disposed.</exception>
+    private readonly struct Lease : IDisposable
+    {
+        private readonly SafeHandle _handle;
+
+        public Lease(SafeHandle handle)
+        {
+            var added = false;
+            handle.DangerousAddRef(ref added);
+            _handle = handle;
+            Value = (HANDLE)handle.DangerousGetHandle();
+        }
+
+        public HANDLE Value { get; }
+
+        public void Dispose() => _handle.DangerousRelease();
     }
 
     /// <summary>
@@ -99,10 +130,13 @@ internal sealed class JobObject : IDisposable
     public unsafe ProcessUsage Usage()
     {
         JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting;
-        if (!PInvoke.QueryInformationJobObject((HANDLE)_handle.DangerousGetHandle(), JOBOBJECTINFOCLASS.JobObjectBasicAccountingInformation,
-                &accounting, (uint)sizeof(JOBOBJECT_BASIC_ACCOUNTING_INFORMATION), null))
+        using (var lease = new Lease(_handle))
         {
-            throw new Win32Exception(Marshal.GetLastPInvokeError(), "QueryInformationJobObject failed.");
+            if (!PInvoke.QueryInformationJobObject(lease.Value, JOBOBJECTINFOCLASS.JobObjectBasicAccountingInformation,
+                    &accounting, (uint)sizeof(JOBOBJECT_BASIC_ACCOUNTING_INFORMATION), null))
+            {
+                throw new Win32Exception(Marshal.GetLastPInvokeError(), "QueryInformationJobObject failed.");
+            }
         }
 
         var cpu = TimeSpan.FromTicks(accounting.TotalUserTime + accounting.TotalKernelTime);
@@ -134,10 +168,19 @@ internal sealed class JobObject : IDisposable
             fixed (byte* pointer = buffer)
             {
                 var list = (JOBOBJECT_BASIC_PROCESS_ID_LIST*)pointer;
-                if (!PInvoke.QueryInformationJobObject((HANDLE)_handle.DangerousGetHandle(), JOBOBJECTINFOCLASS.JobObjectBasicProcessIdList,
-                        pointer, (uint)size, null))
+                bool queried;
+                var error = 0;
+                using (var lease = new Lease(_handle))
                 {
-                    var error = Marshal.GetLastPInvokeError();
+                    queried = PInvoke.QueryInformationJobObject(lease.Value, JOBOBJECTINFOCLASS.JobObjectBasicProcessIdList, pointer, (uint)size, null);
+                    if (!queried)
+                    {
+                        error = Marshal.GetLastPInvokeError(); // before the lease ends: releasing a handle may close it
+                    }
+                }
+
+                if (!queried)
+                {
                     if (error == (int)WIN32_ERROR.ERROR_MORE_DATA)
                     {
                         continue;
@@ -161,7 +204,8 @@ internal sealed class JobObject : IDisposable
     public unsafe bool Contains(SafeHandle process)
     {
         BOOL result;
-        if (!PInvoke.IsProcessInJob((HANDLE)process.DangerousGetHandle(), (HANDLE)_handle.DangerousGetHandle(), &result))
+        using var lease = new Lease(_handle);
+        if (!PInvoke.IsProcessInJob((HANDLE)process.DangerousGetHandle(), lease.Value, &result))
         {
             throw new Win32Exception(Marshal.GetLastPInvokeError(), "IsProcessInJob failed.");
         }
@@ -261,7 +305,8 @@ internal sealed class JobObject : IDisposable
 
     private unsafe void Set(JOBOBJECTINFOCLASS type, void* info, uint size)
     {
-        if (!PInvoke.SetInformationJobObject((HANDLE)_handle.DangerousGetHandle(), type, info, size))
+        using var lease = new Lease(_handle);
+        if (!PInvoke.SetInformationJobObject(lease.Value, type, info, size))
         {
             throw new Win32Exception(Marshal.GetLastPInvokeError(), $"SetInformationJobObject({type}) failed.");
         }

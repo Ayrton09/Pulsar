@@ -69,7 +69,11 @@ public sealed record ProcessLaunchSpec(
     ConsoleMode ConsoleMode,
     ConsoleEncoding Encoding,
     ProcessIdentity Identity,
-    ProcessLimits? Limits = null);
+    ProcessLimits? Limits = null)
+{
+    // The default would print every argument and environment value: SteamCMD's come with the account's password.
+    public override string ToString() => $"ProcessLaunchSpec {{ ServerId = {ServerId}, Executable = {Executable}, Arguments = {Arguments.Count} }}";
+}
 
 /// <summary>Caps on a process tree (its Job); null fields are not capped.</summary>
 /// <param name="CpuPercent">Share of the whole machine, 1–100.</param>

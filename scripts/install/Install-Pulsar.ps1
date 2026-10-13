@@ -70,6 +70,7 @@ param(
 
     # --- Agent ---
     [string] $PanelUrl,
+    # The enrollment token; or leave it out and set PULSAR_ENROLLMENT_TOKEN: a command line shows in the process list.
     [string] $Token,
     [string] $PanelKey,
     # Where game servers are installed (default: C:\PulsarServers).
@@ -77,6 +78,10 @@ param(
     # The panel's certificate (.cer), when it is self-signed: trusted by this machine so the agent accepts it (refused
     # when it can issue certificates; -Uninstall removes the trust).
     [string] $TrustCertificate,
+    # Allows -TrustCertificate with a certificate that does not say whether it can issue certificates (no Basic
+    # Constraints: made by an earlier installer, or by hand). Windows may take such a certificate for a certificate
+    # authority; the default is to refuse it.
+    [switch] $TrustCertificateWithoutBasicConstraints,
 
     # --- Maintenance ---
     [Parameter(Mandatory, ParameterSetName = 'Update')] [switch] $Update,
@@ -462,7 +467,11 @@ function Assert-TrustableCertificate([string] $cer) {
         throw "$cer can issue certificates (its Basic Constraints say CA=true): trusted by this machine, whoever holds its key could vouch for any site. Pass the panel's own certificate (panel.cer), not a certificate authority's."
     }
     if ($null -eq $authority) {
-        Write-Warning "$cer does not say whether it can issue certificates (it has no Basic Constraints), and Windows may take it for a certificate authority. The installer's own self-signed certificate says it cannot; consider making a new one like it."
+        $message = "$cer does not say whether it can issue certificates (it has no Basic Constraints), and Windows may take it for a certificate authority: trusted by this machine, whoever holds its key could then vouch for any site. The installer's own self-signed certificate says it cannot; make a new one like it (Basic Constraints, critical, CA=false)"
+        if (-not $TrustCertificateWithoutBasicConstraints) {
+            throw "$message, or pass -TrustCertificateWithoutBasicConstraints if you know it is the panel's own."
+        }
+        Write-Warning "$message. Trusted anyway, as -TrustCertificateWithoutBasicConstraints says."
     }
 }
 
@@ -481,12 +490,16 @@ function Add-TrustedCertificate([string] $cer) {
 function Remove-TrustedCertificates {
     $thumbprints = @(Get-ChildItem 'Cert:\LocalMachine\Root' | Where-Object { $_.FriendlyName -eq $TrustedName } | ForEach-Object Thumbprint)
     if (Test-Path $TrustedMarker) {
-        $thumbprints += (Get-Content $TrustedMarker -Raw).Trim()
+        # A file anyone who could write there may have changed: only a thumbprint is used in the path below (Remove-Item
+        # takes wildcards, so a "*" would remove every trusted root certificate).
+        $noted = (Get-Content $TrustedMarker -Raw).Trim()
+        if ($noted -match '^[0-9A-Fa-f]{40}$') { $thumbprints += $noted }
+        else { Write-Warning "$TrustedMarker does not hold a certificate thumbprint; it is ignored." }
         Remove-Item $TrustedMarker
     }
     foreach ($thumbprint in $thumbprints | Select-Object -Unique) {
         Write-Step "No longer trusting the panel's certificate ($thumbprint)"
-        Remove-Item "Cert:\LocalMachine\Root\$thumbprint" -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath "Cert:\LocalMachine\Root\$thumbprint" -ErrorAction SilentlyContinue
     }
 }
 
@@ -729,8 +742,10 @@ if ($RestoreFrom -and $Mode -ne 'Panel') { throw '-RestoreFrom restores a panel:
 
 switch ($Mode) {
     'Agent' {
+        # The process list shows this script's own command line: the token can come from the environment instead.
+        if (-not $Token -and $env:PULSAR_ENROLLMENT_TOKEN) { $Token = $env:PULSAR_ENROLLMENT_TOKEN }
         if (-not ($PanelUrl -and $Token -and $PanelKey)) {
-            throw 'An agent needs -PanelUrl, -Token and -PanelKey: the panel shows them in Nodes > Add node.'
+            throw 'An agent needs -PanelUrl, -Token (or the PULSAR_ENROLLMENT_TOKEN environment variable) and -PanelKey: the panel shows them in Nodes > Add node.'
         }
         if ($TrustCertificate) {
             Write-Step "Trusting the panel's certificate ($TrustCertificate)"

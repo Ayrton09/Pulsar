@@ -36,7 +36,7 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
         ServerShortId.Validate(shortId);
         Use(rules =>
         {
-            RemoveRules(rules, shortId, portNames);
+            RemoveRules(rules, shortId);
             foreach (var port in ports)
             {
                 foreach (var protocol in port.Protocols)
@@ -80,7 +80,7 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
         }
 
         ServerShortId.Validate(shortId);
-        Use(rules => RemoveRules(rules, shortId, portNames));
+        Use(rules => RemoveRules(rules, shortId));
         LogRulesRemoved(shortId);
     }
 
@@ -91,46 +91,56 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
     public static int RemoveAll(IReadOnlyCollection<string> shortIds)
     {
         ArgumentNullException.ThrowIfNull(shortIds);
-        return shortIds.Count == 0 ? 0 : RemoveWhere(name => shortIds.Any(id => name.StartsWith($"{Grouping} {id} ", StringComparison.Ordinal)));
+        return shortIds.Count == 0 ? 0 : RemoveWhere(name => shortIds.Any(id => IsRuleOf(id, Grouping, name)));
     }
+
+    /// <summary>
+    /// Whether a rule is one the agent made for the server: of the agent's grouping and named <c>Pulsar &lt;shortId&gt; …</c>
+    /// (see <see cref="RuleName"/>), for whatever port: a game update may drop a port from its manifest, and its rule must
+    /// not outlive the manifest that named it.
+    /// </summary>
+    internal static bool IsRuleOf(string shortId, string grouping, string name) =>
+        grouping == Grouping && name.StartsWith($"{Grouping} {shortId} ", StringComparison.Ordinal);
 
     /// <summary>Removes the rules of the agent's grouping whose name matches.</summary>
     internal static int RemoveWhere(Func<string, bool> match)
     {
-        List<string> names = [];
-        Use(rules =>
-        {
-            foreach (var rule in rules)
-            {
-                try
-                {
-                    if (rule.Grouping is string grouping && grouping == Grouping && rule.Name is string name && match(name))
-                    {
-                        names.Add(name);
-                    }
-                }
-                finally
-                {
-                    Marshal.FinalReleaseComObject(rule);
-                }
-            }
-
-            foreach (var name in names.Distinct(StringComparer.Ordinal))
-            {
-                rules.Remove(name);
-            }
-        });
-        return names.Count;
+        var removed = 0;
+        Use(rules => removed = RemoveMatching(rules, match));
+        return removed;
     }
 
-    private static void RemoveRules(dynamic rules, string shortId, IReadOnlyCollection<string> portNames)
+    /// <summary>Every rule of the server, by prefix, whatever ports the manifest names now.</summary>
+    private static void RemoveRules(dynamic rules, string shortId)
     {
-        foreach (var name in portNames.SelectMany(p => new[] { RuleName(shortId, p, PortProtocol.Udp), RuleName(shortId, p, PortProtocol.Tcp) }))
+        Func<string, bool> match = name => IsRuleOf(shortId, Grouping, name); // (a lambda cannot be passed along a dynamic argument)
+        RemoveMatching(rules, match);
+    }
+
+    private static int RemoveMatching(dynamic rules, Func<string, bool> match)
+    {
+        List<string> names = [];
+        foreach (var rule in rules)
         {
-            // Nothing happens when there is no rule with that name. Rules are always removed before they are added, so a
-            // name is never used twice.
+            try
+            {
+                if (rule.Grouping is string grouping && grouping == Grouping && rule.Name is string name && match(name))
+                {
+                    names.Add(name);
+                }
+            }
+            finally
+            {
+                Marshal.FinalReleaseComObject(rule);
+            }
+        }
+
+        foreach (var name in names.Distinct(StringComparer.Ordinal))
+        {
             rules.Remove(name);
         }
+
+        return names.Count;
     }
 
     private static void Use(Action<dynamic> change)

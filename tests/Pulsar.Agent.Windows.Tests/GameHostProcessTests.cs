@@ -25,7 +25,7 @@ public sealed class GameHostProcessTests : IAsyncDisposable
     public GameHostProcessTests()
     {
         _launcher = new WindowsGameHostLauncher(Path.Combine(AppContext.BaseDirectory, "agent", "PulsarAgent.exe"), _data, null,
-            NullLogger<WindowsGameHostLauncher>.Instance);
+            NullLogger<WindowsGameHostLauncher>.Instance, development: true);
         _hosts = Manager(_launcher);
     }
 
@@ -92,11 +92,33 @@ public sealed class GameHostProcessTests : IAsyncDisposable
         Assert.Equal(3, process.CountProcesses()); // the game, its child and its grandchild (the console host is not in the job)
         var gameId = process.ProcessId;
 
-        _launcher.Kill(process.Host);
+        Assert.True(_launcher.Kill(process.Host)); // gone when it returns
+        Assert.True(_launcher.Kill(process.Host)); // already gone is gone
 
         Assert.Equal(HostedGameProcess.HostLostExitCode, await process.Exited.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
         await WaitUntilAsync(() => !ProcessRuns(gameId));
         Assert.Null(await _hosts.ReattachAsync(process.Host, 0, TestContext.Current.CancellationToken));
+    }
+
+    [WindowsFact]
+    public void AProcessThatCannotBeOpenedIsNotTakenForGone()
+    {
+        // The System process (id 4) cannot be opened without elevation: "access denied" says nothing about whether a host
+        // runs, and only "no such process" means it does not.
+        var system = new GameHostReference("pulsar-host-none", 4, DateTimeOffset.UtcNow);
+        var error = Record.Exception(() => _launcher.IsAlive(system));
+        Assert.SkipWhen(error is null, "Elevated: the System process can be opened, so there is nothing that cannot be checked.");
+
+        Assert.Equal(GameHostManager.HostUnverifiable, Assert.IsType<GameProcessException>(error).Code);
+        Assert.False(_launcher.Kill(system)); // not ended, and the caller keeps its record
+        Assert.Null(WindowsGameHostLauncher.ProgramOf(system));
+        Assert.False(_hosts.End(system));
+
+        // A process id nothing uses is simply gone.
+        var gone = new GameHostReference("pulsar-host-none", int.MaxValue - 3, DateTimeOffset.UtcNow);
+        Assert.False(_launcher.IsAlive(gone));
+        Assert.True(_launcher.Kill(gone));
+        Assert.True(_hosts.End(gone));
     }
 
     [WindowsFact]
@@ -154,7 +176,7 @@ public sealed class GameHostProcessTests : IAsyncDisposable
         var copies = Path.Combine(_data, "host-programs");
         var program = Path.Combine(AppContext.BaseDirectory, "agent");
         var launcher = new WindowsGameHostLauncher(() => GameHostProgram.Prepare(program, "PulsarAgent.exe", copies), _data, copies,
-            NullLogger<WindowsGameHostLauncher>.Instance);
+            NullLogger<WindowsGameHostLauncher>.Instance, development: true);
         var process = await StartAsync(Manager(launcher));
         Assert.StartsWith(copies, launcher.Executable, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(launcher.Executable, WindowsGameHostLauncher.ProgramOf(process.Host), StringComparer.OrdinalIgnoreCase);
@@ -168,7 +190,7 @@ public sealed class GameHostProcessTests : IAsyncDisposable
 
         // A copy a host still runs from stays even when that host is not recognized (its path spelled another way, say).
         var other = new WindowsGameHostLauncher(Path.Combine(copies, "fedcba9876543210", "PulsarAgent.exe"), _data, copies,
-            NullLogger<WindowsGameHostLauncher>.Instance);
+            NullLogger<WindowsGameHostLauncher>.Instance, development: true);
         other.CleanUpPrograms([]);
         Assert.True(File.Exists(launcher.Executable));
         Assert.True(File.Exists(Path.Combine(Path.GetDirectoryName(launcher.Executable)!, "PulsarAgent.dll")));
@@ -184,7 +206,7 @@ public sealed class GameHostProcessTests : IAsyncDisposable
         var full = true;
         var launcher = new WindowsGameHostLauncher(
             () => full ? throw new IOException("There is not enough space on the disk.") : Path.Combine(AppContext.BaseDirectory, "agent", "PulsarAgent.exe"),
-            _data, Path.Combine(_data, "host-programs"), NullLogger<WindowsGameHostLauncher>.Instance);
+            _data, Path.Combine(_data, "host-programs"), NullLogger<WindowsGameHostLauncher>.Instance, development: true);
         var hosts = Manager(launcher);
 
         launcher.CleanUpPrograms([]);

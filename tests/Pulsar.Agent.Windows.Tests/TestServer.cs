@@ -72,7 +72,7 @@ internal sealed class JobbedHostLauncher(WindowsGameHostLauncher launcher, TestJ
 
     public bool IsAlive(GameHostReference host) => launcher.IsAlive(host);
 
-    public void Kill(GameHostReference host) => launcher.Kill(host);
+    public bool Kill(GameHostReference host) => launcher.Kill(host);
 
     public bool Serves(PipeStream pipe, GameHostReference host) => launcher.Serves(pipe, host);
 
@@ -107,7 +107,7 @@ internal sealed class TestServerDirectory : IDisposable
     public string Root { get; }
 
     public static WindowsGameProcessManager Manager() =>
-        new(TestAccounts.Create(), TimeProvider.System, NullLogger<WindowsGameProcessManager>.Instance);
+        new(TestAccounts.Create(), TimeProvider.System, NullLogger<WindowsGameProcessManager>.Instance, allowCurrentUser: true);
 
     public ProcessLaunchSpec Spec(ConsoleMode mode, params string[] arguments) => new(Guid.NewGuid(), Root, Executable, arguments, "",
         new Dictionary<string, string>(), mode, ConsoleEncoding.Utf8, ProcessIdentity.CurrentUser);

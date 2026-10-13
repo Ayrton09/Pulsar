@@ -10,10 +10,17 @@ public interface IGameHostLauncher
     GameHostReference Launch(Guid serverId, string pipe);
 
     /// <summary>Whether the host process is still running (the same process: its id may have been reused since).</summary>
+    /// <exception cref="GameProcessException">
+    /// <c>host.unverifiable</c>: the process could not be opened to find out (access denied, say). That is not "gone": a
+    /// live game may be behind it, so the caller keeps its record and does not start the server beside it.
+    /// </exception>
     bool IsAlive(GameHostReference host);
 
-    /// <summary>Kills the host process; its game dies with its Job.</summary>
-    void Kill(GameHostReference host);
+    /// <summary>
+    /// Kills the host process; its game dies with its Job. True when the host is gone afterwards (it was, or it ended
+    /// within a bounded wait); false when it could not be ended or checked: the caller keeps its record.
+    /// </summary>
+    bool Kill(GameHostReference host);
 
     /// <summary>Whether <paramref name="pipe"/> (connected) is served by the host process itself.</summary>
     bool Serves(PipeStream pipe, GameHostReference host);
@@ -45,6 +52,9 @@ public interface IGameHostRecords
 public sealed partial class GameHostManager(IGameProcessManager local, IGameHostLauncher launcher, ILogger<GameHostManager> logger)
     : IGameProcessManager
 {
+    /// <summary>The code of the <see cref="GameProcessException"/> a launcher throws when it cannot tell whether a host runs.</summary>
+    public const string HostUnverifiable = "host.unverifiable";
+
     /// <summary>How long a new host gets to open its pipe and answer.</summary>
     public TimeSpan StartTimeout { get; init; } = TimeSpan.FromSeconds(15);
 
@@ -98,9 +108,10 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
             {
                 await process.DisposeAsync().ConfigureAwait(false); // released (killed when it does not answer)
             }
-            else
+            else if (!End(host))
             {
-                launcher.Kill(host);
+                // Could not be ended (or checked): its record stays, so the next run of the agent finds it.
+                throw;
             }
 
             Records?.HostAbandoned(spec.ServerId, host);
@@ -116,6 +127,10 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
     /// <exception cref="GameProcessException">
     /// <c>host.incompatible</c>: the host runs another version of the protocol (an update changed it). It is left running
     /// with its game: killing it would end every game on the node, and the caller must not start the server beside it.
+    /// </exception>
+    /// <exception cref="GameProcessException">
+    /// <see cref="HostUnverifiable"/>: the host could not be checked (not the same as gone). Like an incompatible host it is
+    /// left alone, and the caller must not start the server beside it.
     /// </exception>
     public async Task<IHostedGameProcess?> ReattachAsync(GameHostReference host, long outputFrom, CancellationToken cancellationToken)
     {
@@ -152,7 +167,12 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
                 await process.DisposeAsync().ConfigureAwait(false);
             }
 
-            launcher.Kill(host);
+            if (!End(host))
+            {
+                // A host that does not answer and cannot be ended: its game may run on, so it is not "gone".
+                throw new GameProcessException(HostUnverifiable, $"The host process {host.ProcessId} does not answer and could not be ended.", ex);
+            }
+
             return null;
         }
     }
@@ -166,16 +186,50 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
     public bool Kill(GameHostReference host)
     {
         ArgumentNullException.ThrowIfNull(host);
-        if (!launcher.IsAlive(host))
+        try
         {
+            return launcher.IsAlive(host) && launcher.Kill(host);
+        }
+        catch (GameProcessException ex) when (ex.Code == HostUnverifiable)
+        {
+            LogUnverifiable(host.ProcessId, ex.Message);
             return false;
         }
+    }
 
-        launcher.Kill(host);
-        return true;
+    /// <summary>
+    /// Ends a host nobody will take over and says whether it is gone now: true when it was gone already or ended within
+    /// the launcher's bounded wait; false when it could not be checked or ended, and the caller keeps its record.
+    /// </summary>
+    public bool End(GameHostReference host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        try
+        {
+            return !launcher.IsAlive(host) || launcher.Kill(host);
+        }
+        catch (GameProcessException ex) when (ex.Code == HostUnverifiable)
+        {
+            LogUnverifiable(host.ProcessId, ex.Message);
+            return false;
+        }
     }
 
     internal bool Serves(PipeStream pipe, GameHostReference host) => launcher.Serves(pipe, host);
+
+    /// <summary>Whether the host may still be running: a host that cannot be checked is taken to be.</summary>
+    private bool MayBeAlive(GameHostReference host)
+    {
+        try
+        {
+            return launcher.IsAlive(host);
+        }
+        catch (GameProcessException ex) when (ex.Code == HostUnverifiable)
+        {
+            LogUnverifiable(host.ProcessId, ex.Message);
+            return true;
+        }
+    }
 
     /// <summary>A host just started: its pipe appears once it is up.</summary>
     private async Task<HostedGameProcess> ConnectNewAsync(GameHostReference host, CancellationToken cancellationToken)
@@ -188,13 +242,13 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
                 return await HostedGameProcess.ConnectAsync(this, host, TimeSpan.FromMilliseconds(500), StartTimeout, cancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (GameProcessException ex) when (ex.Code == "host.unreachable" && DateTimeOffset.UtcNow < deadline && launcher.IsAlive(host))
+            catch (GameProcessException ex) when (ex.Code == "host.unreachable" && DateTimeOffset.UtcNow < deadline && MayBeAlive(host))
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken).ConfigureAwait(false);
             }
             catch (GameProcessException ex) when (ex.Code is "host.unreachable" or "host.incompatible")
             {
-                throw new GameProcessException("host.start_failed", launcher.IsAlive(host)
+                throw new GameProcessException("host.start_failed", MayBeAlive(host)
                     ? "The server's host process did not open its pipe or answer in time."
                     : "The server's host process ended right after it started (see the agent's logs folder).", ex);
             }
@@ -206,6 +260,9 @@ public sealed partial class GameHostManager(IGameProcessManager local, IGameHost
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The host process {HostProcessId} of a server does not answer ({Code}: {Reason}); killing it")]
     private partial void LogReattachFailed(int hostProcessId, string code, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The host process {HostProcessId} of a server could not be checked or ended ({Reason}): its record is kept")]
+    private partial void LogUnverifiable(int hostProcessId, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "The host process {HostProcessId} of a server runs another version of the agent ({Reason}): left running with its game, which this agent cannot manage")]

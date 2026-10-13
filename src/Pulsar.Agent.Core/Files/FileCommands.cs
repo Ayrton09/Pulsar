@@ -108,7 +108,7 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
     {
         ArgumentNullException.ThrowIfNull(path);
         var segments = path.Replace('\\', '/').Trim('/').Split('/');
-        if (ShortName().IsMatch(segments[0]))
+        if (PulsarShortName().IsMatch(segments[0]))
         {
             segments[0] = ".pulsar";
         }
@@ -118,14 +118,14 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
 
     /// <summary>
     /// Whether <paramref name="path"/> is in (or is) the server's <c>.pulsar</c> folder, whatever its case. A first
-    /// segment shaped like an 8.3 short name (<c>PULSAR~1</c>) counts too: on volumes that keep short names it may be
-    /// <c>.pulsar</c>'s, and the name alone cannot tell.
+    /// segment shaped like its 8.3 short name (<c>PULSAR~1</c>) counts too: on volumes that keep short names it may be
+    /// <c>.pulsar</c>, and the name alone cannot tell. Other folders that merely look like a short name (<c>MODS~1</c>) are the server's.
     /// </summary>
     public static bool IsPulsarFolder(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
         var first = path.Replace('\\', '/').Trim('/').Split('/')[0];
-        return first.Equals(".pulsar", StringComparison.OrdinalIgnoreCase) || IsShortName(first);
+        return first.Equals(".pulsar", StringComparison.OrdinalIgnoreCase) || PulsarShortName().IsMatch(first);
     }
 
     /// <summary>Whether <paramref name="name"/> (one path segment) is shaped like an 8.3 short name (<c>PULSAR~1</c>).</summary>
@@ -133,6 +133,10 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
 
     [GeneratedRegex("^[^.~]{1,6}~[0-9]+$", RegexOptions.CultureInvariant)]
     private static partial Regex ShortName();
+
+    // What Windows calls ".pulsar" on a volume that keeps 8.3 names: the leading dot is dropped, then ~N.
+    [GeneratedRegex(@"^PULSAR~[0-9]+\z", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex PulsarShortName();
 
     private static IEnumerable<string> PathsOf(AgentCommand command) => command switch
     {

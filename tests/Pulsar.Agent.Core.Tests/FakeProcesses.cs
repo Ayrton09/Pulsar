@@ -32,10 +32,13 @@ internal sealed class FakeProcessManager : IGameProcessManager
     /// <summary>How many times stray processes of the server's account were swept.</summary>
     public int StraySweeps { get; private set; }
 
+    /// <summary>How many processes each sweep reports killing.</summary>
+    public int StraysKilled { get; set; }
+
     public int TerminateStrayProcesses(ProcessIdentity identity)
     {
         StraySweeps++;
-        return 0;
+        return StraysKilled;
     }
 
     public async Task<IGameProcess> StartAsync(ProcessLaunchSpec spec, CancellationToken cancellationToken)

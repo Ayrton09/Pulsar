@@ -754,13 +754,30 @@ internal static class AgentCommands
         var ended = 0;
         foreach (var record in store.LoadHosts())
         {
-            if (launcher.IsAlive(record.Host))
+            bool gone;
+            try
             {
-                launcher.Kill(record.Host);
-                ended++;
+                gone = !launcher.IsAlive(record.Host);
+                if (!gone && (gone = launcher.Kill(record.Host)))
+                {
+                    ended++;
+                }
+            }
+            catch (GameProcessException ex) when (ex.Code == GameHostManager.HostUnverifiable)
+            {
+                Console.Error.WriteLine(ex.Message);
+                gone = false;
             }
 
-            store.DeleteHost(record.ServerId);
+            if (gone)
+            {
+                store.DeleteHost(record.ServerId);
+            }
+            else
+            {
+                // Still running, or it cannot be told: its record stays so that a later run finds it.
+                Console.Error.WriteLine($"The host process {record.Host.ProcessId} could not be ended; its record is kept.");
+            }
         }
 
         return ended;

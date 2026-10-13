@@ -513,6 +513,7 @@
       "must_be_stopped": "Primero detené el servidor.",
       "command_rejected": "El agente del nodo rechazó el comando.",
       "host_incompatible": "El juego del servidor sigue corriendo con una versión anterior del agente, que no puede manejarlo. Detené o iniciá el servidor para terminar ese juego (se lo mata, sin guardar).",
+      "host_not_ended": "El juego del servidor sigue corriendo en un proceso anfitrión que el agente no pudo terminar ni verificar. Probá de nuevo en un momento; nunca se inicia una segunda copia a su lado.",
       "extra_arguments_invalid": "Los argumentos extra son líneas de hasta 512 caracteres (32 como máximo).",
       "extra_arguments_not_allowed": "Este juego no permite argumentos extra.",
       "update_unsupported": "Este juego no se puede actualizar.",

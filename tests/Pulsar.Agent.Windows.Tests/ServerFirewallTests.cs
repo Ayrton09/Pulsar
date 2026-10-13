@@ -30,17 +30,31 @@ public sealed class ServerFirewallTests
             Assert.Equal("10.0.0.5/255.255.255.255", (string)Rule(WindowsServerFirewall.RuleName(ShortId, "tv", PortProtocol.Udp))!.LocalAddresses);
             Assert.Null(Rule(WindowsServerFirewall.RuleName(ShortId, "game", PortProtocol.Tcp))); // RCON's side stays closed
 
-            // A new start without CSTV: its rule goes.
-            firewall.Allow(ShortId, executable, [new BoundPort("game", "0.0.0.0", 27016, [PortProtocol.Udp])], ["game", "tv"]);
+            // A new start whose manifest no longer names CSTV (a game update dropped it): its rule goes all the same.
+            firewall.Allow(ShortId, executable, [new BoundPort("game", "0.0.0.0", 27016, [PortProtocol.Udp])], ["game"]);
             Assert.Equal("27016", (string)Rule(WindowsServerFirewall.RuleName(ShortId, "game", PortProtocol.Udp))!.LocalPorts);
             Assert.Null(Rule(WindowsServerFirewall.RuleName(ShortId, "tv", PortProtocol.Udp)));
         }
         finally
         {
-            firewall.Remove(ShortId, ["game", "tv"]);
+            firewall.Remove(ShortId, []);
         }
 
         Assert.Null(Rule(WindowsServerFirewall.RuleName(ShortId, "game", PortProtocol.Udp)));
+    }
+
+    [Theory]
+    [InlineData("Pulsar", "Pulsar abcd2345 game udp", true)]
+    [InlineData("Pulsar", "Pulsar abcd2345 rcon_old tcp", true)] // a port a game update dropped from the manifest
+    [InlineData("Pulsar", "Pulsar abcd2345 game", true)]
+    [InlineData("Pulsar", "Pulsar abcd23456 game udp", false)] // another server whose id starts with this one
+    [InlineData("Pulsar", "Pulsar abcd2 game udp", false)]
+    [InlineData("Pulsar", "Pulsar abcd2345", false)] // no port part: not one of ours
+    [InlineData("Other", "Pulsar abcd2345 game udp", false)] // another program's rule, whatever its name
+    [InlineData("Pulsar", "pulsar abcd2345 game udp", false)]
+    public void EveryRuleOfTheServersPrefixIsTheServersWhateverPortItWasFor(string grouping, string name, bool owned)
+    {
+        Assert.Equal(owned, WindowsServerFirewall.IsRuleOf("abcd2345", grouping, name));
     }
 
     [WindowsFact]

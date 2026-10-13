@@ -39,6 +39,9 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
 
     public static string AccountName(string shortId) => Prefix + shortId;
 
+    /// <summary>Raised with the account's name once <see cref="Delete"/> is done with it (the file manager drops its cached token).</summary>
+    public event Action<string>? Deleted;
+
     /// <summary>Local accounts do not exist on a domain controller; the agent refuses to run servers there.</summary>
     public static bool IsDomainController()
     {
@@ -95,6 +98,7 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
         catch (IdentityNotMappedException)
         {
             DeleteLogonLock(name); // a delete retried after the account went, before its lock did
+            Deleted?.Invoke(name);
             return false;
         }
 
@@ -120,6 +124,7 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
 
         LogAccountDeleted(name);
         DeleteLogonLock(name);
+        Deleted?.Invoke(name);
         return true;
     }
 

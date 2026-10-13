@@ -452,6 +452,27 @@ public sealed class BackupStoreTests : IDisposable
         Assert.Equal(1, result.FileCount);
     }
 
+    [Fact]
+    public async Task TwoFilesThatDifferOnlyByCaseLeaveTheSecondOutSoTheBackupCanBeRestored()
+    {
+        // A folder with per-directory case sensitivity can hold both; a restore refuses an archive naming the same path twice.
+        Write("cfg/Readme.txt", "first");
+        var files = new HookedServerFileManager(new DirectServerFileManager())
+        {
+            OnWalk = tree => [.. tree, new TreeEntry("cfg/readme.txt", FileEntryKind.File, 6, DateTimeOffset.UtcNow)],
+        };
+        var store = new BackupStore(files, NullLogger<BackupStore>.Instance);
+        var location = Location();
+
+        var result = await store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["cfg/Readme.txt"], Entries(location.Archive));
+        Assert.Equal(1, result.FileCount);
+        Assert.Equal(1, result.SkippedFiles);
+        await store.RestoreAsync(location, _server, result.Sha256, clean: null, Progress, TestContext.Current.CancellationToken);
+        Assert.Equal("first", ReadServer("cfg/Readme.txt"));
+    }
+
     /// <summary>A file the game keeps appending to: after what it held, a megabyte more, as fast as it is read.</summary>
     private sealed class GrowingStream(Stream start) : Stream
     {

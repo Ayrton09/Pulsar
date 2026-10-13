@@ -19,6 +19,9 @@ public sealed partial class ConsoleLines
     /// <summary>Tests: how many characters the searches looked at, which stays proportional to what was added.</summary>
     internal long Searched { get; private set; }
 
+    /// <summary>The unfinished line (what no line break has ended yet), without VT sequences: a prompt waiting for input.</summary>
+    public string PendingText => Clean(_pending.ToString());
+
     /// <summary>The complete lines in <paramref name="text"/> (with what earlier chunks left unfinished).</summary>
     public IReadOnlyList<string> Add(string text)
     {

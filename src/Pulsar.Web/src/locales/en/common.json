@@ -513,6 +513,7 @@
       "must_be_stopped": "Stop the server first.",
       "command_rejected": "The node's agent rejected the command.",
       "host_incompatible": "The server's game still runs under an earlier version of the agent, which cannot manage it. Stop or start the server to end that game (it is killed, without saving).",
+      "host_not_ended": "The server's game still runs in a host process that the agent could not end or check. Try again in a moment; it is never started a second time beside it.",
       "extra_arguments_invalid": "Extra arguments are single lines of up to 512 characters (32 at most).",
       "extra_arguments_not_allowed": "This game does not allow extra arguments.",
       "update_unsupported": "This game cannot be updated.",

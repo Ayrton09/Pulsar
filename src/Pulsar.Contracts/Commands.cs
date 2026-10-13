@@ -332,8 +332,13 @@ public sealed record CreateBackupCommand(Guid ServerId, Guid BackupId, RemoteBac
 /// First delete the files the manifest's backup rules select that the backup does not have (files made after it);
 /// otherwise they stay. Only for agents that announce <see cref="AgentCapabilities.CleanRestore"/>: older ones ignore it.
 /// </param>
-public sealed record RestoreBackupCommand(Guid ServerId, Guid BackupId, string Sha256, RemoteBackupTarget? Remote = null, bool Clean = false)
-    : AgentCommand
+/// <param name="SizeBytes">
+/// The archive's size when the node made it. With a <paramref name="Remote"/> copy, the download stops as soon as the
+/// storage sends more than this, so a bucket serving a huge object cannot fill the node's disk. Null (a panel that does
+/// not send it, or a backup without a recorded size): no limit.
+/// </param>
+public sealed record RestoreBackupCommand(Guid ServerId, Guid BackupId, string Sha256, RemoteBackupTarget? Remote = null, bool Clean = false,
+    long? SizeBytes = null) : AgentCommand
 {
     public const string Type = "server.backup_restore";
 }

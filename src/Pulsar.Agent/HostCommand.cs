@@ -9,7 +9,7 @@ using Serilog.Extensions.Logging;
 namespace Pulsar.Agent;
 
 /// <summary>
-/// <c>PulsarAgent host --server &lt;id&gt; --pipe &lt;name&gt; [--data-dir &lt;dir&gt;]</c>: the process one game server runs
+/// <c>PulsarAgent host --server &lt;id&gt; --pipe &lt;name&gt; [--data-dir &lt;dir&gt;] [--dev]</c>: the process one game server runs
 /// under (docs/architecture/06, "Server hosts"). The agent starts it; it is not meant to be run by hand, so the help does
 /// not list it. Its log goes to <c>logs\hosts</c> in the state directory.
 /// </summary>
@@ -17,7 +17,7 @@ internal static class HostCommand
 {
     public static async Task<int> RunAsync(CommandLine line)
     {
-        line.Allow("server", "pipe", "data-dir");
+        line.Allow("server", "pipe", "data-dir", "dev");
         if (!Guid.TryParse(line.Required("server"), out var serverId))
         {
             throw new UsageException("--server must be a server id.");
@@ -44,7 +44,8 @@ internal static class HostCommand
         {
             // The agent's own lock files: its logons of the server's account and this host's never overlap.
             var accounts = new WindowsServerAccounts(loggers.CreateLogger<WindowsServerAccounts>(), paths.LogonLocksDirectory);
-            var processes = new WindowsGameProcessManager(accounts, TimeProvider.System, loggers.CreateLogger<WindowsGameProcessManager>());
+            var processes = new WindowsGameProcessManager(accounts, TimeProvider.System, loggers.CreateLogger<WindowsGameProcessManager>(),
+                allowCurrentUser: line.Has("dev")); // only a development agent starts hosts with --dev
             using var service = new GameHostService(processes, serverId, pipe, new GameHostOptions(), TimeProvider.System,
                 loggers.CreateLogger<GameHostService>());
             return await service.RunAsync(CancellationToken.None);

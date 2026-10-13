@@ -30,6 +30,16 @@ public sealed class BackupContractTests
     }
 
     [Fact]
+    public void ARestoreCarriesTheBackupsSizeOnlyWhenThePanelSendsIt()
+    {
+        var older = """{"serverId":"0192f1a0-0000-7000-8000-000000000001","backupId":"0192f1a0-0000-7000-8000-000000000002","sha256":"ab"}"""u8;
+
+        Assert.Null(ProtocolJson.Deserialize<RestoreBackupCommand>(older).SizeBytes);
+        Assert.Equal(4096, ProtocolJson.Deserialize<RestoreBackupCommand>(ProtocolJson.Serialize(
+            new RestoreBackupCommand(Guid.CreateVersion7(), Guid.CreateVersion7(), "ab", SizeBytes: 4096))).SizeBytes);
+    }
+
+    [Fact]
     public void ARestoreIsAnOverlayUnlessAskedToBeClean()
     {
         var json = """{"serverId":"0192f1a0-0000-7000-8000-000000000001","backupId":"0192f1a0-0000-7000-8000-000000000002","sha256":"ab"}"""u8;

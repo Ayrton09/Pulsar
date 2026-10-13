@@ -96,7 +96,7 @@ public sealed class InstallStepsTests : IDisposable
         File.Delete(Path.Combine(_server, "serverconfig.xml"));
         Run("cmd.exe", "/c", "mklink", "/J", Path.Combine(_server, "config"), _outside);
         File.WriteAllText(Path.Combine(_outside, "secret.txt"), "not yours");
-        Assert.Equal("files.outside_server",
+        Assert.Equal("files.reparse_point", // the junction itself is refused, not the file it leads to
             Assert.Throws<GameProcessException>(() => steps.Run(new CopyFileIfMissingStep("config/secret.txt", "copy.txt"), _server)).Code);
         Assert.False(File.Exists(Path.Combine(_server, "copy.txt")));
         Assert.Equal("install.copy_source_missing",

@@ -227,13 +227,15 @@ public sealed class WindowsDirectorySecurity : IAgentDirectorySecurity
     {
         var security = Rules(development);
         var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
-        if (info.Exists)
+        try
         {
-            info.SetAccessControl(security);
+            // By handle, opened without following a link: one that took the folder's place since it was checked is refused
+            // instead of getting the rules (a path would lead to its target).
+            SetRules(info.FullName, security);
         }
-        else
+        catch (UnsafeFolderException ex)
         {
-            info.Create(security);
+            throw new AgentException(ex.Message);
         }
 
         return development ? null : administrators;
@@ -316,30 +318,48 @@ public sealed class WindowsDirectorySecurity : IAgentDirectorySecurity
         }
     }
 
-    private static void Inherit(FileSystemInfo entry, SecurityIdentifier? owner)
+    /// <summary>
+    /// The entry keeps no rules of its own: it inherits its folder's (and is owned by <paramref name="owner"/>). Through a
+    /// handle opened without following a link and checked to be none, as <see cref="SetRules"/> does: a link that replaced
+    /// the entry since it was listed would otherwise receive the rules through its path, and they would land on its target.
+    /// </summary>
+    private static unsafe void Inherit(FileSystemInfo entry, SecurityIdentifier? owner)
     {
-        // Checked again right before: rules set on a link would land on its target.
-        RefuseLink(entry);
-        if (entry is DirectoryInfo directory)
-        {
-            var security = new DirectorySecurity();
-            Inherit(security, owner);
-            directory.SetAccessControl(security);
-        }
-        else
-        {
-            var security = new FileSecurity();
-            Inherit(security, owner);
-            ((FileInfo)entry).SetAccessControl(security);
-        }
-    }
+        var ownerBytes = new byte[owner?.BinaryLength ?? 0];
+        owner?.GetBinaryForm(ownerBytes, 0);
+        // An empty, unprotected DACL: the explicit rules go and the parent's inheritable ones apply.
+        var empty = new RawAcl(GenericAcl.AclRevision, 0);
+        var dacl = new byte[empty.BinaryLength];
+        empty.GetBinaryForm(dacl, 0);
 
-    private static void Inherit(FileSystemSecurity security, SecurityIdentifier? owner)
-    {
-        security.SetAccessRuleProtection(isProtected: false, preserveInheritance: false);
-        if (owner is not null)
+        using var handle = PInvoke.CreateFile(entry.FullName, ReadAttributes | ReadControl | WriteDac | (owner is not null ? WriteOwner : 0),
+            FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_DELETE, null,
+            FILE_CREATION_DISPOSITION.OPEN_EXISTING,
+            FILE_FLAGS_AND_ATTRIBUTES.FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAGS_AND_ATTRIBUTES.FILE_FLAG_BACKUP_SEMANTICS, null);
+        FILE_ATTRIBUTE_TAG_INFO tag;
+        if (handle.IsInvalid
+            || !PInvoke.GetFileInformationByHandleEx((HANDLE)handle.DangerousGetHandle(), FILE_INFO_BY_HANDLE_CLASS.FileAttributeTagInfo, &tag,
+                (uint)sizeof(FILE_ATTRIBUTE_TAG_INFO)))
         {
-            security.SetOwner(owner);
+            throw new IOException($"Cannot open {entry.FullName}: {new Win32Exception(Marshal.GetLastPInvokeError()).Message}");
+        }
+
+        if (IsLink(tag.FileAttributes, tag.ReparseTag))
+        {
+            throw new AgentException($"{entry.FullName} is a junction or link: the agent's folders must hold plain files and folders.");
+        }
+
+        var sections = OBJECT_SECURITY_INFORMATION.DACL_SECURITY_INFORMATION | OBJECT_SECURITY_INFORMATION.UNPROTECTED_DACL_SECURITY_INFORMATION
+            | (owner is not null ? OBJECT_SECURITY_INFORMATION.OWNER_SECURITY_INFORMATION : 0);
+        fixed (byte* daclPointer = dacl)
+        fixed (byte* ownerPointer = ownerBytes)
+        {
+            var error = PInvoke.SetSecurityInfo((HANDLE)handle.DangerousGetHandle(), SE_OBJECT_TYPE.SE_FILE_OBJECT, sections,
+                owner is not null ? (PSID)ownerPointer : default, default, (ACL*)daclPointer, null);
+            if (error != WIN32_ERROR.ERROR_SUCCESS)
+            {
+                throw new UnauthorizedAccessException($"Cannot reset who may open {entry.FullName}: {new Win32Exception((int)error).Message}");
+            }
         }
     }
 

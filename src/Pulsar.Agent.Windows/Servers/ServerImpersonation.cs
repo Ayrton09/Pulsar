@@ -32,13 +32,27 @@ public sealed class ServerImpersonation : IServerImpersonation, IDisposable
     private readonly Dictionary<string, CachedToken> _tokens = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, LogonGate> _gates = new(StringComparer.OrdinalIgnoreCase);
 
+    private readonly WindowsServerAccounts? _accounts;
+    private readonly ITimer _sweep;
+
     public ServerImpersonation(WindowsServerAccounts accounts, TimeProvider clock)
-        : this(accounts.LogOnForImpersonation, clock)
+        : this(accounts.LogOnForImpersonation, clock, accounts)
     {
     }
 
     /// <param name="logOn">Tests: logs an account on in place of <see cref="WindowsServerAccounts.LogOnForImpersonation"/>.</param>
-    internal ServerImpersonation(Func<string, SafeAccessTokenHandle> logOn, TimeProvider clock) => (_logOn, _clock) = (logOn, clock);
+    /// <param name="accounts">The accounts whose deletion drops their cached token.</param>
+    internal ServerImpersonation(Func<string, SafeAccessTokenHandle> logOn, TimeProvider clock, WindowsServerAccounts? accounts = null)
+    {
+        (_logOn, _clock, _accounts) = (logOn, clock, accounts);
+        if (accounts is not null)
+        {
+            accounts.Deleted += Forget;
+        }
+
+        // A token nobody asks for again is closed too, not just when the next call comes along.
+        _sweep = clock.CreateTimer(_ => EvictStale(), null, s_keep, s_keep);
+    }
 
     public T Run<T>(ProcessIdentity identity, Func<T> action)
     {
@@ -63,8 +77,29 @@ public sealed class ServerImpersonation : IServerImpersonation, IDisposable
         }
     }
 
+    /// <summary>
+    /// Drops the account's cached token (it was deleted: a token of a deleted account is worth nothing, and a new account
+    /// with the same name must log on afresh). One in use is closed when its operation ends.
+    /// </summary>
+    public void Forget(string accountName)
+    {
+        lock (_lock)
+        {
+            if (_tokens.Remove(accountName, out var token))
+            {
+                Retire(token);
+            }
+        }
+    }
+
     public void Dispose()
     {
+        if (_accounts is not null)
+        {
+            _accounts.Deleted -= Forget;
+        }
+
+        _sweep.Dispose();
         lock (_lock)
         {
             foreach (var token in _tokens.Values)
@@ -133,15 +168,7 @@ public sealed class ServerImpersonation : IServerImpersonation, IDisposable
     private CachedToken? TakeCached(string name)
     {
         var now = _clock.GetUtcNow();
-        foreach (var (key, stale) in _tokens.Where(t => now - t.Value.LastUsed > s_keep).ToList())
-        {
-            _tokens.Remove(key);
-            stale.Retired = true;
-            if (stale.Users == 0)
-            {
-                stale.Handle.Dispose();
-            }
-        }
+        EvictStaleLocked(now);
 
         if (!_tokens.TryGetValue(name, out var token))
         {
@@ -162,6 +189,39 @@ public sealed class ServerImpersonation : IServerImpersonation, IDisposable
             {
                 token.Handle.Dispose();
             }
+
+            // Kept for a minute after its last use, which is now; and what went idle meanwhile (other accounts', during a
+            // long operation) is closed here, not only when somebody acquires a token next.
+            var now = _clock.GetUtcNow();
+            token.LastUsed = now;
+            EvictStaleLocked(now);
+        }
+    }
+
+    private void EvictStale()
+    {
+        lock (_lock)
+        {
+            EvictStaleLocked(_clock.GetUtcNow());
+        }
+    }
+
+    /// <summary>Retires the tokens unused for longer than they are kept. Under the lock.</summary>
+    private void EvictStaleLocked(DateTimeOffset now)
+    {
+        foreach (var (key, stale) in _tokens.Where(t => t.Value.Users == 0 && now - t.Value.LastUsed > s_keep).ToList())
+        {
+            _tokens.Remove(key);
+            Retire(stale);
+        }
+    }
+
+    private static void Retire(CachedToken token)
+    {
+        token.Retired = true;
+        if (token.Users == 0)
+        {
+            token.Handle.Dispose();
         }
     }
 

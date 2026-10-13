@@ -356,6 +356,42 @@ public abstract class ServerFileManagerContract : IDisposable
         Assert.False(Directory.Exists(Path.Combine(ServerDirectory, ".pulsar", "steamcmd")));
     }
 
+    [ContractFact]
+    public void AJunctionIsListedAsALinkAndNeverFollowedWhenItIsTheListedFolder()
+    {
+        // Needs no elevation (a symbolic link does); only the entry itself is the link, so the ancestors are all clean.
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Junctions are a Windows feature.");
+        }
+
+        var outside = Directory.CreateDirectory(Path.Combine(Root, "outside-of-the-server")).FullName;
+        File.WriteAllText(Path.Combine(outside, "secret.cfg"), "rcon_password other-server");
+        var junction = Path.Combine(ServerDirectory, "alias");
+        using (var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", junction, outside])
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        })!)
+        {
+            mklink.WaitForExit();
+            Assert.True(mklink.ExitCode == 0, mklink.StandardError.ReadToEnd());
+        }
+
+        try
+        {
+            Assert.Equal(FileEntryKind.Link, Files.List(Server, ServerFilePath.Root).Entries.Single(e => e.Name == "alias").Kind);
+            Assert.Equal(FileErrors.Link, Code(() => Files.List(Server, "alias")));
+        }
+        finally
+        {
+            Directory.Delete(junction); // the link itself, never what it points to
+        }
+
+        Assert.True(File.Exists(Path.Combine(outside, "secret.cfg")));
+    }
+
     protected string Version(string path)
     {
         using var opened = Files.OpenRead(Server, path, long.MaxValue);

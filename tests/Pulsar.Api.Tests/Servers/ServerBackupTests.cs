@@ -344,6 +344,7 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
         var details = await ServerApi.WaitForAsync(admin, server, s => s.Server.ActiveOperation is null, "restored");
         Assert.Equal(OperationStatus.Succeeded, details.RecentOperations.First(o => o.Type == OperationType.BackupRestore).Status);
         Assert.Equal("hostname remote", await File.ReadAllTextAsync(config, Ct));
+        Assert.Equal(agent.RemoteBackups.Objects[key].Length, Assert.Single(agent.RemoteBackups.MaxBytesSeen)); // the restore carries the backup's size
         Assert.True(File.Exists(Archive(agent, server, backup.Id)));
 
         // Lost again: a download comes straight from remote storage.

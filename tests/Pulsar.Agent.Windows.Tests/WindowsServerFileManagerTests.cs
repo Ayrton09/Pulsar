@@ -238,6 +238,25 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
     }
 
     [WindowsFact]
+    public void AnUploadThatFailsAfterItsRenameKeepsTheFileItPutInPlace()
+    {
+        // Once the file is at its target, abandoning the upload must not delete it (it would delete the new file).
+        File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "old");
+        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System))
+        {
+            AfterRename = () => throw new FileManagerException(FileErrors.Failed, "describing the file failed"),
+        };
+
+        using (var pending = files.Create(Server, "server.cfg", 3, overwrite: true, expectedVersion: null))
+        {
+            pending.Content.Write("new"u8);
+            Assert.Throws<FileManagerException>(() => pending.Commit());
+        }
+
+        Assert.Equal("new", File.ReadAllText(Path.Combine(ServerDirectory, "server.cfg")));
+    }
+
+    [WindowsFact]
     public void AFolderSwappedForAJunctionBeforeAnUploadStartsLeavesNothingOutside()
     {
         // The server's account swaps the folder the file manager has just checked for a junction to somewhere else.

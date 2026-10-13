@@ -508,6 +508,58 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AHostThatCannotBeCheckedIsNotTakenForGoneAndTheServerIsNotStartedBesideIt()
+    {
+        // OpenProcess failing with anything but "no such process" (access denied, say) tells nothing about the host.
+        _launcher = new InProcessHostLauncher(_games);
+        var serverId = Stored("abcd2345", autoStart: true);
+        var running = _launcher.Launch(serverId, GameHostProtocol.NewPipeName(serverId));
+        _store.SaveHost(new GameHostRecord(serverId, running, 0, 0, Ready: true));
+        _launcher.Unverifiable = true;
+
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(running, Assert.Single(_store.LoadHosts()).Host); // its record stays
+        Assert.Empty(_games.Started); // not started beside it, although it starts with the agent
+        var start = await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+        Assert.Equal((AckStatus.Rejected, "server.host_not_ended"), (start.Status, start.ErrorCode));
+        Assert.Empty(_games.Started);
+        Assert.Equal(running, Assert.Single(_store.LoadHosts()).Host);
+
+        // Once the host can be checked again, ending it is what a start does first.
+        _launcher.Unverifiable = false;
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null))).Status);
+        await _launcher.WaitEndedAsync(running);
+    }
+
+    [Fact]
+    public async Task AHostThatSurvivesItsKillKeepsItsRecordAndTheStartIsRefused()
+    {
+        _launcher = new InProcessHostLauncher(_games);
+        var serverId = Stored("abcd2345");
+        var stranded = _launcher.Launch(serverId, GameHostProtocol.NewPipeName(serverId),
+            new GameHostOptions { Protocol = GameHostProtocol.Version + 1 });
+        _store.SaveHost(new GameHostRecord(serverId, stranded, 0, 0, Ready: true));
+        var host = Host(hosted: true);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        _launcher.KillFails = true;
+
+        var start = await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+
+        Assert.Equal((AckStatus.Rejected, "server.host_not_ended"), (start.Status, start.ErrorCode));
+        Assert.Empty(_games.Started);
+        Assert.Equal(stranded, Assert.Single(_store.LoadHosts()).Host);
+        var stop = await host.ExecuteAsync(Envelope(new StopServerCommand(serverId), null));
+        Assert.Equal((AckStatus.Rejected, "server.host_not_ended"), (stop.Status, stop.ErrorCode));
+        Assert.Equal(stranded, Assert.Single(_store.LoadHosts()).Host);
+
+        _launcher.KillFails = false;
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null))).Status);
+        await _launcher.WaitEndedAsync(stranded);
+    }
+
+    [Fact]
     public async Task HostsAnEarlierRunLeftAreEndedWhenGamesRunInTheAgent()
     {
         _launcher = new InProcessHostLauncher(_games);

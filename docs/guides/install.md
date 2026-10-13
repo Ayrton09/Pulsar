@@ -44,7 +44,8 @@ connection string with `-ConnectionString "Host=…;Port=5432;Database=…;Usern
    Get-Content .\pulsar-<version>-windows-x64.zip.sha256
    ```
 
-   Both must show the same value.
+   Both must show the same value. A release built by the project's release workflow also carries a provenance
+   attestation, which you can check with the GitHub CLI: `gh attestation verify .\pulsar-<version>-windows-x64.zip --repo Ayrton09/Pulsar`.
 3. Unblock and extract it to a folder of your choice, for example `C:\PulsarSetup`:
 
    ```powershell
@@ -108,14 +109,17 @@ powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Mode Agent -Panel
 ```
 
 The command works once and for 30 minutes. The installer hands the token to the agent through the environment, not
-its command line. When you run `PulsarAgent enroll` yourself, prefer `--token -` (it asks for the token on standard
+its command line; to keep it off the installer's own command line too, leave `-Token` out and set the
+`PULSAR_ENROLLMENT_TOKEN` environment variable in that PowerShell window. When you run `PulsarAgent enroll` yourself, prefer `--token -` (it asks for the token on standard
 input) or the `PULSAR_ENROLLMENT_TOKEN` environment variable to `--token <token>`: other programs on the machine can see
 command lines in the process list. With the panel's self-signed certificate, copy
 `C:\ProgramData\Pulsar\Panel\tls\panel.cer` from the panel's machine to the node first and add
 `-TrustCertificate .\panel.cer`: the node then trusts that certificate. The node appears as **Online** in the panel.
 `-TrustCertificate` refuses a certificate that can issue other certificates (a certificate authority's: trusted by the
-node, whoever holds its key could vouch for any site), and warns about one that does not say (certificates made by
-installers before this check); `-Uninstall` removes the trust it gave.
+node, whoever holds its key could vouch for any site), and one that does not say whether it can (no Basic Constraints:
+certificates made by installers before this check, or by hand; Windows may take them for a certificate authority).
+Make a new certificate like the installer's (Basic Constraints, critical, CA=false), or add
+`-TrustCertificateWithoutBasicConstraints` if you know it is the panel's own; `-Uninstall` removes the trust it gave.
 
 The panel's machine must accept connections on its port (the installer opens it in Windows Firewall on Domain and
 Private networks, see `-FirewallPublic` above; routers and cloud firewalls are up to you). Nodes only connect out to
@@ -159,6 +163,11 @@ two commands:
   ```powershell
   msiexec /i pulsar-agent-<version>-windows-x64.msi /qn PANELURL=https://panel:8443 TOKEN=<token> PANELKEY=sha256:<fingerprint>
   ```
+
+  The installer cannot take the token any other way than on a command line (the package's `enroll` step receives it
+  as `--token "..."`), so it is visible, as `TOKEN=` is on `msiexec`'s, to administrators of the machine while it
+  runs; the installer's log hides it. Use a reusable token that waits for approval and expires soon, and revoke it
+  when the rollout ends.
 
   Add `SERVERSROOT=D:\PulsarServers` to put game servers somewhere other than `C:\PulsarServers`: a new or empty folder
   (or the one an earlier enrollment used), not one inside a folder other users may change (`C:\Users\Public`, a
@@ -206,7 +215,9 @@ afterwards:
    set its variables. The node downloads the game with SteamCMD; the progress shows on the server's page.
 4. Open the game's ports to players: in Windows Firewall on the node (or let the agent manage rules for its servers:
    add `"Pulsar": { "ManageFirewall": true }` to `C:\Program Files\Pulsar\Agent\appsettings.Production.json` and
-   restart the PulsarAgent service), and in your router if players come from the internet.
+   restart the PulsarAgent service), and in your router if players come from the internet. The agent's rules apply to
+   every network profile, Public included (the network adapters of cloud servers are often Public), and only to that
+   game's program and the ports it declares.
 
 Windows Defender scans every file SteamCMD writes, which slows the first download of large games. Pulsar does not add
 exclusions on its own: whether to exclude `C:\PulsarServers` is your security decision.

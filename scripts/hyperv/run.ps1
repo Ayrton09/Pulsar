@@ -37,6 +37,14 @@ New-Item -ItemType Directory -Force $out, $VmRoot | Out-Null
 $IsoPath = (Resolve-Path $IsoPath).Path
 $PgHome = (Resolve-Path $PgHome).Path
 $baseDir = New-Item -ItemType Directory -Force (Join-Path $VmRoot 'base')
+# The base disk carries the lab Administrator's password in its answer file: only administrators and SYSTEM open it.
+$baseAccess = New-Object Security.AccessControl.DirectorySecurity
+$baseAccess.SetAccessRuleProtection($true, $false)
+foreach ($sidText in 'S-1-5-18', 'S-1-5-32-544') {
+    $baseAccess.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier $sidText),
+        'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+}
+Set-Acl -LiteralPath $baseDir.FullName -AclObject $baseAccess
 $baseDisk = Join-Path $baseDir 'server2022.vhdx'
 $credentialFile = Join-Path $baseDir 'credential.xml'
 $summary = Join-Path $out 'summary.txt'
@@ -122,6 +130,15 @@ function New-BaseDisk {
   </settings>
 </unattend>
 "@ | Set-Content -Encoding UTF8 "${w}:\Windows\Panther\unattend.xml"
+
+            # The answer file holds the Administrator's password in clear text. Windows runs SetupComplete.cmd (as SYSTEM,
+            # before anyone can sign in) once the first boot's setup has used it: it deletes both copies of the answer
+            # file Setup keeps, and itself, so no running VM (nor a checkpoint or export of one) keeps the password. The
+            # base disk is never started, so its own copy stays: it is the lab's, in <VmRoot>\base, which only
+            # administrators and SYSTEM can open (restricted above).
+            New-Item -ItemType Directory -Force "${w}:\Windows\Setup\Scripts" | Out-Null
+            "@echo off`r`ndel /f /q `"%SystemRoot%\Panther\unattend.xml`" `"%SystemRoot%\Panther\Unattend\unattend.xml`" 2>nul`r`ndel /f /q `"%~f0`"`r`n" |
+                Set-Content -Encoding Ascii -NoNewline "${w}:\Windows\Setup\Scripts\SetupComplete.cmd"
         }
         finally { Dismount-VHD -Path $partial }
     }

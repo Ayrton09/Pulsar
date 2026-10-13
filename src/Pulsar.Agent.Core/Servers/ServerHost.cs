@@ -230,8 +230,10 @@ public sealed partial class ServerHost(
                 foreach (var left in running.Values)
                 {
                     LogLeftHostEnded(left.ServerId, left.Host.ProcessId);
-                    hosts!.Kill(left.Host);
-                    ForgetHost(left.ServerId);
+                    if (hosts!.End(left.Host))
+                    {
+                        ForgetHost(left.ServerId); // a host that could not be ended keeps its record, for the next run
+                    }
                 }
 
                 running.Clear();
@@ -280,8 +282,10 @@ public sealed partial class ServerHost(
 
                 // Hosts of servers this node no longer has: nothing may keep running unwatched.
                 LogOrphanHost(orphan.ServerId, orphan.Host.ProcessId);
-                hosts!.Kill(orphan.Host);
-                ForgetHost(orphan.ServerId);
+                if (hosts!.End(orphan.Host))
+                {
+                    ForgetHost(orphan.ServerId); // kept when it could not be ended: the next run tries again
+                }
             }
 
             hosts?.CleanUpPrograms([.. _savedHosts.Values.Select(h => h.Host)]);
@@ -420,9 +424,10 @@ public sealed partial class ServerHost(
         {
             process = await Hosts!.ReattachAsync(host.Host, host.ConsoleOffset, cancellationToken);
         }
-        catch (GameProcessException ex) when (ex.Code == "host.incompatible")
+        catch (GameProcessException ex) when (ex.Code is "host.incompatible" or GameHostManager.HostUnverifiable)
         {
-            // Its record stays for an agent that speaks its protocol; the server must not start beside it meanwhile.
+            // Its record stays for an agent that speaks its protocol (or can check it); the server must not start beside it
+            // meanwhile. A host that could not be checked is handled the same way: it may well be running.
             _savedHosts[record.ServerId] = host;
             _strandedHosts[record.ServerId] = host;
             return true;
@@ -511,7 +516,13 @@ public sealed partial class ServerHost(
         }
 
         LogStrandedHostEnded(serverId, stranded.Host.ProcessId);
-        hosts!.Kill(stranded.Host);
+        if (!hosts!.End(stranded.Host))
+        {
+            // Still there, or it cannot be checked: its record stays, and the server does not start beside it.
+            _strandedHosts[serverId] = stranded;
+            return false;
+        }
+
         ForgetHost(serverId);
         return true;
     }
@@ -1103,7 +1114,7 @@ public sealed partial class ServerHost(
             BackupProgress progress = (stage, percent) => SendProgressAsync(operationId, stage, percent);
             if (command.Remote is { } remote)
             {
-                await backups.FetchAsync(location, remote, command.Sha256, progress, cancellationToken);
+                await backups.FetchAsync(location, remote, command.Sha256, command.SizeBytes, progress, cancellationToken);
             }
 
             await backups.RestoreAsync(location, provisioned, command.Sha256, command.Clean ? new CleanRestore(server.Manifest.Backup) : null,
@@ -1213,7 +1224,10 @@ public sealed partial class ServerHost(
             // game's console and Ctrl+C belong to that host, which does not speak this agent's protocol.
             if (envelope.Command is StopServerCommand or KillServerCommand)
             {
-                return new CommandAck(envelope.CommandId, EndStrandedHost(server) ? AckStatus.Accepted : AckStatus.AlreadyInState, null, null);
+                var ended = EndStrandedHost(server);
+                return _strandedHosts.ContainsKey(serverId)
+                    ? HostNotEnded(envelope)
+                    : new CommandAck(envelope.CommandId, ended ? AckStatus.Accepted : AckStatus.AlreadyInState, null, null);
             }
 
             if (envelope.Command is not StartServerCommand)
@@ -1224,6 +1238,10 @@ public sealed partial class ServerHost(
             }
 
             EndStrandedHost(server);
+            if (_strandedHosts.ContainsKey(serverId))
+            {
+                return HostNotEnded(envelope);
+            }
         }
 
         // The supervisor refuses a start once an exclusive operation has begun, even one that began after the check above.
@@ -1538,6 +1556,10 @@ public sealed partial class ServerHost(
 
     private static CommandAck Rejected(CommandEnvelope envelope, string code, string message) =>
         new(envelope.CommandId, AckStatus.Rejected, code, message);
+
+    private static CommandAck HostNotEnded(CommandEnvelope envelope) =>
+        Rejected(envelope, "server.host_not_ended", "The server's game still runs in a host process that could not be ended or checked " +
+            "(see the agent's log); try again. It is never started a second time beside it.");
 
     private sealed record RunningOperation(Guid Id, bool Exclusive)
     {

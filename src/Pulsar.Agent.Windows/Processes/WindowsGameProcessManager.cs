@@ -21,7 +21,12 @@ namespace Pulsar.Agent.Windows.Processes;
 /// born into (job list attribute, created suspended), the server's account with a restricted token and its own profile,
 /// window station and environment, and a pseudo console or pipes that hand the child only the handles it needs.
 /// </summary>
-public sealed partial class WindowsGameProcessManager(WindowsServerAccounts accounts, TimeProvider clock, ILogger<WindowsGameProcessManager> logger)
+/// <param name="allowCurrentUser">
+/// Development agents only (enrolled with <c>--dev</c>): a spec without a server account starts the game as the agent's own
+/// account. In production that is SYSTEM, so the default refuses it.
+/// </param>
+public sealed partial class WindowsGameProcessManager(WindowsServerAccounts accounts, TimeProvider clock, ILogger<WindowsGameProcessManager> logger,
+    bool allowCurrentUser = false)
     : IGameProcessManager
 {
     // PROC_THREAD_ATTRIBUTE_* are macros in the SDK headers, so CsWin32 does not generate them.
@@ -57,6 +62,12 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
         ArgumentNullException.ThrowIfNull(spec);
         cancellationToken.ThrowIfCancellationRequested();
         var root = ServerPaths.NormalizeRoot(spec.ServerRoot);
+        if (spec.Identity is ProcessIdentity.CurrentUserIdentity && !allowCurrentUser)
+        {
+            throw new GameProcessException("process.identity_refused",
+                "A server without its own account would run as the agent's account (SYSTEM for the service). Only an agent enrolled with --dev may do that.");
+        }
+
         var executable = ServerPaths.ResolveFile(root, spec.Executable);
         if (!executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {

@@ -92,6 +92,7 @@ public sealed partial class SteamCmdRunner(
         ArgumentNullException.ThrowIfNull(job);
         ArgumentNullException.ThrowIfNull(progress);
         CheckBetaPassword(job.BetaPassword);
+        CheckLogin(job.Login);
         await progress(InstallStages.Queued, null);
         // The account first, then a slot: a run waiting for its account holds no slot another account could use.
         var account = job.Login is { } owner ? AccountLock(owner.AccountId) : null;
@@ -235,6 +236,7 @@ public sealed partial class SteamCmdRunner(
         else
         {
             // SteamCMD's "login <user> <password> [<Steam Guard code>]".
+            CheckLogin(login);
             arguments.AddRange([login.UserName, login.Password]);
             if (login.GuardCode is { Length: > 0 } code)
             {
@@ -270,13 +272,40 @@ public sealed partial class SteamCmdRunner(
     /// </summary>
     private static void CheckBetaPassword(string? password)
     {
-        if (password is { Length: > 0 }
-            && (password.Length > 64 || password[0] is '+' or '-' || password.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c == '"')))
+        if (!IsSafeArgument(password))
         {
             throw new GameProcessException("steamcmd.beta_password_invalid",
                 "The beta branch password must be at most 64 characters, without spaces, double quotes or control characters, and not start with + or -.");
         }
     }
+
+    /// <summary>
+    /// The account's password and Steam Guard code go on the same command line: the agent applies the panel's rules itself
+    /// (a password by the rule above, a code is 5 ASCII letters or digits) instead of trusting what it was sent, and never
+    /// puts either value in the message.
+    /// </summary>
+    private static void CheckLogin(SteamLogin? login)
+    {
+        if (login is null)
+        {
+            return;
+        }
+
+        if (!IsSafeArgument(login.Password))
+        {
+            throw new GameProcessException("steamcmd.login_failed",
+                "The Steam account's password must be at most 64 characters, without spaces, double quotes or control characters, and not start with + or -.");
+        }
+
+        if (login.GuardCode is { Length: > 0 } code && (code.Length != 5 || !code.All(char.IsAsciiLetterOrDigit)))
+        {
+            throw new GameProcessException("steamcmd.guard_required", "A Steam Guard code is 5 letters or digits.");
+        }
+    }
+
+    private static bool IsSafeArgument(string? value) =>
+        value is not { Length: > 0 }
+        || (value.Length <= 64 && value[0] is not ('+' or '-') && !value.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c == '"'));
 
     /// <summary>
     /// The server's SteamCMD. An anonymous run keeps the copy it finds (it keeps itself up to date; nothing secret is at
@@ -333,11 +362,30 @@ public sealed partial class SteamCmdRunner(
         }
         catch
         {
-            Keep(job.Login, TakeBack(job));
+            Keep(job.Login, TakeBackIfAlone(job));
             throw;
         }
 
-        return result with { CachedLogin = TakeBack(job) };
+        return result with { CachedLogin = TakeBackIfAlone(job) };
+    }
+
+    /// <summary>
+    /// <see cref="TakeBack"/> once nothing of the server's account runs outside the run's Job. The sweep before the
+    /// install happened before SteamCMD started: a process of the server that outlived it could write its own
+    /// <c>config.vdf</c> meanwhile, and the agent would lend that to every server using the account. If the sweep killed
+    /// anything the file is deleted and not kept.
+    /// </summary>
+    private byte[]? TakeBackIfAlone(SteamCmdJob job)
+    {
+        var killed = processes.TerminateStrayProcesses(job.Identity);
+        var cached = TakeBack(job);
+        if (killed > 0)
+        {
+            LogLoginNotKept(job.ServerId, killed);
+            return null;
+        }
+
+        return cached;
     }
 
     private async Task<RunResult> RunProcessAsync(SteamCmdJob job, bool cachedLogin, Func<string, double?, Task> progress,
@@ -348,7 +396,8 @@ public sealed partial class SteamCmdRunner(
         var process = await processes.StartAsync(spec, cancellationToken);
         using var stall = new CancellationTokenSource(options.StallTimeout, clock);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stall.Token);
-        string[] secrets = job.Login is { } login ? [login.Password, login.GuardCode ?? string.Empty] : [];
+        // Everything secret that went on the command line, should SteamCMD echo it (the beta password too, with or without an account).
+        string[] secrets = [job.Login?.Password ?? string.Empty, job.Login?.GuardCode ?? string.Empty, job.BetaPassword ?? string.Empty];
         var output = new RunOutput(new ProgressReporter(progress, clock), secrets);
         // A pseudo console's output ends only when it is closed (disposing the process): read it alongside.
         var pump = PumpAsync(process, output, stall);
@@ -433,14 +482,21 @@ public sealed partial class SteamCmdRunner(
                 stall.CancelAfter(options.StallTimeout);
             }
 
-            // A prompt has no line end: SteamCMD would wait for a Steam Guard code nobody types. Stop it now.
-            if (output.Error is null && SteamCmdOutput.IsGuardPrompt(chunk.Text))
+            // A prompt has no line end: SteamCMD would wait for a Steam Guard code nobody types. Stop it now. It may arrive
+            // in pieces (a read ends anywhere) or with VT sequences inside, so the text of the unfinished line is tested
+            // too, and the lines this read completed.
+            var added = lines.Add(chunk.Text);
+            if (SteamCmdOutput.IsGuardPrompt(chunk.Text) || added.Any(SteamCmdOutput.IsGuardPrompt) || SteamCmdOutput.IsGuardPrompt(lines.PendingText))
             {
-                output.GuardRequested();
+                if (output.Error is null)
+                {
+                    output.GuardRequested();
+                }
+
                 await stall.CancelAsync();
             }
 
-            foreach (var line in lines.Add(chunk.Text))
+            foreach (var line in added)
             {
                 await output.AddAsync(line);
             }
@@ -555,6 +611,10 @@ public sealed partial class SteamCmdRunner(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: SteamCMD signs in with an account; its copy starts again from the verified bootstrapper")]
     private partial void LogCopyRebuilt(Guid serverId);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Server {ServerId}: {Killed} process(es) of the server's account were still running after SteamCMD; the login it cached is not kept")]
+    private partial void LogLoginNotKept(Guid serverId, int killed);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server {ServerId}: SteamCMD for app {AppId} cancelled")]
     private partial void LogCancelled(Guid serverId, int appId);

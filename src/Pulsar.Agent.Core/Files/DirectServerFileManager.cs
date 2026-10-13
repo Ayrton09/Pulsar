@@ -13,6 +13,12 @@ public sealed class DirectServerFileManager : IServerFileManager
     public FileListResult List(ProvisionedServer server, string path)
     {
         var full = Resolve(server, path, allowRoot: true);
+        // Resolve checks the ancestors only: the listed folder itself may be the junction.
+        if (IsLink(full))
+        {
+            throw new FileManagerException(FileErrors.Link, $"'{path}' is a junction or link.");
+        }
+
         var info = new DirectoryInfo(full);
         if (!info.Exists)
         {

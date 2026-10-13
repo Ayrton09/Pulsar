@@ -38,6 +38,9 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
     /// <summary>Tests: runs just before an upload's temporary file is created (to swap folders in the meantime).</summary>
     internal Action? BeforeCreate { get; init; }
 
+    /// <summary>Tests: runs right after an upload's temporary file was renamed to its target (to fail what follows).</summary>
+    internal Action? AfterRename { get; init; }
+
     public FileListResult List(ProvisionedServer server, string path)
     {
         ServerFileRules.Validate(path, allowRoot: true);
@@ -929,9 +932,12 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
                 root.CheckDirectory(_directory, ServerFilePath.Parent(_path));
                 ServerFileRules.CheckTarget(_path, Existing(root, _path), _overwrite, _expectedVersion);
                 Rename(_stream.SafeFileHandle, _directory, ServerFilePath.Name(_path), replace: _overwrite || _expectedVersion is not null, _path);
+                // At once: from here the file is at its target, and anything failing below must not make Dispose abandon
+                // (delete) the upload, which would delete the file just put in place.
+                _committed = true;
+                _owner.AfterRename?.Invoke();
                 return Result(_path, Describe(_stream.SafeFileHandle));
             });
-            _committed = true;
             return result;
         }
 
@@ -982,6 +988,9 @@ internal static unsafe partial class NtFile
     public const int StatusInvalidParameter = unchecked((int)0xC000000D);
     public const int StatusNotSupported = unchecked((int)0xC00000BB);
     public const int StatusInvalidInfoClass = unchecked((int)0xC0000003);
+    public const int StatusObjectNameNotFound = unchecked((int)0xC0000034);
+    public const int StatusObjectPathNotFound = unchecked((int)0xC000003A);
+    public const int StatusNotADirectory = unchecked((int)0xC0000103);
 
     [LibraryImport("ntdll.dll")]
     public static partial int NtSetInformationFile(SafeFileHandle fileHandle, out IoStatusBlock ioStatusBlock, byte* fileInformation, uint length, int fileInformationClass);
