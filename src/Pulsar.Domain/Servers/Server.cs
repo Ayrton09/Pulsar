@@ -169,7 +169,7 @@ public sealed class Server
     public static Result<Server> Create(NodeId nodeId, TemplateId templateId, string name, string? description, string shortId, DateTimeOffset now)
     {
         var trimmed = name?.Trim() ?? string.Empty;
-        if (trimmed.Length is 0 or > MaxNameLength || trimmed.Any(char.IsControl))
+        if (trimmed.Length is 0 or > MaxNameLength || !DisplayNames.IsDisplayable(trimmed))
         {
             return ServerErrors.NameInvalid;
         }

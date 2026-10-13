@@ -1,5 +1,6 @@
 # Prepares a Windows Sandbox run of the release installer (Install-Pulsar.ps1) on a clean Windows: builds the release
-# ZIP, extracts it as a user would, and maps PostgreSQL binaries that run.ps1 registers as a service.
+# ZIP, extracts it (run.ps1 copies it into a folder only administrators can change, as the install guide says, since the
+# installer refuses the mapped folder), and maps PostgreSQL binaries that run.ps1 registers as a service.
 # Run on the host, no elevation needed:
 #   .\scripts\sandbox\install\prepare.ps1 -PgHome <extracted PostgreSQL binaries>\pgsql
 # Then open artifacts\install-sandbox\install.wsb and wait for report\summary.txt to end with "done".

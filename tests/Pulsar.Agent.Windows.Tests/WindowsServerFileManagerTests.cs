@@ -26,7 +26,7 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
         _outside = Directory.CreateDirectory(Path.Combine(Root, "outside")).FullName;
         File.WriteAllText(Path.Combine(_outside, "secret.cfg"), "rcon_password other-server");
         Directory.CreateDirectory(Path.Combine(_outside, "sub"));
-        Files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System));
+        Files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System, development: true));
     }
 
     protected override IServerFileManager Files { get; }
@@ -242,7 +242,7 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
     {
         // Once the file is at its target, abandoning the upload must not delete it (it would delete the new file).
         File.WriteAllText(Path.Combine(ServerDirectory, "server.cfg"), "old");
-        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System))
+        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System, development: true))
         {
             AfterRename = () => throw new FileManagerException(FileErrors.Failed, "describing the file failed"),
         };
@@ -261,7 +261,7 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
     {
         // The server's account swaps the folder the file manager has just checked for a junction to somewhere else.
         Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg"));
-        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System))
+        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System, development: true))
         {
             BeforeCreate = () =>
             {
@@ -289,7 +289,7 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
     {
         Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg"));
         var elsewhere = Path.Combine(Root, "elsewhere");
-        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System))
+        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System, development: true))
         {
             BeforeCreate = () => Directory.Move(Path.Combine(ServerDirectory, "cfg"), elsewhere),
         };
@@ -462,7 +462,7 @@ public sealed partial class WindowsServerFileManagerTests : ServerFileManagerCon
             var b = provisioner.Provision(serversRoot, shortIds[1]);
             File.WriteAllText(Path.Combine(b.Directory, "secret.cfg"), "server b");
             Run("mklink", "/H", Path.Combine(a.Directory, "stolen.cfg"), Path.Combine(b.Directory, "secret.cfg"));
-            using var impersonation = new ServerImpersonation(TestAccounts.Create(), TimeProvider.System);
+            using var impersonation = new ServerImpersonation(TestAccounts.Create(), TimeProvider.System, development: true);
             var files = new WindowsServerFileManager(impersonation);
 
             Assert.Equal(FileErrors.AccessDenied, Code(() => files.OpenRead(a, "stolen.cfg", 100)));

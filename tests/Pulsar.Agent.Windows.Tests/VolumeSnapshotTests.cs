@@ -83,7 +83,7 @@ public sealed class VolumeSnapshotTests : IDisposable
         // A snapshot's directory is \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopyN\...: the file manager reads such paths.
         Directory.CreateDirectory(Path.Combine(_root, "world"));
         File.WriteAllText(Path.Combine(_root, "world", "level.dat"), "the world");
-        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System));
+        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System, development: true));
         var server = new ProvisionedServer(@"\\?\" + _root, ProcessIdentity.CurrentUser);
 
         Assert.Contains(files.Walk(server), e => e.Path == "world/level.dat");
@@ -100,7 +100,7 @@ public sealed class VolumeSnapshotTests : IDisposable
         await using var held = new FileStream(Path.Combine(_root, "world", "session.lock"), FileMode.Create, FileAccess.ReadWrite, FileShare.None);
         held.Write("locked"u8);
         held.Flush(flushToDisk: true);
-        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System));
+        var files = new WindowsServerFileManager(new ServerImpersonation(TestAccounts.Create(), TimeProvider.System, development: true));
 
         string directory;
         await using (var snapshot = await _snapshots.TakeAsync(_root, TestContext.Current.CancellationToken))

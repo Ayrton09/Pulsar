@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 using Pulsar.Agent.Core.Processes;
@@ -19,14 +20,18 @@ public interface IServerImpersonation
 /// Acts as each server's local account with a token from <see cref="WindowsServerAccounts.LogOnForImpersonation"/>,
 /// kept for a minute after its last use so browsing a folder does not log the account on at every click. Callers for
 /// one account share one logon, and it never holds up other accounts' file operations. A development agent's servers run
-/// as the agent's own user: their actions run as they are.
+/// as the agent's own user: their actions run as they are. Any other agent refuses a server without an account of its
+/// own, as <see cref="Processes.WindowsGameProcessManager"/> does: for the service, that account would be SYSTEM.
 /// </summary>
 public sealed class ServerImpersonation : IServerImpersonation, IDisposable
 {
+    private const int AccessDenied = 5;
+
     private static readonly TimeSpan s_keep = TimeSpan.FromMinutes(1);
 
     private readonly Func<string, SafeAccessTokenHandle> _logOn;
     private readonly TimeProvider _clock;
+    private readonly bool _development;
 
     private readonly Lock _lock = new();
     private readonly Dictionary<string, CachedToken> _tokens = new(StringComparer.OrdinalIgnoreCase);
@@ -35,16 +40,19 @@ public sealed class ServerImpersonation : IServerImpersonation, IDisposable
     private readonly WindowsServerAccounts? _accounts;
     private readonly ITimer _sweep;
 
-    public ServerImpersonation(WindowsServerAccounts accounts, TimeProvider clock)
-        : this(accounts.LogOnForImpersonation, clock, accounts)
+    /// <param name="development">The agent was enrolled with <c>--dev</c>: a server without an account of its own acts as the agent's.</param>
+    public ServerImpersonation(WindowsServerAccounts accounts, TimeProvider clock, bool development = false)
+        : this(accounts.LogOnForImpersonation, clock, accounts, development)
     {
     }
 
     /// <param name="logOn">Tests: logs an account on in place of <see cref="WindowsServerAccounts.LogOnForImpersonation"/>.</param>
     /// <param name="accounts">The accounts whose deletion drops their cached token.</param>
-    internal ServerImpersonation(Func<string, SafeAccessTokenHandle> logOn, TimeProvider clock, WindowsServerAccounts? accounts = null)
+    /// <param name="development">The agent was enrolled with <c>--dev</c>.</param>
+    internal ServerImpersonation(Func<string, SafeAccessTokenHandle> logOn, TimeProvider clock, WindowsServerAccounts? accounts = null,
+        bool development = false)
     {
-        (_logOn, _clock, _accounts) = (logOn, clock, accounts);
+        (_logOn, _clock, _accounts, _development) = (logOn, clock, accounts, development);
         if (accounts is not null)
         {
             accounts.Deleted += Forget;
@@ -59,8 +67,12 @@ public sealed class ServerImpersonation : IServerImpersonation, IDisposable
         ArgumentNullException.ThrowIfNull(action);
         switch (identity)
         {
-            case ProcessIdentity.CurrentUserIdentity:
+            case ProcessIdentity.CurrentUserIdentity when _development:
                 return action();
+            case ProcessIdentity.CurrentUserIdentity:
+                // Reported as a logon that failed (access denied).
+                throw new Win32Exception(AccessDenied,
+                    "A server without its own account would act as the agent's account (SYSTEM for the service). Only an agent enrolled with --dev may do that.");
             case ProcessIdentity.AccountIdentity account:
                 var token = Acquire(account.Name);
                 try

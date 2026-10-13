@@ -146,7 +146,7 @@ public sealed class Backup
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(operation);
         var trimmed = name?.Trim() ?? string.Empty;
-        if (trimmed.Length is 0 or > MaxNameLength || trimmed.Any(char.IsControl))
+        if (trimmed.Length is 0 or > MaxNameLength || !DisplayNames.IsDisplayable(trimmed))
         {
             return ServerErrors.BackupNameInvalid;
         }

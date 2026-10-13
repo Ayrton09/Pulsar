@@ -8,12 +8,23 @@ run yourself; it does not install MySQL or MariaDB.
 
 1. Run MySQL 8 or MariaDB 10.6 or newer where both the panel and the game servers can reach it: on the panel's machine,
    on a node, or anywhere on your network.
-2. Give Pulsar an account that may create databases and users and grant them, and nothing it does not need, for example:
+2. Give Pulsar an account that may create databases and users and grant them, and nothing it does not need:
 
    ```sql
    CREATE USER 'pulsar'@'<panel address>' IDENTIFIED BY '<a long random password>';
-   GRANT ALL PRIVILEGES ON *.* TO 'pulsar'@'<panel address>' WITH GRANT OPTION;
+   GRANT CREATE USER ON *.* TO 'pulsar'@'<panel address>';
+   GRANT ALL PRIVILEGES ON `s%\_%`.* TO 'pulsar'@'<panel address>' WITH GRANT OPTION;
    ```
+
+   Pulsar only creates and drops a database and a user for each server, changes those users' passwords and grants each
+   user its own database. Every database (and user) it makes is named `s<server id>_<name>`: `s`, the server's short
+   id, an underscore and the name. So the account needs `CREATE USER` on the server (to create, change and drop users)
+   and every privilege, with the right to grant them, on databases named like that: `` `s%\_%` `` matches names that
+   start with `s` and hold an underscore (`\_` is an underscore, not the one-character wildcard), which leaves out the
+   server's own databases (`mysql`, `sys`, `information_schema`, `performance_schema`). Do not give it
+   `ALL PRIVILEGES ON *.*`: that is the database server's root, which could read and change every other database and
+   account on it. This works on MySQL 8 and MariaDB 10.6 or newer, except on a MySQL with `partial_revokes` turned on,
+   which takes wildcards in grants literally (it is off unless someone turned it on).
 
 3. Remove what a fresh MariaDB opens to every user: it grants the `test` database to the `PUBLIC` role, which every
    user has. Pulsar's users only get their own database, but whatever the server grants everyone, they get too:

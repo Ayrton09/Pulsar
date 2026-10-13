@@ -116,6 +116,9 @@ CryptUnprotectData
 
 // Server hosts: the process each game runs under, found again after the agent restarts (docs/architecture/06)
 GetNamedPipeServerProcessId
+GetSecurityInfo
+NtQuerySystemInformation
+SYSTEM_PROCESS_INFORMATION
 GetProcessTimes
 TerminateProcess
 WaitForSingleObject

@@ -704,6 +704,29 @@ public sealed class SteamCmdRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task ALentLoginLeavesTheServerFolderEvenWhenTheSweepFails()
+    {
+        // The sweep could not tell whether anything of the account ran outside the Job: the login is neither left for the
+        // server to read nor kept.
+        var account = Guid.NewGuid();
+        _processes.SweepFails = new GameProcessException("server.stray_processes", "The account's processes could not be listed.");
+        _processes.OnStarted = (process, _) =>
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(CachedLogin)!);
+            File.WriteAllText(CachedLogin, "token");
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+
+        await Assert.ThrowsAsync<GameProcessException>(() =>
+            runner.RunAsync(Job() with { Login = new SteamLogin(account, "servers", "hunter2-password") }, Report, TestContext.Current.CancellationToken));
+
+        Assert.False(File.Exists(CachedLogin));
+        Assert.Null(Cached(account));
+    }
+
+    [Fact]
     public async Task ALoginIsKeptWhenNothingOutsideTheJobWasRunning()
     {
         var account = Guid.NewGuid();

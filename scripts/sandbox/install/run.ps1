@@ -1,6 +1,8 @@
 # Installs Pulsar from the release ZIP with Install-Pulsar.ps1 on a disposable, elevated Windows (Windows Sandbox
-# through prepare.ps1, or a CI runner), as a user following docs/guides/install.md would: panel and agent on one PC,
-# database created in the local PostgreSQL service. Then checks what the installer left, updates and uninstalls.
+# through prepare.ps1, or a CI runner), as a user following docs/guides/install.md would: the release copied into
+# C:\PulsarSetup, made for administrators only (the installer refuses the bundle's own folder, which others can change),
+# panel and agent on one PC, database created in the local PostgreSQL service. Then checks what the installer left,
+# backs up from the panel's folder, updates and uninstalls.
 # Every check is written to report\summary.txt as PASS/FAIL; the last line is "done", and the exit code is 1 on any FAIL.
 # Never run it on a machine you use: it installs services and trusts a certificate machine-wide.
 param(
@@ -28,8 +30,20 @@ function Wait-Until([scriptblock] $condition, [int] $seconds) {
     return $false
 }
 
-$release = Join-Path $Bundle 'release'
+# The release as the guide has it extracted: in a new folder only administrators can change. The installer and the
+# backup script refuse any other, such as the bundle's own folder (a mapped folder in Windows Sandbox, C:\bundle in a VM).
+$bundled = Join-Path $Bundle 'release'
+$release = 'C:\PulsarSetup'
 $installer = Join-Path $release 'Install-Pulsar.ps1'
+$installedBackup = 'C:\Program Files\Pulsar\Panel\Backup-Pulsar.ps1'
+
+# A script run in its own PowerShell, expected to refuse: its exit code and what it printed (Windows PowerShell wraps the
+# error it prints at the console's width, anywhere in a word, so callers match it without whitespace).
+function Invoke-Refused([string] $script, [string[]] $arguments = @()) {
+    $ErrorActionPreference = 'Continue'
+    $output = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script @arguments 2>&1 | ForEach-Object { "$_" }) -join ' '
+    [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+}
 $panelUrl = 'https://localhost:8443'
 $adminPassword = 'sandbox administrator password'
 $panelData = 'C:\ProgramData\Pulsar\Panel'
@@ -51,6 +65,15 @@ try {
         Start-Service postgresql-x64-sandbox
     }
     Check 'postgresql service installed' ($null -ne (Get-Service 'postgresql*' -ErrorAction SilentlyContinue))
+
+    # --- The release where the guide puts it (step 2); from where other accounts can change it, refused ---
+    $refused = Invoke-Refused (Join-Path $bundled 'Install-Pulsar.ps1')
+    Check 'installer refuses to run from a folder other accounts can change (nothing installed)' ($refused.ExitCode -ne 0 -and ($refused.Output -replace '\s', '') -match 'Nothingwaschanged' -and $null -eq (Get-Service PulsarPanel, PulsarAgent -ErrorAction SilentlyContinue)) "exit $($refused.ExitCode); $($refused.Output -replace '\s+', ' ')"
+    New-Item -ItemType Directory $release | Out-Null
+    $null = icacls.exe $release /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F'
+    Copy-Item (Join-Path $bundled '*') $release -Recurse
+    $releaseSids = @((Get-Acl $release).GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | ForEach-Object { $_.IdentityReference.Value } | Select-Object -Unique | Sort-Object)
+    Check 'release folder: SYSTEM and Administrators only' (($releaseSids -join ',') -eq 'S-1-5-18,S-1-5-32-544') ($releaseSids -join ', ')
 
     # --- Install, as the guide says (here with the passwords given instead of typed) ---
     $installed = $true
@@ -112,8 +135,12 @@ try {
 
     # --- Backup, then the panel is lost (service, program, data, database) and restored; the node lives on ---
     $backupRoot = 'C:\PulsarBackups'
+    # The copy a nightly task runs as SYSTEM, where only administrators can change it; one where others can is refused.
+    Check "backup script kept in the panel's folder" (Test-Path $installedBackup)
+    $refused = Invoke-Refused (Join-Path $bundled 'Backup-Pulsar.ps1') @('-Destination', $backupRoot)
+    Check 'backup script refuses to run from a folder other accounts can change (nothing written)' ($refused.ExitCode -ne 0 -and ($refused.Output -replace '\s', '') -match 'Nothingwasbackedup' -and -not (Test-Path $backupRoot)) "exit $($refused.ExitCode); $($refused.Output -replace '\s+', ' ')"
     $backedUp = $true
-    try { & (Join-Path $release 'Backup-Pulsar.ps1') -Destination $backupRoot *>&1 | Tee-Object -FilePath (Join-Path $report 'backup.txt') } catch { $backedUp = $false; Add-Content (Join-Path $report 'backup.txt') "FAILED: $_" }
+    try { & $installedBackup -Destination $backupRoot *>&1 | Tee-Object -FilePath (Join-Path $report 'backup.txt') } catch { $backedUp = $false; Add-Content (Join-Path $report 'backup.txt') "FAILED: $_" }
     $backup = Get-ChildItem $backupRoot -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
     Check 'backup written (dump, keys, key ring, certificate, settings)' ($backedUp -and $backup -and (Test-Path (Join-Path $backup.FullName 'pulsar.dump')) -and (Test-Path (Join-Path $backup.FullName 'panel-data\keyring\keyring.pfx')) -and (Test-Path (Join-Path $backup.FullName 'panel-data\tls\panel.pfx')) -and (Test-Path (Join-Path $backup.FullName 'appsettings.Production.json')))
     $backupAcl = if ($backup) { Get-Acl $backup.FullName }
@@ -128,7 +155,7 @@ try {
     if (Test-Path 'P:\') {
         $refusedOutput = & {
             $ErrorActionPreference = 'Continue'
-            (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $release 'Backup-Pulsar.ps1') -Destination 'P:\Backups' 2>&1 | ForEach-Object { "$_" }) -join ' '
+            (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installedBackup -Destination 'P:\Backups' 2>&1 | ForEach-Object { "$_" }) -join ' '
         }
         $refusedCode = $LASTEXITCODE
         # What the backup left in its destination (Windows keeps files of its own in the volume's System Volume Information).

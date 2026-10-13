@@ -46,20 +46,33 @@ connection string with `-ConnectionString "Host=…;Port=5432;Database=…;Usern
 
    Both must show the same value. A release built by the project's release workflow also carries a provenance
    attestation, which you can check with the GitHub CLI: `gh attestation verify .\pulsar-<version>-windows-x64.zip --repo Ayrton09/Pulsar`.
-3. Unblock and extract it to a folder of your choice, for example `C:\PulsarSetup`:
+3. Extract it into a **new folder that only administrators can change**. Open **Windows PowerShell as administrator**
+   (Start → type *PowerShell* → *Run as administrator*), go to the download folder and run:
 
    ```powershell
+   New-Item -ItemType Directory C:\PulsarSetup
+   icacls C:\PulsarSetup /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F"
    Unblock-File .\pulsar-<version>-windows-x64.zip
    Expand-Archive .\pulsar-<version>-windows-x64.zip C:\PulsarSetup
    ```
 
-The installer copies the programs to `C:\Program Files\Pulsar`; the extracted folder is only needed while installing
-and for later updates.
+   `icacls` leaves the folder to Administrators (`S-1-5-32-544`) and SYSTEM (`S-1-5-18`) alone, and what is extracted
+   into it inherits that. Why: the installer runs as administrator, runs the agent from this folder and copies the
+   programs into `C:\Program Files\Pulsar`, where they run as services (the agent as SYSTEM). A folder made directly
+   under `C:\` lets every signed-in account change what is in it, game servers' accounts included: a game server's
+   plugin could replace a program there, or the installer itself, and take over the machine at your next install or
+   update. The installer checks this and refuses to run (changing nothing) when anyone but SYSTEM, Administrators and
+   TrustedInstaller could change its folder, what is in it or a folder above it. `New-Item` fails if `C:\PulsarSetup`
+   already exists: someone else may have made it, so delete it (or choose a new name) rather than reuse it. A folder
+   under `C:\Program Files` is also only administrators', and works as well.
+
+The installer copies the programs to `C:\Program Files\Pulsar` (and `Backup-Pulsar.ps1` into the panel's folder there);
+the extracted folder is only needed while installing. For an update, extract the new release into a new folder made
+the same way ([update.md](update.md)).
 
 ## 3. Install
 
-Open **Windows PowerShell as administrator** (Start → type *PowerShell* → *Run as administrator*) and go to the
-extracted folder:
+In the **Windows PowerShell as administrator** of step 2, go to the extracted folder:
 
 ```powershell
 cd C:\PulsarSetup
@@ -79,7 +92,7 @@ It asks for the PostgreSQL `postgres` password (step 1) and for a password for P
    account (`NT SERVICE\PulsarPanel`), with its data in `C:\ProgramData\Pulsar\Panel` (keys, logs, certificate);
 3. makes a self-signed HTTPS certificate for this PC's names and `localhost`, valid for 5 years, and trusts it on this
    PC (the agent and this PC's browsers check it). It is marked as unable to issue other certificates, so trusting it
-   lets nobody vouch for other sites;
+   vouches only for the names it lists, never for other sites; the installer prints its thumbprint and names;
 4. opens the panel's port (**8443**, `-Port` chooses another) in Windows Firewall, on Domain and Private networks
    (`-FirewallPublic` also opens it on networks Windows treats as public; `-NoFirewall` leaves the firewall alone);
 5. starts the panel and creates the administrator;
@@ -102,7 +115,8 @@ To make the certificate valid for a name other machines use (a DNS name, or the 
 `-CertificatePath C:\certs\panel.pfx -CertificatePassword (Read-Host -AsSecureString)`.
 
 Then, for each node: in the panel, **Nodes → Add node**, give it a name and copy the command it shows. On the node,
-extract the same ZIP, open PowerShell as administrator in its folder and run that command. It looks like:
+extract the same ZIP into a folder only administrators can change (step 2), open PowerShell as administrator in it and
+run that command. It looks like:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Mode Agent -PanelUrl https://panel:8443 -Token <token> -PanelKey sha256:<fingerprint>
@@ -119,7 +133,12 @@ command lines in the process list. With the panel's self-signed certificate, cop
 node, whoever holds its key could vouch for any site), and one that does not say whether it can (no Basic Constraints:
 certificates made by installers before this check, or by hand; Windows may take them for a certificate authority).
 Make a new certificate like the installer's (Basic Constraints, critical, CA=false), or add
-`-TrustCertificateWithoutBasicConstraints` if you know it is the panel's own; `-Uninstall` removes the trust it gave.
+`-TrustCertificateWithoutBasicConstraints` if you know it is the panel's own. It also refuses a certificate whose
+Subject Alternative Name does not list the host of `-PanelUrl` (a DNS name, a wildcard for its first label, or an IP
+address): the agent would not accept it there, and trusting it would vouch for names that are not the panel's. Install
+the panel with `-HostName` for the name nodes use. The node trusts the certificate exactly as it was read and checked,
+and the installer prints its subject, thumbprint and names: whoever holds its key can pass for those names to this
+machine. `-Uninstall` removes the trust it gave.
 
 The panel's machine must accept connections on its port (the installer opens it in Windows Firewall on Domain and
 Private networks, see `-FirewallPublic` above; routers and cloud firewalls are up to you). Nodes only connect out to
@@ -238,6 +257,10 @@ Back up the panel as described in [backup.md](backup.md): without its keys, the 
 
 - **The installer stops with an error**: it says what failed. Run it again after fixing it; if the panel or the agent
   was already installed, remove it first with `-Uninstall` (it keeps the database and data).
+- **"It refuses to run from a folder that other accounts could change"**: the release was extracted where accounts
+  other than administrators can change it (a download folder, a folder made directly under `C:\`, a USB stick). It
+  lists who could change what. Extract it again into a new folder made as in step 2 and run it from there; nothing was
+  installed.
 - **"This Windows lacks updates that Pulsar needs" / "Your Windows doesn't fully support CET"**: install all available
   Windows updates, restart and run the installer again (see Requirements). Nothing was installed.
 - **The panel does not start**: `C:\ProgramData\Pulsar\Panel\logs\panel-<date>.log` says why (database unreachable,
@@ -254,8 +277,10 @@ Back up the panel as described in [backup.md](backup.md): without its keys, the 
 powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Uninstall
 ```
 
-It removes the services, the programs, the firewall rule and the trust the script gave the panel's certificate (in
-all-in-one mode, or with `-TrustCertificate`; a certificate this machine trusted already stays trusted). It keeps the
+It removes the services, the programs (`Backup-Pulsar.ps1` in the panel's folder too), the firewall rules
+(`Pulsar-Panel-HTTPS`, and `Pulsar-Panel-Agents` for the agents' port) and the trust the script gave the panel's
+certificate (in all-in-one mode, or with `-TrustCertificate`; a certificate this machine trusted already stays
+trusted). It keeps the
 database, `C:\ProgramData\Pulsar` and the game servers' folders. Delete game servers from the panel first: that also
 removes their Windows accounts. An agent installed with the MSI is not the script's to remove: it says so and removes
 only the panel, if this machine has one.

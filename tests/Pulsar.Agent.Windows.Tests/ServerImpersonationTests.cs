@@ -12,6 +12,19 @@ namespace Pulsar.Agent.Windows.Tests;
 public sealed class ServerImpersonationTests
 {
     [WindowsFact]
+    public void OnlyADevelopmentAgentActsAsItsOwnAccount()
+    {
+        // For the service that account is SYSTEM: a server without an account of its own gets nothing done with it.
+        using var production = new ServerImpersonation(_ => throw new InvalidOperationException("No logon expected."), TimeProvider.System);
+        var refused = Assert.Throws<System.ComponentModel.Win32Exception>(() => production.Run(ProcessIdentity.CurrentUser, () => 1));
+        Assert.Equal(5, refused.NativeErrorCode); // access denied, as the file manager reports a logon that failed
+
+        using var development = new ServerImpersonation(_ => throw new InvalidOperationException("No logon expected."), TimeProvider.System,
+            development: true);
+        Assert.Equal(1, development.Run(ProcessIdentity.CurrentUser, () => 1));
+    }
+
+    [WindowsFact]
     public async Task OneAccountsSlowLogonDoesNotHoldUpAnotherAccount()
     {
         using var entered = new ManualResetEventSlim();

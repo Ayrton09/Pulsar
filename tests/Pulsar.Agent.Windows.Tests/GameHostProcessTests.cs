@@ -105,21 +105,32 @@ public sealed class GameHostProcessTests : IAsyncDisposable
     {
         // The System process (id 4) cannot be opened without elevation: "access denied" says nothing about whether a host
         // runs, and only "no such process" means it does not.
-        // Without a pipe of that name the host is gone (a stale record whose id a protected process has now); with one it may
-        // be running. (The mapping itself is tested without privileges above; this is the real thing where pid 4 is denied.)
+        // Without a pipe of that name the host is gone (a stale record whose id a protected process has now); with one owned
+        // by this account's default owner, as a host's is, it may be running. (The mapping itself is tested without
+        // privileges above; this is the real thing where pid 4 is denied.)
         var pipeName = "pulsar-host-" + Guid.NewGuid().ToString("N")[..16];
         var system = new GameHostReference(pipeName, 4, DateTimeOffset.UtcNow);
         Assert.False(_launcher.IsAlive(system));
         Assert.True(_hosts.End(system));
 
-        using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var error = Record.Exception(() => _launcher.IsAlive(system));
-        Assert.SkipWhen(error is null, "Elevated: the System process can be opened, so there is nothing that cannot be checked.");
+        // Every look at the pipe's owner takes a free instance for a moment (a host would take the next connection after
+        // it): enough of them, and nobody serving.
+        var instances = Enumerable.Range(0, 16)
+            .Select(_ => new NamedPipeServerStream(pipeName, PipeDirection.InOut, 16, PipeTransmissionMode.Byte, PipeOptions.Asynchronous)).ToList();
+        try
+        {
+            var error = Record.Exception(() => _launcher.IsAlive(system));
+            Assert.SkipWhen(error is null, "Elevated: the System process can be opened, so there is nothing that cannot be checked.");
 
-        Assert.Equal(GameHostManager.HostUnverifiable, Assert.IsType<GameProcessException>(error).Code);
-        Assert.False(_launcher.Kill(system)); // not ended, and the caller keeps its record
-        Assert.Null(WindowsGameHostLauncher.ProgramOf(system));
-        Assert.False(_hosts.End(system));
+            Assert.Equal(GameHostManager.HostUnverifiable, Assert.IsType<GameProcessException>(error).Code);
+            Assert.False(_launcher.Kill(system)); // not ended, and the caller keeps its record
+            Assert.Null(WindowsGameHostLauncher.ProgramOf(system));
+            Assert.False(_hosts.End(system));
+        }
+        finally
+        {
+            instances.ForEach(instance => instance.Dispose());
+        }
 
         // A process id nothing uses is simply gone.
         var gone = new GameHostReference("pulsar-host-none", int.MaxValue - 3, DateTimeOffset.UtcNow);
@@ -131,38 +142,114 @@ public sealed class GameHostProcessTests : IAsyncDisposable
     [Theory]
     [InlineData(87, false, true)] // ERROR_INVALID_PARAMETER: no such process
     [InlineData(87, true, true)] // ... whatever the pipe says
-    [InlineData(5, false, true)] // access denied, and the host's pipe is gone: the host is gone (a stale record, a reused id)
-    [InlineData(5, true, false)] // access denied, and the pipe exists: it may well be running
+    [InlineData(5, false, true)] // access denied, and no pipe that may be the host's: the host is gone (a stale record, a reused id)
+    [InlineData(5, true, false)] // access denied, and a pipe that may be the host's: it may well be running
     [InlineData(31, false, true)] // any other failure is judged the same way
     [InlineData(31, true, false)]
-    public void WhatAFailedOpenMeansDependsOnTheErrorAndTheHostsPipe(int error, bool pipeExists, bool gone)
+    public void WhatAFailedOpenMeansDependsOnTheErrorAndTheHostsPipe(int error, bool hostsPipe, bool gone)
     {
         // The mapping on its own, so it is checked whatever rights the tests run with (pid 4 opens when elevated).
         var host = new GameHostReference("pulsar-host-0123456789abcdef", 4, DateTimeOffset.UtcNow);
 
         if (gone)
         {
-            Assert.True(WindowsGameHostLauncher.IsGoneAfterFailedOpen(host, error, _ => pipeExists));
+            Assert.True(WindowsGameHostLauncher.IsGoneAfterFailedOpen(host, error, _ => hostsPipe));
         }
         else
         {
-            var unverifiable = Assert.Throws<GameProcessException>(() => WindowsGameHostLauncher.IsGoneAfterFailedOpen(host, error, _ => pipeExists));
+            var unverifiable = Assert.Throws<GameProcessException>(() => WindowsGameHostLauncher.IsGoneAfterFailedOpen(host, error, _ => hostsPipe));
             Assert.Equal(GameHostManager.HostUnverifiable, unverifiable.Code);
         }
     }
 
+    // Any account can create a pipe under a host's name (the names can be listed), and keep its instances busy: only one
+    // owned by the agent's default owner, which no game server's account can give a pipe, or the host's id and start time
+    // in the process list, keep a host that cannot be opened from counting as gone.
+    [Theory]
+    [InlineData(nameof(WindowsGameHostLauncher.PipeProbe.Missing), false, null, false)]
+    [InlineData(nameof(WindowsGameHostLauncher.PipeProbe.Refused), false, null, false)] // a host's pipe always lets the agent's account in
+    [InlineData(nameof(WindowsGameHostLauncher.PipeProbe.Owned), true, null, true)]
+    [InlineData(nameof(WindowsGameHostLauncher.PipeProbe.Owned), false, null, false)] // a game server's account made it
+    [InlineData(nameof(WindowsGameHostLauncher.PipeProbe.Unknown), false, false, false)] // every instance busy: the process list decides
+    [InlineData(nameof(WindowsGameHostLauncher.PipeProbe.Unknown), false, true, true)]
+    [InlineData(nameof(WindowsGameHostLauncher.PipeProbe.Unknown), false, null, true)] // nothing can tell: it may be running
+    public void OnlyThePipesOwnerOrTheProcessListKeepAHostThatCannotBeOpened(string found, bool ownedByAgent, bool? listed, bool mayRun)
+    {
+        var probe = Enum.Parse<WindowsGameHostLauncher.PipeProbe>(found);
+        var agent = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+        var other = new SecurityIdentifier("S-1-5-21-1-2-3-1001");
+        SecurityIdentifier? owner = probe == WindowsGameHostLauncher.PipeProbe.Owned ? ownedByAgent ? agent : other : null;
+        var host = new GameHostReference("pulsar-host-0123456789abcdef", 4, DateTimeOffset.UtcNow);
+        bool MayRun(GameHostReference h) => WindowsGameHostLauncher.MayBeRunning(h, _ => (probe, owner), agent, _ => listed);
+
+        Assert.Equal(mayRun, MayRun(host));
+        if (mayRun)
+        {
+            Assert.Equal(GameHostManager.HostUnverifiable,
+                Assert.Throws<GameProcessException>(() => WindowsGameHostLauncher.IsGoneAfterFailedOpen(host, 5, MayRun)).Code);
+        }
+        else
+        {
+            Assert.True(WindowsGameHostLauncher.IsGoneAfterFailedOpen(host, 5, MayRun));
+        }
+    }
+
     [WindowsFact]
-    public async Task AHostsPipeIsFoundByNameEvenWhenItsAccessIsNotOurs()
+    public async Task APipesOwnerIsReadWithoutItsServersHelp()
     {
         var name = "pulsar-host-" + Guid.NewGuid().ToString("N")[..16];
-        Assert.False(WindowsGameHostLauncher.PipeExists(name));
+        // Not this process (a reused id): the process list says so when the pipe cannot.
+        var host = new GameHostReference(name, Environment.ProcessId, DateTimeOffset.UtcNow.AddDays(-1));
+        Assert.Equal((WindowsGameHostLauncher.PipeProbe.Missing, null), WindowsGameHostLauncher.ProbePipe(name));
+        Assert.False(WindowsGameHostLauncher.MayBeRunning(host));
 
-        await using (var pipe = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous))
+        using var identity = WindowsIdentity.GetCurrent();
+        await using (var pipe = GameHostPipes.CreateServer(name))
         {
-            Assert.True(WindowsGameHostLauncher.PipeExists(name));
+            // As a host makes it, waiting for the agent: owned by the account's default owner. A look connects for a
+            // moment and leaves, as a client the host serves and lets go.
+            async Task<T> LookAsync<T>(Func<T> look)
+            {
+                var looked = pipe.WaitForConnectionAsync(TestContext.Current.CancellationToken);
+                var result = look();
+                await looked.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+                pipe.Disconnect();
+                return result;
+            }
+
+            Assert.Equal((WindowsGameHostLauncher.PipeProbe.Owned, identity.Owner), await LookAsync(() => WindowsGameHostLauncher.ProbePipe(name)));
+            Assert.True(await LookAsync(() => WindowsGameHostLauncher.MayBeRunning(host)));
+
+            // Its only instance taken: the owner cannot be read, and the process list decides.
+            var waiting = pipe.WaitForConnectionAsync(TestContext.Current.CancellationToken);
+            await using var client = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
+            await client.ConnectAsync(10_000, TestContext.Current.CancellationToken);
+            await waiting;
+            Assert.Equal(WindowsGameHostLauncher.PipeProbe.Unknown, WindowsGameHostLauncher.ProbePipe(name).Probe);
+            Assert.False(WindowsGameHostLauncher.MayBeRunning(host));
         }
 
-        Assert.False(WindowsGameHostLauncher.PipeExists(name));
+        // One that does not let this account read it (not even as its owner): never a host's.
+        var refusing = new PipeSecurity();
+        refusing.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null), PipeAccessRights.Synchronize, AccessControlType.Allow));
+        refusing.AddAccessRule(new PipeAccessRule(new SecurityIdentifier("S-1-3-4"), PipeAccessRights.Synchronize, AccessControlType.Allow)); // OWNER RIGHTS
+        await using (var pipe = NamedPipeServerStreamAcl.Create(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 0, 0, refusing))
+        {
+            Assert.Equal((WindowsGameHostLauncher.PipeProbe.Refused, null), WindowsGameHostLauncher.ProbePipe(name));
+            Assert.False(WindowsGameHostLauncher.MayBeRunning(host));
+        }
+    }
+
+    [WindowsFact]
+    public async Task AHostIsFoundInTheProcessListByItsIdAndStartTime()
+    {
+        var process = await StartAsync();
+
+        Assert.True(WindowsGameHostLauncher.IsListed(process.Host));
+        Assert.False(WindowsGameHostLauncher.IsListed(process.Host with { ProcessStartedAt = process.Host.ProcessStartedAt.AddTicks(1) })); // a reused id
+        Assert.False(WindowsGameHostLauncher.IsListed(process.Host with { ProcessId = int.MaxValue - 3 }));
+
+        await process.DisposeAsync();
     }
 
     [WindowsFact]
