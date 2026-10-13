@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Server.Kestrel;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Options;
@@ -25,6 +26,13 @@ public sealed class AgentsOptions
     /// </summary>
     public string? PublicUrl { get; set; }
 
+    /// <summary>
+    /// The most connections the agents' endpoint holds at once (each agent keeps one for its hub, and opens one or two
+    /// more for a while to sign in or transfer a file): about four per node. One more is closed before its TLS
+    /// handshake. Kestrel's own limit counts every endpoint, the browsers' too.
+    /// </summary>
+    public int MaxConnections { get; set; } = 1000;
+
     internal static bool IsValidUrl(string? url) =>
         url is null || (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
             && uri.AbsolutePath == "/" && uri.Query.Length == 0 && uri.Fragment.Length == 0 && uri.UserInfo.Length == 0);
@@ -37,7 +45,7 @@ public sealed class AgentsOptions
 /// endpoint. Certificates are self-signed by each node on its node key; the panel matches the key with the node's
 /// credential instead of checking a chain.
 /// </summary>
-internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<AgentsOptions> options)
+internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<AgentsOptions> options, TimeProvider clock, ILogger<AgentsEndpoint> logger)
 {
     public const string Name = "Agents";
 
@@ -93,6 +101,8 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
         endpoint.HttpsOptions.AllowAnyClientCertificate();
         endpoint.HttpsOptions.CheckCertificateRevocation = false;
         endpoint.HttpsOptions.OnAuthenticate = (_, ssl) => ssl.CertificateChainPolicy = ClientChainPolicy();
+        // Before TLS (Kestrel adds its HTTPS middleware after this configuration), which is where a connection costs.
+        endpoint.ListenOptions.Use(new AgentsConnectionLimit(options.Value.MaxConnections, logger, clock).Wrap);
         endpoint.ListenOptions.Use(next => connection =>
         {
             connection.Features.Set(AgentsEndpointFeature.Instance);
@@ -102,16 +112,17 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
     }
 
     /// <summary>
-    /// How TLS builds the chain of a client's certificate before Kestrel accepts any: with what the handshake brought
-    /// only. The panel checks the key, never the chain, and the certificate is anyone's choice before that: the URLs it
-    /// names (its issuer's certificate, revocation lists, OCSP) would make the panel connect wherever they say, and hold
-    /// the handshake while it does. No machine trust either: nothing in the panel's stores decides anything here.
+    /// How TLS builds the chain of a client's certificate before Kestrel accepts any: with what the handshake brought and
+    /// the machine's stores only. The panel checks the key, never the chain, and the certificate is anyone's choice
+    /// before that: the URLs it names (its issuer's certificate, revocation lists, OCSP) would make the panel connect
+    /// wherever they say, and hold the handshake while it does. On Windows no downloads also means no automatic root
+    /// update. The machine's trust decides nothing here (the result is ignored), and costs nothing more: a custom root
+    /// trust would build a chain engine for every handshake, many times the work of the chain itself.
     /// </summary>
     internal static X509ChainPolicy ClientChainPolicy() => new()
     {
         RevocationMode = X509RevocationMode.NoCheck,
         DisableCertificateDownloads = true,
-        TrustMode = X509ChainTrustMode.CustomRootTrust,
     };
 
     /// <summary>The certificate's key as SubjectPublicKeyInfo, re-encoded from the key; null without one or for another algorithm.</summary>
@@ -132,6 +143,56 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
             return null;
         }
     }
+}
+
+/// <summary>
+/// At most a number of connections at once on the agents' endpoint: one more is closed before anything is read from it.
+/// Refusals are logged at most once a minute, with how many there were.
+/// </summary>
+internal sealed partial class AgentsConnectionLimit(int max, ILogger logger, TimeProvider clock)
+{
+    private static readonly TimeSpan s_logInterval = TimeSpan.FromMinutes(1);
+
+    private int _open;
+    private int _refused;
+    private long _nextLog = long.MinValue;
+
+    /// <summary>The connections held now.</summary>
+    public int Open => Volatile.Read(ref _open);
+
+    public ConnectionDelegate Wrap(ConnectionDelegate next) => async connection =>
+    {
+        if (Interlocked.Increment(ref _open) > max)
+        {
+            Interlocked.Decrement(ref _open);
+            Refused();
+            return;
+        }
+
+        try
+        {
+            await next(connection);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _open);
+        }
+    };
+
+    private void Refused()
+    {
+        Interlocked.Increment(ref _refused);
+        var now = clock.GetUtcNow().UtcTicks;
+        var next = Interlocked.Read(ref _nextLog);
+        if (now >= next && Interlocked.CompareExchange(ref _nextLog, now + s_logInterval.Ticks, next) == next)
+        {
+            LogRefused(Interlocked.Exchange(ref _refused, 0), max);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "The agents' endpoint closed {Refused} connection(s): it holds {Max} at once (Agents:MaxConnections)")]
+    private partial void LogRefused(int refused, int max);
 }
 
 internal static class AgentsEndpointExtensions

@@ -78,7 +78,9 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
         await using var agent = new InProcessAgent(factory);
         var enrolled = await EnrollAsync(admin, agent, "rotate-no-new-key");
         await agent.StartAsync();
-        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, enrolled.NodeId)).Node.Connected, "connection");
+        // The panel lists the node connected once its Hello arrives, a moment before the agent records the session.
+        await InProcessAgent.EventuallyAsync(async () => agent.CurrentSessionId is not null && (await NodeApi.GetAsync(admin, enrolled.NodeId)).Node.Connected,
+            "connection");
         var session = agent.CurrentSessionId;
         agent.Keys.RefuseCreate = true;
 
@@ -157,6 +159,58 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
         Assert.Null(agent.LiveConfig.PendingRotation);
         Assert.DoesNotContain(abandoned.Key.Name, agent.Keys.Names);
         await AssertCredentialStatusAsync(admin, enrolled.NodeId, abandoned.CredentialId, NodeCredentialStatus.Superseded);
+    }
+
+    [DatabaseFact]
+    public async Task APendingKeysSignInHeldUntilTheCurrentKeySignedInIsRefused()
+    {
+        // A proxy holds the pending key's token request and forges the panel's refusal: the agent signs in with its
+        // current key and deletes the pending one. The held request, passed on then (within the challenge's minute),
+        // must not activate a key the agent no longer has.
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-held-sign-in");
+        var pending = await RegisterPendingKeyAsync(agent, enrolled);
+        agent.Configs.Save(enrolled with { PendingRotation = pending });
+        var held = new TaskCompletionSource<(Uri Uri, byte[] Body)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        agent.Proxy = async (request, send) =>
+        {
+            if (request.RequestUri!.AbsolutePath != AgentProtocol.TokenPath || held.Task.IsCompleted)
+            {
+                return await send();
+            }
+
+            held.SetResult((request.RequestUri, await request.Content!.ReadAsByteArrayAsync(Ct)));
+            return new HttpResponseMessage(HttpStatusCode.Unauthorized)
+            {
+                Content = JsonContent.Create(new AgentError(AgentErrors.AuthenticationRejected.Code, AgentErrors.AuthenticationRejected.Message),
+                    options: ProtocolJson.Options),
+            };
+        };
+
+        await agent.StartAsync();
+        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, enrolled.NodeId)).Node.Connected, "connection with the current key");
+        Assert.Null(agent.LiveConfig!.PendingRotation);
+        Assert.DoesNotContain(pending.Key.Name, agent.Keys.Names);
+
+        var (uri, body) = await held.Task;
+        using (var http = new HttpClient(agent.Transport.CreateHttpHandler()))
+        using (var content = new ByteArrayContent(body))
+        {
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            using var late = await http.PostAsync(uri, content, Ct);
+            Assert.Equal(HttpStatusCode.Unauthorized, late.StatusCode);
+        }
+
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, enrolled.CredentialId, NodeCredentialStatus.Active);
+        Assert.NotEqual(NodeCredentialStatus.Active,
+            Assert.Single((await NodeApi.GetAsync(admin, enrolled.NodeId)).Credentials, c => c.Id == pending.CredentialId).Status);
+        Assert.Equal(AckStatus.Accepted, (await NodeApi.PingAsync(admin, enrolled.NodeId)).Status);
+        await using var check = factory.Services.CreateAsyncScope();
+        var nodeId = new NodeId(enrolled.NodeId);
+        var refusals = await check.ServiceProvider.GetRequiredService<PulsarDbContext>().AuditLog
+            .Where(e => e.Action == AuditActions.Node.AuthenticationFailed && e.NodeId == nodeId).ToListAsync(Ct);
+        Assert.Contains(refusals, e => e.Metadata.Contains("\"current_credential_signed_in_after_challenge\"", StringComparison.Ordinal));
     }
 
     [DatabaseFact]

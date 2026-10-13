@@ -671,6 +671,8 @@ public sealed partial class AgentConnection(
                     o.ClientCertificates!.Add(certificate);
                 }
 
+                // The WebSocket goes through the transport's handler: the panel's certificate is checked as for its requests.
+                o.WebSocketFactory = (context, ct) => transport.ConnectHubAsync(context.Uri, token.AccessToken, certificate, ct);
                 transport.ConfigureHub(o);
             })
             .AddJsonProtocol(o => ProtocolJson.Configure(o.PayloadSerializerOptions));

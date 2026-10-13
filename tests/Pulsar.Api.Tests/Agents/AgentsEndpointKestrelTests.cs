@@ -7,7 +7,6 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Agent.Core.Panel;
@@ -175,8 +174,5 @@ public sealed class AgentsEndpointKestrelTests(KestrelPanelFactory factory) : IC
     private sealed class TrustingTransport(KestrelPanelFactory panel) : PanelTransport
     {
         public override HttpMessageHandler CreateHttpHandler() => panel.Handler();
-
-        public override void ConfigureHub(HttpConnectionOptions options) =>
-            options.WebSocketConfiguration = socket => socket.RemoteCertificateValidationCallback = (_, certificate, _, _) => panel.IsPanel(certificate);
     }
 }

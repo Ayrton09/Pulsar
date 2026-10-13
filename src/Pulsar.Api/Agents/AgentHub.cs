@@ -89,9 +89,10 @@ internal sealed partial class AgentHub(
         var panelKeys = await keys.GetPublicKeysAsync(Context.ConnectionAborted);
         var canMove = hello.Capabilities.Contains(AgentCapabilities.UseAgentsAddress, StringComparer.Ordinal);
         var now = clock.GetUtcNow();
+        var inventory = AgentAccess.ToSnapshot(hello.Inventory, hello.AgentVersion, hello.ProtocolVersion);
         for (var attempt = 0; ; attempt++)
         {
-            node.Connected(AgentAccess.ToSnapshot(hello.Inventory, hello.AgentVersion, hello.ProtocolVersion), now);
+            node.Connected(inventory, now);
             node.ConnectedThrough(session.CertificateKey is not null, canMove);
             if (hello.PinnedPanelKeys is { } pinned)
             {
@@ -113,7 +114,7 @@ internal sealed partial class AgentHub(
         // Hub instances are transient; Items keeps the throttle across this connection's invocations.
         Context.Items[s_lastSeenAtKey] = now;
         connections.Register(Context, session, new AgentConnectionInfo(nodeId, session.SessionId, now,
-            hello.AgentVersion, hello.ProtocolVersion, hello.Capabilities, null, node.PinnedPanelKeys));
+            inventory.AgentVersion, hello.ProtocolVersion, hello.Capabilities, null, node.PinnedPanelKeys));
 
         // A revocation between the checks above and the registration ended the session but found nothing to close.
         if (!sessions.IsActive(session.SessionId))
@@ -213,6 +214,7 @@ internal sealed partial class AgentHub(
     public async Task ServerStateChanged(ServerStateChanged change)
     {
         ArgumentNullException.ThrowIfNull(change);
+        change = AgentInput.StateChanged(change);
         if (RegisteredNode() is { } nodeId)
         {
             await servers.StateChangedAsync(nodeId, change, CancellationToken.None);

@@ -156,12 +156,15 @@ public sealed class AgentChallengeStore(TimeProvider clock)
 
     private readonly ConcurrentDictionary<Guid, PendingChallenge> _pending = new();
 
-    public sealed record PendingChallenge(Guid ChallengeId, NodeId NodeId, Guid CredentialId, byte[] Nonce, string PanelOrigin, DateTimeOffset ExpiresAt);
+    public sealed record PendingChallenge(Guid ChallengeId, NodeId NodeId, Guid CredentialId, byte[] Nonce, string PanelOrigin, DateTimeOffset IssuedAt)
+    {
+        public DateTimeOffset ExpiresAt => IssuedAt + Lifetime;
+    }
 
     public PendingChallenge Issue(NodeId node, Guid credentialId, string panelOrigin)
     {
         Prune();
-        var challenge = new PendingChallenge(Guid.CreateVersion7(), node, credentialId, RandomNumberGenerator.GetBytes(32), panelOrigin, clock.GetUtcNow() + Lifetime);
+        var challenge = new PendingChallenge(Guid.CreateVersion7(), node, credentialId, RandomNumberGenerator.GetBytes(32), panelOrigin, clock.GetUtcNow());
         _pending[challenge.ChallengeId] = challenge;
         return challenge;
     }

@@ -1,7 +1,5 @@
 using System.Data.Common;
-using System.Globalization;
 using System.Security.Cryptography;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pulsar.Application.Abstractions;
@@ -334,10 +332,12 @@ public sealed partial class AgentAccess(
         node.Seen(now);
         if (credential.Status == NodeCredentialStatus.Pending)
         {
-            if (!await CompleteRotationAsync(node, credential, now, cancellationToken))
+            if (await CompleteRotationAsync(node, credential, challenge.IssuedAt, now, cancellationToken) is { } reason)
             {
-                LogAuthenticationRejected(node.Id, "pending credential revoked or node inactive before the rotation completed");
-                return await RefuseAsync(node.Id, "inactive_while_signing_in", credential.Id, cancellationToken);
+                LogAuthenticationRejected(node.Id, reason == CurrentSignedInAfterChallenge
+                    ? "the current credential signed in after the pending credential's challenge was issued"
+                    : "pending credential revoked or node inactive before the rotation completed");
+                return await RefuseAsync(node.Id, reason, credential.Id, cancellationToken);
             }
         }
         else
@@ -562,12 +562,19 @@ public sealed partial class AgentAccess(
         return await RefuseAsync(node, "pending_credential_expired", credentialId, cancellationToken);
     }
 
+    /// <summary>The refusal of a pending credential's sign-in whose challenge is older than the current credential's last sign-in.</summary>
+    private const string CurrentSignedInAfterChallenge = "current_credential_signed_in_after_challenge";
+
     /// <summary>
-    /// The first authentication with a pending credential: it becomes active and the previous one is superseded. False
-    /// when it was revoked (a revocation of the current key revokes it too), it expired, or the node was disabled since
-    /// it was read.
+    /// The first authentication with a pending credential: it becomes active and the previous one is superseded. The
+    /// reason of the refusal (null when it completed) when it was revoked (a revocation of the current key revokes it
+    /// too), it expired, or the node was disabled since it was read; or when the current credential signed in after
+    /// this sign-in's challenge was issued (<paramref name="challengeIssuedAt"/>): the agent signs in with its current
+    /// key only when the pending one was refused, and deletes the pending one once that works, so a sign-in with it that
+    /// arrives later was held back (a proxy that forged the refusal) and would activate a key the agent no longer has.
     /// </summary>
-    private async Task<bool> CompleteRotationAsync(Node node, NodeCredential credential, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<string?> CompleteRotationAsync(Node node, NodeCredential credential, DateTimeOffset challengeIssuedAt, DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
@@ -580,12 +587,20 @@ public sealed partial class AgentAccess(
             || credential.Status != NodeCredentialStatus.Pending || credential.PendingExpired(now) || !node.AcceptsConnections)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return false;
+            return "inactive_while_signing_in";
+        }
+
+        // The current credential's sign-in records its time with this row locked too: either it committed before (and is
+        // seen here) or it reads the current credential superseded once this commits, and is refused.
+        var previous = await db.NodeCredentials.Where(c => c.NodeId == node.Id && c.Status == NodeCredentialStatus.Active).ToListAsync(cancellationToken);
+        if (previous.Any(c => c.LastUsedAt > challengeIssuedAt))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return CurrentSignedInAfterChallenge;
         }
 
         credential.Used(now);
         node.Seen(now);
-        var previous = await db.NodeCredentials.Where(c => c.NodeId == node.Id && c.Status == NodeCredentialStatus.Active).ToListAsync(cancellationToken);
         foreach (var old in previous)
         {
             old.Supersede(now);
@@ -613,7 +628,7 @@ public sealed partial class AgentAccess(
         }
 
         LogRotated(node.Id, credential.Fingerprint);
-        return true;
+        return null;
     }
 
     private static bool VerifyRotationProof(NodeId nodeId, Guid credentialId, Guid sessionId, RotateCredentialRequest request)
@@ -638,20 +653,13 @@ public sealed partial class AgentAccess(
         Enum.TryParse(value, ignoreCase: true, out keyStorage) && Enum.IsDefined(keyStorage);
 
     /// <summary>
-    /// What the panel keeps of the agent's inventory. The host name is shown as the machine's identity and names the
-    /// nodes of reusable tokens, so it loses the characters that would hide in it (format characters such as
-    /// zero-width spaces and direction overrides, line breaks).
+    /// What the panel keeps of the agent's inventory (<see cref="AgentInput.Inventory"/>), at enrollment and at every
+    /// Hello. The host name is shown as the machine's identity and names the nodes of reusable tokens; like every text
+    /// in it, it loses the characters that would hide in it (format characters such as zero-width spaces and direction
+    /// overrides, line breaks) and is cut to its column.
     /// </summary>
-    public static NodeInventorySnapshot ToSnapshot(NodeInventory inventory, string agentVersion, int protocolVersion) => new(
-        Truncate(Visible(inventory.Hostname), 255),
-        Truncate(inventory.OsDescription, 255),
-        Truncate(inventory.OsBuild, 64),
-        inventory.CpuModel is null ? null : Truncate(inventory.CpuModel, 255),
-        inventory.LogicalCores,
-        inventory.MemoryTotalBytes,
-        inventory.ServersRoot is null ? null : Truncate(inventory.ServersRoot, 1024),
-        Truncate(agentVersion, 32),
-        protocolVersion);
+    public static NodeInventorySnapshot ToSnapshot(NodeInventory inventory, string agentVersion, int protocolVersion) =>
+        AgentInput.Inventory(inventory, agentVersion, protocolVersion);
 
     public static AuditActor NodeActor(Node node) => new(AuditActorType.Node, null, node.Name);
 
@@ -736,15 +744,6 @@ public sealed partial class AgentAccess(
         LogEnrollmentRejected(reason);
         return AgentErrors.EnrollmentRejected;
     }
-
-    /// <summary>
-    /// Without the characters that hide or break a line in what the panel shows or logs, read by code point (tag
-    /// characters are format characters past the BMP).
-    /// </summary>
-    private static string Visible(string value) => string.Concat(value.EnumerateRunes()
-        .Where(r => !Rune.IsControl(r) && Rune.GetUnicodeCategory(r)
-            is not (UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator))
-        .Select(r => r.ToString()));
 
     /// <summary>At most <paramref name="max"/> characters, never half of a surrogate pair (PostgreSQL refuses it).</summary>
     private static string Truncate(string value, int max) =>
