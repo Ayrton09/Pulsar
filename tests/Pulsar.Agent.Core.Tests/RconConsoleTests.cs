@@ -86,7 +86,9 @@ public sealed class SourceRconTests
     private static async Task AnAnswerThatNeverEndsIsCutAndItsSessionClosedAsync(string command)
     {
         await using var game = new FakeRconServer("secret", srcds: false);
-        var connector = new SourceRconConnector { AnswerIdle = TimeSpan.FromMilliseconds(100), AnswerTimeout = TimeSpan.FromSeconds(1) };
+        // The pause that ends an answer is far longer than the game's 20 ms between pieces, even on a loaded machine: the
+        // answer must be cut by its time or size, never end by itself.
+        var connector = new SourceRconConnector { AnswerIdle = TimeSpan.FromSeconds(3), AnswerTimeout = TimeSpan.FromSeconds(1) };
         await using var session = await connector.ConnectAsync(game.Endpoint("secret"), ProcessIdentity.CurrentUser, TestContext.Current.CancellationToken);
 
         var answer = await session.ExecuteAsync(command, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(10),
