@@ -66,6 +66,9 @@ public sealed class AgentPaths(string root)
     /// </summary>
     public string LogonLocksDirectory => Path.Combine(Root, "state", "logon-locks");
 
+    /// <summary>The addresses the panel's names resolved to, which the game servers' accounts stay blocked from (PanelAddressBook).</summary>
+    public string PanelAddressesFile => Path.Combine(Root, "state", "panel-addresses.json");
+
     /// <summary>The folders the agent itself makes in <see cref="Root"/>: what securing it resets (nothing else in it).</summary>
     public IReadOnlyList<string> OwnFolders =>
         [ConfigDirectory, LogsDirectory, Path.Combine(Root, "state"), SteamCmdDirectory, ConsoleLogsDirectory, BackupsDirectory, HostProgramsDirectory];

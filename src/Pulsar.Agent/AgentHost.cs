@@ -109,13 +109,22 @@ internal static class AgentHost
             builder.Services.AddSingleton<IRconConnector>(new RconConnectors(peers: new WindowsLocalPeers()));
             builder.Services.AddSingleton<IServerQuery>(services => new ServerQuery(services.GetRequiredService<TimeProvider>()));
             // Off unless the machine's administrator turns it on: the firewall is theirs (docs/architecture/06).
-            // With it, each server's account is also kept from the panel's addresses (the panel's and its fallback, read at each start).
-            builder.Services.AddSingleton<IServerFirewall>(services =>
+            builder.Services.AddSingleton<IServerFirewall>(services => new WindowsServerFirewall(
+                builder.Configuration.GetValue("Pulsar:ManageFirewall", false), services.GetRequiredService<ILogger<WindowsServerFirewall>>()));
+            // With it, each server's account is also kept from the panel's addresses: the panel's and its fallback as the
+            // connection uses them now (its configuration in memory), refreshed when they or this machine's addresses change.
+            builder.Services.AddSingleton(services =>
             {
                 var configs = services.GetRequiredService<AgentConfigStore>();
-                return new WindowsServerFirewall(builder.Configuration.GetValue("Pulsar:ManageFirewall", false),
-                    () => configs.Load() is { } config ? config.FallbackPanel is { } fallback ? [config.Panel, fallback] : [config.Panel] : [],
-                    services.GetRequiredService<ILogger<WindowsServerFirewall>>());
+                var keeper = new PanelBlockKeeper(services.GetRequiredService<IServerFirewall>(),
+                    () => (services.GetRequiredService<AgentConnection>().Config ?? configs.Load()) is { } config
+                        ? config.FallbackPanel is { } fallback ? [config.Panel, fallback] : [config.Panel]
+                        : [],
+                    new PanelAddressBook(paths.PanelAddressesFile, services.GetRequiredService<TimeProvider>(),
+                        services.GetRequiredService<ILogger<PanelAddressBook>>()),
+                    new PanelBlockOptions(), services.GetRequiredService<TimeProvider>(), services.GetRequiredService<ILogger<PanelBlockKeeper>>());
+                System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += (_, _) => keeper.Request();
+                return keeper;
             });
             // Development and CI only: enables the pulsar-test manifest.
             builder.Services.AddSingleton(new InstallOptions { TestGameDirectory = builder.Configuration["Pulsar:TestGameDirectory"] });
@@ -143,7 +152,8 @@ internal static class AgentHost
 
             // Started in this order and stopped in reverse: the connection waits for the servers to load before its Hello,
             // and the servers stop while the panel can still see it.
-            builder.Services.AddHostedService<AgentConnection>();
+            builder.Services.AddSingleton<AgentConnection>();
+            builder.Services.AddHostedService(services => services.GetRequiredService<AgentConnection>());
             builder.Services.AddHostedService(services => services.GetRequiredService<ServerHost>());
             builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(30));
 

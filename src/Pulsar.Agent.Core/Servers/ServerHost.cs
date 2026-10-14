@@ -87,7 +87,8 @@ public sealed partial class ServerHost(
     IServerQuery? query = null,
     GameHostManager? hosts = null,
     AgentShutdown? shutdown = null,
-    IVolumeSnapshots? snapshots = null) : IHostedService, IServerEventSink, IGameHostRecords, IDisposable
+    IVolumeSnapshots? snapshots = null,
+    PanelBlockKeeper? panelBlock = null) : IHostedService, IServerEventSink, IGameHostRecords, IDisposable
 {
     // The panel waits for the ack: deleting a remote copy gets a bounded time.
     private static readonly TimeSpan s_remoteDeleteTimeout = TimeSpan.FromSeconds(20);
@@ -256,6 +257,9 @@ public sealed partial class ServerHost(
 
                 DeleteLentSteamLogin(record.ServerId, record.Spec.ShortId);
             }
+
+            // Every account is kept from the panel before its game starts or is taken over, then kept so (doc 06).
+            panelBlock?.Start(ServerAccounts, _stopping.Token);
 
             // All at once: a host slow to answer (a machine busy starting) does not hold up the others.
             var occupied = await Task.WhenAll(loaded.Select(l => running.Remove(l.Record.ServerId, out var host)
@@ -798,6 +802,8 @@ public sealed partial class ServerHost(
             }
 
             await Task.Run(() => provisioner.Provision(root, spec.ShortId));
+            // Before anything runs as the new account (SteamCMD installs as it).
+            panelBlock?.Ensure(new ServerAccount(spec.ShortId, provisioner.Describe(root, spec.ShortId).Identity));
             if (_servers.TryGetValue(command.ServerId, out var server))
             {
                 await server.Supervisor.UpdateAsync(Definition(command.ServerId, spec, rconPassword));
@@ -1482,6 +1488,13 @@ public sealed partial class ServerHost(
             loggerFactory.CreateLogger<ServerSupervisor>(), files, rcon, firewall, console, query);
         _servers[serverId] = new Server(spec.ShortId, Parse(spec), spec, rconPassword, supervisor);
         return supervisor;
+    }
+
+    /// <summary>The servers and the identities their games run as, for their accounts' outbound blocks.</summary>
+    private IReadOnlyCollection<ServerAccount> ServerAccounts()
+    {
+        var root = _config!.ServersRootOrDefault(configs.Paths);
+        return [.. _servers.Values.Select(s => new ServerAccount(s.ShortId, provisioner.Describe(root, s.ShortId).Identity))];
     }
 
     private string ConsoleLogDirectory(string shortId)

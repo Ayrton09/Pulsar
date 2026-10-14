@@ -240,6 +240,22 @@ try {
     $config = $rotatedConfig
     $provider = $newProvider
 
+    # The outbound block of a server's account (docs/architecture/06, "Windows Firewall"): TCP to the agents' port and the
+    # main one it falls back to, at loopback and this machine's own addresses (the panel runs here), for that account only.
+    function Test-PanelBlock([string] $shortId, [string] $accountName) {
+        $rule = Get-NetFirewallRule -DisplayName "Pulsar $shortId panel block" -ErrorAction SilentlyContinue
+        $accountSid = (Get-LocalUser $accountName).SID.Value
+        $own = @(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' })[0].IPAddress
+        $ports = if ($rule) { @(($rule | Get-NetFirewallPortFilter).RemotePort) } else { @() }
+        $protocol = if ($rule) { "$(($rule | Get-NetFirewallPortFilter).Protocol)" } else { '' }
+        $addresses = if ($rule) { @(($rule | Get-NetFirewallAddressFilter).RemoteAddress) } else { @() }
+        $users = if ($rule) { "$(($rule | Get-NetFirewallSecurityFilter).LocalUser)" } else { '' }
+        $ok = $null -ne $rule -and @($rule).Count -eq 1 -and "$($rule.Direction)" -eq 'Outbound' -and "$($rule.Action)" -eq 'Block' -and "$($rule.Enabled)" -eq 'True' `
+            -and $protocol -eq 'TCP' -and '5291' -in $ports -and '5292' -in $ports -and @($addresses -match '^127\.0\.0\.0/(8|255\.0\.0\.0)$').Count -eq 1 `
+            -and @($addresses -match "^$([regex]::Escape($own))(/32|/255\.255\.255\.255)?$").Count -eq 1 -and $users -eq "D:(A;;CC;;;$accountSid)"
+        [pscustomobject]@{ Ok = $ok; Detail = "$($rule.Direction) $($rule.Action) $protocol; ports $($ports -join ','); addresses $($addresses -join ','); users $users; own $own" }
+    }
+
     # --- A game server runs as its own Windows account (docs/architecture/06) ---
     # Windows PowerShell hands a JSON array over as one object: foreach enumerates its elements.
     $template = $null
@@ -272,6 +288,8 @@ try {
     $game = @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'")
     $owner = if ($game.Count -eq 1) { Invoke-CimMethod -InputObject $game[0] -MethodName GetOwner } else { $null }
     Check 'server process runs as its own account' ($game.Count -eq 1 -and $owner.User -eq $account) "$($owner.Domain)\$($owner.User), session $($game[0].SessionId), $($game[0].CommandLine)"
+    $block = Test-PanelBlock $server.shortId $account
+    Check "firewall keeps the server's account from the panel's ports" $block.Ok $block.Detail
 
     # --- The server's own host process keeps it running while the agent restarts (docs/architecture/06, "Server hosts") ---
     $before = $game[0].ProcessId
@@ -281,8 +299,12 @@ try {
     function Same-Game { $now = @(Get-CimInstance Win32_Process -Filter "Name = 'Pulsar.TestGameServer.exe'"); $now.Count -eq 1 -and $now[0].ProcessId -eq $before }
     function Back-Online { (Api GET "/api/v1/nodes/$nodeId").node.connected -and (Server).runtimeState -eq 'running' }
 
+    # The block is the account's, not the start's: one deleted by hand is made again when the agent takes the game over.
+    Remove-NetFirewallRule -DisplayName "Pulsar $($server.shortId) panel block" -ErrorAction SilentlyContinue
     Restart-Service PulsarAgent
     Check 'server keeps running through a service restart (same process)' (Wait-Until { (Back-Online) -and (Same-Game) } 90) "reason: $((Server).lastStateReason)"
+    $retaken = Wait-Until { (Test-PanelBlock $server.shortId $account).Ok } 30
+    Check 'the panel block is made again for a game taken over after a restart' $retaken (Test-PanelBlock $server.shortId $account).Detail
 
     # The agent crashes: Windows restarts the service (5 s) and it takes the game over again.
     $agentProcess = (Get-CimInstance Win32_Service -Filter "Name='PulsarAgent'").ProcessId
@@ -389,17 +411,8 @@ try {
         Check 'css: firewall opens the game port over UDP only, for srcds' ($udpPort -eq '27015' -and $udpApp -like '*\srcds.exe' -and $null -eq $tcpRule) "udp $udpPort $udpApp; tcp rule: $($null -ne $tcpRule)"
         # Its account may not reach the panel: TCP to the agents' port and the main one it falls back to, at loopback and
         # this machine's own addresses (the panel runs here), for that account only.
-        $blockRule = Get-NetFirewallRule -DisplayName "Pulsar $($game.server.shortId) panel block" -ErrorAction SilentlyContinue
-        $gameSid = (Get-LocalUser $gameAccount).SID.Value
-        $ownAddress = @(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' })[0].IPAddress
-        $blockPorts = if ($blockRule) { @(($blockRule | Get-NetFirewallPortFilter).RemotePort) } else { @() }
-        $blockProtocol = if ($blockRule) { "$(($blockRule | Get-NetFirewallPortFilter).Protocol)" } else { '' }
-        $blockAddresses = if ($blockRule) { @(($blockRule | Get-NetFirewallAddressFilter).RemoteAddress) } else { @() }
-        $blockUsers = if ($blockRule) { "$(($blockRule | Get-NetFirewallSecurityFilter).LocalUser)" } else { '' }
-        $blockOk = $blockRule -and "$($blockRule.Direction)" -eq 'Outbound' -and "$($blockRule.Action)" -eq 'Block' -and $blockProtocol -eq 'TCP' `
-            -and '5291' -in $blockPorts -and '5292' -in $blockPorts -and @($blockAddresses -match '^127\.0\.0\.0/(8|255\.0\.0\.0)$').Count -eq 1 `
-            -and @($blockAddresses -match "^$([regex]::Escape($ownAddress))(/32|/255\.255\.255\.255)?$").Count -eq 1 -and $blockUsers -eq "D:(A;;CC;;;$gameSid)"
-        Check "css: firewall keeps its account from the panel's ports" $blockOk "$($blockRule.Direction) $($blockRule.Action) $blockProtocol; ports $($blockPorts -join ','); addresses $($blockAddresses -join ','); users $blockUsers; own $ownAddress"
+        $block = Test-PanelBlock $game.server.shortId $gameAccount
+        Check "css: firewall keeps its account from the panel's ports" $block.Ok $block.Detail
 
         $null = Api POST "/api/v1/servers/$gameId/stop"
         $stopped = Wait-Until { (GameServer).server.runtimeState -eq 'offline' -and @(Get-CimInstance Win32_Process -Filter "Name = 'srcds.exe'").Count -eq 0 } 60
@@ -427,7 +440,7 @@ try {
         Remove-Item $probeOut -ErrorAction SilentlyContinue
         $connect = "try { (New-Object Net.Sockets.TcpClient).Connect('127.0.0.1', 5291); 'connected' } catch { 'refused' }"
         $process = Start-Process powershell.exe -Credential (New-Object Management.Automation.PSCredential $probeUser, $probePassword) `
-            -ArgumentList '-NoProfile', '-Command', "$connect | Set-Content '$probeOut'" -WorkingDirectory $env:PUBLIC -WindowStyle Hidden -PassThru -Wait
+            -ArgumentList '-NoProfile', '-Command', "& { $connect } | Set-Content '$probeOut'" -WorkingDirectory $env:PUBLIC -WindowStyle Hidden -PassThru -Wait
         if (Test-Path $probeOut) { (Get-Content $probeOut -Raw).Trim() } else { "no answer (exit $($process.ExitCode))" }
     }
     try {
