@@ -127,17 +127,9 @@ public sealed class PanelKeyRotationTests(PulsarApiFactory factory) : IClassFixt
         await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
         var oldKey = created.Enrollment.PanelKeyFingerprint;
         await PostAsync(admin, "/api/v1/panel-keys/rotate");
-        await using (var scope = factory.Services.CreateAsyncScope())
-        {
-            // As its last Hello said: it pins the old key only.
-            var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
-            var nodeId = new NodeId(agent.NodeId);
-            var node = await db.Nodes.SingleAsync(n => n.Id == nodeId, Ct);
-            node.PanelKeysPinned([oldKey]);
-            await db.SaveChangesAsync(Ct);
-        }
 
-        using (var asked = await agent.PostChallengeAsync([1, 2, 3]))
+        // As its sign-in says: it pins the old key only.
+        using (var asked = await agent.PostChallengeAsync([1, 2, 3], pinned: [oldKey]))
         {
             asked.EnsureSuccessStatusCode();
             using var response = await agent.PostTokenAsync((await asked.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!);

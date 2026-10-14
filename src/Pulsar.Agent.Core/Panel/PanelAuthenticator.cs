@@ -58,7 +58,8 @@ public sealed class PanelAuthenticator(PanelTransport transport, TimeProvider? c
         try
         {
             challenge = await PanelTransport.PostAsync<ChallengeRequest, ChallengeResponse>(http, AgentProtocol.ChallengePath,
-                new ChallengeRequest(config.NodeId, config.CredentialId, nonce), cancellationToken);
+                new ChallengeRequest(config.NodeId, config.CredentialId, nonce, config.PanelKeys is { Count: > 0 } pinned ? [.. pinned.Select(k => k.KeyId)] : null),
+                cancellationToken);
         }
         catch (CertificateRequiredException ex)
         {

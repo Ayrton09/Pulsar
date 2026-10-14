@@ -320,7 +320,8 @@
         "credential_rotated": "Node key rotated",
         "allocations_created": "Added allocations",
         "allocation_deleted": "Removed an allocation",
-        "approved": "Approved a node"
+        "approved": "Approved a node",
+        "panel_keys_pinned": "Node changed the panel keys it trusts"
       },
       "panel_key": {
         "rotated": "Rotated the panel signing key",

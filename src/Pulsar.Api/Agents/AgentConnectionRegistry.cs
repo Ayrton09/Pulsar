@@ -2,8 +2,10 @@ using System.Collections.Concurrent;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Audit;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
+using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 
 namespace Pulsar.Api.Agents;
@@ -165,6 +167,13 @@ internal sealed partial class AgentConnectionRegistry(
             if (stored is null)
             {
                 return;
+            }
+
+            if (!(stored.PinnedPanelKeys ?? []).SequenceEqual(keyIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal), StringComparer.Ordinal))
+            {
+                scope.ServiceProvider.GetRequiredService<IAuditLog>().Record(AuditActions.Node.PanelKeysPinned, AuditOutcome.Success,
+                        AgentAccess.NodeActor(stored), new { before = stored.PinnedPanelKeys, after = keyIds })
+                    .WithNode(node).WithTarget("node", node.ToString());
             }
 
             stored.PanelKeysPinned(keyIds);

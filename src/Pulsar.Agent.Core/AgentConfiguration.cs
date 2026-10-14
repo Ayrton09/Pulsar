@@ -140,7 +140,11 @@ public sealed record AgentConfig(
 /// The middle of a node key rotation: written before the agent first authenticates with the new key, so a crash at any
 /// point leaves either the old credential or the new one usable (docs/architecture/03, "Rotation").
 /// </summary>
-public sealed record PendingRotation(NodeKeyReference Key, Guid CredentialId, DateTimeOffset CreatedAt);
+/// <param name="Requested">
+/// The panel asked for this rotation (<see cref="Pulsar.Contracts.RotateCredentialCommand"/>): if its key is given up, the
+/// request stands and another rotation follows, rather than waiting for the key's age.
+/// </param>
+public sealed record PendingRotation(NodeKeyReference Key, Guid CredentialId, DateTimeOffset CreatedAt, bool Requested = false);
 
 /// <summary>Restricts the agent's folders to the accounts that run or administer the agent.</summary>
 public interface IAgentDirectorySecurity

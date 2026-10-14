@@ -59,7 +59,12 @@ public sealed record SignedMessage(string KeyId, byte[] Payload, byte[] Signatur
 /// address signs them back (<see cref="AgentsAddress.Nonce"/>), so a refusal recorded once cannot be replayed later, and so
 /// does the session the sign-in ends with (<see cref="SessionGrant.Nonce"/>).
 /// </param>
-public sealed record ChallengeRequest(Guid NodeId, Guid CredentialId, byte[]? Nonce = null);
+/// <param name="PinnedPanelKeys">
+/// The ids of the panel keys the agent pins (at most <see cref="AgentProtocol.MaxPinnedPanelKeys"/>, each a fingerprint):
+/// the panel signs this sign-in's grant with the first of its keys among them. Taken from the sign-in itself, never from
+/// what a session said earlier, which whoever holds a session token could have written.
+/// </param>
+public sealed record ChallengeRequest(Guid NodeId, Guid CredentialId, byte[]? Nonce = null, IReadOnlyList<string>? PinnedPanelKeys = null);
 
 /// <summary>
 /// A single-use nonce. <see cref="PanelOrigin"/> is part of the signed data, so a response obtained by another

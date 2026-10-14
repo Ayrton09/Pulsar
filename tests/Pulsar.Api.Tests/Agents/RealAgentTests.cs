@@ -1,5 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Pulsar.Agent.Core.Panel;
@@ -7,7 +11,9 @@ using Pulsar.Api.Nodes;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
+using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
+using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Tests.Agents;
 
@@ -173,6 +179,83 @@ public sealed class RealAgentTests(PulsarApiFactory factory) : IClassFixture<Pul
         Assert.Equal([second.Key.Name], agent.Keys.Names);
         await agent.StartAsync();
         await InProcessAgent.EventuallyAsync(async () => (await GetNodeAsync(admin, second.NodeId)).Node.Connected, "connection with the new key");
+    }
+
+    [DatabaseFact]
+    public async Task ASessionHolderCannotLockTheNodeOutByLyingAboutItsPinnedKeys()
+    {
+        // Whoever holds the agent's session token (a TLS-terminating proxy, a copied token) says Hello with panel keys the
+        // agent does not pin. The agent's next sign-ins name their own keys, so their grants still verify.
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "real-pins-lie");
+        await using var agent = new InProcessAgent(factory);
+        var config = await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        string? stolen = null;
+        agent.Proxy = async (request, send) =>
+        {
+            var response = await send();
+            if (request.RequestUri!.AbsolutePath == AgentProtocol.TokenPath && response.IsSuccessStatusCode)
+            {
+                await response.Content.LoadIntoBufferAsync(TestContext.Current.CancellationToken);
+                stolen = JsonSerializer.Deserialize<TokenResponse>(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken),
+                    ProtocolJson.Options)!.AccessToken;
+            }
+
+            return response;
+        };
+        await agent.StartAsync();
+        await InProcessAgent.EventuallyAsync(async () => agent.CurrentSessionId is not null && (await GetNodeAsync(admin, config.NodeId)).Node.Connected,
+            "first connection");
+        var first = agent.CurrentSessionId;
+
+        // An empty list is no list of pins: that Hello is refused, and the agent's connection stays.
+        await Assert.ThrowsAnyAsync<Exception>(() => HelloAsync(stolen!, []));
+        Assert.Equal(first, agent.CurrentSessionId);
+
+        // A well-formed lie is taken (and audited), and cuts the agent's connection off: it signs in again, and stays.
+        await using (await HelloAsync(stolen!, ["sha256:not-a-panel-key"]))
+        {
+            await InProcessAgent.EventuallyAsync(() => Task.FromResult(agent.CurrentSessionId != first), "the agent cut off");
+        }
+
+        await InProcessAgent.EventuallyAsync(async () => agent.CurrentSessionId is { } s && s != first && (await GetNodeAsync(admin, config.NodeId)).Node.Connected,
+            "the agent connected again");
+        Assert.Equal(AckStatus.Accepted, (await PingAsync(admin, config.NodeId)).Status);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var nodeId = new NodeId(config.NodeId);
+        Assert.True(await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().AuditLog
+            .AnyAsync(e => e.Action == AuditActions.Node.PanelKeysPinned && e.NodeId == nodeId, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>Says Hello on the agents' hub with a session token, as whoever copied it would.</summary>
+    private async Task<HubConnection> HelloAsync(string accessToken, IReadOnlyList<string> pinned)
+    {
+        var server = factory.Server;
+        var connection = new HubConnectionBuilder()
+            .WithUrl(new Uri("wss://localhost" + AgentProtocol.HubPath), HttpTransportType.WebSockets, options =>
+            {
+                options.SkipNegotiation = true;
+                options.WebSocketFactory = async (context, cancellationToken) =>
+                {
+                    var client = server.CreateWebSocketClient();
+                    client.ConfigureRequest = request => request.Headers.Authorization = $"Bearer {accessToken}";
+                    return await client.ConnectAsync(context.Uri, cancellationToken);
+                };
+            })
+            .AddJsonProtocol(options => ProtocolJson.Configure(options.PayloadSerializerOptions))
+            .Build();
+        try
+        {
+            await connection.StartAsync(TestContext.Current.CancellationToken);
+            await connection.InvokeAsync<HelloAccepted>(nameof(IAgentHub.Hello),
+                new AgentHello("0.1.0-thief", AgentProtocol.CurrentVersion, [], TestAgent.Inventory, pinned), TestContext.Current.CancellationToken);
+            return connection;
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
     }
 
     private static async Task<CreatedNode> CreateNodeAsync(PanelClient admin, string name)

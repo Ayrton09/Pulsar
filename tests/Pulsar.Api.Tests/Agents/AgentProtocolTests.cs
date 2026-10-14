@@ -200,6 +200,43 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
     }
 
     [DatabaseFact]
+    public async Task TheGrantIsSignedWithAKeyTheSignInNamesAndTheListIsBounded()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "node-grant-pins");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+
+        // Too many ids, or one that is no fingerprint: refused, and audited.
+        foreach (var malformed in new[] { Enumerable.Range(0, AgentProtocol.MaxPinnedPanelKeys + 1).Select(i => $"sha256:key{i}").ToArray(), ["not a key id"], [] })
+        {
+            using var refused = await agent.PostChallengeAsync(RandomNumberGenerator.GetBytes(32), pinned: malformed);
+            await AssertAgentErrorAsync(refused, "agent.authentication_rejected", HttpStatusCode.Unauthorized);
+        }
+
+        // A list naming no key of the panel's: a session without a grant, which no agent uses.
+        Assert.Null((await SignInAsync(agent, ["sha256:unknown"])).Grant);
+
+        // The node's own key: the grant is signed with it.
+        Assert.Equal(created.Enrollment.PanelKeyFingerprint, (await SignInAsync(agent, [created.Enrollment.PanelKeyFingerprint])).Grant!.KeyId);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var nodeId = new NodeId(agent.NodeId);
+        var refusals = await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().AuditLog
+            .Where(e => e.Action == AuditActions.Node.AuthenticationFailed && e.NodeId == nodeId).ToListAsync(Ct);
+        Assert.Single(refusals, e => e.Metadata.Contains("\"challenge_pinned_keys_invalid\"", StringComparison.Ordinal));
+    }
+
+    private static async Task<TokenResponse> SignInAsync(TestAgent agent, IReadOnlyList<string> pinned)
+    {
+        using var asked = await agent.PostChallengeAsync(RandomNumberGenerator.GetBytes(32), pinned: pinned);
+        asked.EnsureSuccessStatusCode();
+        using var response = await agent.PostTokenAsync((await asked.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<TokenResponse>(ProtocolJson.Options, Ct))!;
+    }
+
+    [DatabaseFact]
     public async Task RevokingTheCredentialDisconnectsTheAgentImmediately()
     {
         using var admin = await factory.CreateAdminClientAsync();
