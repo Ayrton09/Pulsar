@@ -90,7 +90,7 @@ internal static class ApiKeyRateLimit
             var result = await context.AuthenticateAsync(ApiKeyAuthenticationHandler.Scheme);
             context.Items[s_partition] = result.Succeeded && result.Principal.FindFirstValue(ApiKeyClaims.KeyId) is { } key
                 ? $"key:{key}"
-                : $"address:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+                : $"address:{ClientAddress.PartitionOf(context.Connection.RemoteIpAddress)}";
         }
 
         await next(context);

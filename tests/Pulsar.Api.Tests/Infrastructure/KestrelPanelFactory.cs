@@ -87,6 +87,16 @@ public class KestrelPanelFactory : PulsarApiFactory
         return created.Value!;
     }
 
+    /// <summary>Revokes a node's key as an administrator would.</summary>
+    public async Task RevokeCredentialAsync(Guid nodeId, Guid credentialId)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        scope.ServiceProvider.GetRequiredService<RequestContextOverride>().Context = new SystemContext();
+        var revoked = await scope.ServiceProvider.GetRequiredService<NodeManagement>()
+            .RevokeCredentialAsync(new NodeId(nodeId), credentialId, "kestrel tests", TestContext.Current.CancellationToken);
+        Assert.True(revoked.IsSuccess, revoked.Error?.Message);
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);

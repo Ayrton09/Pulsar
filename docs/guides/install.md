@@ -178,25 +178,66 @@ until you update them).
 
 - Open the agents' port wherever nodes reach the panel from (the installer opens it in Windows Firewall like the main
   one). It must reach the panel directly: a reverse proxy that decrypts TLS in front of it cannot pass the certificate
-  on (a TCP pass-through can). When nodes reach it under another address (a port forwarded under another number), set
-  it in `appsettings.Production.json`: `"Agents": { "PublicUrl": "https://panel.example.com:9444" }`.
+  on (a TCP pass-through can). A pass-through, or a router that rewrites the source of connections made from inside the
+  network to the panel's public address (hairpin NAT), makes every agent come from one address, which then shares the
+  budgets below: anyone with 20 idle connections through it would keep every agent out. Use a pass-through that keeps
+  the client's address, or set `MaxPendingConnectionsPerAddress` and `MaxPendingConnectionsPerNetwork` to
+  `MaxPendingConnections` and limit connections per client at the proxy. When nodes reach the port under another
+  address (a port forwarded under another number), set it in `appsettings.Production.json`:
+  `"Agents": { "PublicUrl": "https://panel.example.com:9444" }`.
 - `"Agents": { "MaxConnections": 1000 }` (the default, about four per node) caps the connections the agents' port holds
   at once, so a flood of handshakes cannot take the panel's resources: raise it for more than about 250 nodes.
-- Within that cap, connections that have not signed in yet (a TLS handshake, an agent signing in or enrolling, anyone
-  else's connection) have smaller budgets: `"MaxPendingConnections"` for the whole port (by default a quarter of
-  `MaxConnections`, 250) and `"MaxPendingConnectionsPerAddress"` from one address, an IPv4 address or an IPv6 /64 (20 by
-  default). A connection has 5 seconds for its TLS handshake and 30 seconds to sign in, or it is closed. A connected
-  agent's hub, its file transfers and its key rotation sign in with their first request and leave these budgets; a
-  sign-in holds a connection for a second or two. Nodes behind one NAT address share the per-address budget: 20 lets
-  them sign in about ten at a time and the others retry within seconds. Raise it (up to `MaxPendingConnections`) for
-  a site with hundreds of nodes behind one address that restart together. The panel refuses to start with a budget
-  below 1 or above the one it belongs to.
-- What a flood of connections can still do: one address holds at most 20 places, for 30 seconds at most each, so it
-  delays no one. Many addresses together (a botnet, or one network with many IPv6 /64s) can fill the 250 places for as
-  long as they keep it up, and agents then wait to sign in. Connected agents keep working until their session ends (at
-  most 15 minutes), then have to sign in like the others. While client certificates are not required, an agent that
-  cannot sign in on the agents' port signs in at the main address instead; once they are required, it keeps retrying
-  the agents' port. The panel's log says how many connections it closed, at most once a minute.
+- A connection *signs in* when a request on it presents a valid agent session with the key of the connection's
+  certificate (an agent's hub, its file transfers, a key rotation; a sign-in or an enrollment does not). Within
+  `MaxConnections`, connections not signed in yet (a TLS handshake, an agent signing in or enrolling, anyone else's
+  connection) have smaller budgets:
+  - `"MaxPendingConnections"`: for the whole port, by default a quarter of `MaxConnections` (250). Half of it is kept
+    for addresses an agent signed in from within the last day, so strangers alone never take all of it.
+  - `"MaxPendingConnectionsPerAddress"`: from one address, an IPv4 address or an IPv6 /64 (the panel's own machine
+    counts as one), 20 by default.
+  - `"MaxPendingConnectionsPerNetwork"`: from one IPv4 /24 or IPv6 /48, three times the per-address budget by default
+    (60), so a host with several addresses or a routed IPv6 prefix gets no more.
+
+  A connection has 5 seconds for its TLS handshake. One not signed in 30 seconds after it arrived is closed once the
+  request in progress, if any, is answered, and 5 seconds later in any case. A signed-in connection lasts as long as
+  the session it presented (15 minutes at most) unless a request of a session is still running (a transfer is never
+  cut), and a node holds at most `"MaxConnectionsPerNode"` of them (16 by default): further requests with its session
+  are refused. Revoking a node's key, disabling or deleting the node closes its connections at once.
+
+  An agent's sign-in holds a connection for a second or two. Nodes behind one NAT address share its budgets: 20 lets
+  them sign in about ten at a time and the others retry within seconds. Raise the per-address and per-network budgets
+  (up to `MaxPendingConnections`) for a site with hundreds of nodes behind one address that restart together. The
+  panel refuses to start with a budget below 1 or out of order (per address ≤ per network ≤ pending ≤
+  `MaxConnections`, and per node ≤ `MaxConnections`).
+- What a flood of connections can still do: one address holds at most 20 places and one network 60, each for up to
+  5 seconds before its handshake or 35 seconds after it, so it cannot take the port alone. Many networks together (a
+  botnet) can fill the strangers' half of the budget for as long as they keep it up: agents signing in from addresses
+  the panel has not seen today are then refused. Agents that signed in from their address within the last day keep
+  the other half, unless the flood also comes from their addresses. Connected agents keep working until their session
+  ends (at most 15 minutes); they sign in again like the others. While client certificates are not required, an
+  agent that cannot sign in on the agents' port signs in at the main address instead, where its session is not bound
+  to its key; once they are required, it keeps retrying the agents' port. The panel's log says how many connections
+  it closed and why, at most once a minute.
+- Whatever shares an agent's address can use up that address's budget: a game server on the node, a neighbour behind
+  the same NAT. Before TLS the panel cannot tell them from the agent, so 20 idle connections from a game server keep its
+  own node from signing in (until they stop). Game servers run under their own Windows accounts (`pulsar_<id>`, one
+  per server); block them from the panel's ports on each node, and run it again after you create a server (it replaces
+  the rule's list of accounts):
+
+  ```powershell
+  $sids = (Get-LocalUser -Name 'pulsar_*').SID | ForEach-Object { "(A;;CC;;;$_)" }
+  $users = 'D:' + ($sids -join '')
+  $rule = 'Pulsar: game servers may not reach the panel'
+  if (Get-NetFirewallRule -DisplayName $rule -ErrorAction SilentlyContinue) {
+      Set-NetFirewallRule -DisplayName $rule -LocalUser $users
+  } else {
+      New-NetFirewallRule -DisplayName $rule -Direction Outbound -Action Block -Protocol TCP `
+          -RemoteAddress 203.0.113.10 -RemotePort 8443,8444 -LocalUser $users
+  }
+  ```
+
+  Put the panel's IP address and both of its ports. The agent runs as SYSTEM and is not affected; with no game
+  server yet there is nothing to block.
 - On a panel installed before, add the endpoint to `C:\Program Files\Pulsar\Panel\appsettings.Production.json`
   with the same certificate as `Https`, open the port, and restart the panel:
 
