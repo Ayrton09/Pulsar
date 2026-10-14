@@ -252,7 +252,7 @@ try {
         $users = if ($rule) { "$(($rule | Get-NetFirewallSecurityFilter).LocalUser)" } else { '' }
         $ok = $null -ne $rule -and @($rule).Count -eq 1 -and "$($rule.Direction)" -eq 'Outbound' -and "$($rule.Action)" -eq 'Block' -and "$($rule.Enabled)" -eq 'True' `
             -and $protocol -eq 'TCP' -and '5291' -in $ports -and '5292' -in $ports -and @($addresses -match '^127\.0\.0\.0/(8|255\.0\.0\.0)$').Count -eq 1 `
-            -and @($addresses -match "^$([regex]::Escape($own))(/32|/255\.255\.255\.255)?$").Count -eq 1 -and $users -eq "D:(A;;CC;;;$accountSid)"
+            -and (-not $own -or @($addresses -match "^$([regex]::Escape($own))(/32|/255\.255\.255\.255)?$").Count -eq 1) -and $users -eq "D:(A;;CC;;;$accountSid)"
         [pscustomobject]@{ Ok = $ok; Detail = "$($rule.Direction) $($rule.Action) $protocol; ports $($ports -join ','); addresses $($addresses -join ','); users $users; own $own" }
     }
 
@@ -450,10 +450,11 @@ try {
             -RemotePort 5291 -LocalUser "D:(A;;CC;;;$((Get-LocalUser $probeUser).SID.Value))"
         $after = Invoke-Probe
         $profiles = (@(Get-NetFirewallProfile | Where-Object Enabled) | ForEach-Object Name) -join ','
-        Check 'firewall: an account blocked from the panel cannot reach it on loopback either' ($before -eq 'connected' -and $after -eq 'refused') "without the rule: $before; with it: $after; firewall on for: $profiles"
+        # What docs/architecture/06 says: Windows Firewall does not filter loopback, so the block cannot keep a game from a panel on its node.
+        Check 'firewall: loopback is not filtered, as documented (the rule is accepted)' ($before -eq 'connected' -and $after -eq 'connected') "without the rule: $before; with it: $after; firewall on for: $profiles"
     }
     catch {
-        Check 'firewall: an account blocked from the panel cannot reach it on loopback either' $false "$($_.Exception.Message)"
+        Check 'firewall: loopback is not filtered, as documented (the rule is accepted)' $false "$($_.Exception.Message)"
     }
     finally {
         Remove-NetFirewallRule -DisplayName $probeRule -ErrorAction SilentlyContinue

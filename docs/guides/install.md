@@ -256,8 +256,9 @@ until you update them).
   ```
 
   Only the panel's ports are blocked, at every address the name resolves to, loopback and the node's own addresses:
-  when the panel runs on the node, or its public name leads back to the node through the router, a game server
-  reaches it there too. The agent runs as SYSTEM and is not affected. With no game server yet there is nothing to
+  when the panel's public name leads back to the node through the router, a game server reaches it there too.
+  Windows Firewall does not filter loopback, so on a PC that runs the panel too this rule cannot keep a game from
+  it: run untrusted game servers on another machine. The agent runs as SYSTEM and is not affected. With no game server yet there is nothing to
   block, and the rule is removed.
 
   Either way the rule narrows this down, it does not rule it out. It blocks the addresses it lists: one of the
