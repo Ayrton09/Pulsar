@@ -145,9 +145,13 @@ public sealed class AgentInputTests
         Assert.Equal(["server.cfg", "odd \U0000202Ename"], cleaned.Entries.Select(e => e.Name));
         Assert.Equal(5, cleaned.Skipped);
         Assert.False(cleaned.Truncated); // the cap is not what hid them
-        var clean = Assert.IsType<FileListResult>(AgentInput.Result(new FileListResult(listing.Entries.Take(1).ToList(), false, Skipped: 999)));
-        Assert.Equal(0, clean.Skipped); // the count is the panel's, not the agent's
-        Assert.False(clean.Truncated);
+        var one = listing.Entries.Take(1).ToList();
+        // The agent counts the names it left out (before its cap); the panel adds its own, and the number stays a sane one.
+        Assert.Equal(999, Assert.IsType<FileListResult>(AgentInput.Result(new FileListResult(one, false, Skipped: 999))).Skipped);
+        Assert.Equal(1003, Assert.IsType<FileListResult>(AgentInput.Result(new FileListResult(listing.Entries.Take(6).ToList(), false, Skipped: 999))).Skipped);
+        Assert.Equal(0, Assert.IsType<FileListResult>(AgentInput.Result(new FileListResult(one, false, Skipped: -5))).Skipped);
+        Assert.Equal(AgentInput.MaxSkipped, Assert.IsType<FileListResult>(AgentInput.Result(new FileListResult(one, false, Skipped: int.MaxValue))).Skipped);
+        Assert.Equal(AgentInput.MaxSkipped, Assert.IsType<FileListResult>(AgentInput.Result(new FileListResult(listing.Entries.Take(6).ToList(), false, Skipped: int.MaxValue))).Skipped);
     }
 
     [Fact]

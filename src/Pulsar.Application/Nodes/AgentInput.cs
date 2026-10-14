@@ -33,6 +33,9 @@ public static partial class AgentInput
     public const int MaxServersRootLength = 1024;
     public const int MaxAgentVersionLength = 32;
 
+    /// <summary>The most entries a listing says it left out: a number to show, as large as the agent scans a folder.</summary>
+    public const int MaxSkipped = 1_000_000;
+
     /// <summary><paramref name="code"/> when it is a protocol error code (lowercase letters, digits, dots, underscores), otherwise <see cref="InvalidErrorCode"/>.</summary>
     public static string? ErrorCode(string? code) => code is null ? null : ErrorCodeShape().IsMatch(code) ? code : InvalidErrorCode;
 
@@ -194,7 +197,8 @@ public static partial class AgentInput
 
     /// <summary>
     /// A listing of entries that are all usable, at most <see cref="FileLimits.MaxListEntries"/> (<c>Truncated</c> when
-    /// there were more), with the number of entries left out for their names or values (<c>Skipped</c>).
+    /// there were more), with the number of entries left out for their names or values (<c>Skipped</c>): the agent's own
+    /// count of the names it refuses (it drops them before its cap) plus what the panel still refuses, as a number to show.
     /// </summary>
     private static FileListResult FileListing(FileListResult listing)
     {
@@ -204,7 +208,7 @@ public static partial class AgentInput
         {
             Entries = usable.Count > FileLimits.MaxListEntries ? usable[..FileLimits.MaxListEntries] : usable,
             Truncated = listing.Truncated || usable.Count > FileLimits.MaxListEntries,
-            Skipped = read.Count - usable.Count,
+            Skipped = (int)Math.Min(MaxSkipped, (long)Math.Clamp(listing.Skipped, 0, MaxSkipped) + read.Count - usable.Count),
         };
     }
 

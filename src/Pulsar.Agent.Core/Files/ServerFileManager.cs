@@ -175,7 +175,9 @@ public static class ServerFileRules
     /// <summary>
     /// Directories first, then the rest, each by name; cut where the listing would grow too large. Reads
     /// <paramref name="entries"/> once, holding no more than the entries it keeps (a folder may hold millions), and
-    /// stops after <see cref="MaxListScan"/>.
+    /// stops after <see cref="MaxListScan"/>. Names no <see cref="ServerFilePath"/> accepts (a game can create them through
+    /// extended paths: a trailing dot, a device name, a lone surrogate that JSON would turn into another name) are left out
+    /// before the cap, so they cannot fill it, and counted in <see cref="FileListResult.Skipped"/>.
     /// </summary>
     public static FileListResult Listing(IEnumerable<FileEntry> entries)
     {
@@ -184,11 +186,18 @@ public static class ServerFileRules
         // The first entries in order so far, the last of them on top.
         var first = new PriorityQueue<FileEntry, FileEntry>(Comparer<FileEntry>.Create((a, b) => ListingOrder(b, a)));
         var read = 0;
+        var skipped = 0;
         foreach (var entry in entries)
         {
             if (++read > MaxListScan)
             {
                 break;
+            }
+
+            if (!ServerFilePath.IsValid(entry.Name))
+            {
+                skipped++;
+                continue;
             }
 
             if (first.Count < FileLimits.MaxListEntries)
@@ -215,7 +224,7 @@ public static class ServerFileRules
             kept++;
         }
 
-        return new FileListResult(kept == sorted.Count ? sorted : sorted[..kept], kept < read);
+        return new FileListResult(kept == sorted.Count ? sorted : sorted[..kept], kept < read - skipped, skipped);
     }
 
     private static int ListingOrder(FileEntry a, FileEntry b)
