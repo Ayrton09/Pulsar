@@ -955,7 +955,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             // A Steam login lent to SteamCMD by an agent that stopped before it could take it back: never the game's.
             _files.Delete(_definition.Directory, Steam.SteamCmdRunner.LentLogin);
 
-            _firewall.Allow(_definition.ShortId, Path.Combine(_definition.Directory, plan.Executable.Replace('/', Path.DirectorySeparatorChar)), plan.Ports);
+            _firewall.Allow(_definition.ShortId, Path.Combine(_definition.Directory, plan.Executable.Replace('/', Path.DirectorySeparatorChar)), plan.Ports,
+                _definition.Identity);
         }
         catch (LaunchPlanException ex)
         {

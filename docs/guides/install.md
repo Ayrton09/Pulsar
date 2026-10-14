@@ -221,23 +221,31 @@ until you update them).
 - Whatever shares an agent's address can use up that address's budget: a game server on the node, a neighbour behind
   the same NAT. Before TLS the panel cannot tell them from the agent, so 20 idle connections from a game server keep its
   own node from signing in (until they stop). Game servers run under their own Windows accounts (`pulsar_<id>`, one
-  per server); block them from the panel's ports on each node, and run it again after you create a server (it replaces
-  the rule's list of accounts):
+  per server), so the firewall can keep them from the panel's ports. With `Pulsar:ManageFirewall` on (see
+  [First steps](#4-first-steps-in-the-panel)), the agent does it itself: an outbound rule `Pulsar <id> panel block` for each server's
+  account, made again at every start of the server with the panel's addresses of that moment, and removed with the
+  server. On a node whose firewall you manage, block them yourself, and run it again after you create or delete a
+  server, or when the panel's addresses change (it replaces the rule):
 
   ```powershell
-  $sids = (Get-LocalUser -Name 'pulsar_*').SID | ForEach-Object { "(A;;CC;;;$_)" }
-  $users = 'D:' + ($sids -join '')
+  $panelName = 'panel.example.com'  # the host in the agent's panel address
+  $panelPorts = 8443, 8444          # the panel's port and its agents' port
   $rule = 'Pulsar: game servers may not reach the panel'
-  if (Get-NetFirewallRule -DisplayName $rule -ErrorAction SilentlyContinue) {
-      Set-NetFirewallRule -DisplayName $rule -LocalUser $users
-  } else {
+  $users = @(Get-LocalUser -Name 'pulsar_*' | ForEach-Object { "(A;;CC;;;$($_.SID))" })
+  # Every address of the name (IPv4 and IPv6) and this machine's own; loopback as ranges (the firewall refuses ::1).
+  $addresses = @([Net.Dns]::GetHostAddresses($panelName).IPAddressToString) + @((Get-NetIPAddress).IPAddress) |
+      ForEach-Object { $_ -replace '%.*$' } | Where-Object { $_ -ne '::1' -and $_ -notlike '127.*' } | Select-Object -Unique
+  Remove-NetFirewallRule -DisplayName $rule -ErrorAction SilentlyContinue
+  if ($users.Count -gt 0) {
       New-NetFirewallRule -DisplayName $rule -Direction Outbound -Action Block -Protocol TCP `
-          -RemoteAddress 203.0.113.10 -RemotePort 8443,8444 -LocalUser $users
+          -RemoteAddress (@('127.0.0.0/8', '::/127') + $addresses) -RemotePort $panelPorts -LocalUser ('D:' + ($users -join ''))
   }
   ```
 
-  Put the panel's IP address and both of its ports. The agent runs as SYSTEM and is not affected; with no game
-  server yet there is nothing to block.
+  Only the panel's ports are blocked, at every address the name resolves to, loopback and the node's own addresses:
+  when the panel runs on the node, or its public name leads back to the node through the router, a game server
+  reaches it there too. The agent runs as SYSTEM and is not affected. With no game server yet there is nothing to
+  block, and the rule is removed.
 - On a panel installed before, add the endpoint to `C:\Program Files\Pulsar\Panel\appsettings.Production.json`
   with the same certificate as `Https`, open the port, and restart the panel:
 
@@ -317,7 +325,8 @@ afterwards:
    add `"Pulsar": { "ManageFirewall": true }` to `C:\Program Files\Pulsar\Agent\appsettings.Production.json` and
    restart the PulsarAgent service), and in your router if players come from the internet. The agent's rules apply to
    every network profile, Public included (the network adapters of cloud servers are often Public), and only to that
-   game's program and the ports it declares.
+   game's program and the ports it declares. The agent then also blocks each game server's account from the panel's
+   ports, so a game cannot hold the connections its node signs in with.
 
 Windows Defender scans every file SteamCMD writes, which slows the first download of large games. Pulsar does not add
 exclusions on its own: whether to exclude `C:\PulsarServers` is your security decision.

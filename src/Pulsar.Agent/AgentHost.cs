@@ -109,8 +109,14 @@ internal static class AgentHost
             builder.Services.AddSingleton<IRconConnector>(new RconConnectors(peers: new WindowsLocalPeers()));
             builder.Services.AddSingleton<IServerQuery>(services => new ServerQuery(services.GetRequiredService<TimeProvider>()));
             // Off unless the machine's administrator turns it on: the firewall is theirs (docs/architecture/06).
-            builder.Services.AddSingleton<IServerFirewall>(services => new WindowsServerFirewall(
-                builder.Configuration.GetValue("Pulsar:ManageFirewall", false), services.GetRequiredService<ILogger<WindowsServerFirewall>>()));
+            // With it, each server's account is also kept from the panel's addresses (the panel's and its fallback, read at each start).
+            builder.Services.AddSingleton<IServerFirewall>(services =>
+            {
+                var configs = services.GetRequiredService<AgentConfigStore>();
+                return new WindowsServerFirewall(builder.Configuration.GetValue("Pulsar:ManageFirewall", false),
+                    () => configs.Load() is { } config ? config.FallbackPanel is { } fallback ? [config.Panel, fallback] : [config.Panel] : [],
+                    services.GetRequiredService<ILogger<WindowsServerFirewall>>());
+            });
             // Development and CI only: enables the pulsar-test manifest.
             builder.Services.AddSingleton(new InstallOptions { TestGameDirectory = builder.Configuration["Pulsar:TestGameDirectory"] });
             builder.Services.AddSingleton<IServerFiles, WindowsServerFiles>();
