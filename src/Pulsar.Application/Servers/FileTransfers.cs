@@ -5,12 +5,32 @@ using Pulsar.Domain.Common;
 namespace Pulsar.Application.Servers;
 
 /// <summary>
+/// How many transfers run at once (docs/architecture/03, "Large transfers"): each one is a connection of its node to the
+/// panel, and a node holds only so many (<c>Agents:MaxConnectionsPerNode</c> on the agents' endpoint). Transfers of a node
+/// take <paramref name="PerNode"/> of them at most, the rest staying for its hub and its rotation, and one user's transfers
+/// on a node <paramref name="PerUser"/>, so that no one keeps the others out.
+/// </summary>
+public sealed record FileTransferLimits(int PerNode, int PerUser)
+{
+    /// <summary>For the default 16 connections a node may hold.</summary>
+    public static FileTransferLimits Default { get; } = ForNodeConnections(16);
+
+    /// <summary>Half of the <paramref name="connections"/> a node may hold, and three of those for one user.</summary>
+    public static FileTransferLimits ForNodeConnections(int connections)
+    {
+        var perNode = Math.Max(1, connections / 2);
+        return new FileTransferLimits(perNode, Math.Min(3, perNode));
+    }
+}
+
+/// <summary>
 /// Meeting point of the two requests of a file transfer (docs/architecture/03, "Large transfers"): the browser's,
 /// waiting in <see cref="ServerFiles"/>, and the agent's, which claims the transfer with its single-use ticket. The
 /// content is piped from one request to the other as it arrives, never stored on the panel. A ticket works once, only
-/// for the node it was issued to, and only within <see cref="ClaimTimeout"/>.
+/// for the node it was issued to, and only within <see cref="ClaimTimeout"/>. A transfer holds its place in its node's and
+/// its user's <see cref="FileTransferLimits"/> from its start until it is disposed; one over them is not started.
 /// </summary>
-public sealed class FileTransfers(TimeProvider clock)
+public sealed class FileTransfers(TimeProvider clock, FileTransferLimits? limits = null)
 {
     public static readonly TimeSpan ClaimTimeout = TimeSpan.FromSeconds(60);
 
@@ -19,22 +39,21 @@ public sealed class FileTransfers(TimeProvider clock)
 
     private readonly ConcurrentDictionary<string, Transfer> _pending = new(StringComparer.Ordinal);
     private readonly TimeProvider _clock = clock;
+    private readonly FileTransferLimits _limits = limits ?? FileTransferLimits.Default;
+    private readonly Lock _lock = new();
+    private readonly Dictionary<NodeId, int> _byNode = [];
+    private readonly Dictionary<(NodeId, UserId), int> _byUser = [];
 
-    /// <summary>Content for the agent (an upload): <paramref name="content"/> is the browser's request body.</summary>
-    public Upload BeginUpload(NodeId node, Stream content, long size)
-    {
-        var upload = new Upload(this, TransferTicket.New(), node, content, size);
-        _pending[upload.Ticket] = upload;
-        return upload;
-    }
+    /// <summary>
+    /// Content for the agent (an upload) for <paramref name="user"/> (null: the panel itself): <paramref name="content"/> is
+    /// the browser's request body. Null when the node or the user has as many transfers running as they may.
+    /// </summary>
+    public Upload? BeginUpload(NodeId node, UserId? user, Stream content, long size) =>
+        TryTake(node, user) ? Started(new Upload(this, TransferTicket.New(), node, user, content, size)) : null;
 
-    /// <summary>Content from the agent (a download or the editor opening a file).</summary>
-    public Download BeginDownload(NodeId node)
-    {
-        var download = new Download(this, TransferTicket.New(), node);
-        _pending[download.Ticket] = download;
-        return download;
-    }
+    /// <summary>Content from the agent (a download, the editor opening a file, a backup); null as for an upload.</summary>
+    public Download? BeginDownload(NodeId node, UserId? user) =>
+        TryTake(node, user) ? Started(new Download(this, TransferTicket.New(), node, user)) : null;
 
     /// <summary>The agent's <c>GET</c>: the upload it was told about, or null (unknown, used, expired or another node's).</summary>
     public Upload? ClaimUpload(string ticket, NodeId node) => Claim(ticket, node) as Upload;
@@ -76,13 +95,67 @@ public sealed class FileTransfers(TimeProvider clock)
 
     private void Forget(Transfer transfer) => _pending.TryRemove(new KeyValuePair<string, Transfer>(transfer.Ticket, transfer));
 
+    private T Started<T>(T transfer) where T : Transfer
+    {
+        _pending[transfer.Ticket] = transfer;
+        return transfer;
+    }
+
+    private bool TryTake(NodeId node, UserId? user)
+    {
+        lock (_lock)
+        {
+            var ofNode = _byNode.GetValueOrDefault(node);
+            var ofUser = user is { } id ? _byUser.GetValueOrDefault((node, id)) : 0;
+            if (ofNode >= _limits.PerNode || ofUser >= _limits.PerUser)
+            {
+                return false;
+            }
+
+            _byNode[node] = ofNode + 1;
+            if (user is { } taker)
+            {
+                _byUser[(node, taker)] = ofUser + 1;
+            }
+
+            return true;
+        }
+    }
+
+    private void GiveBack(NodeId node, UserId? user)
+    {
+        lock (_lock)
+        {
+            Decrement(_byNode, node);
+            if (user is { } id)
+            {
+                Decrement(_byUser, (node, id));
+            }
+        }
+    }
+
+    private static void Decrement<TKey>(Dictionary<TKey, int> counts, TKey key) where TKey : notnull
+    {
+        if (counts[key] == 1)
+        {
+            counts.Remove(key);
+        }
+        else
+        {
+            counts[key]--;
+        }
+    }
+
     public abstract class Transfer : IDisposable
     {
         private readonly FileTransfers _owner;
+        private readonly UserId? _user;
         private readonly TaskCompletionSource _claimed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _state; // 0 waiting, 1 claimed, 2 abandoned
+        private int _ended;
 
-        private protected Transfer(FileTransfers owner, string ticket, NodeId node) => (_owner, Ticket, Node) = (owner, ticket, node);
+        private protected Transfer(FileTransfers owner, string ticket, NodeId node, UserId? user) =>
+            (_owner, Ticket, Node, _user) = (owner, ticket, node, user);
 
         public string Ticket { get; }
 
@@ -118,6 +191,10 @@ public sealed class FileTransfers(TimeProvider clock)
         {
             Interlocked.CompareExchange(ref _state, 2, 0);
             _owner.Forget(this);
+            if (Interlocked.Exchange(ref _ended, 1) == 0)
+            {
+                _owner.GiveBack(Node, _user);
+            }
         }
 
         private protected TimeProvider Clock => _owner._clock;
@@ -146,7 +223,7 @@ public sealed class FileTransfers(TimeProvider clock)
         private readonly TaskCompletionSource _sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private long _lastProgress;
 
-        internal Upload(FileTransfers owner, string ticket, NodeId node, Stream content, long size) : base(owner, ticket, node) =>
+        internal Upload(FileTransfers owner, string ticket, NodeId node, UserId? user, Stream content, long size) : base(owner, ticket, node, user) =>
             (Content, Size) = (content, size);
 
         public Stream Content { get; }
@@ -214,7 +291,7 @@ public sealed class FileTransfers(TimeProvider clock)
         private readonly TaskCompletionSource<(Stream Content, long Length)> _content = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource<bool> _done = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        internal Download(FileTransfers owner, string ticket, NodeId node) : base(owner, ticket, node)
+        internal Download(FileTransfers owner, string ticket, NodeId node, UserId? user) : base(owner, ticket, node, user)
         {
         }
 

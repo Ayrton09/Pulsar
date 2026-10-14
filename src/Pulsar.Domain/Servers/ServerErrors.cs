@@ -126,6 +126,10 @@ public static class ServerErrors
     public static DomainError FileTransferFailed { get; } =
         new("files.transfer_failed", "The transfer between the panel and the node did not complete.");
 
+    /// <summary>The node, or the user on it, has as many file transfers running as it may (FileTransferLimits).</summary>
+    public static DomainError FileTransfersBusy { get; } =
+        new("files.transfers_busy", "Too many file transfers are running on this node. Try again when one ends.");
+
     /// <summary>The agent refused a file operation; its code (<c>files.*</c>) and message are passed on.</summary>
     public static DomainError FileRejected(string code, string message) => new(code, message);
 

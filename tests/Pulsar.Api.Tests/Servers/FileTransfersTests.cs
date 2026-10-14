@@ -19,8 +19,8 @@ public sealed class FileTransfersTests
     public async Task ATicketWorksOnceAndOnlyForItsNode()
     {
         using var content = new MemoryStream([1, 2, 3]);
-        using var upload = _transfers.BeginUpload(s_node, content, 3);
-        using var download = _transfers.BeginDownload(s_node);
+        using var upload = _transfers.BeginUpload(s_node, null, content, 3)!;
+        using var download = _transfers.BeginDownload(s_node, null)!;
 
         Assert.True(TransferTicket.IsWellFormed(upload.Ticket));
         Assert.NotEqual(upload.Ticket, download.Ticket);
@@ -29,7 +29,7 @@ public sealed class FileTransfersTests
         Assert.Null(_transfers.ClaimDownload(download.Ticket, s_other)); // another node: burnt too
         Assert.Null(_transfers.ClaimDownload(download.Ticket, s_node));
 
-        using var second = _transfers.BeginUpload(s_node, content, 3);
+        using var second = _transfers.BeginUpload(s_node, null, content, 3)!;
         var claimed = _transfers.ClaimUpload(second.Ticket, s_node);
         Assert.Same(second, claimed);
         await second.WaitForClaimAsync(TestContext.Current.CancellationToken);
@@ -37,9 +37,68 @@ public sealed class FileTransfersTests
     }
 
     [Fact]
+    public void TransfersAreLimitedPerNodeAndPerUserOfTheNodeUntilTheyEnd()
+    {
+        var transfers = new FileTransfers(_clock, new FileTransferLimits(PerNode: 4, PerUser: 2));
+        var alice = new UserId(Guid.NewGuid());
+        var bob = new UserId(Guid.NewGuid());
+        using var content = new MemoryStream();
+
+        var first = transfers.BeginUpload(s_node, alice, content, 0);
+        using var second = transfers.BeginDownload(s_node, alice);
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        // Her share of the node is taken; another node has its own.
+        Assert.Null(transfers.BeginUpload(s_node, alice, content, 0));
+        Assert.Null(transfers.BeginDownload(s_node, alice));
+        using var elsewhere = transfers.BeginDownload(s_other, alice);
+        Assert.NotNull(elsewhere);
+
+        // The node's share is taken by everyone together, the panel's own transfers too.
+        using var bobs = transfers.BeginDownload(s_node, bob);
+        using var system = transfers.BeginDownload(s_node, null);
+        Assert.NotNull(bobs);
+        Assert.NotNull(system);
+        Assert.Null(transfers.BeginDownload(s_node, bob));
+        Assert.Null(transfers.BeginDownload(s_node, null));
+
+        // A transfer gives its place back once, when it ends.
+        first!.Dispose();
+        first.Dispose();
+        using var again = transfers.BeginDownload(s_node, bob);
+        Assert.NotNull(again);
+        Assert.Null(transfers.BeginDownload(s_node, null));
+    }
+
+    [Fact]
+    public async Task AnUnclaimedTransferGivesItsPlaceBack()
+    {
+        var transfers = new FileTransfers(_clock, new FileTransferLimits(PerNode: 1, PerUser: 1));
+        var download = transfers.BeginDownload(s_node, null)!;
+        var waiting = download.WaitForClaimAsync(TestContext.Current.CancellationToken);
+        Assert.Null(transfers.BeginDownload(s_node, null));
+
+        _clock.Advance(FileTransfers.ClaimTimeout + TimeSpan.FromSeconds(1));
+        await Assert.ThrowsAsync<TimeoutException>(() => waiting);
+        download.Dispose();
+
+        using var next = transfers.BeginDownload(s_node, null);
+        Assert.NotNull(next);
+    }
+
+    [Fact]
+    public void TheDefaultsLeaveANodesConnectionsForItsHubAndRotation()
+    {
+        Assert.Equal(new FileTransferLimits(8, 3), FileTransferLimits.Default);
+        Assert.Equal(new FileTransferLimits(8, 3), FileTransferLimits.ForNodeConnections(16));
+        Assert.Equal(new FileTransferLimits(2, 2), FileTransferLimits.ForNodeConnections(4));
+        Assert.Equal(new FileTransferLimits(1, 1), FileTransferLimits.ForNodeConnections(1));
+    }
+
+    [Fact]
     public async Task AnUnclaimedTicketExpires()
     {
-        using var download = _transfers.BeginDownload(s_node);
+        using var download = _transfers.BeginDownload(s_node, null)!;
         var waiting = download.WaitForClaimAsync(TestContext.Current.CancellationToken);
 
         _clock.Advance(FileTransfers.ClaimTimeout + TimeSpan.FromSeconds(1));
@@ -52,7 +111,7 @@ public sealed class FileTransfersTests
     public async Task OnlyTheNodeOfAnUploadCanReportOnIt()
     {
         using var content = new MemoryStream();
-        using var upload = _transfers.BeginUpload(s_node, content, 0);
+        using var upload = _transfers.BeginUpload(s_node, null, content, 0)!;
         Assert.NotNull(_transfers.ClaimUpload(upload.Ticket, s_node));
 
         _transfers.Complete(s_other, new TransferResult(upload.Ticket, FileErrors.Failed, "not yours", null));
@@ -67,7 +126,7 @@ public sealed class FileTransfersTests
     public void AReportWithoutATicketIsIgnored()
     {
         using var content = new MemoryStream();
-        using var upload = _transfers.BeginUpload(s_node, content, 0);
+        using var upload = _transfers.BeginUpload(s_node, null, content, 0)!;
 
         _transfers.Complete(s_node, new TransferResult(null!, FileErrors.Failed, "no ticket", null));
 
@@ -77,7 +136,7 @@ public sealed class FileTransfersTests
     [Fact]
     public async Task ADownloadHandsTheAgentsContentToTheBrowserAndReleasesTheAgentAfter()
     {
-        using var download = _transfers.BeginDownload(s_node);
+        using var download = _transfers.BeginDownload(s_node, null)!;
         var claimed = _transfers.ClaimDownload(download.Ticket, s_node)!;
         using var body = new MemoryStream([1, 2, 3]);
 
@@ -94,7 +153,7 @@ public sealed class FileTransfersTests
     [Fact]
     public async Task AnAgentThatClaimsADownloadButSendsNothingIsNotWaitedForForever()
     {
-        using var download = _transfers.BeginDownload(s_node);
+        using var download = _transfers.BeginDownload(s_node, null)!;
         Assert.NotNull(_transfers.ClaimDownload(download.Ticket, s_node));
         var waiting = download.WaitForContentAsync(TestContext.Current.CancellationToken);
 
@@ -107,7 +166,7 @@ public sealed class FileTransfersTests
     public async Task AnUploadWaitsWhileItMovesAndGivesUpWhenItStalls()
     {
         using var content = new MemoryStream([1, 2, 3]);
-        using var upload = _transfers.BeginUpload(s_node, content, 3);
+        using var upload = _transfers.BeginUpload(s_node, null, content, 3)!;
         Assert.NotNull(_transfers.ClaimUpload(upload.Ticket, s_node));
         var waiting = upload.WaitUntilSentAsync(TestContext.Current.CancellationToken);
 
@@ -129,7 +188,7 @@ public sealed class FileTransfersTests
     [Fact]
     public async Task ABrowserThatLeavesReleasesTheAgent()
     {
-        var download = _transfers.BeginDownload(s_node);
+        var download = _transfers.BeginDownload(s_node, null)!;
         var claimed = _transfers.ClaimDownload(download.Ticket, s_node)!;
         using var body = new MemoryStream();
         var agentDone = claimed.DeliverAsync(body, 0);

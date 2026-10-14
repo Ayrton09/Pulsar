@@ -192,32 +192,40 @@ until you update them).
   `MaxConnections`, connections not signed in yet (a TLS handshake, an agent signing in or enrolling, anyone else's
   connection) have smaller budgets:
   - `"MaxPendingConnections"`: for the whole port, by default a quarter of `MaxConnections` (250). Half of it is kept
-    for addresses an agent signed in from within the last day, so strangers alone never take all of it.
+    for addresses an agent signed in from within the last day (each node's latest four addresses), so strangers
+    alone never take all of it.
   - `"MaxPendingConnectionsPerAddress"`: from one address, an IPv4 address or an IPv6 /64 (the panel's own machine
     counts as one), 20 by default.
   - `"MaxPendingConnectionsPerNetwork"`: from one IPv4 /24 or IPv6 /48, three times the per-address budget by default
-    (60), so a host with several addresses or a routed IPv6 prefix gets no more.
+    (60), so a host with several addresses or a routed IPv6 prefix gets no more. It counts addresses no agent signed in
+    from only: an agent's address keeps its own 20 whatever its neighbours do.
 
-  A connection has 5 seconds for its TLS handshake. One not signed in 30 seconds after it arrived is closed once the
-  request in progress, if any, is answered, and 5 seconds later in any case. A signed-in connection lasts as long as
-  the session it presented (15 minutes at most) unless a request of a session is still running (a transfer is never
-  cut), and a node holds at most `"MaxConnectionsPerNode"` of them (16 by default): further requests with its session
-  are refused. Revoking a node's key, disabling or deleting the node closes its connections at once.
+  A connection that never completes its TLS handshake is closed after 5 seconds. One not signed in 30 seconds after it
+  arrived is closed once the request in progress, if any, is answered, and 5 seconds later in any case. A signed-in
+  connection lasts as long as the session it presented (15 minutes at most) unless a request of a session is still
+  running (a transfer is never cut). A node holds at most `"MaxConnectionsPerNode"` of them (16 by default): its file
+  transfers take all but four (half, below 8), which stay for its hub, the hub it replaces and its rotation, and
+  further requests with its session are refused. The panel starts at most half of that many transfers on a node at once
+  (8 by default), three of them for one user, and answers others "too many file transfers on this node" right away.
+  Revoking a node's key, disabling or deleting the node closes its connections at once.
 
   An agent's sign-in holds a connection for a second or two. Nodes behind one NAT address share its budgets: 20 lets
   them sign in about ten at a time and the others retry within seconds. Raise the per-address and per-network budgets
   (up to `MaxPendingConnections`) for a site with hundreds of nodes behind one address that restart together. The
   panel refuses to start with a budget below 1 or out of order (per address ≤ per network ≤ pending ≤
   `MaxConnections`, and per node ≤ `MaxConnections`).
-- What a flood of connections can still do: one address holds at most 20 places and one network 60, each for up to
-  5 seconds before its handshake or 35 seconds after it, so it cannot take the port alone. Many networks together (a
-  botnet) can fill the strangers' half of the budget for as long as they keep it up: agents signing in from addresses
-  the panel has not seen today are then refused. Agents that signed in from their address within the last day keep
-  the other half, unless the flood also comes from their addresses. Connected agents keep working until their session
-  ends (at most 15 minutes); they sign in again like the others. While client certificates are not required, an
-  agent that cannot sign in on the agents' port signs in at the main address instead, where its session is not bound
-  to its key; once they are required, it keeps retrying the agents' port. The panel's log says how many connections
-  it closed and why, at most once a minute.
+- What a flood of connections can still do: one address holds at most 20 places and one network 60, each for
+  5 seconds if it never completes its handshake and up to 35 seconds from its arrival otherwise, so it cannot take the
+  port alone. Many networks together (a botnet) can fill the strangers' half of the budget for as long as they keep it
+  up: agents signing in from addresses no agent signed in from today are then refused, and so is a new node's
+  enrollment. Agents that signed in from their address within the last day keep the other half, unless the flood also
+  comes from their addresses; whoever holds a node's key can make up to four addresses of its own count as an agent's.
+  Connected agents keep working until their session ends (at most 15 minutes); they then sign in like the others.
+  While client certificates are not required, an agent that cannot sign in on the agents' port signs in at the main
+  address instead, where its session is not bound to its key; once they are required, it keeps retrying the agents'
+  port. Each node's connections are capped, but several nodes add up: machines enrolled with a reusable token that
+  needs no approval can together hold the whole port. The panel's log says how many connections it closed and why,
+  and which nodes it refused, at most once a minute.
 - Whatever shares an agent's address can use up that address's budget: a game server on the node, a neighbour behind
   the same NAT. Before TLS the panel cannot tell them from the agent, so 20 idle connections from a game server keep its
   own node from signing in (until they stop). Game servers run under their own Windows accounts (`pulsar_<id>`, one

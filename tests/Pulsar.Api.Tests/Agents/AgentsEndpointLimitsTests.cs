@@ -180,17 +180,172 @@ public sealed class AgentsEndpointLimitsTests
     }
 
     [Fact]
-    public async Task TheAddressesAgentsSignedInFromAreBounded()
+    public async Task OneNodeKeyMakesAFewAddressesKnownAndCannotPushOthersOut()
     {
-        var limit = Limit(max: 10, pending: 10, perAddress: 10, out var clock);
+        var clock = new FakeTimeProvider();
+        var limit = new AgentsConnectionLimit(new AgentsOptions(), NullLogger.Instance, clock);
         var test = new Connections(limit, clock);
+        // 300 nodes signed in from their addresses over the day.
+        for (var i = 0; i < 300; i++)
+        {
+            await test.EndAsync(test.Open($"10.8.{i / 250}.{(i % 250) + 1}", new NodeId(Guid.NewGuid())));
+            clock.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        // One node key signing in from 4100 addresses (a routed /48) keeps the last few only.
+        var mallory = new NodeId(Guid.NewGuid());
         for (var i = 0; i < 4100; i++)
         {
-            await test.EndAsync(test.Open($"10.{i / 256 % 256}.{i % 256}.1", s_node));
+            await test.EndAsync(test.Open($"2001:db8:bad:{i:x}::1", mallory));
+        }
+
+        Assert.Equal(300 + AgentsConnectionLimit.KnownPerNode, limit.Known);
+
+        // Strangers take their half; the agents' addresses are still theirs.
+        FillStrangersHalf(test);
+        Assert.Equal(125, limit.Pending);
+        test.Open("10.8.0.7");
+        Assert.Equal(126, limit.Pending);
+        await test.EndAllAsync();
+    }
+
+    [Fact]
+    public async Task OneNodeKeyCannotOpenTheWholeBudgetToStrangers()
+    {
+        var clock = new FakeTimeProvider();
+        var limit = new AgentsConnectionLimit(new AgentsOptions(), NullLogger.Instance, clock);
+        var test = new Connections(limit, clock);
+        await test.EndAsync(test.Open("10.8.0.9", s_node));
+        // Five /24 networks, each with addresses the key signed in from.
+        var mallory = new NodeId(Guid.NewGuid());
+        for (var network = 0; network < 5; network++)
+        {
+            for (var host = 1; host <= 3; host++)
+            {
+                await test.EndAsync(test.Open($"203.0.{network}.{host}", mallory));
+            }
+        }
+
+        for (var network = 0; network < 5; network++)
+        {
+            for (var i = 0; i < 60; i++)
+            {
+                test.Open($"203.0.{network}.{1 + (i / 20)}");
+            }
+        }
+
+        // Its few known addresses (20 places each) and the strangers' half: the agent still gets in.
+        Assert.True(limit.Pending <= 125 + (AgentsConnectionLimit.KnownPerNode * 20), $"{limit.Pending} pending");
+        var before = limit.Pending;
+        test.Open("10.8.0.9");
+        Assert.Equal(before + 1, limit.Pending);
+        await test.EndAllAsync();
+    }
+
+    [Fact]
+    public async Task PastTheBoundTheNodeWithTheMostAddressesLosesOne()
+    {
+        var clock = new FakeTimeProvider();
+        var limit = new AgentsConnectionLimit(new AgentsOptions(), NullLogger.Instance, clock);
+        var test = new Connections(limit, clock);
+        await test.EndAsync(test.Open("10.8.0.7", s_node));
+        clock.Advance(TimeSpan.FromSeconds(1));
+
+        // 1100 more nodes with as many addresses as a node keeps: past 4096, the oldest of the fullest go.
+        for (var i = 0; i < 1100; i++)
+        {
+            var node = new NodeId(Guid.NewGuid());
+            for (var address = 0; address < AgentsConnectionLimit.KnownPerNode; address++)
+            {
+                await test.EndAsync(test.Open($"2001:db8:{i:x}:{address:x}::1", node));
+            }
         }
 
         Assert.Equal(4096, limit.Known);
-        Assert.Equal(0, limit.Open);
+        FillStrangersHalf(test);
+        test.Open("10.8.0.7");
+        Assert.Equal(126, limit.Pending);
+        await test.EndAllAsync();
+    }
+
+    [Fact]
+    public async Task AKnownAgentIsNotStarvedByNeighboursOfItsNetwork()
+    {
+        foreach (var (agent, neighbour) in new[] { ("10.9.0.5", "10.9.0.{0}"), ("2001:db8:1:1::5", "2001:db8:1:{0}::7") })
+        {
+            var clock = new FakeTimeProvider();
+            var limit = new AgentsConnectionLimit(new AgentsOptions(), NullLogger.Instance, clock);
+            var test = new Connections(limit, clock);
+            await test.EndAsync(test.Open(agent, s_node));
+
+            // Three neighbours in the same /24 or /48 hold its 60 places for strangers; a fourth gets none.
+            for (var host = 101; host <= 104; host++)
+            {
+                for (var i = 0; i < 20; i++)
+                {
+                    test.Open(string.Format(System.Globalization.CultureInfo.InvariantCulture, neighbour, host));
+                }
+            }
+
+            Assert.Equal(60, limit.Pending);
+            // The agent's address keeps its own 20.
+            test.Open(agent);
+            Assert.Equal(61, limit.Pending);
+            await test.EndAllAsync();
+            Assert.Equal(0, limit.Networks);
+        }
+    }
+
+    [Fact]
+    public async Task TransfersCannotTakeTheConnectionsANodeKeepsForItsHub()
+    {
+        var limit = Limit(max: 20, pending: 20, perAddress: 20, out var clock, perNode: 4);
+        var test = new Connections(limit, clock);
+        var ends = clock.GetUtcNow() + AgentSessionStore.Lifetime;
+        DefaultConnectionContext Signed(bool transfer)
+        {
+            var connection = test.Open("10.0.0.1");
+            connection.Items["request"] = connection.Features.Get<AgentsEndpointConnection>()!.Authenticated(s_node, Guid.NewGuid(), ends, transfer);
+            return connection;
+        }
+
+        // Of four, transfers take two; a hub, the hub it replaces and a rotation still fit.
+        Assert.NotNull(Signed(transfer: true).Items["request"]);
+        Assert.NotNull(Signed(transfer: true).Items["request"]);
+        Assert.Null(Signed(transfer: true).Items["request"]);
+        Assert.NotNull(Signed(transfer: false).Items["request"]);
+        Assert.NotNull(Signed(transfer: false).Items["request"]);
+        Assert.Null(Signed(transfer: false).Items["request"]);
+        Assert.Equal(4, limit.SignedIn(s_node));
+        await test.EndAllAsync();
+    }
+
+    [Fact]
+    public async Task ARefusedNodeIsNamedInTheLog()
+    {
+        var logger = new CountingLogger();
+        var clock = new FakeTimeProvider();
+        var limit = new AgentsConnectionLimit(new AgentsOptions { MaxConnectionsPerNode = 1 }, logger, clock);
+        var test = new Connections(limit, clock);
+        test.Open("10.0.0.1", s_node);
+
+        var refused = test.Open("10.0.0.1");
+        Assert.Null(refused.Features.Get<AgentsEndpointConnection>()!.Authenticated(s_node, Guid.NewGuid(), clock.GetUtcNow() + AgentSessionStore.Lifetime));
+
+        Assert.Contains(s_node.Value.ToString(), Assert.Single(logger.Messages), StringComparison.Ordinal);
+        await test.EndAllAsync();
+    }
+
+    /// <summary>Strangers (never signed in) fill the 125 places of their half from three /24 networks.</summary>
+    private static void FillStrangersHalf(Connections test)
+    {
+        foreach (var (network, count) in new[] { (100, 60), (101, 60), (102, 5) })
+        {
+            for (var i = 0; i < count; i++)
+            {
+                test.Open($"198.51.{network}.{1 + (i / 20)}");
+            }
+        }
     }
 
     [Fact]

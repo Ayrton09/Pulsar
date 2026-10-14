@@ -4,6 +4,7 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using Pulsar.Application.Nodes;
+using Pulsar.Contracts;
 using Pulsar.Domain.Common;
 
 namespace Pulsar.Api.Agents;
@@ -18,6 +19,8 @@ internal sealed partial class AgentAuthenticationHandler(
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public new const string Scheme = "PulsarAgent";
+
+    private static readonly PathString s_transfers = AgentProtocol.BasePath + "/transfers";
     public const string NodeIdClaim = "pulsar:node";
     public const string CredentialIdClaim = "pulsar:credential";
     public const string SessionIdClaim = "pulsar:session";
@@ -54,7 +57,9 @@ internal sealed partial class AgentAuthenticationHandler(
         // connections not signed in, and lasts as long as the session (AgentsConnectionLimit). A node holds so many.
         if (Context.Features.Get<AgentsEndpointConnection>() is { } connection)
         {
-            if (connection.Authenticated(session.NodeId, session.SessionId, session.ExpiresAt) is not { } request)
+            // Transfers may not take the places the node keeps for its hub and its rotation.
+            var transfer = Context.Request.Path.StartsWithSegments(s_transfers, StringComparison.Ordinal);
+            if (connection.Authenticated(session.NodeId, session.SessionId, session.ExpiresAt, transfer) is not { } request)
             {
                 return AuthenticateResult.Fail("The node holds as many connections to the agents' endpoint as it may.");
             }

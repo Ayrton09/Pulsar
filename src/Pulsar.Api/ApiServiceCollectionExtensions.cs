@@ -70,6 +70,9 @@ internal static class ApiServiceCollectionExtensions
                 "Agents:MaxConnectionsPerNode must be at least 1 and at most Agents:MaxConnections.")
             .ValidateOnStart();
         services.AddSingleton<AgentsEndpoint>();
+        // Transfers take half of the connections a node may hold, so that its hub and rotation always find a place.
+        services.AddSingleton(sp => FileTransferLimits.ForNodeConnections(
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgentsOptions>>().Value.PerNodeLimit));
         services.AddOptions<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>()
             .Configure<AgentsEndpoint>((options, agents) =>
                 options.Configure(configuration.GetSection("Kestrel"), reloadOnChange: true).Endpoint(AgentsEndpoint.Name, agents.Configure));
