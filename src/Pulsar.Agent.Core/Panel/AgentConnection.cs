@@ -98,6 +98,12 @@ public sealed partial class AgentConnection(
     private DateTimeOffset _nextRotationAttempt = DateTimeOffset.MinValue;
     private int _pendingKeyMisses;
 
+    /// <summary>The live session was opened with the pending key, without the panel's grant for it (the rotation is not complete).</summary>
+    private bool _sessionByPendingKey;
+
+    /// <summary>The pending credential whose keeping already delayed the next rotation (<see cref="DelayNextRotation"/>).</summary>
+    private Guid? _rotationDelayedFor;
+
     private enum SessionEnd
     {
         Closed,
@@ -327,8 +333,28 @@ public sealed partial class AgentConnection(
     private bool RotationDue()
     {
         var now = clock.GetUtcNow();
-        return now >= _nextRotationAttempt
+        return !_sessionByPendingKey && now >= _nextRotationAttempt
             && (_rotationRequested.Task.IsCompleted || now - _config.CurrentKeyCreatedAt >= options.KeyRotationInterval);
+    }
+
+    /// <summary>
+    /// The next rotation waits <see cref="AgentConnectionOptions.RotationRetryDelay"/> from the first sign-in that kept
+    /// <paramref name="pending"/>, unless a wait is already running: the sign-in of every renewal keeps it again, and
+    /// pushing the rotation back each time would mean it never comes (nor the end of a pending key the panel dropped).
+    /// </summary>
+    private void DelayNextRotation(PendingRotation pending)
+    {
+        if (_rotationDelayedFor == pending.CredentialId)
+        {
+            return;
+        }
+
+        _rotationDelayedFor = pending.CredentialId;
+        var now = clock.GetUtcNow();
+        if (_nextRotationAttempt <= now)
+        {
+            _nextRotationAttempt = now + options.RotationRetryDelay;
+        }
     }
 
     /// <summary>
@@ -340,6 +366,14 @@ public sealed partial class AgentConnection(
         lock (_configLock)
         {
             _rotationRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        if (_sessionByPendingKey)
+        {
+            // The current key signs a rotation for its own session: this one is the pending key's (an older panel that
+            // activated it would refuse it). The rotation comes once a sign-in completes the pending one or gives it up.
+            LogRotationDeferred();
+            return false;
         }
 
         // An earlier rotation that never completed: the panel drops its pending credential when it registers this one.
@@ -405,8 +439,10 @@ public sealed partial class AgentConnection(
     }
 
     /// <summary>
-    /// Authenticates with the pending key first when there is one: success completes the rotation (the panel
-    /// activates it; the agent switches to it and deletes the old key), and a network error leaves it for the next
+    /// Authenticates with the pending key first when there is one: success with the panel's grant for it completes the
+    /// rotation (the panel activated it; the agent switches to it and deletes the old key); success without one (an older
+    /// panel, or whatever answers on the way in the panel's place) is used as this session, the pending key's, while both
+    /// keys stay as they are and the pending key is tried first again next time; a network error leaves it for the next
     /// attempt. A refusal, or a key that fails to sign, signs in with the current key: the pending key is abandoned only
     /// if that works and the session carries the panel's grant (<see cref="PanelSignIn.IsGranted"/>), since only a
     /// sign-in of the current key the panel itself recorded proves it did not activate the pending one (a refusal forged
@@ -414,9 +450,11 @@ public sealed partial class AgentConnection(
     /// key's sign-in itself too). With both refused, or without the grant, both are kept and tried again. A crash anywhere
     /// in between leaves one of the two keys working. An answer that is not the panel's (an older panel's bare 401 for a
     /// credential it dropped) signs in with the current key for that attempt; after <see cref="MaxPendingKeyMisses"/>
-    /// such answers in a row, while the current key works with the panel's grant, the pending key is abandoned.
+    /// such answers in a row, while the current key works with the panel's grant, the pending key is abandoned. Returns the
+    /// certificate the session presents (the key it signed in with) and whether that is the unconfirmed pending key.
     /// </summary>
-    private async Task<(TokenResponse Token, Uri Panel)> AuthenticateAsync(bool fallbackFirst, CancellationToken cancellationToken)
+    private async Task<(TokenResponse Token, Uri Panel, X509Certificate2? Certificate, bool ByPendingKey)> AuthenticateAsync(bool fallbackFirst,
+        CancellationToken cancellationToken)
     {
         if (_config.PendingRotation is { } pending)
         {
@@ -427,9 +465,18 @@ public sealed partial class AgentConnection(
                 newKey = keys.Open(pending.Key);
                 newCertificate = CreateCertificate(newKey);
                 var (signedIn, panel) = await SignInAsync(pending.CredentialId, newKey, newCertificate, fallbackFirst, cancellationToken);
-                CompleteRotation(pending, newKey, newCertificate);
                 _pendingKeyMisses = 0;
-                return (signedIn.Token, panel);
+                if (signedIn.IsGranted(_config, pending.CredentialId))
+                {
+                    CompleteRotation(pending, newKey, newCertificate);
+                    return (signedIn.Token, panel, newCertificate, false);
+                }
+
+                // Nothing says the panel activated it: switching keys and deleting the current one would leave the node with
+                // no key the panel accepts once a pending credential it never activated expires.
+                LogPendingKeyUnconfirmed(pending.CredentialId);
+                newKey.Dispose();
+                return (signedIn.Token, panel, newCertificate, true);
             }
             catch (Exception ex) when (ex is AgentRejectedException or CryptographicException)
             {
@@ -447,7 +494,7 @@ public sealed partial class AgentConnection(
                 }
 
                 AbandonPendingKey(pending, current.SignIn, ex.Message);
-                return (current.SignIn.Token, current.Panel);
+                return (current.SignIn.Token, current.Panel, _certificate, false);
             }
             catch (PanelNotAnsweringException ex)
             {
@@ -460,7 +507,7 @@ public sealed partial class AgentConnection(
                     AbandonPendingKey(pending, current.SignIn, $"the panel answered {_pendingKeyMisses} times without recognizing it: {ex.Message}");
                 }
 
-                return (current.SignIn.Token, current.Panel);
+                return (current.SignIn.Token, current.Panel, _certificate, false);
             }
             catch
             {
@@ -471,7 +518,7 @@ public sealed partial class AgentConnection(
         }
 
         var (session, at) = await SignInAsync(_config.CredentialId, _key, _certificate, fallbackFirst, cancellationToken);
-        return (session.Token, at);
+        return (session.Token, at, _certificate, false);
     }
 
     /// <summary>
@@ -483,7 +530,7 @@ public sealed partial class AgentConnection(
     {
         if (!current.IsGranted(_config, _config.CredentialId))
         {
-            _nextRotationAttempt = clock.GetUtcNow() + options.RotationRetryDelay;
+            DelayNextRotation(pending);
             LogPendingKeyKept(pending.CredentialId, reason);
             return;
         }
@@ -665,9 +712,8 @@ public sealed partial class AgentConnection(
 
     private async Task<Session> ConnectAtAsync(bool fallbackFirst, CancellationToken cancellationToken)
     {
-        var (token, panel) = await AuthenticateAsync(fallbackFirst, cancellationToken);
+        var (token, panel, certificate, byPendingKey) = await AuthenticateAsync(fallbackFirst, cancellationToken);
         var config = _config;
-        var certificate = _certificate;
         // Moving to the agents' address takes a certificate: an agent without one does not say it can.
         IReadOnlySet<string> supported = certificate is null
             ? dispatcher.SupportedCommands.Where(c => c != AgentCapabilities.UseAgentsAddress).ToHashSet(StringComparer.Ordinal)
@@ -736,6 +782,7 @@ public sealed partial class AgentConnection(
             var previousCertificate = _sessionCertificate;
             _sessionPanel = panel;
             _sessionCertificate = certificate;
+            _sessionByPendingKey = byPendingKey;
             if (previousCertificate is not null && previousCertificate != certificate && previousCertificate != _certificate)
             {
                 // The certificate of a key rotated away, kept until the session that used it was replaced.
@@ -748,13 +795,24 @@ public sealed partial class AgentConnection(
         {
             verifier.Abandon();
             await session.DisposeAsync();
+            DisposeUnusedCertificate(certificate);
             throw new TimeoutException($"The panel did not open the session within {options.SessionStartTimeout.TotalSeconds:0} seconds.", ex);
         }
         catch
         {
             verifier.Abandon();
             await session.DisposeAsync();
+            DisposeUnusedCertificate(certificate);
             throw;
+        }
+    }
+
+    /// <summary>The pending key's certificate of a session that did not open: nothing else holds it.</summary>
+    private void DisposeUnusedCertificate(X509Certificate2? certificate)
+    {
+        if (certificate is not null && certificate != _certificate && certificate != _sessionCertificate)
+        {
+            certificate.Dispose();
         }
     }
 
@@ -849,6 +907,13 @@ public sealed partial class AgentConnection(
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "The pending key of credential {CredentialId} did not sign in ({Reason}), and the current key's session does not carry the panel's grant: the panel may yet activate the pending key, so both are kept and tried again")]
     private partial void LogPendingKeyKept(Guid credentialId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "The pending key of credential {CredentialId} signed in, but the answer does not carry the panel's grant for it: the rotation is not completed, both keys are kept and the pending key is tried first again at the next sign-in")]
+    private partial void LogPendingKeyUnconfirmed(Guid credentialId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Node key rotation deferred: this session was opened with the pending key, which the panel has not confirmed")]
+    private partial void LogRotationDeferred();
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "The pending key of credential {CredentialId} did not sign in ({Reason}) and the panel refuses the current key too: the panel may have activated the pending key, so both are kept and tried again")]

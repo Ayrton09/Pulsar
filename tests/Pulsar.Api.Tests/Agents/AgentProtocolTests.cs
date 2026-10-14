@@ -171,6 +171,32 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
     }
 
     [DatabaseFact]
+    public async Task TheNonceThePanelSignsBackIsAtMost64Bytes()
+    {
+        // The panel signs it back (a grant, an agents' address): a request cannot make it sign more than that.
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "node-long-nonce");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+
+        using (var tooLong = await agent.PostChallengeAsync(new byte[AgentAccess.MaxChallengeNonceLength + 1]))
+        {
+            await AssertAgentErrorAsync(tooLong, "agent.authentication_rejected", HttpStatusCode.Unauthorized);
+        }
+
+        using (var longest = await agent.PostChallengeAsync(new byte[AgentAccess.MaxChallengeNonceLength]))
+        {
+            Assert.Equal(HttpStatusCode.OK, longest.StatusCode);
+        }
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var nodeId = new NodeId(agent.NodeId);
+        var refusals = await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().AuditLog
+            .Where(e => e.Action == AuditActions.Node.AuthenticationFailed && e.NodeId == nodeId).ToListAsync(Ct);
+        Assert.Single(refusals, e => e.Metadata.Contains("\"challenge_nonce_too_long\"", StringComparison.Ordinal));
+    }
+
+    [DatabaseFact]
     public async Task RevokingTheCredentialDisconnectsTheAgentImmediately()
     {
         using var admin = await factory.CreateAdminClientAsync();

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Agent.Core;
@@ -274,6 +275,138 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
         await InProcessAgent.EventuallyAsync(async () => agent.LiveConfig?.CredentialId == pending.CredentialId
             && (await NodeApi.GetAsync(admin, enrolled.NodeId)).Node.Connected, "connection with the pending key");
         await AssertRotatedAsync(admin, agent, enrolled, agent.LiveConfig!);
+    }
+
+    [DatabaseFact]
+    public async Task APendingKeysSignInAnsweredOnTheWayDoesNotMakeTheAgentDropItsCurrentKey()
+    {
+        // A proxy answers the pending key's first sign-in itself: the panel never sees it and keeps the pending credential
+        // pending. The agent must not switch keys and delete the current one on that answer (it carries no grant).
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-forged-pending");
+        var pending = await RegisterPendingKeyAsync(agent, enrolled);
+        agent.Configs.Save(enrolled with { PendingRotation = pending });
+        var forged = 0;
+        IReadOnlyCollection<string>? keysAtTheRealSignIn = null;
+        AgentConfig? configAtTheRealSignIn = null;
+        agent.Proxy = async (request, send) =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (forged == 2 || (path != AgentProtocol.ChallengePath && path != AgentProtocol.TokenPath))
+            {
+                if (forged == 2 && path == AgentProtocol.ChallengePath && keysAtTheRealSignIn is null)
+                {
+                    keysAtTheRealSignIn = agent.Keys.Names;
+                    configAtTheRealSignIn = agent.Configs.Load();
+                }
+
+                return await send();
+            }
+
+            forged++;
+            object answer = path == AgentProtocol.ChallengePath
+                ? new ChallengeResponse(Guid.NewGuid(), RandomNumberGenerator.GetBytes(32), "https://localhost")
+                : new TokenResponse("forged-session-token", Guid.NewGuid(), DateTimeOffset.UtcNow.AddMinutes(15));
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(answer, answer.GetType(), options: ProtocolJson.Options) };
+        };
+
+        await agent.StartAsync();
+
+        await InProcessAgent.EventuallyAsync(async () => agent.LiveConfig?.CredentialId == pending.CredentialId
+            && (await NodeApi.GetAsync(admin, enrolled.NodeId)).Node.Connected, "connection with the pending key");
+        // When it signed in for real, after the forged answer, it still had both keys and the current one in use.
+        Assert.Equal(new[] { enrolled.Key.Name, pending.Key.Name }.Order(StringComparer.Ordinal), keysAtTheRealSignIn!.Order(StringComparer.Ordinal));
+        Assert.Equal(enrolled.CredentialId, configAtTheRealSignIn!.CredentialId);
+        Assert.Equal(pending, configAtTheRealSignIn.PendingRotation);
+        await AssertRotatedAsync(admin, agent, enrolled, agent.LiveConfig!);
+    }
+
+    [DatabaseFact]
+    public async Task AnUnfinishedRotationsKeyIsDeletedOnceThePanelRegistersTheNextOne()
+    {
+        // A pending key the panel does not answer as its own (an older panel's bare 401) is kept at first; the key is due,
+        // so a new rotation starts, and the panel's signed answer to it says the earlier pending credential is dropped.
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-stale-pending");
+        var stale = await RegisterPendingKeyAsync(agent, enrolled);
+        agent.Configs.Save(enrolled with { PendingRotation = stale, KeyCreatedAt = DateTimeOffset.UtcNow - TimeSpan.FromDays(91) });
+        IReadOnlyCollection<string>? keysAtTheNewSignIn = null;
+        AgentConfig? configAtTheNewSignIn = null;
+        agent.Proxy = async (request, send) =>
+        {
+            if (request.RequestUri!.AbsolutePath != AgentProtocol.ChallengePath)
+            {
+                return await send();
+            }
+
+            await request.Content!.LoadIntoBufferAsync(Ct);
+            var credential = (await request.Content.ReadFromJsonAsync<ChallengeRequest>(ProtocolJson.Options, Ct))!.CredentialId;
+            if (credential == stale.CredentialId)
+            {
+                return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+            }
+
+            if (credential != enrolled.CredentialId && keysAtTheNewSignIn is null)
+            {
+                keysAtTheNewSignIn = agent.Keys.Names;
+                configAtTheNewSignIn = agent.Configs.Load();
+            }
+
+            return await send();
+        };
+
+        await agent.StartAsync();
+
+        await InProcessAgent.EventuallyAsync(async () => agent.LiveConfig is { } live && live.CredentialId != enrolled.CredentialId
+            && live.CredentialId != stale.CredentialId && (await NodeApi.GetAsync(admin, enrolled.NodeId)).Node.Connected, "connection with a new key");
+        // When the new pending key first signed in, the stale one was already gone and the new one saved as pending.
+        Assert.DoesNotContain(stale.Key.Name, keysAtTheNewSignIn!);
+        Assert.Equal(configAtTheNewSignIn!.PendingRotation!.CredentialId, agent.LiveConfig!.CredentialId);
+        Assert.Contains(configAtTheNewSignIn.PendingRotation.Key.Name, keysAtTheNewSignIn!);
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, stale.CredentialId, NodeCredentialStatus.Superseded);
+        await AssertRotatedAsync(admin, agent, enrolled, agent.LiveConfig);
+    }
+
+    [DatabaseFact]
+    public async Task APendingKeysSignInHeldAcrossAClockStepBackIsStillRefused()
+    {
+        // The panel's clock steps back (a time synchronization correcting it) between the pending key's challenge and the
+        // current key's sign-in: that sign-in still counts as after the challenge, so the held request is refused.
+        var clock = new SteppedClock();
+        using var app = factory.WithWebHostBuilder(b => b.ConfigureTestServices(s => s.AddSingleton<TimeProvider>(clock)));
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(app);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-clock-step");
+        var pending = await RegisterPendingKeyAsync(agent, enrolled);
+        using var http = new HttpClient(agent.Transport.CreateHttpHandler()) { BaseAddress = new Uri("https://localhost") };
+
+        TokenRequest held;
+        using (var key = agent.Keys.Open(pending.Key))
+        using (var asked = await http.PostAsJsonAsync(AgentProtocol.ChallengePath, new ChallengeRequest(enrolled.NodeId, pending.CredentialId,
+            RandomNumberGenerator.GetBytes(32)), ProtocolJson.Options, Ct))
+        {
+            asked.EnsureSuccessStatusCode();
+            var challenge = (await asked.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!;
+            held = new TokenRequest(challenge.ChallengeId, key.Sign(ProtocolCrypto.SignedData(AgentProtocol.Purposes.Authenticate,
+                ProtocolCrypto.GuidBytes(enrolled.NodeId), ProtocolCrypto.GuidBytes(pending.CredentialId), challenge.Nonce,
+                ProtocolCrypto.Utf8(challenge.PanelOrigin))));
+        }
+
+        clock.Offset = -TimeSpan.FromHours(1);
+        using (var current = agent.Keys.Open(enrolled.Key))
+        {
+            await new PanelAuthenticator(Transport(agent)).AuthenticateAsync(enrolled, current, Ct);
+        }
+
+        using (var late = await http.PostAsJsonAsync(AgentProtocol.TokenPath, held, ProtocolJson.Options, Ct))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, late.StatusCode);
+        }
+
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, enrolled.CredentialId, NodeCredentialStatus.Active);
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, pending.CredentialId, NodeCredentialStatus.Pending);
     }
 
     [DatabaseFact]
@@ -634,6 +767,14 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
     }
 
     private static PanelTransport Transport(InProcessAgent agent) => agent.Transport;
+
+    /// <summary>The system clock, moved by <see cref="Offset"/>.</summary>
+    private sealed class SteppedClock : TimeProvider
+    {
+        public TimeSpan Offset { get; set; }
+
+        public override DateTimeOffset GetUtcNow() => base.GetUtcNow() + Offset;
+    }
 
     private static async Task<AgentConfig> EnrollAsync(PanelClient admin, InProcessAgent agent, string name)
     {

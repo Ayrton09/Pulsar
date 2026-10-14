@@ -195,6 +195,90 @@ public sealed class PanelSessionTests : IAsyncDisposable
         Assert.Contains("PulsarAgent-2", _keys!.Names);
     }
 
+    [Fact]
+    public async Task AKeptPendingKeyDoesNotPushTheNextRotationBackAtEverySignIn()
+    {
+        // Sessions renewed one after another, as every 14 minutes: the retry delay runs from the first sign-in that kept the
+        // pending key, not from the latest, or the next rotation (and the end of the pending key) would never come.
+        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
+        _panel.RefusedFor = pending.CredentialId;
+        _panel.Forgery = GrantForgery.Missing;
+        _panel.SessionLifetime = TimeSpan.FromMinutes(-1);
+
+        await StartAsync(new AgentConnectionOptions
+        {
+            KeyRotationInterval = TimeSpan.Zero,
+            RotationRetryDelay = TimeSpan.FromSeconds(1.5),
+            MinimumRenewalDelay = TimeSpan.FromMilliseconds(100),
+            MaxBackoff = TimeSpan.FromSeconds(1),
+        }, pending);
+
+        await EventuallyAsync(() => _panel.Rotations >= 1, () => $"{_panel.Rotations} rotation(s) after {_panel.Hellos} session(s)");
+    }
+
+    [Fact]
+    public async Task APendingKeysSessionWithoutThePanelsGrantDoesNotCompleteTheRotation()
+    {
+        // A proxy answers the pending key's sign-in itself: the panel never activated it, so the current key stays the one
+        // in use and on the machine.
+        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
+        _panel.Forgery = GrantForgery.Missing;
+
+        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromSeconds(1) }, pending);
+        var current = new AgentConfigStore(new AgentPaths(_root)).Load()!.CredentialId;
+
+        await EventuallyAsync(() => _connection!.CurrentSessionId is not null, () => "no session with the pending key");
+        Assert.Equal(current, _connection!.Config!.CredentialId);
+        Assert.Equal("PulsarAgent-1", _connection.Config.Key.Name);
+        Assert.Equal(pending, _connection.Config.PendingRotation);
+        Assert.Equal(["PulsarAgent-1", "PulsarAgent-2"], _keys!.Names);
+    }
+
+    [Fact]
+    public async Task APendingKeyThePanelNeverActivatedLeavesTheCurrentKeyWorkingOnceItIsRefused()
+    {
+        // After the forged sign-ins, the panel refuses the pending key (expired after its day, or superseded): the
+        // current key is still on the machine and still the node's.
+        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
+        _panel.Forgery = GrantForgery.Missing;
+        _panel.SessionLifetime = TimeSpan.FromMinutes(-1);
+
+        await StartAsync(new AgentConnectionOptions { MinimumRenewalDelay = TimeSpan.FromMilliseconds(100), MaxBackoff = TimeSpan.FromSeconds(1) }, pending);
+        var current = new AgentConfigStore(new AgentPaths(_root)).Load()!.CredentialId;
+        await EventuallyAsync(() => _panel.Hellos >= 2, () => $"{_panel.Hellos} session(s)");
+        _panel.RefusedFor = pending.CredentialId;
+        _panel.Forgery = GrantForgery.None;
+
+        await EventuallyAsync(() => _connection!.Config is { PendingRotation: null }, () => $"pending {_connection!.Config?.PendingRotation}");
+        Assert.Equal(current, _connection!.Config!.CredentialId);
+        Assert.Equal(["PulsarAgent-1"], _keys!.Names);
+        var hellos = _panel.Hellos;
+        await EventuallyAsync(() => _panel.Hellos > hellos, () => "no session with the current key");
+    }
+
+    [Fact]
+    public async Task AnOlderPanelThatActivatedThePendingKeyWithoutAGrantKeepsTheAgentConnectedWithBothKeys()
+    {
+        // An older panel sends no grant: it activated the pending key, and refuses the current one. The agent cannot tell it
+        // from a proxy, so it keeps both keys, works with the pending key's sessions, and starts no rotation from them.
+        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
+        _panel.Activated = pending.CredentialId;
+        _panel.Forgery = GrantForgery.Missing;
+        _panel.SessionLifetime = TimeSpan.FromMinutes(-1);
+
+        await StartAsync(new AgentConnectionOptions
+        {
+            KeyRotationInterval = TimeSpan.Zero,
+            MinimumRenewalDelay = TimeSpan.FromMilliseconds(100),
+            MaxBackoff = TimeSpan.FromSeconds(1),
+        }, pending);
+
+        await EventuallyAsync(() => _panel.Hellos >= 3, () => $"{_panel.Hellos} session(s)");
+        Assert.Equal(pending, _connection!.Config!.PendingRotation);
+        Assert.Equal(["PulsarAgent-1", "PulsarAgent-2"], _keys!.Names);
+        Assert.Equal(0, _panel.Rotations);
+    }
+
     private async Task StartAsync(AgentConnectionOptions options, PendingRotation? pending = null, string? failSigningOnce = null)
     {
         var configs = new AgentConfigStore(new AgentPaths(_root));
