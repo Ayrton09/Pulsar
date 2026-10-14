@@ -128,7 +128,7 @@ public sealed class PanelSessionTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task APendingKeyThePanelRefusesIsAbandonedOnceTheCurrentKeysSessionComesFromThePanel()
+    public async Task APendingKeyThePanelRefusesIsAbandonedOnceTheCurrentKeySignsIn()
     {
         var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
         _panel.RefusedFor = pending.CredentialId;
@@ -142,13 +142,32 @@ public sealed class PanelSessionTests : IAsyncDisposable
 
     [Theory]
     [InlineData(GrantForgery.Missing)]
+    [InlineData(GrantForgery.MissingIssuedAt)]
     [InlineData(GrantForgery.UnpinnedKey)]
     [InlineData(GrantForgery.OtherNode)]
     [InlineData(GrantForgery.OtherCredential)]
     [InlineData(GrantForgery.OtherSession)]
     [InlineData(GrantForgery.OtherNonce)]
     [InlineData(GrantForgery.Replayed)]
-    public async Task APendingKeyIsKeptWhenTheCurrentKeysSessionMayNotComeFromThePanel(GrantForgery forgery)
+    public async Task ASessionWithoutAGrantThatVerifiesIsNeverUsed(GrantForgery forgery)
+    {
+        // Whatever answers the sign-in in the panel's place (a TLS-terminating proxy) can choose the session id and the
+        // clock; only the panel's grant says the session is the panel's.
+        _panel.Forgery = forgery;
+
+        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromMilliseconds(200) });
+
+        await EventuallyAsync(() => _panel.Challenges >= 3, () => $"{_panel.Challenges} sign-in(s)");
+        Assert.Equal(0, _panel.Hellos);
+        Assert.Null(_connection!.CurrentSessionId);
+    }
+
+    [Theory]
+    [InlineData(GrantForgery.Missing)]
+    [InlineData(GrantForgery.UnpinnedKey)]
+    [InlineData(GrantForgery.OtherCredential)]
+    [InlineData(GrantForgery.Replayed)]
+    public async Task APendingKeyIsKeptWhenTheCurrentKeysSignInIsNotThePanels(GrantForgery forgery)
     {
         // A proxy forges the pending key's refusal (and may hold its sign-in to pass it on later), then answers the
         // current key's sign-in itself: the panel never saw it, and may yet activate the pending key.
@@ -156,36 +175,66 @@ public sealed class PanelSessionTests : IAsyncDisposable
         _panel.RefusedFor = pending.CredentialId;
         _panel.Forgery = forgery;
 
-        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromSeconds(1) }, pending);
+        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromMilliseconds(200) }, pending);
 
-        await EventuallyAsync(() => _connection!.CurrentSessionId is not null, () => "no session with the current key");
+        await EventuallyAsync(() => _panel.Challenges >= 6, () => $"{_panel.Challenges} sign-in(s)");
+        Assert.Equal(0, _panel.Hellos);
         Assert.Equal(pending, _connection!.Config!.PendingRotation);
         Assert.Equal(["PulsarAgent-1", "PulsarAgent-2"], _keys!.Names);
     }
 
     [Fact]
-    public async Task APendingKeyThePanelKeepsAnsweringWithoutItsErrorIsKeptWhileTheCurrentKeysSessionsAreNotThePanels()
+    public async Task APendingKeysSignInWithoutTheGrantDoesNotCompleteTheRotation()
     {
+        // A proxy answers the pending key's sign-in itself: the panel never activated it, so the current key stays the one
+        // in use and on the machine (the agent signs in with it instead).
         var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
-        _panel.BareUnauthorizedFor = pending.CredentialId;
         _panel.Forgery = GrantForgery.Missing;
-        _panel.SessionLifetime = TimeSpan.FromMinutes(-1); // every session is due for renewal: sign-ins follow each other
+        _panel.ForgedFor = pending.CredentialId;
 
-        await StartAsync(new AgentConnectionOptions { MinimumRenewalDelay = TimeSpan.FromMilliseconds(100), MaxBackoff = TimeSpan.FromSeconds(1) }, pending);
+        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromSeconds(1) }, pending);
+        var current = new AgentConfigStore(new AgentPaths(_root)).Load()!.CredentialId;
 
-        await EventuallyAsync(() => _panel.PendingAttempts > 4, () => $"{_panel.PendingAttempts} attempt(s) with the pending key");
-        Assert.Equal(pending, _connection!.Config!.PendingRotation);
+        await EventuallyAsync(() => _connection!.CurrentSessionId is not null, () => "no session with the current key");
+        Assert.Equal(current, _connection!.Config!.CredentialId);
+        Assert.Equal("PulsarAgent-1", _connection.Config.Key.Name);
+        Assert.Equal(pending, _connection.Config.PendingRotation);
         Assert.Equal(["PulsarAgent-1", "PulsarAgent-2"], _keys!.Names);
+    }
+
+    [Fact]
+    public async Task APanelThatActivatedThePendingKeyButWhoseGrantIsStrippedLeavesBothKeys()
+    {
+        // The pending key's sign-in reached the panel (which activated it and refuses the current key), but its answer
+        // came back without the grant: no session is used, and no key is switched or deleted until a granted sign-in.
+        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
+        _panel.Activated = pending.CredentialId;
+        _panel.Forgery = GrantForgery.Missing;
+        _panel.ForgedFor = pending.CredentialId;
+
+        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromMilliseconds(200) }, pending);
+        var current = new AgentConfigStore(new AgentPaths(_root)).Load()!.CredentialId;
+
+        await EventuallyAsync(() => _panel.Challenges >= 6, () => $"{_panel.Challenges} sign-in(s)");
+        Assert.Equal(0, _panel.Hellos);
+        Assert.Equal(current, _connection!.Config!.CredentialId);
+        Assert.Equal(pending, _connection.Config.PendingRotation);
+        Assert.Equal(["PulsarAgent-1", "PulsarAgent-2"], _keys!.Names);
+
+        // Once the grant comes through, the rotation completes.
+        _panel.Forgery = GrantForgery.None;
+        await EventuallyAsync(() => _connection.Config is { PendingRotation: null } config && config.CredentialId == pending.CredentialId
+            && _connection.CurrentSessionId is not null, () => $"credential {_connection.Config?.CredentialId}");
+        Assert.Equal(["PulsarAgent-2"], _keys.Names);
     }
 
     [Fact]
     public async Task AnUnfinishedRotationsKeyIsKeptUntilThePanelRegistersTheNextOne()
     {
-        // The current key's session may not be the panel's, nor then the answer to the next rotation: the pending key of
-        // the unfinished one is deleted only once the panel's signed answer says it dropped it.
+        // The pending key of an unfinished rotation is deleted only once the panel's signed answer to the next rotation
+        // says it dropped it: a rotation that fails keeps it.
         var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
-        _panel.RefusedFor = pending.CredentialId;
-        _panel.Forgery = GrantForgery.Missing;
+        _panel.BareUnauthorizedFor = pending.CredentialId;
 
         await StartAsync(new AgentConnectionOptions { KeyRotationInterval = TimeSpan.Zero, RotationRetryDelay = TimeSpan.Zero, MaxBackoff = TimeSpan.FromSeconds(1) },
             pending);
@@ -196,90 +245,85 @@ public sealed class PanelSessionTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task AKeptPendingKeyDoesNotPushTheNextRotationBackAtEverySignIn()
+    public async Task ARotationTheAdministratorAsksForIsTriedAgainUntilOneRegisters()
     {
-        // Sessions renewed one after another, as every 14 minutes: the retry delay runs from the first sign-in that kept the
-        // pending key, not from the latest, or the next rotation (and the end of the pending key) would never come.
-        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
-        _panel.RefusedFor = pending.CredentialId;
-        _panel.Forgery = GrantForgery.Missing;
-        _panel.SessionLifetime = TimeSpan.FromMinutes(-1);
+        // The key is not due by age: only the request starts rotations, so a failed one must not drop it.
+        var nodeId = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        _panel.FixedSessionId = session;
+        _panel.ExecuteAfterHello = FakePanel.SignCommand(new CommandEnvelope(AgentProtocol.CurrentVersion, Guid.CreateVersion7(), nodeId, session, 1, now,
+            now.AddMinutes(1), null, null, new RotateCredentialCommand()));
 
-        await StartAsync(new AgentConnectionOptions
-        {
-            KeyRotationInterval = TimeSpan.Zero,
-            RotationRetryDelay = TimeSpan.FromSeconds(1.5),
-            MinimumRenewalDelay = TimeSpan.FromMilliseconds(100),
-            MaxBackoff = TimeSpan.FromSeconds(1),
-        }, pending);
+        await StartAsync(new AgentConnectionOptions { RotationRetryDelay = TimeSpan.FromMilliseconds(300), MaxBackoff = TimeSpan.FromSeconds(1) }, nodeId: nodeId);
 
-        await EventuallyAsync(() => _panel.Rotations >= 1, () => $"{_panel.Rotations} rotation(s) after {_panel.Hellos} session(s)");
+        Assert.Equal(AckStatus.Accepted, (await _panel.ExecuteResult.Task.WaitAsync(TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken)).Status);
+        await EventuallyAsync(() => _panel.Rotations >= 3, () => $"{_panel.Rotations} rotation(s)");
+        Assert.Equal(1, _panel.Hellos); // in the same session, a while apart
     }
 
     [Fact]
-    public async Task APendingKeysSessionWithoutThePanelsGrantDoesNotCompleteTheRotation()
+    public async Task ARecordedCommandIsNotRunAgainInASessionThePanelDidNotGrant()
     {
-        // A proxy answers the pending key's sign-in itself: the panel never activated it, so the current key stays the one
-        // in use and on the machine.
-        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
+        // Recorded a month ago: after a panel key rotation, the panel told this node to pin only the first key. A proxy
+        // answers the sign-in itself with that session's id, and Hello with that time, and plays the command back.
+        var nodeId = Guid.NewGuid();
+        var oldSession = Guid.NewGuid();
+        var issued = DateTimeOffset.UtcNow.AddDays(-30);
         _panel.Forgery = GrantForgery.Missing;
+        _panel.FixedSessionId = oldSession;
+        _panel.HelloServerTime = issued.AddSeconds(1);
+        _panel.ExecuteAfterHello = FakePanel.SignCommand(new CommandEnvelope(AgentProtocol.CurrentVersion, Guid.CreateVersion7(issued), nodeId, oldSession, 7,
+            issued, issued.AddSeconds(60), null, null, new UpdatePanelKeysCommand([FakePanel.Key])));
 
-        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromSeconds(1) }, pending);
-        var current = new AgentConfigStore(new AgentPaths(_root)).Load()!.CredentialId;
+        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromMilliseconds(200) }, nodeId: nodeId, panelKeys: [FakePanel.Key, FakePanel.OtherKey]);
 
-        await EventuallyAsync(() => _connection!.CurrentSessionId is not null, () => "no session with the pending key");
-        Assert.Equal(current, _connection!.Config!.CredentialId);
-        Assert.Equal("PulsarAgent-1", _connection.Config.Key.Name);
-        Assert.Equal(pending, _connection.Config.PendingRotation);
-        Assert.Equal(["PulsarAgent-1", "PulsarAgent-2"], _keys!.Names);
+        await EventuallyAsync(() => _panel.Challenges >= 3, () => $"{_panel.Challenges} sign-in(s)");
+        Assert.Equal(0, _panel.Hellos);
+        Assert.False(_panel.ExecuteResult.Task.IsCompleted);
+        Assert.Equal(2, _connection!.Config!.PanelKeys.Count);
     }
 
     [Fact]
-    public async Task APendingKeyThePanelNeverActivatedLeavesTheCurrentKeyWorkingOnceItIsRefused()
+    public async Task HellosServerTimeDoesNotSetThePanelsClock()
     {
-        // After the forged sign-ins, the panel refuses the pending key (expired after its day, or superseded): the
-        // current key is still on the machine and still the node's.
-        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
-        _panel.Forgery = GrantForgery.Missing;
-        _panel.SessionLifetime = TimeSpan.FromMinutes(-1);
+        // A command of this session that expired a month ago, and a Hello that says it is still that time: the panel's
+        // clock comes from the grant, so the command is expired.
+        var nodeId = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var issued = DateTimeOffset.UtcNow.AddDays(-30);
+        _panel.FixedSessionId = session;
+        _panel.HelloServerTime = issued.AddSeconds(1);
+        _panel.ExecuteAfterHello = FakePanel.SignCommand(new CommandEnvelope(AgentProtocol.CurrentVersion, Guid.CreateVersion7(issued), nodeId, session, 1,
+            issued, issued.AddSeconds(60), null, null, new UpdatePanelKeysCommand([FakePanel.Key])));
 
-        await StartAsync(new AgentConnectionOptions { MinimumRenewalDelay = TimeSpan.FromMilliseconds(100), MaxBackoff = TimeSpan.FromSeconds(1) }, pending);
-        var current = new AgentConfigStore(new AgentPaths(_root)).Load()!.CredentialId;
-        await EventuallyAsync(() => _panel.Hellos >= 2, () => $"{_panel.Hellos} session(s)");
-        _panel.RefusedFor = pending.CredentialId;
-        _panel.Forgery = GrantForgery.None;
+        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromSeconds(1) }, nodeId: nodeId, panelKeys: [FakePanel.Key, FakePanel.OtherKey]);
 
-        await EventuallyAsync(() => _connection!.Config is { PendingRotation: null }, () => $"pending {_connection!.Config?.PendingRotation}");
-        Assert.Equal(current, _connection!.Config!.CredentialId);
-        Assert.Equal(["PulsarAgent-1"], _keys!.Names);
-        var hellos = _panel.Hellos;
-        await EventuallyAsync(() => _panel.Hellos > hellos, () => "no session with the current key");
+        var ack = await _panel.ExecuteResult.Task.WaitAsync(TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken);
+        Assert.Equal((AckStatus.Rejected, "command.expired"), (ack.Status, ack.ErrorCode));
+        Assert.Equal(2, _connection!.Config!.PanelKeys.Count);
     }
 
     [Fact]
-    public async Task AnOlderPanelThatActivatedThePendingKeyWithoutAGrantKeepsTheAgentConnectedWithBothKeys()
+    public async Task ThePanelsClockIsTakenFromTheGrant()
     {
-        // An older panel sends no grant: it activated the pending key, and refuses the current one. The agent cannot tell it
-        // from a proxy, so it keeps both keys, works with the pending key's sessions, and starts no rotation from them.
-        var pending = new PendingRotation(new NodeKeyReference("PulsarAgent-2", NodeKeyScope.Machine, NodeKeyStorage.Software), Guid.NewGuid(), DateTimeOffset.UtcNow);
-        _panel.Activated = pending.CredentialId;
-        _panel.Forgery = GrantForgery.Missing;
-        _panel.SessionLifetime = TimeSpan.FromMinutes(-1);
+        // The panel's clock is two hours ahead of this machine's (Hello says otherwise): its fresh command is accepted.
+        var nodeId = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var panelNow = DateTimeOffset.UtcNow.AddHours(2);
+        _panel.FixedSessionId = session;
+        _panel.GrantClockOffset = TimeSpan.FromHours(2);
+        _panel.ExecuteAfterHello = FakePanel.SignCommand(new CommandEnvelope(AgentProtocol.CurrentVersion, Guid.CreateVersion7(), nodeId, session, 1,
+            panelNow, panelNow.AddSeconds(60), null, null, new PingCommand(null)));
 
-        await StartAsync(new AgentConnectionOptions
-        {
-            KeyRotationInterval = TimeSpan.Zero,
-            MinimumRenewalDelay = TimeSpan.FromMilliseconds(100),
-            MaxBackoff = TimeSpan.FromSeconds(1),
-        }, pending);
+        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromSeconds(1) }, nodeId: nodeId);
 
-        await EventuallyAsync(() => _panel.Hellos >= 3, () => $"{_panel.Hellos} session(s)");
-        Assert.Equal(pending, _connection!.Config!.PendingRotation);
-        Assert.Equal(["PulsarAgent-1", "PulsarAgent-2"], _keys!.Names);
-        Assert.Equal(0, _panel.Rotations);
+        var ack = await _panel.ExecuteResult.Task.WaitAsync(TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken);
+        Assert.Equal(AckStatus.Accepted, ack.Status);
     }
 
-    private async Task StartAsync(AgentConnectionOptions options, PendingRotation? pending = null, string? failSigningOnce = null)
+    private async Task StartAsync(AgentConnectionOptions options, PendingRotation? pending = null, string? failSigningOnce = null, Guid? nodeId = null,
+        IReadOnlyList<PanelKey>? panelKeys = null)
     {
         var configs = new AgentConfigStore(new AgentPaths(_root));
         var keys = _keys = new MemoryKeys();
@@ -296,11 +340,11 @@ public sealed class PanelSessionTests : IAsyncDisposable
 
         keys.FailSigningOnce = failSigningOnce;
 
-        configs.Save(new AgentConfig(FakePanel.Address, Guid.NewGuid(), Guid.NewGuid(), new NodeKeyReference("PulsarAgent-1", NodeKeyScope.Machine,
-            NodeKeyStorage.Software), [FakePanel.Key], Path.Combine(_root, "servers"), DateTimeOffset.UtcNow, Development: true, KeyCreatedAt: DateTimeOffset.UtcNow,
+        configs.Save(new AgentConfig(FakePanel.Address, nodeId ?? Guid.NewGuid(), Guid.NewGuid(), new NodeKeyReference("PulsarAgent-1", NodeKeyScope.Machine,
+            NodeKeyStorage.Software), panelKeys ?? [FakePanel.Key], Path.Combine(_root, "servers"), DateTimeOffset.UtcNow, Development: true, KeyCreatedAt: DateTimeOffset.UtcNow,
             PendingRotation: pending));
         options.MetricsInterval = TimeSpan.FromMinutes(1);
-        _connection = new AgentConnection(configs, keys, new FixedSystem(), _panel, new PanelAuthenticator(_panel), new CredentialRotationClient(_panel),
+        _connection = new AgentConnection(configs, keys, new FixedSystem(), _panel, new PanelAuthenticator(_panel, TimeProvider.System), new CredentialRotationClient(_panel),
             new CommandDispatcher(NullLogger<CommandDispatcher>.Instance), options, TimeProvider.System, new StubLifetime(), NullLoggerFactory.Instance);
         await _connection.StartAsync(TestContext.Current.CancellationToken);
     }
@@ -320,6 +364,9 @@ public sealed class PanelSessionTests : IAsyncDisposable
     {
         None,
         Missing,
+
+        /// <summary>A grant without the panel's time (a panel older than the field).</summary>
+        MissingIssuedAt,
         UnpinnedKey,
         OtherNode,
         OtherCredential,
@@ -344,11 +391,16 @@ public sealed class PanelSessionTests : IAsyncDisposable
         /// <summary>The panel key the agent pins.</summary>
         public static readonly PanelKey Key = new(ProtocolCrypto.Fingerprint(s_signingKey.ExportSubjectPublicKeyInfo()), s_signingKey.ExportSubjectPublicKeyInfo());
 
+        /// <summary>Another key the agent may pin (one a panel key rotation added).</summary>
+        public static readonly PanelKey OtherKey = new(ProtocolCrypto.Fingerprint(s_unpinnedKey.ExportSubjectPublicKeyInfo()), s_unpinnedKey.ExportSubjectPublicKeyInfo());
+
         private readonly CancellationTokenSource _stop = new();
         private readonly ConcurrentBag<Task> _served = [];
         private int _hellos;
         private int _pendingAttempts;
         private int _rotations;
+        private int _challengeCount;
+        private int _executed;
         private readonly ConcurrentDictionary<Guid, ChallengeRequest> _challenges = new();
 
         public bool AnswersHello { get; set; } = true;
@@ -383,6 +435,29 @@ public sealed class PanelSessionTests : IAsyncDisposable
 
         /// <summary>How the sign-ins' answers are forged: <see cref="GrantForgery.None"/>, they are the panel's.</summary>
         public GrantForgery Forgery { get; set; }
+
+        /// <summary>The credential whose sign-ins <see cref="Forgery"/> applies to; null: all of them.</summary>
+        public Guid? ForgedFor { get; set; }
+
+        /// <summary>Challenges asked for, any credential.</summary>
+        public int Challenges => Volatile.Read(ref _challengeCount);
+
+        /// <summary>The id of every session the panel opens (null: a new one each time).</summary>
+        public Guid? FixedSessionId { get; set; }
+
+        /// <summary>What Hello's answer says the panel's time is (null: now).</summary>
+        public DateTimeOffset? HelloServerTime { get; set; }
+
+        /// <summary>How far ahead of this machine's the panel's clock is, as its grants say.</summary>
+        public TimeSpan GrantClockOffset { get; set; }
+
+        /// <summary>A command sent once, right after the first Hello is answered; its answer completes <see cref="ExecuteResult"/>.</summary>
+        public SignedMessage? ExecuteAfterHello { get; set; }
+
+        public TaskCompletionSource<CommandAck> ExecuteResult { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public static SignedMessage SignCommand(CommandEnvelope envelope) =>
+            ProtocolCrypto.SignMessage(s_signingKey, Key.KeyId, AgentProtocol.Purposes.Command, ProtocolJson.Serialize(envelope));
 
         public override HttpMessageHandler CreateHttpHandler() => new Handler(this);
 
@@ -462,15 +537,25 @@ public sealed class PanelSessionTests : IAsyncDisposable
                         }
 
                         using var message = JsonDocument.Parse(record);
-                        if (message.RootElement.GetProperty("type").GetInt32() == 1
-                            && message.RootElement.GetProperty("target").GetString() == nameof(IAgentHub.Hello))
+                        var type = message.RootElement.GetProperty("type").GetInt32();
+                        if (type == 1 && message.RootElement.GetProperty("target").GetString() == nameof(IAgentHub.Hello))
                         {
                             Interlocked.Increment(ref _hellos);
                             if (AnswersHello && message.RootElement.TryGetProperty("invocationId", out var id))
                             {
-                                var accepted = new HelloAccepted(DateTimeOffset.UtcNow, []);
+                                var accepted = new HelloAccepted(HelloServerTime ?? DateTimeOffset.UtcNow, []);
                                 await SendAsync(JsonSerializer.Serialize(new { type = 3, invocationId = id.GetString(), result = accepted }, ProtocolJson.Options));
+                                if (ExecuteAfterHello is { } command && Interlocked.Exchange(ref _executed, 1) == 0)
+                                {
+                                    var invocation = new { type = 1, invocationId = "execute-1", target = nameof(IAgentClient.Execute), arguments = new object[] { command } };
+                                    await SendAsync(JsonSerializer.Serialize(invocation, ProtocolJson.Options));
+                                }
                             }
+                        }
+                        else if (type == 3 && message.RootElement.TryGetProperty("invocationId", out var completed) && completed.GetString() == "execute-1"
+                            && message.RootElement.TryGetProperty("result", out var ack))
+                        {
+                            ExecuteResult.TrySetResult(ack.Deserialize<CommandAck>(ProtocolJson.Options)!);
                         }
                     }
                 }
@@ -503,6 +588,7 @@ public sealed class PanelSessionTests : IAsyncDisposable
             {
                 case AgentProtocol.ChallengePath:
                     var asked = (await request.Content!.ReadFromJsonAsync<ChallengeRequest>(ProtocolJson.Options, cancellationToken))!;
+                    Interlocked.Increment(ref _challengeCount);
                     var credential = asked.CredentialId;
                     if (credential == BareUnauthorizedFor)
                     {
@@ -544,10 +630,11 @@ public sealed class PanelSessionTests : IAsyncDisposable
         /// <summary>A session for <paramref name="signedIn"/>'s sign-in, with the grant <see cref="Forgery"/> says.</summary>
         private TokenResponse Session(ChallengeRequest signedIn)
         {
-            var sessionId = Guid.NewGuid();
-            var expiresAt = DateTimeOffset.UtcNow + SessionLifetime;
-            var grant = new SessionGrant(signedIn.NodeId, signedIn.CredentialId, sessionId, expiresAt, signedIn.Nonce);
-            grant = Forgery switch
+            var sessionId = FixedSessionId ?? Guid.NewGuid();
+            var expiresAt = DateTimeOffset.UtcNow + GrantClockOffset + SessionLifetime;
+            var grant = new SessionGrant(signedIn.NodeId, signedIn.CredentialId, sessionId, expiresAt, signedIn.Nonce, DateTimeOffset.UtcNow + GrantClockOffset);
+            var forgery = ForgedFor is null || ForgedFor == signedIn.CredentialId ? Forgery : GrantForgery.None;
+            grant = forgery switch
             {
                 GrantForgery.OtherNode => grant with { NodeId = Guid.NewGuid() },
                 GrantForgery.OtherCredential => grant with { CredentialId = Guid.NewGuid() },
@@ -556,10 +643,11 @@ public sealed class PanelSessionTests : IAsyncDisposable
 
                 // What the panel answered an earlier sign-in of this key: that session, for the nonce the agent sent then.
                 GrantForgery.Replayed => grant with { Nonce = RandomNumberGenerator.GetBytes(32) },
+                GrantForgery.MissingIssuedAt => grant with { IssuedAt = null },
                 _ => grant,
             };
 
-            var signed = Forgery switch
+            var signed = forgery switch
             {
                 GrantForgery.Missing => null,
                 GrantForgery.UnpinnedKey => ProtocolCrypto.SignMessage(s_unpinnedKey, Key.KeyId, AgentProtocol.Purposes.SessionGrant, ProtocolJson.Serialize(grant)),

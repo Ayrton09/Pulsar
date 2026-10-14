@@ -142,7 +142,7 @@ public sealed class InProcessAgent : IAsyncDisposable
             new InstallSteps(install, files), _steamCmd, files, Rcon, new UnmanagedFirewall(),
             new FileCommands(new DirectServerFileManager(), channel, FileOptions, NullLogger<FileCommands>.Instance),
             new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance, RemoteBackups), install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance, Query);
-        _connection = new AgentConnection(Configs, Keys, _system, _transport, new PanelAuthenticator(_transport),
+        _connection = new AgentConnection(Configs, Keys, _system, _transport, new PanelAuthenticator(_transport, _clock),
             new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance, _servers, SteamLogins), Options,
             _clock, new StubLifetime(), NullLoggerFactory.Instance, channel, _servers, SteamLogins);
 

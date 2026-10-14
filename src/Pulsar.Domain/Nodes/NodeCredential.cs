@@ -131,7 +131,8 @@ public sealed class NodeCredential
         }
     }
 
-    public void Used(DateTimeOffset now) => LastUsedAt = now;
+    /// <summary>A sign-in with this key. The time never moves back (a clock that stepped back): the latest use stays.</summary>
+    public void Used(DateTimeOffset now) => LastUsedAt = LastUsedAt is { } last && last > now ? last : now;
 
     public Result Revoke(UserId? by, string? reason, DateTimeOffset now)
     {

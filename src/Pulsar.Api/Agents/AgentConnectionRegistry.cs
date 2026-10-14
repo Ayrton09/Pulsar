@@ -76,6 +76,18 @@ internal sealed partial class AgentConnectionRegistry(
         agents.ConnectionLimit.CloseEnded(node, sessions.IsActive);
     }
 
+    public void DisconnectEnded(NodeId node)
+    {
+        // Only the entry read here, if its session ended: a new connection registered meanwhile stays.
+        if (_connections.TryGetValue(node, out var connection) && !sessions.IsActive(connection.Session.SessionId)
+            && _connections.TryRemove(new KeyValuePair<NodeId, Connection>(node, connection)))
+        {
+            connection.Context.Abort();
+        }
+
+        agents.ConnectionLimit.CloseEnded(node, sessions.IsActive);
+    }
+
     public async Task<CommandAck?> SendAsync(NodeId node, AgentCommand command, UserId? actor, CancellationToken cancellationToken,
         Guid? operationId = null)
     {

@@ -76,7 +76,8 @@ public sealed record TokenRequest(Guid ChallengeId, byte[] Signature);
 /// <summary>A session for the agent hub only. It ends at <see cref="ExpiresAt"/>, on revocation, or on panel restart.</summary>
 /// <param name="Grant">
 /// The session, as a <see cref="SessionGrant"/> signed by a panel key the node pins, for the nonce of the challenge
-/// request this sign-in began with. Null from panels older than the field, or when the request sent no nonce (additive).
+/// request this sign-in began with. Agents use no session without one that verifies; the panel leaves it out only when
+/// the request sent no nonce (an older agent) or the node pins none of its keys.
 /// </param>
 public sealed record TokenResponse(string AccessToken, Guid SessionId, DateTimeOffset ExpiresAt, SignedMessage? Grant = null)
 {
@@ -92,10 +93,15 @@ public sealed record TokenResponse(string AccessToken, Guid SessionId, DateTimeO
 /// Payload of <see cref="TokenResponse.Grant"/>, signed with <see cref="AgentProtocol.Purposes.SessionGrant"/>: the panel
 /// itself opened <paramref name="SessionId"/> for this node and credential, at the sign-in whose challenge request carried
 /// <paramref name="Nonce"/> (the agent's, not the panel's challenge nonce). A sign-in answered by whatever sits between the
-/// agent and the panel has none the agent accepts, and one recorded earlier answers another nonce. The agent gives up a
-/// pending key only after its current key's sign-in carried one (docs/architecture/03, "Rotation").
+/// agent and the panel has none the agent accepts, and one recorded earlier answers another nonce. The agent uses no
+/// session without one (docs/architecture/03, "Authentication on every connection").
 /// </summary>
-public sealed record SessionGrant(Guid NodeId, Guid CredentialId, Guid SessionId, DateTimeOffset ExpiresAt, byte[]? Nonce);
+/// <param name="IssuedAt">
+/// The panel's clock when it signed the grant: the agent measures the panel's clock offset from it, against its own clock
+/// when the answer arrived (never from what <see cref="HelloAccepted"/> says), so commands' expiry is judged on a time
+/// whatever sits on the way cannot choose. Required by agents; null only from panels older than the field.
+/// </param>
+public sealed record SessionGrant(Guid NodeId, Guid CredentialId, Guid SessionId, DateTimeOffset ExpiresAt, byte[]? Nonce, DateTimeOffset? IssuedAt = null);
 
 /// <summary>Error body of the agent endpoints.</summary>
 /// <param name="AgentsAddress">

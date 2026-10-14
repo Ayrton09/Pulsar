@@ -124,6 +124,9 @@ public sealed partial class AgentAccess(
         token.Consumed(credential.Id, now); // saved with the credential, which the reference needs to exist first
         var inventory = ToSnapshot(request.Inventory, request.AgentVersion, AgentProtocol.CurrentVersion);
         node.Enrolled(inventory, now);
+        // What the agent pins from the answer: the panel signs its sessions with one of them before its first Hello says so.
+        var panelKeys = await keys.GetPublicKeysAsync(cancellationToken);
+        node.PanelKeysPinned(panelKeys.Select(k => k.KeyId));
         audit.Record(AuditActions.Node.Enrolled, AuditOutcome.Success, NodeActor(node),
                 new { hostname = inventory.Hostname, fingerprint, keyStorage = keyStorage.ToString().ToLowerInvariant(), replacedCredentials = previous.Count })
             .WithNode(node.Id).WithTarget("node", node.Id.ToString());
@@ -137,7 +140,7 @@ public sealed partial class AgentAccess(
         }
 
         LogEnrolled(node.Id, inventory.Hostname, fingerprint);
-        var result = new EnrollmentResult(node.Id.Value, credential.Id, panelOrigin, await keys.GetPublicKeysAsync(cancellationToken));
+        var result = new EnrollmentResult(node.Id.Value, credential.Id, panelOrigin, panelKeys);
         return await keys.SignAsync(AgentProtocol.Purposes.EnrollmentResult, ProtocolJson.Serialize(result), cancellationToken);
     }
 
@@ -177,6 +180,9 @@ public sealed partial class AgentAccess(
             return await RejectTokenEnrollmentAsync(reusable, "reusable_token_used_up", cancellationToken);
         }
 
+        // What the agent pins from the answer: the panel signs its sessions with one of them before its first Hello says so.
+        var panelKeys = await keys.GetPublicKeysAsync(cancellationToken);
+        node.PanelKeysPinned(panelKeys.Select(k => k.KeyId));
         db.Nodes.Add(node);
         db.NodeCredentials.Add(credential);
         var actor = NodeActor(node);
@@ -218,7 +224,7 @@ public sealed partial class AgentAccess(
 
         await transaction.CommitAsync(cancellationToken);
         LogEnrolledWithToken(node.Id, node.Name, inventory.Hostname, fingerprint, reusable.Name, node.ApprovalRequired);
-        var result = new EnrollmentResult(node.Id.Value, credential.Id, panelOrigin, await keys.GetPublicKeysAsync(cancellationToken), node.ApprovalRequired);
+        var result = new EnrollmentResult(node.Id.Value, credential.Id, panelOrigin, panelKeys, node.ApprovalRequired);
         return await keys.SignAsync(AgentProtocol.Purposes.EnrollmentResult, ProtocolJson.Serialize(result), cancellationToken);
     }
 
@@ -418,7 +424,7 @@ public sealed partial class AgentAccess(
             return null;
         }
 
-        var grant = new SessionGrant(node.Id.Value, session.CredentialId, session.SessionId, session.ExpiresAt, nonce);
+        var grant = new SessionGrant(node.Id.Value, session.CredentialId, session.SessionId, session.ExpiresAt, nonce, clock.GetUtcNow());
         return await keys.SignForAsync(AgentProtocol.Purposes.SessionGrant, ProtocolJson.Serialize(grant),
             connections.Find(node.Id)?.PinnedPanelKeys ?? node.PinnedPanelKeys, cancellationToken);
     }
@@ -647,16 +653,18 @@ public sealed partial class AgentAccess(
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        // Sessions of the old key end now, and the connection one of them opened closes: it would otherwise keep reporting
-        // until the agent's new connection says Hello (an agent that just signed in with its new key opens one at once).
+        // Sessions of the old key end now, and the connections they opened close: the hub's would otherwise keep reporting
+        // until the agent's new connection says Hello (an agent that just signed in with its new key opens one at once),
+        // and those on the agents' endpoint (whoever else holds the old key, with no hub connection at all) would hold the
+        // node's share of it until their session's end. The new key's connections stay.
         foreach (var old in previous)
         {
             sessions.EndCredential(old.Id);
         }
 
-        if (connections.Find(node.Id) is { } connection && !sessions.IsActive(connection.SessionId))
+        if (previous.Count > 0)
         {
-            connections.Disconnect(node.Id);
+            connections.DisconnectEnded(node.Id);
         }
 
         LogRotated(node.Id, credential.Fingerprint);

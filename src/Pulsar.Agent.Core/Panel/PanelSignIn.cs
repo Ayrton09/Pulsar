@@ -4,24 +4,31 @@ using Pulsar.Contracts;
 namespace Pulsar.Agent.Core.Panel;
 
 /// <summary>
-/// A sign-in's answer (<see cref="Token"/>) with the <see cref="Nonce"/> the agent sent with the challenge request it began
-/// with, which the panel signs back in <see cref="TokenResponse.Grant"/> (docs/architecture/03, "Authentication").
+/// A session the panel granted (docs/architecture/03, "Authentication on every connection"): its answer
+/// (<see cref="Token"/>), the <see cref="Grant"/> that verified, and the panel's clock offset measured from that grant.
 /// </summary>
-public sealed record PanelSignIn(TokenResponse Token, byte[] Nonce)
+/// <param name="PanelClockOffset">
+/// Panel time minus local time: the grant's <see cref="SessionGrant.IssuedAt"/> against this machine's clock when the
+/// answer arrived. Off by at most the time the token request took, since the grant answers this sign-in's fresh nonce.
+/// </param>
+public sealed record PanelSignIn(TokenResponse Token, SessionGrant Grant, TimeSpan PanelClockOffset)
 {
     /// <summary>
-    /// Whether the panel itself opened this session: its grant is signed by a panel key the agent pins, for this node,
-    /// <paramref name="credentialId"/>, this session and this sign-in's nonce. Whatever sits between the agent and the panel
-    /// (a TLS-terminating proxy) can answer a sign-in without the panel ever seeing it, and can play back an earlier answer,
-    /// but cannot make either of them pass this.
+    /// The grant of <paramref name="token"/>, or null when there is none the agent can trust: it must be signed by a panel
+    /// key the agent pins, for this node, the credential that signed in, this session and <paramref name="nonce"/> (what
+    /// the agent sent with this sign-in's challenge request), and carry the panel's time. Whatever sits between the agent
+    /// and the panel (a TLS-terminating proxy) can answer a sign-in without the panel ever seeing it, and can play back an
+    /// earlier answer, but cannot make either of them pass this.
     /// </summary>
-    public bool IsGranted(AgentConfig config, Guid credentialId)
+    public static SessionGrant? VerifyGrant(TokenResponse token, AgentConfig config, byte[] nonce)
     {
+        ArgumentNullException.ThrowIfNull(token);
         ArgumentNullException.ThrowIfNull(config);
-        if (Token.Grant is not { } signed || config.PanelKeys.FirstOrDefault(k => k.KeyId == signed.KeyId) is not { } signer
+        ArgumentNullException.ThrowIfNull(nonce);
+        if (token.Grant is not { } signed || config.PanelKeys.FirstOrDefault(k => k.KeyId == signed.KeyId) is not { } signer
             || !ProtocolCrypto.VerifyMessage(signed, AgentProtocol.Purposes.SessionGrant, signer.PublicKey))
         {
-            return false;
+            return null;
         }
 
         SessionGrant grant;
@@ -31,10 +38,12 @@ public sealed record PanelSignIn(TokenResponse Token, byte[] Nonce)
         }
         catch (JsonException)
         {
-            return false;
+            return null;
         }
 
-        return grant.NodeId == config.NodeId && grant.CredentialId == credentialId && grant.SessionId == Token.SessionId
-            && grant.Nonce is not null && grant.Nonce.AsSpan().SequenceEqual(Nonce);
+        return grant.NodeId == config.NodeId && grant.CredentialId == config.CredentialId && grant.SessionId == token.SessionId
+            && grant.Nonce is not null && grant.Nonce.AsSpan().SequenceEqual(nonce) && grant.IssuedAt is not null
+            ? grant
+            : null;
     }
 }

@@ -64,7 +64,9 @@ public sealed class RealAgentTests(PulsarApiFactory factory) : IClassFixture<Pul
         await using var agent = new InProcessAgent(factory);
         var config = await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
         await agent.StartAsync();
-        await InProcessAgent.EventuallyAsync(async () => (await GetNodeAsync(admin, config.NodeId)).Node.Connected, "first connection");
+        // The panel says connected at Hello; the agent has its session once Hello is answered.
+        await InProcessAgent.EventuallyAsync(async () => agent.CurrentSessionId is not null && (await GetNodeAsync(admin, config.NodeId)).Node.Connected,
+            "first connection");
         var firstSession = agent.CurrentSessionId;
 
         // What a network cut looks like from the panel: the connection is gone without the agent asking.
@@ -84,7 +86,9 @@ public sealed class RealAgentTests(PulsarApiFactory factory) : IClassFixture<Pul
         await using var agent = new InProcessAgent(factory, clock);
         var config = await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
         await agent.StartAsync();
-        await InProcessAgent.EventuallyAsync(async () => (await GetNodeAsync(admin, config.NodeId)).Node.Connected, "first connection");
+        // The panel says connected at Hello; the agent has its session once Hello is answered.
+        await InProcessAgent.EventuallyAsync(async () => agent.CurrentSessionId is not null && (await GetNodeAsync(admin, config.NodeId)).Node.Connected,
+            "first connection");
         var firstSession = agent.CurrentSessionId;
 
         // Only the agent's clock moves: it reaches the renewal point of a 15-minute session.

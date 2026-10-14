@@ -151,9 +151,11 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
             challenge = (await asked.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!;
         }
 
+        var before = DateTimeOffset.UtcNow;
         using var response = await agent.PostTokenAsync(challenge);
         response.EnsureSuccessStatusCode();
         var token = (await response.Content.ReadFromJsonAsync<TokenResponse>(ProtocolJson.Options, Ct))!;
+        var after = DateTimeOffset.UtcNow;
 
         // Signed by the key the node pinned, for this node, key and session, and for the nonce the agent chose (not the panel's).
         var grant = Assert.IsType<SignedMessage>(token.Grant);
@@ -165,6 +167,7 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
         Assert.Equal(token.SessionId, session.SessionId);
         Assert.Equal(token.ExpiresAt, session.ExpiresAt);
         Assert.Equal(nonce, session.Nonce);
+        Assert.InRange(session.IssuedAt!.Value, before, after); // the panel's clock, which agents measure from it
 
         // An agent that sends no nonce (older) gets none: it would have nothing to check it against.
         Assert.Null((await agent.AuthenticateAsync()).Grant);
