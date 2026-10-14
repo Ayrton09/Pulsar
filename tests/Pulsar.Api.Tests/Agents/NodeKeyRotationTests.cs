@@ -281,26 +281,19 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
     public async Task APendingKeysSignInAnsweredOnTheWayDoesNotMakeTheAgentDropItsCurrentKey()
     {
         // A proxy answers the pending key's first sign-in itself: the panel never sees it and keeps the pending credential
-        // pending. The agent must not switch keys and delete the current one on that answer (it carries no grant).
+        // pending. The agent must not switch keys and delete the current one on that answer (it carries no grant): it
+        // signs in with the current key instead, and completes the rotation at a later sign-in the panel grants.
         using var admin = await factory.CreateAdminClientAsync();
         await using var agent = new InProcessAgent(factory);
         var enrolled = await EnrollAsync(admin, agent, "rotate-forged-pending");
         var pending = await RegisterPendingKeyAsync(agent, enrolled);
         agent.Configs.Save(enrolled with { PendingRotation = pending });
         var forged = 0;
-        IReadOnlyCollection<string>? keysAtTheRealSignIn = null;
-        AgentConfig? configAtTheRealSignIn = null;
         agent.Proxy = async (request, send) =>
         {
             var path = request.RequestUri!.AbsolutePath;
             if (forged == 2 || (path != AgentProtocol.ChallengePath && path != AgentProtocol.TokenPath))
             {
-                if (forged == 2 && path == AgentProtocol.ChallengePath && keysAtTheRealSignIn is null)
-                {
-                    keysAtTheRealSignIn = agent.Keys.Names;
-                    configAtTheRealSignIn = agent.Configs.Load();
-                }
-
                 return await send();
             }
 
@@ -313,12 +306,17 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
 
         await agent.StartAsync();
 
+        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, enrolled.NodeId)).Node.Connected, "connection with the current key");
+        Assert.Equal(enrolled.CredentialId, agent.LiveConfig!.CredentialId);
+        Assert.Equal(pending, agent.LiveConfig.PendingRotation);
+        Assert.Equal(new[] { enrolled.Key.Name, pending.Key.Name }.Order(StringComparer.Ordinal), agent.Keys.Names.Order(StringComparer.Ordinal));
+        await AssertCredentialStatusAsync(admin, enrolled.NodeId, pending.CredentialId, NodeCredentialStatus.Pending);
+
+        // The next sign-in (here after a restart) is the pending key's again, and the panel grants it.
+        await agent.StopAsync();
+        await agent.StartAsync();
         await InProcessAgent.EventuallyAsync(async () => agent.LiveConfig?.CredentialId == pending.CredentialId
             && (await NodeApi.GetAsync(admin, enrolled.NodeId)).Node.Connected, "connection with the pending key");
-        // When it signed in for real, after the forged answer, it still had both keys and the current one in use.
-        Assert.Equal(new[] { enrolled.Key.Name, pending.Key.Name }.Order(StringComparer.Ordinal), keysAtTheRealSignIn!.Order(StringComparer.Ordinal));
-        Assert.Equal(enrolled.CredentialId, configAtTheRealSignIn!.CredentialId);
-        Assert.Equal(pending, configAtTheRealSignIn.PendingRotation);
         await AssertRotatedAsync(admin, agent, enrolled, agent.LiveConfig!);
     }
 

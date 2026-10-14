@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Pulsar.Agent.Core.Commands;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Contracts;
 
@@ -7,10 +8,12 @@ namespace Pulsar.Agent.Core.Panel;
 
 /// <summary>
 /// Challenge/response authentication (docs/architecture/03): the node signs the panel's nonce together with its ids and
-/// the panel origin, and gets a short-lived session for the hub.
+/// the panel origin, and gets a short-lived session for the hub, which it takes only with the panel's grant for it.
 /// </summary>
-public sealed class PanelAuthenticator(PanelTransport transport)
+public sealed class PanelAuthenticator(PanelTransport transport, TimeProvider? clock = null)
 {
+    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+
     /// <summary>The longest challenge nonce the agent signs (the panel's are 32 bytes).</summary>
     public const int MaxNonceLength = 64;
 
@@ -35,8 +38,9 @@ public sealed class PanelAuthenticator(PanelTransport transport)
         (await SignInAsync(panel, config, key, certificate, cancellationToken)).Token;
 
     /// <summary>
-    /// <see cref="AuthenticateAsync(Uri, AgentConfig, INodeKey, X509Certificate2?, CancellationToken)"/>, with the nonce
-    /// the panel's grant must answer (<see cref="PanelSignIn.IsGranted"/>).
+    /// <see cref="AuthenticateAsync(Uri, AgentConfig, INodeKey, X509Certificate2?, CancellationToken)"/>, with the panel's
+    /// grant and its clock offset. An answer without a grant that verifies (<see cref="PanelSignIn.VerifyGrant"/>) is no
+    /// session: <see cref="PanelNotAnsweringException"/>, as whatever answered is not the panel.
     /// </summary>
     public async Task<PanelSignIn> SignInAsync(Uri panel, AgentConfig config, INodeKey key, X509Certificate2? certificate,
         CancellationToken cancellationToken)
@@ -77,11 +81,30 @@ public sealed class PanelAuthenticator(PanelTransport transport)
 
         var signature = key.Sign(ProtocolCrypto.SignedData(AgentProtocol.Purposes.Authenticate,
             ProtocolCrypto.GuidBytes(config.NodeId), ProtocolCrypto.GuidBytes(config.CredentialId), challenge.Nonce, ProtocolCrypto.Utf8(origin)));
+        var sentAt = _clock.GetUtcNow();
         var token = await PanelTransport.PostAsync<TokenRequest, TokenResponse>(http, AgentProtocol.TokenPath,
             new TokenRequest(challenge.ChallengeId, signature), cancellationToken);
-        return token.AccessToken is { Length: > 0 and <= MaxAccessTokenLength }
-            ? new PanelSignIn(token, nonce)
-            : throw new PanelNotAnsweringException($"The address answered {AgentProtocol.TokenPath} with a session token of {token.AccessToken?.Length ?? 0} " +
+        var receivedAt = _clock.GetUtcNow();
+        if (token.AccessToken is not { Length: > 0 and <= MaxAccessTokenLength })
+        {
+            throw new PanelNotAnsweringException($"The address answered {AgentProtocol.TokenPath} with a session token of {token.AccessToken?.Length ?? 0} " +
                 "characters, which is not the agent protocol: no panel answers it there now.");
+        }
+
+        // Its session id and time would otherwise be whatever answered here chose: enough to play recorded commands back.
+        if (PanelSignIn.VerifyGrant(token, config, nonce) is not { IssuedAt: { } issuedAt } grant)
+        {
+            throw new PanelNotAnsweringException($"The address answered {AgentProtocol.TokenPath} with a session the panel did not grant (no grant signed by " +
+                "a pinned panel key for this node, key, session and sign-in): it is not used.");
+        }
+
+        // The panel's clock is measured from the grant, off by at most this request's time: never more than commands allow.
+        if (receivedAt - sentAt > CommandVerifier.ClockTolerance)
+        {
+            throw new PanelNotAnsweringException($"The panel took {(receivedAt - sentAt).TotalSeconds:0} seconds to answer {AgentProtocol.TokenPath}: " +
+                "too long to measure its clock from the answer.");
+        }
+
+        return new PanelSignIn(token, grant, issuedAt - receivedAt);
     }
 }

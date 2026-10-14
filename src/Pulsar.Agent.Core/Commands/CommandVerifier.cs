@@ -41,8 +41,8 @@ public sealed class CommandVerifier(
     private TimeSpan _panelClockOffset;
 
     /// <summary>
-    /// Panel time minus local time, measured at Hello. Expiry is judged on the panel's clock. Setting it lets the commands
-    /// waiting for it through (<see cref="WaitsForClock"/>).
+    /// Panel time minus local time, measured from the session's grant (never from Hello's unsigned answer). Expiry is
+    /// judged on the panel's clock. Setting it lets the commands waiting for it through (<see cref="WaitsForClock"/>).
     /// </summary>
     public TimeSpan PanelClockOffset
     {
@@ -55,8 +55,8 @@ public sealed class CommandVerifier(
     }
 
     /// <summary>
-    /// Commands wait until <see cref="PanelClockOffset"/> is set (a hub session's verifier: the panel's first commands can
-    /// arrive between Hello's answer and the offset being measured from it).
+    /// Commands wait until <see cref="PanelClockOffset"/> is set, for a verifier made before the offset is known (a hub
+    /// session's knows it from its sign-in, before any command can arrive).
     /// </summary>
     public bool WaitsForClock { get; init; }
 

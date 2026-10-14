@@ -94,6 +94,48 @@ public sealed class AgentsEndpointSessionTests(AgentsEndpointSessionTests.Panel 
         Assert.Equal(0, Limit.SignedIn(node));
     }
 
+    [DatabaseFact]
+    public async Task ARotationClosesTheOldKeysConnectionsWithoutAHubConnection()
+    {
+        // Whoever holds the old key signed in before the rotation (no hub connection of theirs registered): its signed-in
+        // connections go with the rotation, or they would hold the node's share of the endpoint for up to 15 minutes.
+        factory.StartServer();
+        await QuietAsync();
+        using var old = await SignInAsync("rotation-closes-old");
+        var node = new NodeId(old.NodeId);
+        await QuietAsync();
+        using var thief = Holder(old.Certificate);
+        Assert.Equal(HttpStatusCode.NotFound, await TransferAsync(thief, old.Token.AccessToken));
+        Assert.Equal(1, Limit.SignedIn(node));
+
+        // The rotation, as the agent makes it: registered within the old key's session, completed by the new key's sign-in.
+        using var newKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var newCertificate = KestrelPanelFactory.UsableCertificate(newKey);
+        var newPublicKey = newKey.ExportSubjectPublicKeyInfo();
+        byte[] RotationData(string purpose) => ProtocolCrypto.SignedData(purpose, ProtocolCrypto.GuidBytes(old.NodeId), ProtocolCrypto.GuidBytes(old.CredentialId),
+            ProtocolCrypto.GuidBytes(old.Token.SessionId), newPublicKey);
+        Guid newCredential;
+        using (var agents = new HttpClient(factory.Handler(old.Certificate)) { BaseAddress = factory.AgentsUrl })
+        using (var request = new HttpRequestMessage(HttpMethod.Post, AgentProtocol.RotateCredentialPath.TrimStart('/')))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", old.Token.AccessToken);
+            request.Content = JsonContent.Create(new RotateCredentialRequest(newPublicKey, "software", ProtocolCrypto.Sign(newKey,
+                RotationData(AgentProtocol.Purposes.RotateCredential)), ProtocolCrypto.Sign(old.Key, RotationData(AgentProtocol.Purposes.AuthorizeRotation))),
+                options: ProtocolJson.Options);
+            using var rotated = await agents.SendAsync(request, Ct);
+            rotated.EnsureSuccessStatusCode();
+            newCredential = ProtocolJson.Deserialize<CredentialRotation>((await rotated.Content.ReadFromJsonAsync<SignedMessage>(ProtocolJson.Options, Ct))!.Payload)
+                .CredentialId;
+        }
+
+        var token = await SignInWithAsync(old.NodeId, newCredential, newKey, newCertificate);
+
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(Limit.SignedIn(node) == 0), () => $"{Limit.SignedIn(node)} signed-in connection(s) left");
+        using var current = Holder(newCertificate);
+        Assert.Equal(HttpStatusCode.NotFound, await TransferAsync(current, token.AccessToken));
+        Assert.Equal(1, Limit.SignedIn(node));
+    }
+
     /// <summary>Waits until no connection of an earlier step is left.</summary>
     private Task QuietAsync() => InProcessAgent.EventuallyAsync(() => Task.FromResult(Limit.Open == 0),
         () => $"no connection left (open {Limit.Open}, pending {Limit.Pending})");
@@ -142,6 +184,22 @@ public sealed class AgentsEndpointSessionTests(AgentsEndpointSessionTests.Panel 
         tokenResponse.EnsureSuccessStatusCode();
         var token = (await tokenResponse.Content.ReadFromJsonAsync<TokenResponse>(ProtocolJson.Options, Ct))!;
         return new SignedIn(result.NodeId, result.CredentialId, key, certificate, token);
+    }
+
+    /// <summary>Signs a credential in through the agents' endpoint, its key presented as client certificate.</summary>
+    private async Task<TokenResponse> SignInWithAsync(Guid nodeId, Guid credentialId, ECDsa key, X509Certificate2 certificate)
+    {
+        using var http = new HttpClient(factory.Handler(certificate)) { BaseAddress = factory.AgentsUrl };
+        using var challengeResponse = await http.PostAsJsonAsync(AgentProtocol.ChallengePath.TrimStart('/'),
+            new ChallengeRequest(nodeId, credentialId, RandomNumberGenerator.GetBytes(32)), ProtocolJson.Options, Ct);
+        challengeResponse.EnsureSuccessStatusCode();
+        var challenge = (await challengeResponse.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!;
+        var signature = ProtocolCrypto.Sign(key, ProtocolCrypto.SignedData(AgentProtocol.Purposes.Authenticate,
+            ProtocolCrypto.GuidBytes(nodeId), ProtocolCrypto.GuidBytes(credentialId), challenge.Nonce, ProtocolCrypto.Utf8(challenge.PanelOrigin)));
+        using var tokenResponse = await http.PostAsJsonAsync(AgentProtocol.TokenPath.TrimStart('/'),
+            new TokenRequest(challenge.ChallengeId, signature), ProtocolJson.Options, Ct);
+        tokenResponse.EnsureSuccessStatusCode();
+        return (await tokenResponse.Content.ReadFromJsonAsync<TokenResponse>(ProtocolJson.Options, Ct))!;
     }
 
     private sealed record SignedIn(Guid NodeId, Guid CredentialId, ECDsa Key, X509Certificate2 Certificate, TokenResponse Token) : IDisposable

@@ -62,6 +62,8 @@ public sealed class OperationRaceTests(OperationRaceTests.ResultFirstFactory fac
 
             public void Disconnect(NodeId node) => inner.Disconnect(node);
 
+            public void DisconnectEnded(NodeId node) => inner.DisconnectEnded(node);
+
             public Task<int> UpdatePanelKeysAsync(NodeId? node, CancellationToken cancellationToken) => inner.UpdatePanelKeysAsync(node, cancellationToken);
 
             public async Task<CommandAck?> SendAsync(NodeId node, AgentCommand command, UserId? actor, CancellationToken cancellationToken,

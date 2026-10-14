@@ -31,9 +31,10 @@ public sealed class CommandBeforeHelloTests(CommandBeforeHelloTests.Factory fact
         await agent.StartAsync();
 
         Assert.Equal(AckStatus.Accepted, (await ping.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken))?.Status);
-        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, config.NodeId)).Node.Connected, "connection");
+        // The command is answered before Hello is: the agent has its session once Hello is answered.
+        await InProcessAgent.EventuallyAsync(async () => agent.CurrentSessionId is not null && (await NodeApi.GetAsync(admin, config.NodeId)).Node.Connected,
+            "connection");
         var session = agent.CurrentSessionId;
-        Assert.NotNull(session);
         Assert.Equal(AckStatus.Accepted, (await NodeApi.PingAsync(admin, config.NodeId)).Status);
         Assert.Equal(session, agent.CurrentSessionId);
     }

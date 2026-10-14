@@ -47,6 +47,12 @@ public interface IAgentConnections
     void Disconnect(NodeId node);
 
     /// <summary>
+    /// Closes the node's connections whose session ended (a key superseded by a rotation), on the hub and on the agents'
+    /// endpoint alike, and leaves those of sessions still active.
+    /// </summary>
+    void DisconnectEnded(NodeId node);
+
+    /// <summary>
     /// Signs and sends a command to a connected agent and waits for its ack. Returns null when the node is not
     /// connected or does not announce the command's capability.
     /// </summary>
