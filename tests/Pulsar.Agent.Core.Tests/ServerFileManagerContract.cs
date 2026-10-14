@@ -332,6 +332,38 @@ public abstract partial class ServerFileManagerContract : IDisposable
     }
 
     [ContractFact]
+    public void ListingCountsTheNamesThePanelCannotAddressAndTheBrokenOnesNeverReachJson()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows names a file with a trailing dot, a device name or a lone surrogate through \\\\?\\ paths.");
+        File.WriteAllText(Path.Combine(ServerDirectory, "plain.cfg"), "x");
+        var extended = @"\\?\" + ServerDirectory;
+        string[] odd = ["trailing.", "nul.txt", "bad" + (char)0xD800 + "name.cfg"];
+        foreach (var name in odd)
+        {
+            File.WriteAllText(extended + @"\" + name, "x");
+        }
+
+        try
+        {
+            var listing = Files.List(Server, ServerFilePath.Root);
+
+            // JSON writes a lone surrogate as U+FFFD, a name the panel would accept and open as another file.
+            var sent = Assert.IsType<FileListResult>(ProtocolJson.Deserialize<CommandAck>(
+                ProtocolJson.Serialize(new CommandAck(Guid.NewGuid(), AckStatus.Accepted, null, null, listing))).Result);
+            Assert.Equal(["plain.cfg"], sent.Entries.Select(e => e.Name));
+            Assert.Equal(3, sent.Skipped);
+            Assert.False(sent.Truncated);
+        }
+        finally
+        {
+            foreach (var name in odd)
+            {
+                File.Delete(extended + @"\" + name);
+            }
+        }
+    }
+
+    [ContractFact]
     public void AFileWhoseTimeIsBeyondYear9999IsListedWalkedReadReplacedAndDeleted()
     {
         // Any account can set a time NTFS keeps but a DateTime cannot hold; a game's account does it to its own files.

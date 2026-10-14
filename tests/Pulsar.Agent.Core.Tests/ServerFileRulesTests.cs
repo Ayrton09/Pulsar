@@ -49,6 +49,38 @@ public sealed class ServerFileRulesTests
         Assert.Equal(["cfg", "A.txt", "b.txt"], listing.Entries.Select(e => e.Name));
     }
 
+    [Fact]
+    public void NamesThePanelRefusesAreCountedAndDoNotTakeTheCapsPlaces()
+    {
+        // 2010 names Windows allows through extended paths but ServerFilePath refuses, sorted before the real files.
+        var refused = Enumerable.Range(0, FileLimits.MaxListEntries + 10).Select(i => new FileEntry($"a{i:D4}.", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch));
+        var entries = refused.Append(new FileEntry("zreal.cfg", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch))
+            .Append(new FileEntry("nul.txt", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch))
+            .Append(new FileEntry("bad" + (char)0xD800 + "name.cfg", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch))
+            .Append(new FileEntry("ctrl" + (char)1, FileEntryKind.File, 1, DateTimeOffset.UnixEpoch));
+
+        var listing = ServerFileRules.Listing(entries);
+
+        Assert.Equal(["zreal.cfg"], listing.Entries.Select(e => e.Name));
+        Assert.Equal(FileLimits.MaxListEntries + 10 + 3, listing.Skipped);
+        Assert.False(listing.Truncated);
+    }
+
+    [Fact]
+    public void ALoneSurrogateNameIsNeverSentBecauseJsonWouldTurnItIntoAnotherName()
+    {
+        var listing = ServerFileRules.Listing([
+            new FileEntry("bad" + (char)0xD800 + "name.cfg", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch),
+            new FileEntry("q�z.cfg", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch),
+        ]);
+
+        var sent = ProtocolJson.Deserialize<CommandAck>(ProtocolJson.Serialize(new CommandAck(Guid.NewGuid(), AckStatus.Accepted, null, null, listing)));
+
+        var names = Assert.IsType<FileListResult>(sent.Result).Entries.Select(e => e.Name);
+        Assert.Equal(["q�z.cfg"], names); // the name that really has U+FFFD; the broken one is counted, not sent
+        Assert.Equal(1, listing.Skipped);
+    }
+
     /// <summary>Counts the entries read, and how many a listing could still hold at most (read, not yet dropped).</summary>
     private sealed class CountingEntries(IEnumerable<FileEntry> entries, bool watchMemory = false) : IEnumerable<FileEntry>
     {
