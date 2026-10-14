@@ -59,6 +59,10 @@ internal static class ApiServiceCollectionExtensions
             .Bind(configuration.GetSection(AgentsOptions.SectionName))
             .Validate(o => AgentsOptions.IsValidUrl(o.PublicUrl), "Agents:PublicUrl must be an https origin, such as https://agents.example.com:8444.")
             .Validate(o => o.MaxConnections > 0, "Agents:MaxConnections must be at least 1.")
+            .Validate(o => o.MaxPendingConnections is null or > 0 && o.PendingLimit <= o.MaxConnections,
+                "Agents:MaxPendingConnections must be at least 1 and at most Agents:MaxConnections.")
+            .Validate(o => o.MaxPendingConnectionsPerAddress is null or > 0 && o.PendingPerAddressLimit <= o.PendingLimit,
+                "Agents:MaxPendingConnectionsPerAddress must be at least 1 and at most Agents:MaxPendingConnections.")
             .ValidateOnStart();
         services.AddSingleton<AgentsEndpoint>();
         services.AddOptions<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>()

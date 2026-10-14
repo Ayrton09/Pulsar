@@ -182,6 +182,21 @@ until you update them).
   it in `appsettings.Production.json`: `"Agents": { "PublicUrl": "https://panel.example.com:9444" }`.
 - `"Agents": { "MaxConnections": 1000 }` (the default, about four per node) caps the connections the agents' port holds
   at once, so a flood of handshakes cannot take the panel's resources: raise it for more than about 250 nodes.
+- Within that cap, connections that have not signed in yet (a TLS handshake, an agent signing in or enrolling, anyone
+  else's connection) have smaller budgets: `"MaxPendingConnections"` for the whole port (by default a quarter of
+  `MaxConnections`, 250) and `"MaxPendingConnectionsPerAddress"` from one address, an IPv4 address or an IPv6 /64 (20 by
+  default). A connection has 5 seconds for its TLS handshake and 30 seconds to sign in, or it is closed. A connected
+  agent's hub, its file transfers and its key rotation sign in with their first request and leave these budgets; a
+  sign-in holds a connection for a second or two. Nodes behind one NAT address share the per-address budget: 20 lets
+  them sign in about ten at a time and the others retry within seconds. Raise it (up to `MaxPendingConnections`) for
+  a site with hundreds of nodes behind one address that restart together. The panel refuses to start with a budget
+  below 1 or above the one it belongs to.
+- What a flood of connections can still do: one address holds at most 20 places, for 30 seconds at most each, so it
+  delays no one. Many addresses together (a botnet, or one network with many IPv6 /64s) can fill the 250 places for as
+  long as they keep it up, and agents then wait to sign in. Connected agents keep working until their session ends (at
+  most 15 minutes), then have to sign in like the others. While client certificates are not required, an agent that
+  cannot sign in on the agents' port signs in at the main address instead; once they are required, it keeps retrying
+  the agents' port. The panel's log says how many connections it closed, at most once a minute.
 - On a panel installed before, add the endpoint to `C:\Program Files\Pulsar\Panel\appsettings.Production.json`
   with the same certificate as `Https`, open the port, and restart the panel:
 

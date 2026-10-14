@@ -50,6 +50,10 @@ internal sealed partial class AgentAuthenticationHandler(
             return AuthenticateResult.Fail("The agent session does not match this connection's client certificate.");
         }
 
+        // A connection of the agents' endpoint that carries a node's session leaves the budgets and the deadline of
+        // connections not signed in (AgentsConnectionLimit).
+        Context.Features.Get<AgentsEndpointConnection>()?.Authenticated();
+
         var identity = new ClaimsIdentity(
         [
             new Claim(NodeIdClaim, session.NodeId.ToString()),

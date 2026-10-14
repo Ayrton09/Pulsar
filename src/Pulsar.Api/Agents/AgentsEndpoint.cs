@@ -1,6 +1,9 @@
+using System.Buffers.Binary;
+using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Connections.Features;
 using Microsoft.AspNetCore.Server.Kestrel;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Options;
@@ -33,6 +36,30 @@ public sealed class AgentsOptions
     /// </summary>
     public int MaxConnections { get; set; } = 1000;
 
+    /// <summary>
+    /// The most of those that have not presented an agent session yet (handshakes, sign-ins, enrollments, and whatever
+    /// never signs in): a quarter of <see cref="MaxConnections"/> unless set. An agent holds one for a moment at each
+    /// sign-in and one until its hub's first request; the rest of the endpoint is left to signed-in agents.
+    /// </summary>
+    public int? MaxPendingConnections { get; set; }
+
+    /// <summary>
+    /// The most of those from one client address (an IPv4 address, an IPv6 /64): 20 unless set, and never more than
+    /// <see cref="MaxPendingConnections"/>. Nodes behind one NAT share it, a sign-in at a time each.
+    /// </summary>
+    public int? MaxPendingConnectionsPerAddress { get; set; }
+
+    internal int PendingLimit => MaxPendingConnections ?? Math.Max(1, MaxConnections / 4);
+
+    internal int PendingPerAddressLimit => MaxPendingConnectionsPerAddress ?? Math.Min(20, PendingLimit);
+
+    /// <summary>
+    /// How long a connection has, from its arrival, to present an agent session before it is closed: an agent's sign-in
+    /// takes a second or two, and its hub, transfers and rotation present their session in their first request. Not a
+    /// setting (tests shorten it).
+    /// </summary>
+    internal TimeSpan SignInDeadline { get; set; } = TimeSpan.FromSeconds(30);
+
     internal static bool IsValidUrl(string? url) =>
         url is null || (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
             && uri.AbsolutePath == "/" && uri.Query.Length == 0 && uri.Fragment.Length == 0 && uri.UserInfo.Length == 0);
@@ -49,7 +76,13 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
 {
     public const string Name = "Agents";
 
+    /// <summary>The TLS handshake's time on the endpoint, from the connection's arrival (an agent's takes well under a second).</summary>
+    public static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(5);
+
     private int _port;
+
+    /// <summary>The connection limit of the endpoint as Kestrel last set it up.</summary>
+    internal AgentsConnectionLimit? ConnectionLimit { get; private set; }
 
     /// <summary>The endpoint is configured and Kestrel set it up (a configuration reload can remove it).</summary>
     public bool IsConfigured => Volatile.Read(ref _port) != 0 && configuration.GetSection($"Kestrel:Endpoints:{Name}").Exists();
@@ -101,8 +134,12 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
         endpoint.HttpsOptions.AllowAnyClientCertificate();
         endpoint.HttpsOptions.CheckCertificateRevocation = false;
         endpoint.HttpsOptions.OnAuthenticate = (_, ssl) => ssl.CertificateChainPolicy = ClientChainPolicy();
+        // Half Kestrel's 10 s: a connection that sends nothing holds a place for less.
+        endpoint.HttpsOptions.HandshakeTimeout = HandshakeTimeout;
         // Before TLS (Kestrel adds its HTTPS middleware after this configuration), which is where a connection costs.
-        endpoint.ListenOptions.Use(new AgentsConnectionLimit(options.Value.MaxConnections, logger, clock).Wrap);
+        var limit = new AgentsConnectionLimit(options.Value, logger, clock);
+        ConnectionLimit = limit;
+        endpoint.ListenOptions.Use(limit.Wrap);
         endpoint.ListenOptions.Use(next => connection =>
         {
             connection.Features.Set(AgentsEndpointFeature.Instance);
@@ -146,53 +183,311 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
 }
 
 /// <summary>
-/// At most a number of connections at once on the agents' endpoint: one more is closed before anything is read from it.
-/// Refusals are logged at most once a minute, with how many there were.
+/// The connections the agents' endpoint holds at once (docs/architecture/08, T31), counted before anything is read from
+/// them: at most <c>Agents:MaxConnections</c>, and of those that have not presented an agent session yet at most
+/// <c>Agents:MaxPendingConnections</c>, <c>Agents:MaxPendingConnectionsPerAddress</c> from one address. One more is closed
+/// at once. One not signed in by <see cref="AgentsOptions.SignInDeadline"/> is asked to close, as Kestrel closes an idle
+/// keep-alive connection (after the request in progress), and aborted <see cref="CloseGrace"/> later if it is still open
+/// and not signed in. Refusals and timeouts are logged at most once a minute, with how many there were.
 /// </summary>
-internal sealed partial class AgentsConnectionLimit(int max, ILogger logger, TimeProvider clock)
+internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogger logger, TimeProvider clock)
 {
+    /// <summary>What a connection asked to close at its deadline has to finish the request in progress.</summary>
+    public static readonly TimeSpan CloseGrace = TimeSpan.FromSeconds(5);
+
     private static readonly TimeSpan s_logInterval = TimeSpan.FromMinutes(1);
 
+    private readonly int _max = options.MaxConnections;
+    private readonly int _maxPending = options.PendingLimit;
+    private readonly int _maxPerAddress = options.PendingPerAddressLimit;
+    private readonly TimeSpan _deadline = options.SignInDeadline;
+    private readonly Lock _lock = new();
+    private readonly Dictionary<ClientAddress, int> _pendingByAddress = [];
     private int _open;
-    private int _refused;
+    private int _pending;
+    private int _refusedFull;
+    private int _refusedPending;
+    private int _refusedAddress;
+    private int _timedOut;
     private long _nextLog = long.MinValue;
 
     /// <summary>The connections held now.</summary>
-    public int Open => Volatile.Read(ref _open);
+    public int Open
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _open;
+            }
+        }
+    }
+
+    /// <summary>Of those, the ones not signed in yet.</summary>
+    public int Pending
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _pending;
+            }
+        }
+    }
+
+    /// <summary>The addresses those come from.</summary>
+    public int Addresses
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _pendingByAddress.Count;
+            }
+        }
+    }
 
     public ConnectionDelegate Wrap(ConnectionDelegate next) => async connection =>
     {
-        if (Interlocked.Increment(ref _open) > max)
+        var address = ClientAddress.Of(connection.RemoteEndPoint);
+        if (!TryOpen(address))
         {
-            Interlocked.Decrement(ref _open);
-            Refused();
             return;
         }
 
-        try
-        {
-            await next(connection);
-        }
-        finally
-        {
-            Interlocked.Decrement(ref _open);
-        }
+        using var counted = new AgentsEndpointConnection(this, connection, address);
+        counted.StartDeadline(clock, _deadline);
+        connection.Features.Set(counted);
+        await next(connection);
     };
 
-    private void Refused()
+    private bool TryOpen(ClientAddress? address)
     {
-        Interlocked.Increment(ref _refused);
+        lock (_lock)
+        {
+            var fromAddress = address is { } key ? _pendingByAddress.GetValueOrDefault(key) : 0;
+            if (_open >= _max)
+            {
+                _refusedFull++;
+            }
+            else if (_pending >= _maxPending)
+            {
+                _refusedPending++;
+            }
+            else if (fromAddress >= _maxPerAddress)
+            {
+                _refusedAddress++;
+            }
+            else
+            {
+                _open++;
+                _pending++;
+                if (address is { } added)
+                {
+                    _pendingByAddress[added] = fromAddress + 1;
+                }
+
+                return true;
+            }
+        }
+
+        Report();
+        return false;
+    }
+
+    /// <summary>A connection presented an agent session: it leaves the budgets of those not signed in.</summary>
+    internal void SignedIn(ClientAddress? address)
+    {
+        lock (_lock)
+        {
+            LeavePending(address);
+        }
+    }
+
+    /// <summary>A connection ended, <paramref name="pending"/> when it never signed in.</summary>
+    internal void Closed(ClientAddress? address, bool pending)
+    {
+        lock (_lock)
+        {
+            _open--;
+            if (pending)
+            {
+                LeavePending(address);
+            }
+        }
+    }
+
+    internal void TimedOut()
+    {
+        lock (_lock)
+        {
+            _timedOut++;
+        }
+
+        Report();
+    }
+
+    private void LeavePending(ClientAddress? address)
+    {
+        _pending--;
+        if (address is { } key)
+        {
+            var count = _pendingByAddress[key] - 1;
+            if (count == 0)
+            {
+                _pendingByAddress.Remove(key);
+            }
+            else
+            {
+                _pendingByAddress[key] = count;
+            }
+        }
+    }
+
+    private void Report()
+    {
         var now = clock.GetUtcNow().UtcTicks;
         var next = Interlocked.Read(ref _nextLog);
         if (now >= next && Interlocked.CompareExchange(ref _nextLog, now + s_logInterval.Ticks, next) == next)
         {
-            LogRefused(Interlocked.Exchange(ref _refused, 0), max);
+            int full, pending, address, timedOut;
+            lock (_lock)
+            {
+                (full, pending, address, timedOut) = (_refusedFull, _refusedPending, _refusedAddress, _timedOut);
+                _refusedFull = _refusedPending = _refusedAddress = _timedOut = 0;
+            }
+
+            LogClosed(full + pending + address, full, pending, address, timedOut, (int)_deadline.TotalSeconds);
         }
     }
 
     [LoggerMessage(Level = LogLevel.Warning,
-        Message = "The agents' endpoint closed {Refused} connection(s): it holds {Max} at once (Agents:MaxConnections)")]
-    private partial void LogRefused(int refused, int max);
+        Message = "The agents' endpoint closed {Refused} connection(s) on arrival ({Full} over Agents:MaxConnections, "
+            + "{OverPending} over Agents:MaxPendingConnections, {OverAddress} over Agents:MaxPendingConnectionsPerAddress) "
+            + "and {TimedOut} that presented no agent session within {Deadline} s")]
+    private partial void LogClosed(int refused, int full, int overPending, int overAddress, int timedOut, int deadline);
+}
+
+/// <summary>
+/// Where connections not signed in are counted together: an IPv4 address (also when mapped into IPv6), or the /64 of an
+/// IPv6 address, the least one host or one home network has.
+/// </summary>
+internal readonly record struct ClientAddress(bool IPv6, ulong Bits)
+{
+    public static ClientAddress? Of(EndPoint? endpoint)
+    {
+        if (endpoint is not IPEndPoint { Address: var address })
+        {
+            return null;
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        Span<byte> bytes = stackalloc byte[16];
+        if (!address.TryWriteBytes(bytes, out var written))
+        {
+            return null;
+        }
+
+        return written == 4
+            ? new ClientAddress(false, BinaryPrimitives.ReadUInt32BigEndian(bytes))
+            : new ClientAddress(true, BinaryPrimitives.ReadUInt64BigEndian(bytes));
+    }
+}
+
+/// <summary>
+/// A connection the agents' endpoint counts, a connection feature its requests see: not signed in until a request on it
+/// presents a valid agent session (<see cref="AgentAuthenticationHandler"/>), then never timed out. Challenges, tokens
+/// and enrollments do not sign a connection in: they are what a stranger can send.
+/// </summary>
+internal sealed class AgentsEndpointConnection(AgentsConnectionLimit limit, ConnectionContext connection, ClientAddress? address) : IDisposable
+{
+    private readonly Lock _lock = new();
+    private ITimer? _deadline;
+    private State _state;
+    private bool _askedToClose;
+
+    private enum State
+    {
+        Pending,
+        SignedIn,
+        Closed,
+    }
+
+    /// <summary>A request on the connection presented a valid agent session.</summary>
+    public void Authenticated()
+    {
+        lock (_lock)
+        {
+            if (_state != State.Pending)
+            {
+                return;
+            }
+
+            _state = State.SignedIn;
+            _deadline?.Dispose();
+        }
+
+        limit.SignedIn(address);
+    }
+
+    internal void StartDeadline(TimeProvider clock, TimeSpan deadline)
+    {
+        lock (_lock)
+        {
+            _deadline = clock.CreateTimer(static state => ((AgentsEndpointConnection)state!).Expire(), this, deadline, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    /// <summary>The connection ended.</summary>
+    public void Dispose()
+    {
+        bool pending;
+        lock (_lock)
+        {
+            if (_state == State.Closed)
+            {
+                return;
+            }
+
+            pending = _state == State.Pending;
+            _state = State.Closed;
+            _deadline?.Dispose();
+        }
+
+        limit.Closed(address, pending);
+    }
+
+    private void Expire()
+    {
+        bool abort;
+        lock (_lock)
+        {
+            if (_state != State.Pending)
+            {
+                return;
+            }
+
+            abort = _askedToClose;
+            if (!abort)
+            {
+                _askedToClose = true;
+                _deadline!.Change(AgentsConnectionLimit.CloseGrace, Timeout.InfiniteTimeSpan);
+            }
+        }
+
+        if (abort)
+        {
+            connection.Abort(new ConnectionAbortedException("No agent session within the endpoint's deadline."));
+            return;
+        }
+
+        limit.TimedOut();
+        connection.Features.Get<IConnectionLifetimeNotificationFeature>()?.RequestClose();
+    }
 }
 
 internal static class AgentsEndpointExtensions
