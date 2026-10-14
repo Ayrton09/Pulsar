@@ -368,7 +368,10 @@ public sealed partial class AgentConnection(
                 _key, newKey, cancellationToken);
             lock (_configLock)
             {
-                SaveConfig(_config with { PendingRotation = new PendingRotation(newKey.Reference, credentialId, clock.GetUtcNow()) });
+                SaveConfig(_config with
+                {
+                    PendingRotation = new PendingRotation(newKey.Reference, credentialId, clock.GetUtcNow(), requested || stale is { Requested: true }),
+                });
                 saved = true;
             }
 
@@ -511,6 +514,12 @@ public sealed partial class AgentConnection(
         lock (_configLock)
         {
             SaveConfig(_config with { PendingRotation = null });
+
+            // A rotation the panel asked for stays asked for until one completes: the next one starts after the delay.
+            if (pending.Requested)
+            {
+                _rotationRequested.TrySetResult();
+            }
         }
     }
 
@@ -735,7 +744,7 @@ public sealed partial class AgentConnection(
             var hello = await connection.InvokeAsync<HelloAccepted>(nameof(IAgentHub.Hello),
                 new AgentHello(AgentInfo.Version, AgentProtocol.CurrentVersion, [.. supported],
                     system.GetInventory(config.ServersRootOrDefault(configs.Paths)), [.. config.PanelKeys.Select(k => k.KeyId)],
-                    servers?.Snapshots() ?? [], servers?.OperationsInFlight() ?? []),
+                    servers?.Snapshots() ?? [], servers?.OperationsInFlight() ?? [], CachedSteamLogins()),
                 deadline.Token);
 
             // Hello's answer is not signed: its time is not the panel's clock (the grant's is).
@@ -748,7 +757,6 @@ public sealed partial class AgentConnection(
             LogConnected(grant.SessionId, verifier.PanelClockOffset);
             // Consoles browsers were already watching: their output resumes where the panel's copy ends.
             servers?.SubscribeConsoles(hello.ConsoleSubscriptions ?? []);
-            ForgetDeletedSteamAccounts(hello.SteamAccountIds);
             await _channel.AttachAsync(connection, new PanelHttp(transport, panel, token.AccessToken, certificate), deadline.Token);
             var previousCertificate = _sessionCertificate;
             _sessionPanel = panel;
@@ -773,32 +781,26 @@ public sealed partial class AgentConnection(
         }
     }
 
-    /// <summary>Steam accounts deleted in the panel while this node was away: their cached logins go.</summary>
-    private void ForgetDeletedSteamAccounts(IReadOnlyList<Guid>? known)
+    /// <summary>
+    /// The Steam accounts whose logins this agent cached, for Hello: the panel answers with a signed
+    /// <see cref="ForgetSteamLoginCommand"/> for each one deleted while the agent was away (Hello's answer is not signed,
+    /// so the agent deletes nothing on what it says).
+    /// </summary>
+    private IReadOnlyList<Guid>? CachedSteamLogins()
     {
-        if (steamLogins is null || known is null)
-        {
-            return;
-        }
-
         try
         {
-            if (steamLogins.ForgetAllBut([.. known]) is > 0 and var forgotten)
-            {
-                LogSteamLoginsForgotten(forgotten);
-            }
+            return steamLogins?.CachedAccounts(AgentHello.MaxCachedSteamLogins);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            LogSteamLoginsNotForgotten(ex.Message);
+            LogSteamLoginsNotListed(ex.Message);
+            return null;
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Forgot the cached logins of {Count} Steam account(s) the panel no longer has")]
-    private partial void LogSteamLoginsForgotten(int count);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The cached logins of Steam accounts the panel no longer has could not be deleted: {Reason}")]
-    private partial void LogSteamLoginsNotForgotten(string reason);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The cached Steam logins could not be listed for the panel: {Reason}")]
+    private partial void LogSteamLoginsNotListed(string reason);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "This agent is not enrolled ({ConfigFile} not found). Run 'PulsarAgent enroll' first")]
     private partial void LogNotEnrolled(string configFile);

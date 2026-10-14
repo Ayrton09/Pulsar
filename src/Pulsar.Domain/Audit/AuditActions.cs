@@ -48,6 +48,7 @@ public static class AuditActions
         public const string AllocationsCreated = "node.allocations_created";
         public const string AllocationDeleted = "node.allocation_deleted";
         public const string Approved = "node.approved";
+        public const string PanelKeysPinned = "node.panel_keys_pinned";
     }
 
     /// <summary>Reusable enrollment tokens (Phase 14).</summary>

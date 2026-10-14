@@ -76,26 +76,18 @@ public sealed class SteamLoginStore(AgentPaths paths, IStateProtector protector)
         return true;
     }
 
-    /// <summary>Deletes the cached logins of every account but <paramref name="known"/> (the panel's); returns how many.</summary>
-    public int ForgetAllBut(IReadOnlyCollection<Guid> known)
+    /// <summary>The accounts whose logins are cached here, <paramref name="max"/> at most.</summary>
+    public IReadOnlyList<Guid> CachedAccounts(int max)
     {
-        ArgumentNullException.ThrowIfNull(known);
         if (!Directory.Exists(paths.SteamLoginsDirectory))
         {
-            return 0;
+            return [];
         }
 
-        var forgotten = 0;
-        foreach (var file in Directory.EnumerateFiles(paths.SteamLoginsDirectory, "*.bin"))
-        {
-            if (Guid.TryParseExact(Path.GetFileNameWithoutExtension(file), "N", out var accountId) && !known.Contains(accountId))
-            {
-                File.Delete(file);
-                forgotten++;
-            }
-        }
-
-        return forgotten;
+        return [.. Directory.EnumerateFiles(paths.SteamLoginsDirectory, "*.bin")
+            .Select(file => Guid.TryParseExact(Path.GetFileNameWithoutExtension(file), "N", out var accountId) ? accountId : Guid.Empty)
+            .Where(accountId => accountId != Guid.Empty)
+            .Take(max)];
     }
 
     private static byte[] Stamp(SteamLogin login) => SHA256.HashData(Encoding.UTF8.GetBytes($"pulsar-steam-login\n{login.UserName}\n{login.Password}"));

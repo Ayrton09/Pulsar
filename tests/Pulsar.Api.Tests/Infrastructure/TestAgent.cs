@@ -114,11 +114,12 @@ public sealed class TestAgent : IAsyncDisposable
 
     /// <param name="nonce">Sent with the request, signed back in a refusal that names the agents' address.</param>
     /// <param name="host">The Host header, as a proxy in front of the panel could set it.</param>
-    public async Task<HttpResponseMessage> PostChallengeAsync(byte[]? nonce = null, string? host = null)
+    /// <param name="pinned">The panel key ids the request says the agent pins.</param>
+    public async Task<HttpResponseMessage> PostChallengeAsync(byte[]? nonce = null, string? host = null, IReadOnlyList<string>? pinned = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, AgentProtocol.ChallengePath)
         {
-            Content = JsonContent.Create(new ChallengeRequest(NodeId, CredentialId, nonce), options: ProtocolJson.Options),
+            Content = JsonContent.Create(new ChallengeRequest(NodeId, CredentialId, nonce, pinned), options: ProtocolJson.Options),
         };
         if (host is not null)
         {

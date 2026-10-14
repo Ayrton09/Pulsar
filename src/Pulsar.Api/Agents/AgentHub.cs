@@ -3,11 +3,13 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Realtime;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Audit;
 using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Realtime;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
+using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
 
@@ -29,6 +31,7 @@ internal sealed partial class AgentHub(
     IHubContext<PanelHub, IPanelClient> browsers,
     IServiceScopeFactory scopes,
     AgentsEndpoint agents,
+    IAuditLog audit,
     TimeProvider clock,
     ILogger<AgentHub> logger) : Hub, IAgentHub
 {
@@ -66,6 +69,14 @@ internal sealed partial class AgentHub(
             throw new HubException("Unsupported agent protocol version; update the agent.");
         }
 
+        // Whoever holds a session token can say Hello: what it says it pins is bounded, as at sign-in, and audited when it changes.
+        if (hello.PinnedPanelKeys is not null && !AgentProtocol.ArePinnedPanelKeyIds(hello.PinnedPanelKeys))
+        {
+            LogConnectionRejected(nodeId, "malformed pinned panel key ids");
+            Context.Abort();
+            throw new HubException("The panel keys this agent pins are not well-formed.");
+        }
+
         var credentialId = principal.CredentialId();
         var session = sessions.Find(principal.SessionId());
         if (session is null || session.NodeId != nodeId || session.CredentialId != credentialId)
@@ -90,6 +101,14 @@ internal sealed partial class AgentHub(
         var canMove = hello.Capabilities.Contains(AgentCapabilities.UseAgentsAddress, StringComparer.Ordinal);
         var now = clock.GetUtcNow();
         var inventory = AgentAccess.ToSnapshot(hello.Inventory, hello.AgentVersion, hello.ProtocolVersion);
+        if (hello.PinnedPanelKeys is { } said && !(node.PinnedPanelKeys ?? []).SequenceEqual(said.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal),
+            StringComparer.Ordinal))
+        {
+            audit.Record(AuditActions.Node.PanelKeysPinned, AuditOutcome.Success, AgentAccess.NodeActor(node),
+                    new { before = node.PinnedPanelKeys, after = said, session = session.SessionId })
+                .WithNode(nodeId).WithTarget("node", nodeId.ToString());
+        }
+
         for (var attempt = 0; ; attempt++)
         {
             node.Connected(inventory, now);
@@ -141,12 +160,35 @@ internal sealed partial class AgentHub(
             _ = Task.Run(() => UseAgentsAddressAsync(nodeId, address));
         }
 
-        // Consoles browsers were watching (before a reconnect or a panel restart) resume where the panel's copy ends. The
-        // Steam accounts the panel has: the agent forgets the cached logins of those deleted while it was away.
-        var steamAccounts = hello.Capabilities.Contains(AgentCapabilities.ForgetSteamLogin, StringComparer.Ordinal)
-            ? (await db.SteamAccounts.AsNoTracking().Select(a => a.Id).ToListAsync(Context.ConnectionAborted)).Select(id => id.Value).ToList()
-            : null;
-        return new HelloAccepted(now, panelKeys, consoles.SubscriptionsFor(nodeId), steamAccounts);
+        // The cached logins of Steam accounts deleted while the agent was away: forgotten by signed commands (this answer is
+        // not signed, so the agent acts on no list in it). Not awaited either.
+        if (hello.CachedSteamLogins is { Count: > 0 } cached && hello.Capabilities.Contains(AgentCapabilities.ForgetSteamLogin, StringComparer.Ordinal))
+        {
+            var known = (await db.SteamAccounts.AsNoTracking().Select(a => a.Id).ToListAsync(Context.ConnectionAborted)).Select(id => id.Value).ToHashSet();
+            var deleted = cached.Take(AgentHello.MaxCachedSteamLogins).Distinct().Where(id => !known.Contains(id)).ToList();
+            if (deleted.Count > 0)
+            {
+                _ = Task.Run(() => ForgetSteamLoginsAsync(nodeId, deleted));
+            }
+        }
+
+        // Consoles browsers were watching (before a reconnect or a panel restart) resume where the panel's copy ends.
+        return new HelloAccepted(now, panelKeys, consoles.SubscriptionsFor(nodeId));
+    }
+
+    private async Task ForgetSteamLoginsAsync(NodeId nodeId, IReadOnlyList<Guid> accounts)
+    {
+        try
+        {
+            foreach (var account in accounts)
+            {
+                await connections.SendAsync(nodeId, new ForgetSteamLoginCommand(account), null, CancellationToken.None);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogSteamLoginsNotForgotten(ex, nodeId);
+        }
     }
 
     private async Task UpdatePanelKeysAsync(NodeId nodeId)
@@ -370,4 +412,7 @@ internal sealed partial class AgentHub(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not send the agents' address to node {NodeId}")]
     private partial void LogAgentsAddressFailed(Exception exception, NodeId nodeId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not tell node {NodeId} to forget the cached logins of deleted Steam accounts")]
+    private partial void LogSteamLoginsNotForgotten(Exception exception, NodeId nodeId);
 }

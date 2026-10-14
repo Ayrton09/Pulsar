@@ -320,7 +320,8 @@
         "credential_rotated": "Clave del nodo rotada",
         "allocations_created": "Agregó asignaciones",
         "allocation_deleted": "Quitó una asignación",
-        "approved": "Aprobó un nodo"
+        "approved": "Aprobó un nodo",
+        "panel_keys_pinned": "El nodo cambió las claves del panel en las que confía"
       },
       "panel_key": {
         "rotated": "Rotó la clave de firma del panel",

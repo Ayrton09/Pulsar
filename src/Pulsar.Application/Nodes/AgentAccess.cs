@@ -258,6 +258,12 @@ public sealed partial class AgentAccess(
             return await RefuseAsync(nodeId, "challenge_nonce_too_long", request.CredentialId, cancellationToken);
         }
 
+        if (request.PinnedPanelKeys is not null && !AgentProtocol.ArePinnedPanelKeyIds(request.PinnedPanelKeys))
+        {
+            LogAuthenticationRejected(nodeId, "pinned panel key ids malformed");
+            return await RefuseAsync(nodeId, "challenge_pinned_keys_invalid", request.CredentialId, cancellationToken);
+        }
+
         // Pending credentials too: authenticating with one completes a rotation.
         var credential = await db.NodeCredentials.Where(c => c.Id == request.CredentialId && c.NodeId == nodeId
                 && (c.Status == NodeCredentialStatus.Active || c.Status == NodeCredentialStatus.Pending)
@@ -281,7 +287,7 @@ public sealed partial class AgentAccess(
             return refused;
         }
 
-        var challenge = challenges.Issue(nodeId, request.CredentialId, panelOrigin, request.Nonce);
+        var challenge = challenges.Issue(nodeId, request.CredentialId, panelOrigin, request.Nonce, request.PinnedPanelKeys);
         return new ChallengeResponse(challenge.ChallengeId, challenge.Nonce, challenge.PanelOrigin);
     }
 
@@ -408,7 +414,7 @@ public sealed partial class AgentAccess(
             return AgentErrors.CertificateRequired;
         }
 
-        return new TokenResponse(token, session.SessionId, session.ExpiresAt, await GrantAsync(node, session, challenge.AgentNonce, cancellationToken));
+        return new TokenResponse(token, session.SessionId, session.ExpiresAt, await GrantAsync(node, session, challenge, cancellationToken));
     }
 
     /// <summary>
@@ -417,16 +423,24 @@ public sealed partial class AgentAccess(
     /// on the way cannot forge, and which the agent asks for before it gives up a pending key ("Rotation"). None without
     /// a nonce (an older agent) or a pinned key (an agent that missed a whole panel key rotation).
     /// </summary>
-    private async Task<SignedMessage?> GrantAsync(Node node, AgentSession session, byte[]? nonce, CancellationToken cancellationToken)
+    private async Task<SignedMessage?> GrantAsync(Node node, AgentSession session, AgentChallengeStore.PendingChallenge challenge,
+        CancellationToken cancellationToken)
     {
-        if (nonce is null)
+        if (challenge.AgentNonce is not { } nonce)
         {
             return null;
         }
 
+        // The keys the agent named in this sign-in's challenge request, never the node's stored pins: a Hello writes those,
+        // and whoever holds a session token can say Hello.
         var grant = new SessionGrant(node.Id.Value, session.CredentialId, session.SessionId, session.ExpiresAt, nonce, clock.GetUtcNow());
-        return await keys.SignForAsync(AgentProtocol.Purposes.SessionGrant, ProtocolJson.Serialize(grant),
-            connections.Find(node.Id)?.PinnedPanelKeys ?? node.PinnedPanelKeys, cancellationToken);
+        var signed = await keys.SignForAsync(AgentProtocol.Purposes.SessionGrant, ProtocolJson.Serialize(grant), challenge.PinnedPanelKeys, cancellationToken);
+        if (signed is null)
+        {
+            LogNoGrant(node.Id);
+        }
+
+        return signed;
     }
 
     /// <summary>
@@ -804,6 +818,10 @@ public sealed partial class AgentAccess(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} signed in without a client certificate, which this panel requires: sent to the agents' address")]
     private partial void LogSentToAgentsAddress(NodeId nodeId);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Node {NodeId} signed in pinning none of the panel's keys: its session has no grant, which its agent refuses (it missed a whole panel key rotation; enroll it again)")]
+    private partial void LogNoGrant(NodeId nodeId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Credential rotation rejected for node {NodeId}: {Reason}")]
     private partial void LogRotationRejected(NodeId nodeId, string reason);

@@ -27,6 +27,26 @@ public static class AgentProtocol
 
     public static string Transfer(string ticket) => TransferPath.Replace("{ticket}", Uri.EscapeDataString(ticket), StringComparison.Ordinal);
 
+    /// <summary>
+    /// The most panel key ids an agent says it pins (a sign-in, a Hello). A panel holds two keys at most (the active one and
+    /// one being retired); each id is a <see cref="ProtocolCrypto.Fingerprint"/>.
+    /// </summary>
+    public const int MaxPinnedPanelKeys = 8;
+
+    /// <summary>The longest panel key id an agent may name (a fingerprint is 50 characters).</summary>
+    public const int MaxPanelKeyIdLength = 64;
+
+    /// <summary>
+    /// Whether <paramref name="keyIds"/> is a list of pinned panel key ids an agent may send: one to
+    /// <see cref="MaxPinnedPanelKeys"/> ids, each <c>sha256:</c> and base64url, <see cref="MaxPanelKeyIdLength"/> at most.
+    /// </summary>
+    public static bool ArePinnedPanelKeyIds(IReadOnlyList<string>? keyIds) =>
+        keyIds is { Count: > 0 and <= MaxPinnedPanelKeys } && keyIds.All(id => id is { Length: > 7 and <= MaxPanelKeyIdLength }
+            && id.StartsWith("sha256:", StringComparison.Ordinal) && id.AsSpan(7).IndexOfAnyExcept(s_base64Url) < 0);
+
+    private static readonly System.Buffers.SearchValues<char> s_base64Url =
+        System.Buffers.SearchValues.Create("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_");
+
     /// <summary>Largest hub message either side accepts.</summary>
     public const long MaximumMessageSize = 1024 * 1024;
 

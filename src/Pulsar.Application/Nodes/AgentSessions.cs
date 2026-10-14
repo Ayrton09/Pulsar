@@ -165,15 +165,16 @@ public sealed class AgentChallengeStore(TimeProvider clock)
     /// a pending key's challenge issued before its own, whatever the clock did.
     /// </param>
     /// <param name="AgentNonce">What the agent sent with the challenge request, signed back in the session's grant.</param>
+    /// <param name="PinnedPanelKeys">The panel key ids the agent said it pins: the grant is signed with one of them.</param>
     public sealed record PendingChallenge(Guid ChallengeId, NodeId NodeId, Guid CredentialId, byte[] Nonce, string PanelOrigin, DateTimeOffset IssuedAt,
-        DateTimeOffset ExpiresAt, byte[]? AgentNonce = null);
+        DateTimeOffset ExpiresAt, byte[]? AgentNonce = null, IReadOnlyList<string>? PinnedPanelKeys = null);
 
-    public PendingChallenge Issue(NodeId node, Guid credentialId, string panelOrigin, byte[]? agentNonce = null)
+    public PendingChallenge Issue(NodeId node, Guid credentialId, string panelOrigin, byte[]? agentNonce = null, IReadOnlyList<string>? pinnedPanelKeys = null)
     {
         Prune();
         var now = clock.GetUtcNow();
         var challenge = new PendingChallenge(Guid.CreateVersion7(), node, credentialId, RandomNumberGenerator.GetBytes(32), panelOrigin, NextIssuedAt(now),
-            now + Lifetime, agentNonce);
+            now + Lifetime, agentNonce, pinnedPanelKeys is null ? null : [.. pinnedPanelKeys]);
         _pending[challenge.ChallengeId] = challenge;
         return challenge;
     }

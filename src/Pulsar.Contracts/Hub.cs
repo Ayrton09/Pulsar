@@ -39,6 +39,10 @@ public interface IAgentClient
 /// </param>
 /// <param name="Servers">The actual state of every server the agent knows (docs/architecture/05, "Reconciliation").</param>
 /// <param name="OperationsInFlight">Operations the agent is still running; any other one the panel thinks is running was interrupted.</param>
+/// <param name="CachedSteamLogins">
+/// The Steam accounts whose logins this agent has cached (at most <see cref="MaxCachedSteamLogins"/>): the panel sends a
+/// signed <see cref="ForgetSteamLoginCommand"/> for each one it no longer has.
+/// </param>
 public sealed record AgentHello(
     string AgentVersion,
     int ProtocolVersion,
@@ -46,7 +50,12 @@ public sealed record AgentHello(
     NodeInventory Inventory,
     IReadOnlyList<string>? PinnedPanelKeys = null,
     IReadOnlyList<ServerSnapshot>? Servers = null,
-    IReadOnlyList<Guid>? OperationsInFlight = null);
+    IReadOnlyList<Guid>? OperationsInFlight = null,
+    IReadOnlyList<Guid>? CachedSteamLogins = null)
+{
+    /// <summary>The most cached Steam logins a Hello names; the panel reads no more.</summary>
+    public const int MaxCachedSteamLogins = 256;
+}
 
 /// <summary><see cref="ServerTime"/> lets the agent detect clock skew (command expiry is a secondary defense).</summary>
 /// <param name="ConsoleSubscriptions">
@@ -54,8 +63,9 @@ public sealed record AgentHello(
 /// <see cref="SubscribeConsoleCommand"/>. Subscriptions end with the connection.
 /// </param>
 /// <param name="SteamAccountIds">
-/// The Steam accounts the panel has, for agents that announce <see cref="AgentCapabilities.ForgetSteamLogin"/> (null
-/// otherwise, and from older panels): the agent forgets the cached logins of any other account, deleted while it was away.
+/// Not sent any more, and ignored by agents: this answer is not signed, and a list from whatever answered in the panel's
+/// place would have made the agent delete its cached logins. The panel now sends signed
+/// <see cref="ForgetSteamLoginCommand"/>s for the logins <see cref="AgentHello.CachedSteamLogins"/> names.
 /// </param>
 public sealed record HelloAccepted(DateTimeOffset ServerTime, IReadOnlyList<PanelKey> PanelKeys,
     IReadOnlyList<ConsoleSubscription>? ConsoleSubscriptions = null, IReadOnlyList<Guid>? SteamAccountIds = null);

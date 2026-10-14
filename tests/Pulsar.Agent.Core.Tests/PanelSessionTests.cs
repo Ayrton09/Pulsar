@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Pulsar.Agent.Core.Commands;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Security;
+using Pulsar.Agent.Core.Steam;
 using Pulsar.Contracts;
 
 namespace Pulsar.Agent.Core.Tests;
@@ -322,8 +323,44 @@ public sealed class PanelSessionTests : IAsyncDisposable
         Assert.Equal(AckStatus.Accepted, ack.Status);
     }
 
+    [Fact]
+    public async Task ARequestedRotationWhosePendingKeyIsGivenUpIsStartedAgain()
+    {
+        // The panel asked for a rotation; it registered a key, then refused it at its sign-in (superseded, expired): the
+        // request stands, and the key is not due by age, so only the request starts the next rotation.
+        var nodeId = Guid.NewGuid();
+        var session = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        _panel.FixedSessionId = session;
+        _panel.AcceptsRotations = true;
+        _panel.ExecuteAfterHello = FakePanel.SignCommand(new CommandEnvelope(AgentProtocol.CurrentVersion, Guid.CreateVersion7(), nodeId, session, 1, now,
+            now.AddMinutes(1), null, null, new RotateCredentialCommand()));
+
+        await StartAsync(new AgentConnectionOptions { RotationRetryDelay = TimeSpan.FromMilliseconds(300), MaxBackoff = TimeSpan.FromSeconds(1) }, nodeId: nodeId);
+
+        await EventuallyAsync(() => _panel.Rotations >= 2, () => $"{_panel.Rotations} rotation(s)");
+    }
+
+    [Fact]
+    public async Task AnUnsignedHelloAnswerCannotMakeTheAgentForgetItsSteamLogins()
+    {
+        // Hello's answer is not signed: an empty list of the panel's Steam accounts in it, from whatever answers on the way,
+        // must not delete the logins SteamCMD cached. The agent names them in its Hello instead, for the panel's signed commands.
+        var steamLogins = new SteamLoginStore(new AgentPaths(_root), new PlainStateProtector());
+        var login = new SteamLogin(Guid.NewGuid(), "pulsar_cached", "secret");
+        steamLogins.Save(login, "cached login"u8.ToArray());
+        _panel.HelloSteamAccountIds = [];
+
+        await StartAsync(new AgentConnectionOptions { MaxBackoff = TimeSpan.FromSeconds(1) }, steamLogins: steamLogins);
+
+        await EventuallyAsync(() => _panel.HelloCachedSteamLogins is not null, () => "no Hello naming the cached logins");
+        Assert.Equal([login.AccountId], _panel.HelloCachedSteamLogins!);
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+        Assert.NotNull(steamLogins.Load(login));
+    }
+
     private async Task StartAsync(AgentConnectionOptions options, PendingRotation? pending = null, string? failSigningOnce = null, Guid? nodeId = null,
-        IReadOnlyList<PanelKey>? panelKeys = null)
+        IReadOnlyList<PanelKey>? panelKeys = null, SteamLoginStore? steamLogins = null)
     {
         var configs = new AgentConfigStore(new AgentPaths(_root));
         var keys = _keys = new MemoryKeys();
@@ -345,7 +382,8 @@ public sealed class PanelSessionTests : IAsyncDisposable
             PendingRotation: pending));
         options.MetricsInterval = TimeSpan.FromMinutes(1);
         _connection = new AgentConnection(configs, keys, new FixedSystem(), _panel, new PanelAuthenticator(_panel, TimeProvider.System), new CredentialRotationClient(_panel),
-            new CommandDispatcher(NullLogger<CommandDispatcher>.Instance), options, TimeProvider.System, new StubLifetime(), NullLoggerFactory.Instance);
+            new CommandDispatcher(NullLogger<CommandDispatcher>.Instance), options, TimeProvider.System, new StubLifetime(), NullLoggerFactory.Instance,
+            steamLogins: steamLogins);
         await _connection.StartAsync(TestContext.Current.CancellationToken);
     }
 
@@ -402,6 +440,8 @@ public sealed class PanelSessionTests : IAsyncDisposable
         private int _challengeCount;
         private int _executed;
         private readonly ConcurrentDictionary<Guid, ChallengeRequest> _challenges = new();
+        private readonly ConcurrentDictionary<Guid, Guid> _registered = new();
+        private Guid _node;
 
         public bool AnswersHello { get; set; } = true;
 
@@ -438,6 +478,15 @@ public sealed class PanelSessionTests : IAsyncDisposable
 
         /// <summary>The credential whose sign-ins <see cref="Forgery"/> applies to; null: all of them.</summary>
         public Guid? ForgedFor { get; set; }
+
+        /// <summary>Rotations are registered (a signed answer), and the keys they register are then refused at their sign-in.</summary>
+        public bool AcceptsRotations { get; set; }
+
+        /// <summary>What Hello's answer says the panel's Steam accounts are (it is not signed).</summary>
+        public IReadOnlyList<Guid>? HelloSteamAccountIds { get; set; }
+
+        /// <summary>The cached Steam logins the last Hello named.</summary>
+        public IReadOnlyList<Guid>? HelloCachedSteamLogins { get; private set; }
 
         /// <summary>Challenges asked for, any credential.</summary>
         public int Challenges => Volatile.Read(ref _challengeCount);
@@ -541,9 +590,15 @@ public sealed class PanelSessionTests : IAsyncDisposable
                         if (type == 1 && message.RootElement.GetProperty("target").GetString() == nameof(IAgentHub.Hello))
                         {
                             Interlocked.Increment(ref _hellos);
+                            if (message.RootElement.GetProperty("arguments")[0].TryGetProperty("cachedSteamLogins", out var cached)
+                                && cached.ValueKind == JsonValueKind.Array)
+                            {
+                                HelloCachedSteamLogins = [.. cached.EnumerateArray().Select(id => id.GetGuid())];
+                            }
+
                             if (AnswersHello && message.RootElement.TryGetProperty("invocationId", out var id))
                             {
-                                var accepted = new HelloAccepted(HelloServerTime ?? DateTimeOffset.UtcNow, []);
+                                var accepted = new HelloAccepted(HelloServerTime ?? DateTimeOffset.UtcNow, [], null, HelloSteamAccountIds);
                                 await SendAsync(JsonSerializer.Serialize(new { type = 3, invocationId = id.GetString(), result = accepted }, ProtocolJson.Options));
                                 if (ExecuteAfterHello is { } command && Interlocked.Exchange(ref _executed, 1) == 0)
                                 {
@@ -589,6 +644,7 @@ public sealed class PanelSessionTests : IAsyncDisposable
                 case AgentProtocol.ChallengePath:
                     var asked = (await request.Content!.ReadFromJsonAsync<ChallengeRequest>(ProtocolJson.Options, cancellationToken))!;
                     Interlocked.Increment(ref _challengeCount);
+                    _node = asked.NodeId;
                     var credential = asked.CredentialId;
                     if (credential == BareUnauthorizedFor)
                     {
@@ -596,7 +652,7 @@ public sealed class PanelSessionTests : IAsyncDisposable
                         return new HttpResponseMessage(HttpStatusCode.Unauthorized);
                     }
 
-                    if ((Activated is { } active && credential != active) || credential == RefusedFor)
+                    if ((Activated is { } active && credential != active) || credential == RefusedFor || _registered.ContainsKey(credential))
                     {
                         return Refused();
                     }
@@ -621,7 +677,16 @@ public sealed class PanelSessionTests : IAsyncDisposable
                 case AgentProtocol.RotateCredentialPath:
                     Interlocked.Increment(ref _rotations);
                     await Task.Delay(100, cancellationToken);
-                    return Refused();
+                    if (!AcceptsRotations)
+                    {
+                        return Refused();
+                    }
+
+                    var rotate = (await request.Content!.ReadFromJsonAsync<RotateCredentialRequest>(ProtocolJson.Options, cancellationToken))!;
+                    var registered = Guid.NewGuid();
+                    _registered[registered] = registered;
+                    return Json(ProtocolCrypto.SignMessage(s_signingKey, Key.KeyId, AgentProtocol.Purposes.RotationResult,
+                        ProtocolJson.Serialize(new CredentialRotation(_node, registered, ProtocolCrypto.Fingerprint(rotate.PublicKey)))));
                 default:
                     return new HttpResponseMessage(HttpStatusCode.NotFound);
             }
