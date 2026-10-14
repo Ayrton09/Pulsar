@@ -566,6 +566,7 @@
       "changed": "The file changed on the server meanwhile.",
       "disk_full": "The node's disk is full.",
       "transfer_failed": "The transfer between the panel and the node did not complete. Try again.",
+      "transfers_busy": "Too many file transfers are running on this node. Try again when one ends.",
       "failed": "The node could not do it: {{detail}}",
       "unsupported": "The node's agent has no file manager. Update the agent.",
       "length_required": "The upload did not say its size.",

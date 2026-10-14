@@ -80,7 +80,7 @@ public sealed class AgentInputHubTests(NotificationApiFactory factory) : IClassF
         await using var agent = await ConnectedTestAgentAsync("input-transfer");
         var transfers = factory.Services.GetRequiredService<FileTransfers>();
         using var content = new MemoryStream();
-        using var upload = transfers.BeginUpload(new NodeId(agent.NodeId), content, 0);
+        using var upload = transfers.BeginUpload(new NodeId(agent.NodeId), null, content, 0)!;
         Assert.NotNull(transfers.ClaimUpload(upload.Ticket, new NodeId(agent.NodeId)));
 
         await agent.Connection!.InvokeAsync(nameof(IAgentHub.TransferCompleted),
@@ -97,7 +97,7 @@ public sealed class AgentInputHubTests(NotificationApiFactory factory) : IClassF
         await using var agent = await ConnectedTestAgentAsync("input-version");
         var transfers = factory.Services.GetRequiredService<FileTransfers>();
         using var content = new MemoryStream();
-        using var upload = transfers.BeginUpload(new NodeId(agent.NodeId), content, 0);
+        using var upload = transfers.BeginUpload(new NodeId(agent.NodeId), null, content, 0)!;
         Assert.NotNull(transfers.ClaimUpload(upload.Ticket, new NodeId(agent.NodeId)));
 
         // A quote ends the ETag's value; the rest would be a header of its own.

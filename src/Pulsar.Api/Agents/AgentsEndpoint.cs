@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Server.Kestrel;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Options;
 using Pulsar.Application.Nodes;
@@ -152,6 +153,8 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
         endpoint.HttpsOptions.OnAuthenticate = (_, ssl) => ssl.CertificateChainPolicy = ClientChainPolicy();
         // Half Kestrel's 10 s: a connection that sends nothing holds a place for less.
         endpoint.HttpsOptions.HandshakeTimeout = HandshakeTimeout;
+        // TCP only, whatever the configuration says: HTTP/3 (QUIC) would reach the panel without the budgets below.
+        endpoint.ListenOptions.Protocols = HttpProtocols.Http1AndHttp2;
         // Before TLS (Kestrel adds its HTTPS middleware after this configuration), which is where a connection costs.
         endpoint.ListenOptions.Use(ConnectionLimit.Wrap);
         endpoint.ListenOptions.Use(next => connection =>

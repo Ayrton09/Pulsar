@@ -566,6 +566,7 @@
       "changed": "El archivo cambió en el servidor mientras tanto.",
       "disk_full": "El disco del nodo está lleno.",
       "transfer_failed": "La transferencia entre el panel y el nodo no terminó. Probá de nuevo.",
+      "transfers_busy": "Hay demasiadas transferencias de archivos en curso en este nodo. Probá de nuevo cuando termine alguna.",
       "failed": "El nodo no pudo hacerlo: {{detail}}",
       "unsupported": "El agente del nodo no tiene gestor de archivos. Actualizá el agente.",
       "length_required": "La subida no indicó su tamaño.",

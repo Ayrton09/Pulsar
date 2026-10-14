@@ -68,7 +68,8 @@ public sealed class AgentsEndpointSessionTests(AgentsEndpointSessionTests.Panel 
         var node = new NodeId(mallory.NodeId);
         await QuietAsync();
 
-        // One session, one key, many connections: two sign in, the third is refused and waits like a stranger's.
+        // One session, one key, many transfer connections: two sign in (the other two places stay for the hub and a
+        // rotation), the third is refused and waits like a stranger's.
         using var first = Holder(mallory.Certificate);
         using var second = Holder(mallory.Certificate);
         using var third = Holder(mallory.Certificate);
@@ -218,8 +219,39 @@ public sealed class AgentsEndpointSessionTests(AgentsEndpointSessionTests.Panel 
             base.ConfigureWebHost(builder);
             builder.UseSetting("Agents:MaxConnections", "8");
             builder.UseSetting("Agents:MaxPendingConnections", "8");
-            builder.UseSetting("Agents:MaxConnectionsPerNode", "2");
+            builder.UseSetting("Agents:MaxConnectionsPerNode", "4");
             builder.ConfigureTestServices(services => services.Configure<AgentsOptions>(o => o.SignInDeadline = TimeSpan.FromSeconds(20)));
+        }
+    }
+}
+
+/// <summary>The agents' endpoint configured with HTTP/3 as well: QUIC would bypass its connection middleware.</summary>
+public sealed class AgentsEndpointProtocolTests(AgentsEndpointProtocolTests.Http3Panel factory) : IClassFixture<AgentsEndpointProtocolTests.Http3Panel>
+{
+    [DatabaseFact]
+    public async Task TheAgentsEndpointNeverListensForQuic()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows() && System.Net.Quic.QuicListener.IsSupported, "QUIC is not available on this machine.");
+        factory.StartServer();
+        var udp = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveUdpListeners();
+
+        // The main endpoint shows that HTTP/3 would listen here; the agents' endpoint stays on TCP, behind its budgets.
+        Assert.Contains(udp, endpoint => endpoint.Port == factory.MainPort);
+        Assert.DoesNotContain(udp, endpoint => endpoint.Port == factory.AgentsPort);
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var certificate = KestrelPanelFactory.UsableCertificate(key);
+        using var agents = new HttpClient(factory.Handler(certificate)) { BaseAddress = factory.AgentsUrl };
+        using var response = await agents.GetAsync(AgentProtocol.PanelIdentityPath.TrimStart('/'), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    public sealed class Http3Panel : KestrelPanelFactory
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.UseSetting("Kestrel:Endpoints:Main:Protocols", "Http1AndHttp2AndHttp3");
+            builder.UseSetting("Kestrel:Endpoints:Agents:Protocols", "Http1AndHttp2AndHttp3");
         }
     }
 }

@@ -181,6 +181,34 @@ public sealed class ServerFileTests(PulsarApiFactory factory) : IClassFixture<Pu
         Assert.Equal(HttpStatusCode.Forbidden, (await viewer.PostAsync($"/api/v1/servers/{server}/files/directories", new FilePathRequest("x"))).StatusCode);
     }
 
+    [DatabaseFact]
+    public async Task ANodesTransfersAreLimitedBeforeTheNodeIsAsked()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "busy");
+        var server = await InstalledServerAsync(admin, agent, "Busy");
+        await WriteAsync(admin, server, "server.cfg", "x");
+        var node = new NodeId(agent.Config!.NodeId);
+        var transfers = factory.Services.GetRequiredService<FileTransfers>();
+        using var session = await admin.GetAsync("/api/v1/auth/session");
+        var adminId = new UserId((await session.Content.ReadFromJsonAsync<Pulsar.Api.Auth.SessionResponse>(AccessScenario.Json, Ct))!.User!.Id);
+
+        // Three transfers of the user on the node (slow ones, say): a fourth is refused before the node hears of it.
+        var held = Enumerable.Range(0, 3).Select(_ => transfers.BeginDownload(node, adminId)!).ToList();
+        await ProblemAsync(await PutAsync(admin, server, "new.cfg", "y"), HttpStatusCode.Conflict, "files.transfers_busy");
+        await ProblemAsync(await admin.GetAsync($"/api/v1/servers/{server}/files/content?path=server.cfg"), HttpStatusCode.Conflict, "files.transfers_busy");
+        Assert.False(File.Exists(Path.Combine(ServerDirectory(agent, server), "new.cfg")));
+        held.ForEach(t => t.Dispose());
+
+        // Everyone's transfers together fill the node's share, which leaves the rest of its connections to its hub.
+        held = Enumerable.Range(0, FileTransferLimits.Default.PerNode).Select(_ => transfers.BeginDownload(node, null)!).ToList();
+        await ProblemAsync(await PutAsync(admin, server, "new.cfg", "y"), HttpStatusCode.Conflict, "files.transfers_busy");
+        held[0].Dispose();
+        await WriteAsync(admin, server, "new.cfg", "y");
+        Assert.Equal("y", (await ReadAsync(admin, server, "new.cfg")).Text);
+        held.ForEach(t => t.Dispose());
+    }
+
     private static async Task<FileListing> ListAsync(PanelClient client, Guid server, string? path)
     {
         using var response = await client.GetAsync($"/api/v1/servers/{server}/files" + (path is null ? "" : $"?path={Uri.EscapeDataString(path)}"));

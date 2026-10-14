@@ -122,7 +122,11 @@ public sealed class ServerFiles(
             return target.Error!;
         }
 
-        var download = transfers.BeginDownload(target.Value.NodeId);
+        if (transfers.BeginDownload(target.Value.NodeId, request.UserId) is not { } download)
+        {
+            return ServerErrors.FileTransfersBusy;
+        }
+
         try
         {
             var ack = await SendAsync(target.Value, new SendFileCommand(id.Value, path, download.Ticket, maxSize ?? long.MaxValue));
@@ -194,9 +198,15 @@ public sealed class ServerFiles(
             return target.Error!;
         }
 
+        // Refused before the node is told: it would hold one more of its connections to the panel for it.
+        if (transfers.BeginUpload(target.Value.NodeId, request.UserId, content, length) is not { } started)
+        {
+            return ServerErrors.FileTransfersBusy;
+        }
+
         Result<FileDetails> result;
         var abandoned = false;
-        using (var upload = transfers.BeginUpload(target.Value.NodeId, content, length))
+        using (var upload = started)
         {
             try
             {

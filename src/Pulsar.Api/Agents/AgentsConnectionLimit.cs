@@ -10,10 +10,14 @@ namespace Pulsar.Api.Agents;
 /// before anything is read from them. At most <c>Agents:MaxConnections</c> in all. Of those not signed in yet (no request
 /// on them presented a valid agent session with the key of their certificate, <see cref="AgentsEndpointConnection"/>):
 /// at most <c>Agents:MaxPendingConnections</c>, of which addresses no agent signed in from within <see cref="KnownFor"/>
-/// take half at most; <c>Agents:MaxPendingConnectionsPerAddress</c> from one <see cref="ClientAddress"/> and
-/// <c>Agents:MaxPendingConnectionsPerNetwork</c> from its network. One more is closed at once, before its TLS handshake.
-/// Of those signed in, at most <c>Agents:MaxConnectionsPerNode</c> for one node. Refusals and timeouts are logged at most
-/// once a minute, with how many there were.
+/// take half at most; <c>Agents:MaxPendingConnectionsPerAddress</c> from one <see cref="ClientAddress"/>, and from
+/// addresses not known <c>Agents:MaxPendingConnectionsPerNetwork</c> per network (a known agent's neighbours never take
+/// its address's places). One more is closed at once, before its TLS handshake. Of those signed in, at most
+/// <c>Agents:MaxConnectionsPerNode</c> for one node, of which its transfers take all but a reserve for its hub, the hub
+/// it replaces and its rotation. A node's sign-ins make its latest <see cref="KnownPerNode"/> addresses known, and past
+/// the bound of the whole set the node with the most loses its oldest: one key can neither open the reserved half to
+/// many addresses nor push the others' out. Refusals and timeouts are logged at most once a minute, with how many there
+/// were and the nodes refused.
 /// </summary>
 internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogger logger, TimeProvider clock)
 {
@@ -23,6 +27,11 @@ internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogg
     /// <summary>How long an address an agent signed in from keeps its place in the reserved half of the pending budget.</summary>
     public static readonly TimeSpan KnownFor = TimeSpan.FromDays(1);
 
+    /// <summary>How many addresses one node's sign-ins make known: its latest ones (an IPv4 and an IPv6 address, a move).</summary>
+    public const int KnownPerNode = 4;
+
+    private const int LoggedNodes = 8;
+
     private static readonly TimeSpan s_logInterval = TimeSpan.FromMinutes(1);
 
     private readonly int _max = options.MaxConnections;
@@ -31,13 +40,18 @@ internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogg
     private readonly int _maxPerAddress = options.PendingPerAddressLimit;
     private readonly int _maxPerNetwork = options.PendingPerNetworkLimit;
     private readonly int _maxPerNode = options.PerNodeLimit;
+    private readonly int _maxTransfersPerNode = options.PerNodeLimit - Math.Min(4, options.PerNodeLimit / 2);
     private readonly int _maxKnown = Math.Max(4096, options.MaxConnections);
     private readonly TimeSpan _deadline = options.SignInDeadline;
     private readonly Lock _lock = new();
     private readonly Dictionary<ClientAddress, int> _pendingByAddress = [];
     private readonly Dictionary<ClientAddress, int> _pendingByNetwork = [];
     private readonly Dictionary<NodeId, HashSet<AgentsEndpointConnection>> _byNode = [];
-    private readonly Dictionary<ClientAddress, DateTimeOffset> _known = [];
+    private readonly Dictionary<NodeId, int> _transfersByNode = [];
+    private readonly Dictionary<ClientAddress, KnownAddress> _known = [];
+    private readonly Dictionary<NodeId, List<(ClientAddress Address, DateTimeOffset Until)>> _knownByNode = [];
+    private readonly HashSet<NodeId> _refusedNodes = [];
+    private int _knownEntries;
     private int _open;
     private int _pending;
     private int _pendingUnknown;
@@ -82,14 +96,17 @@ internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogg
     };
 
     /// <summary>
-    /// <paramref name="connection"/> carries a session of <paramref name="node"/> now: it leaves the budgets of those not
-    /// signed in, and its address is known. False when the node holds as many connections as it may.
+    /// <paramref name="connection"/> carries a session of <paramref name="node"/> now (for a <paramref name="transfer"/>):
+    /// it leaves the budgets of those not signed in, and its address is known. False when the node holds as many
+    /// connections as it may, or as many for transfers.
     /// </summary>
-    internal bool SignIn(AgentsEndpointConnection connection, NodeId node)
+    internal bool SignIn(AgentsEndpointConnection connection, NodeId node, bool transfer)
     {
         lock (_lock)
         {
-            if (!_byNode.TryGetValue(node, out var connections) || connections.Count < _maxPerNode)
+            _byNode.TryGetValue(node, out var connections);
+            var transfers = _transfersByNode.GetValueOrDefault(node);
+            if ((connections?.Count ?? 0) < _maxPerNode && (!transfer || transfers < _maxTransfersPerNode))
             {
                 if (connections is null)
                 {
@@ -97,20 +114,32 @@ internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogg
                 }
 
                 connections.Add(connection);
+                if (transfer)
+                {
+                    _transfersByNode[node] = transfers + 1;
+                }
+
                 LeavePending(connection);
-                Remember(connection.Address);
+                Remember(connection.Address, node);
                 return true;
             }
 
             _refusedNode++;
+            if (_refusedNodes.Count < LoggedNodes)
+            {
+                _refusedNodes.Add(node);
+            }
         }
 
         Report();
         return false;
     }
 
-    /// <summary>A connection ended: <paramref name="pending"/> when it never signed in, otherwise one of <paramref name="node"/>.</summary>
-    internal void Closed(AgentsEndpointConnection connection, bool pending, NodeId? node)
+    /// <summary>
+    /// A connection ended: <paramref name="pending"/> when it never signed in, otherwise one of <paramref name="node"/>
+    /// (for a <paramref name="transfer"/>).
+    /// </summary>
+    internal void Closed(AgentsEndpointConnection connection, bool pending, NodeId? node, bool transfer)
     {
         lock (_lock)
         {
@@ -125,6 +154,11 @@ internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogg
                 if (connections.Count == 0)
                 {
                     _byNode.Remove(id);
+                }
+
+                if (transfer)
+                {
+                    Decrement(_transfersByNode, id);
                 }
             }
         }
@@ -165,7 +199,7 @@ internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogg
         {
             var unknown = address is not { } seen || !IsKnown(seen);
             var fromAddress = address is { } a ? _pendingByAddress.GetValueOrDefault(a) : 0;
-            var fromNetwork = address is { } n ? _pendingByNetwork.GetValueOrDefault(n.Network) : 0;
+            var fromNetwork = unknown && address is { } n ? _pendingByNetwork.GetValueOrDefault(n.Network) : 0;
             if (_open >= _max)
             {
                 _refusedFull++;
@@ -178,7 +212,7 @@ internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogg
             {
                 _refusedAddress++;
             }
-            else if (fromNetwork >= _maxPerNetwork)
+            else if (unknown && fromNetwork >= _maxPerNetwork)
             {
                 _refusedNetwork++;
             }
@@ -194,7 +228,10 @@ internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogg
                 if (address is { } added)
                 {
                     _pendingByAddress[added] = fromAddress + 1;
-                    _pendingByNetwork[added.Network] = fromNetwork + 1;
+                    if (unknown)
+                    {
+                        _pendingByNetwork[added.Network] = fromNetwork + 1;
+                    }
                 }
 
                 return unknown;
@@ -205,48 +242,71 @@ internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogg
         return null;
     }
 
-    private bool IsKnown(ClientAddress address)
-    {
-        if (!_known.TryGetValue(address, out var until))
-        {
-            return false;
-        }
+    private bool IsKnown(ClientAddress address) => _known.TryGetValue(address, out var known) && known.Until > clock.GetUtcNow();
 
-        if (until > clock.GetUtcNow())
-        {
-            return true;
-        }
-
-        _known.Remove(address);
-        return false;
-    }
-
-    /// <summary>Keeps <paramref name="address"/> as an agent's; past the bound, expired entries go, then the oldest.</summary>
-    private void Remember(ClientAddress? address)
+    /// <summary>
+    /// Keeps <paramref name="address"/> as one of <paramref name="node"/>'s, its latest <see cref="KnownPerNode"/> only;
+    /// past the bound of the whole set, the node with the most addresses loses its oldest.
+    /// </summary>
+    private void Remember(ClientAddress? address, NodeId node)
     {
         if (address is not { } key)
         {
             return;
         }
 
-        var now = clock.GetUtcNow();
-        _known[key] = now + KnownFor;
-        if (_known.Count <= _maxKnown)
+        var until = clock.GetUtcNow() + KnownFor;
+        if (!_knownByNode.TryGetValue(node, out var entries))
         {
-            return;
+            _knownByNode[node] = entries = [];
         }
 
-        foreach (var (stale, until) in _known)
+        var index = entries.FindIndex(entry => entry.Address == key);
+        if (index >= 0)
         {
-            if (until <= now)
+            entries.RemoveAt(index);
+        }
+        else
+        {
+            _knownEntries++;
+            if (_known.TryGetValue(key, out var held))
             {
-                _known.Remove(stale);
+                held.Holders++;
+            }
+            else
+            {
+                _known[key] = new KnownAddress();
             }
         }
 
-        if (_known.Count > _maxKnown)
+        entries.Add((key, until));
+        var known = _known[key];
+        known.Until = until > known.Until ? until : known.Until;
+        if (entries.Count > KnownPerNode)
         {
-            _known.Remove(_known.MinBy(entry => entry.Value).Key);
+            ForgetOldest(node, entries);
+        }
+
+        while (_knownEntries > _maxKnown)
+        {
+            var fullest = _knownByNode.MaxBy(holder => holder.Value.Count);
+            ForgetOldest(fullest.Key, fullest.Value);
+        }
+    }
+
+    private void ForgetOldest(NodeId node, List<(ClientAddress Address, DateTimeOffset Until)> entries)
+    {
+        var address = entries[0].Address;
+        entries.RemoveAt(0);
+        _knownEntries--;
+        if (entries.Count == 0)
+        {
+            _knownByNode.Remove(node);
+        }
+
+        if (--_known[address].Holders == 0)
+        {
+            _known.Remove(address);
         }
     }
 
@@ -261,11 +321,14 @@ internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogg
         if (connection.Address is { } address)
         {
             Decrement(_pendingByAddress, address);
-            Decrement(_pendingByNetwork, address.Network);
+            if (connection.Unknown)
+            {
+                Decrement(_pendingByNetwork, address.Network);
+            }
         }
     }
 
-    private static void Decrement(Dictionary<ClientAddress, int> counts, ClientAddress key)
+    private static void Decrement<TKey>(Dictionary<TKey, int> counts, TKey key) where TKey : notnull
     {
         var count = counts[key] - 1;
         if (count == 0)
@@ -293,13 +356,16 @@ internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogg
         if (now >= next && Interlocked.CompareExchange(ref _nextLog, now + s_logInterval.Ticks, next) == next)
         {
             int full, pending, address, network, node, timedOut;
+            string nodes;
             lock (_lock)
             {
                 (full, pending, address, network, node, timedOut) = (_refusedFull, _refusedPending, _refusedAddress, _refusedNetwork, _refusedNode, _timedOut);
                 _refusedFull = _refusedPending = _refusedAddress = _refusedNetwork = _refusedNode = _timedOut = 0;
+                nodes = _refusedNodes.Count == 0 ? "none" : string.Join(", ", _refusedNodes.Select(n => n.Value));
+                _refusedNodes.Clear();
             }
 
-            LogClosed(full + pending + address + network, full, pending, address, network, node, timedOut);
+            LogClosed(full + pending + address + network, full, pending, address, network, node, nodes, timedOut);
         }
     }
 
@@ -307,8 +373,17 @@ internal sealed partial class AgentsConnectionLimit(AgentsOptions options, ILogg
         Message = "The agents' endpoint closed {Refused} connection(s) on arrival ({Full} over Agents:MaxConnections, "
             + "{OverPending} over Agents:MaxPendingConnections or the half of it for addresses no agent signed in from lately, "
             + "{OverAddress} over Agents:MaxPendingConnectionsPerAddress, {OverNetwork} over Agents:MaxPendingConnectionsPerNetwork), "
-            + "refused {OverNode} request(s) over Agents:MaxConnectionsPerNode, and closed {TimedOut} that presented no agent session in time")]
-    private partial void LogClosed(int refused, int full, int overPending, int overAddress, int overNetwork, int overNode, int timedOut);
+            + "refused {OverNode} request(s) over Agents:MaxConnectionsPerNode or the part of it for transfers (nodes: {Nodes}), "
+            + "and closed {TimedOut} that presented no agent session in time")]
+    private partial void LogClosed(int refused, int full, int overPending, int overAddress, int overNetwork, int overNode, string nodes, int timedOut);
+
+    /// <summary>An address agents signed in from: how many nodes keep it, and until when.</summary>
+    private sealed class KnownAddress
+    {
+        public int Holders { get; set; } = 1;
+
+        public DateTimeOffset Until { get; set; }
+    }
 }
 
 /// <summary>
@@ -328,6 +403,7 @@ internal sealed class AgentsEndpointConnection(AgentsConnectionLimit limit, Conn
     private State _state;
     private bool _askedToClose;
     private NodeId _node;
+    private bool _transfer;
     private Guid _session;
     private DateTimeOffset _sessionEnds;
     private int _requests;
@@ -349,19 +425,20 @@ internal sealed class AgentsEndpointConnection(AgentsConnectionLimit limit, Conn
     /// the latest session it presented ends. Returns what the request disposes when it ends, or null when the node holds as
     /// many connections as it may or the connection belongs to another node: the request is then refused.
     /// </summary>
-    public IDisposable? Authenticated(NodeId node, Guid sessionId, DateTimeOffset sessionEnds)
+    public IDisposable? Authenticated(NodeId node, Guid sessionId, DateTimeOffset sessionEnds, bool transfer = false)
     {
         lock (_lock)
         {
             if (_state == State.Pending)
             {
-                if (!limit.SignIn(this, node))
+                if (!limit.SignIn(this, node, transfer))
                 {
                     return null;
                 }
 
                 _state = State.SignedIn;
                 _node = node;
+                _transfer = transfer;
             }
             else if (_state != State.SignedIn || _node != node)
             {
@@ -417,7 +494,7 @@ internal sealed class AgentsEndpointConnection(AgentsConnectionLimit limit, Conn
             NodeId? node = _state == State.SignedIn ? _node : null;
             _state = State.Closed;
             _timer?.Dispose();
-            limit.Closed(this, pending, node);
+            limit.Closed(this, pending, node, _transfer);
         }
     }
 

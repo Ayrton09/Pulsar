@@ -310,7 +310,11 @@ public sealed partial class ServerBackups(
             return connection.Error!;
         }
 
-        var download = transfers.BeginDownload(server.NodeId);
+        if (transfers.BeginDownload(server.NodeId, request.UserId) is not { } download)
+        {
+            return ServerErrors.FileTransfersBusy;
+        }
+
         try
         {
             var remote = await RemoteOfAsync(backup, cancellationToken);
