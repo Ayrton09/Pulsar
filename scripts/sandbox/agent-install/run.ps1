@@ -387,6 +387,19 @@ try {
         $udpPort = if ($udpRule) { ($udpRule | Get-NetFirewallPortFilter).LocalPort } else { '' }
         $udpApp = if ($udpRule) { ($udpRule | Get-NetFirewallApplicationFilter).Program } else { '' }
         Check 'css: firewall opens the game port over UDP only, for srcds' ($udpPort -eq '27015' -and $udpApp -like '*\srcds.exe' -and $null -eq $tcpRule) "udp $udpPort $udpApp; tcp rule: $($null -ne $tcpRule)"
+        # Its account may not reach the panel: TCP to the agents' port and the main one it falls back to, at loopback and
+        # this machine's own addresses (the panel runs here), for that account only.
+        $blockRule = Get-NetFirewallRule -DisplayName "Pulsar $($game.server.shortId) panel block" -ErrorAction SilentlyContinue
+        $gameSid = (Get-LocalUser $gameAccount).SID.Value
+        $ownAddress = @(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' })[0].IPAddress
+        $blockPorts = if ($blockRule) { @(($blockRule | Get-NetFirewallPortFilter).RemotePort) } else { @() }
+        $blockProtocol = if ($blockRule) { "$(($blockRule | Get-NetFirewallPortFilter).Protocol)" } else { '' }
+        $blockAddresses = if ($blockRule) { @(($blockRule | Get-NetFirewallAddressFilter).RemoteAddress) } else { @() }
+        $blockUsers = if ($blockRule) { "$(($blockRule | Get-NetFirewallSecurityFilter).LocalUser)" } else { '' }
+        $blockOk = $blockRule -and "$($blockRule.Direction)" -eq 'Outbound' -and "$($blockRule.Action)" -eq 'Block' -and $blockProtocol -eq 'TCP' `
+            -and '5291' -in $blockPorts -and '5292' -in $blockPorts -and @($blockAddresses -match '^127\.0\.0\.0/(8|255\.0\.0\.0)$').Count -eq 1 `
+            -and @($blockAddresses -match "^$([regex]::Escape($ownAddress))(/32|/255\.255\.255\.255)?$").Count -eq 1 -and $blockUsers -eq "D:(A;;CC;;;$gameSid)"
+        Check "css: firewall keeps its account from the panel's ports" $blockOk "$($blockRule.Direction) $($blockRule.Action) $blockProtocol; ports $($blockPorts -join ','); addresses $($blockAddresses -join ','); users $blockUsers; own $ownAddress"
 
         $null = Api POST "/api/v1/servers/$gameId/stop"
         $stopped = Wait-Until { (GameServer).server.runtimeState -eq 'offline' -and @(Get-CimInstance Win32_Process -Filter "Name = 'srcds.exe'").Count -eq 0 } 60
@@ -400,7 +413,39 @@ try {
         # Windows PowerShell hands a JSON array over as one object: foreach enumerates its elements.
         $assigned = 0
         foreach ($allocation in (Api GET "/api/v1/nodes/$nodeId/allocations")) { if ($allocation.serverId) { $assigned++ } }
-        Check 'css: delete removes folder, account, firewall rules and frees the ports' ($gameGone -and -not (Test-Path $gameDir) -and $null -eq (Get-LocalUser $gameAccount -ErrorAction SilentlyContinue) -and $rulesLeft -eq 0 -and $assigned -eq 0) "rules left: $rulesLeft, ports still assigned: $assigned"
+        Check 'css: delete removes folder, account, firewall rules (the panel block too) and frees the ports' ($gameGone -and -not (Test-Path $gameDir) -and $null -eq (Get-LocalUser $gameAccount -ErrorAction SilentlyContinue) -and $rulesLeft -eq 0 -and $assigned -eq 0) "rules left: $rulesLeft, ports still assigned: $assigned"
+    }
+
+    # --- The panel block holds where the panel runs on the node, as here: a TCP connection to 127.0.0.1 from an account
+    # with such a rule is refused (docs/architecture/06, "Windows Firewall"). A throwaway account with a known password,
+    # since a server's has none; connected first without the rule, so a refusal is the rule's ---
+    $probeUser = 'fwprobe'
+    $probePassword = ConvertTo-SecureString ('Pb1!' + [guid]::NewGuid().ToString('N')) -AsPlainText -Force
+    $probeOut = Join-Path $env:PUBLIC 'fwprobe.txt'
+    $probeRule = 'Pulsar sandbox loopback probe'
+    function Invoke-Probe {
+        Remove-Item $probeOut -ErrorAction SilentlyContinue
+        $connect = "try { (New-Object Net.Sockets.TcpClient).Connect('127.0.0.1', 5291); 'connected' } catch { 'refused' }"
+        $process = Start-Process powershell.exe -Credential (New-Object Management.Automation.PSCredential $probeUser, $probePassword) `
+            -ArgumentList '-NoProfile', '-Command', "$connect | Set-Content '$probeOut'" -WorkingDirectory $env:PUBLIC -WindowStyle Hidden -PassThru -Wait
+        if (Test-Path $probeOut) { (Get-Content $probeOut -Raw).Trim() } else { "no answer (exit $($process.ExitCode))" }
+    }
+    try {
+        $null = New-LocalUser $probeUser -Password $probePassword -AccountNeverExpires
+        $before = Invoke-Probe
+        $null = New-NetFirewallRule -DisplayName $probeRule -Direction Outbound -Action Block -Protocol TCP -RemoteAddress '127.0.0.0/8', '::/127' `
+            -RemotePort 5291 -LocalUser "D:(A;;CC;;;$((Get-LocalUser $probeUser).SID.Value))"
+        $after = Invoke-Probe
+        $profiles = (@(Get-NetFirewallProfile | Where-Object Enabled) | ForEach-Object Name) -join ','
+        Check 'firewall: an account blocked from the panel cannot reach it on loopback either' ($before -eq 'connected' -and $after -eq 'refused') "without the rule: $before; with it: $after; firewall on for: $profiles"
+    }
+    catch {
+        Check 'firewall: an account blocked from the panel cannot reach it on loopback either' $false "$($_.Exception.Message)"
+    }
+    finally {
+        Remove-NetFirewallRule -DisplayName $probeRule -ErrorAction SilentlyContinue
+        Remove-LocalUser $probeUser -ErrorAction SilentlyContinue
+        Remove-Item $probeOut -ErrorAction SilentlyContinue
     }
 
     # --- Revocation cuts the service off ---

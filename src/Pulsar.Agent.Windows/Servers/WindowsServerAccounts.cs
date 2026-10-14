@@ -272,7 +272,7 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
         }
     }
 
-    private static SecurityIdentifier Sid(string name) =>
+    internal static SecurityIdentifier Sid(string name) =>
         (SecurityIdentifier)new NTAccount(Environment.MachineName, name).Translate(typeof(SecurityIdentifier));
 
     private static string NewPassword()
