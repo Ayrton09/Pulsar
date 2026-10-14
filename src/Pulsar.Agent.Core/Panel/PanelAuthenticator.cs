@@ -31,6 +31,14 @@ public sealed class PanelAuthenticator(PanelTransport transport)
     /// presenting <paramref name="certificate"/> where the panel asks for a client certificate.
     /// </summary>
     public async Task<TokenResponse> AuthenticateAsync(Uri panel, AgentConfig config, INodeKey key, X509Certificate2? certificate,
+        CancellationToken cancellationToken) =>
+        (await SignInAsync(panel, config, key, certificate, cancellationToken)).Token;
+
+    /// <summary>
+    /// <see cref="AuthenticateAsync(Uri, AgentConfig, INodeKey, X509Certificate2?, CancellationToken)"/>, with the nonce
+    /// the panel's grant must answer (<see cref="PanelSignIn.IsGranted"/>).
+    /// </summary>
+    public async Task<PanelSignIn> SignInAsync(Uri panel, AgentConfig config, INodeKey key, X509Certificate2? certificate,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(panel);
@@ -39,7 +47,8 @@ public sealed class PanelAuthenticator(PanelTransport transport)
         var origin = PanelAddress.Origin(panel);
         using var http = transport.CreateClient(panel, certificate);
 
-        // A refusal that sends the agent to the agents' address signs this back: an old refusal played back is not followed.
+        // A refusal that sends the agent to the agents' address signs this back, and so does the session's grant: an old
+        // refusal or session played back does not answer this sign-in.
         var nonce = RandomNumberGenerator.GetBytes(32);
         ChallengeResponse challenge;
         try
@@ -71,7 +80,7 @@ public sealed class PanelAuthenticator(PanelTransport transport)
         var token = await PanelTransport.PostAsync<TokenRequest, TokenResponse>(http, AgentProtocol.TokenPath,
             new TokenRequest(challenge.ChallengeId, signature), cancellationToken);
         return token.AccessToken is { Length: > 0 and <= MaxAccessTokenLength }
-            ? token
+            ? new PanelSignIn(token, nonce)
             : throw new PanelNotAnsweringException($"The address answered {AgentProtocol.TokenPath} with a session token of {token.AccessToken?.Length ?? 0} " +
                 "characters, which is not the agent protocol: no panel answers it there now.");
     }

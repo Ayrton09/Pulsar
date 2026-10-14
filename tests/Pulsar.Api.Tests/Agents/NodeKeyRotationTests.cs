@@ -214,6 +214,69 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
     }
 
     [DatabaseFact]
+    public async Task APendingKeysSignInHeldBehindAForgedSessionOfTheCurrentKeyCannotLockTheNodeOut()
+    {
+        // A proxy holds the pending key's token request and forges the panel's refusal, then answers the current key's
+        // sign-in itself (the panel never sees it, so nothing refuses the held request) and passes the held request on:
+        // the panel activates the pending key, which the agent must still have.
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = new InProcessAgent(factory);
+        var enrolled = await EnrollAsync(admin, agent, "rotate-forged-session");
+        var pending = await RegisterPendingKeyAsync(agent, enrolled);
+        agent.Configs.Save(enrolled with { PendingRotation = pending });
+        (Uri Uri, byte[] Body)? held = null;
+        var released = new TaskCompletionSource<HttpStatusCode>(TaskCreationOptions.RunContinuationsAsynchronously);
+        agent.Proxy = async (request, send) =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (released.Task.IsCompleted || (held is null && path != AgentProtocol.TokenPath))
+            {
+                return await send();
+            }
+
+            if (held is null)
+            {
+                held = (request.RequestUri, await request.Content!.ReadAsByteArrayAsync(Ct));
+                return new HttpResponseMessage(HttpStatusCode.Unauthorized)
+                {
+                    Content = JsonContent.Create(new AgentError(AgentErrors.AuthenticationRejected.Code, AgentErrors.AuthenticationRejected.Message),
+                        options: ProtocolJson.Options),
+                };
+            }
+
+            if (path == AgentProtocol.ChallengePath)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new ChallengeResponse(Guid.NewGuid(), RandomNumberGenerator.GetBytes(32), "https://localhost"),
+                        options: ProtocolJson.Options),
+                };
+            }
+
+            using (var http = new HttpClient(factory.Server.CreateHandler()))
+            using (var content = new ByteArrayContent(held.Value.Body))
+            {
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                using var late = await http.PostAsync(held.Value.Uri, content, Ct);
+                released.SetResult(late.StatusCode);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new TokenResponse("forged-session-token", Guid.NewGuid(), DateTimeOffset.UtcNow.AddMinutes(15)),
+                    options: ProtocolJson.Options),
+            };
+        };
+
+        await agent.StartAsync();
+
+        Assert.Equal(HttpStatusCode.OK, await released.Task.WaitAsync(TimeSpan.FromSeconds(15), Ct)); // the panel activated the pending key
+        await InProcessAgent.EventuallyAsync(async () => agent.LiveConfig?.CredentialId == pending.CredentialId
+            && (await NodeApi.GetAsync(admin, enrolled.NodeId)).Node.Connected, "connection with the pending key");
+        await AssertRotatedAsync(admin, agent, enrolled, agent.LiveConfig!);
+    }
+
+    [DatabaseFact]
     public async Task AnAbandonedRotationIsTriedAgainOnlyAfterItsRetryDelay()
     {
         // A key that is due by age, and new keys this machine cannot open again: each rotation is abandoned at the sign-in

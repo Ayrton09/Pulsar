@@ -56,7 +56,8 @@ public sealed record SignedMessage(string KeyId, byte[] Payload, byte[] Signatur
 /// <summary><c>POST /agent/v1/auth/challenge</c>.</summary>
 /// <param name="Nonce">
 /// Phase 16: random bytes the agent sends with each challenge request (at most 64). A refusal that sends it to the agents'
-/// address signs them back (<see cref="AgentsAddress.Nonce"/>), so a refusal recorded once cannot be replayed later.
+/// address signs them back (<see cref="AgentsAddress.Nonce"/>), so a refusal recorded once cannot be replayed later, and so
+/// does the session the sign-in ends with (<see cref="SessionGrant.Nonce"/>).
 /// </param>
 public sealed record ChallengeRequest(Guid NodeId, Guid CredentialId, byte[]? Nonce = null);
 
@@ -73,15 +74,28 @@ public sealed record ChallengeResponse(Guid ChallengeId, byte[] Nonce, string Pa
 public sealed record TokenRequest(Guid ChallengeId, byte[] Signature);
 
 /// <summary>A session for the agent hub only. It ends at <see cref="ExpiresAt"/>, on revocation, or on panel restart.</summary>
-public sealed record TokenResponse(string AccessToken, Guid SessionId, DateTimeOffset ExpiresAt)
+/// <param name="Grant">
+/// The session, as a <see cref="SessionGrant"/> signed by a panel key the node pins, for the nonce of the challenge
+/// request this sign-in began with. Null from panels older than the field, or when the request sent no nonce (additive).
+/// </param>
+public sealed record TokenResponse(string AccessToken, Guid SessionId, DateTimeOffset ExpiresAt, SignedMessage? Grant = null)
 {
     // The session token is a secret: it must never reach a log through ToString.
     private bool PrintMembers(System.Text.StringBuilder builder)
     {
-        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"AccessToken = ***, SessionId = {SessionId}, ExpiresAt = {ExpiresAt}");
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"AccessToken = ***, SessionId = {SessionId}, ExpiresAt = {ExpiresAt}, Grant = {Grant}");
         return true;
     }
 }
+
+/// <summary>
+/// Payload of <see cref="TokenResponse.Grant"/>, signed with <see cref="AgentProtocol.Purposes.SessionGrant"/>: the panel
+/// itself opened <paramref name="SessionId"/> for this node and credential, at the sign-in whose challenge request carried
+/// <paramref name="Nonce"/> (the agent's, not the panel's challenge nonce). A sign-in answered by whatever sits between the
+/// agent and the panel has none the agent accepts, and one recorded earlier answers another nonce. The agent gives up a
+/// pending key only after its current key's sign-in carried one (docs/architecture/03, "Rotation").
+/// </summary>
+public sealed record SessionGrant(Guid NodeId, Guid CredentialId, Guid SessionId, DateTimeOffset ExpiresAt, byte[]? Nonce);
 
 /// <summary>Error body of the agent endpoints.</summary>
 /// <param name="AgentsAddress">

@@ -41,5 +41,6 @@ public static class AgentProtocol
         public const string AuthorizeRotation = "pulsar-authorize-rotation-v1";
         public const string RotationResult = "pulsar-rotation-result-v1";
         public const string AgentsAddress = "pulsar-agents-address-v1";
+        public const string SessionGrant = "pulsar-session-grant-v1";
     }
 }

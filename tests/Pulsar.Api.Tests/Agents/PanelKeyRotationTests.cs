@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
+using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
 using Pulsar.Infrastructure.Persistence;
 
@@ -117,6 +118,39 @@ public sealed class PanelKeyRotationTests(PulsarApiFactory factory) : IClassFixt
     }
 
     [DatabaseFact]
+    public async Task ANodeThatPinsOnlyTheRetiringKeyGetsItsSessionGrantSignedWithIt()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await FinishPendingRotationAsync(admin);
+        var created = await NodeApi.CreateAsync(admin, "panel-key-grant");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        var oldKey = created.Enrollment.PanelKeyFingerprint;
+        await PostAsync(admin, "/api/v1/panel-keys/rotate");
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            // As its last Hello said: it pins the old key only.
+            var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
+            var nodeId = new NodeId(agent.NodeId);
+            var node = await db.Nodes.SingleAsync(n => n.Id == nodeId, Ct);
+            node.PanelKeysPinned([oldKey]);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        using (var asked = await agent.PostChallengeAsync([1, 2, 3]))
+        {
+            asked.EnsureSuccessStatusCode();
+            using var response = await agent.PostTokenAsync((await asked.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!);
+            response.EnsureSuccessStatusCode();
+            var grant = (await response.Content.ReadFromJsonAsync<TokenResponse>(ProtocolJson.Options, Ct))!.Grant!;
+            Assert.Equal(oldKey, grant.KeyId);
+            Assert.True(ProtocolCrypto.VerifyMessage(grant, AgentProtocol.Purposes.SessionGrant, Assert.Single(agent.PinnedKeys, k => k.KeyId == oldKey).PublicKey));
+        }
+
+        await FinishPendingRotationAsync(admin);
+    }
+
+    [DatabaseFact]
     public async Task AKeyRetiredWhileThePanelReadsItsKeysIsNotKept()
     {
         using var admin = await factory.CreateAdminClientAsync();
@@ -139,6 +173,9 @@ public sealed class PanelKeyRotationTests(PulsarApiFactory factory) : IClassFixt
         await ring.GetPublicKeysAsync(Ct);
 
         Assert.DoesNotContain(retiring, (await ring.GetPublicKeysAsync(Ct)).Select(k => k.KeyId));
+
+        // The panel the other tests share read the keys before the retirement, which bypassed it: it reads them again.
+        factory.Services.GetRequiredService<IPanelKeyRing>().Reload();
     }
 
     private static HashSet<string> Pins(InProcessAgent agent) => agent.LiveConfig is { } config ? Pins(config) : [];

@@ -275,7 +275,7 @@ public sealed partial class AgentAccess(
             return refused;
         }
 
-        var challenge = challenges.Issue(nodeId, request.CredentialId, panelOrigin);
+        var challenge = challenges.Issue(nodeId, request.CredentialId, panelOrigin, request.Nonce);
         return new ChallengeResponse(challenge.ChallengeId, challenge.Nonce, challenge.PanelOrigin);
     }
 
@@ -400,7 +400,25 @@ public sealed partial class AgentAccess(
             return AgentErrors.CertificateRequired;
         }
 
-        return new TokenResponse(token, session.SessionId, session.ExpiresAt);
+        return new TokenResponse(token, session.SessionId, session.ExpiresAt, await GrantAsync(node, session, challenge.AgentNonce, cancellationToken));
+    }
+
+    /// <summary>
+    /// The session, signed for the nonce the agent sent with its challenge request (docs/architecture/03, "Authentication")
+    /// with a panel key this node pins: proof for the agent that this panel recorded the sign-in, which whatever answers it
+    /// on the way cannot forge, and which the agent asks for before it gives up a pending key ("Rotation"). None without
+    /// a nonce (an older agent) or a pinned key (an agent that missed a whole panel key rotation).
+    /// </summary>
+    private async Task<SignedMessage?> GrantAsync(Node node, AgentSession session, byte[]? nonce, CancellationToken cancellationToken)
+    {
+        if (nonce is null)
+        {
+            return null;
+        }
+
+        var grant = new SessionGrant(node.Id.Value, session.CredentialId, session.SessionId, session.ExpiresAt, nonce);
+        return await keys.SignForAsync(AgentProtocol.Purposes.SessionGrant, ProtocolJson.Serialize(grant),
+            connections.Find(node.Id)?.PinnedPanelKeys ?? node.PinnedPanelKeys, cancellationToken);
     }
 
     /// <summary>
