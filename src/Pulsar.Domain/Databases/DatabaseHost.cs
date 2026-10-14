@@ -203,7 +203,8 @@ public sealed partial class DatabaseHost
     }
 
     // %, an IPv4 or IPv6 address or pattern, or a host name: letters, digits, dots, colons, hyphens, % and _ only.
-    [GeneratedRegex("^[A-Za-z0-9.:%_-]{1,255}$", RegexOptions.CultureInvariant)]
+    // \z, not $: $ also matches before a final line feed.
+    [GeneratedRegex(@"^[A-Za-z0-9.:%_-]{1,255}\z", RegexOptions.CultureInvariant)]
     private static partial Regex UserHostPattern();
 }
 

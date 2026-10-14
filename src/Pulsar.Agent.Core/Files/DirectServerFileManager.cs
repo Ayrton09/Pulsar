@@ -254,7 +254,23 @@ public sealed class DirectServerFileManager : IServerFileManager
             : info is DirectoryInfo ? FileEntryKind.Directory
             : FileEntryKind.File;
         var size = kind == FileEntryKind.File ? ((FileInfo)info).Length : 0;
-        return new FileEntry(info.Name, kind, size, new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero));
+        return new FileEntry(info.Name, kind, size, ModifiedAt(info));
+    }
+
+    /// <summary>
+    /// The last write of <paramref name="info"/>. A game's account can set a time NTFS keeps but a DateTime cannot hold
+    /// (beyond year 9999), which makes the property throw: that reads as the latest time there is.
+    /// </summary>
+    private static DateTimeOffset ModifiedAt(FileSystemInfo info)
+    {
+        try
+        {
+            return new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return new DateTimeOffset(DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc));
+        }
     }
 
     /// <summary>Deletes links as links: a recursive delete must never empty a junction's target.</summary>

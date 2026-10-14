@@ -132,7 +132,7 @@ public static partial class ServerFilePath
             : null;
     }
 
-    [GeneratedRegex("^(CON|PRN|AUX|NUL|CONIN\\$|CONOUT\\$|COM[0-9¹²³]|LPT[0-9¹²³])$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^(CON|PRN|AUX|NUL|CONIN\\$|CONOUT\\$|COM[0-9¹²³]|LPT[0-9¹²³])\\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ReservedName();
 }
 
@@ -156,6 +156,39 @@ public static class FileVersion
 {
     public static string Of(long size, DateTimeOffset modifiedAt) =>
         FormattableString.Invariant($"{size:x}-{modifiedAt.UtcTicks:x}");
+
+    /// <summary>
+    /// Whether <paramref name="version"/> has the shape <see cref="Of"/> makes: two lowercase hexadecimal numbers of up to
+    /// 16 digits. The panel sends a version back as the ETag, so nothing else (a quote, a control character) gets there.
+    /// </summary>
+    public static bool IsWellFormed(string? version)
+    {
+        if (version is null)
+        {
+            return false;
+        }
+
+        var dash = version.IndexOf('-', StringComparison.Ordinal);
+        return dash > 0 && IsHex(version.AsSpan(0, dash)) && IsHex(version.AsSpan(dash + 1));
+    }
+
+    private static bool IsHex(ReadOnlySpan<char> number)
+    {
+        if (number.Length is 0 or > 16)
+        {
+            return false;
+        }
+
+        foreach (var c in number)
+        {
+            if (!(char.IsAsciiDigit(c) || c is >= 'a' and <= 'f'))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 /// <summary>Limits of the file manager, the same on both sides.</summary>
@@ -231,7 +264,12 @@ public static class BackupSnapshotErrors
 }
 
 /// <summary>A directory's entries: directories first, then files and links, each by name.</summary>
-public sealed record FileListResult(IReadOnlyList<FileEntry> Entries, bool Truncated) : CommandResult;
+/// <param name="Truncated">The directory has more entries than a listing holds.</param>
+/// <param name="Skipped">
+/// Entries the panel left out because it cannot name them (set by the panel, not the agent: whatever an agent says here is
+/// replaced). Distinct from <paramref name="Truncated"/>.
+/// </param>
+public sealed record FileListResult(IReadOnlyList<FileEntry> Entries, bool Truncated, int Skipped = 0) : CommandResult;
 
 /// <summary>A file about to be sent (<see cref="SendFileCommand"/>), or one just written.</summary>
 public sealed record FileEntryResult(FileEntry Entry, string Version) : CommandResult;

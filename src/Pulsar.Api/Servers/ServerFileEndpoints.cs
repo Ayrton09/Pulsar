@@ -76,7 +76,7 @@ public static class ServerFileEndpoints
         if (attachment)
         {
             var disposition = new ContentDispositionHeaderValue("attachment");
-            disposition.SetHttpFileName(content.File.Entry.Name);
+            disposition.SetHttpFileName(DownloadFileName(content.File.Entry.Name));
             response.Headers.ContentDisposition = disposition.ToString();
         }
 
@@ -126,4 +126,22 @@ public static class ServerFileEndpoints
     }
 
     private static string Quote(string version) => $"\"{version}\"";
+
+    /// <summary>
+    /// <paramref name="name"/> for a browser's download dialog, which cannot show control, format (a right-to-left
+    /// override, a zero-width space) or separator characters: each becomes an underscore, so "update&lt;RLO&gt;fdp.exe" cannot pass for another file.
+    /// </summary>
+    internal static string DownloadFileName(string name)
+    {
+        var text = new System.Text.StringBuilder(name.Length);
+        foreach (var rune in name.EnumerateRunes())
+        {
+            var hidden = System.Text.Rune.IsControl(rune)
+                || System.Text.Rune.GetUnicodeCategory(rune) is System.Globalization.UnicodeCategory.Format
+                    or System.Globalization.UnicodeCategory.LineSeparator or System.Globalization.UnicodeCategory.ParagraphSeparator;
+            text.Append(hidden ? "_" : rune.ToString());
+        }
+
+        return text.ToString();
+    }
 }

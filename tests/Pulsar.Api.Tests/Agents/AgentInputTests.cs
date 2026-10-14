@@ -87,6 +87,136 @@ public sealed class AgentInputTests
     }
 
     [Fact]
+    public void AnAddonReleaseIsACleanShortTag()
+    {
+        Assert.Equal("v1.0.376", AgentInput.AddonRelease("v1.0.376"));
+        Assert.Equal("v1.0forged", AgentInput.AddonRelease("v1.0\r\n\U0000202Eforged\U0000200B"));
+        Assert.Equal(128, AgentInput.AddonRelease(new string('r', 5000))!.Length);
+        Assert.Null(AgentInput.AddonRelease(null));
+    }
+
+    [Fact]
+    public void AnAddonsResultKeepsCleanReleasesAndOperationsCarryThemThrough()
+    {
+        var result = new AddonsResult([new AddonRelease("oxide", "2.0\n.1\U0000200B"), new AddonRelease("carbon", null), null!]);
+
+        var completed = AgentInput.Completed(new OperationCompleted(Guid.NewGuid(), null, OperationOutcome.Succeeded, null, null, result));
+
+        var addons = Assert.IsType<AddonsResult>(completed.Result).Addons;
+        Assert.Equal(2, addons.Count);
+        Assert.Equal(new AddonRelease("oxide", "2.0.1"), addons[0]);
+        Assert.Equal(new AddonRelease("carbon", null), addons[1]);
+    }
+
+    [Theory]
+    [InlineData("server.cfg", true)]
+    [InlineData("nombre \U0000202Eraro.cfg", true)] // format characters are real names the panel can address
+    [InlineData("a/b.cfg", false)]
+    [InlineData("a\\b.cfg", false)]
+    [InlineData("a:b", false)]
+    [InlineData("nul.txt", false)]
+    [InlineData("..", false)]
+    [InlineData("bad\nname", false)]
+    [InlineData("trailing.", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void AFileNameIsOneSegmentThePanelCouldAddress(string? name, bool expected)
+    {
+        Assert.Equal(expected, AgentInput.IsFileName(name));
+    }
+
+    [Fact]
+    public void AListingSkipsEntriesWhoseNamesThePanelCannotAddressAndCountsThem()
+    {
+        var modified = DateTimeOffset.UnixEpoch;
+        var listing = new FileListResult(
+        [
+            new FileEntry("server.cfg", FileEntryKind.File, 1, modified),
+            new FileEntry("a/../../b", FileEntryKind.File, 1, modified),
+            new FileEntry("forged\nline", FileEntryKind.Directory, 0, modified),
+            new FileEntry("odd \U0000202Ename", FileEntryKind.File, 1, modified),
+            new FileEntry("negative", FileEntryKind.File, -1, modified),
+            new FileEntry("kind", (FileEntryKind)99, 1, modified),
+            null!,
+        ], false);
+
+        var cleaned = Assert.IsType<FileListResult>(AgentInput.Result(listing));
+
+        Assert.Equal(["server.cfg", "odd \U0000202Ename"], cleaned.Entries.Select(e => e.Name));
+        Assert.Equal(5, cleaned.Skipped);
+        Assert.False(cleaned.Truncated); // the cap is not what hid them
+        var clean = Assert.IsType<FileListResult>(AgentInput.Result(new FileListResult(listing.Entries.Take(1).ToList(), false, Skipped: 999)));
+        Assert.Equal(0, clean.Skipped); // the count is the panel's, not the agent's
+        Assert.False(clean.Truncated);
+    }
+
+    [Fact]
+    public void AListingHasAtMostTheEntriesTheProtocolAllows()
+    {
+        var entries = Enumerable.Range(0, FileLimits.MaxListEntries + 50)
+            .Select(i => new FileEntry($"f{i}", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch)).ToList();
+
+        var cleaned = Assert.IsType<FileListResult>(AgentInput.Result(new FileListResult(entries, false)));
+
+        Assert.Equal(FileLimits.MaxListEntries, cleaned.Entries.Count);
+        Assert.True(cleaned.Truncated);
+        Assert.Equal(0, cleaned.Skipped);
+    }
+
+    [Theory]
+    [InlineData("0-0", true)]
+    [InlineData("12-8dcb9a1f2e3d4c5", true)]
+    [InlineData("12-8DCB", false)]
+    [InlineData("12", false)]
+    [InlineData("1\"-2", false)]
+    [InlineData("1-2\n", false)]
+    [InlineData("1-2\U0000200B", false)]
+    [InlineData("\U0000FF11-2", false)]
+    [InlineData("-2", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void AFileVersionIsTheShapeTheAgentMakesAndSafeForAHeader(string? version, bool expected)
+    {
+        Assert.Equal(expected, FileVersion.IsWellFormed(version));
+    }
+
+    [Fact]
+    public void AnAcknowledgementOnlyCarriesAFileThePanelCanUse()
+    {
+        var entry = new FileEntry("a.cfg", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch);
+        CommandAck Ack(CommandResult result) => AgentInput.Ack(new CommandAck(Guid.NewGuid(), AckStatus.Accepted, null, null, result));
+
+        Assert.IsType<FileEntryResult>(Ack(new FileEntryResult(entry, "1-2")).Result);
+        Assert.Null(Ack(new FileEntryResult(entry, "1\"; x=\"2")).Result); // would break out of the ETag's quotes
+        Assert.Null(Ack(new FileEntryResult(entry, "1-2\r\nSet-Cookie: x=y")).Result);
+        Assert.Null(Ack(new FileEntryResult(entry with { Name = "../b" }, "1-2")).Result);
+        Assert.Null(Ack(new FileEntryResult(null!, "1-2")).Result);
+    }
+
+    [Fact]
+    public void ATransferThatReportsAFileThePanelCannotUseFailsInsteadOfPassingItOn()
+    {
+        var entry = new FileEntry("a.cfg", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch);
+        var good = new FileEntryResult(entry, "1-2");
+
+        Assert.Same(good, AgentInput.Transfer(new TransferResult("t", null, null, good)).File);
+
+        var bad = AgentInput.Transfer(new TransferResult("t", null, null, new FileEntryResult(entry, "1\"2")));
+        Assert.Null(bad.File);
+        Assert.Equal(FileErrors.Failed, bad.ErrorCode);
+        Assert.NotNull(bad.Message);
+
+        var named = AgentInput.Transfer(new TransferResult("t", null, null, new FileEntryResult(entry with { Name = "x\ny" }, "1-2")));
+        Assert.Null(named.File);
+        Assert.Equal(FileErrors.Failed, named.ErrorCode);
+
+        // A failure keeps its own code; whatever file it carries is dropped when unusable.
+        var failed = AgentInput.Transfer(new TransferResult("t", FileErrors.Changed, "changed", new FileEntryResult(entry, "bad")));
+        Assert.Null(failed.File);
+        Assert.Equal(FileErrors.Changed, failed.ErrorCode);
+    }
+
+    [Fact]
     public void NodeMetricsListAFewDrivesWithShortNames()
     {
         var disks = Enumerable.Range(0, 100)

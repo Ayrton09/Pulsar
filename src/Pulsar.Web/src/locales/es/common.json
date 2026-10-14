@@ -1231,6 +1231,8 @@
     "actions": "Acciones",
     "empty": "Esta carpeta está vacía.",
     "truncated": "Se muestran solo las primeras {{count}} entradas.",
+    "skipped_one": "No se muestra {{count}} entrada con un nombre que Pulsar no puede abrir.",
+    "skipped_other": "No se muestran {{count}} entradas con nombres que Pulsar no puede abrir.",
     "link": "enlace",
     "newFolder": "Nueva carpeta",
     "newFile": "Nuevo archivo",

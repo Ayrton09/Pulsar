@@ -603,7 +603,9 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         return new Description(kind, size, Time(lastWrite), reparse && kind != FileEntryKind.Link);
     }
 
-    private static DateTimeOffset Time(long fileTime) => new(DateTime.FromFileTimeUtc(Math.Max(0, fileTime)), TimeSpan.Zero);
+    // A game's account can set a time NTFS keeps but a DateTime cannot hold (beyond year 9999): it reads as the latest time there is.
+    private static DateTimeOffset Time(long fileTime) =>
+        new(DateTime.FromFileTimeUtc(Math.Clamp(fileTime, 0, DateTime.MaxValue.ToFileTimeUtc())), TimeSpan.Zero);
 
     private static FileEntryResult Result(string path, Description info) =>
         new(new FileEntry(ServerFilePath.Name(path), info.Kind, info.Size, info.ModifiedAt), FileVersion.Of(info.Size, info.ModifiedAt));

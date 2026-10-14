@@ -370,7 +370,8 @@ public static partial class ConfigFileWriter
         throw new LaunchPlanException($"{file.Path}: the {file.Struct} line is not a (Key=Value,...) list; fix it or delete the file.");
     }
 
-    [GeneratedRegex(@"^(True|False|-?[0-9]{1,18}(\.[0-9]{1,18})?)$", RegexOptions.CultureInvariant)]
+    // \z, not $: $ also matches before a final line feed.
+    [GeneratedRegex(@"^(True|False|-?[0-9]{1,18}(\.[0-9]{1,18})?)\z", RegexOptions.CultureInvariant)]
     private static partial Regex UnrealLiteral();
 
     private static string Line(ConfigFileFormat format, ConfigEntry entry) => format switch

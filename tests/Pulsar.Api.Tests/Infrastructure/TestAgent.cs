@@ -62,6 +62,9 @@ public sealed class TestAgent : IAsyncDisposable
 
     public List<CommandEnvelope> ReceivedCommands { get; } = [];
 
+    /// <summary>What the agent answers a command with (its ack's result); nothing by default.</summary>
+    public Func<AgentCommand, CommandResult?>? Answer { get; set; }
+
     public TaskCompletionSource ClosedSignal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public static NodeInventory Inventory { get; } = new("TEST-NODE", "Windows 11 Pro", "26200", "Test CPU", 8, 16L * 1024 * 1024 * 1024, @"D:\PulsarServers");
@@ -218,6 +221,6 @@ public sealed class TestAgent : IAsyncDisposable
             ReceivedCommands.Add(envelope);
         }
 
-        return new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null);
+        return new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null, Answer?.Invoke(envelope.Command));
     }
 }

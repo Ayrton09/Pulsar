@@ -11261,6 +11261,8 @@ export interface components {
             path: string;
             entries: components["schemas"]["FileEntry"][];
             truncated: boolean;
+            /** Format: int32 */
+            skipped: number;
         };
         FilePathRequest: {
             path: string;

@@ -14,7 +14,7 @@ namespace Pulsar.Agent.Core.Tests;
 /// What every file manager implementation does (docs/architecture/08, "File manager"). Shared by the portable
 /// implementation (Pulsar.Agent.Core.Tests) and the Windows one (Pulsar.Agent.Windows.Tests links this file).
 /// </summary>
-public abstract class ServerFileManagerContract : IDisposable
+public abstract partial class ServerFileManagerContract : IDisposable
 {
     protected ServerFileManagerContract()
     {
@@ -332,6 +332,43 @@ public abstract class ServerFileManagerContract : IDisposable
     }
 
     [ContractFact]
+    public void AFileWhoseTimeIsBeyondYear9999IsListedWalkedReadReplacedAndDeleted()
+    {
+        // Any account can set a time NTFS keeps but a DateTime cannot hold; a game's account does it to its own files.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only NTFS keeps a time beyond year 9999.");
+        Directory.CreateDirectory(Path.Combine(ServerDirectory, "cfg"));
+        File.WriteAllText(Path.Combine(ServerDirectory, "normal.cfg"), "x");
+        var future = Path.Combine(ServerDirectory, "future.cfg");
+        File.WriteAllText(future, "abc");
+        SetLastWriteFileTime(future, long.MaxValue);
+        SetLastWriteFileTime(Path.Combine(ServerDirectory, "cfg"), long.MaxValue);
+
+        var listed = Files.List(Server, ServerFilePath.Root).Entries;
+        Assert.Equal(["cfg", "future.cfg", "normal.cfg"], listed.Select(e => e.Name));
+        Assert.All(listed.Where(e => e.Name != "normal.cfg"), e => Assert.Equal(9999, e.ModifiedAt.Year));
+        Assert.Contains(Files.Walk(Server), e => e.Path == "future.cfg" && e.Size == 3);
+        Assert.Empty(Files.List(Server, "cfg").Entries);
+        using (var opened = Files.OpenRead(Server, "future.cfg", 100))
+        {
+            Assert.Equal("abc", new StreamReader(opened.Content).ReadToEnd());
+            Assert.Equal(FileVersion.Of(3, opened.Info.Entry.ModifiedAt), opened.Info.Version);
+        }
+
+        using (var replacement = Files.Create(Server, "future.cfg", 2, overwrite: true, expectedVersion: null))
+        {
+            replacement.Content.Write("de"u8);
+            replacement.Commit();
+        }
+
+        Assert.Equal("de", File.ReadAllText(future));
+        SetLastWriteFileTime(future, long.MaxValue);
+        Files.Delete(Server, "future.cfg");
+        Assert.False(File.Exists(future));
+        Files.Delete(Server, "cfg");
+        Assert.False(Directory.Exists(Path.Combine(ServerDirectory, "cfg")));
+    }
+
+    [ContractFact]
     public void EnsuringADirectoryCreatesWhatIsMissingAndKeepsWhatIsThere()
     {
         Directory.CreateDirectory(Path.Combine(ServerDirectory, "addons"));
@@ -433,4 +470,24 @@ public abstract class ServerFileManagerContract : IDisposable
             return new StreamReader(opened.Content, Encoding.UTF8).ReadToEnd();
         }
     }
+
+    /// <summary>Sets the last-write FILETIME (100 ns since 1601) of a file or folder, beyond what a DateTime holds if asked.</summary>
+    protected static void SetLastWriteFileTime(string path, long fileTime)
+    {
+        // FILE_WRITE_ATTRIBUTES, all sharing, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS (to open a folder).
+        using var handle = CreateFile(path, 0x100, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero);
+        if (handle.IsInvalid || !SetFileTime(handle, IntPtr.Zero, IntPtr.Zero, ref fileTime))
+        {
+            throw new IOException($"Could not set the time of '{path}' (error {System.Runtime.InteropServices.Marshal.GetLastWin32Error()}).");
+        }
+    }
+
+    [System.Runtime.InteropServices.LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true,
+        StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
+    private static partial Microsoft.Win32.SafeHandles.SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security,
+        uint disposition, uint flags, IntPtr template);
+
+    [System.Runtime.InteropServices.LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool SetFileTime(Microsoft.Win32.SafeHandles.SafeFileHandle file, IntPtr creation, IntPtr access, ref long write);
 }

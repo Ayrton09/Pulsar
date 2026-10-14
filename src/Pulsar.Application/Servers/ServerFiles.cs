@@ -18,7 +18,8 @@ public sealed class FileManagerOptions
 
 /// <param name="Path">The listed directory (empty: the server directory).</param>
 /// <param name="Truncated">The directory has more entries than a listing returns.</param>
-public sealed record FileListing(string Path, IReadOnlyList<FileEntry> Entries, bool Truncated);
+/// <param name="Skipped">Entries left out because their names cannot be opened, renamed or deleted from the panel.</param>
+public sealed record FileListing(string Path, IReadOnlyList<FileEntry> Entries, bool Truncated, int Skipped);
 
 /// <param name="Version">For the editor: saving with it fails if the file changed in between.</param>
 public sealed record FileDetails(FileEntry Entry, string Version);
@@ -81,7 +82,7 @@ public sealed class ServerFiles(
         }
 
         return ack.Value.Result is FileListResult listing
-            ? new FileListing(path, listing.Entries, listing.Truncated)
+            ? new FileListing(path, listing.Entries, listing.Truncated, listing.Skipped)
             : ServerErrors.CommandRejected;
     }
 
@@ -147,7 +148,8 @@ public sealed class ServerFiles(
                 await db.SaveChangesAsync(cancellationToken);
             }
 
-            return new FileContent(new FileDetails(file.Entry, file.Version), content, length, download);
+            // Named by what was asked for: the name in the node's answer is the node's to choose (it becomes the download's name).
+            return new FileContent(new FileDetails(file.Entry with { Name = ServerFilePath.Name(path) }, file.Version), content, length, download);
         }
         catch (TimeoutException)
         {
@@ -238,7 +240,7 @@ public sealed class ServerFiles(
             await upload.WaitUntilSentAsync(cancellationToken);
             var outcome = await upload.Result.WaitAsync(s_resultTimeout, cancellationToken);
             return outcome is { ErrorCode: null, File: { } file }
-                ? new FileDetails(file.Entry, file.Version)
+                ? new FileDetails(file.Entry with { Name = ServerFilePath.Name(command.Path) }, file.Version)
                 : ServerErrors.FileRejected(outcome.ErrorCode ?? FileErrors.Failed, outcome.Message ?? "The node could not write the file.");
         }
         catch (TimeoutException)

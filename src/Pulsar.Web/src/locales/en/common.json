@@ -1231,6 +1231,8 @@
     "actions": "Actions",
     "empty": "This folder is empty.",
     "truncated": "Only the first {{count}} entries are shown.",
+    "skipped_one": "{{count}} entry with a name Pulsar cannot open is not shown.",
+    "skipped_other": "{{count}} entries with names Pulsar cannot open are not shown.",
     "link": "link",
     "newFolder": "New folder",
     "newFile": "New file",
