@@ -18,7 +18,9 @@ using Pulsar.Agent.Core.Panel;
 using Pulsar.Api.Agents;
 using Pulsar.Api.Http;
 using Pulsar.Api.Tests.Infrastructure;
+using Pulsar.Application;
 using Pulsar.Application.Nodes;
+using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 using Pulsar.Domain.Common;
 
@@ -674,6 +676,8 @@ public sealed class AgentsEndpointLimitsTests
     [InlineData(null, "100", null, "101", null)]
     [InlineData(null, null, null, null, "0")]
     [InlineData("10", null, null, null, "11")]
+    [InlineData(null, null, null, null, "1")]
+    [InlineData("1", null, null, null, null)]
     public void BudgetsAreCheckedAtStartup(string? max, string? pending, string? perAddress, string? perNetwork, string? perNode)
     {
         using var services = Services(new Dictionary<string, string?>
@@ -686,6 +690,16 @@ public sealed class AgentsEndpointLimitsTests
         });
 
         Assert.Throws<OptionsValidationException>(() => services.GetRequiredService<IOptions<AgentsOptions>>().Value);
+    }
+
+    [Fact]
+    public void TheNodesTransfersFollowItsConnections()
+    {
+        // A node's transfers take half of the connections it may hold: its hub and its rotation keep the other half.
+        using var services = Services(new Dictionary<string, string?> { ["Agents:MaxConnectionsPerNode"] = "6" });
+
+        Assert.Equal(new FileTransferLimits(3, 3), services.GetRequiredService<FileTransferLimits>());
+        Assert.Equal(new FileTransferLimits(3, 3), services.GetRequiredService<FileTransfers>().Limits);
     }
 
     [Fact]
@@ -722,7 +736,7 @@ public sealed class AgentsEndpointLimitsTests
     private static ServiceProvider Services(Dictionary<string, string?> settings)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
-        return new ServiceCollection().AddPulsarApi(configuration).BuildServiceProvider();
+        return new ServiceCollection().AddPulsarApi(configuration).AddPulsarApplication().AddSingleton(TimeProvider.System).BuildServiceProvider();
     }
 
     private static AgentsConnectionLimit Limit(int max, int pending, int perAddress, out FakeTimeProvider clock, int? perNetwork = null,

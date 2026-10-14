@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
+using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
@@ -22,7 +23,7 @@ public sealed record ApiKeyMatch(ApiKeyId Id, UserId UserId, string Name, IReadO
 /// API keys (docs/architecture/02, "API keys"): each user manages their own from a signed-in session (never with a
 /// key); administrators can revoke all of a user's keys. Requests with a key are matched here.
 /// </summary>
-public sealed class ApiKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audit, TimeProvider clock)
+public sealed class ApiKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audit, TimeProvider clock, FileTransfers transfers)
 {
     private static readonly TimeSpan s_lastUsedPrecision = TimeSpan.FromMinutes(1);
 
@@ -72,6 +73,8 @@ public sealed class ApiKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audi
         key.Revoke(clock.GetUtcNow());
         audit.Record(AuditActions.Auth.ApiKeyRevoked, metadata: new { key = key.Id.Value, key.Name, key.Prefix });
         await db.SaveChangesAsync(cancellationToken);
+        // A transfer outlives the requests that check the key: it ends with it.
+        transfers.EndApiKey(key.Id.Value);
         return Result.Success();
     }
 
@@ -87,6 +90,7 @@ public sealed class ApiKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audi
 
         audit.Record(AuditActions.User.ApiKeysRevoked, metadata: new { user = user.Value, count = keys.Count }).WithTarget("user", user.Value.ToString());
         await db.SaveChangesAsync(cancellationToken);
+        transfers.EndApiKeys(user);
         return keys.Count;
     }
 

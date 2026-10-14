@@ -13,7 +13,7 @@ namespace Pulsar.Api.Tests.Agents;
 /// <summary>
 /// The panel's first commands can reach an agent before the answer to its Hello (an agent that missed a panel key
 /// rotation gets the new keys as soon as it is registered): they must not wait on that answer, nor be judged expired on a
-/// node whose clock is behind.
+/// node whose clock is behind (the agent knows the panel's clock from its session's grant, before Hello).
 /// </summary>
 public sealed class CommandBeforeHelloTests(CommandBeforeHelloTests.Factory factory) : IClassFixture<CommandBeforeHelloTests.Factory>
 {

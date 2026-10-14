@@ -33,8 +33,8 @@ internal static class AgentEndpoints
             .RequireAuthorization(policy => policy.AddAuthenticationSchemes(AgentAuthenticationHandler.Scheme).RequireAuthenticatedUser())
             .ExcludeFromDescription();
         session.MapPost("/credentials/rotate", RotateCredentialAsync).RequireRateLimiting(AuthRateLimit);
-        session.MapGet("/transfers/{ticket}", SendToAgentAsync);
-        session.MapPut("/transfers/{ticket}", ReceiveFromAgentAsync);
+        session.MapGet("/transfers/{ticket}", SendToAgentAsync).WithMetadata(AgentTransferMetadata.Instance);
+        session.MapPut("/transfers/{ticket}", ReceiveFromAgentAsync).WithMetadata(AgentTransferMetadata.Instance);
         return app;
     }
 
@@ -53,19 +53,21 @@ internal static class AgentEndpoints
 
         http.Response.ContentType = "application/octet-stream";
         http.Response.ContentLength = upload.Size;
+        // An upload that was ended (its user's sessions, its API key, its time) stops here: the node never gets the rest.
+        using var sending = CancellationTokenSource.CreateLinkedTokenSource(http.RequestAborted, upload.Aborted);
         try
         {
             var buffer = new byte[81920];
             long sent = 0;
             while (sent < upload.Size)
             {
-                var read = await upload.Content.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, upload.Size - sent)), http.RequestAborted);
+                var read = await upload.Content.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, upload.Size - sent)), sending.Token);
                 if (read == 0)
                 {
                     break;
                 }
 
-                await http.Response.Body.WriteAsync(buffer.AsMemory(0, read), http.RequestAborted);
+                await http.Response.Body.WriteAsync(buffer.AsMemory(0, read), sending.Token);
                 sent += read;
                 upload.Progressed();
             }

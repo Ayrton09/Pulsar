@@ -17,4 +17,7 @@ public interface IRequestContext
     /// The only permissions the request may use (an API key limited to some), on top of its user's; null: no limit.
     /// </summary>
     IReadOnlySet<string>? PermissionLimit => null;
+
+    /// <summary>The API key the request was made with, if any: what it starts ends when the key is revoked.</summary>
+    Guid? ApiKeyId => null;
 }

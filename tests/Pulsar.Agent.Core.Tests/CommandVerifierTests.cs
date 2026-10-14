@@ -111,11 +111,11 @@ public sealed class CommandVerifierTests : IDisposable
     public void ExpiryIsJudgedOnThePanelClock()
     {
         // The panel's clock is 10 minutes behind ours: a command it just issued is still valid.
-        _verifier.PanelClockOffset = TimeSpan.FromMinutes(-10);
+        var verifier = new CommandVerifier(_nodeId, _sessionId, [_pinned], s_supported, _clock) { PanelClockOffset = TimeSpan.FromMinutes(-10) };
         var issued = _clock.GetUtcNow() - TimeSpan.FromMinutes(10);
         var envelope = Envelope(sequence: 1) with { IssuedAt = issued, ExpiresAt = issued.AddSeconds(60) };
 
-        Assert.Null(_verifier.Verify(Sign(envelope)).Rejection);
+        Assert.Null(verifier.Verify(Sign(envelope)).Rejection);
     }
 
     [Fact]
