@@ -230,10 +230,11 @@ until you update them).
   the same NAT. Before TLS the panel cannot tell them from the agent, so 20 idle connections from a game server keep its
   own node from signing in (until they stop). Game servers run under their own Windows accounts (`pulsar_<id>`, one
   per server), so the firewall can keep them from the panel's ports. With `Pulsar:ManageFirewall` on (see
-  [First steps](#4-first-steps-in-the-panel)), the agent does it itself: an outbound rule `Pulsar <id> panel block` for each server's
-  account, made again at every start of the server with the panel's addresses of that moment, and removed with the
-  server. On a node whose firewall you manage, block them yourself, and run it again after you create or delete a
-  server, or when the panel's addresses change (it replaces the rule):
+  [First steps](#4-first-steps-in-the-panel)), the agent does it itself: an outbound rule `Pulsar <id> panel block` for
+  each server's account, made when the server is created and when the agent starts, kept up to date when the panel's
+  addresses or the machine's change (and every 5 minutes), and removed with the server. On a node whose firewall you
+  manage, block them yourself, and run it again after you create or delete a server, or when the panel's addresses
+  change (it replaces the rule):
 
   ```powershell
   $panelName = 'panel.example.com'  # the host in the agent's panel address
@@ -254,6 +255,13 @@ until you update them).
   when the panel runs on the node, or its public name leads back to the node through the router, a game server
   reaches it there too. The agent runs as SYSTEM and is not affected. With no game server yet there is nothing to
   block, and the rule is removed.
+
+  Either way the rule narrows this down, it does not rule it out. It blocks the addresses it lists: one of the
+  panel's that the name did not return here (a second address, what GeoDNS or anycast give other networks, a NAT64
+  form) stays open. It needs Windows Firewall on for the network profile in use and local rules applied: a
+  third-party firewall, a disabled profile, or group policy that does not merge local rules make it do nothing (the
+  agent's log warns about these). And it blocks the panel's ports on every address it lists: with the panel on 443
+  behind a shared proxy or CDN address, game servers cannot reach anything on 443 at that address.
 - On a panel installed before, add the endpoint to `C:\Program Files\Pulsar\Panel\appsettings.Production.json`
   with the same certificate as `Https`, open the port, and restart the panel:
 
@@ -334,7 +342,8 @@ afterwards:
    restart the PulsarAgent service), and in your router if players come from the internet. The agent's rules apply to
    every network profile, Public included (the network adapters of cloud servers are often Public), and only to that
    game's program and the ports it declares. The agent then also blocks each game server's account from the panel's
-   ports, so a game cannot hold the connections its node signs in with.
+   ports, so a game cannot easily hold the connections its node signs in with (see the agents' port above for what
+   this rule does not cover).
 
 Windows Defender scans every file SteamCMD writes, which slows the first download of large games. Pulsar does not add
 exclusions on its own: whether to exclude `C:\PulsarServers` is your security decision.

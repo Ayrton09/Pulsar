@@ -1,0 +1,338 @@
+using System.Net;
+using System.Threading.Channels;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
+using Pulsar.Agent.Core.Processes;
+using Pulsar.Manifests;
+
+namespace Pulsar.Agent.Core.Tests;
+
+/// <summary>The outbound block of the servers' accounts toward the panel: what it lists, and when it is refreshed.</summary>
+public sealed class PanelBlockTests : IDisposable
+{
+    private static readonly ServerAccount s_first = new("abcd2345", ProcessIdentity.Account("pulsar_abcd2345"));
+    private static readonly ServerAccount s_second = new("efgh6789", ProcessIdentity.Account("pulsar_efgh6789"));
+
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "pulsar-panel-block-tests", Guid.NewGuid().ToString("N"));
+    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 10, 14, 12, 0, 0, TimeSpan.Zero));
+    private readonly PanelBlockOptions _options = new();
+    private readonly RecordingFirewall _firewall = new();
+    private readonly CancellationTokenSource _stopping = new();
+    private IReadOnlyList<Uri> _panels = [new("https://panel.example.com:8444/"), new("https://panel.example.com:8443/")];
+
+    private string BookFile => Path.Combine(_root, "state", "panel-addresses.json");
+
+    public void Dispose()
+    {
+        _stopping.Cancel();
+        _stopping.Dispose();
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void TheTargetsAreEveryAddressOfThePanelAndOfTheNodeOnThePanelsPorts()
+    {
+        var targets = PanelTargets.For(
+            [new("https://panel.example.com:8444/"), new("https://panel.example.com/"), new("https://198.51.100.7:8443/"), new("https://[2001:db8::7]:8443/")],
+            [IPAddress.Parse("203.0.113.10"), IPAddress.Parse("2001:db8::5"), IPAddress.Parse("::ffff:203.0.113.10"), IPAddress.Parse("198.51.100.7"),
+                IPAddress.Parse("2001:db8::7")],
+            [IPAddress.Parse("192.168.1.20"), IPAddress.Parse("fe80::1%12"), IPAddress.Loopback, IPAddress.IPv6Loopback, IPAddress.Parse("203.0.113.10"),
+                IPAddress.Any, IPAddress.IPv6Any])!;
+
+        // Loopback always (the firewall refuses ::1 itself: ::/127 is it and the unspecified address), each address once,
+        // IPv4-mapped ones as IPv4, without a scope: then the node's own.
+        Assert.Equal("127.0.0.0/8,::/127,203.0.113.10,2001:db8::5,198.51.100.7,2001:db8::7,192.168.1.20,fe80::1", targets.RemoteAddresses);
+        Assert.Equal("443,8443,8444", targets.RemotePorts);
+    }
+
+    [Fact]
+    public void WithoutAPanelThereIsNothingToBlock()
+    {
+        Assert.Null(PanelTargets.For([], [], [IPAddress.Parse("10.0.0.4")]));
+    }
+
+    [Fact]
+    public void KnownAddressesSurviveARestartOfTheAgent()
+    {
+        var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10"), IPAddress.Parse("2001:db8::5")]);
+        book.Save();
+
+        var again = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+
+        Assert.Equal([IPAddress.Parse("203.0.113.10"), IPAddress.Parse("2001:db8::5")], again.Known(["PANEL.example.com"]));
+        Assert.Empty(again.Known(["other.example.com"]));
+    }
+
+    [Fact]
+    public void AnAddressGoesOnlyOnceTheNameHasResolvedWithoutItForAMonth()
+    {
+        var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10")]);
+        _clock.Advance(TimeSpan.FromDays(20));
+        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.11")]);
+        Assert.Equal([IPAddress.Parse("203.0.113.10"), IPAddress.Parse("203.0.113.11")], book.Known(["panel.example.com"])); // the union
+
+        // Months without an answer (the name does not resolve) forget nothing.
+        _clock.Advance(TimeSpan.FromDays(90));
+        book.Learn("panel.example.com", []);
+        Assert.Equal(2, book.Known(["panel.example.com"]).Count);
+
+        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.11")]);
+        Assert.Equal([IPAddress.Parse("203.0.113.11")], book.Known(["panel.example.com"]));
+    }
+
+    [Fact]
+    public void ANameNoLongerConfiguredIsForgottenAndManyAddressesKeepTheNewest()
+    {
+        var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+        book.Learn("old.example.com", [IPAddress.Parse("198.51.100.1")]);
+        for (var i = 0; i < PanelAddressBook.MaxAddressesPerName + 10; i++)
+        {
+            _clock.Advance(TimeSpan.FromMinutes(5));
+            book.Learn("panel.example.com", [new IPAddress([10, 0, (byte)(i / 256), (byte)(i % 256)])]);
+        }
+
+        book.Retain(["panel.example.com"]);
+
+        Assert.Empty(book.Known(["old.example.com"]));
+        var known = book.Known(["panel.example.com"]);
+        Assert.Equal(PanelAddressBook.MaxAddressesPerName, known.Count);
+        Assert.DoesNotContain(new IPAddress([10, 0, 0, 0]), known);
+        Assert.Contains(new IPAddress([10, 0, 0, (byte)(PanelAddressBook.MaxAddressesPerName + 9)]), known);
+    }
+
+    [Fact]
+    public void AnUnreadableBookStartsEmpty()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(BookFile)!);
+        File.WriteAllText(BookFile, "{ not json");
+
+        var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+
+        Assert.Empty(book.Known(["panel.example.com"]));
+        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10")]);
+        book.Save();
+        Assert.Single(new PanelAddressBook(BookFile, _clock, NullLogger.Instance).Known(["panel.example.com"]));
+    }
+
+    [Fact]
+    public async Task EveryAccountIsBlockedAtStartWithWhatIsKnownBeforeAnyLookupThenWithTheUnionOfOldAndNew()
+    {
+        Remember("panel.example.com", "203.0.113.10");
+        var resolver = new Resolver(_ => [IPAddress.Parse("198.51.100.9")]);
+        var keeper = Keeper(resolver);
+
+        keeper.Start(() => [s_first, s_second], _stopping.Token);
+
+        // At once, before Start returns: no lookup on the way to the servers' starts.
+        Assert.True(_firewall.Blocks.Reader.TryRead(out var first));
+        Assert.Equal([s_first, s_second], first.Servers);
+        Assert.Equal("127.0.0.0/8,::/127,203.0.113.10,10.0.0.4", first.Targets.RemoteAddresses);
+        Assert.Equal("8443,8444", first.Targets.RemotePorts);
+
+        var refreshed = await NextAsync();
+        Assert.Equal("127.0.0.0/8,::/127,203.0.113.10,198.51.100.9,10.0.0.4", refreshed.Targets.RemoteAddresses);
+        Assert.Equal(["panel.example.com"], resolver.Hosts); // one lookup for both addresses
+        Assert.Same(refreshed.Targets, keeper.Current);
+        Assert.Equal([IPAddress.Parse("203.0.113.10"), IPAddress.Parse("198.51.100.9")],
+            new PanelAddressBook(BookFile, _clock, NullLogger.Instance).Known(["panel.example.com"]));
+    }
+
+    [Fact]
+    public async Task ALookupThatHangsIsGivenUpAndTheLastGoodAddressesStay()
+    {
+        Remember("panel.example.com", "203.0.113.10");
+        var resolver = new Resolver(_ => throw new InvalidOperationException("unused")) { Hang = true };
+        var keeper = Keeper(resolver);
+
+        keeper.Start(() => [s_first], _stopping.Token);
+        Assert.True(_firewall.Blocks.Reader.TryRead(out _));
+        await resolver.Called.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        var refreshed = await AdvanceUntilNextAsync(_options.ResolveTimeout);
+
+        Assert.Equal("127.0.0.0/8,::/127,203.0.113.10,10.0.0.4", refreshed.Targets.RemoteAddresses);
+    }
+
+    [Fact]
+    public async Task AFailedLookupKeepsTheLastGoodAddresses()
+    {
+        Remember("panel.example.com", "203.0.113.10");
+        var resolver = new Resolver(host => throw new ArgumentException($"{host} is too long"));
+        var keeper = Keeper(resolver);
+
+        keeper.Start(() => [s_first], _stopping.Token);
+        Assert.True(_firewall.Blocks.Reader.TryRead(out _));
+        var refreshed = await NextAsync();
+
+        Assert.Equal("127.0.0.0/8,::/127,203.0.113.10,10.0.0.4", refreshed.Targets.RemoteAddresses);
+    }
+
+    [Fact]
+    public async Task ANetworkChangeAMoveAndTheTimerRefreshTheBlock()
+    {
+        var resolver = new Resolver(_ => [IPAddress.Parse("203.0.113.10")]);
+        var keeper = Keeper(resolver);
+        keeper.Start(() => [s_first], _stopping.Token);
+        Assert.True(_firewall.Blocks.Reader.TryRead(out _));
+        await NextAsync();
+
+        keeper.Request(); // a network change
+        await NextAsync();
+        Assert.Equal(2, resolver.Hosts.Count);
+
+        // The agent moved to another address: noticed at the next look at its configuration, without waiting for the timer.
+        _panels = [new("https://agents.example.com:9443/"), new("https://panel.example.com:8443/")];
+        var moved = await AdvanceUntilNextAsync(_options.PollInterval);
+        Assert.Equal("8443,9443", moved.Targets.RemotePorts);
+        Assert.Contains("agents.example.com", resolver.Hosts);
+
+        var count = resolver.Hosts.Count;
+        await AdvanceUntilNextAsync(_options.PollInterval);
+        Assert.True(resolver.Hosts.Count > count);
+        Assert.True(_clock.GetUtcNow() - new DateTimeOffset(2026, 10, 14, 12, 0, 0, TimeSpan.Zero) >= _options.RefreshInterval);
+    }
+
+    [Fact]
+    public async Task AFirewallThatFailsDoesNotStopTheRefreshes()
+    {
+        var resolver = new Resolver(_ => [IPAddress.Parse("203.0.113.10")]);
+        var keeper = Keeper(resolver);
+        _firewall.Failures = 1;
+
+        keeper.Start(() => [s_first], _stopping.Token); // fails: logged, and the refresh that follows tries again
+
+        Assert.False(_firewall.Blocks.Reader.TryRead(out _));
+        Assert.Equal("127.0.0.0/8,::/127,203.0.113.10,10.0.0.4", (await NextAsync()).Targets.RemoteAddresses);
+    }
+
+    [Fact]
+    public async Task ANewServerIsBlockedWithTheCurrentAddresses()
+    {
+        var keeper = Keeper(new Resolver(_ => [IPAddress.Parse("203.0.113.10")]));
+        keeper.Start(() => [s_first], _stopping.Token);
+        Assert.True(_firewall.Blocks.Reader.TryRead(out _));
+        var current = (await NextAsync()).Targets;
+
+        keeper.Ensure(s_second);
+
+        Assert.True(_firewall.Blocks.Reader.TryRead(out var ensured));
+        Assert.Equal([s_second], ensured.Servers);
+        Assert.Same(current, ensured.Targets);
+    }
+
+    [Fact]
+    public void WithoutManagingTheFirewallNothingIsBlockedOrLookedUp()
+    {
+        var resolver = new Resolver(_ => [IPAddress.Parse("203.0.113.10")]);
+        _firewall.Enabled = false;
+        var keeper = Keeper(resolver);
+
+        keeper.Start(() => [s_first], _stopping.Token);
+        keeper.Request();
+        keeper.Ensure(s_second);
+
+        Assert.False(_firewall.Blocks.Reader.TryRead(out _));
+        Assert.Null(keeper.Current);
+        Assert.Empty(resolver.Hosts);
+    }
+
+    private PanelBlockKeeper Keeper(Resolver resolver) =>
+        new(_firewall, () => _panels, new PanelAddressBook(BookFile, _clock, NullLogger.Instance), _options, _clock,
+            NullLogger<PanelBlockKeeper>.Instance, resolver.ResolveAsync, () => [IPAddress.Parse("10.0.0.4"), IPAddress.Loopback]);
+
+    private void Remember(string host, string address)
+    {
+        var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+        book.Learn(host, [IPAddress.Parse(address)]);
+        book.Save();
+    }
+
+    private async Task<(IReadOnlyCollection<ServerAccount> Servers, PanelTargets Targets)> NextAsync() =>
+        await _firewall.Blocks.Reader.ReadAsync(TestContext.Current.CancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+    /// <summary>Moves the clock in steps (the keeper may not be waiting yet) until the block is applied again.</summary>
+    private async Task<(IReadOnlyCollection<ServerAccount> Servers, PanelTargets Targets)> AdvanceUntilNextAsync(TimeSpan step)
+    {
+        var next = _firewall.Blocks.Reader.ReadAsync(TestContext.Current.CancellationToken).AsTask();
+        for (var i = 0; i < 200; i++)
+        {
+            _clock.Advance(step);
+            if (await Task.WhenAny(next, Task.Delay(50, TestContext.Current.CancellationToken)) == next)
+            {
+                return await next;
+            }
+        }
+
+        throw new TimeoutException("The block was not applied again.");
+    }
+
+    private sealed class RecordingFirewall : IServerFirewall
+    {
+        public bool Enabled { get; set; } = true;
+
+        public int Failures { get; set; }
+
+        public Channel<(IReadOnlyCollection<ServerAccount> Servers, PanelTargets Targets)> Blocks { get; } =
+            Channel.CreateUnbounded<(IReadOnlyCollection<ServerAccount>, PanelTargets)>();
+
+        public void Allow(string shortId, string executablePath, IReadOnlyList<BoundPort> ports, ProcessIdentity identity)
+        {
+        }
+
+        public void BlockPanel(IReadOnlyCollection<ServerAccount> servers, PanelTargets targets)
+        {
+            if (Failures > 0)
+            {
+                Failures--;
+                throw new InvalidOperationException("The firewall service is not running.");
+            }
+
+            Blocks.Writer.TryWrite(([.. servers], targets));
+        }
+
+        public void Remove(string shortId)
+        {
+        }
+    }
+
+    private sealed class Resolver(Func<string, IReadOnlyList<IPAddress>> answer)
+    {
+        private readonly Lock _lock = new();
+        private readonly List<string> _hosts = [];
+
+        public bool Hang { get; init; }
+
+        public TaskCompletionSource Called { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public IReadOnlyList<string> Hosts
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return [.. _hosts];
+                }
+            }
+        }
+
+        public async Task<IReadOnlyList<IPAddress>> ResolveAsync(string host, CancellationToken cancellationToken)
+        {
+            lock (_lock)
+            {
+                _hosts.Add(host);
+            }
+
+            Called.TrySetResult();
+            if (Hang)
+            {
+                await Task.Delay(Timeout.Infinite, CancellationToken.None); // a lookup that ignores its cancellation
+            }
+
+            return answer(host);
+        }
+    }
+}

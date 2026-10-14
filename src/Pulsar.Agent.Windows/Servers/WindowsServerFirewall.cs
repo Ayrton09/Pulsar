@@ -1,10 +1,6 @@
 using System.Globalization;
-using System.Net;
-using System.Net.NetworkInformation;
-using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Manifests;
@@ -14,12 +10,11 @@ namespace Pulsar.Agent.Windows.Servers;
 /// <summary>
 /// Windows Firewall rules through its COM API (<c>HNetCfg.FwPolicy2</c>), never through <c>netsh</c>: inbound, allow,
 /// one protocol and local port each, bound to the server's executable and, when the allocation is not every interface,
-/// to its address; and one outbound block for the server's account toward the panel's TCP ports. Rule names are derived
-/// from the server and port, so they can be replaced and removed exactly.
+/// to its address; and one outbound block for the server's account toward the panel's TCP ports, updated in place so it
+/// is never missing while it changes. Rule names are derived from the server and port, so they can be replaced and
+/// removed exactly.
 /// </summary>
-/// <param name="panels">The addresses the agent reaches its panel at (its configuration's panel and fallback), read at each start.</param>
-public sealed partial class WindowsServerFirewall(bool enabled, Func<IReadOnlyList<Uri>> panels, ILogger<WindowsServerFirewall> logger)
-    : IServerFirewall
+public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsServerFirewall> logger) : IServerFirewall
 {
     public const string Grouping = "Pulsar";
 
@@ -30,13 +25,17 @@ public sealed partial class WindowsServerFirewall(bool enabled, Func<IReadOnlyLi
     private const int ActionBlock = 0;
     private const int ActionAllow = 1;
     private const int AllProfiles = 0x7FFFFFFF;
+    private const int GroupPolicyOverride = 1; // NET_FW_MODIFY_STATE_GP_OVERRIDE: local rules are not applied
 
-    /// <summary>
-    /// Loopback, on every node: where the panel runs on the node, a game reaches it there too (and from there takes the
-    /// local agent's share of the panel's budget for connections not signed in yet). The firewall refuses <c>::1</c>
-    /// itself; <c>::/127</c> is it and the unspecified address, which nothing connects to.
-    /// </summary>
-    private static readonly string[] s_loopback = ["127.0.0.0/8", "::/127"];
+    private static readonly (int Type, string Name)[] s_profiles = [(1, "domain"), (2, "private"), (4, "public")];
+    private static readonly SecurityIdentifier? s_self = WindowsIdentity.GetCurrent().User;
+
+    // The outbound blocks: one writer at a time, and none for a server once it is removed.
+    private readonly Lock _blockLock = new();
+    private readonly Dictionary<string, AppliedBlock> _applied = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _removed = new(StringComparer.Ordinal);
+    private volatile PanelTargets? _targets;
+    private string? _inert;
 
     public bool Enabled => enabled;
 
@@ -56,10 +55,9 @@ public sealed partial class WindowsServerFirewall(bool enabled, Func<IReadOnlyLi
         }
 
         ServerShortId.Validate(shortId);
-        var block = PanelBlockOf(shortId, identity); // names resolved before the firewall is opened
         Use(rules =>
         {
-            RemoveRules(rules, shortId);
+            RemoveRules(rules, shortId, keepPanelBlock: true);
             foreach (var port in ports)
             {
                 foreach (var protocol in port.Protocols)
@@ -91,13 +89,35 @@ public sealed partial class WindowsServerFirewall(bool enabled, Func<IReadOnlyLi
                     }
                 }
             }
-
-            if (block is not null)
-            {
-                AddPanelBlock(rules, shortId, block);
-            }
         });
         LogRulesApplied(shortId, ports.Count);
+
+        // The block normally exists already (PanelBlockKeeper); one that went missing is made again before the game starts.
+        if (_targets is { } targets)
+        {
+            try
+            {
+                Block([new ServerAccount(shortId, identity)], targets);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                LogPanelBlockFailed(shortId, ex.Message);
+            }
+        }
+    }
+
+    public void BlockPanel(IReadOnlyCollection<ServerAccount> servers, PanelTargets targets)
+    {
+        ArgumentNullException.ThrowIfNull(servers);
+        ArgumentNullException.ThrowIfNull(targets);
+        if (!enabled)
+        {
+            return;
+        }
+
+        _targets = targets;
+        WarnIfInert();
+        Block(servers, targets);
     }
 
     public void Remove(string shortId)
@@ -108,7 +128,14 @@ public sealed partial class WindowsServerFirewall(bool enabled, Func<IReadOnlyLi
         }
 
         ServerShortId.Validate(shortId);
-        Use(rules => RemoveRules(rules, shortId));
+        lock (_blockLock)
+        {
+            // Before the rules go: a refresh already under way must not make the block again for a server being deleted.
+            _removed.Add(shortId);
+            _applied.Remove(shortId);
+            Use(rules => RemoveRules(rules, shortId, keepPanelBlock: false));
+        }
+
         LogRulesRemoved(shortId);
     }
 
@@ -138,128 +165,175 @@ public sealed partial class WindowsServerFirewall(bool enabled, Func<IReadOnlyLi
         return removed;
     }
 
-    /// <summary>
-    /// The outbound rule of a server's account: TCP to the panel's ports at every address of the panel's names, loopback
-    /// and the node's own addresses (a panel on the node, also behind a public name that leads back to it through the
-    /// router). Only those ports: a game may still reach the panel machine's other services (its game databases). Null
-    /// without a panel to block.
-    /// </summary>
-    internal static PanelBlock? PanelBlockFor(SecurityIdentifier account, IReadOnlyCollection<Uri> panels,
-        Func<string, IReadOnlyList<IPAddress>> resolve, IEnumerable<IPAddress> ownAddresses)
-    {
-        ArgumentNullException.ThrowIfNull(account);
-        ArgumentNullException.ThrowIfNull(panels);
-        ArgumentNullException.ThrowIfNull(resolve);
-        ArgumentNullException.ThrowIfNull(ownAddresses);
-        if (panels.Count == 0)
-        {
-            return null;
-        }
+    /// <summary>Whether <paramref name="identity"/> is the server's own account (<c>pulsar_&lt;shortId&gt;</c>), the only kind ever blocked.</summary>
+    internal static bool IsServerAccount(string shortId, ProcessIdentity identity) =>
+        ServerShortId.IsValid(shortId) && identity is ProcessIdentity.AccountIdentity account
+        && string.Equals(account.Name, WindowsServerAccounts.AccountName(shortId), StringComparison.Ordinal);
 
-        List<string> addresses = [.. s_loopback];
-        var named = panels.Select(panel => panel.IdnHost).Distinct(StringComparer.OrdinalIgnoreCase).SelectMany(host => AddressesOf(host, resolve));
-        foreach (var address in named.Concat(ownAddresses))
+    /// <summary>
+    /// Whether an account may be blocked: a local account's, never the agent's own user, SYSTEM or a built-in group (a
+    /// rule for them would cut the agent, or everyone, off from the panel).
+    /// </summary>
+    internal static bool MayBlock(SecurityIdentifier account, SecurityIdentifier? self) =>
+        account.IsAccountSid() && (self is null || !account.Equals(self)) && !account.IsWellKnown(WellKnownSidType.LocalSystemSid)
+        && !account.Value.StartsWith("S-1-5-32-", StringComparison.Ordinal);
+
+    /// <summary>The firewall's local user condition: an SDDL whose entry allows the one account it applies to.</summary>
+    internal static string LocalUsers(SecurityIdentifier account) => $"D:(A;;CC;;;{account.Value})";
+
+    /// <summary>
+    /// Why rules would have no effect now: the firewall off for a profile in use (a third-party firewall turns it off), or
+    /// group policy not merging local rules. Null when they apply.
+    /// </summary>
+    internal static string? InertReason()
+    {
+        var policy = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FwPolicy2", throwOnError: true)!)!;
+        try
         {
-            if (Remote(address) is { } remote && !addresses.Contains(remote))
+            dynamic p = policy;
+            int current = p.CurrentProfileTypes;
+            var off = s_profiles.Where(profile => (current & profile.Type) != 0 && !(bool)p.FirewallEnabled[profile.Type]).Select(profile => profile.Name).ToList();
+            if (off.Count > 0)
             {
-                addresses.Add(remote);
+                return $"the Windows Firewall is off for the {string.Join(", ", off)} profile in use";
             }
-        }
 
-        var ports = panels.Select(panel => panel.Port).Distinct().Order().Select(port => port.ToString(CultureInfo.InvariantCulture));
-        // The firewall's local user condition: an SDDL whose entries allow the users it applies to.
-        return new PanelBlock($"D:(A;;CC;;;{account.Value})", string.Join(',', addresses), string.Join(',', ports));
+            return (int)p.LocalPolicyModifyState == GroupPolicyOverride ? "group policy does not apply this machine's own firewall rules" : null;
+        }
+        finally
+        {
+            Marshal.FinalReleaseComObject(policy);
+        }
     }
 
-    private static IReadOnlyList<IPAddress> AddressesOf(string host, Func<string, IReadOnlyList<IPAddress>> resolve) =>
-        IPAddress.TryParse(host, out var literal) ? [literal] : resolve(host);
-
-    /// <summary>
-    /// An address as the firewall takes it: an IPv4-mapped one as IPv4, an IPv6 one without its scope; none for loopback
-    /// (listed whole) or the unspecified addresses.
-    /// </summary>
-    private static string? Remote(IPAddress address)
+    private void WarnIfInert()
     {
-        if (address.IsIPv4MappedToIPv6)
-        {
-            address = address.MapToIPv4();
-        }
-
-        if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any))
-        {
-            return null;
-        }
-
-        return address.AddressFamily == AddressFamily.InterNetworkV6 ? new IPAddress(address.GetAddressBytes()).ToString() : address.ToString();
-    }
-
-    /// <summary>
-    /// The outbound rule of a server that runs as its own account, read now: each start refreshes the panel's and the
-    /// node's addresses. None for one that runs as the agent's user (development): the rule would cut the agent off.
-    /// </summary>
-    private PanelBlock? PanelBlockOf(string shortId, ProcessIdentity identity)
-    {
-        if (identity is not ProcessIdentity.AccountIdentity account)
-        {
-            return null;
-        }
-
+        string? reason;
         try
         {
-            return PanelBlockFor(WindowsServerAccounts.Sid(account.Name), panels(), Resolve, OwnAddresses());
+            reason = InertReason();
         }
-        catch (Exception ex) when (ex is IdentityNotMappedException or IOException or UnauthorizedAccessException or JsonException
-            or InvalidDataException or NetworkInformationException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            LogPanelBlockFailed(shortId, ex.Message);
+            reason = $"its state could not be read ({ex.Message})";
+        }
+
+        if (reason != Interlocked.Exchange(ref _inert, reason) && reason is not null)
+        {
+            LogInert(reason);
+        }
+    }
+
+    private void Block(IReadOnlyCollection<ServerAccount> servers, PanelTargets targets)
+    {
+        lock (_blockLock)
+        {
+            List<(string ShortId, string Users)> blocked = [];
+            foreach (var server in servers)
+            {
+                if (!_removed.Contains(server.ShortId) && UsersOf(server) is { } users)
+                {
+                    blocked.Add((server.ShortId, users));
+                }
+            }
+
+            if (blocked.Count == 0)
+            {
+                return;
+            }
+
+            Use(rules =>
+            {
+                foreach (var (shortId, users) in blocked)
+                {
+                    try
+                    {
+                        UpdatePanelBlock(rules, shortId, users, targets);
+                    }
+                    catch (Exception ex) when (ex is COMException or ArgumentException)
+                    {
+                        // The rule keeps what it had; the next refresh tries again.
+                        LogPanelBlockFailed(shortId, ex.Message);
+                    }
+                }
+            });
+        }
+    }
+
+    /// <summary>The block's users for a server running as its own account; null (none) otherwise.</summary>
+    private string? UsersOf(ServerAccount server)
+    {
+        if (server.Identity is not ProcessIdentity.AccountIdentity)
+        {
+            return null; // a development agent's server runs as the agent's user: the rule would cut the agent off
+        }
+
+        if (!IsServerAccount(server.ShortId, server.Identity))
+        {
+            LogNotServerAccount(server.ShortId);
             return null;
         }
-    }
 
-    private IReadOnlyList<IPAddress> Resolve(string host)
-    {
+        SecurityIdentifier sid;
         try
         {
-            return Dns.GetHostAddresses(host);
+            sid = WindowsServerAccounts.Sid(WindowsServerAccounts.AccountName(server.ShortId));
         }
-        catch (SocketException ex)
+        catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
         {
-            // Loopback and the node's own addresses are blocked all the same; the next start tries the name again.
-            LogPanelNotResolved(host, ex.Message);
-            return [];
+            LogPanelBlockFailed(server.ShortId, ex.Message); // its account is not there (yet): the next refresh looks again
+            return null;
         }
+
+        if (!MayBlock(sid, s_self))
+        {
+            LogNotServerAccount(server.ShortId);
+            return null;
+        }
+
+        return LocalUsers(sid);
     }
 
-    private static List<IPAddress> OwnAddresses() =>
-        [.. NetworkInterface.GetAllNetworkInterfaces().SelectMany(n => n.GetIPProperties().UnicastAddresses).Select(a => a.Address)];
-
     /// <summary>
-    /// Adds the outbound rule. Logged, not thrown, when the firewall refuses it: it keeps a game from holding the panel's
-    /// connections for its node, the game is no more exposed without it, and so it does not keep the game from starting.
+    /// Updates the existing rule in place (never removed and added again, so it is never missing), or adds it. Left alone
+    /// when it is as last written.
     /// </summary>
-    private void AddPanelBlock(dynamic rules, string shortId, PanelBlock block)
+    private void UpdatePanelBlock(dynamic rules, string shortId, string users, PanelTargets targets)
     {
-        var rule = Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FWRule", throwOnError: true)!)!;
+        var name = PanelBlockName(shortId);
+        var wanted = $"{users}|{targets.RemoteAddresses}|{targets.RemotePorts}";
+        object? existing = Find(rules, name);
+        var rule = existing ?? Activator.CreateInstance(Type.GetTypeFromProgID("HNetCfg.FWRule", throwOnError: true)!)!;
         try
         {
             dynamic r = rule;
-            r.Name = PanelBlockName(shortId);
-            r.Description = $"Game server {shortId} may not reach the panel. Managed by the Pulsar agent: changes are replaced at the next start.";
-            r.Grouping = Grouping;
+            if (existing is not null && _applied.TryGetValue(shortId, out var last) && last.Wanted == wanted && last.State == State(r))
+            {
+                return;
+            }
+
+            if (existing is null)
+            {
+                r.Name = name;
+                r.Grouping = Grouping;
+            }
+
+            r.Description = $"Game server {shortId} may not reach the panel. Managed by the Pulsar agent: changes are replaced.";
             r.Direction = DirectionOutbound;
             r.Action = ActionBlock;
             r.Protocol = ProtocolTcp;
-            r.RemoteAddresses = block.RemoteAddresses;
-            r.RemotePorts = block.RemotePorts;
-            r.LocalUserAuthorizedList = block.LocalUsers;
+            r.RemoteAddresses = targets.RemoteAddresses;
+            r.RemotePorts = targets.RemotePorts;
+            r.LocalUserAuthorizedList = users;
             r.Profiles = AllProfiles;
             r.Enabled = true;
-            rules.Add(rule);
-            LogPanelBlocked(shortId, block.RemoteAddresses, block.RemotePorts);
-        }
-        catch (Exception ex) when (ex is COMException or ArgumentException)
-        {
-            LogPanelBlockFailed(shortId, ex.Message);
+            if (existing is null)
+            {
+                rules.Add(rule);
+            }
+
+            _applied[shortId] = new AppliedBlock(wanted, State(r));
+            LogPanelBlocked(shortId, targets.RemoteAddresses, targets.RemotePorts);
         }
         finally
         {
@@ -267,10 +341,37 @@ public sealed partial class WindowsServerFirewall(bool enabled, Func<IReadOnlyLi
         }
     }
 
-    /// <summary>Every rule of the server, by prefix, whatever ports the manifest names now.</summary>
-    private static void RemoveRules(dynamic rules, string shortId)
+    /// <summary>The rule of the agent's grouping with that name, if any.</summary>
+    private static object? Find(dynamic rules, string name)
     {
-        Func<string, bool> match = name => IsRuleOf(shortId, name); // (a lambda cannot be passed along a dynamic argument)
+        object rule;
+        try
+        {
+            rule = rules.Item(name);
+        }
+        catch (Exception ex) when (ex is COMException or FileNotFoundException)
+        {
+            return null;
+        }
+
+        if (((dynamic)rule).Grouping is string grouping && grouping == Grouping)
+        {
+            return rule;
+        }
+
+        Marshal.FinalReleaseComObject(rule);
+        return null;
+    }
+
+    /// <summary>What the rule says now, as the firewall reports it (someone may have changed it since).</summary>
+    private static string State(dynamic r) =>
+        $"{r.Direction}|{r.Action}|{r.Protocol}|{r.Enabled}|{r.Profiles}|{r.LocalUserAuthorizedList}|{r.RemoteAddresses}|{r.RemotePorts}|{r.ApplicationName}";
+
+    /// <summary>Every rule of the server, by prefix, whatever ports the manifest names now; its account's block too unless kept.</summary>
+    private static void RemoveRules(dynamic rules, string shortId, bool keepPanelBlock)
+    {
+        var block = PanelBlockName(shortId);
+        Func<string, bool> match = name => IsRuleOf(shortId, name) && !(keepPanelBlock && name == block); // (a lambda cannot be passed along a dynamic argument)
         RemoveMatching(rules, match);
     }
 
@@ -333,15 +434,14 @@ public sealed partial class WindowsServerFirewall(bool enabled, Func<IReadOnlyLi
     [LoggerMessage(Level = LogLevel.Information, Message = "Firewall rule for server {ShortId}: its account may not reach the panel at {Addresses} on TCP {Ports}")]
     private partial void LogPanelBlocked(string shortId, string addresses, string ports);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The firewall rule that keeps server {ShortId} from the panel could not be made: {Reason}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The firewall rule that keeps server {ShortId} from the panel could not be made or updated: {Reason}")]
     private partial void LogPanelBlockFailed(string shortId, string reason);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The panel's name {Host} could not be resolved for the game servers' firewall rules: {Reason}")]
-    private partial void LogPanelNotResolved(string host, string reason);
-}
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Server {ShortId} does not run as its own account: no firewall rule keeps it from the panel")]
+    private partial void LogNotServerAccount(string shortId);
 
-/// <summary>What the outbound rule of a server's account says, in the forms the firewall's COM API takes.</summary>
-/// <param name="LocalUsers">The SDDL of the users it applies to (<c>LocalUserAuthorizedList</c>): the server's account only.</param>
-/// <param name="RemoteAddresses">The panel's addresses, loopback and the node's own, comma-separated.</param>
-/// <param name="RemotePorts">The TCP ports of the panel's addresses, comma-separated.</param>
-internal sealed record PanelBlock(string LocalUsers, string RemoteAddresses, string RemotePorts);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The firewall rules that keep game servers from the panel have no effect: {Reason}")]
+    private partial void LogInert(string reason);
+
+    private sealed record AppliedBlock(string Wanted, string State);
+}

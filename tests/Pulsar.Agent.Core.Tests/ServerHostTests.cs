@@ -180,6 +180,31 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task EveryServersAccountIsKeptFromThePanelWhenTheAgentStartsAndANewOneOnceProvisioned()
+    {
+        Stored("abcd2345");
+        var firewall = new BlockRecordingFirewall();
+        var keeper = new PanelBlockKeeper(firewall, () => [new Uri("https://198.51.100.7:8443/")],
+            new PanelAddressBook(Path.Combine(_root, "panel-addresses.json"), TimeProvider.System, NullLogger.Instance), new PanelBlockOptions(),
+            TimeProvider.System, NullLogger<PanelBlockKeeper>.Instance, (_, _) => Task.FromResult<IReadOnlyList<System.Net.IPAddress>>([]), () => []);
+        var host = Host(firewall: firewall, panelBlock: keeper);
+
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        // Before StartAsync returns, so before any game is started or taken over.
+        var atStart = firewall.Calls.First();
+        Assert.Equal(["abcd2345"], atStart.Servers.Select(s => s.ShortId));
+        Assert.Equal("127.0.0.0/8,::/127,198.51.100.7", atStart.Targets.RemoteAddresses);
+
+        var serverId = Guid.NewGuid();
+        var spec = new ServerRuntimeSpec("efgh6789", Manifest, new Dictionary<string, string?>(), [], AutoStart: false, RestartOnCrash: false);
+        var provision = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new ProvisionServerCommand(serverId, spec), provision))).Status);
+        Assert.Equal(OperationOutcome.Succeeded, (await ResultAsync(provision)).Outcome);
+        Assert.Contains(firewall.Calls, call => call.Servers.Select(s => s.ShortId).SequenceEqual(["efgh6789"]));
+    }
+
+    [Fact]
     public async Task AServerWhoseProvisioningFailedCanStillBeDeleted()
     {
         // Its folder (and account) may be there already: the delete must find what to clean up.
@@ -1144,7 +1169,8 @@ public sealed class ServerHostTests : IAsyncDisposable
         }
     }
 
-    private ServerHost Host(bool hosted = false, ServerHostOptions? options = null, IVolumeSnapshots? snapshots = null)
+    private ServerHost Host(bool hosted = false, ServerHostOptions? options = null, IVolumeSnapshots? snapshots = null,
+        IServerFirewall? firewall = null, PanelBlockKeeper? panelBlock = null)
     {
         var channel = new PanelChannel();
         var files = new DirectServerFiles();
@@ -1160,10 +1186,30 @@ public sealed class ServerHostTests : IAsyncDisposable
         _steamCmd = new SteamCmdRunner(processes, new NoSteamCmd(), files, new DirectServerFileManager(), new SteamLoginStore(_configs.Paths, new PlainStateProtector()), new SteamCmdOptions(), TimeProvider.System, NullLogger<SteamCmdRunner>.Instance);
         _fileCommands = new FileCommands(new DirectServerFileManager(), channel, new FileCommandOptions(), NullLogger<FileCommands>.Instance);
         _host = new ServerHost(_configs, _store, _provisioner, processes, new InstallSteps(install, files), _steamCmd, files, new NoRcon(),
-            new UnmanagedFirewall(), _fileCommands, new BackupStore(_backupFiles, NullLogger<BackupStore>.Instance), install,
+            firewall ?? new UnmanagedFirewall(), _fileCommands, new BackupStore(_backupFiles, NullLogger<BackupStore>.Instance), install,
             channel, new SupervisorOptions(), options ?? new ServerHostOptions { ConsoleLog = null }, TimeProvider.System, NullLoggerFactory.Instance,
-            hosts: hosts, snapshots: snapshots);
+            hosts: hosts, snapshots: snapshots, panelBlock: panelBlock);
         return _host;
+    }
+
+    /// <summary>A managed firewall that records the accounts' blocks.</summary>
+    private sealed class BlockRecordingFirewall : IServerFirewall
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<(IReadOnlyCollection<ServerAccount> Servers, PanelTargets Targets)> _calls = new();
+
+        public bool Enabled => true;
+
+        public IReadOnlyCollection<(IReadOnlyCollection<ServerAccount> Servers, PanelTargets Targets)> Calls => [.. _calls];
+
+        public void Allow(string shortId, string executablePath, IReadOnlyList<BoundPort> ports, ProcessIdentity identity)
+        {
+        }
+
+        public void BlockPanel(IReadOnlyCollection<ServerAccount> servers, PanelTargets targets) => _calls.Enqueue(([.. servers], targets));
+
+        public void Remove(string shortId)
+        {
+        }
     }
 
     private sealed class BrokenSnapshots : IVolumeSnapshots
