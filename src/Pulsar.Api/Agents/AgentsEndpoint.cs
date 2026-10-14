@@ -154,7 +154,11 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
         // Half Kestrel's 10 s: a connection that sends nothing holds a place for less.
         endpoint.HttpsOptions.HandshakeTimeout = HandshakeTimeout;
         // TCP only, whatever the configuration says: HTTP/3 (QUIC) would reach the panel without the budgets below.
-        endpoint.ListenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+        endpoint.ListenOptions.Protocols &= ~HttpProtocols.Http3;
+        if (endpoint.ListenOptions.Protocols == HttpProtocols.None)
+        {
+            endpoint.ListenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+        }
         // Before TLS (Kestrel adds its HTTPS middleware after this configuration), which is where a connection costs.
         endpoint.ListenOptions.Use(ConnectionLimit.Wrap);
         endpoint.ListenOptions.Use(next => connection =>

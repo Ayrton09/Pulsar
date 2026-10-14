@@ -151,9 +151,28 @@ public sealed class AgentsEndpointSessionTests(AgentsEndpointSessionTests.Panel 
         return new HttpClient(handler) { BaseAddress = factory.AgentsUrl, Timeout = TimeSpan.FromSeconds(30) };
     }
 
-    private static async Task<HttpStatusCode> TransferAsync(HttpClient http, string token)
+    [DatabaseTheory]
+    [InlineData("agent/v1/Transfers/x")]
+    [InlineData("agent/v1/TRANSFERS/x")]
+    public async Task ATransferIsCountedAsOneWhateverTheCaseOfItsPath(string path)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, AgentProtocol.Transfer("no-such-ticket").TrimStart('/'));
+        factory.StartServer();
+        await QuietAsync();
+        using var node = await SignInAsync("session-case-" + Guid.NewGuid().ToString("N")[..6]);
+        using var first = Holder(node.Certificate);
+        using var second = Holder(node.Certificate);
+        using var third = Holder(node.Certificate);
+
+        // The route matches any case: so does the transfers' share of the node's connections.
+        Assert.Equal(HttpStatusCode.NotFound, await TransferAsync(first, node.Token.AccessToken, path));
+        Assert.Equal(HttpStatusCode.NotFound, await TransferAsync(second, node.Token.AccessToken, path));
+        Assert.Equal(HttpStatusCode.Unauthorized, await TransferAsync(third, node.Token.AccessToken, path));
+        Assert.Equal(2, Limit.SignedIn(new NodeId(node.NodeId)));
+    }
+
+    private static async Task<HttpStatusCode> TransferAsync(HttpClient http, string token, string? path = null)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, path ?? AgentProtocol.Transfer("no-such-ticket").TrimStart('/'));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         using var response = await http.SendAsync(request, Ct);
         return response.StatusCode;
@@ -252,6 +271,38 @@ public sealed class AgentsEndpointProtocolTests(AgentsEndpointProtocolTests.Http
             base.ConfigureWebHost(builder);
             builder.UseSetting("Kestrel:Endpoints:Main:Protocols", "Http1AndHttp2AndHttp3");
             builder.UseSetting("Kestrel:Endpoints:Agents:Protocols", "Http1AndHttp2AndHttp3");
+        }
+    }
+}
+
+/// <summary>An operator's choice of HTTP/1.1 alone on the agents' endpoint stays: only HTTP/3 is taken away.</summary>
+public sealed class AgentsEndpointHttp1Tests(AgentsEndpointHttp1Tests.Http1Panel factory) : IClassFixture<AgentsEndpointHttp1Tests.Http1Panel>
+{
+    [DatabaseFact]
+    public async Task TheAgentsEndpointKeepsTheOperatorsProtocols()
+    {
+        factory.StartServer();
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var certificate = KestrelPanelFactory.UsableCertificate(key);
+        using var agents = new HttpClient(factory.Handler(certificate))
+        {
+            BaseAddress = factory.AgentsUrl,
+            DefaultRequestVersion = HttpVersion.Version20,
+            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
+        };
+
+        using var response = await agents.GetAsync(AgentProtocol.PanelIdentityPath.TrimStart('/'), TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpVersion.Version11, response.Version);
+    }
+
+    public sealed class Http1Panel : KestrelPanelFactory
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.UseSetting("Kestrel:Endpoints:Agents:Protocols", "Http1");
         }
     }
 }

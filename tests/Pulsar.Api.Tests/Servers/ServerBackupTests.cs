@@ -402,6 +402,30 @@ public sealed class ServerBackupTests(PulsarApiFactory factory) : IClassFixture<
         await EnsureAsync(await admin.DeleteAsync($"/api/v1/backup-storages/{storage.Id}"));
     }
 
+    [DatabaseFact]
+    public async Task ABackupDownloadWaitsForAPlaceAmongTheNodesTransfers()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "busy");
+        var server = await InstalledServerAsync(admin, agent, "Busy");
+        var backup = await WaitForBackupAsync(admin, server, (await CreateAsync(admin, server, "Busy")).Id, BackupStatus.Completed);
+        var transfers = factory.Services.GetRequiredService<FileTransfers>();
+        var node = new NodeId(agent.Config!.NodeId);
+
+        // The node's transfers are all running: refused before the node is asked, until one ends.
+        var held = Enumerable.Range(0, FileTransferLimits.Default.PerNode).Select(_ => transfers.BeginDownload(node, null)!).ToList();
+        await ProblemAsync(await admin.GetAsync($"/api/v1/servers/{server}/backups/{backup.Id}/download"), HttpStatusCode.Conflict, "files.transfers_busy");
+        Assert.DoesNotContain(await AuditAsync(server), a => a.Action == AuditActions.Server.BackupDownloaded);
+        held[0].Dispose();
+        using (var download = await admin.GetAsync($"/api/v1/servers/{server}/backups/{backup.Id}/download"))
+        {
+            await EnsureAsync(download);
+            Assert.Equal(backup.Size, (await download.Content.ReadAsByteArrayAsync(Ct)).Length);
+        }
+
+        held.ForEach(t => t.Dispose());
+    }
+
     private static async Task<BackupStorageView> CreateStorageAsync(PanelClient admin, string name)
     {
         using var response = await admin.PostAsync("/api/v1/backup-storages",

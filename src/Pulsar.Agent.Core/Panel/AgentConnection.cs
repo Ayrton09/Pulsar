@@ -763,13 +763,11 @@ public sealed partial class AgentConnection(
         }
         catch (OperationCanceledException ex) when (limit.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            verifier.Abandon();
             await session.DisposeAsync();
             throw new TimeoutException($"The panel did not open the session within {options.SessionStartTimeout.TotalSeconds:0} seconds.", ex);
         }
         catch
         {
-            verifier.Abandon();
             await session.DisposeAsync();
             throw;
         }

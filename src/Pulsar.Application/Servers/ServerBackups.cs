@@ -310,7 +310,7 @@ public sealed partial class ServerBackups(
             return connection.Error!;
         }
 
-        if (transfers.BeginDownload(server.NodeId, request.UserId) is not { } download)
+        if (transfers.BeginDownload(server.NodeId, request.UserId, request.ApiKeyId) is not { } download)
         {
             return ServerErrors.FileTransfersBusy;
         }
@@ -334,7 +334,8 @@ public sealed partial class ServerBackups(
             var entry = file.Entry with { Name = DownloadName(server, backup) };
             return new FileContent(new FileDetails(entry, file.Version), content, length, download);
         }
-        catch (TimeoutException)
+        catch (Exception ex) when (ex is TimeoutException
+            || (ex is OperationCanceledException && download.Aborted.IsCancellationRequested && !cancellationToken.IsCancellationRequested))
         {
             download.Dispose();
             return ServerErrors.FileTransferFailed;

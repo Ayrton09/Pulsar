@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Pulsar.Api.Access;
 using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
@@ -66,13 +67,13 @@ internal static class ApiServiceCollectionExtensions
             .Validate(o => o.MaxPendingConnectionsPerNetwork is null
                     || (o.MaxPendingConnectionsPerNetwork >= o.PendingPerAddressLimit && o.MaxPendingConnectionsPerNetwork <= o.PendingLimit),
                 "Agents:MaxPendingConnectionsPerNetwork must be at least Agents:MaxPendingConnectionsPerAddress and at most Agents:MaxPendingConnections.")
-            .Validate(o => o.MaxConnectionsPerNode is null or > 0 && o.PerNodeLimit <= o.MaxConnections,
-                "Agents:MaxConnectionsPerNode must be at least 1 and at most Agents:MaxConnections.")
+            .Validate(o => o.PerNodeLimit >= 2 && o.PerNodeLimit <= o.MaxConnections,
+                "Agents:MaxConnectionsPerNode must be at least 2 (a node's hub and one transfer) and at most Agents:MaxConnections.")
             .ValidateOnStart();
         services.AddSingleton<AgentsEndpoint>();
         // Transfers take half of the connections a node may hold, so that its hub and rotation always find a place.
         services.AddSingleton(sp => FileTransferLimits.ForNodeConnections(
-            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgentsOptions>>().Value.PerNodeLimit));
+            sp.GetRequiredService<IOptions<AgentsOptions>>().Value.PerNodeLimit));
         services.AddOptions<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>()
             .Configure<AgentsEndpoint>((options, agents) =>
                 options.Configure(configuration.GetSection("Kestrel"), reloadOnChange: true).Endpoint(AgentsEndpoint.Name, agents.Configure));

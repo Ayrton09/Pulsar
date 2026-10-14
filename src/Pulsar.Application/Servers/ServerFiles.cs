@@ -36,6 +36,9 @@ public sealed class FileContent(FileDetails file, Stream content, long length, F
 
     public long Length { get; } = length;
 
+    /// <summary>Cancelled when the transfer was ended before it was done (<see cref="FileTransfers.Transfer.Aborted"/>).</summary>
+    public CancellationToken Aborted => download.Aborted;
+
     /// <summary>All of it reached the browser.</summary>
     public void Complete() => download.Finish(complete: true);
 
@@ -122,7 +125,7 @@ public sealed class ServerFiles(
             return target.Error!;
         }
 
-        if (transfers.BeginDownload(target.Value.NodeId, request.UserId) is not { } download)
+        if (transfers.BeginDownload(target.Value.NodeId, request.UserId, request.ApiKeyId) is not { } download)
         {
             return ServerErrors.FileTransfersBusy;
         }
@@ -155,7 +158,8 @@ public sealed class ServerFiles(
             // Named by what was asked for: the name in the node's answer is the node's to choose (it becomes the download's name).
             return new FileContent(new FileDetails(file.Entry with { Name = ServerFilePath.Name(path) }, file.Version), content, length, download);
         }
-        catch (TimeoutException)
+        catch (Exception ex) when (ex is TimeoutException
+            || (ex is OperationCanceledException && download.Aborted.IsCancellationRequested && !cancellationToken.IsCancellationRequested))
         {
             download.Dispose();
             return ServerErrors.FileTransferFailed;
@@ -199,7 +203,7 @@ public sealed class ServerFiles(
         }
 
         // Refused before the node is told: it would hold one more of its connections to the panel for it.
-        if (transfers.BeginUpload(target.Value.NodeId, request.UserId, content, length) is not { } started)
+        if (transfers.BeginUpload(target.Value.NodeId, request.UserId, content, length, request.ApiKeyId) is not { } started)
         {
             return ServerErrors.FileTransfersBusy;
         }
@@ -253,7 +257,8 @@ public sealed class ServerFiles(
                 ? new FileDetails(file.Entry with { Name = ServerFilePath.Name(command.Path) }, file.Version)
                 : ServerErrors.FileRejected(outcome.ErrorCode ?? FileErrors.Failed, outcome.Message ?? "The node could not write the file.");
         }
-        catch (TimeoutException)
+        catch (Exception ex) when (ex is TimeoutException
+            || (ex is OperationCanceledException && upload.Aborted.IsCancellationRequested && !cancellationToken.IsCancellationRequested))
         {
             return ServerErrors.FileTransferFailed;
         }

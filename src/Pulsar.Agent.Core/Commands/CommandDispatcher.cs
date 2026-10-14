@@ -44,7 +44,6 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger,
     {
         ArgumentNullException.ThrowIfNull(verifier);
         ArgumentNullException.ThrowIfNull(control);
-        await verifier.ClockMeasured;
         var verification = verifier.Verify(message);
         if (verification.Rejection is { } rejection)
         {

@@ -82,7 +82,9 @@ public static class ServerFileEndpoints
 
         try
         {
-            await content.Content.CopyToAsync(response.Body, http.RequestAborted);
+            // A transfer that was ended (its user's sessions, its API key, its time) breaks off like a lost connection.
+            using var sending = CancellationTokenSource.CreateLinkedTokenSource(http.RequestAborted, content.Aborted);
+            await content.Content.CopyToAsync(response.Body, sending.Token);
             content.Complete();
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException or BadHttpRequestException)

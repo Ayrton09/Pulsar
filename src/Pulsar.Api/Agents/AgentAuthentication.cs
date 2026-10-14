@@ -19,8 +19,6 @@ internal sealed partial class AgentAuthenticationHandler(
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public new const string Scheme = "PulsarAgent";
-
-    private static readonly PathString s_transfers = AgentProtocol.BasePath + "/transfers";
     public const string NodeIdClaim = "pulsar:node";
     public const string CredentialIdClaim = "pulsar:credential";
     public const string SessionIdClaim = "pulsar:session";
@@ -58,7 +56,8 @@ internal sealed partial class AgentAuthenticationHandler(
         if (Context.Features.Get<AgentsEndpointConnection>() is { } connection)
         {
             // Transfers may not take the places the node keeps for its hub and its rotation.
-            var transfer = Context.Request.Path.StartsWithSegments(s_transfers, StringComparison.Ordinal);
+            // As routing matched the request (in any case), not as its path is spelled.
+            var transfer = Context.GetEndpoint()?.Metadata.GetMetadata<AgentTransferMetadata>() is not null;
             if (connection.Authenticated(session.NodeId, session.SessionId, session.ExpiresAt, transfer) is not { } request)
             {
                 return AuthenticateResult.Fail("The node holds as many connections to the agents' endpoint as it may.");
@@ -101,4 +100,10 @@ internal static class AgentClaims
 public sealed class AgentEndpointMetadata
 {
     public static AgentEndpointMetadata Instance { get; } = new();
+}
+
+/// <summary>Endpoint metadata: a file transfer, which may not take the connections a node keeps for its hub and rotation.</summary>
+public sealed class AgentTransferMetadata
+{
+    public static AgentTransferMetadata Instance { get; } = new();
 }

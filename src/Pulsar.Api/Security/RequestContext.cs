@@ -33,6 +33,9 @@ internal sealed class HttpRequestContext(IHttpContextAccessor accessor) : IReque
             ? limit
             : null;
 
+    public Guid? ApiKeyId =>
+        Context?.User is { } user && user.IsApiKey() && Guid.TryParse(user.FindFirstValue(ApiKeyClaims.KeyId), out var key) ? key : null;
+
     public AuditRequestInfo RequestInfo => Context is { } context
         ? new AuditRequestInfo(
             context.Connection.RemoteIpAddress,

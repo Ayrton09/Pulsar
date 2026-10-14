@@ -206,14 +206,18 @@ until you update them).
   running (a transfer is never cut). A node holds at most `"MaxConnectionsPerNode"` of them (16 by default): its file
   transfers take all but four (half, below 8), which stay for its hub, the hub it replaces and its rotation, and
   further requests with its session are refused. The panel starts at most half of that many transfers on a node at once
-  (8 by default), three of them for one user, and answers others "too many file transfers on this node" right away.
-  Revoking a node's key, disabling or deleting the node closes its connections at once.
+  (8 by default), and answers others "too many file transfers on this node" right away. A user gets up to three of
+  them, the second and third only while two places stay free for users with none running, so it takes four users to
+  fill a node. A transfer ends when its user signs out, is disabled or deleted, or gets other roles (and when any role
+  changes), when the API key it was started with is revoked, and when it has lasted as long as its size allows at
+  64 KiB/s (five minutes at least): a 1 GiB upload has four and a half hours. Revoking a node's key, disabling or
+  deleting the node closes its connections at once.
 
   An agent's sign-in holds a connection for a second or two. Nodes behind one NAT address share its budgets: 20 lets
   them sign in about ten at a time and the others retry within seconds. Raise the per-address and per-network budgets
   (up to `MaxPendingConnections`) for a site with hundreds of nodes behind one address that restart together. The
   panel refuses to start with a budget below 1 or out of order (per address ≤ per network ≤ pending ≤
-  `MaxConnections`, and per node ≤ `MaxConnections`).
+  `MaxConnections`, and 2 ≤ per node ≤ `MaxConnections`).
 - What a flood of connections can still do: one address holds at most 20 places and one network 60, each for
   5 seconds if it never completes its handshake and up to 35 seconds from its arrival otherwise, so it cannot take the
   port alone. Many networks together (a botnet) can fill the strangers' half of the budget for as long as they keep it

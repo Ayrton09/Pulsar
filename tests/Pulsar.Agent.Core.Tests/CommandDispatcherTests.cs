@@ -114,33 +114,6 @@ public sealed class CommandDispatcherTests : IDisposable
         Assert.True(CommandDispatcher.AreValid([_pinned, _next], _pinned.KeyId));
     }
 
-    [Fact]
-    public async Task ACommandArrivingBeforeThePanelsClockIsKnownWaitsForIt()
-    {
-        // A session's verifier: the panel's first command can arrive between Hello's answer and the agent measuring the
-        // panel's clock from it. This node's clock is two minutes behind: judged without the offset, it would be expired.
-        var verifier = new CommandVerifier(_nodeId, _sessionId, () => _control.Keys, _dispatcher.SupportedCommands, _clock) { WaitsForClock = true };
-        var message = Sign(new PingCommand(null), _panelKey, _pinned.KeyId, _clock.GetUtcNow() + TimeSpan.FromMinutes(2));
-
-        var execution = _dispatcher.ExecuteAsync(verifier, message, _control);
-        await Task.Delay(50, TestContext.Current.CancellationToken);
-        Assert.False(execution.IsCompleted);
-        verifier.PanelClockOffset = TimeSpan.FromMinutes(2);
-
-        Assert.Equal(AckStatus.Accepted, (await execution).Status);
-    }
-
-    [Fact]
-    public async Task CommandsWaitingForASessionThatNeverSaidHelloAreDropped()
-    {
-        var verifier = new CommandVerifier(_nodeId, _sessionId, () => _control.Keys, _dispatcher.SupportedCommands, _clock) { WaitsForClock = true };
-        var execution = _dispatcher.ExecuteAsync(verifier, Sign(new PingCommand(null), _panelKey, _pinned.KeyId, _clock.GetUtcNow()), _control);
-
-        verifier.Abandon();
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => execution);
-    }
-
     private CommandAck Execute(AgentCommand command) => Execute(command, _panelKey, _pinned.KeyId);
 
     private CommandAck Execute(AgentCommand command, ECDsa signer, string keyId) =>
