@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Server.Kestrel;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Options;
@@ -33,6 +32,48 @@ public sealed class AgentsOptions
     /// </summary>
     public int MaxConnections { get; set; } = 1000;
 
+    /// <summary>
+    /// The most of those that have not presented an agent session yet (handshakes, sign-ins, enrollments, and whatever
+    /// never signs in): a quarter of <see cref="MaxConnections"/> unless set. An agent holds one for a moment at each
+    /// sign-in and one until its hub's first request; the rest of the endpoint is left to signed-in agents. Half of it
+    /// is kept for addresses an agent signed in from within a day.
+    /// </summary>
+    public int? MaxPendingConnections { get; set; }
+
+    /// <summary>
+    /// The most of those from one client address (an IPv4 address, an IPv6 /64, the panel's own machine): 20 unless
+    /// set, and never more than <see cref="MaxPendingConnections"/>. Nodes behind one NAT share it, a sign-in at a time each.
+    /// </summary>
+    public int? MaxPendingConnectionsPerAddress { get; set; }
+
+    /// <summary>
+    /// The most of those from one network (an IPv4 /24, an IPv6 /48): three times
+    /// <see cref="MaxPendingConnectionsPerAddress"/> unless set, between that and <see cref="MaxPendingConnections"/>.
+    /// A host with several addresses or a routed IPv6 prefix gets this much, not a budget per address.
+    /// </summary>
+    public int? MaxPendingConnectionsPerNetwork { get; set; }
+
+    /// <summary>
+    /// The most connections one node's sessions hold at once: 16 unless set (its hub, a rotation and its file transfers
+    /// at the same time), and never more than <see cref="MaxConnections"/>. A request over it is refused.
+    /// </summary>
+    public int? MaxConnectionsPerNode { get; set; }
+
+    internal int PendingLimit => MaxPendingConnections ?? Math.Max(1, MaxConnections / 4);
+
+    internal int PendingPerAddressLimit => MaxPendingConnectionsPerAddress ?? Math.Min(20, PendingLimit);
+
+    internal int PendingPerNetworkLimit => MaxPendingConnectionsPerNetwork ?? (int)Math.Min(3L * PendingPerAddressLimit, PendingLimit);
+
+    internal int PerNodeLimit => MaxConnectionsPerNode ?? Math.Min(16, MaxConnections);
+
+    /// <summary>
+    /// How long a connection has, from its arrival, to present an agent session before it is closed: an agent's sign-in
+    /// takes a second or two, and its hub, transfers and rotation present their session in their first request. Not a
+    /// setting (tests shorten it).
+    /// </summary>
+    internal TimeSpan SignInDeadline { get; set; } = TimeSpan.FromSeconds(30);
+
     internal static bool IsValidUrl(string? url) =>
         url is null || (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
             && uri.AbsolutePath == "/" && uri.Query.Length == 0 && uri.Fragment.Length == 0 && uri.UserInfo.Length == 0);
@@ -49,7 +90,15 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
 {
     public const string Name = "Agents";
 
+    /// <summary>The TLS handshake's time on the endpoint, from the connection's arrival (an agent's takes well under a second).</summary>
+    public static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(5);
+
     private int _port;
+    private AgentsConnectionLimit? _limit;
+
+    /// <summary>The endpoint's connections: one count for every configuration Kestrel loads, so a node's can be closed.</summary>
+    internal AgentsConnectionLimit ConnectionLimit =>
+        LazyInitializer.EnsureInitialized(ref _limit, () => new AgentsConnectionLimit(options.Value, logger, clock));
 
     /// <summary>The endpoint is configured and Kestrel set it up (a configuration reload can remove it).</summary>
     public bool IsConfigured => Volatile.Read(ref _port) != 0 && configuration.GetSection($"Kestrel:Endpoints:{Name}").Exists();
@@ -101,8 +150,10 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
         endpoint.HttpsOptions.AllowAnyClientCertificate();
         endpoint.HttpsOptions.CheckCertificateRevocation = false;
         endpoint.HttpsOptions.OnAuthenticate = (_, ssl) => ssl.CertificateChainPolicy = ClientChainPolicy();
+        // Half Kestrel's 10 s: a connection that sends nothing holds a place for less.
+        endpoint.HttpsOptions.HandshakeTimeout = HandshakeTimeout;
         // Before TLS (Kestrel adds its HTTPS middleware after this configuration), which is where a connection costs.
-        endpoint.ListenOptions.Use(new AgentsConnectionLimit(options.Value.MaxConnections, logger, clock).Wrap);
+        endpoint.ListenOptions.Use(ConnectionLimit.Wrap);
         endpoint.ListenOptions.Use(next => connection =>
         {
             connection.Features.Set(AgentsEndpointFeature.Instance);
@@ -143,56 +194,6 @@ internal sealed class AgentsEndpoint(IConfiguration configuration, IOptions<Agen
             return null;
         }
     }
-}
-
-/// <summary>
-/// At most a number of connections at once on the agents' endpoint: one more is closed before anything is read from it.
-/// Refusals are logged at most once a minute, with how many there were.
-/// </summary>
-internal sealed partial class AgentsConnectionLimit(int max, ILogger logger, TimeProvider clock)
-{
-    private static readonly TimeSpan s_logInterval = TimeSpan.FromMinutes(1);
-
-    private int _open;
-    private int _refused;
-    private long _nextLog = long.MinValue;
-
-    /// <summary>The connections held now.</summary>
-    public int Open => Volatile.Read(ref _open);
-
-    public ConnectionDelegate Wrap(ConnectionDelegate next) => async connection =>
-    {
-        if (Interlocked.Increment(ref _open) > max)
-        {
-            Interlocked.Decrement(ref _open);
-            Refused();
-            return;
-        }
-
-        try
-        {
-            await next(connection);
-        }
-        finally
-        {
-            Interlocked.Decrement(ref _open);
-        }
-    };
-
-    private void Refused()
-    {
-        Interlocked.Increment(ref _refused);
-        var now = clock.GetUtcNow().UtcTicks;
-        var next = Interlocked.Read(ref _nextLog);
-        if (now >= next && Interlocked.CompareExchange(ref _nextLog, now + s_logInterval.Ticks, next) == next)
-        {
-            LogRefused(Interlocked.Exchange(ref _refused, 0), max);
-        }
-    }
-
-    [LoggerMessage(Level = LogLevel.Warning,
-        Message = "The agents' endpoint closed {Refused} connection(s): it holds {Max} at once (Agents:MaxConnections)")]
-    private partial void LogRefused(int refused, int max);
 }
 
 internal static class AgentsEndpointExtensions

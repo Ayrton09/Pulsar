@@ -59,6 +59,15 @@ internal static class ApiServiceCollectionExtensions
             .Bind(configuration.GetSection(AgentsOptions.SectionName))
             .Validate(o => AgentsOptions.IsValidUrl(o.PublicUrl), "Agents:PublicUrl must be an https origin, such as https://agents.example.com:8444.")
             .Validate(o => o.MaxConnections > 0, "Agents:MaxConnections must be at least 1.")
+            .Validate(o => o.MaxPendingConnections is null or > 0 && o.PendingLimit <= o.MaxConnections,
+                "Agents:MaxPendingConnections must be at least 1 and at most Agents:MaxConnections.")
+            .Validate(o => o.MaxPendingConnectionsPerAddress is null or > 0 && o.PendingPerAddressLimit <= o.PendingLimit,
+                "Agents:MaxPendingConnectionsPerAddress must be at least 1 and at most Agents:MaxPendingConnections.")
+            .Validate(o => o.MaxPendingConnectionsPerNetwork is null
+                    || (o.MaxPendingConnectionsPerNetwork >= o.PendingPerAddressLimit && o.MaxPendingConnectionsPerNetwork <= o.PendingLimit),
+                "Agents:MaxPendingConnectionsPerNetwork must be at least Agents:MaxPendingConnectionsPerAddress and at most Agents:MaxPendingConnections.")
+            .Validate(o => o.MaxConnectionsPerNode is null or > 0 && o.PerNodeLimit <= o.MaxConnections,
+                "Agents:MaxConnectionsPerNode must be at least 1 and at most Agents:MaxConnections.")
             .ValidateOnStart();
         services.AddSingleton<AgentsEndpoint>();
         services.AddOptions<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>()
@@ -180,13 +189,13 @@ internal static class ApiServiceCollectionExtensions
         services.AddRateLimiter(options =>
         {
             options.AddPolicy(AuthEndpoints.RateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
-                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                ClientAddress.PartitionOf(context.Connection.RemoteIpAddress),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.PermitLimit, Window = limits.Window, QueueLimit = 0 }));
             options.AddPolicy(AgentEndpoints.EnrollRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
-                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                ClientAddress.PartitionOf(context.Connection.RemoteIpAddress),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.EnrollPermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
             options.AddPolicy(AgentEndpoints.AuthRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
-                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                ClientAddress.PartitionOf(context.Connection.RemoteIpAddress),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
             // Each API key has its own budget (a script in a loop must not slow the panel down), keys that do not work
             // share their client's; browsers have none. Refused requests count too (ApiKeyRateLimit).

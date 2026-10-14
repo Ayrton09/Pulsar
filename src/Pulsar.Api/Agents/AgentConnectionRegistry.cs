@@ -16,6 +16,7 @@ internal sealed partial class AgentConnectionRegistry(
     IHubContext<AgentHub> hub,
     IPanelKeyRing keys,
     AgentSessionStore sessions,
+    AgentsEndpoint agents,
     IServiceScopeFactory scopes,
     TimeProvider clock,
     ILogger<AgentConnectionRegistry> logger) : IAgentConnections
@@ -70,6 +71,9 @@ internal sealed partial class AgentConnectionRegistry(
         {
             connection.Context.Abort();
         }
+
+        // And its other connections to the agents' endpoint (transfers, idle ones) whose session ended with it.
+        agents.ConnectionLimit.CloseEnded(node, sessions.IsActive);
     }
 
     public async Task<CommandAck?> SendAsync(NodeId node, AgentCommand command, UserId? actor, CancellationToken cancellationToken,
