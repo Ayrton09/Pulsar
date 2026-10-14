@@ -156,6 +156,39 @@ public static class FileVersion
 {
     public static string Of(long size, DateTimeOffset modifiedAt) =>
         FormattableString.Invariant($"{size:x}-{modifiedAt.UtcTicks:x}");
+
+    /// <summary>
+    /// Whether <paramref name="version"/> has the shape <see cref="Of"/> makes: two lowercase hexadecimal numbers of up to
+    /// 16 digits. The panel sends a version back as the ETag, so nothing else (a quote, a control character) gets there.
+    /// </summary>
+    public static bool IsWellFormed(string? version)
+    {
+        if (version is null)
+        {
+            return false;
+        }
+
+        var dash = version.IndexOf('-', StringComparison.Ordinal);
+        return dash > 0 && IsHex(version.AsSpan(0, dash)) && IsHex(version.AsSpan(dash + 1));
+    }
+
+    private static bool IsHex(ReadOnlySpan<char> number)
+    {
+        if (number.Length is 0 or > 16)
+        {
+            return false;
+        }
+
+        foreach (var c in number)
+        {
+            if (!(char.IsAsciiDigit(c) || c is >= 'a' and <= 'f'))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 /// <summary>Limits of the file manager, the same on both sides.</summary>

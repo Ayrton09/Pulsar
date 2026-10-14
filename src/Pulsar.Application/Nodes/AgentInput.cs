@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Pulsar.Contracts;
 using Pulsar.Domain.Nodes;
+using Pulsar.Domain.Servers;
 
 namespace Pulsar.Application.Nodes;
 
@@ -76,8 +77,26 @@ public static partial class AgentInput
     public static CommandAck Ack(CommandAck ack)
     {
         ArgumentNullException.ThrowIfNull(ack);
-        return ack with { ErrorCode = ErrorCode(ack.ErrorCode), Message = ack.Message is null ? null : Text(ack.Message, MaxMessageLength) };
+        return ack with
+        {
+            ErrorCode = ErrorCode(ack.ErrorCode),
+            Message = ack.Message is null ? null : Text(ack.Message, MaxMessageLength),
+            Result = Result(ack.Result),
+        };
     }
+
+    /// <summary>
+    /// What a command answers. A listing keeps the entries the panel can address and says it is incomplete when it
+    /// left some out; a file that is not one the panel can show (<see cref="IsFileName"/>, <see cref="FileVersion.IsWellFormed"/>)
+    /// becomes no answer at all, which the panel reads as a rejected command.
+    /// </summary>
+    public static CommandResult? Result(CommandResult? result) => result switch
+    {
+        FileListResult listing => FileListing(listing),
+        FileEntryResult file => IsFile(file) ? file : null,
+        AddonsResult addons => Addons(addons),
+        _ => result,
+    };
 
     public static OperationProgress Progress(OperationProgress progress)
     {
@@ -96,15 +115,27 @@ public static partial class AgentInput
         {
             ErrorCode = ErrorCode(completed.ErrorCode),
             Message = Message(completed.Message),
-            Result = completed.Result is BackupResult backup ? backup with { RemoteError = Message(backup.RemoteError) } : completed.Result,
+            Result = completed.Result is BackupResult backup ? backup with { RemoteError = Message(backup.RemoteError) } : Result(completed.Result),
         };
     }
 
-    /// <summary>The end of a file transfer: its message becomes the detail of the browser's error.</summary>
+    /// <summary>
+    /// The end of a file transfer: its message becomes the detail of the browser's error. A file the panel cannot show
+    /// (a name that is not one segment of a path, a version that is not safe as an ETag) turns a success into a failure:
+    /// the node did write something, but the panel has nothing true to tell about it.
+    /// </summary>
     public static TransferResult Transfer(TransferResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
-        return result with { ErrorCode = ErrorCode(result.ErrorCode), Message = Message(result.Message) };
+        var cleaned = result with { ErrorCode = ErrorCode(result.ErrorCode), Message = Message(result.Message) };
+        if (cleaned.File is not { } file || IsFile(file))
+        {
+            return cleaned;
+        }
+
+        return cleaned.ErrorCode is null
+            ? cleaned with { ErrorCode = FileErrors.Failed, Message = "The node reported a file the panel cannot show.", File = null }
+            : cleaned with { File = null };
     }
 
     /// <summary>A server's new state: its detail goes into notifications.</summary>
@@ -145,7 +176,34 @@ public static partial class AgentInput
             };
     }
 
+    /// <summary>The release of an addon (a GitHub tag), as the panel keeps and shows it.</summary>
+    public static string? AddonRelease(string? release) => release is null ? null : Text(release, ServerAddon.MaxReleaseLength);
+
+    /// <summary>
+    /// Whether <paramref name="name"/> is one segment of a path the panel accepts (<see cref="ServerFilePath"/>). Format
+    /// characters pass, as they do in paths: the browser shows them (visibly) and the user can open the file. A name
+    /// that fails could not be opened, renamed or deleted from the panel, so it is left out rather than rewritten.
+    /// </summary>
+    public static bool IsFileName(string? name) => name is { Length: > 0 } && !name.Contains('/', StringComparison.Ordinal) && ServerFilePath.IsValid(name);
+
     private static string? Message(string? message) => message is null ? null : Text(message, MaxMessageLength);
+
+    private static AddonsResult Addons(AddonsResult result) => result.Addons is null
+        ? result
+        : result with { Addons = [.. result.Addons.Where(a => a is not null).Select(a => a with { Release = AddonRelease(a.Release) })] };
+
+    /// <summary>A listing of entries that are all usable, at most <see cref="FileLimits.MaxListEntries"/>; <c>Truncated</c> when any was left out.</summary>
+    private static FileListResult FileListing(FileListResult listing)
+    {
+        var read = (listing.Entries ?? []).ToList();
+        var kept = read.Where(IsEntry).Take(FileLimits.MaxListEntries).ToList();
+        return listing with { Entries = kept, Truncated = listing.Truncated || kept.Count < read.Count };
+    }
+
+    private static bool IsFile(FileEntryResult file) => IsEntry(file.Entry) && FileVersion.IsWellFormed(file.Version);
+
+    private static bool IsEntry(FileEntry? entry) => entry is not null
+        && IsFileName(entry.Name) && Enum.IsDefined(entry.Kind) && entry.Size >= 0;
 
     /// <summary>Nothing to remove: no control, format or separator character, and no surrogate (checked rune by rune otherwise).</summary>
     private static bool IsPlain(string value)

@@ -57,7 +57,7 @@ param(
     # Extra names for the self-signed certificate (the machine's name, its DNS name and localhost are always in it).
     # Letters, digits, '.', '-' and '_' (a leading '*.' for a wildcard), compared as written: ignoring case, the Kelvin
     # sign would pass for a 'k'.
-    [ValidatePattern('^(\*\.)?[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.?$', Options = 'None')]
+    [ValidatePattern('^(\*\.)?[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.?\z', Options = 'None')]
     [string[]] $HostName = @(),
     # A PFX certificate to use instead of a self-signed one.
     [string] $CertificatePath,
@@ -670,7 +670,8 @@ function Get-CertificateNames([Security.Cryptography.X509Certificates.X509Certif
             if ($name.Tag -eq 0x82) {
                 # Byte for byte, so that whatever is not a DNS name's character shows as one.
                 $text = [Text.Encoding]::GetEncoding(28591).GetString($value)
-                if ($text -cnotmatch '^(\*\.)?[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.?$') {
+                # \z, not $: $ also matches before a final line feed.
+                if ($text -cnotmatch '^(\*\.)?[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.?\z') {
                     throw "The certificate lists a DNS name that is not one: '$(ConvertTo-PrintableText $text)'."
                 }
                 $dns += $text
@@ -807,7 +808,7 @@ function Add-TrustedCertificate([string] $cer, [string] $hostName, [string[]] $p
 # wildcards, so a "*" would name every trusted root certificate). An empty note names nothing.
 function Get-NotedThumbprint([string] $noted) {
     $noted = "$noted".Trim()
-    if ($noted -notmatch '^[0-9A-Fa-f]{40}$') {
+    if ($noted -notmatch '^[0-9A-Fa-f]{40}\z') {
         Write-Warning "$TrustedMarker does not hold a certificate thumbprint; it is ignored."
         return $null
     }

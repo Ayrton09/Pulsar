@@ -92,6 +92,87 @@ public sealed class AgentInputHubTests(NotificationApiFactory factory) : IClassF
     }
 
     [DatabaseFact]
+    public async Task ATransferThatReportsAFileWithAnUnsafeVersionFails()
+    {
+        await using var agent = await ConnectedTestAgentAsync("input-version");
+        var transfers = factory.Services.GetRequiredService<FileTransfers>();
+        using var content = new MemoryStream();
+        using var upload = transfers.BeginUpload(new NodeId(agent.NodeId), content, 0);
+        Assert.NotNull(transfers.ClaimUpload(upload.Ticket, new NodeId(agent.NodeId)));
+
+        // A quote ends the ETag's value; the rest would be a header of its own.
+        var file = new FileEntryResult(new FileEntry("a.cfg", FileEntryKind.File, 0, DateTimeOffset.UnixEpoch), "1\"\r\nSet-Cookie: x=y");
+        await agent.Connection!.InvokeAsync(nameof(IAgentHub.TransferCompleted), new TransferResult(upload.Ticket, null, null, file), Ct);
+
+        var result = await upload.Result.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        Assert.Null(result.File);
+        Assert.Equal(FileErrors.Failed, result.ErrorCode);
+    }
+
+    [DatabaseFact]
+    public async Task AListingLosesTheNamesThePanelCannotAddress()
+    {
+        await using var agent = await ConnectedTestAgentAsync("input-listing", AgentCapabilities.ListFiles);
+        var modified = DateTimeOffset.UnixEpoch;
+        agent.Answer = _ => new FileListResult(
+        [
+            new FileEntry("server.cfg", FileEntryKind.File, 1, modified),
+            new FileEntry("../escape", FileEntryKind.File, 1, modified),
+            new FileEntry("forged\r\nname", FileEntryKind.File, 1, modified),
+            new FileEntry("odd \U0000202Ename", FileEntryKind.File, 1, modified),
+        ], false);
+        var server = await ServerOfAsync(agent);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var listing = await scope.ServiceProvider.GetRequiredService<ServerFiles>().ListAsync(server, null, Ct);
+
+        Assert.True(listing.IsSuccess);
+        Assert.Equal(["server.cfg", "odd \U0000202Ename"], listing.Value.Entries.Select(e => e.Name));
+        Assert.True(listing.Value.Truncated);
+    }
+
+    [DatabaseFact]
+    public async Task AFileOpenedWithAnUnsafeVersionIsRefusedBeforeItBecomesAnETag()
+    {
+        await using var agent = await ConnectedTestAgentAsync("input-etag", AgentCapabilities.ListFiles, AgentCapabilities.SendFile);
+        agent.Answer = _ => new FileEntryResult(new FileEntry("a.cfg", FileEntryKind.File, 0, DateTimeOffset.UnixEpoch), "1\"; x=\"2\r\nX-Injected: 1");
+        var server = await ServerOfAsync(agent);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var opened = await scope.ServiceProvider.GetRequiredService<ServerFiles>().OpenAsync(server, "a.cfg", 1024, Ct);
+
+        Assert.False(opened.IsSuccess);
+        Assert.Equal(ServerErrors.CommandRejected.Code, opened.Error!.Code);
+    }
+
+    [DatabaseFact]
+    public async Task AnAddonsReleaseIsCleanedBeforeItIsKept()
+    {
+        await using var agent = await ConnectedTestAgentAsync("input-addon");
+        var node = new NodeId(agent.NodeId);
+        var now = DateTimeOffset.UtcNow;
+        var server = await ServerOfAsync(agent, "rust");
+        Operation operation;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            operation = Operation.Create(OperationType.AddonInstall, node, server, null, OperationRequester.System, now);
+            operation.Started(now);
+            db.Operations.Add(operation);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        await agent.Connection!.InvokeAsync(nameof(IAgentHub.OperationCompleted), new OperationCompleted(operation.Id.Value, server.Value,
+            OperationOutcome.Succeeded, null, null, new AddonsResult([new AddonRelease("oxide", Dirty + new string('r', 500))])), Ct);
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var addon = await check.ServiceProvider.GetRequiredService<IPulsarDbContext>().ServerAddons.AsNoTracking()
+            .SingleAsync(a => a.ServerId == server, Ct);
+        Assert.StartsWith(Clean, addon.Release, StringComparison.Ordinal);
+        Assert.Equal(ServerAddon.MaxReleaseLength, addon.Release.Length);
+    }
+
+    [DatabaseFact]
     public async Task TheDetailOfAFailedStartIsCleanedBeforeItIsNotified()
     {
         using var admin = await factory.CreateAdminClientAsync();
@@ -124,13 +205,25 @@ public sealed class AgentInputHubTests(NotificationApiFactory factory) : IClassF
         Assert.True(detail.Length <= AgentInput.MaxMessageLength);
     }
 
-    private async Task<TestAgent> ConnectedTestAgentAsync(string name)
+    private async Task<TestAgent> ConnectedTestAgentAsync(string name, params string[] capabilities)
     {
         using var admin = await factory.CreateAdminClientAsync();
         var created = await NodeApi.CreateAsync(admin, name);
         var agent = new TestAgent(factory);
         await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
-        await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken);
+        await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, capabilities);
         return agent;
+    }
+
+    /// <summary>A server of the agent's node, made straight in the database (the agent here answers nothing by itself).</summary>
+    private async Task<ServerId> ServerOfAsync(TestAgent agent, string template = "css")
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+        var templateId = (await db.GameTemplates.AsNoTracking().FirstAsync(t => t.Key == template, Ct)).Id;
+        var server = Server.Create(new NodeId(agent.NodeId), templateId, "Input server", null, Server.NewShortId(), DateTimeOffset.UtcNow).Value!;
+        db.Servers.Add(server);
+        await db.SaveChangesAsync(Ct);
+        return server.Id;
     }
 }

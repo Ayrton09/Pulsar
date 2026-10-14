@@ -118,15 +118,33 @@ function New-TestCertificate([object[]] $Names = @(), $Authority = $false, $Uses
 
 $esc = [char]0x1B
 $cr = [char]0x0D
+$lf = [char]0x0A
 
 $names = Get-CertificateNames (New-TestCertificate @((Dns 'panel.example.com'), (Dns 'PANEL'), (Ip '10.0.0.5'), (Ip '::1')))
 Check 'SAN parser: DNS names and IP addresses' (($names.Dns -join ',') -eq 'panel.example.com,PANEL' -and ($names.Ips -join ',') -eq '10.0.0.5,::1' -and $names.Others.Count -eq 0) "$($names.Dns -join ',') | $($names.Ips -join ',')"
 $names = Get-CertificateNames (New-TestCertificate @((Dns '*.example.com'), (Email 'admin@example.com')))
 Check 'SAN parser: a wildcard is a DNS name; an e-mail address is another kind' (($names.Dns -join ',') -eq '*.example.com' -and ($names.Others -join ',') -eq 'an e-mail address')
-foreach ($bad in @("panel.example.com${cr}www.github.com", "panel$esc[2K", 'pa nel', 'a*.example.com', '*', '*.', 'a..b', "caf$([char]0xE9).com", '')) {
+foreach ($bad in @("panel.example.com${cr}www.github.com", "panel$esc[2K", 'pa nel', 'a*.example.com', '*', '*.', 'a..b', "caf$([char]0xE9).com", '', "panel.example.com$lf", "*.example.com$lf", "panel.example.com.$lf", "panel.example.com$lf$lf")) {
     $thrown = Get-Thrown { Get-CertificateNames (New-TestCertificate @((Dns $bad))) }
     $printable = $null -ne $thrown -and $thrown -notmatch '[\x00-\x1F\x7F]'
     Check "SAN parser: refuses the DNS name '$(ConvertTo-PrintableText $bad)', printing it without control characters" ($null -ne $thrown -and $thrown -match 'not one' -and $printable) "$(ConvertTo-PrintableText $thrown)"
+}
+
+# The pattern of -HostName, read from the script's parameters: a line feed after a name is not part of the name ($ also
+# matches before a final line feed; \z does not).
+$parseTokens = $null
+$parseErrors = $null
+$parsed = [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $installScript).ProviderPath, [ref] $parseTokens, [ref] $parseErrors)
+$hostNameParameter = $parsed.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'HostName' }
+$hostNameAttribute = $hostNameParameter.Attributes | Where-Object { $_.TypeName.Name -eq 'ValidatePattern' }
+$hostNamePattern = $hostNameAttribute.PositionalArguments[0].Value
+$hostNameOptions = ($hostNameAttribute.NamedArguments | Where-Object { $_.ArgumentName -eq 'Options' }).Argument.Value
+Check '-HostName: the pattern is case-sensitive' ($hostNameOptions -eq 'None' -and $hostNamePattern) "$hostNameOptions"
+foreach ($good in @('panel.example.com', 'PANEL', '*.example.com', 'panel.example.com.', 'my_box-1.lan')) {
+    Check "-HostName: accepts '$good'" ([regex]::IsMatch($good, $hostNamePattern, 'None'))
+}
+foreach ($bad in @("panel.example.com$lf", "*.example.com$lf", "panel.example.com.$lf", "panel.example.com$lf$lf", "panel$lf.example.com", "panel.example.com$cr", 'pa nel', '', 'a..b')) {
+    Check "-HostName: refuses '$(ConvertTo-PrintableText $bad)'" (-not [regex]::IsMatch($bad, $hostNamePattern, 'None'))
 }
 $thrown = Get-Thrown { Get-CertificateNames (New-TestCertificate @(@{ Tag = 0x87; Bytes = [byte[]](1, 2, 3, 4, 5) })) }
 Check 'SAN parser: refuses an IP address of 5 bytes' ($thrown -match 'malformed') "$thrown"
