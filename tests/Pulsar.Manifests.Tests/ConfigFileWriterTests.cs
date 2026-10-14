@@ -143,6 +143,23 @@ public sealed class ConfigFileWriterTests
     }
 
     [Theory]
+    [InlineData("12\n")]
+    [InlineData("True\n")]
+    public void AnUnrealValueIsWrittenBareOnlyWhenAllOfItIsANumberOrABoolean(string value)
+    {
+        // $ would match before a final line feed and write the line break outside the quotes. Values with line breaks are
+        // refused earlier (the next test), so the pattern is checked on its own.
+        var literal = (System.Text.RegularExpressions.Regex)typeof(ConfigFileWriter)
+            .GetMethod("UnrealLiteral", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.Invoke(null, null)!;
+
+        Assert.DoesNotMatch(literal, value);
+        Assert.Matches(literal, value.TrimEnd('\n'));
+        Assert.NotNull(ConfigFileWriter.ValueError(ConfigFileFormat.UnrealIni, value));
+        Assert.Throws<LaunchPlanException>(() =>
+            ConfigFileWriter.Apply(Unreal(ConfigFileMode.Patch, "OptionSettings", ("MaxPlayers", value)), "[/Script/Pal.PalGameWorldSettings]\n"));
+    }
+
+    [Theory]
     [InlineData("say \"hi\"")]
     [InlineData("C:\\path")]
     public void UnrealValuesCannotEscapeTheirQuotes(string value)

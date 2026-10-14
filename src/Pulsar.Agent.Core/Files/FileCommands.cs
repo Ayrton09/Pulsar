@@ -131,7 +131,8 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
     /// <summary>Whether <paramref name="name"/> (one path segment) is shaped like an 8.3 short name (<c>PULSAR~1</c>).</summary>
     public static bool IsShortName(string name) => ShortName().IsMatch(name);
 
-    [GeneratedRegex("^[^.~]{1,6}~[0-9]+$", RegexOptions.CultureInvariant)]
+    // \z, not $: $ also matches before a final line feed.
+    [GeneratedRegex(@"^[^.~]{1,6}~[0-9]+\z", RegexOptions.CultureInvariant)]
     private static partial Regex ShortName();
 
     // What Windows calls ".pulsar" on a volume that keeps 8.3 names: the leading dot is dropped, then ~N.

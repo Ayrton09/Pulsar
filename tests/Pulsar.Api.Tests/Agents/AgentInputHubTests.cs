@@ -128,7 +128,42 @@ public sealed class AgentInputHubTests(NotificationApiFactory factory) : IClassF
 
         Assert.True(listing.IsSuccess);
         Assert.Equal(["server.cfg", "odd \U0000202Ename"], listing.Value.Entries.Select(e => e.Name));
-        Assert.True(listing.Value.Truncated);
+        Assert.Equal(2, listing.Value.Skipped);
+        Assert.False(listing.Value.Truncated);
+    }
+
+    [DatabaseFact]
+    public async Task AMalformedListingIsAnAnswerNotAFailure()
+    {
+        await using var agent = await ConnectedTestAgentAsync("input-malformed", AgentCapabilities.ListFiles);
+        var modified = DateTimeOffset.UnixEpoch;
+        var many = Enumerable.Range(0, 9000).Select(i => new FileEntry("n" + i, FileEntryKind.File, 1, modified)).ToList();
+        var answers = new Queue<CommandResult?>(
+        [
+            new FileListResult(null!, false),
+            new FileListResult([new FileEntry(null!, FileEntryKind.File, 1, modified), new FileEntry(new string('x', 100000), FileEntryKind.File, 1, modified)], false),
+            new FileListResult(many, false),
+            new FileListResult([new FileEntry("a", FileEntryKind.File, long.MaxValue, DateTimeOffset.MaxValue)], false),
+        ]);
+        agent.Answer = _ => answers.Dequeue();
+        var server = await ServerOfAsync(agent);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var files = scope.ServiceProvider.GetRequiredService<ServerFiles>();
+
+        var empty = await files.ListAsync(server, null, Ct);
+        Assert.True(empty.IsSuccess);
+        Assert.Empty(empty.Value.Entries);
+
+        var unnamed = await files.ListAsync(server, null, Ct);
+        Assert.Empty(unnamed.Value.Entries);
+        Assert.Equal(2, unnamed.Value.Skipped);
+
+        var capped = await files.ListAsync(server, null, Ct);
+        Assert.Equal(FileLimits.MaxListEntries, capped.Value.Entries.Count);
+        Assert.True(capped.Value.Truncated);
+        Assert.Equal(0, capped.Value.Skipped);
+
+        Assert.Single((await files.ListAsync(server, null, Ct)).Value.Entries);
     }
 
     [DatabaseFact]

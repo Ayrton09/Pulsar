@@ -182,6 +182,9 @@ function FileBrowser({ serverId, path, canEdit, busy, connected, onOpenFolder, o
           {listing.data.truncated && (
             <p className="text-sm text-muted">{t('files.truncated', { count: listing.data.entries.length })}</p>
           )}
+          {listing.data.skipped > 0 && (
+            <p className="text-sm text-muted">{t('files.skipped', { count: listing.data.skipped })}</p>
+          )}
           <Table label={t('files.title')}>
             <thead>
               <tr>

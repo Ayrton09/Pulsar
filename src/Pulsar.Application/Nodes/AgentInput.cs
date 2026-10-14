@@ -192,12 +192,20 @@ public static partial class AgentInput
         ? result
         : result with { Addons = [.. result.Addons.Where(a => a is not null).Select(a => a with { Release = AddonRelease(a.Release) })] };
 
-    /// <summary>A listing of entries that are all usable, at most <see cref="FileLimits.MaxListEntries"/>; <c>Truncated</c> when any was left out.</summary>
+    /// <summary>
+    /// A listing of entries that are all usable, at most <see cref="FileLimits.MaxListEntries"/> (<c>Truncated</c> when
+    /// there were more), with the number of entries left out for their names or values (<c>Skipped</c>).
+    /// </summary>
     private static FileListResult FileListing(FileListResult listing)
     {
         var read = (listing.Entries ?? []).ToList();
-        var kept = read.Where(IsEntry).Take(FileLimits.MaxListEntries).ToList();
-        return listing with { Entries = kept, Truncated = listing.Truncated || kept.Count < read.Count };
+        var usable = read.Where(IsEntry).ToList();
+        return listing with
+        {
+            Entries = usable.Count > FileLimits.MaxListEntries ? usable[..FileLimits.MaxListEntries] : usable,
+            Truncated = listing.Truncated || usable.Count > FileLimits.MaxListEntries,
+            Skipped = read.Count - usable.Count,
+        };
     }
 
     private static bool IsFile(FileEntryResult file) => IsEntry(file.Entry) && FileVersion.IsWellFormed(file.Version);

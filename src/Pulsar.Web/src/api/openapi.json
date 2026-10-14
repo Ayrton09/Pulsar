@@ -12818,7 +12818,8 @@
         "required": [
           "path",
           "entries",
-          "truncated"
+          "truncated",
+          "skipped"
         ],
         "type": "object",
         "properties": {
@@ -12833,6 +12834,10 @@
           },
           "truncated": {
             "type": "boolean"
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },

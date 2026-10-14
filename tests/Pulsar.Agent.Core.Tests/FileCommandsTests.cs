@@ -119,6 +119,15 @@ public sealed class FileCommandsTests : IDisposable
     }
 
     [Theory]
+    [InlineData("MODS~1", true)]
+    [InlineData("MODS~1\n", false)] // $ would match before a final line feed
+    [InlineData("MODS~1\n\n", false)]
+    public void AShortNameEndsWhereTheTextDoes(string name, bool shortName)
+    {
+        Assert.Equal(shortName, FileCommands.IsShortName(name));
+    }
+
+    [Theory]
     [InlineData("PULSAR~1", true)]
     [InlineData("pulsar~12/steamcmd", true)]
     [InlineData("MODS~1", false)] // a folder of the server's own that merely looks like a short name

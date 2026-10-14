@@ -143,12 +143,13 @@ internal sealed partial class MySqlDatabaseHostClient : IDatabaseHostClient
     private static string Secret(string password) =>
         PasswordPattern().IsMatch(password) ? $"'{password}'" : throw new ArgumentException("Not a password Pulsar makes.", nameof(password));
 
-    [GeneratedRegex("^s[a-z0-9]{1,12}_[a-z0-9_]{1,20}$", RegexOptions.CultureInvariant)]
+    // \z, not $: $ also matches before a final line feed.
+    [GeneratedRegex(@"^s[a-z0-9]{1,12}_[a-z0-9_]{1,20}\z", RegexOptions.CultureInvariant)]
     private static partial Regex NamePattern();
 
-    [GeneratedRegex("^[A-Za-z0-9.:%_-]{1,255}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z0-9.:%_-]{1,255}\z", RegexOptions.CultureInvariant)]
     private static partial Regex UserHostPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9]{16,64}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z0-9]{16,64}\z", RegexOptions.CultureInvariant)]
     private static partial Regex PasswordPattern();
 }

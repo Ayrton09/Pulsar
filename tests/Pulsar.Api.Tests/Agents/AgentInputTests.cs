@@ -126,7 +126,7 @@ public sealed class AgentInputTests
     }
 
     [Fact]
-    public void AListingSkipsEntriesWhoseNamesThePanelCannotAddressAndSaysItIsIncomplete()
+    public void AListingSkipsEntriesWhoseNamesThePanelCannotAddressAndCountsThem()
     {
         var modified = DateTimeOffset.UnixEpoch;
         var listing = new FileListResult(
@@ -143,8 +143,11 @@ public sealed class AgentInputTests
         var cleaned = Assert.IsType<FileListResult>(AgentInput.Result(listing));
 
         Assert.Equal(["server.cfg", "odd \U0000202Ename"], cleaned.Entries.Select(e => e.Name));
-        Assert.True(cleaned.Truncated);
-        Assert.False(Assert.IsType<FileListResult>(AgentInput.Result(new FileListResult(listing.Entries.Take(1).ToList(), false))).Truncated);
+        Assert.Equal(5, cleaned.Skipped);
+        Assert.False(cleaned.Truncated); // the cap is not what hid them
+        var clean = Assert.IsType<FileListResult>(AgentInput.Result(new FileListResult(listing.Entries.Take(1).ToList(), false, Skipped: 999)));
+        Assert.Equal(0, clean.Skipped); // the count is the panel's, not the agent's
+        Assert.False(clean.Truncated);
     }
 
     [Fact]
@@ -157,6 +160,7 @@ public sealed class AgentInputTests
 
         Assert.Equal(FileLimits.MaxListEntries, cleaned.Entries.Count);
         Assert.True(cleaned.Truncated);
+        Assert.Equal(0, cleaned.Skipped);
     }
 
     [Theory]

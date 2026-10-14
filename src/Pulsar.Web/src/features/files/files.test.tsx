@@ -95,12 +95,21 @@ const listings: Record<string, Schemas['FileEntry'][]> = {
   game: [{ name: 'csgo', kind: 'directory', size: 0, modifiedAt: at }],
   // A name a game or a player chose: the direction override would show it as "invoiceexe.pdf".
   odd: [{ name: `invoice${String.fromCodePoint(0x202e)}fdp.exe`, kind: 'file', size: 4, modifiedAt: at }],
+  // Folders the panel could not list whole: one over the listing's cap, one with names it cannot open.
+  capped: [{ name: 'a.cfg', kind: 'file', size: 1, modifiedAt: at }],
+  hidden: [{ name: 'b.cfg', kind: 'file', size: 1, modifiedAt: at }],
+};
+const incomplete: Record<string, { truncated: boolean; skipped: number }> = {
+  capped: { truncated: true, skipped: 0 },
+  hidden: { truncated: false, skipped: 3 },
 };
 
 function listing(request: Request): Response {
   const path = new URL(request.url).searchParams.get('path') ?? '';
   const entries = listings[path];
-  return entries ? json({ path, entries, truncated: false }) : problem(404, 'files.not_found');
+  return entries
+    ? json({ path, entries, ...(incomplete[path] ?? { truncated: false, skipped: 0 }) })
+    : problem(404, 'files.not_found');
 }
 
 /** XMLHttpRequest stand-in: uploads and saves go through it (fetch cannot report upload progress). */
@@ -276,6 +285,32 @@ describe('files tab', () => {
     expect(screen.getByRole('navigation', { name: 'Location' })).toHaveTextContent('server/game');
     await userEvent.click(screen.getByRole('button', { name: '..' }));
     expect(await screen.findByRole('button', { name: 'game/' })).toBeInTheDocument();
+  });
+
+  it('says apart that a listing was cut and that entries with names Pulsar cannot open are not shown', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+
+    renderAt(`/servers/${serverId}?tab=files&path=hidden`);
+
+    expect(await screen.findByText('3 entries with names Pulsar cannot open are not shown.')).toBeInTheDocument();
+    expect(screen.queryByText(/Only the first/)).not.toBeInTheDocument();
+  });
+
+  it('says a listing was cut at its cap without blaming names', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(editor),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+
+    renderAt(`/servers/${serverId}?tab=files&path=capped`);
+
+    expect(await screen.findByText('Only the first 1 entries are shown.')).toBeInTheDocument();
+    expect(screen.queryByText(/cannot open/)).not.toBeInTheDocument();
   });
 
   it('shows a name that hides a direction override as it really is, and still acts on the real name', async () => {
