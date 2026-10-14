@@ -156,17 +156,39 @@ public sealed class AgentChallengeStore(TimeProvider clock)
 
     private readonly ConcurrentDictionary<Guid, PendingChallenge> _pending = new();
 
-    public sealed record PendingChallenge(Guid ChallengeId, NodeId NodeId, Guid CredentialId, byte[] Nonce, string PanelOrigin, DateTimeOffset IssuedAt)
-    {
-        public DateTimeOffset ExpiresAt => IssuedAt + Lifetime;
-    }
+    /// <summary>The last <see cref="PendingChallenge.IssuedAt"/>, in microseconds (what the database keeps of a time).</summary>
+    private long _lastIssuedMicroseconds;
 
-    public PendingChallenge Issue(NodeId node, Guid credentialId, string panelOrigin)
+    /// <param name="IssuedAt">
+    /// When it was issued, and always after every challenge issued before it, by a microsecond at least, even when the
+    /// clock steps back: a sign-in records no earlier time for its key (<see cref="AgentAccess"/>), so it counts as after
+    /// a pending key's challenge issued before its own, whatever the clock did.
+    /// </param>
+    /// <param name="AgentNonce">What the agent sent with the challenge request, signed back in the session's grant.</param>
+    public sealed record PendingChallenge(Guid ChallengeId, NodeId NodeId, Guid CredentialId, byte[] Nonce, string PanelOrigin, DateTimeOffset IssuedAt,
+        DateTimeOffset ExpiresAt, byte[]? AgentNonce = null);
+
+    public PendingChallenge Issue(NodeId node, Guid credentialId, string panelOrigin, byte[]? agentNonce = null)
     {
         Prune();
-        var challenge = new PendingChallenge(Guid.CreateVersion7(), node, credentialId, RandomNumberGenerator.GetBytes(32), panelOrigin, clock.GetUtcNow());
+        var now = clock.GetUtcNow();
+        var challenge = new PendingChallenge(Guid.CreateVersion7(), node, credentialId, RandomNumberGenerator.GetBytes(32), panelOrigin, NextIssuedAt(now),
+            now + Lifetime, agentNonce);
         _pending[challenge.ChallengeId] = challenge;
         return challenge;
+    }
+
+    private DateTimeOffset NextIssuedAt(DateTimeOffset now)
+    {
+        long last, next;
+        do
+        {
+            last = Interlocked.Read(ref _lastIssuedMicroseconds);
+            next = Math.Max(now.UtcTicks / 10, last + 1);
+        }
+        while (Interlocked.CompareExchange(ref _lastIssuedMicroseconds, next, last) != last);
+
+        return new DateTimeOffset(next * 10, TimeSpan.Zero);
     }
 
     /// <summary>Removes and returns the challenge: it can be answered once, valid or not.</summary>

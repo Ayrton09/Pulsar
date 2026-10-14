@@ -136,6 +136,67 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
     }
 
     [DatabaseFact]
+    public async Task TheSessionComesWithAGrantSignedForTheAgentsNonce()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "node-grant");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        var nonce = RandomNumberGenerator.GetBytes(32);
+
+        ChallengeResponse challenge;
+        using (var asked = await agent.PostChallengeAsync(nonce))
+        {
+            asked.EnsureSuccessStatusCode();
+            challenge = (await asked.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!;
+        }
+
+        using var response = await agent.PostTokenAsync(challenge);
+        response.EnsureSuccessStatusCode();
+        var token = (await response.Content.ReadFromJsonAsync<TokenResponse>(ProtocolJson.Options, Ct))!;
+
+        // Signed by the key the node pinned, for this node, key and session, and for the nonce the agent chose (not the panel's).
+        var grant = Assert.IsType<SignedMessage>(token.Grant);
+        var pinned = Assert.Single(agent.PinnedKeys, k => k.KeyId == grant.KeyId);
+        Assert.True(ProtocolCrypto.VerifyMessage(grant, AgentProtocol.Purposes.SessionGrant, pinned.PublicKey));
+        var session = ProtocolJson.Deserialize<SessionGrant>(grant.Payload);
+        Assert.Equal(agent.NodeId, session.NodeId);
+        Assert.Equal(agent.CredentialId, session.CredentialId);
+        Assert.Equal(token.SessionId, session.SessionId);
+        Assert.Equal(token.ExpiresAt, session.ExpiresAt);
+        Assert.Equal(nonce, session.Nonce);
+
+        // An agent that sends no nonce (older) gets none: it would have nothing to check it against.
+        Assert.Null((await agent.AuthenticateAsync()).Grant);
+    }
+
+    [DatabaseFact]
+    public async Task TheNonceThePanelSignsBackIsAtMost64Bytes()
+    {
+        // The panel signs it back (a grant, an agents' address): a request cannot make it sign more than that.
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "node-long-nonce");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+
+        using (var tooLong = await agent.PostChallengeAsync(new byte[AgentAccess.MaxChallengeNonceLength + 1]))
+        {
+            await AssertAgentErrorAsync(tooLong, "agent.authentication_rejected", HttpStatusCode.Unauthorized);
+        }
+
+        using (var longest = await agent.PostChallengeAsync(new byte[AgentAccess.MaxChallengeNonceLength]))
+        {
+            Assert.Equal(HttpStatusCode.OK, longest.StatusCode);
+        }
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var nodeId = new NodeId(agent.NodeId);
+        var refusals = await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().AuditLog
+            .Where(e => e.Action == AuditActions.Node.AuthenticationFailed && e.NodeId == nodeId).ToListAsync(Ct);
+        Assert.Single(refusals, e => e.Metadata.Contains("\"challenge_nonce_too_long\"", StringComparison.Ordinal));
+    }
+
+    [DatabaseFact]
     public async Task RevokingTheCredentialDisconnectsTheAgentImmediately()
     {
         using var admin = await factory.CreateAdminClientAsync();

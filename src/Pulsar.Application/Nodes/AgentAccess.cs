@@ -275,7 +275,7 @@ public sealed partial class AgentAccess(
             return refused;
         }
 
-        var challenge = challenges.Issue(nodeId, request.CredentialId, panelOrigin);
+        var challenge = challenges.Issue(nodeId, request.CredentialId, panelOrigin, request.Nonce);
         return new ChallengeResponse(challenge.ChallengeId, challenge.Nonce, challenge.PanelOrigin);
     }
 
@@ -327,12 +327,9 @@ public sealed partial class AgentAccess(
             return await RefuseAsync(node.Id, "invalid_signature", credential.Id, cancellationToken);
         }
 
-        var now = clock.GetUtcNow();
-        credential.Used(now);
-        node.Seen(now);
         if (credential.Status == NodeCredentialStatus.Pending)
         {
-            if (await CompleteRotationAsync(node, credential, challenge.IssuedAt, now, cancellationToken) is { } reason)
+            if (await CompleteRotationAsync(node, credential, challenge.IssuedAt, SignedInAt(challenge), cancellationToken) is { } reason)
             {
                 LogAuthenticationRejected(node.Id, reason == CurrentSignedInAfterChallenge
                     ? "the current credential signed in after the pending credential's challenge was issued"
@@ -346,6 +343,11 @@ public sealed partial class AgentAccess(
             // key's row before the node's, and the other order against them is a deadlock.
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             await locks.LockNodeAsync(node.Id, cancellationToken);
+
+            // The time is taken with the node's row locked, where a pending key's sign-in compares it with its challenge.
+            var now = SignedInAt(challenge);
+            credential.Used(now);
+            node.Seen(now);
             for (var attempt = 0; ; attempt++)
             {
                 try
@@ -400,7 +402,37 @@ public sealed partial class AgentAccess(
             return AgentErrors.CertificateRequired;
         }
 
-        return new TokenResponse(token, session.SessionId, session.ExpiresAt);
+        return new TokenResponse(token, session.SessionId, session.ExpiresAt, await GrantAsync(node, session, challenge.AgentNonce, cancellationToken));
+    }
+
+    /// <summary>
+    /// The session, signed for the nonce the agent sent with its challenge request (docs/architecture/03, "Authentication")
+    /// with a panel key this node pins: proof for the agent that this panel recorded the sign-in, which whatever answers it
+    /// on the way cannot forge, and which the agent asks for before it gives up a pending key ("Rotation"). None without
+    /// a nonce (an older agent) or a pinned key (an agent that missed a whole panel key rotation).
+    /// </summary>
+    private async Task<SignedMessage?> GrantAsync(Node node, AgentSession session, byte[]? nonce, CancellationToken cancellationToken)
+    {
+        if (nonce is null)
+        {
+            return null;
+        }
+
+        var grant = new SessionGrant(node.Id.Value, session.CredentialId, session.SessionId, session.ExpiresAt, nonce);
+        return await keys.SignForAsync(AgentProtocol.Purposes.SessionGrant, ProtocolJson.Serialize(grant),
+            connections.Find(node.Id)?.PinnedPanelKeys ?? node.PinnedPanelKeys, cancellationToken);
+    }
+
+    /// <summary>
+    /// The time a sign-in records for its key: now, but never before its own challenge was issued, which is after every
+    /// challenge issued earlier whatever the clock did (<see cref="AgentChallengeStore.PendingChallenge.IssuedAt"/>). A
+    /// pending key's sign-in held back since a challenge issued before this one is then refused
+    /// (<see cref="CompleteRotationAsync"/>), also after the clock stepped back.
+    /// </summary>
+    private DateTimeOffset SignedInAt(AgentChallengeStore.PendingChallenge challenge)
+    {
+        var now = clock.GetUtcNow();
+        return now > challenge.IssuedAt ? now : challenge.IssuedAt;
     }
 
     /// <summary>
