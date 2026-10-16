@@ -50,8 +50,11 @@ public sealed partial class PanelBlockKeeper(
     private Func<IReadOnlyCollection<ServerAccount>> _servers = () => [];
     private TaskCompletionSource _wake = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private IReadOnlyList<Uri> _refreshed = [];
-    private DateTimeOffset _nextRefresh = DateTimeOffset.MinValue;
-    private DateTimeOffset _lastRequested = DateTimeOffset.MinValue;
+
+    // Monotonic timestamps (null: never): a step of the wall clock, backwards or forwards, neither pauses the refreshes nor
+    // brings one on early.
+    private long? _lastRefresh;
+    private long? _lastRequested;
     private volatile PanelTargets? _current;
     private Task _loop = Task.CompletedTask;
 
@@ -119,12 +122,13 @@ public sealed partial class PanelBlockKeeper(
                 // last waits for its turn (looked at again at each poll).
                 requested |= Interlocked.Exchange(ref _wake, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task.IsCompleted;
                 var current = Panels();
-                var now = clock.GetUtcNow();
-                if ((requested && now - _lastRequested >= options.MinRequestInterval) || !current.SequenceEqual(_refreshed) || now >= _nextRefresh)
+                if ((requested && (_lastRequested is not { } last || clock.GetElapsedTime(last) >= options.MinRequestInterval))
+                    || !current.SequenceEqual(_refreshed)
+                    || _lastRefresh is not { } refreshedAt || clock.GetElapsedTime(refreshedAt) >= options.RefreshInterval)
                 {
                     if (requested)
                     {
-                        _lastRequested = now;
+                        _lastRequested = clock.GetTimestamp();
                         requested = false;
                     }
 
@@ -153,7 +157,7 @@ public sealed partial class PanelBlockKeeper(
     private async Task RefreshAsync(IReadOnlyList<Uri> current, CancellationToken stopping)
     {
         _refreshed = current;
-        _nextRefresh = clock.GetUtcNow() + options.RefreshInterval;
+        _lastRefresh = clock.GetTimestamp();
         var hosts = Hosts(current);
         foreach (var host in hosts.Where(host => !IPAddress.TryParse(host, out _)))
         {
@@ -281,7 +285,9 @@ public sealed partial class PanelBlockKeeper(
 /// least <see cref="ConfirmAfter"/> apart, and one that is not goes after <see cref="UnconfirmedRetention"/>; a confirmed
 /// one goes once its name has resolved without it for <see cref="Retention"/>. At most <see cref="MaxAddressesPerName"/>
 /// confirmed addresses are kept (a name behind a large CDN): those seen longest ago make room for newly confirmed ones,
-/// never for unconfirmed ones (at most <see cref="MaxAddressesPerAnswer"/> more).
+/// never for unconfirmed ones (at most <see cref="MaxAddressesPerAnswer"/> more). Once confirmed, an address stays
+/// confirmed (a flag in the file), and an address's times never go back: a wall clock stepped backwards neither unconfirms
+/// nor confirms anything.
 /// </summary>
 public sealed partial class PanelAddressBook(string file, TimeProvider clock, ILogger logger)
 {
@@ -305,7 +311,7 @@ public sealed partial class PanelAddressBook(string file, TimeProvider clock, IL
         lock (_lock)
         {
             var names = Names();
-            return [.. hosts.SelectMany(host => names.TryGetValue(Key(host), out var seen) ? seen : []).Where(s => s.Confirmed)
+            return [.. hosts.SelectMany(host => names.TryGetValue(Key(host), out var seen) ? seen : []).Where(s => s.IsConfirmed)
                 .Select(s => IPAddress.TryParse(s.Address, out var address) ? address : null).OfType<IPAddress>()];
         }
     }
@@ -337,15 +343,24 @@ public sealed partial class PanelAddressBook(string file, TimeProvider clock, IL
                 var index = seen.FindIndex(s => s.Address == address);
                 if (index >= 0)
                 {
-                    seen[index] = seen[index] with { LastSeen = now };
+                    // Times never go back, and a first sighting in the future (the clock stepped back) is now: confirmed only by
+                    // two lookups, the later at least ConfirmAfter after the first, as the clock says now.
+                    var old = seen[index];
+                    var first = old.FirstSeen > now ? now : old.FirstSeen;
+                    seen[index] = old with
+                    {
+                        LastSeen = old.LastSeen > now ? old.LastSeen : now,
+                        FirstSeen = first,
+                        Confirmed = old.IsConfirmed || now - first >= ConfirmAfter,
+                    };
                 }
                 else
                 {
-                    seen.Add(new Seen(address, now, now));
+                    seen.Add(new Seen(address, now, now, false));
                 }
             }
 
-            seen.RemoveAll(s => now - s.LastSeen > (s.Confirmed ? Retention : UnconfirmedRetention));
+            seen.RemoveAll(s => now - s.LastSeen > (s.IsConfirmed ? Retention : UnconfirmedRetention));
             Evict(seen, confirmed: false, MaxAddressesPerAnswer);
             Evict(seen, confirmed: true, MaxAddressesPerName);
         }
@@ -391,9 +406,9 @@ public sealed partial class PanelAddressBook(string file, TimeProvider clock, IL
     /// <summary>Keeps the <paramref name="max"/> confirmed (or unconfirmed) addresses seen last.</summary>
     private static void Evict(List<Seen> seen, bool confirmed, int max)
     {
-        while (seen.Count(s => s.Confirmed == confirmed) > max)
+        while (seen.Count(s => s.IsConfirmed == confirmed) > max)
         {
-            seen.Remove(seen.Where(s => s.Confirmed == confirmed).MinBy(s => s.LastSeen)!);
+            seen.Remove(seen.Where(s => s.IsConfirmed == confirmed).MinBy(s => s.LastSeen)!);
         }
     }
 
@@ -415,7 +430,8 @@ public sealed partial class PanelAddressBook(string file, TimeProvider clock, IL
             using var stream = File.OpenRead(file);
             foreach (var (name, seen) in JsonSerializer.Deserialize<Dictionary<string, List<Seen>?>>(stream) ?? [])
             {
-                _names[Key(name)] = [.. (seen ?? []).Where(s => s is not null && IPAddress.TryParse(s.Address, out _))];
+                _names[Key(name)] = [.. (seen ?? []).Where(s => s is not null && IPAddress.TryParse(s.Address, out _))
+                    .Select(s => s with { Confirmed = s.Confirmed ?? s.LastSeen - s.FirstSeen >= ConfirmAfter })];
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -435,8 +451,11 @@ public sealed partial class PanelAddressBook(string file, TimeProvider clock, IL
     private partial void LogOversizedAnswer(string host, int count, int max);
 
     /// <param name="FirstSeen">When a lookup first answered it (since it was last forgotten).</param>
-    private sealed record Seen(string Address, DateTimeOffset LastSeen, DateTimeOffset FirstSeen)
+    /// <param name="Confirmed">Set once two lookups at least <see cref="ConfirmAfter"/> apart answered it, and never recomputed from
+    /// the clock; null in files from before it existed, which count as confirmed when their times say so.</param>
+    private sealed record Seen(string Address, DateTimeOffset LastSeen, DateTimeOffset FirstSeen, bool? Confirmed = null)
     {
-        public bool Confirmed => LastSeen - FirstSeen >= ConfirmAfter;
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool IsConfirmed => Confirmed == true;
     }
 }
