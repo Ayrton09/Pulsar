@@ -36,6 +36,11 @@
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
   </ItemGroup>
 
+  <ItemGroup Label="SFTP">
+    <!-- The panel's SFTP server: SSH2 transport and authentication over our own listener; the SFTP v3 handler is Pulsar's own (MIT, no dependencies; Phase 17, spike 0003). -->
+    <PackageVersion Include="Microsoft.DevTunnels.Ssh" Version="3.12.42" />
+  </ItemGroup>
+
   <ItemGroup Label="Persistence and identity">
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.13" />
@@ -58,6 +63,8 @@
     <PackageVersion Include="LateApexEarlySpeed.Json.Schema" Version="4.2.1" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
+    <!-- SSH and SFTP client that drives the panel's SFTP server in the tests (MIT; Phase 17). -->
+    <PackageVersion Include="SSH.NET" Version="2026.0.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
   </ItemGroup>
 </Project>

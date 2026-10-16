@@ -16,6 +16,7 @@ using Pulsar.Api.Auth;
 using Pulsar.Api.Http;
 using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
+using Pulsar.Api.Sftp;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Realtime;
@@ -82,6 +83,7 @@ internal static class ApiServiceCollectionExtensions
         services.AddScoped<HttpRequestContext>();
         // Background work (the scheduler) sets who it acts as before resolving anything that audits.
         services.AddScoped<IRequestContext>(sp => sp.GetRequiredService<RequestContextOverride>().Context ?? sp.GetRequiredService<HttpRequestContext>());
+        AddSftp(services, configuration);
         services.AddSingleton<InitialSetup>();
         services.AddSingleton<FailedLoginBudget>();
         services.AddScoped<UserManagement>();
@@ -121,6 +123,20 @@ internal static class ApiServiceCollectionExtensions
         services.AddSingleton(new TemplateOptions { EnableTestGame = configuration.GetValue<bool>("Pulsar:EnableTestGame") });
         services.AddSingleton(configuration.GetSection("Files").Get<FileManagerOptions>() ?? new FileManagerOptions());
         return services;
+    }
+
+    /// <summary>The panel's SFTP server (Phase 17): on by default, its settings in the database, its limits here.</summary>
+    private static void AddSftp(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<SftpOptions>()
+            .Bind(configuration.GetSection(SftpOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<SftpOptions>, SftpOptionsValidation>();
+        services.AddSingleton<SftpHostKey>();
+        services.AddSingleton<SftpConnections>();
+        services.AddSingleton<SftpAuthenticator>();
+        services.AddSingleton<SftpHost>();
+        services.AddHostedService(sp => sp.GetRequiredService<SftpHost>());
     }
 
     private static void AddAgentChannel(IServiceCollection services)

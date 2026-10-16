@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Auth;
+using Pulsar.Api.Sftp;
 using Pulsar.Application.Servers;
 using Pulsar.Infrastructure.Persistence;
 
@@ -96,6 +97,9 @@ public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("RateLimiting:Auth:EnrollPermitLimit", "1000"); // a test class enrolls an agent per test
         builder.UseSetting("DataProtection:KeysPath", KeysDirectory);
         builder.UseSetting("Pulsar:EnableTestGame", "true");
+
+        // The SFTP server listens only in the tests that drive it (SftpApiFactory), on the loopback.
+        builder.ConfigureTestServices(services => services.PostConfigure<SftpOptions>(options => options.Listen = false));
     }
 }
 
@@ -117,6 +121,7 @@ public sealed class NoDatabaseApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("DataProtection:KeysPath", _keys);
         builder.ConfigureTestServices(services =>
         {
+            services.PostConfigure<SftpOptions>(options => options.Listen = false);
             services.AddScoped<IDatabaseInitializer, NoOpDatabaseInitializer>();
             services.AddScoped<IBundledTemplates, NoBundledTemplates>();
         });

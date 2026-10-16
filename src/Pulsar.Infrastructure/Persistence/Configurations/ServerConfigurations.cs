@@ -221,3 +221,19 @@ internal sealed class SteamAccountConfiguration : IEntityTypeConfiguration<Steam
         builder.Property<uint>("Version").IsRowVersion();
     }
 }
+
+internal sealed class SftpSettingsConfiguration : IEntityTypeConfiguration<SftpSettings>
+{
+    public void Configure(EntityTypeBuilder<SftpSettings> builder)
+    {
+        builder.ToTable("sftp_settings", t =>
+        {
+            t.HasCheckConstraint("ck_sftp_settings_singleton", $"id = {SftpSettings.SingletonId}");
+            t.HasCheckConstraint("ck_sftp_settings_port", "port BETWEEN 1 AND 65535");
+        });
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.Id).ValueGeneratedNever();
+        builder.Property(s => s.PublicHost).HasMaxLength(SftpSettings.MaxHostLength);
+        builder.Property<uint>("Version").IsRowVersion();
+    }
+}

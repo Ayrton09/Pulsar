@@ -49,6 +49,9 @@ public sealed class AuthorizationMatrixTests(PulsarApiFactory factory) : IClassF
         { "DELETE", $"/api/v1/nodes/{s_someId}", [Administrator] },
         { "POST", $"/api/v1/nodes/{s_someId}/enrollment-tokens", [Administrator] },
         { "POST", $"/api/v1/nodes/{s_someId}/credentials/{s_someId}/revoke", [Administrator] },
+        { "GET", "/api/v1/sftp", [NoPermissions, UserViewer, RoleManager, Administrator] },
+        { "GET", "/api/v1/sftp/settings", [Administrator] },
+        { "PUT", "/api/v1/sftp/settings", [Administrator] },
     };
 
     [DatabaseTheory]

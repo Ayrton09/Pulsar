@@ -117,6 +117,11 @@ public static class AuditActions
         public const string Changed = "agent_transport.changed";
     }
 
+    public static class Sftp
+    {
+        public const string SettingsChanged = "sftp.settings_changed";
+    }
+
     public static class BackupStorage
     {
         public const string Created = "backup_storage.created";

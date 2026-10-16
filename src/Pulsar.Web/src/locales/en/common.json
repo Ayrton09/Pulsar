@@ -399,6 +399,9 @@
       },
       "agent_transport": {
         "changed": "Changed how agents connect"
+      },
+      "sftp": {
+        "settings_changed": "Changed the SFTP settings"
       }
     }
   },
@@ -753,6 +756,10 @@
     },
     "agent_transport": {
       "no_agents_endpoint": "The panel has no agents' address: agents would have nowhere to go. Add the Kestrel endpoint \"Agents\" first."
+    },
+    "sftp": {
+      "invalid_port": "The SFTP port must be between 1 and 65535.",
+      "invalid_host": "Give a host name or an IP address, without a scheme, port or path."
     }
   },
   "account": {
