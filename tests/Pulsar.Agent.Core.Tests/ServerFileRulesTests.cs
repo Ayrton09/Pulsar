@@ -155,10 +155,13 @@ public sealed class ServerFileRulesTests
 
         var page = ServerFileRules.Page(entries, ServerFilePath.Root, null);
 
+        // Every page reads the folder again: a page reads far fewer entries than a listing, so paging through a huge
+        // folder costs pages times this, not pages times a million.
         Assert.True(page.Truncated);
         Assert.Equal(FileLimits.MaxListEntries, page.Entries.Count);
         Assert.Equal("f0001999", page.Next);
-        Assert.Equal(ServerFileRules.MaxListScan + 1, entries.Read);
+        Assert.Equal(100_000, ServerFileRules.MaxPageScan);
+        Assert.Equal(ServerFileRules.MaxPageScan + 1, entries.Read);
     }
 
     [Fact]

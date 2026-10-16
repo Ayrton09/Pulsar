@@ -32,6 +32,9 @@ internal sealed class DirectoryHandle(string clientPath, SftpServer? server, str
 
     public int Index { get; set; }
 
+    /// <summary>Entries returned so far (<see cref="SftpSession.MaxListingEntries"/>).</summary>
+    public int Listed { get; set; }
+
     /// <summary>Where the next page starts; null: the last page is listed.</summary>
     public string? Next { get; set; } = next;
 }
@@ -280,14 +283,14 @@ internal sealed class SftpUpload : IAsyncDisposable
         return new SftpUpload(scope, cancel, pipe, task);
     }
 
-    /// <summary>What the node answered; an upload cut off counts as a failed transfer.</summary>
+    /// <summary>What the node answered; an upload cut off, or one that failed any other way, counts as a failed transfer.</summary>
     public async Task<Result<FileDetails>> ResultAsync()
     {
         try
         {
             return await Task;
         }
-        catch (Exception ex) when (ex is OperationCanceledException or IOException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             return ServerErrors.FileTransferFailed;
         }

@@ -56,6 +56,9 @@ public sealed class SftpOptions
     /// </summary>
     public int ReadWindowBytes { get; set; } = 256 * 1024;
 
+    /// <summary>A channel that has not asked for the <c>sftp</c> subsystem this long after it opened is closed (tests shorten it).</summary>
+    internal TimeSpan SubsystemTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
     /// <summary>Tests: false keeps the server from listening at all.</summary>
     internal bool Listen { get; set; } = true;
 

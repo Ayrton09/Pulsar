@@ -5,6 +5,7 @@ using System.IO.Pipelines;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 using Pulsar.Domain.Access;
+using Pulsar.Domain.Common;
 
 namespace Pulsar.Api.Sftp;
 
@@ -19,12 +20,25 @@ namespace Pulsar.Api.Sftp;
 internal sealed partial class SftpSession(
     Stream stream, SftpConnection connection, SftpFileSystem files, SftpOptions options, TimeProvider clock, ILogger logger) : IAsyncDisposable
 {
+    /// <summary>Writes ahead of a gap a session keeps at once, whatever their size.</summary>
+    internal const int MaxReorderEntries = 256;
+
+    /// <summary>What each write kept ahead of a gap counts for <see cref="SftpOptions.MaxReorderBytes"/> besides its bytes.</summary>
+    internal const int ReorderEntryOverhead = 96;
+
+    /// <summary>
+    /// Entries one listing (one OPENDIR) returns at most: each page reads the folder again on the node, so paging through
+    /// a huge folder costs CPU there for every page.
+    /// </summary>
+    internal const int MaxListingEntries = 100_000;
+
     private const int MaxNamesPerReply = 100;
 
     private readonly Dictionary<string, Handle> _handles = new(StringComparer.Ordinal);
     private uint _nextHandle;
     private bool _initialized;
     private long _reorderBytes;
+    private int _reorderEntries;
 
     /// <summary>Serves requests until the client closes the channel, the connection ends or the client breaks the protocol.</summary>
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -260,6 +274,13 @@ internal sealed partial class SftpSession(
     private async Task<SftpWriter> ReadDirectoryAsync(Request request, CancellationToken cancellationToken)
     {
         var handle = Find<DirectoryHandle>(request.Handle!);
+        if (handle.Index >= handle.Entries.Count && handle.Next is not null && handle.Listed >= MaxListingEntries)
+        {
+            // Each page reads the folder again on the node: one listing of a huge folder stops here.
+            LogListingCut(logger, connection.CorrelationId, handle.Listed);
+            handle.Next = null;
+        }
+
         if (handle.Index >= handle.Entries.Count && handle.Next is { } after && handle.Server is { } server)
         {
             await using var operation = await files.BeginAsync(cancellationToken);
@@ -290,6 +311,7 @@ internal sealed partial class SftpSession(
             count++;
         }
 
+        handle.Listed += (int)count;
         // The count goes after the length, the type and the id.
         reply.Patch(9, count);
         return reply;
@@ -455,16 +477,19 @@ internal sealed partial class SftpSession(
                 await PushAsync(handle, data, cancellationToken);
                 while (handle.Pending.Remove(handle.NextOffset, out var next))
                 {
-                    _reorderBytes -= next.Length;
+                    _reorderBytes -= next.Length + ReorderEntryOverhead;
+                    _reorderEntries--;
                     await PushAsync(handle, next, cancellationToken);
                 }
             }
             else if (request.Offset > (ulong)handle.NextOffset && request.Offset <= long.MaxValue && !handle.Pending.ContainsKey((long)request.Offset)
-                && _reorderBytes + data.Length <= options.MaxReorderBytes)
+                && _reorderEntries < MaxReorderEntries && _reorderBytes + data.Length + ReorderEntryOverhead <= options.MaxReorderBytes)
             {
-                // Ahead of the next offset: kept until the gap is filled.
+                // Ahead of the next offset: kept until the gap is filled. Each one costs more than its bytes (the array,
+                // the dictionary's node), so many small ones cannot hold many times the budget.
                 handle.Pending.Add((long)request.Offset, data.ToArray());
-                _reorderBytes += data.Length;
+                _reorderBytes += data.Length + ReorderEntryOverhead;
+                _reorderEntries++;
             }
             else
             {
@@ -549,6 +574,21 @@ internal sealed partial class SftpSession(
             throw SftpException.Failure("The folder already exists.");
         }
 
+        if (ServerFilePath.Parent(location.Path) is { Length: > 0 } parent)
+        {
+            // The node makes missing parents too; SFTP's mkdir makes one folder, in a folder that exists.
+            var folder = await operation.Files.StatAsync(server.Id, parent, cancellationToken);
+            if (!folder.IsSuccess && folder.Error!.Code is not (FileErrors.NotFound or FileErrors.NotADirectory))
+            {
+                throw SftpFileSystem.Map(folder.Error);
+            }
+
+            if (!folder.IsSuccess || folder.Value.Entry.Kind != FileEntryKind.Directory)
+            {
+                throw SftpException.NotFound("The folder it goes in does not exist.");
+            }
+        }
+
         var made = await operation.Files.CreateDirectoryAsync(server.Id, location.Path, cancellationToken);
         return made.IsSuccess ? Status(request.Id, SftpProtocol.Ok, string.Empty) : throw SftpFileSystem.Map(made.Error!);
     }
@@ -630,7 +670,8 @@ internal sealed partial class SftpSession(
         }
         else if (firstOffset == 0)
         {
-            // An existing file written from its start without truncation: replaced by what is written.
+            // An existing file written from its start without truncation: replaced by what is written, which must be at
+            // least as long as the file (FinishAsync refuses to cut it short).
             (mode, start) = (FileWriteMode.Replace, 0);
         }
         else if (firstOffset == (ulong)handle.ExistingSize)
@@ -676,17 +717,25 @@ internal sealed partial class SftpSession(
     /// <summary>The client closed the file: the content ends, and the node's answer is the close's.</summary>
     private async Task FinishAsync(WriteHandle handle, CancellationToken cancellationToken)
     {
-        _reorderBytes -= handle.Pending.Values.Sum(p => (long)p.Length);
+        var gap = handle.Pending.Count > 0;
+        ReleasePending(handle);
         if (handle.Failure is { } failed)
         {
             await handle.AbortAsync();
             throw failed;
         }
 
-        if (handle.Pending.Count > 0)
+        if (gap)
         {
             await handle.AbortAsync();
             throw SftpException.Failure("Part of the file never arrived: it was not saved.");
+        }
+
+        if (handle.Mode == FileWriteMode.Replace && handle.Exists && !handle.Truncate && handle.Written < handle.ExistingSize)
+        {
+            // Written from its start for less than it holds: saving it would cut off the rest, which a local file keeps.
+            await handle.AbortAsync();
+            throw SftpException.Failure("Partial overwrite is not supported: the file was not changed. Write all of it, or truncate it first.");
         }
 
         if (handle.Upload is null)
@@ -702,9 +751,17 @@ internal sealed partial class SftpSession(
         }
 
         var upload = handle.Upload!;
-        await upload.Pipe.Writer.CompleteAsync();
-        var result = await upload.ResultAsync();
-        await upload.DisposeAsync();
+        Result<FileDetails> result;
+        try
+        {
+            await upload.Pipe.Writer.CompleteAsync();
+            result = await upload.ResultAsync();
+        }
+        finally
+        {
+            await upload.DisposeAsync();
+        }
+
         if (!result.IsSuccess)
         {
             throw SftpFileSystem.Map(result.Error!);
@@ -722,7 +779,7 @@ internal sealed partial class SftpSession(
 
         try
         {
-            await SetStatAsync(0, handle.ClientPath, new SftpAttributes(null, null, time), cancellationToken);
+            using var reply = await SetStatAsync(0, handle.ClientPath, new SftpAttributes(null, null, time), cancellationToken);
         }
         catch (SftpException ex)
         {
@@ -734,9 +791,16 @@ internal sealed partial class SftpSession(
     private async Task FailAsync(WriteHandle handle, SftpException failure)
     {
         handle.Failure ??= failure;
-        _reorderBytes -= handle.Pending.Values.Sum(p => (long)p.Length);
-        handle.Pending.Clear();
+        ReleasePending(handle);
         await handle.AbortAsync();
+    }
+
+    /// <summary>The writes a file kept ahead of a gap are dropped, and leave the session's budget.</summary>
+    private void ReleasePending(WriteHandle handle)
+    {
+        _reorderBytes -= handle.Pending.Values.Sum(p => (long)p.Length + ReorderEntryOverhead);
+        _reorderEntries -= handle.Pending.Count;
+        handle.Pending.Clear();
     }
 
     private static async Task CloseQuietlyAsync(Handle handle)
@@ -871,6 +935,9 @@ internal sealed partial class SftpSession(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "SFTP request {Type} of session {CorrelationId} failed")]
     private static partial void LogRequestFailed(ILogger logger, string correlationId, byte type, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SFTP session {CorrelationId}: a folder listing stopped after {Count} entries")]
+    private static partial void LogListingCut(ILogger logger, string correlationId, int count);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "SFTP session {CorrelationId}: a file's time was not kept ({Reason})")]
     private static partial void LogTimeNotSet(ILogger logger, string correlationId, string reason);

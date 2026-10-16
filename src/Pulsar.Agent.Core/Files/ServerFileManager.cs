@@ -174,6 +174,13 @@ public static class ServerFileRules
     public const int MaxListScan = 1_000_000;
 
     /// <summary>
+    /// The most entries of one folder a page of a paged listing reads (SFTP): every page reads the folder again, so a
+    /// client paging through a huge folder costs pages times this. A folder with more is paged from the first ones the
+    /// file system returns, and each page is marked truncated.
+    /// </summary>
+    public const int MaxPageScan = 100_000;
+
+    /// <summary>
     /// Where SteamCMD finds the Steam login the agent lends it during an install (docs/architecture/06, "Steam
     /// accounts"): no file manager operation reaches into it, whatever name or link leads there; a walk does not enter it.
     /// </summary>
@@ -248,7 +255,7 @@ public static class ServerFileRules
     /// A page of a paged listing (<see cref="ListFilesCommand.Paged"/>): the entries of the folder at <paramref name="path"/>
     /// that come after <paramref name="after"/> by <see cref="FileNameOrder"/>, the first <see cref="FileLimits.MaxListEntries"/>
     /// of them (fewer when the message would grow too large), and the name the next page starts after when more follow.
-    /// Reads <paramref name="entries"/> once, holding no more than the entries it keeps, and at most <see cref="MaxListScan"/>
+    /// Reads <paramref name="entries"/> once, holding no more than the entries it keeps, and at most <see cref="MaxPageScan"/>
     /// of them (then <see cref="FileListResult.Truncated"/>): each page costs one read of the folder, never more memory.
     /// Names no <see cref="ServerFilePath"/> accepts and names SFTP hides (<see cref="SftpView"/>) are left out before the cap;
     /// those with format characters and the unusable ones are counted on the first page, Pulsar's own folder is not counted.
@@ -266,7 +273,7 @@ public static class ServerFileRules
         var truncated = false;
         foreach (var entry in entries)
         {
-            if (++read > MaxListScan)
+            if (++read > MaxPageScan)
             {
                 truncated = true;
                 break;

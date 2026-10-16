@@ -248,6 +248,72 @@ public sealed class SftpServerTests(SftpApiFactory factory) : IClassFixture<Sftp
     }
 
     [DatabaseFact]
+    public async Task WritesThatWouldCutAFileOrHoldTooMuchAndFoldersWithoutTheirParentAreRefused()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(factory, scenario.Admin, "sftp-writes");
+        var server = await InstalledAsync(scenario.Admin, agent, "Writes");
+        var role = await ServerRoleAsync(scenario, "sftp-writer", Permissions.Server.View, Permissions.Server.FilesView, Permissions.Server.FilesEdit);
+        var jane = await scenario.CreateUserAsync("sftp-jane");
+        await GrantAsync(scenario.Admin, jane.Id, server.Id, role.Id);
+        var config = Path.Combine(server.Directory, "server.cfg");
+        await File.WriteAllTextAsync(config, "hostname long enough", Ct);
+        var port = await factory.PortAsync();
+        var login = $"sftp-jane.{server.ShortId}";
+
+        using (var client = await ConnectedAsync(port, login))
+        {
+            // Written from its start without truncation, for less than it holds: refused, the file stays as it was.
+            await Assert.ThrowsAnyAsync<SshException>(() => Run(() =>
+            {
+                using var partial = client.Open("/server.cfg", FileMode.Open, FileAccess.Write);
+                partial.Write("abc"u8);
+            }));
+            Assert.Equal("hostname long enough", await File.ReadAllTextAsync(config, Ct));
+            await Run(() =>
+            {
+                using var whole = client.Open("/server.cfg", FileMode.Open, FileAccess.Write);
+                whole.Write("HOSTNAME LONG ENOUGH"u8);
+            });
+            Assert.Equal("HOSTNAME LONG ENOUGH", await File.ReadAllTextAsync(config, Ct));
+
+            // A folder goes in one that exists.
+            await Assert.ThrowsAsync<SftpPathNotFoundException>(() => Run(() => client.CreateDirectory("/missing/maps")));
+            Assert.False(Directory.Exists(Path.Combine(server.Directory, "missing")));
+            await Run(() => client.CreateDirectory("/maps"));
+            await Run(() => client.CreateDirectory("/maps/de"));
+            Assert.True(Directory.Exists(Path.Combine(server.Directory, "maps", "de")));
+        }
+
+        // Writes ahead of a gap: a session keeps a bounded number of them, each costing more than its bytes.
+        using var raw = await RawSftpAsync(port, login);
+        const uint flags = SftpProtocol.OpenWrite | SftpProtocol.OpenCreate | SftpProtocol.OpenTruncate;
+        var tiny = await raw.OpenAsync("/tiny.bin", flags);
+        var accepted = 0;
+        while (accepted <= SftpSession.MaxReorderEntries && await raw.WriteAsync(tiny, (ulong)(2 * (accepted + 1)), [1]) == SftpProtocol.Ok)
+        {
+            accepted++;
+        }
+
+        Assert.Equal(SftpSession.MaxReorderEntries, accepted);
+        Assert.Equal(SftpProtocol.Failure, await raw.CloseAsync(tiny));
+
+        var budget = factory.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<SftpOptions>>().Value.MaxReorderBytes;
+        var size = budget / 200;
+        var large = await raw.OpenAsync("/large.bin", flags);
+        accepted = 0;
+        while (accepted < 300 && await raw.WriteAsync(large, (ulong)((accepted + 1) * 2 * size), new byte[size]) == SftpProtocol.Ok)
+        {
+            accepted++;
+        }
+
+        Assert.Equal(budget / (size + SftpSession.ReorderEntryOverhead), accepted);
+        Assert.Equal(SftpProtocol.Failure, await raw.CloseAsync(large));
+        Assert.False(File.Exists(Path.Combine(server.Directory, "tiny.bin")));
+        Assert.False(File.Exists(Path.Combine(server.Directory, "large.bin")));
+    }
+
+    [DatabaseFact]
     public async Task ViewersReadButChangeNothing()
     {
         var scenario = await AccessScenario.CreateAsync(factory);

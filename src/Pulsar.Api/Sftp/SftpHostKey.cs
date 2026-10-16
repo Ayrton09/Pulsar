@@ -9,8 +9,9 @@ namespace Pulsar.Api.Sftp;
 
 /// <summary>
 /// The SFTP server's host key: ECDSA P-256, made once and kept in <c>sftp_settings</c> with its private key encrypted
-/// by Data Protection (ADR-0011), as the panel signing key is. Losing the key ring loses it: a new one is made, and
-/// every client warns that the host key changed (docs/guides/sftp.md).
+/// by Data Protection (ADR-0011), as the panel signing key is. Losing the key ring loses it, and SFTP does not start
+/// until the operator restores the key ring or clears the key; only then is a new one made, and every client warns that
+/// the host key changed (docs/guides/sftp.md).
 /// </summary>
 public sealed partial class SftpHostKey(
     IServiceScopeFactory scopes, IDataProtectionProvider dataProtection, TimeProvider clock, ILogger<SftpHostKey> logger) : IDisposable

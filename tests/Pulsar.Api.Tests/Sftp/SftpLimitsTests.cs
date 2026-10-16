@@ -102,6 +102,35 @@ public sealed class SftpLimitsTests(SftpLimitsTests.SmallLimitsFactory factory) 
         Assert.Equal("x", await Run(() => client.ReadAllText($"/f{SmallLimitsFactory.Handles}.cfg")));
     }
 
+    [DatabaseFact]
+    public async Task AConnectionHoldsAFewChannelsThatMustStartSftpSoon()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await scenario.CreateUserAsync("limits-channels");
+        var (session, tcp) = await RawSessionAsync(await factory.PortAsync(), "limits-channels", AccessScenario.Password);
+        using (tcp)
+        using (session)
+        {
+            var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            session.Closed += (_, _) => ended.TrySetResult();
+
+            // A channel that never asks for SFTP is closed soon.
+            var idle = await session.OpenChannelAsync(Ct);
+            var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            idle.Closed += (_, _) => closed.TrySetResult();
+            await closed.Task.WaitAsync(SftpApiFactory.Timeout, Ct);
+
+            // A few open at once; one more ends the connection.
+            for (var i = 0; i < SftpHost.MaxChannelsPerConnection; i++)
+            {
+                await session.OpenChannelAsync(Ct).WaitAsync(SftpApiFactory.Timeout, Ct);
+            }
+
+            await Assert.ThrowsAnyAsync<Exception>(() => session.OpenChannelAsync(Ct).WaitAsync(SftpApiFactory.Timeout, Ct));
+            await ended.Task.WaitAsync(SftpApiFactory.Timeout, Ct);
+        }
+    }
+
     /// <summary>Reads (and drops) what the server sends until it closes the connection.</summary>
     private static async Task ClosedAsync(TcpClient tcp)
     {
@@ -160,6 +189,7 @@ public sealed class SftpLimitsTests(SftpLimitsTests.SmallLimitsFactory factory) 
             options.AuthenticationTimeout = TimeSpan.FromSeconds(3);
             options.IdleTimeout = TimeSpan.FromSeconds(4);
             options.MaxHandlesPerSession = Handles;
+            options.SubsystemTimeout = TimeSpan.FromSeconds(1);
         }
     }
 }

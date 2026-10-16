@@ -36,6 +36,9 @@ internal sealed partial class SftpHost(
     TimeProvider clock,
     ILogger<SftpHost> logger) : BackgroundService
 {
+    /// <summary>Channels a connection may hold open at once (two SFTP sessions and a few being opened or closed).</summary>
+    internal const int MaxChannelsPerConnection = 4;
+
     private static readonly TimeSpan s_retry = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan s_refusalLogInterval = TimeSpan.FromMinutes(1);
 
@@ -45,6 +48,8 @@ internal sealed partial class SftpHost(
     private readonly SftpOptions _options = options.Value;
     private readonly Channel<bool> _reload = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
     private readonly Lock _refusalLock = new();
+    private readonly Lock _servingLock = new();
+    private readonly HashSet<Task> _serving = [];
     private volatile int _port;
     private long _refusedSince;
     private int _refused;
@@ -149,7 +154,16 @@ internal sealed partial class SftpHost(
                 }
 
                 await Task.WhenAll(accepting);
+
+                // A connection accepted before the stop but admitted after this sees the stop and ends on its own.
                 connections.CloseEverything(stoppingToken.IsCancellationRequested ? "The panel is stopping." : "The SFTP settings changed.");
+                Task[] serving;
+                lock (_servingLock)
+                {
+                    serving = [.. _serving];
+                }
+
+                await Task.WhenAll(serving);
             }
         }
     }
@@ -303,11 +317,27 @@ internal sealed partial class SftpHost(
                 continue;
             }
 
-            _ = Task.Run(() => ServeAsync(socket, key), CancellationToken.None);
+            // Tracked, so a stop (a reload, the panel's shutdown) waits for every connection to end.
+            Task serving;
+            lock (_servingLock)
+            {
+                serving = Task.Run(() => ServeAsync(socket, key, cancellationToken), CancellationToken.None);
+                _serving.Add(serving);
+            }
+
+            _ = serving.ContinueWith(Served, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
     }
 
-    private async Task ServeAsync(Socket socket, SftpHostKey.Loaded key)
+    private void Served(Task serving)
+    {
+        lock (_servingLock)
+        {
+            _serving.Remove(serving);
+        }
+    }
+
+    private async Task ServeAsync(Socket socket, SftpHostKey.Loaded key, CancellationToken stopping)
     {
         var remote = (socket.RemoteEndPoint as IPEndPoint)?.Address;
         if (remote is { IsIPv4MappedToIPv6: true })
@@ -321,6 +351,12 @@ internal sealed partial class SftpHost(
             socket.Dispose();
             Refused();
             return;
+        }
+
+        // The listener stopped before this connection was admitted: closing every connection may have missed it.
+        if (stopping.IsCancellationRequested)
+        {
+            connection.Close(SshDisconnectReason.ServiceNotAvailable, "The SFTP server is stopping.");
         }
 
         SshServerSession? session = null;
@@ -376,12 +412,32 @@ internal sealed partial class SftpHost(
             return;
         }
 
+        if (!connection.TryOpenChannel())
+        {
+            // Channels cost memory whether or not they do anything: a client that opens this many is not an SFTP client.
+            e.FailureReason = SshChannelOpenFailureReason.ResourceShortage;
+            e.FailureDescription = "Too many channels.";
+            _ = Task.Run(() => connection.Close(SshDisconnectReason.TooManyConnections, "Too many channels."), CancellationToken.None);
+            return;
+        }
+
         var channel = e.Channel;
-        var started = false;
+        var counted = 1;
+        var started = 0;
+        var deadline = CancellationTokenSource.CreateLinkedTokenSource(connection.Ended);
+        channel.Closed += (_, _) =>
+        {
+            if (Interlocked.Exchange(ref counted, 0) != 0)
+            {
+                connection.ChannelClosed();
+                StopDeadline(deadline);
+            }
+        };
+        _ = CloseUnlessStartedAsync(channel, deadline, () => Volatile.Read(ref started) != 0);
         channel.Request += (_, request) =>
         {
             request.IsAuthorized = false;
-            if (started || request.RequestType != "subsystem" || connection.IsClosing || connection.Subsystems >= 2)
+            if (started != 0 || request.RequestType != "subsystem" || connection.IsClosing || connection.Subsystems >= 2)
             {
                 return;
             }
@@ -402,12 +458,49 @@ internal sealed partial class SftpHost(
             }
 
             // The stream exists before the reply, so no SFTP packet arrives before it can be read (spike 0003).
-            started = true;
+            Volatile.Write(ref started, 1);
+            StopDeadline(deadline);
             connection.Subsystems++;
             var stream = new SshStream(channel);
             request.IsAuthorized = true;
             _ = Task.Run(() => RunSftpAsync(connection, channel, stream), CancellationToken.None);
         };
+    }
+
+    /// <summary>
+    /// A channel that has not started SFTP in <see cref="SftpOptions.SubsystemTimeout"/> is closed; the wait ends early
+    /// (<paramref name="deadline"/> cancelled) when SFTP starts, the channel closes or the connection ends.
+    /// </summary>
+    private async Task CloseUnlessStartedAsync(SshChannel channel, CancellationTokenSource deadline, Func<bool> started)
+    {
+        try
+        {
+            await Task.Delay(_options.SubsystemTimeout, clock, deadline.Token);
+            if (!started())
+            {
+                await channel.CloseAsync(CancellationToken.None);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // SFTP started, the connection ended, or the channel was closed already.
+        }
+        finally
+        {
+            deadline.Dispose();
+        }
+    }
+
+    private static void StopDeadline(CancellationTokenSource deadline)
+    {
+        try
+        {
+            deadline.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The wait is over already.
+        }
     }
 
     private async Task RunSftpAsync(SftpConnection connection, SshChannel channel, SshStream stream)

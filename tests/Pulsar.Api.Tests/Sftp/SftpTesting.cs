@@ -156,6 +156,27 @@ internal static class SftpTesting
         return (session, tcp);
     }
 
+    /// <summary>A raw SFTP session over a raw SSH session, for requests SSH.NET does not send the way a test needs them.</summary>
+    public static async Task<RawSftp> RawSftpAsync(int port, string login)
+    {
+        var (session, tcp) = await RawSessionAsync(port, login, AccessScenario.Password);
+        try
+        {
+            var channel = await session.OpenChannelAsync(Ct);
+            Assert.True(await channel.RequestAsync(new SubsystemRequestMessage { Subsystem = "sftp", WantReply = true }, Ct));
+            var sftp = new RawSftp(session, tcp, new SshStream(channel));
+            using var init = new SftpWriter(SftpProtocol.Init).UInt32(SftpProtocol.Version);
+            Assert.Equal(SftpProtocol.VersionReply, (await sftp.SendAsync(init))[0]);
+            return sftp;
+        }
+        catch
+        {
+            session.Dispose();
+            tcp.Dispose();
+            throw;
+        }
+    }
+
     private static SftpClient Client(ConnectionInfo info, Action<string>? fingerprint)
     {
         var client = new SftpClient(info) { OperationTimeout = SftpApiFactory.Timeout };
@@ -165,5 +186,70 @@ internal static class SftpTesting
             e.CanTrust = true;
         };
         return client;
+    }
+}
+
+/// <summary>SFTP packets written and read by hand, one request at a time.</summary>
+internal sealed class RawSftp(SshClientSession session, System.Net.Sockets.TcpClient tcp, SshStream stream) : IDisposable
+{
+    private uint _id;
+
+    public uint NextId() => ++_id;
+
+    /// <summary>Sends <paramref name="request"/> and returns the reply's body (its type first).</summary>
+    public async Task<byte[]> SendAsync(SftpWriter request)
+    {
+        await stream.WriteAsync(request.Packet, SftpTesting.Ct);
+        await stream.FlushAsync(SftpTesting.Ct);
+        var header = new byte[4];
+        await stream.ReadExactlyAsync(header, SftpTesting.Ct).AsTask().WaitAsync(SftpApiFactory.Timeout, SftpTesting.Ct);
+        var body = new byte[System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(header)];
+        await stream.ReadExactlyAsync(body, SftpTesting.Ct).AsTask().WaitAsync(SftpApiFactory.Timeout, SftpTesting.Ct);
+        return body;
+    }
+
+    /// <summary>Opens <paramref name="path"/> with <paramref name="flags"/> (SSH_FXF_*): its handle.</summary>
+    public async Task<string> OpenAsync(string path, uint flags)
+    {
+        using var request = new SftpWriter(SftpProtocol.Open).UInt32(NextId()).String(path).UInt32(flags).UInt32(0);
+        var reply = await SendAsync(request);
+        return reply[0] == SftpProtocol.Handle ? Handle(reply) : throw new InvalidOperationException($"OPEN answered status {Status(reply)}.");
+    }
+
+    /// <summary>The status code of a write.</summary>
+    public async Task<uint> WriteAsync(string handle, ulong offset, byte[] data)
+    {
+        using var request = new SftpWriter(SftpProtocol.Write, data.Length + 64).UInt32(NextId()).String(handle).UInt64(offset).Bytes(data);
+        return Status(await SendAsync(request));
+    }
+
+    /// <summary>The status code of a close.</summary>
+    public async Task<uint> CloseAsync(string handle)
+    {
+        using var request = new SftpWriter(SftpProtocol.Close).UInt32(NextId()).String(handle);
+        return Status(await SendAsync(request));
+    }
+
+    public void Dispose()
+    {
+        stream.Dispose();
+        session.Dispose();
+        tcp.Dispose();
+    }
+
+    private static uint Status(byte[] reply)
+    {
+        var reader = new SftpReader(reply);
+        Assert.Equal(SftpProtocol.Status, reader.Byte());
+        reader.UInt32();
+        return reader.UInt32();
+    }
+
+    private static string Handle(byte[] reply)
+    {
+        var reader = new SftpReader(reply);
+        reader.Byte();
+        reader.UInt32();
+        return reader.String();
     }
 }

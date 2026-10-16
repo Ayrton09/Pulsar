@@ -9,8 +9,11 @@ namespace Pulsar.Api.Sftp;
 internal sealed class SftpConnection : IDisposable
 {
     private readonly CancellationTokenSource _ended = new();
+    private readonly Lock _contextLock = new();
     private long _lastActivity;
     private int _closing;
+    private int _channels;
+    private string? _clientVersion;
 
     public SftpConnection(IPAddress? address, ClientAddress? client, long now)
     {
@@ -56,19 +59,44 @@ internal sealed class SftpConnection : IDisposable
 
     public void Touch(long now) => Interlocked.Exchange(ref _lastActivity, now);
 
-    public void SetClientVersion(string? version) => Context = SftpRequestContext.Anonymous(Address, version, CorrelationId);
+    /// <summary>The client's SSH version, for the audit log; whoever signed in stays signed in.</summary>
+    public void SetClientVersion(string? version)
+    {
+        lock (_contextLock)
+        {
+            _clientVersion = version;
+            Context = ContextFor(Identity);
+        }
+    }
 
     public void SignIn(SftpIdentity identity)
     {
-        if (Identity is not null)
+        lock (_contextLock)
         {
-            throw new InvalidOperationException("The connection is already signed in.");
+            if (Identity is not null)
+            {
+                throw new InvalidOperationException("The connection is already signed in.");
+            }
+
+            Identity = identity;
+            Context = ContextFor(identity);
+            Interactive = null;
+        }
+    }
+
+    /// <summary>A channel opens: false when the connection holds <see cref="SftpHost.MaxChannelsPerConnection"/> already.</summary>
+    public bool TryOpenChannel()
+    {
+        if (Interlocked.Increment(ref _channels) <= SftpHost.MaxChannelsPerConnection)
+        {
+            return true;
         }
 
-        Identity = identity;
-        Context = Context.SignedIn(identity.UserId, identity.UserName);
-        Interactive = null;
+        Interlocked.Decrement(ref _channels);
+        return false;
     }
+
+    public void ChannelClosed() => Interlocked.Decrement(ref _channels);
 
     /// <summary>Ends the connection (once): the client is told why, and what it was doing stops.</summary>
     public void Close(SshDisconnectReason reason, string message)
@@ -94,6 +122,12 @@ internal sealed class SftpConnection : IDisposable
     }
 
     public void Dispose() => _ended.Dispose();
+
+    private SftpRequestContext ContextFor(SftpIdentity? identity)
+    {
+        var anonymous = SftpRequestContext.Anonymous(Address, _clientVersion, CorrelationId);
+        return identity is null ? anonymous : anonymous.SignedIn(identity.UserId, identity.UserName);
+    }
 
     private static async Task CloseSessionAsync(SshSession session, SshDisconnectReason reason, string message)
     {

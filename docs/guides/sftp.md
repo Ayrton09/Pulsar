@@ -66,7 +66,8 @@ Only SFTP is available: no shell, commands, terminals or port forwarding. SSH ke
 The same as the browser's sign-in:
 
 - Wrong passwords count towards the account's lockout (5 in a row lock it for 15 minutes), each one, however many
-  connections they come in. Wrong codes count too.
+  connections they come in, at the same time or not: an account's checks run one at a time, over SFTP and in the
+  browser alike, and each keeps its audit entry. Wrong codes count too.
 - Disabled and locked-out users, and unknown user names, get the same answer as a wrong password, after the same time.
 - Attempts from one address are limited (`RateLimiting:Auth`, 10 a minute by default, counted apart from the web's),
   and one connection may try a password 3 times.
@@ -102,12 +103,12 @@ Limits, in the `Sftp` section of the panel's settings (the defaults suit most pa
 | `IdleTimeout` | 00:15:00 | A session with no request for this long is closed |
 | `MaxHandlesPerSession` | 32 | Open files and folders of one session |
 | `MaxPacketBytes` | 262144 | The largest SFTP packet (clients are told, `limits@openssh.com`) |
-| `MaxReorderBytes` | 1048576 | Writes kept until a gap before them is filled, per session |
+| `MaxReorderBytes` | 1048576 | Writes kept until a gap before them is filled, per session (each also counts 96 bytes; 256 at most) |
 | `ReadWindowBytes` | 262144 | How far reads may skip around a running download before it starts again |
 
 ## How it works, and what to know
 
-- Each request becomes what the web file manager does: listings by pages (every entry, not only the first 2,000),
+- Each request becomes what the web file manager does: listings by pages (up to 100,000 entries, not only the first 2,000),
   a stat, a download from an offset, a streamed upload, a move, a folder made or deleted. They go through the panel's
   checks and the agent's path rules, run as the server's Windows account, and use the same transfers between the panel
   and the node as the web (`files.transfers_busy` when a node already has 8 running, a user 3).
@@ -116,7 +117,16 @@ Limits, in the `Sftp` section of the panel's settings (the defaults suit most pa
 - Uploads stream to the node and are saved when the file is closed, complete or not at all; a file opened for writing
   is replaced as a whole (the time the client asks for is set afterwards). Writing at the end of an existing file, or
   with the append flag, adds to it in place (resumed uploads). Writes elsewhere in an existing file are refused, and a
-  file cannot be open for reading and writing at once.
+  file cannot be open for reading and writing at once. Partial overwrite is not supported: an existing file opened
+  without truncation and written from its start for fewer bytes than it holds is not saved (the close fails and the
+  file stays as it was), where a local file would keep the rest; clients that upload whole files truncate them first.
+- Writes that arrive ahead of a gap are kept until it is filled: each counts for its bytes plus 96 towards
+  `MaxReorderBytes`, and a session keeps at most 256 of them; past either, that file's upload fails.
+- A listing returns at most 100,000 entries of one folder: each page reads the folder again on the node, which reads
+  at most 100,000 entries of it for a page, and the listing stops there (the panel log says so).
+- `mkdir` makes one folder, in a folder that exists (`No such file` otherwise), as on a local disk.
+- A connection holds at most 4 channels at once (one more closes it), and a channel that has not started SFTP within
+  10 seconds is closed.
 - Permissions and sizes sent with `chmod` or `setstat` are accepted and ignored (Windows has none to set); times are set.
 - `rmdir` removes empty folders only. The node deletes a folder with what it holds, so the panel lists it first and
   refuses one that is not empty; something written into the folder between that listing and the deletion is deleted
