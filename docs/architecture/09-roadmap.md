@@ -279,8 +279,9 @@ Like AMP, TCAdmin or Pterodactyl, every server's files can be reached with an SF
 - Users sign in with their own panel user name and password.
 - They see only their own servers: those where they hold `server.files.view`.
 - No plain FTP: it sends passwords in clear.
+- (2026-10-16) SFTP is on by default (the installer opens its port; Settings can turn it off); SSH public keys come in a later phase; names with invisible format characters (such as U+202E) are left out of SFTP listings and counted, since an SFTP client cannot show them marked as the web does.
 
-**Design (proposed; the spike settles the open points):**
+**Design** (the spike, docs/spikes/0003-sftp-server.md, confirmed `Microsoft.DevTunnels.Ssh` with an SFTP v3 handler of our own: Windows `sftp`, OpenSSH and SSH.NET sign in by keyboard-interactive, one prompt per round, password then the two-factor code; shell, exec and forwarding are refused):
 - *Where it runs: the panel, one port for every node.*
   - Nodes accept no inbound connections in Pulsar's design (the agent connects out; nodes may be behind NAT), and the panel already pipes file bytes between browsers and agents through transfers (doc 03, "Large transfers").
   - So the panel hosts the SFTP server and each operation becomes the file commands and transfers the web file manager uses. The agent still checks every path and acts as the server's Windows account, the panel still checks permissions and audits, and no new trust is given to anything.

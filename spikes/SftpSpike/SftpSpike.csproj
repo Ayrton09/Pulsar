@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Throwaway spike: own package versions (outside the central ones), no audit failures, no lock file. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
+    <RuntimeIdentifiers></RuntimeIdentifiers>
+    <NuGetAudit>false</NuGetAudit>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS1591;CA1031;CA2007</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.DevTunnels.Ssh" Version="3.12.42" />
+    <PackageReference Include="Microsoft.DevTunnels.Ssh.Keys" Version="3.12.42" />
+    <PackageReference Include="Microsoft.DevTunnels.Ssh.Tcp" Version="3.12.42" />
+    <PackageReference Include="SSH.NET" Version="2026.0.0" />
+  </ItemGroup>
+
+</Project>
