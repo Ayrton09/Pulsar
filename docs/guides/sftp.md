@@ -54,6 +54,9 @@ panel uses has none yet; the connection is still encrypted with ECDH (`ecdh-sha2
 - **WinSCP, FileZilla:** protocol SFTP, port 2022; they ask for the password and, for two-factor users, the code.
 - **Windows' `sftp` and OpenSSH:** `sftp -P 2022 alice@host`. In a script (`-b`), `sftp` turns password prompts off
   (`BatchMode=yes`): add `-o BatchMode=no`.
+- **Speed:** Windows' `sftp` 9.5 picks `aes256-ctr`, which costs its own process more than GCM does; on a fast link
+  `sftp -c aes256-gcm@openssh.com -P 2022 alice@host` moves files faster (on one machine, about 240 MB/s instead of
+  150). Both are offered; the client chooses.
 - **Resuming:** a download resumes from where it stopped; an upload resumes by appending (FileZilla, `reput` in
   OpenSSH) or through a temporary `.filepart` that replaces the file once complete (WinSCP).
 - Clients that only know the `password` method (no keyboard-interactive) can sign in users without two-factor
@@ -112,8 +115,10 @@ Limits, in the `Sftp` section of the panel's settings (the defaults suit most pa
   a stat, a download from an offset, a streamed upload, a move, a folder made or deleted. They go through the panel's
   checks and the agent's path rules, run as the server's Windows account, and use the same transfers between the panel
   and the node as the web (`files.transfers_busy` when a node already has 8 running, a user 3).
-- Requests are answered one at a time, in order. Reads are served in order from one download; a read a little ahead or
-  just behind is served from what was kept, anything else starts a new download at that offset (audited as a download).
+- Requests are handled one at a time, in order; their replies go out in that order while the next request is handled,
+  at most 2 waiting behind the one being sent (each at most `MaxPacketBytes`). Reads are served in order from one
+  download; a read a little ahead or just behind is served from what was kept, anything else starts a new download at
+  that offset (audited as a download).
 - Uploads stream to the node and are saved when the file is closed, complete or not at all; a file opened for writing
   is replaced as a whole (the time the client asks for is set afterwards). Writing at the end of an existing file, or
   with the append flag, adds to it in place (resumed uploads). Writes elsewhere in an existing file are refused, and a

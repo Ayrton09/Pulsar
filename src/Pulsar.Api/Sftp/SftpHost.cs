@@ -66,7 +66,12 @@ internal sealed partial class SftpHost(
         var configuration = new SshSessionConfiguration(useSecurity: true, enableCompression: false, enableReconnect: false);
         Keep(configuration.KeyExchangeAlgorithms, "ecdh-sha2-nistp384", "ecdh-sha2-nistp256");
         Keep(configuration.PublicKeyAlgorithms, "ecdsa-sha2-nistp256");
-        Keep(configuration.EncryptionAlgorithms, "aes256-gcm@openssh.com", "aes256-ctr");
+        Keep(configuration.EncryptionAlgorithms, "aes256-gcm@openssh.com", SftpAesCtr.AlgorithmName);
+
+        // The same CTR with its keystream made many blocks at a time (SftpAesCtr), still offered after GCM.
+        var ctr = configuration.EncryptionAlgorithms.Single(a => a?.Name == SftpAesCtr.AlgorithmName);
+        configuration.EncryptionAlgorithms.Remove(ctr);
+        configuration.EncryptionAlgorithms.Add(new SftpAesCtr());
         Keep(configuration.HmacAlgorithms, "hmac-sha2-512-etm@openssh.com", "hmac-sha2-256-etm@openssh.com");
         configuration.AuthenticationMethods.Clear();
         configuration.AuthenticationMethods.Add(AuthenticationMethods.KeyboardInteractive);

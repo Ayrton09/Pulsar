@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Globalization;
 using System.IO.Pipelines;
+using System.Threading.Channels;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
 using Pulsar.Domain.Access;
@@ -12,16 +13,23 @@ namespace Pulsar.Api.Sftp;
 /// <summary>
 /// One SFTP version 3 session over an SSH channel (docs/guides/sftp.md). Requests are handled one at a time in the order
 /// they arrive, so what waits is bounded by the channel's window (the SSH library stops taking data the session has not
-/// read); packets are at most <see cref="SftpOptions.MaxPacketBytes"/>, open files and folders at most
-/// <see cref="SftpOptions.MaxHandlesPerSession"/>. Every request runs through <see cref="SftpFileSystem"/> (its own scope,
-/// the permissions checked again) and becomes what the web file manager does: listings by pages, a stat, a download
-/// from an offset, a streamed upload, a move, a folder made or deleted.
+/// read); their replies are sent in that order while the next request is handled, at most <see cref="MaxQueuedReplies"/>
+/// waiting behind the one being sent. Packets are at most <see cref="SftpOptions.MaxPacketBytes"/>, open files and folders
+/// at most <see cref="SftpOptions.MaxHandlesPerSession"/>. Every request runs through <see cref="SftpFileSystem"/> (its
+/// own scope, the permissions checked again) and becomes what the web file manager does: listings by pages, a stat, a
+/// download from an offset, a streamed upload, a move, a folder made or deleted.
 /// </summary>
 internal sealed partial class SftpSession(
     Stream stream, SftpConnection connection, SftpFileSystem files, SftpOptions options, TimeProvider clock, ILogger logger) : IAsyncDisposable
 {
     /// <summary>Writes ahead of a gap a session keeps at once, whatever their size.</summary>
     internal const int MaxReorderEntries = 256;
+
+    /// <summary>
+    /// Replies that may wait behind the one being sent while the next request is handled (each at most
+    /// <see cref="SftpOptions.MaxPacketBytes"/>).
+    /// </summary>
+    internal const int MaxQueuedReplies = 2;
 
     /// <summary>What each write kept ahead of a gap counts for <see cref="SftpOptions.MaxReorderBytes"/> besides its bytes.</summary>
     internal const int ReorderEntryOverhead = 96;
@@ -42,6 +50,29 @@ internal sealed partial class SftpSession(
 
     /// <summary>Serves requests until the client closes the channel, the connection ends or the client breaks the protocol.</summary>
     public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        // Requests are handled one at a time, in order. Their replies go out in that order through SendAsync, so the next
+        // request is handled while the last reply is still being encrypted and sent; at most MaxQueuedReplies wait.
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var replies = Channel.CreateBounded<SftpWriter>(new BoundedChannelOptions(MaxQueuedReplies)
+        {
+            SingleReader = true,
+            SingleWriter = true,
+            FullMode = BoundedChannelFullMode.Wait,
+        });
+        var sending = SendAsync(replies, stop);
+        try
+        {
+            await ServeAsync(replies.Writer, stop.Token);
+        }
+        finally
+        {
+            replies.Writer.TryComplete();
+            await sending;
+        }
+    }
+
+    private async Task ServeAsync(ChannelWriter<SftpWriter> replies, CancellationToken cancellationToken)
     {
         var header = new byte[4];
         while (!cancellationToken.IsCancellationRequested)
@@ -68,19 +99,56 @@ internal sealed partial class SftpSession(
                 }
 
                 connection.Touch(clock.GetTimestamp());
-                using var reply = await HandleAsync(body, cancellationToken);
+                var reply = await HandleAsync(body, cancellationToken);
                 if (reply is null)
                 {
                     return;
                 }
 
-                await stream.WriteAsync(reply.Packet, cancellationToken);
-                await stream.FlushAsync(cancellationToken);
+                try
+                {
+                    await replies.WriteAsync(reply, cancellationToken);
+                }
+                catch
+                {
+                    reply.Dispose();
+                    throw;
+                }
             }
             finally
             {
                 ArrayPool<byte>.Shared.Return(packet);
             }
+        }
+    }
+
+    /// <summary>
+    /// Sends the replies in order until there are no more. When the channel fails the session stops
+    /// (<paramref name="stop"/>) and the replies still waiting are dropped.
+    /// </summary>
+    private async Task SendAsync(Channel<SftpWriter> replies, CancellationTokenSource stop)
+    {
+        try
+        {
+            await foreach (var reply in replies.Reader.ReadAllAsync(CancellationToken.None))
+            {
+                using (reply)
+                {
+                    await stream.WriteAsync(reply.Packet, stop.Token);
+                    await stream.FlushAsync(stop.Token);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            replies.Writer.TryComplete(ex);
+            await stop.CancelAsync();
+            while (replies.Reader.TryRead(out var dropped))
+            {
+                dropped.Dispose();
+            }
+
+            throw;
         }
     }
 
