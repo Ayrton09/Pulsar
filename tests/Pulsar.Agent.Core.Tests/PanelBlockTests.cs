@@ -14,7 +14,7 @@ public sealed class PanelBlockTests : IDisposable
     private static readonly ServerAccount s_second = new("efgh6789", ProcessIdentity.Account("pulsar_efgh6789"));
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), "pulsar-panel-block-tests", Guid.NewGuid().ToString("N"));
-    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 10, 14, 12, 0, 0, TimeSpan.Zero));
+    private readonly SteppingClock _clock = new(new DateTimeOffset(2026, 10, 14, 12, 0, 0, TimeSpan.Zero));
     private readonly PanelBlockOptions _options = new();
     private readonly RecordingFirewall _firewall = new();
     private readonly CancellationTokenSource _stopping = new();
@@ -79,6 +79,50 @@ public sealed class PanelBlockTests : IDisposable
         _clock.Advance(TimeSpan.FromMinutes(1));
         book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10")]);
         Assert.Equal([IPAddress.Parse("203.0.113.10")], book.Known(["panel.example.com"]));
+    }
+
+    [Fact]
+    public void AConfirmedAddressStaysBlockedWhenTheClockStepsBack()
+    {
+        var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+        Confirm(book, "panel.example.com", IPAddress.Parse("203.0.113.10"));
+        _clock.Step = TimeSpan.FromHours(-6);
+
+        Assert.Single(book.Known(["panel.example.com"]));
+        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10")]);
+        book.Save();
+
+        Assert.Single(book.Known(["panel.example.com"]));
+        Assert.Single(new PanelAddressBook(BookFile, _clock, NullLogger.Instance).Known(["panel.example.com"]));
+    }
+
+    [Fact]
+    public void AnUnconfirmedAddressIsNotConfirmedByAClockThatStepsBack()
+    {
+        var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10")]);
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10")]);
+        _clock.Step = TimeSpan.FromHours(-6);
+        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10")]);
+
+        Assert.Empty(book.Known(["panel.example.com"]));
+    }
+
+    [Fact]
+    public void AFileFromBeforeTheFlagKeepsWhatItsTimesSaid()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(BookFile)!);
+        File.WriteAllText(BookFile, """
+            {"panel.example.com":[
+              {"Address":"203.0.113.10","LastSeen":"2026-10-14T12:10:00+00:00","FirstSeen":"2026-10-14T12:00:00+00:00"},
+              {"Address":"203.0.113.11","LastSeen":"2026-10-14T12:01:00+00:00","FirstSeen":"2026-10-14T12:00:00+00:00"},
+              {"Address":"203.0.113.12","LastSeen":"2026-10-14T12:10:00+00:00"}]}
+            """);
+
+        var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+
+        Assert.Equal([IPAddress.Parse("203.0.113.10"), IPAddress.Parse("203.0.113.12")], book.Known(["panel.example.com"]));
     }
 
     [Fact]
@@ -291,6 +335,22 @@ public sealed class PanelBlockTests : IDisposable
     }
 
     [Fact]
+    public async Task TheRefreshesKeepTheirPeriodWhenTheClockStepsBack()
+    {
+        var resolver = new Resolver(_ => [IPAddress.Parse("203.0.113.10")]);
+        var keeper = Keeper(resolver);
+        keeper.Start(() => [s_first], _stopping.Token);
+        Assert.True(_firewall.Blocks.Reader.TryRead(out _));
+        await NextAsync();
+        var refreshedAt = _clock.GetTimestamp();
+
+        _clock.Step = TimeSpan.FromHours(-6);
+        await AdvanceUntilNextAsync(_options.PollInterval);
+
+        Assert.InRange(_clock.GetElapsedTime(refreshedAt), _options.RefreshInterval, _options.RefreshInterval + 3 * _options.PollInterval);
+    }
+
+    [Fact]
     public async Task AFirewallThatFailsDoesNotStopTheRefreshes()
     {
         Remember("panel.example.com", "203.0.113.10");
@@ -398,6 +458,25 @@ public sealed class PanelBlockTests : IDisposable
         }
 
         throw new TimeoutException("The block was not applied again.");
+    }
+
+    /// <summary>A fake clock whose wall time can be stepped without the monotonic one or its timers moving (a wrong RTC, a VM resumed).</summary>
+    private sealed class SteppingClock(DateTimeOffset start) : TimeProvider
+    {
+        private readonly FakeTimeProvider _inner = new(start);
+
+        public TimeSpan Step { get; set; }
+
+        public override long TimestampFrequency => _inner.TimestampFrequency;
+
+        public void Advance(TimeSpan delta) => _inner.Advance(delta);
+
+        public override DateTimeOffset GetUtcNow() => _inner.GetUtcNow() + Step;
+
+        public override long GetTimestamp() => _inner.GetTimestamp();
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
+            _inner.CreateTimer(callback, state, dueTime, period);
     }
 
     private sealed class RecordingFirewall : IServerFirewall
