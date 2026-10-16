@@ -307,7 +307,8 @@ describe('who reaches the nodes page', () => {
   it('opens for those who only manage settings, with the panel keys and agent connections but no node list', async () => {
     const api = fakeApi({
       'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['settings.manage'] }),
-      'GET /api/v1/panel-keys': () => json({ keys: [], nodes: 0, nodesOutdated: 0, nodesUnknown: 0 }),
+      'GET /api/v1/panel-keys': () =>
+        json({ keys: [], nodes: 0, nodesOutdated: 0, nodesUnknown: 0, nodesToReEnroll: [] }),
       'GET /api/v1/agent-transport': () => json(transport({})),
     });
     renderAt('/nodes');
@@ -763,13 +764,20 @@ describe('key rotation', () => {
       nodes: 2,
       nodesOutdated: 1,
       nodesUnknown: 0,
+      nodesToReEnroll: [],
     };
     let retiredKey = '';
     fakeApi({
       'GET /api/v1/auth/session': session(admin),
       'GET /api/v1/nodes': () => json([online]),
       'GET /api/v1/panel-keys': () =>
-        json({ keys: [key('sha256:old', 'active', 2)], nodes: 2, nodesOutdated: 0, nodesUnknown: 0 }),
+        json({
+          keys: [key('sha256:old', 'active', 2)],
+          nodes: 2,
+          nodesOutdated: 0,
+          nodesUnknown: 0,
+          nodesToReEnroll: [],
+        }),
       'POST /api/v1/panel-keys/rotate': () => json(rotated),
       'GET /api/v1/agent-transport': () => json(transport({})),
       // openapi-fetch encodes the ':' of the key id.
@@ -805,11 +813,12 @@ describe('what depends on the nodes', () => {
     retiredAt: null,
     nodesTrusting,
   });
-  const retiring = (nodesOutdated: number) => ({
+  const retiring = (nodesOutdated: number, nodesToReEnroll: string[] = []) => ({
     keys: [key('sha256:new', 'active', 2 - nodesOutdated), key('sha256:old', 'retiring', 2)],
     nodes: 2,
     nodesOutdated,
     nodesUnknown: 0,
+    nodesToReEnroll,
   });
 
   it('fetches the panel keys and the reusable tokens again when the nodes change', async () => {
@@ -888,6 +897,29 @@ describe('what depends on the nodes', () => {
     await vi.waitFor(() => expect(confirm).toHaveBeenCalledOnce());
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('(1 outdated, 0 unknown)'));
     expect(retired).toBe(false);
+  });
+
+  it('names the nodes that would have to be enrolled again, and only then retires the key anyway', async () => {
+    let query: string | null = null;
+    fakeApi({
+      'GET /api/v1/auth/session': session(admin),
+      'GET /api/v1/nodes': () => json([online]),
+      'GET /api/v1/panel-keys': () => json(retiring(1, ['Gamma'])),
+      'POST /api/v1/panel-keys/sha256%3Aold/retire': (request) => {
+        query = new URL(request.url).search;
+        return json(retiring(0));
+      },
+      'GET /api/v1/agent-transport': () => json(transport({})),
+    });
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirm);
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Retire old key' }));
+
+    await vi.waitFor(() => expect(query).toBe('?force=true'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Gamma'));
   });
 });
 

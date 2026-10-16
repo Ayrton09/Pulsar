@@ -3,13 +3,11 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Realtime;
 using Pulsar.Application.Abstractions;
-using Pulsar.Application.Audit;
 using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Realtime;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
-using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
 
@@ -31,7 +29,6 @@ internal sealed partial class AgentHub(
     IHubContext<PanelHub, IPanelClient> browsers,
     IServiceScopeFactory scopes,
     AgentsEndpoint agents,
-    IAuditLog audit,
     TimeProvider clock,
     ILogger<AgentHub> logger) : Hub, IAgentHub
 {
@@ -69,7 +66,7 @@ internal sealed partial class AgentHub(
             throw new HubException("Unsupported agent protocol version; update the agent.");
         }
 
-        // Whoever holds a session token can say Hello: what it says it pins is bounded, as at sign-in, and audited when it changes.
+        // Whoever holds a session token can say Hello: what it says it pins is bounded, as at sign-in, and never recorded.
         if (hello.PinnedPanelKeys is not null && !AgentProtocol.ArePinnedPanelKeyIds(hello.PinnedPanelKeys))
         {
             LogConnectionRejected(nodeId, "malformed pinned panel key ids");
@@ -101,23 +98,18 @@ internal sealed partial class AgentHub(
         var canMove = hello.Capabilities.Contains(AgentCapabilities.UseAgentsAddress, StringComparer.Ordinal);
         var now = clock.GetUtcNow();
         var inventory = AgentAccess.ToSnapshot(hello.Inventory, hello.AgentVersion, hello.ProtocolVersion);
-        if (hello.PinnedPanelKeys is { } said && !(node.PinnedPanelKeys ?? []).SequenceEqual(said.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal),
-            StringComparer.Ordinal))
+        // The keys this connection says it pins sign its commands; the node's record of them comes from its sign-ins only,
+        // which the node key signs (whoever holds a session token can say Hello).
+        IReadOnlyList<string>? pinned = hello.PinnedPanelKeys is { } said ? [.. said.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)] : null;
+        if (pinned is not null && !(node.PinnedPanelKeys ?? []).SequenceEqual(pinned, StringComparer.Ordinal))
         {
-            audit.Record(AuditActions.Node.PanelKeysPinned, AuditOutcome.Success, AgentAccess.NodeActor(node),
-                    new { before = node.PinnedPanelKeys, after = said, session = session.SessionId })
-                .WithNode(nodeId).WithTarget("node", nodeId.ToString());
+            LogPinsDiffer(nodeId, pinned, node.PinnedPanelKeys);
         }
 
         for (var attempt = 0; ; attempt++)
         {
             node.Connected(inventory, now);
             node.ConnectedThrough(session.CertificateKey is not null, canMove);
-            if (hello.PinnedPanelKeys is { } pinned)
-            {
-                node.PanelKeysPinned(pinned);
-            }
-
             try
             {
                 await db.SaveChangesAsync(Context.ConnectionAborted);
@@ -125,7 +117,7 @@ internal sealed partial class AgentHub(
             }
             catch (DbUpdateConcurrencyException) when (attempt < 2)
             {
-                // Pinned keys were recorded for this node meanwhile (a panel key rotation): apply the Hello to the fresh row.
+                // The node's row changed meanwhile (a sign-in recorded its keys): apply the Hello to the fresh row.
                 await db.Entry(node).ReloadAsync(Context.ConnectionAborted);
             }
         }
@@ -133,7 +125,7 @@ internal sealed partial class AgentHub(
         // Hub instances are transient; Items keeps the throttle across this connection's invocations.
         Context.Items[s_lastSeenAtKey] = now;
         connections.Register(Context, session, new AgentConnectionInfo(nodeId, session.SessionId, now,
-            inventory.AgentVersion, hello.ProtocolVersion, hello.Capabilities, null, node.PinnedPanelKeys));
+            inventory.AgentVersion, hello.ProtocolVersion, hello.Capabilities, null, pinned ?? node.PinnedPanelKeys));
 
         // A revocation between the checks above and the registration ended the session but found nothing to close.
         if (!sessions.IsActive(session.SessionId))
@@ -390,6 +382,10 @@ internal sealed partial class AgentHub(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Follow-up {Kind} of server {ServerId} could not be done (after provisioning: its install did not start)")]
     private partial void LogFollowUpFailed(Exception exception, ServerFollowUpKind kind, ServerId serverId);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Node {NodeId}'s connection says it pins the panel keys {Said}, not those its last sign-in signed ({Recorded})")]
+    private partial void LogPinsDiffer(NodeId nodeId, IReadOnlyList<string> said, IReadOnlyList<string>? recorded);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not send the panel keys to node {NodeId}")]
     private partial void LogPanelKeysUpdateFailed(Exception exception, NodeId nodeId);

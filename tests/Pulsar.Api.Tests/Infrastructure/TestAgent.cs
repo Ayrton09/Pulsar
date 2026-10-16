@@ -18,6 +18,7 @@ public sealed class TestAgent : IAsyncDisposable
 {
     private static readonly Uri s_baseAddress = new("https://localhost");
     private readonly WebApplicationFactory<Program> _factory;
+    private IReadOnlyList<string>? _pinned;
 
     public TestAgent(WebApplicationFactory<Program> factory)
     {
@@ -117,6 +118,7 @@ public sealed class TestAgent : IAsyncDisposable
     /// <param name="pinned">The panel key ids the request says the agent pins.</param>
     public async Task<HttpResponseMessage> PostChallengeAsync(byte[]? nonce = null, string? host = null, IReadOnlyList<string>? pinned = null)
     {
+        _pinned = pinned;
         using var request = new HttpRequestMessage(HttpMethod.Post, AgentProtocol.ChallengePath)
         {
             Content = JsonContent.Create(new ChallengeRequest(NodeId, CredentialId, nonce, pinned), options: ProtocolJson.Options),
@@ -136,10 +138,12 @@ public sealed class TestAgent : IAsyncDisposable
         return (await response.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!;
     }
 
-    public Task<HttpResponseMessage> PostTokenAsync(ChallengeResponse challenge, ECDsa? signer = null)
+    /// <param name="pinned">The panel key ids signed; by default those the last challenge request named.</param>
+    public Task<HttpResponseMessage> PostTokenAsync(ChallengeResponse challenge, ECDsa? signer = null, IReadOnlyList<string>? pinned = null)
     {
         var signature = ProtocolCrypto.Sign(signer ?? Key, ProtocolCrypto.SignedData(AgentProtocol.Purposes.Authenticate,
-            ProtocolCrypto.GuidBytes(NodeId), ProtocolCrypto.GuidBytes(CredentialId), challenge.Nonce, ProtocolCrypto.Utf8(challenge.PanelOrigin)));
+            ProtocolCrypto.GuidBytes(NodeId), ProtocolCrypto.GuidBytes(CredentialId), challenge.Nonce, ProtocolCrypto.Utf8(challenge.PanelOrigin),
+            ProtocolCrypto.KeyIds(pinned ?? _pinned)));
         return Http.PostAsJsonAsync(AgentProtocol.TokenPath, new TokenRequest(challenge.ChallengeId, signature), ProtocolJson.Options, Ct);
     }
 

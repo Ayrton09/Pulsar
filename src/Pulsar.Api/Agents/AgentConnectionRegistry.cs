@@ -1,11 +1,8 @@
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
-using Pulsar.Application.Audit;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
-using Pulsar.Domain.Audit;
 using Pulsar.Domain.Common;
 
 namespace Pulsar.Api.Agents;
@@ -19,7 +16,6 @@ internal sealed partial class AgentConnectionRegistry(
     IPanelKeyRing keys,
     AgentSessionStore sessions,
     AgentsEndpoint agents,
-    IServiceScopeFactory scopes,
     TimeProvider clock,
     ILogger<AgentConnectionRegistry> logger) : IAgentConnections
 {
@@ -140,7 +136,7 @@ internal sealed partial class AgentConnectionRegistry(
             var ack = await SendAsync(connection.Info.NodeId, new UpdatePanelKeysCommand(current), null, cancellationToken);
             if (ack?.Status is AckStatus.Accepted or AckStatus.AlreadyInState)
             {
-                await RecordPinnedKeysAsync(connection.Info.NodeId, connection.ConnectionId, currentIds, cancellationToken);
+                RecordPinnedKeys(connection.Info.NodeId, connection.ConnectionId, currentIds);
                 return true;
             }
 
@@ -150,42 +146,15 @@ internal sealed partial class AgentConnectionRegistry(
         return results.Count(updated => updated);
     }
 
-    /// <summary>Remembers the keys an agent pins, in memory (signing) and on the node (the administrator's overview).</summary>
-    public async Task RecordPinnedKeysAsync(NodeId node, string connectionId, IReadOnlyList<string> keyIds, CancellationToken cancellationToken)
+    /// <summary>
+    /// Remembers the keys a connection's agent took, for signing its commands. Not on the node: whoever holds a session
+    /// token can answer for it, so the node's record waits for the agent's next sign-in, which its node key signs.
+    /// </summary>
+    private void RecordPinnedKeys(NodeId node, string connectionId, IReadOnlyList<string> keyIds)
     {
         if (_connections.TryGetValue(node, out var current) && current.ConnectionId == connectionId)
         {
             _connections.TryUpdate(node, current with { Info = current.Info with { PinnedPanelKeys = keyIds } }, current);
-        }
-
-        // The node row also changes when its agent says Hello or reports in: on a conflict, set the keys on the fresh row.
-        for (var attempt = 0; ; attempt++)
-        {
-            await using var scope = scopes.CreateAsyncScope();
-            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
-            var stored = await db.Nodes.SingleOrDefaultAsync(n => n.Id == node, cancellationToken);
-            if (stored is null)
-            {
-                return;
-            }
-
-            if (!(stored.PinnedPanelKeys ?? []).SequenceEqual(keyIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal), StringComparer.Ordinal))
-            {
-                scope.ServiceProvider.GetRequiredService<IAuditLog>().Record(AuditActions.Node.PanelKeysPinned, AuditOutcome.Success,
-                        AgentAccess.NodeActor(stored), new { before = stored.PinnedPanelKeys, after = keyIds })
-                    .WithNode(node).WithTarget("node", node.ToString());
-            }
-
-            stored.PanelKeysPinned(keyIds);
-            try
-            {
-                await db.SaveChangesAsync(cancellationToken);
-                return;
-            }
-            catch (DbUpdateConcurrencyException) when (attempt < 2)
-            {
-                // Try again.
-            }
         }
     }
 

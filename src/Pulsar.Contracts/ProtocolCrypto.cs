@@ -43,6 +43,23 @@ public static class ProtocolCrypto
 
     public static byte[] GuidBytes(Guid value) => value.ToByteArray(bigEndian: true);
 
+    /// <summary>
+    /// A list of key ids as one field of <see cref="SignedData"/>: each id's UTF-8 prefixed with its 4-byte big-endian
+    /// length, in the order given (no list: no bytes).
+    /// </summary>
+    public static byte[] KeyIds(IReadOnlyList<string>? keyIds)
+    {
+        var ids = (keyIds ?? []).Select(Utf8).ToList();
+        var buffer = new byte[ids.Sum(id => 4 + id.Length)];
+        var offset = 0;
+        foreach (var id in ids)
+        {
+            offset = Write(buffer, offset, id);
+        }
+
+        return buffer;
+    }
+
     /// <summary>"sha256:" + base64url of the SHA-256 of the SubjectPublicKeyInfo: what humans compare.</summary>
     public static string Fingerprint(ReadOnlySpan<byte> subjectPublicKeyInfo) =>
         "sha256:" + Convert.ToBase64String(SHA256.HashData(subjectPublicKeyInfo)).TrimEnd('=').Replace('+', '-').Replace('/', '_');

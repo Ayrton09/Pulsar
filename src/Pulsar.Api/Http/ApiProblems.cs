@@ -28,7 +28,7 @@ public static class ApiProblems
         _ when code.EndsWith(".not_found", StringComparison.Ordinal) => StatusCodes.Status404NotFound,
         "access.escalation" or "access.self_change" or "server.variable_protected" or "operation.forbidden" or "schedules.forbidden" or "server.create_forbidden" => StatusCodes.Status403Forbidden,
         "role.name_taken" or "role.in_use" or "access.last_administrator" or "role.system_immutable"
-            or "node.name_taken" or "node.not_connected" or "node.has_servers" or "panel_key.rotation_in_progress" or "panel_key.not_retiring"
+            or "node.name_taken" or "node.not_connected" or "node.has_servers" or "panel_key.rotation_in_progress" or "panel_key.not_retiring" or "panel_key.nodes_outdated"
             or "server.busy" or "server.must_be_stopped" or "server.not_installed" or "server.not_running" or "server.template_unsupported" or "server.template_not_newer" or "server.command_rejected"
             or "node.allocation_taken" or "node.allocation_in_use" or "server.no_free_allocation" or "server.allocation_unavailable"
             or "template.version_exists" or "operation.not_cancellable"

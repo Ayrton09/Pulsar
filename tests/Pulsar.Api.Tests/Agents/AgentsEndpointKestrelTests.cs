@@ -55,7 +55,8 @@ public sealed class AgentsEndpointKestrelTests(KestrelPanelFactory factory) : IC
         var challenge = (await challengeResponse.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!;
         Assert.Equal($"https://127.0.0.1:{factory.AgentsPort}", challenge.PanelOrigin);
         var signature = ProtocolCrypto.Sign(key, ProtocolCrypto.SignedData(AgentProtocol.Purposes.Authenticate,
-            ProtocolCrypto.GuidBytes(result.NodeId), ProtocolCrypto.GuidBytes(result.CredentialId), challenge.Nonce, ProtocolCrypto.Utf8(challenge.PanelOrigin)));
+            ProtocolCrypto.GuidBytes(result.NodeId), ProtocolCrypto.GuidBytes(result.CredentialId), challenge.Nonce, ProtocolCrypto.Utf8(challenge.PanelOrigin),
+            ProtocolCrypto.KeyIds(null)));
         using var tokenResponse = await agents.PostAsJsonAsync(AgentProtocol.TokenPath.TrimStart('/'),
             new TokenRequest(challenge.ChallengeId, signature), ProtocolJson.Options, Ct);
         tokenResponse.EnsureSuccessStatusCode();

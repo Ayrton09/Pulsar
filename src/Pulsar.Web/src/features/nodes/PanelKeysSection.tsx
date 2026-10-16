@@ -23,19 +23,20 @@ export function PanelKeysSection() {
   const retiring = keys.find((k) => k.status === 'retiring');
 
   // The question counts the nodes as they are now: one may have connected with only the old key since the page loaded.
+  // Nodes that would trust no key name themselves, and the panel retires the key over them only when told to.
   const askToRetire = async (keyId: string) => {
     const fresh = await overview.refetch();
-    if (
-      !fresh.isError &&
-      fresh.data &&
-      window.confirm(
-        t('panelKeys.retireConfirm', {
-          outdated: fresh.data.nodesOutdated,
-          unknown: fresh.data.nodesUnknown,
-        }),
-      )
-    ) {
-      retire.mutate(keyId);
+    if (fresh.isError || !fresh.data) {
+      return;
+    }
+
+    const cutOff = fresh.data.nodesToReEnroll;
+    const question =
+      cutOff.length > 0
+        ? t('panelKeys.retireForceConfirm', { nodes: cutOff.join(', ') })
+        : t('panelKeys.retireConfirm', { outdated: fresh.data.nodesOutdated, unknown: fresh.data.nodesUnknown });
+    if (window.confirm(question)) {
+      retire.mutate({ keyId, force: cutOff.length > 0 });
     }
   };
 

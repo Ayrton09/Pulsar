@@ -212,7 +212,8 @@ public sealed class RealAgentTests(PulsarApiFactory factory) : IClassFixture<Pul
         await Assert.ThrowsAnyAsync<Exception>(() => HelloAsync(stolen!, []));
         Assert.Equal(first, agent.CurrentSessionId);
 
-        // A well-formed lie is taken (and audited), and cuts the agent's connection off: it signs in again, and stays.
+        // A well-formed lie is taken for that connection only (the node's record comes from sign-ins), and cuts the agent's
+        // connection off: it signs in again, and stays.
         await using (await HelloAsync(stolen!, ["sha256:not-a-panel-key"]))
         {
             await InProcessAgent.EventuallyAsync(() => Task.FromResult(agent.CurrentSessionId != first), "the agent cut off");
@@ -223,8 +224,8 @@ public sealed class RealAgentTests(PulsarApiFactory factory) : IClassFixture<Pul
         Assert.Equal(AckStatus.Accepted, (await PingAsync(admin, config.NodeId)).Status);
         await using var scope = factory.Services.CreateAsyncScope();
         var nodeId = new NodeId(config.NodeId);
-        Assert.True(await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().AuditLog
-            .AnyAsync(e => e.Action == AuditActions.Node.PanelKeysPinned && e.NodeId == nodeId, TestContext.Current.CancellationToken));
+        Assert.Equal([created.Enrollment.PanelKeyFingerprint], (await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().Nodes
+            .SingleAsync(n => n.Id == nodeId, TestContext.Current.CancellationToken)).PinnedPanelKeys);
     }
 
     /// <summary>Says Hello on the agents' hub with a session token, as whoever copied it would.</summary>

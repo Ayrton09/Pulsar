@@ -119,9 +119,10 @@ public static class NodeEndpoints
     private static async Task<Results<Ok<PanelKeysOverview>, ProblemHttpResult>> RotatePanelKeyAsync(PanelKeyManagement keys, CancellationToken ct) =>
         (await keys.RotateAsync(ct)).ToHttp();
 
+    /// <param name="force">Retire it even when nodes trust no other key: they have to be enrolled again.</param>
     private static async Task<Results<Ok<PanelKeysOverview>, ProblemHttpResult>> RetirePanelKeyAsync(
-        string keyId, PanelKeyManagement keys, CancellationToken ct) =>
-        (await keys.RetireAsync(keyId, ct)).ToHttp();
+        string keyId, PanelKeyManagement keys, CancellationToken ct, bool force = false) =>
+        (await keys.RetireAsync(keyId, force, ct)).ToHttp();
 
     private static async Task<Ok<IReadOnlyList<NodeSummary>>> ListAsync(NodeManagement nodes, CancellationToken ct) =>
         TypedResults.Ok(await nodes.ListAsync(ct));

@@ -99,6 +99,12 @@ public sealed class ServerFirewallTests
             firewall.BlockPanel([server], s_targets);
             Assert.Null(Rule(WindowsServerFirewall.PanelBlockName(shortId)));
 
+            // A server provisioned again under the same short id is blocked again.
+            firewall.Provisioned(shortId);
+            firewall.BlockPanel([server], s_targets);
+            Assert.NotNull(Rule(WindowsServerFirewall.PanelBlockName(shortId)));
+            firewall.Remove(shortId);
+
             // So does unenroll, whether managing the firewall is on or not.
             Firewall(enabled: true).BlockPanel([server], s_targets);
             Assert.Equal(1, WindowsServerFirewall.RemoveAll([shortId]));

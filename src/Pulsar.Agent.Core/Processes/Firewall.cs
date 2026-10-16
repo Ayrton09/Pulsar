@@ -30,6 +30,12 @@ public interface IServerFirewall
 
     /// <summary>Removes the server's rules, its account's outbound block included (when it is deleted).</summary>
     void Remove(string shortId);
+
+    /// <summary>
+    /// The server is provisioned (again): its account is blocked from now on, even when a server of the same short id was
+    /// removed earlier in this run.
+    /// </summary>
+    void Provisioned(string shortId);
 }
 
 /// <summary>The node's firewall is left to its administrator.</summary>
@@ -46,6 +52,10 @@ public sealed class UnmanagedFirewall : IServerFirewall
     }
 
     public void Remove(string shortId)
+    {
+    }
+
+    public void Provisioned(string shortId)
     {
     }
 }

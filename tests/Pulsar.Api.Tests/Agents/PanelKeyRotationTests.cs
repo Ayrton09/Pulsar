@@ -1,5 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Tests.Infrastructure;
@@ -41,7 +44,8 @@ public sealed class PanelKeyRotationTests(PulsarApiFactory factory) : IClassFixt
         Assert.Equal(PanelKeyTrust.Current, (await NodeApi.GetAsync(admin, config.NodeId)).Node.PanelKeyTrust);
         Assert.True(Pins(agent.Configs.Load()!).SetEquals([oldKey, newKey])); // saved, so it survives a restart
 
-        var retired = await PostAsync(admin, $"/api/v1/panel-keys/{oldKey}/retire");
+        // Forced: nodes of the other tests may pin only the old key.
+        var retired = await PostAsync(admin, $"/api/v1/panel-keys/{oldKey}/retire?force=true");
 
         Assert.Equal(PanelSigningKeyStatus.Retired, Assert.Single(retired.Keys, k => k.KeyId == oldKey).Status);
         await InProcessAgent.EventuallyAsync(() => Task.FromResult(Pins(agent).SetEquals([newKey])), "the agent dropping the retired key");
@@ -80,7 +84,7 @@ public sealed class PanelKeyRotationTests(PulsarApiFactory factory) : IClassFixt
         var config = await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
 
         await PostAsync(admin, "/api/v1/panel-keys/rotate");
-        await PostAsync(admin, $"/api/v1/panel-keys/{created.Enrollment.PanelKeyFingerprint}/retire");
+        await PostAsync(admin, $"/api/v1/panel-keys/{created.Enrollment.PanelKeyFingerprint}/retire?force=true");
         await agent.StartAsync();
 
         await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, config.NodeId)).Node.PanelKeyTrust == PanelKeyTrust.Outdated, "the node reported as outdated");
@@ -143,6 +147,54 @@ public sealed class PanelKeyRotationTests(PulsarApiFactory factory) : IClassFixt
     }
 
     [DatabaseFact]
+    public async Task OnlyASignInRecordsTheKeysANodePinsAndRetiringRefusesToCutANodeOff()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await FinishPendingRotationAsync(admin);
+        var created = await NodeApi.CreateAsync(admin, "panel-key-gate");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        var oldKey = created.Enrollment.PanelKeyFingerprint;
+
+        // The node signs in pinning the old key only, then goes offline; its session token leaks.
+        var session = await SignInAsync(agent, [oldKey]);
+        var rotated = await PostAsync(admin, "/api/v1/panel-keys/rotate");
+        var newKey = Assert.Single(rotated.Keys, k => k.Status == PanelSigningKeyStatus.Active).KeyId;
+        Assert.Contains("panel-key-gate", rotated.NodesToReEnroll);
+
+        // Whoever holds the token says Hello pinning only the new key: the node's record does not change.
+        await using (await HelloAsync(session.AccessToken, [newKey]))
+        {
+        }
+
+        Assert.Contains("panel-key-gate", (await GetAsync(admin)).NodesToReEnroll);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var node = await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().Nodes.AsNoTracking()
+                .SingleAsync(n => n.Id == new NodeId(created.Node.Id), Ct);
+            Assert.Equal([oldKey], node.PinnedPanelKeys);
+        }
+
+        // Retiring the old key would cut the node off: refused unless forced.
+        using (var refused = await admin.PostAsync($"/api/v1/panel-keys/{Uri.EscapeDataString(oldKey)}/retire"))
+        {
+            await Auth.SetupTests.AssertProblemAsync(refused, HttpStatusCode.Conflict, "panel_key.nodes_outdated");
+        }
+
+        // Keys the node key did not sign are refused; a sign-in that signs both records them.
+        using (var asked = await agent.PostChallengeAsync(RandomNumberGenerator.GetBytes(32), pinned: [oldKey]))
+        {
+            var challenge = (await asked.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!;
+            using var forged = await agent.PostTokenAsync(challenge, pinned: [oldKey, newKey]);
+            Assert.Equal(HttpStatusCode.Unauthorized, forged.StatusCode);
+        }
+
+        await SignInAsync(agent, [oldKey, newKey]);
+        Assert.DoesNotContain("panel-key-gate", (await GetAsync(admin)).NodesToReEnroll);
+        await FinishPendingRotationAsync(admin);
+    }
+
+    [DatabaseFact]
     public async Task AKeyRetiredWhileThePanelReadsItsKeysIsNotKept()
     {
         using var admin = await factory.CreateAdminClientAsync();
@@ -180,8 +232,40 @@ public sealed class PanelKeyRotationTests(PulsarApiFactory factory) : IClassFixt
         foreach (var key in (await GetAsync(admin)).Keys.Where(k => k.Status == PanelSigningKeyStatus.Retiring))
         {
             // Escaped as the browser client sends it ("sha256%3A...").
-            await PostAsync(admin, $"/api/v1/panel-keys/{Uri.EscapeDataString(key.KeyId)}/retire");
+            await PostAsync(admin, $"/api/v1/panel-keys/{Uri.EscapeDataString(key.KeyId)}/retire?force=true");
         }
+    }
+
+    private static async Task<TokenResponse> SignInAsync(TestAgent agent, IReadOnlyList<string> pinned)
+    {
+        using var asked = await agent.PostChallengeAsync(RandomNumberGenerator.GetBytes(32), pinned: pinned);
+        asked.EnsureSuccessStatusCode();
+        using var response = await agent.PostTokenAsync((await asked.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<TokenResponse>(ProtocolJson.Options, Ct))!;
+    }
+
+    /// <summary>Says Hello on the agents' hub with a session token, as whoever copied it would.</summary>
+    private async Task<HubConnection> HelloAsync(string accessToken, IReadOnlyList<string> pinned)
+    {
+        var server = factory.Server;
+        var connection = new HubConnectionBuilder()
+            .WithUrl(new Uri("wss://localhost" + AgentProtocol.HubPath), HttpTransportType.WebSockets, options =>
+            {
+                options.SkipNegotiation = true;
+                options.WebSocketFactory = async (context, cancellationToken) =>
+                {
+                    var client = server.CreateWebSocketClient();
+                    client.ConfigureRequest = request => request.Headers.Authorization = $"Bearer {accessToken}";
+                    return await client.ConnectAsync(context.Uri, cancellationToken);
+                };
+            })
+            .AddJsonProtocol(options => ProtocolJson.Configure(options.PayloadSerializerOptions))
+            .Build();
+        await connection.StartAsync(Ct);
+        await connection.InvokeAsync<HelloAccepted>(nameof(IAgentHub.Hello),
+            new AgentHello("0.1.0-thief", AgentProtocol.CurrentVersion, [], TestAgent.Inventory, pinned), Ct);
+        return connection;
     }
 
     private static async Task<PanelKeysOverview> GetAsync(PanelClient admin) =>

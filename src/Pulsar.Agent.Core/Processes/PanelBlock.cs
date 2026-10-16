@@ -16,15 +16,22 @@ public sealed class PanelBlockOptions
 
     /// <summary>How long one name's lookup may take: past it, the addresses known for it stay.</summary>
     public TimeSpan ResolveTimeout { get; set; } = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// The least time between two refreshes asked for by changes of the machine's network addresses (which whoever sends
+    /// router advertisements on its network can cause at will): the requests in between wait for it, as one.
+    /// </summary>
+    public TimeSpan MinRequestInterval { get; set; } = TimeSpan.FromSeconds(30);
 }
 
 /// <summary>
 /// Keeps the outbound block of every server's account (docs/architecture/06, "Windows Firewall") up to date, as a property
 /// of the accounts rather than of a start: made for all of them when the agent starts (games it takes over included) with
 /// what is known, without a lookup; then refreshed in the background when the agent's panel addresses change (a move to
-/// the agents' address), when the machine's network addresses change, and every few minutes. Lookups are bounded, and
-/// the addresses a name had stay listed when it does not resolve (<see cref="PanelAddressBook"/>). Nothing here fails a
-/// start: failures are logged, and the next refresh tries again.
+/// the agents' address), when the machine's network addresses change (at most every
+/// <see cref="PanelBlockOptions.MinRequestInterval"/>), and every few minutes. Lookups are bounded, and the addresses a
+/// name had stay listed when it does not resolve (<see cref="PanelAddressBook"/>). Nothing here fails a start: failures
+/// are logged, and the next refresh tries again.
 /// </summary>
 /// <param name="panels">The agent's panel addresses as it uses them now (its configuration in memory): the panel and its fallback.</param>
 public sealed partial class PanelBlockKeeper(
@@ -44,6 +51,7 @@ public sealed partial class PanelBlockKeeper(
     private TaskCompletionSource _wake = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private IReadOnlyList<Uri> _refreshed = [];
     private DateTimeOffset _nextRefresh = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastRequested = DateTimeOffset.MinValue;
     private volatile PanelTargets? _current;
     private Task _loop = Task.CompletedTask;
 
@@ -66,18 +74,35 @@ public sealed partial class PanelBlockKeeper(
         }
 
         _servers = servers;
-        Apply(Panels());
+        try
+        {
+            Apply(Panels());
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            LogRefreshFailed(ex.Message);
+        }
+
         _loop = Task.Run(() => RunAsync(stopping), CancellationToken.None);
     }
 
     /// <summary>Asks for a refresh now (the machine's network addresses changed).</summary>
     public void Request() => Volatile.Read(ref _wake).TrySetResult();
 
-    /// <summary>Blocks a new server's account with the current targets, without waiting for the next refresh.</summary>
+    /// <summary>
+    /// Blocks a new server's account with the current targets, without waiting for the next refresh (also when a server
+    /// with its short id was deleted earlier: see <see cref="IServerFirewall.Provisioned"/>).
+    /// </summary>
     public void Ensure(ServerAccount server)
     {
         ArgumentNullException.ThrowIfNull(server);
-        if (firewall.Enabled && _current is { } targets)
+        if (!firewall.Enabled)
+        {
+            return;
+        }
+
+        firewall.Provisioned(server.ShortId);
+        if (_current is { } targets)
         {
             Block([server], targets);
         }
@@ -85,16 +110,33 @@ public sealed partial class PanelBlockKeeper(
 
     private async Task RunAsync(CancellationToken stopping)
     {
+        var requested = false;
         try
         {
             while (true)
             {
-                // Swapped before looking, so a request made while refreshing is not lost.
-                var requested = Interlocked.Exchange(ref _wake, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task.IsCompleted;
+                // Swapped before looking, so a request made while refreshing is not lost; one made too soon after the
+                // last waits for its turn (looked at again at each poll).
+                requested |= Interlocked.Exchange(ref _wake, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).Task.IsCompleted;
                 var current = Panels();
-                if (requested || !current.SequenceEqual(_refreshed) || clock.GetUtcNow() >= _nextRefresh)
+                var now = clock.GetUtcNow();
+                if ((requested && now - _lastRequested >= options.MinRequestInterval) || !current.SequenceEqual(_refreshed) || now >= _nextRefresh)
                 {
-                    await RefreshAsync(current, stopping);
+                    if (requested)
+                    {
+                        _lastRequested = now;
+                        requested = false;
+                    }
+
+                    try
+                    {
+                        await RefreshAsync(current, stopping);
+                    }
+                    catch (Exception ex) when (ex is not (OperationCanceledException or OutOfMemoryException))
+                    {
+                        // Never the end of the refreshes: the next one tries again.
+                        LogRefreshFailed(ex.Message);
+                    }
                 }
 
                 using var waiting = CancellationTokenSource.CreateLinkedTokenSource(stopping);
@@ -196,7 +238,7 @@ public sealed partial class PanelBlockKeeper(
                 ? [.. NetworkInterface.GetAllNetworkInterfaces().SelectMany(n => n.GetIPProperties().UnicastAddresses).Select(a => a.Address)]
                 : [.. ownAddresses()];
         }
-        catch (NetworkInformationException ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             LogOwnAddressesUnreadable(ex.Message);
             return [];
@@ -226,31 +268,44 @@ public sealed partial class PanelBlockKeeper(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "This machine's network addresses could not be read: {Reason}")]
     private partial void LogOwnAddressesUnreadable(string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The block that keeps game servers from the panel could not be refreshed: {Reason}")]
+    private partial void LogRefreshFailed(string reason);
 }
 
 /// <summary>
 /// The addresses each of the panel's names has resolved to, kept in the agent's state directory (readable only by SYSTEM
-/// and Administrators) so that a restart, or a name that stops resolving, does not take them out of the block. A lookup
-/// adds to them; an address goes once its name has resolved without it for <see cref="Retention"/>, and only the newest
-/// <see cref="MaxAddressesPerName"/> are kept (a name behind a large CDN).
+/// and Administrators) so that a restart, or a name that stops resolving, does not take them out of the block. Whoever can
+/// forge a lookup's answer chooses what it adds (docs/architecture/08, T31), so: one answer adds at most
+/// <see cref="MaxAddressesPerAnswer"/> addresses; an address is blocked only once confirmed, answered by two lookups at
+/// least <see cref="ConfirmAfter"/> apart, and one that is not goes after <see cref="UnconfirmedRetention"/>; a confirmed
+/// one goes once its name has resolved without it for <see cref="Retention"/>. At most <see cref="MaxAddressesPerName"/>
+/// confirmed addresses are kept (a name behind a large CDN): those seen longest ago make room for newly confirmed ones,
+/// never for unconfirmed ones (at most <see cref="MaxAddressesPerAnswer"/> more).
 /// </summary>
 public sealed partial class PanelAddressBook(string file, TimeProvider clock, ILogger logger)
 {
     public const int MaxAddressesPerName = 64;
+
+    public const int MaxAddressesPerAnswer = 16;
+
+    public static TimeSpan ConfirmAfter { get; } = TimeSpan.FromMinutes(5);
 
     private readonly Lock _lock = new();
     private Dictionary<string, List<Seen>>? _names;
 
     public static TimeSpan Retention { get; } = TimeSpan.FromDays(30);
 
-    /// <summary>Every address known for <paramref name="hosts"/>, oldest first.</summary>
+    public static TimeSpan UnconfirmedRetention { get; } = TimeSpan.FromHours(1);
+
+    /// <summary>Every confirmed address of <paramref name="hosts"/>, oldest first.</summary>
     public IReadOnlyList<IPAddress> Known(IEnumerable<string> hosts)
     {
         ArgumentNullException.ThrowIfNull(hosts);
         lock (_lock)
         {
             var names = Names();
-            return [.. hosts.SelectMany(host => names.TryGetValue(Key(host), out var seen) ? seen : [])
+            return [.. hosts.SelectMany(host => names.TryGetValue(Key(host), out var seen) ? seen : []).Where(s => s.Confirmed)
                 .Select(s => IPAddress.TryParse(s.Address, out var address) ? address : null).OfType<IPAddress>()];
         }
     }
@@ -264,6 +319,12 @@ public sealed partial class PanelAddressBook(string file, TimeProvider clock, IL
         if (answered.Count == 0)
         {
             return;
+        }
+
+        if (answered.Count > MaxAddressesPerAnswer)
+        {
+            LogOversizedAnswer(host, answered.Count, MaxAddressesPerAnswer);
+            answered = answered[..MaxAddressesPerAnswer];
         }
 
         var now = clock.GetUtcNow();
@@ -280,15 +341,13 @@ public sealed partial class PanelAddressBook(string file, TimeProvider clock, IL
                 }
                 else
                 {
-                    seen.Add(new Seen(address, now));
+                    seen.Add(new Seen(address, now, now));
                 }
             }
 
-            seen.RemoveAll(s => now - s.LastSeen > Retention);
-            while (seen.Count > MaxAddressesPerName)
-            {
-                seen.Remove(seen.MinBy(s => s.LastSeen)!);
-            }
+            seen.RemoveAll(s => now - s.LastSeen > (s.Confirmed ? Retention : UnconfirmedRetention));
+            Evict(seen, confirmed: false, MaxAddressesPerAnswer);
+            Evict(seen, confirmed: true, MaxAddressesPerName);
         }
     }
 
@@ -329,6 +388,15 @@ public sealed partial class PanelAddressBook(string file, TimeProvider clock, IL
 
     private static string Key(string host) => host.ToLowerInvariant();
 
+    /// <summary>Keeps the <paramref name="max"/> confirmed (or unconfirmed) addresses seen last.</summary>
+    private static void Evict(List<Seen> seen, bool confirmed, int max)
+    {
+        while (seen.Count(s => s.Confirmed == confirmed) > max)
+        {
+            seen.Remove(seen.Where(s => s.Confirmed == confirmed).MinBy(s => s.LastSeen)!);
+        }
+    }
+
     private Dictionary<string, List<Seen>> Names()
     {
         if (_names is not null)
@@ -345,13 +413,15 @@ public sealed partial class PanelAddressBook(string file, TimeProvider clock, IL
         try
         {
             using var stream = File.OpenRead(file);
-            foreach (var (name, seen) in JsonSerializer.Deserialize<Dictionary<string, List<Seen>>>(stream) ?? [])
+            foreach (var (name, seen) in JsonSerializer.Deserialize<Dictionary<string, List<Seen>?>>(stream) ?? [])
             {
-                _names[Key(name)] = [.. seen.Where(s => s is not null && IPAddress.TryParse(s.Address, out _))];
+                _names[Key(name)] = [.. (seen ?? []).Where(s => s is not null && IPAddress.TryParse(s.Address, out _))];
             }
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            // Whatever is in it: never a failed start.
+            _names.Clear();
             LogUnreadable(file, ex.Message);
         }
 
@@ -361,5 +431,12 @@ public sealed partial class PanelAddressBook(string file, TimeProvider clock, IL
     [LoggerMessage(Level = LogLevel.Warning, Message = "The panel's known addresses in {File} could not be read ({Reason}): starting from none")]
     private partial void LogUnreadable(string file, string reason);
 
-    private sealed record Seen(string Address, DateTimeOffset LastSeen);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The panel's name {Host} resolved to {Count} addresses: only the first {Max} are taken")]
+    private partial void LogOversizedAnswer(string host, int count, int max);
+
+    /// <param name="FirstSeen">When a lookup first answered it (since it was last forgotten).</param>
+    private sealed record Seen(string Address, DateTimeOffset LastSeen, DateTimeOffset FirstSeen)
+    {
+        public bool Confirmed => LastSeen - FirstSeen >= ConfirmAfter;
+    }
 }

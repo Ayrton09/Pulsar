@@ -305,8 +305,8 @@ public sealed record SteamLogin(Guid AccountId, string UserName, string Password
 
 /// <summary>
 /// The Steam account <paramref name="AccountId"/> was deleted in the panel: the agent deletes the login SteamCMD cached
-/// for it, with which the account's user name alone would sign in. Nodes that miss it drop it at their next Hello
-/// (<see cref="HelloAccepted.SteamAccountIds"/>).
+/// for it, with which the account's user name alone would sign in. Nodes that miss it get it when they connect again:
+/// their Hello names the logins they cached (<see cref="AgentHello.CachedSteamLogins"/>).
 /// </summary>
 public sealed record ForgetSteamLoginCommand(Guid AccountId) : AgentCommand
 {
@@ -503,8 +503,8 @@ public static class AgentCapabilities
     public const string SteamAccounts = "steam.login";
 
     /// <summary>
-    /// The agent forgets the cached login of a deleted Steam account, by command and from
-    /// <see cref="HelloAccepted.SteamAccountIds"/>.
+    /// The agent forgets the cached login of a deleted Steam account by command only (sent again for those its Hello
+    /// names in <see cref="AgentHello.CachedSteamLogins"/>).
     /// </summary>
     public const string ForgetSteamLogin = ForgetSteamLoginCommand.Type;
 

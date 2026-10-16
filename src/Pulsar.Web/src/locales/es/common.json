@@ -501,7 +501,8 @@
     "panel_key": {
       "rotation_in_progress": "La clave anterior todavía se está retirando. Retirala antes de volver a rotar.",
       "not_retiring": "Solo se puede retirar una clave que se está retirando.",
-      "not_found": "La clave del panel no existe."
+      "not_found": "La clave del panel no existe.",
+      "nodes_outdated": "Hay nodos que no confían en ninguna otra clave: retirarla los dejaría afuera. Probá de nuevo para ver cuáles."
     },
     "server": {
       "name_invalid": "El nombre de un servidor es una línea de hasta 64 caracteres.",
@@ -1171,7 +1172,8 @@
     "rotate": "Rotar la clave del panel",
     "rotateConfirm": "¿Crear una nueva clave de firma del panel? Los nodos conectados la reciben ahora y los demás cuando se conecten. La clave actual sigue valiendo hasta que la retires.",
     "retire": "Retirar la clave vieja",
-    "retireConfirm": "¿Retirar la clave vieja? Los nodos que todavía no tienen la nueva ({{outdated}} desactualizados, {{unknown}} sin datos) van a dejar de aceptar comandos hasta que se vuelvan a enrolar."
+    "retireConfirm": "¿Retirar la clave vieja? Los nodos que todavía no tienen la nueva ({{outdated}} desactualizados, {{unknown}} sin datos) van a dejar de aceptar comandos hasta que se vuelvan a enrolar.",
+    "retireForceConfirm": "Estos nodos todavía no iniciaron sesión con la clave nueva: {{nodes}}. Los nodos la toman a los 15 minutos de conectarse como mucho. ¿Retirar la clave vieja igual? Van a dejar de conectarse hasta que los vuelvas a enrolar."
   },
   "allocations": {
     "title": "Asignaciones",
