@@ -139,11 +139,13 @@ internal static class SftpTesting
     }
 
     /// <summary>A raw SSH session (Microsoft.DevTunnels.Ssh's client), signed in with the "password" method.</summary>
-    public static async Task<(SshClientSession Session, System.Net.Sockets.TcpClient Tcp)> RawSessionAsync(int port, string login, string password)
+    public static async Task<(SshClientSession Session, System.Net.Sockets.TcpClient Tcp)> RawSessionAsync(int port, string login, string password,
+        SshSessionConfiguration? configuration = null, System.Diagnostics.TraceSource? trace = null)
     {
         var tcp = new System.Net.Sockets.TcpClient();
         await tcp.ConnectAsync("127.0.0.1", port, Ct);
-        var session = new SshClientSession(SshSessionConfiguration.Default, new System.Diagnostics.TraceSource("sftp-tests", System.Diagnostics.SourceLevels.Off));
+        var session = new SshClientSession(configuration ?? SshSessionConfiguration.Default,
+            trace ?? new System.Diagnostics.TraceSource("sftp-tests", System.Diagnostics.SourceLevels.Off));
         session.Authenticating += (_, e) =>
         {
             if (e.AuthenticationType == SshAuthenticationType.ServerPublicKey)
@@ -157,9 +159,10 @@ internal static class SftpTesting
     }
 
     /// <summary>A raw SFTP session over a raw SSH session, for requests SSH.NET does not send the way a test needs them.</summary>
-    public static async Task<RawSftp> RawSftpAsync(int port, string login)
+    public static async Task<RawSftp> RawSftpAsync(int port, string login, SshSessionConfiguration? configuration = null,
+        System.Diagnostics.TraceSource? trace = null)
     {
-        var (session, tcp) = await RawSessionAsync(port, login, AccessScenario.Password);
+        var (session, tcp) = await RawSessionAsync(port, login, AccessScenario.Password, configuration, trace);
         try
         {
             var channel = await session.OpenChannelAsync(Ct);
@@ -214,6 +217,22 @@ internal sealed class RawSftp(SshClientSession session, System.Net.Sockets.TcpCl
         using var request = new SftpWriter(SftpProtocol.Open).UInt32(NextId()).String(path).UInt32(flags).UInt32(0);
         var reply = await SendAsync(request);
         return reply[0] == SftpProtocol.Handle ? Handle(reply) : throw new InvalidOperationException($"OPEN answered status {Status(reply)}.");
+    }
+
+    /// <summary>Reads up to <paramref name="length"/> bytes at <paramref name="offset"/>: the data, or null at the end of the file.</summary>
+    public async Task<byte[]?> ReadAsync(string handle, ulong offset, uint length)
+    {
+        using var request = new SftpWriter(SftpProtocol.Read).UInt32(NextId()).String(handle).UInt64(offset).UInt32(length);
+        var reply = await SendAsync(request);
+        if (reply[0] == SftpProtocol.Data)
+        {
+            var reader = new SftpReader(reply);
+            reader.Byte();
+            reader.UInt32();
+            return reader.Bytes().ToArray();
+        }
+
+        return Status(reply) == SftpProtocol.Eof ? null : throw new InvalidOperationException($"READ answered status {Status(reply)}.");
     }
 
     /// <summary>The status code of a write.</summary>

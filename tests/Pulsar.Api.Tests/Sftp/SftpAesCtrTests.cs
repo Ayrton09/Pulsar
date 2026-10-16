@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Security.Cryptography;
 using Microsoft.DevTunnels.Ssh.Algorithms;
 using Pulsar.Api.Sftp;
@@ -53,6 +54,18 @@ public sealed class SftpAesCtrTests
             decipher.Transform(SshBuffer.From(actual), SshBuffer.From(actual));
             Assert.Equal(packet, actual);
         }
+    }
+
+    [Fact]
+    public void NoKeystreamIsLeftBehindAfterATransform()
+    {
+        using var cipher = new SftpAesCtr().CreateCipher(true, SshBuffer.From(RandomNumberGenerator.GetBytes(32)), SshBuffer.From(new byte[16]));
+        var data = new byte[SftpAesCtr.ChunkBytes + 64];
+        cipher.Transform(SshBuffer.From(data), SshBuffer.From(data));
+
+        Assert.NotEqual(new byte[data.Length], data);
+        var keystream = (byte[])typeof(SftpAesCtr.Cipher).GetField("_keystream", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cipher)!;
+        Assert.All(keystream, b => Assert.Equal(0, b));
     }
 
     [Fact]

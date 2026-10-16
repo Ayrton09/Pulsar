@@ -10,7 +10,10 @@ namespace Pulsar.Api.Sftp;
 /// <c>aes256-ctr</c> (RFC 4344) in place of the SSH library's own, which asks the platform's AES for one 16-byte block
 /// at a time and held SFTP near 100 MB/s with the clients that choose CTR (Windows' <c>sftp</c> 9.5 among them). The
 /// algorithm, the key, the counter and the packets are the same: the counter blocks of up to <see cref="ChunkBytes"/> are
-/// encrypted in one call and XORed with the data. Its MAC stays the library's (encrypt-then-MAC HMAC-SHA2).
+/// encrypted in one call and XORed with the data. Its MAC stays the library's (encrypt-then-MAC HMAC-SHA2). The keystream
+/// is cleared after each use and a cipher's key and buffers when the library disposes it, which it does only for the last
+/// key epoch: the library swaps algorithms at NEWKEYS without disposing the old ones, so the ciphers of earlier key
+/// exchanges are released to the garbage collector, not zeroed (as with the library's own cipher).
 /// </summary>
 internal sealed class SftpAesCtr() : EncryptionAlgorithm(AlgorithmName, "AES", CipherModeEx.CTR, KeyBits)
 {
@@ -93,6 +96,7 @@ internal sealed class SftpAesCtr() : EncryptionAlgorithm(AlgorithmName, "AES", C
                 var keystream = _keystream.AsSpan(0, length);
                 _aes.EncryptEcb(counters, keystream, PaddingMode.None);
                 Xor(input[..length], keystream, output[..length]);
+                CryptographicOperations.ZeroMemory(keystream);
                 input = input[length..];
                 output = output[length..];
             }
