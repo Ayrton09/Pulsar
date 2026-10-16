@@ -22,7 +22,8 @@ namespace Pulsar.Api.Sftp;
 /// <summary>
 /// The SFTP sign-in (docs/guides/sftp.md): the panel user name and password, then, for a user who must use two-factor
 /// authentication (their own choice or a role's), the authenticator code, through the same checks as the browser's
-/// sign-in: Identity's lockout (each password and code check counts, not each connection), disabled users refused, the
+/// sign-in: Identity's lockout (each password and code check counts, not each connection, and one at a time per account:
+/// <see cref="SignInLocks"/>), disabled users refused, the
 /// per-address limit of <c>RateLimiting:Auth</c> (counted apart from the web's), and the audit of failed and successful
 /// sign-ins with the client's address. Keyboard-interactive asks one thing per round ("Password: ", then
 /// "Verification code: "); the <c>password</c> method never signs in a two-factor user. Unknown users get the same
@@ -42,17 +43,19 @@ internal sealed partial class SftpAuthenticator : IDisposable
     private readonly IServiceScopeFactory _scopes;
     private readonly SftpConnections _connections;
     private readonly FailedLoginBudget _failures;
+    private readonly SignInLocks _locks;
     private readonly SftpOptions _options;
     private readonly TimeProvider _clock;
     private readonly ILogger<SftpAuthenticator> _logger;
     private readonly PartitionedRateLimiter<string> _perAddress;
 
-    public SftpAuthenticator(IServiceScopeFactory scopes, SftpConnections connections, FailedLoginBudget failures, IOptions<SftpOptions> options,
-        IConfiguration configuration, TimeProvider clock, ILogger<SftpAuthenticator> logger)
+    public SftpAuthenticator(IServiceScopeFactory scopes, SftpConnections connections, FailedLoginBudget failures, SignInLocks locks,
+        IOptions<SftpOptions> options, IConfiguration configuration, TimeProvider clock, ILogger<SftpAuthenticator> logger)
     {
         _scopes = scopes;
         _connections = connections;
         _failures = failures;
+        _locks = locks;
         _options = options.Value;
         _clock = clock;
         _logger = logger;
@@ -166,26 +169,31 @@ internal sealed partial class SftpAuthenticator : IDisposable
         var users = services.GetRequiredService<UserManager<PulsarUser>>();
         var signIn = services.GetRequiredService<SignInManager<PulsarUser>>();
         var (user, shortId) = await ResolveAsync(services, users, login, cancellationToken);
+
+        // One check at a time per account, as in the browser (SignInLocks): names of no user wait the same.
+        using var turn = await _locks.AcquireAsync(user?.NormalizedUserName ?? users.NormalizeName(login), cancellationToken);
         if (user is null)
         {
             users.PasswordHasher.VerifyHashedPassword(new PulsarUser(), s_dummyPasswordHash, password);
-            await FailAsync(services, null, "invalid_credentials", cancellationToken);
+            await FailAsync(services, null, "invalid_credentials");
             return (Outcome.Failed, null, null);
         }
+
+        await services.GetRequiredService<PulsarDbContext>().Entry(user).ReloadAsync(cancellationToken); // as it is now, after the wait
 
         var lockedOut = await users.IsLockedOutAsync(user);
         if (lockedOut || !await signIn.CanSignInAsync(user))
         {
             // Locked-out and disabled users get the answer a wrong password gets, after as long.
             users.PasswordHasher.VerifyHashedPassword(user, s_dummyPasswordHash, password);
-            await FailAsync(services, user, lockedOut ? "locked_out" : "not_allowed", cancellationToken);
+            await FailAsync(services, user, lockedOut ? "locked_out" : "not_allowed");
             return (Outcome.Failed, null, null);
         }
 
         if (!await users.CheckPasswordAsync(user, password))
         {
-            await users.AccessFailedAsync(user);
-            await FailAsync(services, user, await users.IsLockedOutAsync(user) ? "locked_out" : "invalid_credentials", cancellationToken);
+            await SignInLocks.CountFailureAsync(users, services.GetRequiredService<PulsarDbContext>(), user);
+            await FailAsync(services, user, await users.IsLockedOutAsync(user) ? "locked_out" : "invalid_credentials");
             return (Outcome.Failed, null, null);
         }
 
@@ -198,18 +206,18 @@ internal sealed partial class SftpAuthenticator : IDisposable
             }
 
             // The "password" method cannot ask for a code: never a way around two-factor authentication.
-            await FailAsync(services, user, "two_factor_required", cancellationToken);
+            await FailAsync(services, user, "two_factor_required");
             return (Outcome.Failed, null, null);
         }
 
         if ((await services.GetRequiredService<IPermissionEvaluator>().GetAsync(user.Id, cancellationToken)).RequiresTwoFactor)
         {
             // A role requires two-factor authentication the user has not set up: that happens in the browser first.
-            await FailAsync(services, user, "two_factor_setup_required", cancellationToken);
+            await FailAsync(services, user, "two_factor_setup_required");
             return (Outcome.Failed, null, null);
         }
 
-        var principal = await SignInAsync(connection, services, users, user, shortId, secondFactor: null, cancellationToken);
+        var principal = await SignInAsync(connection, services, users, user, shortId, secondFactor: null);
         return (principal is null ? Outcome.Failed : Outcome.SignedIn, principal, null);
     }
 
@@ -219,8 +227,16 @@ internal sealed partial class SftpAuthenticator : IDisposable
         await using var scope = Scope(connection);
         var services = scope.ServiceProvider;
         var users = services.GetRequiredService<UserManager<PulsarUser>>();
+        var db = services.GetRequiredService<PulsarDbContext>();
         var user = await users.FindByIdAsync(userId.ToString());
-        if (user is null || !user.TwoFactorEnabled || !await services.GetRequiredService<SignInManager<PulsarUser>>().CanSignInAsync(user))
+        if (user is null)
+        {
+            return null;
+        }
+
+        using var turn = await _locks.AcquireAsync(user.NormalizedUserName!, cancellationToken);
+        await db.Entry(user).ReloadAsync(cancellationToken);
+        if (!user.TwoFactorEnabled || !await services.GetRequiredService<SignInManager<PulsarUser>>().CanSignInAsync(user))
         {
             return null;
         }
@@ -236,34 +252,36 @@ internal sealed partial class SftpAuthenticator : IDisposable
             if (code is null || !await users.VerifyTwoFactorTokenAsync(user, users.Options.Tokens.AuthenticatorTokenProvider, code))
             {
                 // Wrong codes count towards the lockout, like wrong passwords.
-                await users.AccessFailedAsync(user);
+                await SignInLocks.CountFailureAsync(users, db, user);
                 reason = "invalid_code";
             }
         }
 
         if (reason is not null)
         {
+            // A refused save of the code's replay guard (another request saved the user meanwhile) is not the entry's.
+            await SignInLocks.DiscardUnsavedAsync(db);
             var audit = services.GetRequiredService<IAuditLog>();
             audit.Record(AuditActions.Auth.TwoFactorFailed, AuditOutcome.Failure, AuditActor.ForUser(user.Id, user.UserName),
                     new { method = "authenticator", reason, channel = Channel })
                 .WithTarget("user", user.Id.ToString());
-            await services.GetRequiredService<PulsarDbContext>().SaveChangesAsync(CancellationToken.None);
+            await db.SaveChangesAsync(CancellationToken.None);
             return null;
         }
 
-        return await SignInAsync(connection, services, users, user, shortId, secondFactor: "authenticator", cancellationToken);
+        return await SignInAsync(connection, services, users, user, shortId, secondFactor: "authenticator");
     }
 
     /// <summary>The credentials were right: the session counts for its user (or the user has too many), and it is audited.</summary>
     private async Task<ClaimsPrincipal?> SignInAsync(SftpConnection connection, IServiceProvider services, UserManager<PulsarUser> users, PulsarUser user,
-        string? shortId, string? secondFactor, CancellationToken cancellationToken)
+        string? shortId, string? secondFactor)
     {
         var identity = new SftpIdentity(user.Id, user.UserName!, user.SecurityStamp, shortId);
         if (!_connections.TrySignIn(connection, identity))
         {
             if (!connection.IsClosing)
             {
-                await FailAsync(services, user, "too_many_sessions", cancellationToken);
+                await FailAsync(services, user, "too_many_sessions");
                 connection.Close(SshDisconnectReason.TooManyConnections,
                     $"You have {_options.MaxSessionsPerUser} SFTP sessions open already. Close one and try again.");
             }
@@ -271,11 +289,17 @@ internal sealed partial class SftpAuthenticator : IDisposable
             return null;
         }
 
-        await users.ResetAccessFailedCountAsync(user);
-        user.LastLoginAt = _clock.GetUtcNow();
+        // The user row first: the audit entry is saved on its own, whatever happened to the row.
+        var db = services.GetRequiredService<PulsarDbContext>();
+        await SignInLocks.UpdateAsync(users, db, user, u =>
+        {
+            u.AccessFailedCount = 0;
+            u.LastLoginAt = _clock.GetUtcNow();
+        });
+        await SignInLocks.DiscardUnsavedAsync(db);
         object metadata = secondFactor is null ? new { channel = Channel, root = shortId } : new { channel = Channel, root = shortId, secondFactor };
         services.GetRequiredService<IAuditLog>().Record(AuditActions.Auth.Login, AuditOutcome.Success, AuditActor.ForUser(user.Id, user.UserName), metadata);
-        await users.UpdateAsync(user); // also saves the audit entry (same unit of work)
+        await db.SaveChangesAsync(CancellationToken.None);
         LogSignedIn(_logger, user.UserName!, connection.CorrelationId);
         return new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), new Claim(ClaimTypes.Name, user.UserName!)], "pulsar-sftp"));
@@ -309,12 +333,16 @@ internal sealed partial class SftpAuthenticator : IDisposable
         return (login.Length <= PulsarUser.MaxUserNameLength ? await users.FindByNameAsync(login) : null, null);
     }
 
-    private async Task FailAsync(IServiceProvider services, PulsarUser? known, string reason, CancellationToken cancellationToken)
+    private async Task FailAsync(IServiceProvider services, PulsarUser? known, string reason)
     {
         if (!_failures.TryRecord(out var leftOut))
         {
             return;
         }
+
+        // A refused update of the user (another request saved it meanwhile) is not the entry's.
+        var db = services.GetRequiredService<PulsarDbContext>();
+        await SignInLocks.DiscardUnsavedAsync(db);
 
         // The name of an existing user only: what was typed may be a password typed in the wrong field.
         var userName = known?.UserName;
@@ -325,7 +353,7 @@ internal sealed partial class SftpAuthenticator : IDisposable
             entry.WithTarget("user", known.Id.ToString());
         }
 
-        await services.GetRequiredService<PulsarDbContext>().SaveChangesAsync(cancellationToken);
+        await db.SaveChangesAsync(CancellationToken.None);
     }
 
     private AsyncServiceScope Scope(SftpConnection connection)

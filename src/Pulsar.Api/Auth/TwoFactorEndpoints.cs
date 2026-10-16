@@ -59,6 +59,7 @@ public static class TwoFactorEndpoints
         SignInManager<PulsarUser> signIn,
         IPermissionEvaluator evaluator,
         IAuditLog audit,
+        SignInLocks locks,
         TimeProvider clock,
         CancellationToken ct)
     {
@@ -68,6 +69,9 @@ public static class TwoFactorEndpoints
             return InvalidCode();
         }
 
+        // Under the account's lock, as the password step: parallel guesses each count and keep their audit entries.
+        using var turn = await locks.AcquireAsync(user.NormalizedUserName!, ct);
+        await db.Entry(user).ReloadAsync(ct);
         var recovery = !string.IsNullOrWhiteSpace(request.RecoveryCode);
         SignInResult result;
         if (await users.IsLockedOutAsync(user))
@@ -87,14 +91,18 @@ public static class TwoFactorEndpoints
         var actor = AuditActor.ForUser(user.Id, user.UserName);
         if (!result.Succeeded)
         {
+            // Identity's update of the user may have been refused (another request saved it meanwhile): not the entry.
+            await SignInLocks.DiscardUnsavedAsync(db);
             audit.Record(AuditActions.Auth.TwoFactorFailed, AuditOutcome.Failure, actor,
                     new { method = recovery ? "recovery_code" : "authenticator", reason = result.IsLockedOut ? "locked_out" : "invalid_code" })
                 .WithTarget("user", user.Id.ToString());
-            await db.SaveChangesAsync(ct);
+            await db.SaveChangesAsync(CancellationToken.None);
             return InvalidCode();
         }
 
-        user.LastLoginAt = clock.GetUtcNow();
+        // The user row first: the audit entries are saved on their own, whatever happened to the row.
+        await SignInLocks.UpdateAsync(users, db, user, u => u.LastLoginAt = clock.GetUtcNow());
+        await SignInLocks.DiscardUnsavedAsync(db);
         audit.Record(AuditActions.Auth.Login, AuditOutcome.Success, actor, new { secondFactor = recovery ? "recovery_code" : "authenticator" });
         if (recovery)
         {
@@ -102,7 +110,7 @@ public static class TwoFactorEndpoints
                 .WithTarget("user", user.Id.ToString());
         }
 
-        await users.UpdateAsync(user); // also saves the audit entries
+        await db.SaveChangesAsync(CancellationToken.None);
 
         http.User = await signIn.CreateUserPrincipalAsync(user);
         AntiforgeryProtection.IssueToken(http);
@@ -133,7 +141,7 @@ public static class TwoFactorEndpoints
     /// </summary>
     private static async Task<Results<Ok<TwoFactorSetupResponse>, ProblemHttpResult, UnauthorizedHttpResult>> SetupAsync(
         PasswordConfirmationRequest request, HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn,
-        IAuditLog audit, CancellationToken ct)
+        SignInLocks locks, IAuditLog audit, CancellationToken ct)
     {
         var user = await users.FindByIdAsync(http.User.GetRequiredUserId().ToString());
         if (user is null)
@@ -141,7 +149,7 @@ public static class TwoFactorEndpoints
             return TypedResults.Unauthorized();
         }
 
-        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, audit, AuditActions.Auth.TwoFactorEnabled, ct) is { } wrong)
+        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, locks, audit, AuditActions.Auth.TwoFactorEnabled, ct) is { } wrong)
         {
             return wrong;
         }
@@ -166,7 +174,7 @@ public static class TwoFactorEndpoints
     /// </summary>
     private static async Task<Results<Ok<RecoveryCodesResponse>, ProblemHttpResult, UnauthorizedHttpResult>> EnableAsync(
         EnableTwoFactorRequest request, HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn,
-        IAuditLog audit, CancellationToken ct)
+        SignInLocks locks, IAuditLog audit, CancellationToken ct)
     {
         var user = await users.FindByIdAsync(http.User.GetRequiredUserId().ToString());
         if (user is null)
@@ -174,7 +182,7 @@ public static class TwoFactorEndpoints
             return TypedResults.Unauthorized();
         }
 
-        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, audit, AuditActions.Auth.TwoFactorEnabled, ct) is { } wrong)
+        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, locks, audit, AuditActions.Auth.TwoFactorEnabled, ct) is { } wrong)
         {
             return wrong;
         }
@@ -203,7 +211,7 @@ public static class TwoFactorEndpoints
 
     private static async Task<Results<NoContent, ProblemHttpResult, UnauthorizedHttpResult>> DisableAsync(
         PasswordConfirmationRequest request, HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn,
-        IPermissionEvaluator evaluator, IAuditLog audit, CancellationToken ct)
+        SignInLocks locks, IPermissionEvaluator evaluator, IAuditLog audit, CancellationToken ct)
     {
         var user = await users.FindByIdAsync(http.User.GetRequiredUserId().ToString());
         if (user is null)
@@ -211,7 +219,7 @@ public static class TwoFactorEndpoints
             return TypedResults.Unauthorized();
         }
 
-        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, audit, AuditActions.Auth.TwoFactorDisabled, ct) is { } wrong)
+        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, locks, audit, AuditActions.Auth.TwoFactorDisabled, ct) is { } wrong)
         {
             return wrong;
         }
@@ -234,7 +242,8 @@ public static class TwoFactorEndpoints
 
     /// <summary>New recovery codes; the old ones stop working.</summary>
     private static async Task<Results<Ok<RecoveryCodesResponse>, ProblemHttpResult, UnauthorizedHttpResult>> RenewRecoveryCodesAsync(
-        PasswordConfirmationRequest request, HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, IAuditLog audit, CancellationToken ct)
+        PasswordConfirmationRequest request, HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, SignInLocks locks, IAuditLog audit,
+        CancellationToken ct)
     {
         var user = await users.FindByIdAsync(http.User.GetRequiredUserId().ToString());
         if (user is null)
@@ -242,7 +251,7 @@ public static class TwoFactorEndpoints
             return TypedResults.Unauthorized();
         }
 
-        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, audit, AuditActions.Auth.RecoveryCodesRenewed, ct) is { } wrong)
+        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, locks, audit, AuditActions.Auth.RecoveryCodesRenewed, ct) is { } wrong)
         {
             return wrong;
         }

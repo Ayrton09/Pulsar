@@ -86,6 +86,7 @@ internal static class ApiServiceCollectionExtensions
         AddSftp(services, configuration);
         services.AddSingleton<InitialSetup>();
         services.AddSingleton<FailedLoginBudget>();
+        services.AddSingleton<SignInLocks>();
         services.AddScoped<UserManagement>();
 
         services.ConfigureHttpJsonOptions(options =>
