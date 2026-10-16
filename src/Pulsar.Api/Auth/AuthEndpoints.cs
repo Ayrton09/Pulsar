@@ -188,6 +188,10 @@ public static class AuthEndpoints
         }
 
         await db.Entry(user).ReloadAsync(ct); // as it is now, not as this request may have loaded it before its turn
+
+        // Whether Identity answers before hashing the password, decided now: the attempt that locks the account hashes
+        // it and only then answers "locked out", so the result alone would make that attempt hash twice.
+        var blocked = await users.IsLockedOutAsync(user) || !await signIn.CanSignInAsync(user);
         var result = await signIn.PasswordSignInAsync(user, request.Password, isPersistent: false, lockoutOnFailure: true);
         if (result.RequiresTwoFactor)
         {
@@ -199,7 +203,7 @@ public static class AuthEndpoints
         {
             // Locked-out, disabled and wrong-password attempts get the same answer, so the response says nothing about the
             // account. Identity answers the first two before hashing the password: hash anyway, so the time says nothing either.
-            if (result.IsLockedOut || result.IsNotAllowed)
+            if (blocked)
             {
                 users.PasswordHasher.VerifyHashedPassword(user, s_dummyPasswordHash, request.Password);
             }
