@@ -81,6 +81,132 @@ public sealed class ServerFileRulesTests
         Assert.Equal(1, listing.Skipped);
     }
 
+    [Fact]
+    public void PagesReachEveryEntryOnceInNameOrderWithoutHoldingTheWholeFolder()
+    {
+        var count = (FileLimits.MaxListEntries * 2) + 17;
+        var names = Enumerable.Range(0, count).Select(i => $"f{(i * 7919) % count:D5}").ToList();
+        var all = names.Select((n, i) => new FileEntry(n, i % 10 == 0 ? FileEntryKind.Directory : FileEntryKind.File, 1, DateTimeOffset.UnixEpoch)).ToList();
+
+        var seen = new List<string>();
+        string? after = null;
+        var pages = 0;
+        do
+        {
+            var entries = new CountingEntries(all.Select(e => e with { }), watchMemory: pages == 0);
+            var page = ServerFileRules.Page(entries, ServerFilePath.Root, after);
+            Assert.False(page.Truncated);
+            Assert.InRange(page.Entries.Count, 1, FileLimits.MaxListEntries);
+            Assert.Equal(page.Next is null ? null : page.Entries[^1].Name, page.Next);
+            if (pages == 0)
+            {
+                Assert.InRange(entries.MostHeld, 0, FileLimits.MaxListEntries + 10);
+            }
+
+            seen.AddRange(page.Entries.Select(e => e.Name));
+            after = page.Next;
+            pages++;
+        }
+        while (after is not null);
+
+        // Directories and files together, by name alone: a page's last name says where the next one starts.
+        Assert.Equal(3, pages);
+        Assert.Equal(names.Order(StringComparer.Ordinal), seen);
+    }
+
+    [Fact]
+    public void NamesThatDifferOnlyInCaseHaveAFixedPlaceInThePages()
+    {
+        string[] names = ["b", "README", "a", "Readme", "readme", "A"];
+        FileEntry[] entries = [.. names.Select(n => new FileEntry(n, FileEntryKind.File, 0, DateTimeOffset.UnixEpoch))];
+
+        Assert.Equal(["A", "a", "b", "README", "Readme", "readme"], ServerFileRules.Page(entries, ServerFilePath.Root, null).Entries.Select(e => e.Name));
+        Assert.Equal(["Readme", "readme"], ServerFileRules.Page(entries, ServerFilePath.Root, "README").Entries.Select(e => e.Name));
+        Assert.Empty(ServerFileRules.Page(entries, ServerFilePath.Root, "readme").Entries);
+    }
+
+    [Fact]
+    public void PagesLeaveOutWhatSftpHidesAndCountTheUnusableNamesOnce()
+    {
+        FileEntry[] entries =
+        [
+            new(".pulsar", FileEntryKind.Directory, 0, DateTimeOffset.UnixEpoch),
+            new("server.cfg", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch),
+            new("odd\u202Egnp.exe", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch),
+            new("nul.txt", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch),
+            new("zero\u200Bwidth", FileEntryKind.File, 1, DateTimeOffset.UnixEpoch),
+        ];
+
+        var root = ServerFileRules.Page(entries, ServerFilePath.Root, null);
+        Assert.Equal(["server.cfg"], root.Entries.Select(e => e.Name));
+        Assert.Equal(3, root.Skipped); // the format characters and the device name; Pulsar's own folder is simply not there
+        Assert.Null(root.Next);
+        Assert.Equal(0, ServerFileRules.Page(entries, ServerFilePath.Root, "a").Skipped);
+
+        // Below the server directory a folder named .pulsar is the server's own.
+        Assert.Equal([".pulsar", "server.cfg"], ServerFileRules.Page(entries, "cfg", null).Entries.Select(e => e.Name));
+    }
+
+    [Fact]
+    public void APageStopsReadingAFolderBeyondTheScanLimit()
+    {
+        var entries = new CountingEntries(Enumerable.Range(0, ServerFileRules.MaxListScan + 1000)
+            .Select(i => new FileEntry($"f{i:D7}", FileEntryKind.File, 0, DateTimeOffset.UnixEpoch)));
+
+        var page = ServerFileRules.Page(entries, ServerFilePath.Root, null);
+
+        Assert.True(page.Truncated);
+        Assert.Equal(FileLimits.MaxListEntries, page.Entries.Count);
+        Assert.Equal("f0001999", page.Next);
+        Assert.Equal(ServerFileRules.MaxListScan + 1, entries.Read);
+    }
+
+    [Fact]
+    public void APageOfLongNamesIsCutWhereItsMessageWouldOutgrowTheHubAndGoesOnFromThere()
+    {
+        var entries = Enumerable.Range(0, FileLimits.MaxListEntries)
+            .Select(i => new FileEntry($"{i:D4}" + new string('一', 250), FileEntryKind.File, 0, DateTimeOffset.UnixEpoch)).ToList();
+
+        var first = ServerFileRules.Page(entries, ServerFilePath.Root, null);
+        Assert.InRange(first.Entries.Count, 1, FileLimits.MaxListEntries - 1);
+        Assert.Equal(first.Entries[^1].Name, first.Next);
+
+        var second = ServerFileRules.Page(entries, ServerFilePath.Root, first.Next);
+        Assert.Equal(entries[first.Entries.Count].Name, second.Entries[0].Name);
+    }
+
+    [Theory]
+    [InlineData(FileEntryKind.File, null, true)]
+    [InlineData(FileEntryKind.File, FileEntryKind.File, true)]
+    [InlineData(FileEntryKind.Directory, null, true)]
+    [InlineData(FileEntryKind.Directory, FileEntryKind.File, false)]
+    [InlineData(FileEntryKind.Link, FileEntryKind.File, false)]
+    [InlineData(FileEntryKind.File, FileEntryKind.Directory, false)]
+    [InlineData(FileEntryKind.File, FileEntryKind.Link, false)]
+    public void OnlyAFileReplacesAFile(FileEntryKind source, FileEntryKind? existing, bool allowed)
+    {
+        void Check() => ServerFileRules.CheckReplace("target", source, existing);
+
+        if (allowed)
+        {
+            Check();
+        }
+        else
+        {
+            Assert.Throws<FileManagerException>(Check);
+        }
+    }
+
+    [Fact]
+    public void FileTimesAreClampedToWhatAFileSystemKeeps()
+    {
+        Assert.Equal(1, ServerFileRules.FileTime(DateTimeOffset.MinValue));
+        Assert.Equal(1, ServerFileRules.FileTime(new DateTimeOffset(1601, 1, 1, 0, 0, 0, TimeSpan.Zero)));
+        Assert.Equal(DateTime.MaxValue.ToFileTimeUtc(), ServerFileRules.FileTime(DateTimeOffset.MaxValue));
+        var now = DateTimeOffset.UtcNow;
+        Assert.Equal(now.UtcDateTime.ToFileTimeUtc(), ServerFileRules.FileTime(now));
+    }
+
     /// <summary>Counts the entries read, and how many a listing could still hold at most (read, not yet dropped).</summary>
     private sealed class CountingEntries(IEnumerable<FileEntry> entries, bool watchMemory = false) : IEnumerable<FileEntry>
     {

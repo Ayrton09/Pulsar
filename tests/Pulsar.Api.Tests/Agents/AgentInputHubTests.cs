@@ -167,6 +167,49 @@ public sealed class AgentInputHubTests(NotificationApiFactory factory) : IClassF
     }
 
     [DatabaseFact]
+    public async Task APageKeepsToWhereItWasAskedToStartAndAlwaysMovesOn()
+    {
+        await using var agent = await ConnectedTestAgentAsync("input-page", AgentCapabilities.ListFiles, AgentCapabilities.SftpFiles);
+        static FileEntry Entry(string name) => new(name, FileEntryKind.File, 1, DateTimeOffset.UnixEpoch);
+        var many = Enumerable.Range(0, 2500).Select(i => Entry($"n{i:D4}")).ToList();
+        var answers = new Queue<CommandResult?>(
+        [
+            new FileListResult([Entry("c"), Entry("a"), Entry("b"), Entry("c"), Entry("z"), Entry(".pulsar"), Entry("b\u202Ex")], false, 0, Next: "c"),
+            new FileListResult([Entry("a"), Entry("d")], false, 0, Next: "a"),
+            new FileListResult([Entry("d")], false, 0, Next: "bad/name"),
+            new FileListResult(many, false, 0, Next: "n2499"),
+        ]);
+        agent.Answer = _ => answers.Dequeue();
+        var server = await ServerOfAsync(agent);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var files = scope.ServiceProvider.GetRequiredService<ServerFiles>();
+
+        // Each name once, in order, none past where the next page starts; what SFTP hides is not there.
+        var first = (await files.ListPageAsync(server, null, null, Ct)).Value;
+        Assert.Equal(["a", "b", "c"], first.Entries.Select(e => e.Name));
+        Assert.Equal("c", first.Next);
+        Assert.Equal(1, first.Skipped);
+
+        // Names before the cursor are not this page's, and a next page that does not move on ends the listing.
+        var stuck = (await files.ListPageAsync(server, null, "c", Ct)).Value;
+        Assert.Equal(["d"], stuck.Entries.Select(e => e.Name));
+        Assert.Null(stuck.Next);
+        Assert.True(stuck.Truncated);
+
+        var unnamed = (await files.ListPageAsync(server, null, "c", Ct)).Value;
+        Assert.Null(unnamed.Next);
+        Assert.True(unnamed.Truncated);
+
+        // Too many for one page: cut, and the next page starts after the last one kept.
+        var cut = (await files.ListPageAsync(server, null, null, Ct)).Value;
+        Assert.Equal(FileLimits.MaxListEntries, cut.Entries.Count);
+        Assert.Equal(cut.Entries[^1].Name, cut.Next);
+        Assert.False(cut.Truncated);
+
+        Assert.All(agent.ReceivedCommands.Select(c => c.Command).OfType<ListFilesCommand>(), c => Assert.True(c.Paged));
+    }
+
+    [DatabaseFact]
     public async Task AFileOpenedWithAnUnsafeVersionIsRefusedBeforeItBecomesAnETag()
     {
         await using var agent = await ConnectedTestAgentAsync("input-etag", AgentCapabilities.ListFiles, AgentCapabilities.SendFile);

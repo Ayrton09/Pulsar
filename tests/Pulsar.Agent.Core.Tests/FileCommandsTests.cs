@@ -172,6 +172,112 @@ public sealed class FileCommandsTests : IDisposable
         Assert.Empty(Directory.EnumerateFileSystemEntries(_root));
     }
 
+    [Fact]
+    public void TheAgentAnnouncesWhatSftpNeedsAndRoutesItsCommands()
+    {
+        Assert.Contains(AgentCapabilities.SftpFiles, FileCommands.Capabilities);
+        Assert.Contains(AgentCapabilities.StatFile, FileCommands.Capabilities);
+        Assert.Contains(AgentCapabilities.SetFileModified, FileCommands.Capabilities);
+        var server = Guid.NewGuid();
+        Assert.Equal(server, FileCommands.ServerOf(new StatFileCommand(server, "a.cfg")));
+        Assert.Equal(server, FileCommands.ServerOf(new SetFileModifiedCommand(server, "a.cfg", DateTimeOffset.UnixEpoch)));
+        Assert.Equal(AgentCapabilities.StatFile, AgentCapabilities.Of(new StatFileCommand(server, "a.cfg")));
+        Assert.Equal(AgentCapabilities.SetFileModified, AgentCapabilities.Of(new SetFileModifiedCommand(server, "a.cfg", DateTimeOffset.UnixEpoch)));
+    }
+
+    [Fact]
+    public void SftpsCommandsAnswerInTheAckAndReadWhileAnOperationRuns()
+    {
+        File.WriteAllText(Path.Combine(_root, "server.cfg"), "hostname x");
+        File.WriteAllText(Path.Combine(_root, "b.cfg"), "");
+
+        var page = Assert.IsType<FileListResult>(Execute(new ListFilesCommand(Guid.NewGuid(), ServerFilePath.Root, Paged: true), busy: true).Result);
+        Assert.Equal(["b.cfg", "server.cfg"], page.Entries.Select(e => e.Name));
+        Assert.Null(page.Next);
+        var after = Assert.IsType<FileListResult>(Execute(new ListFilesCommand(Guid.NewGuid(), ServerFilePath.Root, Paged: true, After: "b.cfg")).Result);
+        Assert.Equal(["server.cfg"], after.Entries.Select(e => e.Name));
+
+        var stat = Assert.IsType<FileEntryResult>(Execute(new StatFileCommand(Guid.NewGuid(), "server.cfg"), busy: true).Result);
+        Assert.Equal(10, stat.Entry.Size);
+
+        var time = new DateTimeOffset(2021, 1, 2, 3, 4, 5, TimeSpan.Zero);
+        Assert.Equal(AckStatus.Busy, Execute(new SetFileModifiedCommand(Guid.NewGuid(), "server.cfg", time), busy: true).Status);
+        Assert.Equal(AckStatus.Busy, Execute(new MoveFileCommand(Guid.NewGuid(), "b.cfg", "server.cfg", Replace: true), busy: true).Status);
+        var modified = Assert.IsType<FileEntryResult>(Execute(new SetFileModifiedCommand(Guid.NewGuid(), "server.cfg", time)).Result);
+        Assert.Equal(time, modified.Entry.ModifiedAt);
+
+        Assert.Equal(FileErrors.Exists, Execute(new MoveFileCommand(Guid.NewGuid(), "b.cfg", "server.cfg")).ErrorCode);
+        Assert.Equal(AckStatus.Accepted, Execute(new MoveFileCommand(Guid.NewGuid(), "b.cfg", "server.cfg", Replace: true)).Status);
+        Assert.Equal("", File.ReadAllText(Path.Combine(_root, "server.cfg")));
+    }
+
+    [Fact]
+    public void WhatSftpHidesIsNotFoundByItsCommandsButStillByTheWebs()
+    {
+        var steamCmd = Directory.CreateDirectory(Path.Combine(_root, ".pulsar", "steamcmd")).FullName;
+        File.WriteAllText(Path.Combine(steamCmd, "steamcmd.exe"), "Valve's");
+        File.WriteAllText(Path.Combine(_root, "odd\u202Egnp.exe"), "");
+
+        foreach (var command in new AgentCommand[]
+        {
+            new ListFilesCommand(Guid.NewGuid(), ".pulsar", Paged: true),
+            new ListFilesCommand(Guid.NewGuid(), "PULSAR~1/steamcmd", Paged: true),
+            new ListFilesCommand(Guid.NewGuid(), ".pulsar/steamcmd/config", Paged: true),
+            new StatFileCommand(Guid.NewGuid(), ".pulsar"),
+            new StatFileCommand(Guid.NewGuid(), ".Pulsar/steamcmd/steamcmd.exe"),
+            new StatFileCommand(Guid.NewGuid(), "odd\u202Egnp.exe"),
+            new SetFileModifiedCommand(Guid.NewGuid(), ".pulsar/steamcmd/steamcmd.exe", DateTimeOffset.UnixEpoch),
+        })
+        {
+            var ack = Execute(command, busy: true);
+            Assert.Equal((AckStatus.Rejected, FileErrors.NotFound), (ack.Status, ack.ErrorCode));
+        }
+
+        var root = Assert.IsType<FileListResult>(Execute(new ListFilesCommand(Guid.NewGuid(), ServerFilePath.Root, Paged: true)).Result);
+        Assert.Empty(root.Entries);
+        Assert.Equal(1, root.Skipped);
+        Assert.Equal(2, Assert.IsType<FileListResult>(Execute(new ListFilesCommand(Guid.NewGuid(), ServerFilePath.Root)).Result).Entries.Count);
+        Assert.Equal(AckStatus.Accepted, Execute(new ListFilesCommand(Guid.NewGuid(), ".pulsar")).Status);
+        Assert.NotEqual(DateTime.UnixEpoch, File.GetLastWriteTimeUtc(Path.Combine(steamCmd, "steamcmd.exe")));
+    }
+
+    [Fact]
+    public void AnSftpCommandIsCheckedBeforeAnythingIsOpened()
+    {
+        File.WriteAllText(Path.Combine(_root, "server.cfg"), "hostname x");
+
+        foreach (var after in new[] { "a/b", "..", "nul", "" })
+        {
+            Assert.Equal(FileErrors.InvalidPath, Execute(new ListFilesCommand(Guid.NewGuid(), ServerFilePath.Root, Paged: true, After: after)).ErrorCode);
+        }
+
+        Assert.Equal(FileErrors.InvalidOffset, Execute(new SendFileCommand(Guid.NewGuid(), "server.cfg", TransferTicket.New(), long.MaxValue, Offset: -1)).ErrorCode);
+        Assert.Equal(FileErrors.NotFound, Execute(new StatFileCommand(Guid.NewGuid(), "missing.cfg")).ErrorCode);
+        Assert.Equal(FileErrors.InvalidPath, Execute(new SetFileModifiedCommand(Guid.NewGuid(), "../x.cfg", DateTimeOffset.UnixEpoch)).ErrorCode);
+        Assert.Equal(FileErrors.Exists, Execute(new ReceiveFileCommand(Guid.NewGuid(), "server.cfg", TransferTicket.New(), 10, false, null, Streamed: true)).ErrorCode);
+        Assert.Equal(FileErrors.Changed, Execute(new ReceiveFileCommand(Guid.NewGuid(), "server.cfg", TransferTicket.New(), 10, false, "1-2", Append: true)).ErrorCode);
+        Assert.Equal(AckStatus.Busy, Execute(new ReceiveFileCommand(Guid.NewGuid(), "server.cfg", TransferTicket.New(), 10, false, null, Append: true), busy: true).Status);
+
+        // From an offset: the ack describes the whole file whatever part of it is sent, nothing past its end.
+        var ack = Execute(new SendFileCommand(Guid.NewGuid(), "server.cfg", TransferTicket.New(), long.MaxValue, Offset: 4));
+        Assert.Equal(10, Assert.IsType<FileEntryResult>(ack.Result).Entry.Size);
+        Assert.Equal(AckStatus.Accepted, Execute(new SendFileCommand(Guid.NewGuid(), "server.cfg", TransferTicket.New(), long.MaxValue, Offset: 1000)).Status);
+    }
+
+    [Fact]
+    public async Task AnAppendThatCannotReachThePanelKeepsTheFileAsItWas()
+    {
+        File.WriteAllText(Path.Combine(_root, "map.bsp"), "abc");
+
+        Assert.Equal(AckStatus.Accepted, Execute(new ReceiveFileCommand(Guid.NewGuid(), "map.bsp", TransferTicket.New(), 10, false, null, Streamed: true,
+            Append: true)).Status);
+        Assert.Equal(AckStatus.Accepted, Execute(new ReceiveFileCommand(Guid.NewGuid(), "new.bsp", TransferTicket.New(), 10, false, null, Streamed: true)).Status);
+        await _commands.StopAsync();
+
+        Assert.Equal("abc", File.ReadAllText(Path.Combine(_root, "map.bsp")));
+        Assert.Equal(["map.bsp"], Directory.EnumerateFileSystemEntries(_root).Select(Path.GetFileName));
+    }
+
     private CommandAck Execute(AgentCommand command, bool busy = false) =>
         _commands.Execute(new CommandEnvelope(AgentProtocol.CurrentVersion, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1, DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow.AddSeconds(30), null, null, command), _server, busy);

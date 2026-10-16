@@ -15,6 +15,21 @@ public interface IServerFileManager
     /// <summary>A directory's entries (<see cref="ServerFilePath.Root"/>: the server directory).</summary>
     FileListResult List(ProvisionedServer server, string path);
 
+    /// <summary>
+    /// A page of a directory's entries as SFTP lists them (<see cref="ListFilesCommand.Paged"/>, built by
+    /// <see cref="ServerFileRules.Page"/>): those after <paramref name="after"/> by <see cref="FileNameOrder"/>.
+    /// </summary>
+    FileListResult ListPage(ProvisionedServer server, string path, string? after);
+
+    /// <summary>What an entry is (a link is described, not followed); fails when it does not exist.</summary>
+    FileEntryResult Stat(ProvisionedServer server, string path);
+
+    /// <summary>
+    /// Sets the last write time of a file or directory (refused for links), clamped to what the file system holds; returns
+    /// the entry afterwards.
+    /// </summary>
+    FileEntryResult SetModified(ProvisionedServer server, string path, DateTimeOffset modifiedAt);
+
     /// <summary>Creates a directory and its missing parents; fails when the directory exists.</summary>
     void CreateDirectory(ProvisionedServer server, string path);
 
@@ -28,8 +43,11 @@ public interface IServerFileManager
     /// </summary>
     TreeWalk Walk(ProvisionedServer server);
 
-    /// <summary>Renames or moves an entry; fails when <paramref name="destination"/> exists.</summary>
-    void Move(ProvisionedServer server, string path, string destination);
+    /// <summary>
+    /// Renames or moves an entry; fails when <paramref name="destination"/> exists, unless <paramref name="replace"/> and
+    /// it is a file (see <see cref="MoveFileCommand.Replace"/>), which is then replaced in one step.
+    /// </summary>
+    void Move(ProvisionedServer server, string path, string destination, bool replace = false);
 
     /// <summary>Deletes a file, a link (never its target) or a directory with everything in it.</summary>
     void Delete(ProvisionedServer server, string path);
@@ -42,7 +60,18 @@ public interface IServerFileManager
     /// <see cref="ReceiveFileCommand"/>) and creates a temporary file next to it, which
     /// <see cref="PendingFile.Commit"/> puts in place. Its directory must exist.
     /// </summary>
-    PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion);
+    /// <param name="sizeIsLimit">
+    /// <paramref name="size"/> is the most that will be written, not the exact length (<see cref="ReceiveFileCommand.Streamed"/>):
+    /// no space is reserved and the commit takes whatever was written.
+    /// </param>
+    PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion, bool sizeIsLimit = false);
+
+    /// <summary>
+    /// Opens a file to write at its end, in place (<see cref="ReceiveFileCommand.Append"/>), creating it when missing; its
+    /// directory must exist. Refused for directories and links, and when <paramref name="expectedVersion"/> is given and
+    /// the file is not that version. What is written stays whether or not it is committed; the commit only describes the file.
+    /// </summary>
+    PendingFile Append(ProvisionedServer server, string path, string? expectedVersion);
 }
 
 /// <summary>An entry found by <see cref="IServerFileManager.Walk"/>.</summary>
@@ -211,11 +240,79 @@ public static class ServerFileRules
         }
 
         var sorted = first.UnorderedItems.Select(i => i.Element).Order(Comparer<FileEntry>.Create(ListingOrder)).ToList();
+        var kept = Fitting(sorted);
+        return new FileListResult(kept == sorted.Count ? sorted : sorted[..kept], kept < read - skipped, skipped);
+    }
+
+    /// <summary>
+    /// A page of a paged listing (<see cref="ListFilesCommand.Paged"/>): the entries of the folder at <paramref name="path"/>
+    /// that come after <paramref name="after"/> by <see cref="FileNameOrder"/>, the first <see cref="FileLimits.MaxListEntries"/>
+    /// of them (fewer when the message would grow too large), and the name the next page starts after when more follow.
+    /// Reads <paramref name="entries"/> once, holding no more than the entries it keeps, and at most <see cref="MaxListScan"/>
+    /// of them (then <see cref="FileListResult.Truncated"/>): each page costs one read of the folder, never more memory.
+    /// Names no <see cref="ServerFilePath"/> accepts and names SFTP hides (<see cref="SftpView"/>) are left out before the cap;
+    /// those with format characters and the unusable ones are counted on the first page, Pulsar's own folder is not counted.
+    /// </summary>
+    public static FileListResult Page(IEnumerable<FileEntry> entries, string path, string? after)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        ArgumentNullException.ThrowIfNull(path);
+
+        // The first entries after the cursor so far, the last of them on top.
+        var first = new PriorityQueue<FileEntry, string>(Comparer<string>.Create((a, b) => FileNameOrder.Compare(b, a)));
+        var read = 0;
+        var skipped = 0;
+        var more = false;
+        var truncated = false;
+        foreach (var entry in entries)
+        {
+            if (++read > MaxListScan)
+            {
+                truncated = true;
+                break;
+            }
+
+            if (!ServerFilePath.IsValid(entry.Name) || SftpView.IsHiddenName(entry.Name))
+            {
+                skipped++;
+                continue;
+            }
+
+            if (SftpView.IsHidden(ServerFilePath.Join(path, entry.Name))
+                || (after is not null && FileNameOrder.Compare(entry.Name, after) <= 0))
+            {
+                continue;
+            }
+
+            if (first.Count < FileLimits.MaxListEntries)
+            {
+                first.Enqueue(entry, entry.Name);
+            }
+            else
+            {
+                more = true;
+                if (FileNameOrder.Compare(entry.Name, first.Peek().Name) < 0)
+                {
+                    first.DequeueEnqueue(entry, entry.Name);
+                }
+            }
+        }
+
+        var sorted = first.UnorderedItems.Select(i => i.Element).OrderBy(e => e.Name, FileNameOrder.Comparer).ToList();
+        var kept = Fitting(sorted);
+        more |= kept < sorted.Count;
+        var page = kept == sorted.Count ? sorted : sorted[..kept];
+        return new FileListResult(page, truncated, after is null ? skipped : 0, more && kept > 0 ? page[^1].Name : null);
+    }
+
+    /// <summary>How many of <paramref name="entries"/>, from the first, fit in one hub message.</summary>
+    private static int Fitting(List<FileEntry> entries)
+    {
         var budget = ListingBudget;
         var kept = 0;
-        while (kept < sorted.Count)
+        while (kept < entries.Count)
         {
-            budget -= (sorted[kept].Name.Length * 6) + 128;
+            budget -= (entries[kept].Name.Length * 6) + 128;
             if (budget < 0)
             {
                 break;
@@ -224,7 +321,38 @@ public static class ServerFileRules
             kept++;
         }
 
-        return new FileListResult(kept == sorted.Count ? sorted : sorted[..kept], kept < read - skipped, skipped);
+        return kept;
+    }
+
+    /// <summary>
+    /// The target of a rename that may replace (<see cref="MoveFileCommand.Replace"/>): a file may be replaced, by another
+    /// file only; a directory or link is never replaced.
+    /// </summary>
+    public static void CheckReplace(string destination, FileEntryKind source, FileEntryKind? existing)
+    {
+        switch (existing)
+        {
+            case null:
+                return;
+            case FileEntryKind.Directory:
+                throw new FileManagerException(FileErrors.IsADirectory, $"'{destination}' is a directory; it is not replaced.");
+            case FileEntryKind.Link:
+                throw new FileManagerException(FileErrors.Link, $"'{destination}' is a junction or link; it is not replaced.");
+            case FileEntryKind.File when source != FileEntryKind.File:
+                throw new FileManagerException(FileErrors.Exists, $"'{destination}' already exists; only a file replaces a file.");
+            default:
+                return;
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="time"/> as a FILETIME a file system keeps and a <see cref="DateTime"/> reads back: from just after
+    /// 1601 (0 would mean "unchanged" to Windows) to the end of year 9999.
+    /// </summary>
+    public static long FileTime(DateTimeOffset time)
+    {
+        var ticks = time.UtcTicks - new DateTime(1601, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks;
+        return Math.Clamp(ticks, 1, DateTime.MaxValue.ToFileTimeUtc());
     }
 
     private static int ListingOrder(FileEntry a, FileEntry b)

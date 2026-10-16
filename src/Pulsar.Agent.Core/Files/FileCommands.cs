@@ -34,6 +34,9 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         AgentCapabilities.DeleteFile,
         AgentCapabilities.SendFile,
         AgentCapabilities.ReceiveFile,
+        AgentCapabilities.SftpFiles,
+        AgentCapabilities.StatFile,
+        AgentCapabilities.SetFileModified,
     ];
 
     /// <summary>The server a file command is about; null for any other command.</summary>
@@ -45,6 +48,8 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         DeleteFileCommand c => c.ServerId,
         SendFileCommand c => c.ServerId,
         ReceiveFileCommand c => c.ServerId,
+        StatFileCommand c => c.ServerId,
+        SetFileModifiedCommand c => c.ServerId,
         _ => null,
     };
 
@@ -53,6 +58,13 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
     {
         ArgumentNullException.ThrowIfNull(envelope);
         var command = envelope.Command;
+
+        // What SFTP sees (Phase 17): its own commands find nothing where it hides things, Pulsar's folder included.
+        if (command is ListFilesCommand { Paged: true } or StatFileCommand or SetFileModifiedCommand && PathsOf(command).Any(SftpView.IsHidden))
+        {
+            return Rejected(envelope, FileErrors.NotFound, $"'{PathsOf(command).First(SftpView.IsHidden)}' does not exist.");
+        }
+
         // Where SteamCMD finds the Steam login the agent lends it during an install: never anyone's to read (Phase 13).
         if (PathsOf(command).Any(IsSteamLogin))
         {
@@ -60,12 +72,12 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         }
 
         // Pulsar's own folder (the server's SteamCMD, addon records): readable, changed by Pulsar only.
-        if (command is not (ListFilesCommand or SendFileCommand) && PathsOf(command).Any(IsPulsarFolder))
+        if (!IsRead(command) && PathsOf(command).Any(IsPulsarFolder))
         {
             return Rejected(envelope, FileErrors.AccessDenied, "Only Pulsar changes this folder.");
         }
 
-        if (busy && command is not (ListFilesCommand or SendFileCommand))
+        if (busy && !IsRead(command))
         {
             return new CommandAck(envelope.CommandId, AckStatus.Busy, "server.busy", "An operation is changing the server's files; try again when it ends.");
         }
@@ -74,13 +86,24 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         {
             switch (command)
             {
+                case ListFilesCommand { Paged: true } page:
+                    if (page.After is { } after && (after.Contains('/', StringComparison.Ordinal) || !ServerFilePath.IsValid(after)))
+                    {
+                        return Rejected(envelope, FileErrors.InvalidPath, "A page starts after one name.");
+                    }
+
+                    return Accepted(envelope, files.ListPage(server, page.Path, page.After));
                 case ListFilesCommand list:
                     return Accepted(envelope, files.List(server, list.Path));
+                case StatFileCommand stat:
+                    return Accepted(envelope, files.Stat(server, stat.Path));
+                case SetFileModifiedCommand modified:
+                    return Accepted(envelope, files.SetModified(server, modified.Path, modified.ModifiedAt));
                 case CreateDirectoryCommand create:
                     files.CreateDirectory(server, create.Path);
                     return Accepted(envelope);
                 case MoveFileCommand move:
-                    files.Move(server, move.Path, move.Destination);
+                    files.Move(server, move.Path, move.Destination, move.Replace);
                     return Accepted(envelope);
                 case DeleteFileCommand delete:
                     files.Delete(server, delete.Path);
@@ -147,8 +170,13 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         DeleteFileCommand c => [c.Path],
         SendFileCommand c => [c.Path],
         ReceiveFileCommand c => [c.Path],
+        StatFileCommand c => [c.Path],
+        SetFileModifiedCommand c => [c.Path],
         _ => [],
     };
+
+    /// <summary>Commands that change nothing: allowed in Pulsar's folder and while an operation runs.</summary>
+    private static bool IsRead(AgentCommand command) => command is ListFilesCommand or SendFileCommand or StatFileCommand;
 
     public void Dispose() => _stopping.Dispose();
 
@@ -159,25 +187,50 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         await Task.WhenAll(_transfers.Values);
     }
 
-    private CommandAck Send(CommandEnvelope envelope, ProvisionedServer server, SendFileCommand command) =>
-        Send(envelope, command.Ticket, command.Path, () => files.OpenRead(server, command.Path, command.MaxSize));
+    private CommandAck Send(CommandEnvelope envelope, ProvisionedServer server, SendFileCommand command)
+    {
+        if (command.Offset < 0)
+        {
+            return Rejected(envelope, FileErrors.InvalidOffset, "A download cannot start before the beginning of the file.");
+        }
+
+        return Send(envelope, command.Ticket, command.Path, () => files.OpenRead(server, command.Path, command.MaxSize), command.Offset);
+    }
 
     /// <summary>
     /// Sends what <paramref name="open"/> opens (a server file, or a backup's archive) to the panel in the background, once
     /// the ticket is known to be usable; the ack carries what was opened. Exceptions of <paramref name="open"/> pass through.
     /// </summary>
     /// <param name="label">Names the content in the agent's log.</param>
-    public CommandAck Send(CommandEnvelope envelope, string ticket, string label, Func<OpenedFile> open)
+    /// <param name="offset">
+    /// Where the content sent starts (<see cref="SendFileCommand.Offset"/>): the rest of what was opened, nothing past its end.
+    /// </param>
+    public CommandAck Send(CommandEnvelope envelope, string ticket, string label, Func<OpenedFile> open, long offset = 0)
     {
         ArgumentNullException.ThrowIfNull(envelope);
         ArgumentNullException.ThrowIfNull(open);
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
         if (!TransferTicket.IsWellFormed(ticket) || _transfers.ContainsKey(ticket))
         {
             return Rejected(envelope, "files.invalid_ticket", "The transfer ticket is malformed or already used.");
         }
 
         var opened = open();
-        Track(ticket, () => SendAsync(ticket, label, opened));
+        var start = Math.Min(offset, opened.Info.Entry.Size);
+        if (start > 0)
+        {
+            try
+            {
+                opened.Content.Seek(start, SeekOrigin.Begin);
+            }
+            catch (Exception ex) when (ex is IOException or NotSupportedException)
+            {
+                opened.Dispose();
+                throw new FileManagerException(FileErrors.Failed, $"'{label}' cannot be read from an offset.", ex);
+            }
+        }
+
+        Track(ticket, () => SendAsync(ticket, label, opened, opened.Info.Entry.Size - start));
         return Accepted(envelope, opened.Info);
     }
 
@@ -193,8 +246,10 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
             return Rejected(envelope, FileErrors.TransferFailed, "The size cannot be negative.");
         }
 
-        var pending = files.Create(server, command.Path, command.Size, command.Overwrite, command.ExpectedVersion);
-        Track(command.Ticket, () => ReceiveAsync(command.Ticket, command.Path, command.Size, pending));
+        var pending = command.Append
+            ? files.Append(server, command.Path, command.ExpectedVersion)
+            : files.Create(server, command.Path, command.Size, command.Overwrite, command.ExpectedVersion, sizeIsLimit: command.Streamed);
+        Track(command.Ticket, () => ReceiveAsync(command.Ticket, command.Path, command.Size, exact: !command.Streamed, pending));
         return Accepted(envelope);
     }
 
@@ -205,14 +260,14 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         _ = task.ContinueWith(_ => _transfers.TryRemove(ticket, out var _), TaskScheduler.Default);
     }
 
-    private async Task SendAsync(string ticket, string path, OpenedFile opened)
+    /// <param name="size">How much of <paramref name="opened"/> to send, from where its content stands.</param>
+    private async Task SendAsync(string ticket, string path, OpenedFile opened, long size)
     {
         using (opened)
         {
             try
             {
                 using var http = panel.CreateHttpClient() ?? throw new HttpRequestException("Not connected to the panel.");
-                var size = opened.Info.Entry.Size;
                 using var idle = new IdleTimeout(options.IdleTimeout, _stopping.Token);
                 using var content = new StreamContent(new BoundedStream(opened.Content, size, idle));
                 content.Headers.ContentLength = size;
@@ -233,7 +288,8 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
         }
     }
 
-    private async Task ReceiveAsync(string ticket, string path, long size, PendingFile pending)
+    /// <param name="size">The bytes announced: exactly that many when <paramref name="exact"/>, at most that many otherwise.</param>
+    private async Task ReceiveAsync(string ticket, string path, long size, bool exact, PendingFile pending)
     {
         TransferResult result;
         using (pending)
@@ -270,6 +326,14 @@ public sealed partial class FileCommands(IServerFileManager files, PanelChannel 
 
                         await pending.Content.WriteAsync(buffer.AsMemory(0, read), idle.Token);
                     }
+
+                    // An append has no temporary file to check: what arrived is already in the file.
+                    if (exact && received != size)
+                    {
+                        throw new FileManagerException(FileErrors.TransferFailed, $"Received {received} of {size} bytes.");
+                    }
+
+                    size = received;
                 }
 
                 var file = pending.Commit();

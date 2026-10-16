@@ -117,6 +117,13 @@ public static class ServerErrors
     public static DomainError FilesUnsupported { get; } =
         new("files.unsupported", "The node's agent has no file manager (update the agent).");
 
+    /// <summary>The node's agent predates SFTP (it does not announce <c>server.files_sftp</c>).</summary>
+    public static DomainError FilesSftpUnsupported { get; } =
+        new("files.sftp_unsupported", "SFTP needs a newer agent on this server's node (update the agent).");
+
+    /// <summary>A download asked to start before the beginning of the file.</summary>
+    public static DomainError FileOffsetInvalid { get; } = new("files.invalid_offset", "A download cannot start before the beginning of the file.");
+
     public static DomainError FilePathInvalid(string message) => new("files.invalid_path", message);
 
     public static DomainError FileTooLarge { get; } = new("files.too_large", "The file is larger than allowed.");

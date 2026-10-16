@@ -52,27 +52,40 @@ internal static class AgentEndpoints
         }
 
         http.Response.ContentType = "application/octet-stream";
-        http.Response.ContentLength = upload.Size;
+
+        // A streamed upload goes without a length (chunked): the node takes it as complete only from a clean end, which
+        // this request gives only once the content ended within its limit; any failure aborts it instead.
+        http.Response.ContentLength = upload.Streamed ? null : upload.Size;
+
         // An upload that was ended (its user's sessions, its API key, its time) stops here: the node never gets the rest.
         using var sending = CancellationTokenSource.CreateLinkedTokenSource(http.RequestAborted, upload.Aborted);
         try
         {
             var buffer = new byte[81920];
             long sent = 0;
-            while (sent < upload.Size)
+            while (upload.Streamed || sent < upload.Size)
             {
-                var read = await upload.Content.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, upload.Size - sent)), sending.Token);
+                // A streamed upload reads one byte past its limit, to tell content that ends there from content that goes on.
+                var wanted = (int)Math.Min(buffer.Length, upload.Size - sent + (upload.Streamed ? 1 : 0));
+                var read = await upload.Content.ReadAsync(buffer.AsMemory(0, wanted), sending.Token);
                 if (read == 0)
                 {
                     break;
                 }
 
+                if (sent + read > upload.Size)
+                {
+                    upload.Fail("The file is larger than allowed.", FileErrors.TooLarge);
+                    http.Abort();
+                    return;
+                }
+
                 await http.Response.Body.WriteAsync(buffer.AsMemory(0, read), sending.Token);
                 sent += read;
-                upload.Progressed();
+                upload.Progressed(read);
             }
 
-            if (sent < upload.Size)
+            if (!upload.Streamed && sent < upload.Size)
             {
                 upload.Fail("The browser stopped sending the file.");
                 http.Abort();

@@ -71,8 +71,21 @@ public sealed class FileTransfers(TimeProvider clock, FileTransferLimits? limits
     /// </summary>
     public Upload? BeginUpload(NodeId node, UserId? user, Stream content, long size, Guid? apiKey = null)
     {
-        var upload = Start(new Upload(this, TransferTicket.New(), node, user, apiKey, content, size));
+        var upload = Start(new Upload(this, TransferTicket.New(), node, user, apiKey, content, size, streamed: false));
         upload?.Bound(size);
+        return upload;
+    }
+
+    /// <summary>
+    /// Like <see cref="BeginUpload"/>, for content whose length is not known in advance (an SFTP client's writes): it ends
+    /// where <paramref name="content"/> ends, at most <paramref name="maxSize"/> bytes (more fails it), and lasts at most
+    /// <see cref="MaxDuration"/> of <paramref name="maxSize"/>, as an upload of that size would.
+    /// </summary>
+    public Upload? BeginStreamedUpload(NodeId node, UserId? user, Stream content, long maxSize, Guid? apiKey = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxSize);
+        var upload = Start(new Upload(this, TransferTicket.New(), node, user, apiKey, content, maxSize, streamed: true));
+        upload?.Bound(maxSize);
         return upload;
     }
 
@@ -337,14 +350,22 @@ public sealed class FileTransfers(TimeProvider clock, FileTransferLimits? limits
         private readonly TaskCompletionSource<TransferResult> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private long _lastProgress;
+        private long _bytesSent;
 
-        internal Upload(FileTransfers owner, string ticket, NodeId node, UserId? user, Guid? apiKey, Stream content, long size)
+        internal Upload(FileTransfers owner, string ticket, NodeId node, UserId? user, Guid? apiKey, Stream content, long size, bool streamed)
             : base(owner, ticket, node, user, apiKey) =>
-            (Content, Size) = (content, size);
+            (Content, Size, Streamed) = (content, size, streamed);
 
         public Stream Content { get; }
 
+        /// <summary>The content's length; the most it may hold when <see cref="Streamed"/>.</summary>
         public long Size { get; }
+
+        /// <summary>
+        /// The length is not known in advance (<see cref="BeginStreamedUpload"/>): the content goes to the agent until it
+        /// ends, without a length, and only a clean end tells the agent it is complete.
+        /// </summary>
+        public bool Streamed { get; }
 
         /// <summary>The agent's report: the file is in place, or why not.</summary>
         public Task<TransferResult> Result => _result.Task;
@@ -355,8 +376,15 @@ public sealed class FileTransfers(TimeProvider clock, FileTransferLimits? limits
         /// <summary>All of the content went to the agent.</summary>
         public void ContentSent() => _sent.TrySetResult();
 
-        /// <summary>Some more of the content went to the agent.</summary>
-        public void Progressed() => Interlocked.Exchange(ref _lastProgress, Clock.GetTimestamp());
+        /// <summary>How many bytes of the content went to the agent so far.</summary>
+        public long BytesSent => Interlocked.Read(ref _bytesSent);
+
+        /// <summary>Some more of the content (<paramref name="bytes"/> of it) went to the agent.</summary>
+        public void Progressed(long bytes = 0)
+        {
+            Interlocked.Add(ref _bytesSent, bytes);
+            Interlocked.Exchange(ref _lastProgress, Clock.GetTimestamp());
+        }
 
         /// <summary>
         /// Completes when all of the content went to the agent or it reported; throws <see cref="TimeoutException"/> when
@@ -389,7 +417,8 @@ public sealed class FileTransfers(TimeProvider clock, FileTransferLimits? limits
         private protected override void Claimed() => Progressed();
 
         /// <summary>The agent could not take the content (the browser stopped sending, say): the transfer failed.</summary>
-        public void Fail(string message) => _result.TrySetResult(new TransferResult(Ticket, FileErrors.TransferFailed, message, null));
+        /// <param name="code">One of <see cref="FileErrors"/>: <c>files.too_large</c> for a streamed upload past its limit.</param>
+        public void Fail(string message, string code = FileErrors.TransferFailed) => _result.TrySetResult(new TransferResult(Ticket, code, message, null));
 
         internal void Finish(TransferResult result) => _result.TrySetResult(result);
 

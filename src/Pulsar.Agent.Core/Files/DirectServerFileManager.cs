@@ -10,7 +10,40 @@ namespace Pulsar.Agent.Core.Files;
 /// </summary>
 public sealed class DirectServerFileManager : IServerFileManager
 {
-    public FileListResult List(ProvisionedServer server, string path)
+    public FileListResult List(ProvisionedServer server, string path) =>
+        Guard(path, () => ServerFileRules.Listing(EnumerateDirectory(server, path)));
+
+    public FileListResult ListPage(ProvisionedServer server, string path, string? after) =>
+        Guard(path, () => ServerFileRules.Page(EnumerateDirectory(server, path), path, after));
+
+    public FileEntryResult Stat(ProvisionedServer server, string path) => Existing(Resolve(server, path), path) ?? throw NotFound(path);
+
+    public FileEntryResult SetModified(ProvisionedServer server, string path, DateTimeOffset modifiedAt)
+    {
+        var full = Resolve(server, path);
+        var entry = Existing(full, path) ?? throw NotFound(path);
+        if (entry.Entry.Kind == FileEntryKind.Link)
+        {
+            throw new FileManagerException(FileErrors.Link, $"'{path}' is a junction or link.");
+        }
+
+        var time = DateTime.FromFileTimeUtc(ServerFileRules.FileTime(modifiedAt));
+        Guard(path, () =>
+        {
+            if (entry.Entry.Kind == FileEntryKind.Directory)
+            {
+                Directory.SetLastWriteTimeUtc(full, time);
+            }
+            else
+            {
+                File.SetLastWriteTimeUtc(full, time);
+            }
+        });
+        return Existing(full, path) ?? throw NotFound(path);
+    }
+
+    /// <summary>The entries of the directory at <paramref name="path"/>, read as they are consumed.</summary>
+    private static IEnumerable<FileEntry> EnumerateDirectory(ProvisionedServer server, string path)
     {
         var full = Resolve(server, path, allowRoot: true);
         // Resolve checks the ancestors only: the listed folder itself may be the junction.
@@ -27,7 +60,7 @@ public sealed class DirectServerFileManager : IServerFileManager
                 : NotFound(path);
         }
 
-        return Guard(path, () => ServerFileRules.Listing(info.EnumerateFileSystemInfos().Select(Entry)));
+        return info.EnumerateFileSystemInfos().Select(Entry);
     }
 
     public void CreateDirectory(ProvisionedServer server, string path)
@@ -98,15 +131,22 @@ public sealed class DirectServerFileManager : IServerFileManager
         }
     }
 
-    public void Move(ProvisionedServer server, string path, string destination)
+    public void Move(ProvisionedServer server, string path, string destination, bool replace = false)
     {
         ServerFileRules.CheckMove(path, destination);
         var source = Resolve(server, path);
         var target = Resolve(server, destination);
         RequireDirectory(server, ServerFilePath.Parent(destination));
-        if (Exists(target))
+        var existing = Existing(target, destination);
+        if (existing is not null && !replace)
         {
             throw new FileManagerException(FileErrors.Exists, $"'{destination}' already exists.");
+        }
+
+        if (existing is not null)
+        {
+            var kind = IsLink(source) ? FileEntryKind.Link : Directory.Exists(source) ? FileEntryKind.Directory : FileEntryKind.File;
+            ServerFileRules.CheckReplace(destination, kind, existing.Entry.Kind);
         }
 
         Guard(path, () =>
@@ -117,7 +157,7 @@ public sealed class DirectServerFileManager : IServerFileManager
             }
             else if (File.Exists(source))
             {
-                File.Move(source, target);
+                File.Move(source, target, overwrite: existing is not null);
             }
             else
             {
@@ -156,14 +196,27 @@ public sealed class DirectServerFileManager : IServerFileManager
         return Guard(path, () => new OpenedFile(new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete), entry));
     }
 
-    public PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion)
+    public PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion, bool sizeIsLimit = false)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(size);
         var full = Resolve(server, path);
         var directory = RequireDirectory(server, ServerFilePath.Parent(path));
         ServerFileRules.CheckTarget(path, Existing(full, path), overwrite, expectedVersion);
         var temporary = Path.Combine(directory, ServerFileRules.TemporaryName());
-        return Guard(path, () => new Pending(path, full, temporary, size, overwrite, expectedVersion));
+        return Guard(path, () => new Pending(path, full, temporary, sizeIsLimit ? null : size, overwrite, expectedVersion));
+    }
+
+    public PendingFile Append(ProvisionedServer server, string path, string? expectedVersion)
+    {
+        var full = Resolve(server, path);
+        RequireDirectory(server, ServerFilePath.Parent(path));
+        var existing = Existing(full, path);
+        if (existing is not null || expectedVersion is not null)
+        {
+            ServerFileRules.CheckTarget(path, existing, overwrite: true, expectedVersion);
+        }
+
+        return Guard(path, () => new Appending(path, full));
     }
 
     /// <summary>The absolute path, after checking that no component on the way is a junction or link.</summary>
@@ -322,13 +375,14 @@ public sealed class DirectServerFileManager : IServerFileManager
         private readonly string _path;
         private readonly string _target;
         private readonly string _temporary;
-        private readonly long _size;
+        private readonly long? _size;
         private readonly bool _overwrite;
         private readonly string? _expectedVersion;
         private readonly FileStream _stream;
         private bool _committed;
 
-        public Pending(string path, string target, string temporary, long size, bool overwrite, string? expectedVersion)
+        /// <param name="size">The exact length expected; null: whatever is written (a streamed upload, bounded by the caller).</param>
+        public Pending(string path, string target, string temporary, long? size, bool overwrite, string? expectedVersion)
         {
             (_path, _target, _temporary, _size, _overwrite, _expectedVersion) = (path, target, temporary, size, overwrite, expectedVersion);
             _stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None);
@@ -338,7 +392,7 @@ public sealed class DirectServerFileManager : IServerFileManager
 
         public override FileEntryResult Commit()
         {
-            if (_stream.Length != _size)
+            if (_size is not null && _stream.Length != _size)
             {
                 throw new FileManagerException(FileErrors.TransferFailed, $"Received {_stream.Length} of {_size} bytes.");
             }
@@ -384,6 +438,37 @@ public sealed class DirectServerFileManager : IServerFileManager
             if (!_committed)
             {
                 File.Delete(_temporary);
+            }
+        }
+    }
+
+    /// <summary>A file written at its end, in place: what was written stays, committed or not.</summary>
+    private sealed class Appending : PendingFile
+    {
+        private readonly string _path;
+        private readonly string _target;
+        private readonly FileStream _stream;
+
+        public Appending(string path, string target)
+        {
+            (_path, _target) = (path, target);
+            _stream = new FileStream(target, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+        }
+
+        public override Stream Content => _stream;
+
+        public override FileEntryResult Commit()
+        {
+            Guard(_path, _stream.Flush);
+            _stream.Dispose();
+            return Existing(_target, _path) ?? throw NotFound(_path);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _stream.Dispose();
             }
         }
     }
