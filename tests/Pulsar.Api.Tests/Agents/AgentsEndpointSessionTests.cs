@@ -198,7 +198,8 @@ public sealed class AgentsEndpointSessionTests(AgentsEndpointSessionTests.Panel 
         challengeResponse.EnsureSuccessStatusCode();
         var challenge = (await challengeResponse.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!;
         var signature = ProtocolCrypto.Sign(key, ProtocolCrypto.SignedData(AgentProtocol.Purposes.Authenticate,
-            ProtocolCrypto.GuidBytes(result.NodeId), ProtocolCrypto.GuidBytes(result.CredentialId), challenge.Nonce, ProtocolCrypto.Utf8(challenge.PanelOrigin)));
+            ProtocolCrypto.GuidBytes(result.NodeId), ProtocolCrypto.GuidBytes(result.CredentialId), challenge.Nonce, ProtocolCrypto.Utf8(challenge.PanelOrigin),
+            ProtocolCrypto.KeyIds(null)));
         using var tokenResponse = await http.PostAsJsonAsync(AgentProtocol.TokenPath.TrimStart('/'),
             new TokenRequest(challenge.ChallengeId, signature), ProtocolJson.Options, Ct);
         tokenResponse.EnsureSuccessStatusCode();
@@ -215,7 +216,8 @@ public sealed class AgentsEndpointSessionTests(AgentsEndpointSessionTests.Panel 
         challengeResponse.EnsureSuccessStatusCode();
         var challenge = (await challengeResponse.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!;
         var signature = ProtocolCrypto.Sign(key, ProtocolCrypto.SignedData(AgentProtocol.Purposes.Authenticate,
-            ProtocolCrypto.GuidBytes(nodeId), ProtocolCrypto.GuidBytes(credentialId), challenge.Nonce, ProtocolCrypto.Utf8(challenge.PanelOrigin)));
+            ProtocolCrypto.GuidBytes(nodeId), ProtocolCrypto.GuidBytes(credentialId), challenge.Nonce, ProtocolCrypto.Utf8(challenge.PanelOrigin),
+            ProtocolCrypto.KeyIds(null)));
         using var tokenResponse = await http.PostAsJsonAsync(AgentProtocol.TokenPath.TrimStart('/'),
             new TokenRequest(challenge.ChallengeId, signature), ProtocolJson.Options, Ct);
         tokenResponse.EnsureSuccessStatusCode();

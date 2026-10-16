@@ -4801,6 +4801,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
           }
         ],
         "responses": {
@@ -13911,7 +13919,8 @@
           "keys",
           "nodes",
           "nodesOutdated",
-          "nodesUnknown"
+          "nodesUnknown",
+          "nodesToReEnroll"
         ],
         "type": "object",
         "properties": {
@@ -13932,6 +13941,12 @@
           "nodesUnknown": {
             "type": "integer",
             "format": "int32"
+          },
+          "nodesToReEnroll": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

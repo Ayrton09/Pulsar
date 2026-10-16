@@ -389,7 +389,7 @@ public sealed class NodeKeyRotationTests(PulsarApiFactory factory) : IClassFixtu
             var challenge = (await asked.Content.ReadFromJsonAsync<ChallengeResponse>(ProtocolJson.Options, Ct))!;
             held = new TokenRequest(challenge.ChallengeId, key.Sign(ProtocolCrypto.SignedData(AgentProtocol.Purposes.Authenticate,
                 ProtocolCrypto.GuidBytes(enrolled.NodeId), ProtocolCrypto.GuidBytes(pending.CredentialId), challenge.Nonce,
-                ProtocolCrypto.Utf8(challenge.PanelOrigin))));
+                ProtocolCrypto.Utf8(challenge.PanelOrigin), ProtocolCrypto.KeyIds(null))));
         }
 
         clock.Offset = -TimeSpan.FromHours(1);

@@ -501,7 +501,8 @@
     "panel_key": {
       "rotation_in_progress": "The previous key is still being retired. Retire it before rotating again.",
       "not_retiring": "Only a key that is being retired can be retired.",
-      "not_found": "The panel key does not exist."
+      "not_found": "The panel key does not exist.",
+      "nodes_outdated": "Some nodes trust no other key: retiring it would cut them off. Try again to see which ones."
     },
     "server": {
       "name_invalid": "A server name is one line of up to 64 characters.",
@@ -1171,7 +1172,8 @@
     "rotate": "Rotate panel key",
     "rotateConfirm": "Create a new panel signing key? Connected nodes receive it now, the others when they connect. The current key keeps working until you retire it.",
     "retire": "Retire old key",
-    "retireConfirm": "Retire the old key? Nodes that do not have the new one yet ({{outdated}} outdated, {{unknown}} unknown) will stop accepting commands until they are enrolled again."
+    "retireConfirm": "Retire the old key? Nodes that do not have the new one yet ({{outdated}} outdated, {{unknown}} unknown) will stop accepting commands until they are enrolled again.",
+    "retireForceConfirm": "These nodes have not signed in with the new key yet: {{nodes}}. Nodes take it within 15 minutes of connecting. Retire the old key anyway? They will stop connecting until they are enrolled again."
   },
   "allocations": {
     "title": "Allocations",

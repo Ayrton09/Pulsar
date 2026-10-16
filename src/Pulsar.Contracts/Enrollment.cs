@@ -62,7 +62,8 @@ public sealed record SignedMessage(string KeyId, byte[] Payload, byte[] Signatur
 /// <param name="PinnedPanelKeys">
 /// The ids of the panel keys the agent pins (at most <see cref="AgentProtocol.MaxPinnedPanelKeys"/>, each a fingerprint):
 /// the panel signs this sign-in's grant with the first of its keys among them. Taken from the sign-in itself, never from
-/// what a session said earlier, which whoever holds a session token could have written.
+/// what a session said earlier, which whoever holds a session token could have written; signed with the rest
+/// (<see cref="TokenRequest"/>), and what the panel records as the keys the node pins.
 /// </param>
 public sealed record ChallengeRequest(Guid NodeId, Guid CredentialId, byte[]? Nonce = null, IReadOnlyList<string>? PinnedPanelKeys = null);
 
@@ -74,7 +75,8 @@ public sealed record ChallengeResponse(Guid ChallengeId, byte[] Nonce, string Pa
 
 /// <summary>
 /// <c>POST /agent/v1/auth/token</c>. <see cref="Signature"/> signs
-/// <c>SignedData(Purposes.Authenticate, nodeId, credentialId, nonce, panelOrigin)</c>.
+/// <c>SignedData(Purposes.Authenticate, nodeId, credentialId, nonce, panelOrigin, KeyIds(pinnedPanelKeys))</c>, the last
+/// the challenge request's <see cref="ChallengeRequest.PinnedPanelKeys"/> as sent (<see cref="ProtocolCrypto.KeyIds"/>).
 /// </summary>
 public sealed record TokenRequest(Guid ChallengeId, byte[] Signature);
 

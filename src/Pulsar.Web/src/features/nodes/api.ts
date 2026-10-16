@@ -183,8 +183,9 @@ export function useRotatePanelKey() {
 export function useRetirePanelKey() {
   const changed = usePanelKeysChanged();
   return useMutation({
-    mutationFn: (keyId: string) =>
-      unwrap(api.POST('/api/v1/panel-keys/{keyId}/retire', { params: { path: { keyId } } })),
+    // force: retire it even though nodes trust no other key (they have to be enrolled again).
+    mutationFn: ({ keyId, force }: { keyId: string; force: boolean }) =>
+      unwrap(api.POST('/api/v1/panel-keys/{keyId}/retire', { params: { path: { keyId }, query: { force } } })),
     onSuccess: changed,
   });
 }

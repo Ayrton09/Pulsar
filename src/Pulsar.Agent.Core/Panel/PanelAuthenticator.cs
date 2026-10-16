@@ -54,12 +54,13 @@ public sealed class PanelAuthenticator(PanelTransport transport, TimeProvider? c
         // A refusal that sends the agent to the agents' address signs this back, and so does the session's grant: an old
         // refusal or session played back does not answer this sign-in.
         var nonce = RandomNumberGenerator.GetBytes(32);
+        // Signed below with the rest: the panel records the keys a node pins from its sign-ins only.
+        IReadOnlyList<string>? pinned = config.PanelKeys is { Count: > 0 } keys ? [.. keys.Select(k => k.KeyId)] : null;
         ChallengeResponse challenge;
         try
         {
             challenge = await PanelTransport.PostAsync<ChallengeRequest, ChallengeResponse>(http, AgentProtocol.ChallengePath,
-                new ChallengeRequest(config.NodeId, config.CredentialId, nonce, config.PanelKeys is { Count: > 0 } pinned ? [.. pinned.Select(k => k.KeyId)] : null),
-                cancellationToken);
+                new ChallengeRequest(config.NodeId, config.CredentialId, nonce, pinned), cancellationToken);
         }
         catch (CertificateRequiredException ex)
         {
@@ -81,7 +82,8 @@ public sealed class PanelAuthenticator(PanelTransport transport, TimeProvider? c
         }
 
         var signature = key.Sign(ProtocolCrypto.SignedData(AgentProtocol.Purposes.Authenticate,
-            ProtocolCrypto.GuidBytes(config.NodeId), ProtocolCrypto.GuidBytes(config.CredentialId), challenge.Nonce, ProtocolCrypto.Utf8(origin)));
+            ProtocolCrypto.GuidBytes(config.NodeId), ProtocolCrypto.GuidBytes(config.CredentialId), challenge.Nonce, ProtocolCrypto.Utf8(origin),
+            ProtocolCrypto.KeyIds(pinned)));
         var sentAt = _clock.GetUtcNow();
         var token = await PanelTransport.PostAsync<TokenRequest, TokenResponse>(http, AgentProtocol.TokenPath,
             new TokenRequest(challenge.ChallengeId, signature), cancellationToken);

@@ -58,7 +58,7 @@ public sealed class PanelBlockTests : IDisposable
     public void KnownAddressesSurviveARestartOfTheAgent()
     {
         var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
-        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10"), IPAddress.Parse("2001:db8::5")]);
+        Confirm(book, "panel.example.com", IPAddress.Parse("203.0.113.10"), IPAddress.Parse("2001:db8::5"));
         book.Save();
 
         var again = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
@@ -68,12 +68,26 @@ public sealed class PanelBlockTests : IDisposable
     }
 
     [Fact]
-    public void AnAddressGoesOnlyOnceTheNameHasResolvedWithoutItForAMonth()
+    public void AnAddressIsBlockedOnlyOnceTwoLookupsFiveMinutesApartAnsweredIt()
     {
         var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
         book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10")]);
+        _clock.Advance(TimeSpan.FromMinutes(4));
+        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10")]);
+        Assert.Empty(book.Known(["panel.example.com"]));
+
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10")]);
+        Assert.Equal([IPAddress.Parse("203.0.113.10")], book.Known(["panel.example.com"]));
+    }
+
+    [Fact]
+    public void AnAddressGoesOnlyOnceTheNameHasResolvedWithoutItForAMonth()
+    {
+        var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+        Confirm(book, "panel.example.com", IPAddress.Parse("203.0.113.10"));
         _clock.Advance(TimeSpan.FromDays(20));
-        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.11")]);
+        Confirm(book, "panel.example.com", IPAddress.Parse("203.0.113.11"));
         Assert.Equal([IPAddress.Parse("203.0.113.10"), IPAddress.Parse("203.0.113.11")], book.Known(["panel.example.com"])); // the union
 
         // Months without an answer (the name does not resolve) forget nothing.
@@ -89,11 +103,10 @@ public sealed class PanelBlockTests : IDisposable
     public void ANameNoLongerConfiguredIsForgottenAndManyAddressesKeepTheNewest()
     {
         var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
-        book.Learn("old.example.com", [IPAddress.Parse("198.51.100.1")]);
+        Confirm(book, "old.example.com", IPAddress.Parse("198.51.100.1"));
         for (var i = 0; i < PanelAddressBook.MaxAddressesPerName + 10; i++)
         {
-            _clock.Advance(TimeSpan.FromMinutes(5));
-            book.Learn("panel.example.com", [new IPAddress([10, 0, (byte)(i / 256), (byte)(i % 256)])]);
+            Confirm(book, "panel.example.com", new IPAddress([10, 0, (byte)(i / 256), (byte)(i % 256)]));
         }
 
         book.Retain(["panel.example.com"]);
@@ -106,6 +119,75 @@ public sealed class PanelBlockTests : IDisposable
     }
 
     [Fact]
+    public void AForgedAnswerNeitherEvictsThePanelsAddressesNorBlocksItsOwnForLong()
+    {
+        var real = IPAddress.Parse("203.0.113.10");
+        var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+        Confirm(book, "panel.example.com", real);
+
+        // One forged answer with 70 addresses the attacker chose (say, a game's authentication servers), not the panel's.
+        var forged = Enumerable.Range(1, 70).Select(i => new IPAddress([198, 51, 100, (byte)i])).ToList();
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        book.Learn("panel.example.com", forged);
+        Assert.Equal([real], book.Known(["panel.example.com"])); // none confirmed, the real one kept
+
+        // Not answered again within the hour (the real answers come instead), they are forgotten.
+        for (var i = 0; i < 13; i++)
+        {
+            _clock.Advance(TimeSpan.FromMinutes(5));
+            book.Learn("panel.example.com", [real]);
+        }
+
+        book.Learn("panel.example.com", forged);
+        Assert.Equal([real], book.Known(["panel.example.com"]));
+
+        // Two forged answers five minutes apart do get in: 16 addresses at most, next to the real one (doc 08, T31).
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        book.Learn("panel.example.com", forged);
+        var known = book.Known(["panel.example.com"]);
+        Assert.Equal(PanelAddressBook.MaxAddressesPerAnswer + 1, known.Count);
+        Assert.Contains(real, known);
+    }
+
+    [Fact]
+    public void ConfirmedAddressesAreNeverEvictedForUnconfirmedOnes()
+    {
+        var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+        var confirmed = Enumerable.Range(0, PanelAddressBook.MaxAddressesPerName).Select(i => new IPAddress([10, 0, 0, (byte)i])).ToArray();
+        foreach (var batch in confirmed.Chunk(PanelAddressBook.MaxAddressesPerAnswer))
+        {
+            Confirm(book, "panel.example.com", batch);
+        }
+
+        var newer = Enumerable.Range(1, PanelAddressBook.MaxAddressesPerAnswer).Select(i => new IPAddress([198, 51, 100, (byte)i])).ToArray();
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        book.Learn("panel.example.com", newer);
+        Assert.Equal(confirmed, book.Known(["panel.example.com"]));
+
+        // Once confirmed, they take the place of the confirmed ones seen longest ago.
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        book.Learn("panel.example.com", newer);
+        var known = book.Known(["panel.example.com"]);
+        Assert.Equal(PanelAddressBook.MaxAddressesPerName, known.Count);
+        Assert.All(newer, address => Assert.Contains(address, known));
+        Assert.DoesNotContain(confirmed[0], known);
+        Assert.Contains(confirmed[PanelAddressBook.MaxAddressesPerAnswer], known);
+    }
+
+    [Fact]
+    public void ABookWithANameWithoutAddressesIsReadAsTheOthers()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(BookFile)!);
+        File.WriteAllText(BookFile, "{\"panel.example.com\": null, \"other.example.com\": [null, {\"Address\": null}]}");
+
+        var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
+
+        Assert.Empty(book.Known(["panel.example.com", "other.example.com"]));
+        Confirm(book, "panel.example.com", IPAddress.Parse("203.0.113.10"));
+        Assert.Single(book.Known(["panel.example.com"]));
+    }
+
+    [Fact]
     public void AnUnreadableBookStartsEmpty()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(BookFile)!);
@@ -114,7 +196,7 @@ public sealed class PanelBlockTests : IDisposable
         var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
 
         Assert.Empty(book.Known(["panel.example.com"]));
-        book.Learn("panel.example.com", [IPAddress.Parse("203.0.113.10")]);
+        Confirm(book, "panel.example.com", IPAddress.Parse("203.0.113.10"));
         book.Save();
         Assert.Single(new PanelAddressBook(BookFile, _clock, NullLogger.Instance).Known(["panel.example.com"]));
     }
@@ -134,9 +216,11 @@ public sealed class PanelBlockTests : IDisposable
         Assert.Equal("127.0.0.0/8,::/127,203.0.113.10,10.0.0.4", first.Targets.RemoteAddresses);
         Assert.Equal("8443,8444", first.Targets.RemotePorts);
 
-        var refreshed = await NextAsync();
-        Assert.Equal("127.0.0.0/8,::/127,203.0.113.10,198.51.100.9,10.0.0.4", refreshed.Targets.RemoteAddresses);
+        // The new address joins once the next lookup, five minutes later, answers it again.
+        Assert.Equal("127.0.0.0/8,::/127,203.0.113.10,10.0.0.4", (await NextAsync()).Targets.RemoteAddresses);
         Assert.Equal(["panel.example.com"], resolver.Hosts); // one lookup for both addresses
+        var refreshed = await AdvanceUntilNextAsync(_options.PollInterval);
+        Assert.Equal("127.0.0.0/8,::/127,203.0.113.10,198.51.100.9,10.0.0.4", refreshed.Targets.RemoteAddresses);
         Assert.Same(refreshed.Targets, keeper.Current);
         Assert.Equal([IPAddress.Parse("203.0.113.10"), IPAddress.Parse("198.51.100.9")],
             new PanelAddressBook(BookFile, _clock, NullLogger.Instance).Known(["panel.example.com"]));
@@ -184,6 +268,16 @@ public sealed class PanelBlockTests : IDisposable
         await NextAsync();
         Assert.Equal(2, resolver.Hosts.Count);
 
+        // Another one right after (rogue router advertisements): coalesced, and looked at 30 seconds after the first.
+        var requestedAt = _clock.GetUtcNow();
+        keeper.Request();
+        keeper.Request();
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+        Assert.False(_firewall.Blocks.Reader.TryRead(out _));
+        await AdvanceUntilNextAsync(_options.PollInterval);
+        Assert.Equal(3, resolver.Hosts.Count);
+        Assert.True(_clock.GetUtcNow() - requestedAt >= _options.MinRequestInterval);
+
         // The agent moved to another address: noticed at the next look at its configuration, without waiting for the timer.
         _panels = [new("https://agents.example.com:9443/"), new("https://panel.example.com:8443/")];
         var moved = await AdvanceUntilNextAsync(_options.PollInterval);
@@ -199,6 +293,7 @@ public sealed class PanelBlockTests : IDisposable
     [Fact]
     public async Task AFirewallThatFailsDoesNotStopTheRefreshes()
     {
+        Remember("panel.example.com", "203.0.113.10");
         var resolver = new Resolver(_ => [IPAddress.Parse("203.0.113.10")]);
         var keeper = Keeper(resolver);
         _firewall.Failures = 1;
@@ -222,6 +317,33 @@ public sealed class PanelBlockTests : IDisposable
         Assert.True(_firewall.Blocks.Reader.TryRead(out var ensured));
         Assert.Equal([s_second], ensured.Servers);
         Assert.Same(current, ensured.Targets);
+        Assert.Equal([s_second.ShortId], _firewall.Provisioned); // blocked even if a server of that id was deleted earlier
+    }
+
+    [Fact]
+    public async Task AnUnexpectedFailureNeitherFailsTheStartNorEndsTheRefreshes()
+    {
+        _panels = [new("panel/relative", UriKind.Relative)]; // no host to read: reading it throws
+        var reads = 0;
+        var looked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var keeper = new PanelBlockKeeper(_firewall, () =>
+            {
+                if (Interlocked.Increment(ref reads) == 2)
+                {
+                    looked.TrySetResult();
+                }
+
+                return _panels;
+            }, new PanelAddressBook(BookFile, _clock, NullLogger.Instance), _options, _clock, NullLogger<PanelBlockKeeper>.Instance,
+            new Resolver(_ => []).ResolveAsync, () => [IPAddress.Parse("10.0.0.4")]);
+
+        keeper.Start(() => [s_first], _stopping.Token); // logged, as the first refresh's failure is
+        await looked.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        _panels = [new("https://198.51.100.7:8443/")];
+
+        var refreshed = await AdvanceUntilNextAsync(_options.PollInterval);
+        Assert.Equal("127.0.0.0/8,::/127,198.51.100.7,10.0.0.4", refreshed.Targets.RemoteAddresses);
+        Assert.False(keeper.Completion.IsCompleted);
     }
 
     [Fact]
@@ -247,8 +369,16 @@ public sealed class PanelBlockTests : IDisposable
     private void Remember(string host, string address)
     {
         var book = new PanelAddressBook(BookFile, _clock, NullLogger.Instance);
-        book.Learn(host, [IPAddress.Parse(address)]);
+        Confirm(book, host, IPAddress.Parse(address));
         book.Save();
+    }
+
+    /// <summary>Two lookups five minutes apart answer the addresses: they are blocked from then on.</summary>
+    private void Confirm(PanelAddressBook book, string host, params IPAddress[] addresses)
+    {
+        book.Learn(host, addresses);
+        _clock.Advance(PanelAddressBook.ConfirmAfter);
+        book.Learn(host, addresses);
     }
 
     private async Task<(IReadOnlyCollection<ServerAccount> Servers, PanelTargets Targets)> NextAsync() =>
@@ -276,6 +406,8 @@ public sealed class PanelBlockTests : IDisposable
 
         public int Failures { get; set; }
 
+        public List<string> Provisioned { get; } = [];
+
         public Channel<(IReadOnlyCollection<ServerAccount> Servers, PanelTargets Targets)> Blocks { get; } =
             Channel.CreateUnbounded<(IReadOnlyCollection<ServerAccount>, PanelTargets)>();
 
@@ -293,6 +425,8 @@ public sealed class PanelBlockTests : IDisposable
 
             Blocks.Writer.TryWrite(([.. servers], targets));
         }
+
+        void IServerFirewall.Provisioned(string shortId) => Provisioned.Add(shortId);
 
         public void Remove(string shortId)
         {

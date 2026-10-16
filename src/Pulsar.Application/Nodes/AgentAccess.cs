@@ -330,9 +330,10 @@ public sealed partial class AgentAccess(
             return refused;
         }
 
+        // The keys the challenge request named are signed too: the node's record of them comes from here only.
         var signed = ProtocolCrypto.SignedData(AgentProtocol.Purposes.Authenticate,
             ProtocolCrypto.GuidBytes(challenge.NodeId.Value), ProtocolCrypto.GuidBytes(challenge.CredentialId),
-            challenge.Nonce, ProtocolCrypto.Utf8(challenge.PanelOrigin));
+            challenge.Nonce, ProtocolCrypto.Utf8(challenge.PanelOrigin), ProtocolCrypto.KeyIds(challenge.PinnedPanelKeys));
         if (request.Signature is null || !ProtocolCrypto.Verify(credential.PublicKey, signed, request.Signature))
         {
             LogAuthenticationRejected(challenge.NodeId, "invalid signature");
@@ -341,7 +342,7 @@ public sealed partial class AgentAccess(
 
         if (credential.Status == NodeCredentialStatus.Pending)
         {
-            if (await CompleteRotationAsync(node, credential, challenge.IssuedAt, SignedInAt(challenge), cancellationToken) is { } reason)
+            if (await CompleteRotationAsync(node, credential, challenge.IssuedAt, SignedInAt(challenge), challenge.PinnedPanelKeys, cancellationToken) is { } reason)
             {
                 LogAuthenticationRejected(node.Id, reason == CurrentSignedInAfterChallenge
                     ? "the current credential signed in after the pending credential's challenge was issued"
@@ -360,6 +361,7 @@ public sealed partial class AgentAccess(
             var now = SignedInAt(challenge);
             credential.Used(now);
             node.Seen(now);
+            RecordPinnedKeys(node, challenge.PinnedPanelKeys);
             for (var attempt = 0; ; attempt++)
             {
                 try
@@ -369,8 +371,8 @@ public sealed partial class AgentAccess(
                 }
                 catch (DbUpdateConcurrencyException) when (attempt < 2)
                 {
-                    // The node row changed meanwhile (the panel recorded its pinned keys): mark it seen on the fresh rows,
-                    // unless the credential was revoked in between.
+                    // The node row changed meanwhile (its agent reported in): mark it seen, with the keys it signed, on the
+                    // fresh rows, unless the credential was revoked in between.
                     await db.Entry(node).ReloadAsync(cancellationToken);
                     await db.Entry(credential).ReloadAsync(cancellationToken);
                     if (!credential.CanAuthenticate || !node.AcceptsConnections)
@@ -382,6 +384,10 @@ public sealed partial class AgentAccess(
 
                     credential.Used(now);
                     node.Seen(now);
+                    if (challenge.PinnedPanelKeys is { } pinned)
+                    {
+                        node.PanelKeysPinned(pinned);
+                    }
                 }
             }
 
@@ -431,8 +437,8 @@ public sealed partial class AgentAccess(
             return null;
         }
 
-        // The keys the agent named in this sign-in's challenge request, never the node's stored pins: a Hello writes those,
-        // and whoever holds a session token can say Hello.
+        // The keys the agent named in this sign-in's challenge request (and signed), never the node's stored pins: those
+        // are an earlier sign-in's.
         var grant = new SessionGrant(node.Id.Value, session.CredentialId, session.SessionId, session.ExpiresAt, nonce, clock.GetUtcNow());
         var signed = await keys.SignForAsync(AgentProtocol.Purposes.SessionGrant, ProtocolJson.Serialize(grant), challenge.PinnedPanelKeys, cancellationToken);
         if (signed is null)
@@ -626,7 +632,7 @@ public sealed partial class AgentAccess(
     /// arrives later was held back (a proxy that forged the refusal) and would activate a key the agent no longer has.
     /// </summary>
     private async Task<string?> CompleteRotationAsync(Node node, NodeCredential credential, DateTimeOffset challengeIssuedAt, DateTimeOffset now,
-        CancellationToken cancellationToken)
+        IReadOnlyList<string>? pinned, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
@@ -653,6 +659,7 @@ public sealed partial class AgentAccess(
 
         credential.Used(now);
         node.Seen(now);
+        RecordPinnedKeys(node, pinned);
         foreach (var old in previous)
         {
             old.Supersede(now);
@@ -683,6 +690,23 @@ public sealed partial class AgentAccess(
 
         LogRotated(node.Id, credential.Fingerprint);
         return null;
+    }
+
+    /// <summary>
+    /// Records the panel keys a sign-in's challenge request named, which the node key signed with it: after enrollment,
+    /// the only source of the node's record (docs/architecture/03, "Panel key rotation"). What a connection says (its
+    /// Hello, its answer to new keys) is not signed by the node key, and whoever holds a session token can say it.
+    /// </summary>
+    private void RecordPinnedKeys(Node node, IReadOnlyList<string>? pinned)
+    {
+        if (pinned is null || (node.PinnedPanelKeys ?? []).SequenceEqual(pinned.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal), StringComparer.Ordinal))
+        {
+            return;
+        }
+
+        audit.Record(AuditActions.Node.PanelKeysPinned, AuditOutcome.Success, NodeActor(node), new { before = node.PinnedPanelKeys, after = pinned })
+            .WithNode(node.Id).WithTarget("node", node.Id.ToString());
+        node.PanelKeysPinned(pinned);
     }
 
     private static bool VerifyRotationProof(NodeId nodeId, Guid credentialId, Guid sessionId, RotateCredentialRequest request)

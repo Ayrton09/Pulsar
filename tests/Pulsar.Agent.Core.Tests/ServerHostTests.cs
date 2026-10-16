@@ -1210,6 +1210,10 @@ public sealed class ServerHostTests : IAsyncDisposable
         public void Remove(string shortId)
         {
         }
+
+        public void Provisioned(string shortId)
+        {
+        }
     }
 
     private sealed class BrokenSnapshots : IVolumeSnapshots

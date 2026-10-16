@@ -30,7 +30,7 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
     private static readonly (int Type, string Name)[] s_profiles = [(1, "domain"), (2, "private"), (4, "public")];
     private static readonly SecurityIdentifier? s_self = WindowsIdentity.GetCurrent().User;
 
-    // The outbound blocks: one writer at a time, and none for a server once it is removed.
+    // The outbound blocks: one writer at a time, and none for a server once it is removed (until it is provisioned again).
     private readonly Lock _blockLock = new();
     private readonly Dictionary<string, AppliedBlock> _applied = new(StringComparer.Ordinal);
     private readonly HashSet<string> _removed = new(StringComparer.Ordinal);
@@ -137,6 +137,14 @@ public sealed partial class WindowsServerFirewall(bool enabled, ILogger<WindowsS
         }
 
         LogRulesRemoved(shortId);
+    }
+
+    public void Provisioned(string shortId)
+    {
+        lock (_blockLock)
+        {
+            _removed.Remove(shortId);
+        }
     }
 
     /// <summary>

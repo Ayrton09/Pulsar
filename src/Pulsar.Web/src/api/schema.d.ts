@@ -4742,7 +4742,9 @@ export interface paths {
         put?: never;
         post: {
             parameters: {
-                query?: never;
+                query?: {
+                    force?: boolean;
+                };
                 header?: never;
                 path: {
                     keyId: string;
@@ -11526,6 +11528,7 @@ export interface components {
             nodesOutdated: number;
             /** Format: int32 */
             nodesUnknown: number;
+            nodesToReEnroll: string[];
         };
         /** @enum {unknown} */
         PanelKeyTrust: "unknown" | "current" | "outdated";
