@@ -1825,5 +1825,34 @@
     "requireConfirm_other": "{{count}} nodes still connect without a certificate. Their sessions end now; agents that can move go to the agents' address, older ones cannot connect until they are updated. Require certificates?",
     "stopRequiring": "Stop requiring them",
     "stopRequiringConfirm": "Let agents connect to the main address with the session token alone again?"
+  },
+  "sftp": {
+    "title": "SFTP access",
+    "hint": "Reach the files of your servers with an SFTP client (WinSCP, FileZilla, sftp), with your panel user name and password.",
+    "disabled": "SFTP is turned off on this panel. An administrator can turn it on.",
+    "address": "Address",
+    "fingerprint": "Host key fingerprint (SHA256)",
+    "fingerprintHint": "The first time you connect, your client shows the server's fingerprint: connect only if it is exactly this one.",
+    "twoFactor": "With two-factor authentication on, the client asks for the code from your authenticator app after the password. Recovery codes do not work over SFTP.",
+    "serverRoot": "Add a dot and a server's short id to your user name to make that server's folder the root.",
+    "copy": "Copy {{what}}",
+    "copyServer": "Copy the server's SFTP address",
+    "serverHint": "Connect with SFTP:"
+  },
+  "sftpSettings": {
+    "title": "SFTP",
+    "description": "The panel hosts an SFTP server so users can reach their servers' files with an SFTP client. Remember to open its port in the firewall.",
+    "enabled": "SFTP is on",
+    "port": "Port",
+    "portHint": "1 to 65535, not the panel's or the agents' port.",
+    "publicHost": "Public host",
+    "publicHostHint": "The host name or IP address users are told to connect to. Empty: the host they reach the panel by.",
+    "listening": "Listening",
+    "notListening": "Not listening",
+    "notListeningHint": "SFTP is on but not listening: see the panel log for why.",
+    "off": "Off",
+    "save": "Save",
+    "offConfirm": "Turn SFTP off? Every SFTP connection ends now.",
+    "portConfirm": "Change the SFTP port? Every SFTP connection ends now, and clients have to use the new port."
   }
 }

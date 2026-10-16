@@ -23,6 +23,7 @@ import {
   writeFile,
   type FileEntry,
 } from './api';
+import { SftpServerHint } from '../sftp/SftpServerHint';
 import { FileEditor } from './FileEditor';
 import { baseName, breadcrumbs, joinPath, nameProblem, parentPath, visibleName } from './paths';
 
@@ -70,17 +71,20 @@ export function FilesTab({ details }: { details: ServerDetails }) {
     );
   }
   return (
-    <FileBrowser
-      serverId={server.id}
-      path={path}
-      canEdit={canEdit}
-      // Operations that rewrite files (provision, install, update, restore, delete): the node refuses changes meanwhile.
-      // A backup only reads them.
-      busy={server.activeOperation !== null && server.activeOperation.type !== 'backupCreate'}
-      connected={server.nodeConnected}
-      onOpenFolder={(folder) => go({ path: folder })}
-      onOpenFile={(target) => go({ file: target })}
-    />
+    <>
+      <FileBrowser
+        serverId={server.id}
+        path={path}
+        canEdit={canEdit}
+        // Operations that rewrite files (provision, install, update, restore, delete): the node refuses changes meanwhile.
+        // A backup only reads them.
+        busy={server.activeOperation !== null && server.activeOperation.type !== 'backupCreate'}
+        connected={server.nodeConnected}
+        onOpenFolder={(folder) => go({ path: folder })}
+        onOpenFile={(target) => go({ file: target })}
+      />
+      <SftpServerHint shortId={server.shortId} />
+    </>
   );
 }
 
