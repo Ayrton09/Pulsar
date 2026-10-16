@@ -43,6 +43,8 @@ public interface IPulsarDbContext
 
     DbSet<AgentTransportSettings> AgentTransportSettings { get; }
 
+    DbSet<SftpSettings> SftpSettings { get; }
+
     DbSet<GameTemplate> GameTemplates { get; }
 
     DbSet<Server> Servers { get; }

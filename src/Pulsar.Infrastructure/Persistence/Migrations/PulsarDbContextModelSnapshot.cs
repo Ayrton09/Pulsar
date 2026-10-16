@@ -19,7 +19,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -2176,6 +2176,54 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.ToTable("server_variables", null, t =>
                         {
                             t.HasCheckConstraint("ck_server_variables_one_value", "(value IS NULL) <> (protected_value IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Servers.SftpSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<byte[]>("HostPublicKey")
+                        .HasColumnType("bytea")
+                        .HasColumnName("host_public_key");
+
+                    b.Property<int>("Port")
+                        .HasColumnType("integer")
+                        .HasColumnName("port");
+
+                    b.Property<byte[]>("ProtectedHostKey")
+                        .HasColumnType("bytea")
+                        .HasColumnName("protected_host_key");
+
+                    b.Property<string>("PublicHost")
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)")
+                        .HasColumnName("public_host");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_sftp_settings");
+
+                    b.ToTable("sftp_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_sftp_settings_port", "port BETWEEN 1 AND 65535");
+
+                            t.HasCheckConstraint("ck_sftp_settings_singleton", "id = 1");
                         });
                 });
 

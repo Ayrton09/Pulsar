@@ -45,6 +45,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<AgentTransportSettings> AgentTransportSettings => Set<AgentTransportSettings>();
 
+    public DbSet<SftpSettings> SftpSettings => Set<SftpSettings>();
+
     public DbSet<GameTemplate> GameTemplates => Set<GameTemplate>();
 
     public DbSet<Server> Servers => Set<Server>();

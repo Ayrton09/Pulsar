@@ -26,6 +26,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
     private const uint AddFile = 0x0002;
     private const uint AddSubdirectory = 0x0004;
     private const uint ReadAttributes = 0x0080;
+    private const uint WriteAttributes = 0x0100;
     private const uint DeleteAccess = 0x00010000;
     private const uint Synchronize = 0x00100000;
     private const uint GenericRead = 0x80000000;
@@ -49,6 +50,48 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             using var directory = root.OpenDirectory(path, ListDirectory | ReadAttributes | Synchronize);
             return ServerFileRules.Listing(Enumerate(directory, path));
         }, write: false);
+    }
+
+    public FileListResult ListPage(ProvisionedServer server, string path, string? after)
+    {
+        ServerFileRules.Validate(path, allowRoot: true);
+        return Run(server, root =>
+        {
+            using var directory = root.OpenDirectory(path, ListDirectory | ReadAttributes | Synchronize);
+            return ServerFileRules.Page(Enumerate(directory, path), path, after);
+        }, write: false);
+    }
+
+    public FileEntryResult Stat(ProvisionedServer server, string path)
+    {
+        ServerFileRules.Validate(path);
+        return Run(server, root => Existing(root, path) ?? throw NotFound(path), write: false);
+    }
+
+    public FileEntryResult SetModified(ProvisionedServer server, string path, DateTimeOffset modifiedAt)
+    {
+        ServerFileRules.Validate(path);
+        return Run(server, root =>
+        {
+            using var entry = root.TryOpen(path, WriteAttributes | ReadAttributes | Synchronize) ?? throw NotFound(path);
+            if (Describe(entry.Handle).Kind == FileEntryKind.Link)
+            {
+                throw new FileManagerException(FileErrors.Link, $"'{path}' is a junction or link.");
+            }
+
+            // Zero leaves a time as it is: only the last write changes.
+            var basic = new FILE_BASIC_INFO { LastWriteTime = ServerFileRules.FileTime(modifiedAt) };
+            unsafe
+            {
+                if (!PInvoke.SetFileInformationByHandle((HANDLE)entry.Handle.DangerousGetHandle(), FILE_INFO_BY_HANDLE_CLASS.FileBasicInfo, &basic,
+                    (uint)sizeof(FILE_BASIC_INFO)))
+                {
+                    throw Win32Failure(path);
+                }
+            }
+
+            return Result(path, Describe(entry.Handle));
+        });
     }
 
     public void CreateDirectory(ProvisionedServer server, string path) => MakeDirectories(server, path, mustBeNew: true);
@@ -140,14 +183,23 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         });
     }
 
-    public void Move(ProvisionedServer server, string path, string destination)
+    public void Move(ProvisionedServer server, string path, string destination, bool replace = false)
     {
         ServerFileRules.CheckMove(path, destination);
         Run(server, root =>
         {
             using var source = root.TryOpen(path, DeleteAccess | ReadAttributes | Synchronize) ?? throw NotFound(path);
             using var directory = root.OpenDirectory(ServerFilePath.Parent(destination), ListDirectory | AddFile | AddSubdirectory | ReadAttributes | Synchronize);
-            Rename(source.Handle, directory, ServerFilePath.Name(destination), replace: false, destination);
+
+            // Only a file found there now is replaced: anything that appears meanwhile makes the rename fail as "exists",
+            // and Windows never renames over a directory, whatever was checked.
+            var existing = replace ? Existing(root, destination) : null;
+            if (existing is not null)
+            {
+                ServerFileRules.CheckReplace(destination, Describe(source.Handle).Kind, existing.Entry.Kind);
+            }
+
+            Rename(source.Handle, directory, ServerFilePath.Name(destination), replace: existing is not null, destination);
             return 0;
         });
     }
@@ -194,7 +246,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         }, write: false);
     }
 
-    public PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion)
+    public PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion, bool sizeIsLimit = false)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(size);
         ServerFileRules.Validate(path);
@@ -208,12 +260,45 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
                 var temporary = ServerFilePath.Join(parent, ServerFileRules.TemporaryName());
                 BeforeCreate?.Invoke();
                 var handle = root.Create(directory, temporary, GenericWrite | DeleteAccess | ReadAttributes | Synchronize);
-                return new Pending(this, server, path, size, overwrite, expectedVersion, directory, handle);
+                return new Pending(this, server, path, sizeIsLimit ? null : size, overwrite, expectedVersion, directory, handle);
             }
             catch
             {
                 directory.Dispose();
                 throw;
+            }
+        });
+    }
+
+    public PendingFile Append(ProvisionedServer server, string path, string? expectedVersion)
+    {
+        ServerFileRules.Validate(path);
+        return Run(server, root =>
+        {
+            using var directory = root.OpenDirectory(ServerFilePath.Parent(path), ListDirectory | AddFile | ReadAttributes | Synchronize);
+            var existing = Existing(root, path);
+            if (existing is not null || expectedVersion is not null)
+            {
+                ServerFileRules.CheckTarget(path, existing, overwrite: true, expectedVersion);
+            }
+
+            if (existing is null)
+            {
+                BeforeCreate?.Invoke();
+                return new Appending(path, root.Create(directory, path, GenericWrite | DeleteAccess | ReadAttributes | Synchronize));
+            }
+
+            var opened = root.TryOpen(path, GenericWrite | ReadAttributes | Synchronize, dataAccess: true) ?? throw NotFound(path);
+            try
+            {
+                // Checked again on the handle written through: the name may lead elsewhere by now.
+                var info = Describe(opened.Handle);
+                ServerFileRules.CheckTarget(path, Result(path, info), overwrite: true, expectedVersion);
+                return new Appending(path, opened.Detach());
+            }
+            finally
+            {
+                opened.Dispose();
             }
         });
     }
@@ -894,22 +979,27 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         private readonly WindowsServerFileManager _owner;
         private readonly ProvisionedServer _server;
         private readonly string _path;
-        private readonly long _size;
+        private readonly long? _size;
         private readonly bool _overwrite;
         private readonly string? _expectedVersion;
         private readonly SafeFileHandle _directory;
         private readonly FileStream _stream;
         private bool _committed;
 
-        public Pending(WindowsServerFileManager owner, ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion,
+        /// <param name="size">The exact length expected; null: whatever is written (a streamed upload, bounded by the caller).</param>
+        public Pending(WindowsServerFileManager owner, ProvisionedServer server, string path, long? size, bool overwrite, string? expectedVersion,
             SafeFileHandle directory, SafeFileHandle handle)
         {
             (_owner, _server, _path, _size, _overwrite, _expectedVersion, _directory) = (owner, server, path, size, overwrite, expectedVersion, directory);
             _stream = new FileStream(handle, FileAccess.Write, bufferSize: 0);
             try
             {
-                // Reserves the space now: a full disk fails before the transfer, not after most of it.
-                _stream.SetLength(size);
+                // Reserves the space now: a full disk fails before the transfer, not after most of it. A streamed upload
+                // has no length to reserve.
+                if (size is { } length)
+                {
+                    _stream.SetLength(length);
+                }
             }
             catch (IOException ex)
             {
@@ -922,7 +1012,7 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
 
         public override FileEntryResult Commit()
         {
-            if (_stream.Position != _size)
+            if (_size is not null && _stream.Position != _size)
             {
                 throw new FileManagerException(FileErrors.TransferFailed, $"Received {_stream.Position} of {_size} bytes.");
             }
@@ -975,6 +1065,47 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
             }
 
             _stream.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// A file written at its end through the handle opened and checked as the server's account: what was written stays,
+    /// committed or not.
+    /// </summary>
+    private sealed class Appending : PendingFile
+    {
+        private readonly string _path;
+        private readonly FileStream _stream;
+
+        public Appending(string path, SafeFileHandle handle)
+        {
+            _path = path;
+            try
+            {
+                _stream = new FileStream(handle, FileAccess.Write, bufferSize: 0);
+                _stream.Seek(0, SeekOrigin.End);
+            }
+            catch
+            {
+                handle.Dispose();
+                throw;
+            }
+        }
+
+        public override Stream Content => _stream;
+
+        public override FileEntryResult Commit()
+        {
+            _stream.Flush();
+            return Result(_path, Describe(_stream.SafeFileHandle));
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _stream.Dispose();
+            }
         }
     }
 }

@@ -166,6 +166,10 @@ public sealed class Server
 
     public static string NewShortId() => RandomNumberGenerator.GetString(ShortIdAlphabet, ShortIdLength);
 
+    /// <summary>Whether <paramref name="value"/> has the shape of a short id (it may name no server).</summary>
+    public static bool IsShortId(string? value) =>
+        value is { Length: ShortIdLength } && value.All(c => ShortIdAlphabet.Contains(c, StringComparison.Ordinal));
+
     public static Result<Server> Create(NodeId nodeId, TemplateId templateId, string name, string? description, string shortId, DateTimeOffset now)
     {
         var trimmed = name?.Trim() ?? string.Empty;
@@ -180,7 +184,7 @@ public sealed class Server
             return ServerErrors.DescriptionTooLong;
         }
 
-        if (shortId is not { Length: ShortIdLength } || shortId.Any(c => !ShortIdAlphabet.Contains(c, StringComparison.Ordinal)))
+        if (!IsShortId(shortId))
         {
             throw new ArgumentException("Invalid short id.", nameof(shortId));
         }

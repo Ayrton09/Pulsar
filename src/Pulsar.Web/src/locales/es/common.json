@@ -399,6 +399,9 @@
       },
       "agent_transport": {
         "changed": "Cambió cómo se conectan los agentes"
+      },
+      "sftp": {
+        "settings_changed": "Cambió la configuración de SFTP"
       }
     }
   },
@@ -753,6 +756,10 @@
     },
     "agent_transport": {
       "no_agents_endpoint": "El panel no tiene dirección de agentes: los agentes no tendrían adónde ir. Primero agregá el endpoint de Kestrel \"Agents\"."
+    },
+    "sftp": {
+      "invalid_port": "El puerto SFTP tiene que estar entre 1 y 65535.",
+      "invalid_host": "Indicá un nombre de host o una dirección IP, sin esquema, puerto ni ruta."
     }
   },
   "account": {
@@ -1818,5 +1825,34 @@
     "requireConfirm_other": "{{count}} nodos todavía se conectan sin certificado. Sus sesiones se cierran ahora; los agentes que pueden pasarse van a la dirección de agentes y los viejos no se conectan hasta que los actualices. ¿Exigir certificados?",
     "stopRequiring": "Dejar de exigirlos",
     "stopRequiringConfirm": "¿Permitir otra vez que los agentes se conecten a la dirección principal solo con el token de sesión?"
+  },
+  "sftp": {
+    "title": "Acceso por SFTP",
+    "hint": "Llegá a los archivos de tus servidores con un cliente SFTP (WinSCP, FileZilla, sftp), con tu usuario y contraseña del panel.",
+    "disabled": "SFTP está apagado en este panel. Un administrador puede encenderlo.",
+    "address": "Dirección",
+    "fingerprint": "Huella de la clave del servidor (SHA256)",
+    "fingerprintHint": "La primera vez que te conectás, tu cliente muestra la huella del servidor: conectate solo si es exactamente esta.",
+    "twoFactor": "Con la autenticación en dos pasos activada, el cliente pide el código de tu app de autenticación después de la contraseña. Los códigos de recuperación no sirven por SFTP.",
+    "serverRoot": "Agregá un punto y el id corto de un servidor a tu usuario para que la carpeta de ese servidor sea la raíz.",
+    "copy": "Copiar {{what}}",
+    "copyServer": "Copiar la dirección SFTP del servidor",
+    "serverHint": "Conectate por SFTP:"
+  },
+  "sftpSettings": {
+    "title": "SFTP",
+    "description": "El panel aloja un servidor SFTP para que los usuarios lleguen a los archivos de sus servidores con un cliente SFTP. Acordate de abrir su puerto en el firewall.",
+    "enabled": "SFTP está encendido",
+    "port": "Puerto",
+    "portHint": "De 1 a 65535, distinto del puerto del panel y del de los agentes.",
+    "publicHost": "Host público",
+    "publicHostHint": "El nombre de host o la IP a la que se les indica conectarse. Vacío: el host por el que llegan al panel.",
+    "listening": "Escuchando",
+    "notListening": "No escucha",
+    "notListeningHint": "SFTP está encendido pero no escucha: el log del panel dice por qué.",
+    "off": "Apagado",
+    "save": "Guardar",
+    "offConfirm": "¿Apagar SFTP? Todas las conexiones SFTP terminan ahora.",
+    "portConfirm": "¿Cambiar el puerto de SFTP? Todas las conexiones SFTP terminan ahora y los clientes tienen que usar el puerto nuevo."
   }
 }

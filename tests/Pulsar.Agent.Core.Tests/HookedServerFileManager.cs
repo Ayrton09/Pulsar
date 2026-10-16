@@ -15,6 +15,12 @@ internal sealed class HookedServerFileManager(IServerFileManager inner) : IServe
 
     public FileListResult List(ProvisionedServer server, string path) => inner.List(server, path);
 
+    public FileListResult ListPage(ProvisionedServer server, string path, string? after) => inner.ListPage(server, path, after);
+
+    public FileEntryResult Stat(ProvisionedServer server, string path) => inner.Stat(server, path);
+
+    public FileEntryResult SetModified(ProvisionedServer server, string path, DateTimeOffset modifiedAt) => inner.SetModified(server, path, modifiedAt);
+
     public void CreateDirectory(ProvisionedServer server, string path) => inner.CreateDirectory(server, path);
 
     public void EnsureDirectory(ProvisionedServer server, string path) => inner.EnsureDirectory(server, path);
@@ -44,7 +50,7 @@ internal sealed class HookedServerFileManager(IServerFileManager inner) : IServe
         return changed;
     }
 
-    public void Move(ProvisionedServer server, string path, string destination) => inner.Move(server, path, destination);
+    public void Move(ProvisionedServer server, string path, string destination, bool replace = false) => inner.Move(server, path, destination, replace);
 
     public void Delete(ProvisionedServer server, string path)
     {
@@ -62,6 +68,8 @@ internal sealed class HookedServerFileManager(IServerFileManager inner) : IServe
         return OnOpened is { } replace ? new OpenedFile(replace(path, opened.Content), opened.Info) : opened;
     }
 
-    public PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion) =>
-        inner.Create(server, path, size, overwrite, expectedVersion);
+    public PendingFile Create(ProvisionedServer server, string path, long size, bool overwrite, string? expectedVersion, bool sizeIsLimit = false) =>
+        inner.Create(server, path, size, overwrite, expectedVersion, sizeIsLimit);
+
+    public PendingFile Append(ProvisionedServer server, string path, string? expectedVersion) => inner.Append(server, path, expectedVersion);
 }

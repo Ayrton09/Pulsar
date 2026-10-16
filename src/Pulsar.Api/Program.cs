@@ -13,6 +13,7 @@ using Pulsar.Api.Notifications;
 using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
 using Pulsar.Api.Servers;
+using Pulsar.Api.Sftp;
 using Pulsar.Application;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
@@ -142,6 +143,7 @@ try
     api.MapDatabaseEndpoints();
     api.MapServerScheduleEndpoints();
     api.MapNotificationEndpoints();
+    api.MapSftpEndpoints();
 
     // Agent protocol: its own authentication, never the browser's (docs/architecture/03).
     app.MapAgentEndpoints();

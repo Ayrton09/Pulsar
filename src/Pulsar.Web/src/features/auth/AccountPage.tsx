@@ -11,6 +11,7 @@ import { useChangePassword, useCurrentUser, useUpdateProfile } from './api';
 import { MIN_PASSWORD_LENGTH } from './SetupPage';
 import { ApiKeysSection } from './ApiKeys';
 import { TwoFactorSection } from './TwoFactor';
+import { SftpAccessSection } from '../sftp/SftpAccessSection';
 
 const profileSchema = z.object({
   displayName: z.string().trim().max(128, 'validation.tooLong'),
@@ -38,6 +39,7 @@ export function AccountPage() {
         <ProfileForm />
         <PasswordForm />
         <TwoFactorSection />
+        <SftpAccessSection />
         <ApiKeysSection />
       </div>
     </>

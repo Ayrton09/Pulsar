@@ -18,6 +18,7 @@ import { EnrollmentTokensSection } from './EnrollmentTokensSection';
 import { nodeSchema, type NodeFormValues } from './nodeForm';
 import { AgentTransportSection } from './AgentTransportSection';
 import { PanelKeysSection } from './PanelKeysSection';
+import { SftpSettingsSection } from '../sftp/SftpSettingsSection';
 
 export function NodesPage() {
   const { t } = useTranslation();
@@ -109,6 +110,7 @@ export function NodesPage() {
       {can(me, Permission.NodeCredentialsManage) && <EnrollmentTokensSection />}
       {can(me, Permission.SettingsManage) && <PanelKeysSection />}
       {can(me, Permission.SettingsManage) && <AgentTransportSection />}
+      {can(me, Permission.SettingsManage) && <SftpSettingsSection />}
       {creating && <CreateNodeDialog onClose={() => setCreating(false)} />}
     </>
   );

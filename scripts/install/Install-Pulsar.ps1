@@ -54,6 +54,9 @@ param(
     # A second HTTPS port for agents only: there they present their node key as a TLS client certificate, and the panel
     # moves the agents it knows there on its own. Browsers keep using -Port. 0 (the default): none.
     [ValidateRange(0, 65535)] [int] $AgentsPort = 0,
+    # The port of the panel's SFTP server (users reach their servers' files with an SFTP client). Another port than
+    # -Port and -AgentsPort. An administrator can change it later in the panel (Nodes > SFTP).
+    [ValidateRange(1, 65535)] [int] $SftpPort = 2022,
     # Extra names for the self-signed certificate (the machine's name, its DNS name and localhost are always in it).
     # Letters, digits, '.', '-' and '_' (a leading '*.' for a wildcard), compared as written: ignoring case, the Kelvin
     # sign would pass for a 'k'.
@@ -66,10 +69,10 @@ param(
     [SecureString] $AdminPassword,
     # A backup folder made by Backup-Pulsar.ps1 (with -Mode Panel).
     [string] $RestoreFrom,
-    # Leaves the Windows Firewall alone (by default the panel's port is opened for the panel's program, on Domain and
-    # Private networks).
+    # Leaves the Windows Firewall alone (by default the panel's ports (HTTPS, agents, SFTP) are opened for the panel's
+    # program, on Domain and Private networks).
     [switch] $NoFirewall,
-    # Opens the panel's port on Public networks too.
+    # Opens the panel's ports on Public networks too.
     [switch] $FirewallPublic,
 
     # --- Agent ---
@@ -865,6 +868,7 @@ function Write-PanelConfig([hashtable] $settings) {
 function Install-Panel {
     if (Test-Service $PanelService) { throw 'The panel is already installed on this machine. Use -Update to update it, or -Uninstall first.' }
     if ($AgentsPort -and $AgentsPort -eq $Port) { throw '-AgentsPort must be another port than -Port: browsers must never be asked for a client certificate.' }
+    if ($SftpPort -eq $Port -or ($AgentsPort -and $SftpPort -eq $AgentsPort)) { throw '-SftpPort must be another port than -Port and -AgentsPort.' }
     $backup = $null
     if ($RestoreFrom) {
         $backup = @{
@@ -921,6 +925,8 @@ function Install-Panel {
             $AgentsPort = [int]($old.Kestrel.Endpoints.Agents.Url -replace '^.*:(\d+)/?$', '$1')
         }
         $keyRing = @{ Path = (Join-Path $PanelData 'keyring\keyring.pfx'); Password = $old.DataProtection.CertificatePassword }
+        # The SFTP port is a panel setting kept in the database (restored with it): -SftpPort only names the port to open.
+        if ($SftpPort -eq $Port -or ($AgentsPort -and $SftpPort -eq $AgentsPort)) { throw "-SftpPort must be another port than the backup's panel and agents' ports ($Port, $AgentsPort)." }
     }
     else {
         $certificate = New-PanelCertificate
@@ -955,6 +961,10 @@ function Install-Panel {
             $null = New-NetFirewallRule -Name 'Pulsar-Panel-Agents' -DisplayName 'Pulsar Panel (agents)' -Direction Inbound `
                 -Protocol TCP -LocalPort $AgentsPort -Program $exe -Action Allow -Profile $profiles
         }
+        Write-Step "Allowing the SFTP port ($SftpPort) in Windows Firewall ($($profiles -join ', ') networks)"
+        Get-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+        $null = New-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -DisplayName 'Pulsar Panel (SFTP)' -Direction Inbound `
+            -Protocol TCP -LocalPort $SftpPort -Program $exe -Action Allow -Profile $profiles
     }
 
     Invoke-PanelMigrations
@@ -964,7 +974,7 @@ function Install-Panel {
     $client = [PulsarInstallerClient]::new("https://localhost:$Port", $certificate.Thumbprint)
     try {
         Wait-PanelReady $client
-        if ($backup) { return @{ Certificate = $certificate; Node = $null } }
+        if ($backup) { return @{ Certificate = $certificate; Node = $null; Sftp = $null } }
 
         Write-Step "Creating the administrator '$AdminUserName'"
         $null = Invoke-Panel $client GET '/api/v1/auth/session'
@@ -978,11 +988,29 @@ function Install-Panel {
             $null = Invoke-Panel $client GET '/api/v1/auth/session'
             $node = Invoke-Panel $client POST '/api/v1/nodes' @{ name = $env:COMPUTERNAME }
         }
+
+        # The SFTP server starts on its default port (2022); another port is an administrator's setting in the database.
+        $null = Invoke-Panel $client GET '/api/v1/auth/session'
+        if ($SftpPort -ne 2022) {
+            Write-Step "Setting the SFTP port to $SftpPort"
+            $null = Invoke-Panel $client PUT '/api/v1/sftp/settings' @{ enabled = $true; port = $SftpPort; publicHost = $null }
+        }
+        $sftp = Invoke-Panel $client GET '/api/v1/sftp'
     }
     finally {
         $client.Dispose()
     }
-    return @{ Certificate = $certificate; Node = $node }
+    return @{ Certificate = $certificate; Node = $node; Sftp = $sftp }
+}
+
+function Write-SftpSummary($sftp) {
+    Write-Host "SFTP: port $SftpPort (every user's panel user name and password; the panel's Account page shows their address)."
+    if ($sftp -and $sftp.hostKeyFingerprint) {
+        Write-Host "The SFTP host key, to check at the first connection: $($sftp.hostKeyFingerprint)"
+    }
+    else {
+        Write-Host "The SFTP host key's fingerprint is in the panel's Account page (SFTP access)."
+    }
 }
 
 function Update-Panel {
@@ -1001,6 +1029,7 @@ function Uninstall-Panel {
     $null = Invoke-Native $Sc delete $PanelService
     Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     Get-NetFirewallRule -Name 'Pulsar-Panel-Agents' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    Get-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     Start-Sleep -Seconds 2
     Remove-Item $PanelDir -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -1110,6 +1139,7 @@ switch ($Mode) {
             Write-Host "Its certificate is self-signed: browsers warn about it until it is trusted. Nodes need it trusted: copy"
             Write-Host "$($installed.Certificate.Cer) to each node and pass it with -TrustCertificate."
         }
+        Write-SftpSummary $installed.Sftp
     }
     'AllInOne' {
         $installed = Install-Panel
@@ -1123,5 +1153,6 @@ switch ($Mode) {
         Write-Host ''
         Write-Host "Pulsar is running: open https://localhost:$Port and sign in as '$AdminUserName'." -ForegroundColor Green
         Write-Host "From other computers: https://$($env:COMPUTERNAME):$Port (they warn about the self-signed certificate unless they trust $($certificate.Cer))."
+        Write-SftpSummary $installed.Sftp
     }
 }

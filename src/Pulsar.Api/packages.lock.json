@@ -11,6 +11,12 @@
           "Microsoft.OpenApi": "[2.12.2, 3.0.0)"
         }
       },
+      "Microsoft.DevTunnels.Ssh": {
+        "type": "Direct",
+        "requested": "[3.12.42, )",
+        "resolved": "3.12.42",
+        "contentHash": "ronW7CALKMWoJVgCiE5tF+u6zVE1SWQFZUblO02r3iIu3//97wtSy+HWRuJWMLuS7iJ1TlqDE0lmYYW+VkpOHw=="
+      },
       "Microsoft.Extensions.Hosting.WindowsServices": {
         "type": "Direct",
         "requested": "[10.0.13, )",

@@ -11,6 +11,7 @@
   <ItemGroup>
     <!-- The file manager contract, shared with the portable implementation's tests. -->
     <Compile Include="..\Pulsar.Agent.Core.Tests\ServerFileManagerContract.cs" Link="ServerFileManagerContract.cs" />
+    <Compile Include="..\Pulsar.Agent.Core.Tests\ServerFileManagerSftpContract.cs" Link="ServerFileManagerSftpContract.cs" />
   </ItemGroup>
 
   <ItemGroup>

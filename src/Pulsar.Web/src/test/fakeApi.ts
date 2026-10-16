@@ -14,6 +14,15 @@ export function problem(status: number, code: string, title = code): Response {
   return json({ status, title, code }, status);
 }
 
+/** The SFTP server, turned off: what tests about something else get. */
+const sftpOff = {
+  enabled: false,
+  host: 'panel.example.com',
+  port: 2022,
+  hostKeyFingerprint: 'SHA256:off',
+  userName: 'admin',
+};
+
 export const adminUser: Schemas['CurrentUserResponse'] = {
   id: '0192f1a0-0000-7000-8000-000000000001',
   userName: 'admin',
@@ -43,7 +52,11 @@ export function fakeApi(routes: Record<string, Handler>) {
         ? () => json(emptyHistory(url.searchParams.get('range')))
         : key === 'GET /api/v1/enrollment-tokens'
           ? () => json([])
-          : undefined);
+          : key === 'GET /api/v1/sftp'
+            ? () => json(sftpOff)
+            : key === 'GET /api/v1/sftp/settings'
+              ? () => json({ ...sftpOff, publicHost: null, listening: false })
+              : undefined);
     if (!handler) {
       throw new Error(`Unexpected request in test: ${key}`);
     }

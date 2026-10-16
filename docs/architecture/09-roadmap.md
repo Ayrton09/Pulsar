@@ -271,7 +271,7 @@ A second read of the whole codebase in ten areas, the UI pass and Phase 16 inclu
   - Windows Sandbox, the agent installed as a service with a real Counter-Strike: Source server: 100 checks. srcds became ready over RCON and stopped over RCON while it ran as its own account, so the RCON peer check holds in production. The browsers' port asks for no certificate.
   - The Hyper-V VM with a virtual TPM: 91 checks (see Phase 16).
 
-## Phase 17 — SFTP access to server files · *next* (essential, at the user's request)
+## Phase 17 — SFTP access to server files · *in progress* (essential, at the user's request)
 
 Like AMP, TCAdmin or Pterodactyl, every server's files can be reached with an SFTP client (WinSCP, FileZilla, Windows' own `sftp`), not only through the web file manager. Uploading many maps or mods and syncing folders needs this.
 
@@ -280,6 +280,13 @@ Like AMP, TCAdmin or Pterodactyl, every server's files can be reached with an SF
 - They see only their own servers: those where they hold `server.files.view`.
 - No plain FTP: it sends passwords in clear.
 - (2026-10-16) SFTP is on by default (the installer opens its port; Settings can turn it off); SSH public keys come in a later phase; names with invisible format characters (such as U+202E) are left out of SFTP listings and counted, since an SFTP client cannot show them marked as the web does.
+
+**Implemented so far** (steps A to C, on the branch `feat/phase17-sftp`):
+- The agent protocol and the panel's file API for SFTP (paged listings, stat, downloads from an offset, streamed uploads with append, replacing rename, times).
+- The SFTP server in the panel (`src/Pulsar.Api/Sftp`, docs/guides/sftp.md): password and two-factor sign-in with the browser's rules, own servers only, audit, limits, the host key kept encrypted in the database, settings (on or off, port, public host) at runtime.
+- The web: an SFTP access section on the account page (address, copy buttons, host key fingerprint, two-factor note), a connect hint in a server's Files tab, and the administrator's settings in Nodes → SFTP (confirmation before turning it off or changing the port).
+- The installer: `-SftpPort` (2022 by default) with its own firewall rule `Pulsar-Panel-SFTP`, removed at an uninstall; it prints the host key fingerprint at the end.
+- Still to do: SSH public keys (a later phase, as decided), the SSH.NET tests against the real agent and the Sandbox run with the SFTP port open (Done when 4 to 9 are verified by them).
 
 **Design** (the spike, docs/spikes/0003-sftp-server.md, confirmed `Microsoft.DevTunnels.Ssh` with an SFTP v3 handler of our own: Windows `sftp`, OpenSSH and SSH.NET sign in by keyboard-interactive, one prompt per round, password then the two-factor code; shell, exec and forwarding are refused):
 - *Where it runs: the panel, one port for every node.*

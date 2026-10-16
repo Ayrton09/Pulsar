@@ -283,4 +283,51 @@ public sealed class FileTransfersTests
 
         Assert.False(await agentDone);
     }
+
+    [Fact]
+    public void AStreamedUploadHasALimitAndCountsAsAnyOtherUpload()
+    {
+        var transfers = new FileTransfers(_clock, new FileTransferLimits(PerNode: 4, PerUser: 1));
+        var alice = new UserId(Guid.NewGuid());
+        using var content = new MemoryStream();
+
+        using var upload = transfers.BeginStreamedUpload(s_node, alice, content, 1024, apiKey: Guid.Empty)!;
+        Assert.True(upload.Streamed);
+        Assert.Equal(1024, upload.Size);
+        Assert.Equal(alice, upload.User);
+        Assert.Equal(Guid.Empty, upload.ApiKey);
+        Assert.Null(transfers.BeginStreamedUpload(s_node, alice, content, 1024));
+        Assert.Null(transfers.BeginUpload(s_node, alice, content, 1));
+        using var known = transfers.BeginUpload(s_node, null, content, 1)!;
+        Assert.False(known.Streamed);
+        Assert.Equal(2, transfers.Running(s_node));
+
+        upload.Progressed(1000);
+        upload.Progressed(24);
+        Assert.Equal(1024, upload.BytesSent);
+        Assert.Throws<ArgumentOutOfRangeException>(() => transfers.BeginStreamedUpload(s_node, null, content, -1));
+    }
+
+    [Fact]
+    public void AStreamedUploadLastsNoLongerThanItsLimitAtTheLeastRate()
+    {
+        using var content = new MemoryStream();
+        using var upload = _transfers.BeginStreamedUpload(s_node, null, content, 100L * 1024 * 1024)!;
+
+        _clock.Advance(TimeSpan.FromSeconds(1599));
+        Assert.False(upload.Aborted.IsCancellationRequested);
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(upload.Aborted.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task AStreamedUploadPastItsLimitFailsAsTooLarge()
+    {
+        using var content = new MemoryStream();
+        using var upload = _transfers.BeginStreamedUpload(s_node, null, content, 10)!;
+
+        upload.Fail("The file is larger than allowed.", FileErrors.TooLarge);
+
+        Assert.Equal(FileErrors.TooLarge, (await upload.Result).ErrorCode);
+    }
 }

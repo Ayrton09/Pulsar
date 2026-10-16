@@ -20,7 +20,7 @@ Download the release ZIP, install PostgreSQL, extract the ZIP into a folder only
 `Install-Pulsar.ps1` from there as administrator: it installs the panel and
 an agent on one PC, or each on its own machines. Step by step: [docs/guides/install.md](docs/guides/install.md).
 Updating and backups: [update.md](docs/guides/update.md), [backup.md](docs/guides/backup.md). MySQL/MariaDB databases for game
-plugins: [databases.md](docs/guides/databases.md).
+plugins: [databases.md](docs/guides/databases.md). Server files over SFTP: [sftp.md](docs/guides/sftp.md).
 
 ## Architecture in short
 

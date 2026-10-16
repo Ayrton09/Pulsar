@@ -197,8 +197,66 @@ public static class FileLimits
     /// <summary>Largest file the editor opens or saves.</summary>
     public const long MaxEditableBytes = 1024 * 1024;
 
-    /// <summary>Most entries a listing returns; the rest is left out (<see cref="FileListResult.Truncated"/>).</summary>
+    /// <summary>Most entries a listing returns; the rest is left out (<see cref="FileListResult.Truncated"/>) or comes in later pages.</summary>
     public const int MaxListEntries = 2000;
+}
+
+/// <summary>
+/// The order of paged listings (<see cref="ListFilesCommand.Paged"/>): by name ignoring case, as Windows compares names,
+/// then by the exact name, so that two names differing only in case (a case-sensitive folder) still have a fixed order and
+/// a page's last name says exactly where the next page starts.
+/// </summary>
+public static class FileNameOrder
+{
+    public static IComparer<string> Comparer { get; } = Comparer<string>.Create(Compare);
+
+    public static int Compare(string? a, string? b)
+    {
+        var name = StringComparer.OrdinalIgnoreCase.Compare(a, b);
+        return name != 0 ? name : string.CompareOrdinal(a, b);
+    }
+}
+
+/// <summary>
+/// What SFTP leaves out of a server's files (Phase 17, docs/architecture/09-roadmap.md): Pulsar's own <c>.pulsar</c> folder
+/// (also by a first segment shaped like its 8.3 short name, <c>PULSAR~1</c>) and names with invisible format characters
+/// (such as U+202E, which turns the rest of a name around): the web shows those marked, an SFTP client cannot. A hidden path
+/// is not found; hidden names are left out of listings (format characters counted in <see cref="FileListResult.Skipped"/>).
+/// </summary>
+public static partial class SftpView
+{
+    /// <summary>Whether one name holds a format character (Unicode category Cf).</summary>
+    public static bool IsHiddenName(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        foreach (var rune in name.EnumerateRunes())
+        {
+            if (System.Text.Rune.GetUnicodeCategory(rune) == System.Globalization.UnicodeCategory.Format)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Whether <paramref name="path"/> (a <see cref="ServerFilePath"/>) is in Pulsar's folder or has a hidden name on the way.</summary>
+    public static bool IsHidden(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if (path.Length == 0)
+        {
+            return false;
+        }
+
+        var segments = path.Split('/');
+        return segments[0].Equals(".pulsar", StringComparison.OrdinalIgnoreCase) || PulsarShortName().IsMatch(segments[0])
+            || segments.Any(IsHiddenName);
+    }
+
+    // What Windows calls ".pulsar" on a volume that keeps 8.3 names: the leading dot is dropped, then ~N. \z, not $.
+    [GeneratedRegex(@"^PULSAR~[0-9]+\z", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex PulsarShortName();
 }
 
 /// <summary>Error codes of file commands and transfers (the agent's <see cref="CommandAck.ErrorCode"/>).</summary>
@@ -217,6 +275,9 @@ public static class FileErrors
     public const string Changed = "files.changed";
     public const string DiskFull = "files.disk_full";
     public const string TransferFailed = "files.transfer_failed";
+
+    /// <summary>A download asked to start before the beginning of the file (<see cref="SendFileCommand.Offset"/>).</summary>
+    public const string InvalidOffset = "files.invalid_offset";
     public const string Failed = "files.failed";
 }
 
@@ -263,13 +324,22 @@ public static class BackupSnapshotErrors
     public const string GameStarted = "snapshot.game_started";
 }
 
-/// <summary>A directory's entries: directories first, then files and links, each by name.</summary>
-/// <param name="Truncated">The directory has more entries than a listing holds.</param>
+/// <summary>
+/// A directory's entries: directories first, then files and links, each by name; for a paged listing
+/// (<see cref="ListFilesCommand.Paged"/>) a page of them by <see cref="FileNameOrder"/> alone.
+/// </summary>
+/// <param name="Truncated">
+/// The directory has more entries than a listing holds; for a paged listing, more than the agent reads of one folder
+/// (some entries are in no page).
+/// </param>
 /// <param name="Skipped">
 /// Entries the panel left out because it cannot name them (set by the panel, not the agent: whatever an agent says here is
-/// replaced). Distinct from <paramref name="Truncated"/>.
+/// replaced). Distinct from <paramref name="Truncated"/>. A paged listing counts them on its first page only.
 /// </param>
-public sealed record FileListResult(IReadOnlyList<FileEntry> Entries, bool Truncated, int Skipped = 0) : CommandResult;
+/// <param name="Next">
+/// Paged listings only: more entries follow; the next page is the one after this name (the page's last). Null: the last page.
+/// </param>
+public sealed record FileListResult(IReadOnlyList<FileEntry> Entries, bool Truncated, int Skipped = 0, string? Next = null) : CommandResult;
 
 /// <summary>A file about to be sent (<see cref="SendFileCommand"/>), or one just written.</summary>
 public sealed record FileEntryResult(FileEntry Entry, string Version) : CommandResult;

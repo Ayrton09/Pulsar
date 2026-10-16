@@ -234,6 +234,19 @@ $tasks = @(
 $stale = @(Find-StaleBackupTasks $tasks $expected)
 Check 'backup tasks: those that run another copy than the panel folder''s' ($stale.Count -eq 3 -and $stale[0] -match 'old setup' -and $stale[1] -match 'old quoted' -and $stale[2] -match 'relative elsewhere') ($stale -join ' | ')
 
+# --- SFTP port and firewall (read from the script, never run) ------------------------------------------------------
+
+$sftpParameter = $parsed.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'SftpPort' }
+$sftpRange = $sftpParameter.Attributes | Where-Object { $_.TypeName.Name -eq 'ValidateRange' }
+Check '-SftpPort: an integer defaulting to 2022' ($null -ne $sftpParameter -and $null -ne ($sftpParameter.Attributes | Where-Object { $_.TypeName.Name -eq 'int' }) -and "$($sftpParameter.DefaultValue.Value)" -eq '2022') "$($sftpParameter.DefaultValue)"
+Check '-SftpPort: validated 1 to 65535' ($null -ne $sftpRange -and "$($sftpRange.PositionalArguments[0].Value)" -eq '1' -and "$($sftpRange.PositionalArguments[1].Value)" -eq '65535')
+
+$installText = Get-Content -Raw -LiteralPath $installScript
+Check 'SFTP firewall: its own inbound rule, for the panel''s program and the chosen port, like the HTTPS one' ($installText -match "(?s)New-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -DisplayName 'Pulsar Panel \(SFTP\)' -Direction Inbound\s+``\s*-Protocol TCP -LocalPort \`$SftpPort -Program \`$exe -Action Allow -Profile \`$profiles")
+Check 'SFTP firewall: the rule is replaced at an install and removed at an uninstall' (([regex]::Matches($installText, "Get-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -ErrorAction SilentlyContinue \| Remove-NetFirewallRule")).Count -eq 2)
+Check '-SftpPort: must differ from -Port and -AgentsPort' ($installText -match "-SftpPort must be another port than -Port and -AgentsPort")
+Check 'SFTP: a port other than 2022 is set through the panel''s settings endpoint after the administrator exists' ($installText -match "PUT '/api/v1/sftp/settings' @\{ enabled = \`$true; port = \`$SftpPort") 
+
 # --- Backup destination ------------------------------------------------------------------------------------------
 
 $root = Join-Path $Scratch ("pulsar-script-tests-" + [Guid]::NewGuid().ToString('N'))

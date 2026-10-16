@@ -45,6 +45,8 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(DeleteFileCommand), DeleteFileCommand.Type)]
 [JsonDerivedType(typeof(SendFileCommand), SendFileCommand.Type)]
 [JsonDerivedType(typeof(ReceiveFileCommand), ReceiveFileCommand.Type)]
+[JsonDerivedType(typeof(StatFileCommand), StatFileCommand.Type)]
+[JsonDerivedType(typeof(SetFileModifiedCommand), SetFileModifiedCommand.Type)]
 [JsonDerivedType(typeof(CreateBackupCommand), CreateBackupCommand.Type)]
 [JsonDerivedType(typeof(RestoreBackupCommand), RestoreBackupCommand.Type)]
 [JsonDerivedType(typeof(DeleteBackupCommand), DeleteBackupCommand.Type)]
@@ -204,9 +206,35 @@ public sealed record UnsubscribeConsoleCommand(Guid ServerId) : AgentCommand
 }
 
 /// <summary>Lists a directory of the server (<see cref="ServerFilePath.Root"/>: the server directory); the ack carries a <see cref="FileListResult"/>.</summary>
-public sealed record ListFilesCommand(Guid ServerId, string Path) : AgentCommand
+/// <param name="Paged">
+/// SFTP's listing (Phase 17; only for agents that announce <see cref="AgentCapabilities.SftpFiles"/>): entries by name
+/// alone (<see cref="FileNameOrder"/>), only those after <paramref name="After"/>, up to <see cref="FileLimits.MaxListEntries"/>,
+/// with <see cref="FileListResult.Next"/> to ask for the rest; what SFTP hides (<see cref="SftpView"/>) is left out. False:
+/// the web's listing, directories first, cut at <see cref="FileLimits.MaxListEntries"/>.
+/// </param>
+/// <param name="After">The previous page's <see cref="FileListResult.Next"/> (one name); null for the first page.</param>
+public sealed record ListFilesCommand(Guid ServerId, string Path, bool Paged = false, string? After = null) : AgentCommand
 {
     public const string Type = "server.files_list";
+}
+
+/// <summary>
+/// What one entry of the server is, as SFTP sees it (Phase 17; <see cref="AgentCapabilities.SftpFiles"/>): the ack carries
+/// a <see cref="FileEntryResult"/>. A link is described, never followed; what SFTP hides (<see cref="SftpView"/>) is not found.
+/// </summary>
+public sealed record StatFileCommand(Guid ServerId, string Path) : AgentCommand
+{
+    public const string Type = "server.files_stat";
+}
+
+/// <summary>
+/// Sets the last write time of a file or directory (never a link), as SFTP clients do to keep a file's time (Phase 17;
+/// <see cref="AgentCapabilities.SftpFiles"/>). A time the file system cannot hold is clamped to the nearest one it can; the
+/// ack carries the entry's <see cref="FileEntryResult"/> afterwards. What SFTP hides (<see cref="SftpView"/>) is not found.
+/// </summary>
+public sealed record SetFileModifiedCommand(Guid ServerId, string Path, DateTimeOffset ModifiedAt) : AgentCommand
+{
+    public const string Type = "server.files_set_modified";
 }
 
 /// <summary>Creates a directory and any missing parents.</summary>
@@ -215,8 +243,14 @@ public sealed record CreateDirectoryCommand(Guid ServerId, string Path) : AgentC
     public const string Type = "server.files_create_directory";
 }
 
-/// <summary>Renames or moves a file, directory or link inside the server directory; never replaces anything.</summary>
-public sealed record MoveFileCommand(Guid ServerId, string Path, string Destination) : AgentCommand
+/// <summary>Renames or moves a file, directory or link inside the server directory.</summary>
+/// <param name="Replace">
+/// An existing file at <paramref name="Destination"/> is replaced in one step (SFTP's <c>posix-rename@openssh.com</c>;
+/// Phase 17, only for agents that announce <see cref="AgentCapabilities.SftpFiles"/>). Only a file is replaced, and only by a
+/// file: a directory or link there, or a directory or link moved onto a file, is refused. False: an existing destination
+/// always fails (<c>files.exists</c>).
+/// </param>
+public sealed record MoveFileCommand(Guid ServerId, string Path, string Destination, bool Replace = false) : AgentCommand
 {
     public const string Type = "server.files_move";
 }
@@ -232,14 +266,21 @@ public sealed record DeleteFileCommand(Guid ServerId, string Path) : AgentComman
 /// <see cref="FileEntryResult"/>), then uploads it with <c>PUT</c> to <see cref="AgentProtocol.TransferPath"/>.
 /// </summary>
 /// <param name="MaxSize">Larger files are refused (<c>files.too_large</c>): the editor opens small files only.</param>
-public sealed record SendFileCommand(Guid ServerId, string Path, string Ticket, long MaxSize) : AgentCommand
+/// <param name="Offset">
+/// Where the content sent starts (resumed downloads, SFTP reads; Phase 17, only for agents that announce
+/// <see cref="AgentCapabilities.SftpFiles"/>): the agent sends the rest of the file from there, nothing when it is at or past
+/// the end (a read past the end of a file reads nothing). The ack still describes the whole file. A negative offset is
+/// refused (<c>files.invalid_offset</c>).
+/// </param>
+public sealed record SendFileCommand(Guid ServerId, string Path, string Ticket, long MaxSize, long Offset = 0) : AgentCommand
 {
     public const string Type = "server.files_send";
 
     // The ticket is a secret: it must never reach a log through ToString.
     protected override bool PrintMembers(System.Text.StringBuilder builder)
     {
-        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $"ServerId = {ServerId}, Path = {Path}, Ticket = ***, MaxSize = {MaxSize}");
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture,
+            $"ServerId = {ServerId}, Path = {Path}, Ticket = ***, MaxSize = {MaxSize}, Offset = {Offset}");
         return true;
     }
 }
@@ -254,7 +295,19 @@ public sealed record SendFileCommand(Guid ServerId, string Path, string Ticket, 
 /// The <see cref="FileVersion"/> the file must still have (an editor saving what it opened); implies
 /// <paramref name="Overwrite"/>.
 /// </param>
-public sealed record ReceiveFileCommand(Guid ServerId, string Path, string Ticket, long Size, bool Overwrite, string? ExpectedVersion)
+/// <param name="Streamed">
+/// The length is not known in advance (SFTP; Phase 17, only for agents that announce <see cref="AgentCapabilities.SftpFiles"/>):
+/// <paramref name="Size"/> is the most that may arrive (more fails the transfer), and the file is what arrived once the panel
+/// ends the content cleanly; an interrupted transfer is a failure, never a shorter file. False: exactly <paramref name="Size"/> bytes.
+/// </param>
+/// <param name="Append">
+/// The content is added at the end of the file, which is created when missing (resumed SFTP uploads; Phase 17, with
+/// <see cref="AgentCapabilities.SftpFiles"/>). Written in place as it arrives, not through a temporary file: an interrupted
+/// transfer leaves what arrived, which is what resuming needs. <paramref name="Overwrite"/> does not apply;
+/// <paramref name="ExpectedVersion"/>, when given, is what the existing file must still be.
+/// </param>
+public sealed record ReceiveFileCommand(Guid ServerId, string Path, string Ticket, long Size, bool Overwrite, string? ExpectedVersion,
+    bool Streamed = false, bool Append = false)
     : AgentCommand
 {
     public const string Type = "server.files_receive";
@@ -264,6 +317,7 @@ public sealed record ReceiveFileCommand(Guid ServerId, string Path, string Ticke
     {
         builder.Append(System.Globalization.CultureInfo.InvariantCulture,
             $"ServerId = {ServerId}, Path = {Path}, Ticket = ***, Size = {Size}, Overwrite = {Overwrite}, ExpectedVersion = {ExpectedVersion}");
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture, $", Streamed = {Streamed}, Append = {Append}");
         return true;
     }
 }
@@ -514,6 +568,21 @@ public static class AgentCapabilities
     /// </summary>
     public const string UseAgentsAddress = UseAgentsAddressCommand.Type;
 
+    /// <summary>
+    /// The agent serves SFTP's needs (Phase 17): paged listings (<see cref="ListFilesCommand.Paged"/>),
+    /// <see cref="StatFileCommand"/>, downloads from an offset (<see cref="SendFileCommand.Offset"/>), streamed and appended
+    /// uploads (<see cref="ReceiveFileCommand.Streamed"/>, <see cref="ReceiveFileCommand.Append"/>), renames that replace
+    /// (<see cref="MoveFileCommand.Replace"/>) and <see cref="SetFileModifiedCommand"/>. The panel uses none of them with an
+    /// agent that does not announce it: an older agent would ignore the new fields and do something else than asked.
+    /// </summary>
+    public const string SftpFiles = "server.files_sftp";
+
+    /// <summary>Announced with <see cref="SftpFiles"/>, which the panel checks: the commands SFTP added.</summary>
+    public const string StatFile = StatFileCommand.Type;
+
+    /// <inheritdoc cref="StatFile"/>
+    public const string SetFileModified = SetFileModifiedCommand.Type;
+
     /// <summary>The capability an agent must announce to receive <paramref name="command"/>.</summary>
     public static string Of(AgentCommand command) => command switch
     {
@@ -539,6 +608,8 @@ public static class AgentCapabilities
         DeleteFileCommand => DeleteFile,
         SendFileCommand => SendFile,
         ReceiveFileCommand => ReceiveFile,
+        StatFileCommand => StatFile,
+        SetFileModifiedCommand => SetFileModified,
         CreateBackupCommand => CreateBackup,
         RestoreBackupCommand => RestoreBackup,
         DeleteBackupCommand => DeleteBackup,

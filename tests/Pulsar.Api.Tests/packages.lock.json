@@ -29,6 +29,16 @@
         "resolved": "10.11.0",
         "contentHash": "DTivKZ2Du0dJideTTa6vPj/eXKNRu+RxtjBX7NOOUXHBtHx1ehbE+lM+j3/5M3wU6BqzcZqEEyR4+FnPKs2rTA=="
       },
+      "SSH.NET": {
+        "type": "Direct",
+        "requested": "[2026.0.0, )",
+        "resolved": "2026.0.0",
+        "contentHash": "Yu9dirPq8l3oaat0+OQ7K0nUf5MmYltpia5UGqsApTG4zTPvBC1cxbNnC3NERij26dUST0A3Ef1QdHSn5ArbWQ==",
+        "dependencies": {
+          "BouncyCastle.Cryptography": "2.7.0",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.3"
+        }
+      },
       "xunit.v3": {
         "type": "Direct",
         "requested": "[4.0.2, )",
@@ -623,6 +633,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.AspNetCore.OpenApi": "[10.0.13, )",
+          "Microsoft.DevTunnels.Ssh": "[3.12.42, )",
           "Microsoft.Extensions.Hosting.WindowsServices": "[10.0.13, )",
           "Pulsar.Application": "[1.0.0, )",
           "Pulsar.Contracts": "[1.0.0, )",
@@ -718,6 +729,12 @@
         "dependencies": {
           "Microsoft.OpenApi": "[2.12.2, 3.0.0)"
         }
+      },
+      "Microsoft.DevTunnels.Ssh": {
+        "type": "CentralTransitive",
+        "requested": "[3.12.42, )",
+        "resolved": "3.12.42",
+        "contentHash": "ronW7CALKMWoJVgCiE5tF+u6zVE1SWQFZUblO02r3iIu3//97wtSy+HWRuJWMLuS7iJ1TlqDE0lmYYW+VkpOHw=="
       },
       "Microsoft.EntityFrameworkCore": {
         "type": "CentralTransitive",

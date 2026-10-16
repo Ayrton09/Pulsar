@@ -103,6 +103,7 @@ GetFileInformationByHandle
 BY_HANDLE_FILE_INFORMATION
 FILE_DISPOSITION_INFO_EX
 FILE_DISPOSITION_INFO_EX_FLAGS
+FILE_BASIC_INFO
 
 // SteamCMD bootstrapper signature (Authenticode)
 WinVerifyTrust

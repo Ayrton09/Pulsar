@@ -58,7 +58,7 @@ public static class AuthEndpoints
     /// </summary>
     private static async Task<Results<NoContent, ProblemHttpResult, ValidationProblem, UnauthorizedHttpResult>> ChangePasswordAsync(
         ChangePasswordRequest request, HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn,
-        IAuditLog audit, BrowserConnections connections, CancellationToken ct)
+        SignInLocks locks, IAuditLog audit, BrowserConnections connections, CancellationToken ct)
     {
         var user = await users.FindByIdAsync(http.User.GetRequiredUserId().ToString());
         if (user is null)
@@ -66,7 +66,7 @@ public static class AuthEndpoints
             return TypedResults.Unauthorized();
         }
 
-        if (await WrongPasswordAsync(user, request.CurrentPassword, users, db, audit, AuditActions.Auth.PasswordChanged, ct) is { } wrong)
+        if (await WrongPasswordAsync(user, request.CurrentPassword, users, db, locks, audit, AuditActions.Auth.PasswordChanged, ct) is { } wrong)
         {
             return wrong;
         }
@@ -174,9 +174,12 @@ public static class AuthEndpoints
         IPermissionEvaluator evaluator,
         IAuditLog audit,
         FailedLoginBudget failures,
+        SignInLocks locks,
         TimeProvider clock,
         CancellationToken ct)
     {
+        // One check at a time per name (SignInLocks): each wrong password counts, and each attempt keeps its audit entry.
+        using var turn = await locks.AcquireAsync(users.NormalizeName(request.UserName), ct);
         var user = await users.FindByNameAsync(request.UserName);
         if (user is null)
         {
@@ -184,6 +187,11 @@ public static class AuthEndpoints
             return await FailAsync(null, "invalid_credentials");
         }
 
+        await db.Entry(user).ReloadAsync(ct); // as it is now, not as this request may have loaded it before its turn
+
+        // Whether Identity answers before hashing the password, decided now: the attempt that locks the account hashes
+        // it and only then answers "locked out", so the result alone would make that attempt hash twice.
+        var blocked = await users.IsLockedOutAsync(user) || !await signIn.CanSignInAsync(user);
         var result = await signIn.PasswordSignInAsync(user, request.Password, isPersistent: false, lockoutOnFailure: true);
         if (result.RequiresTwoFactor)
         {
@@ -195,7 +203,7 @@ public static class AuthEndpoints
         {
             // Locked-out, disabled and wrong-password attempts get the same answer, so the response says nothing about the
             // account. Identity answers the first two before hashing the password: hash anyway, so the time says nothing either.
-            if (result.IsLockedOut || result.IsNotAllowed)
+            if (blocked)
             {
                 users.PasswordHasher.VerifyHashedPassword(user, s_dummyPasswordHash, request.Password);
             }
@@ -204,9 +212,11 @@ public static class AuthEndpoints
             return await FailAsync(user, reason);
         }
 
-        user.LastLoginAt = clock.GetUtcNow();
+        // The user row first: the audit entry is saved on its own, whatever happened to the row.
+        await SignInLocks.UpdateAsync(users, db, user, u => u.LastLoginAt = clock.GetUtcNow());
+        await SignInLocks.DiscardUnsavedAsync(db);
         audit.Record(AuditActions.Auth.Login, AuditOutcome.Success, AuditActor.ForUser(user.Id, user.UserName));
-        await users.UpdateAsync(user); // also saves the audit entry (same unit of work)
+        await db.SaveChangesAsync(CancellationToken.None);
 
         http.User = await signIn.CreateUserPrincipalAsync(user);
         AntiforgeryProtection.IssueToken(http);
@@ -216,6 +226,9 @@ public static class AuthEndpoints
         {
             if (failures.TryRecord(out var leftOut))
             {
+                // Identity's update of the user may have been refused (another request saved it meanwhile): not the entry.
+                await SignInLocks.DiscardUnsavedAsync(db);
+
                 // The name of an existing user only: what was typed may be a password typed in the wrong field.
                 var userName = known?.UserName;
                 var entry = audit.Record(AuditActions.Auth.LoginFailed, AuditOutcome.Failure,
@@ -225,7 +238,7 @@ public static class AuthEndpoints
                     entry.WithTarget("user", known.Id.ToString());
                 }
 
-                await db.SaveChangesAsync(ct);
+                await db.SaveChangesAsync(CancellationToken.None);
             }
 
             return ApiProblems.Create(StatusCodes.Status401Unauthorized, "auth.invalid_credentials", "Invalid user name or password.");
@@ -263,9 +276,12 @@ public static class AuthEndpoints
     /// guesses count towards the lockout like failed sign-ins, so a stolen session cannot be used to guess the password;
     /// while locked out, every answer is "wrong".
     /// </summary>
-    internal static async Task<ProblemHttpResult?> WrongPasswordAsync(
-        PulsarUser user, string password, UserManager<PulsarUser> users, PulsarDbContext db, IAuditLog audit, string action, CancellationToken ct)
+    internal static async Task<ProblemHttpResult?> WrongPasswordAsync(PulsarUser user, string password, UserManager<PulsarUser> users,
+        PulsarDbContext db, SignInLocks locks, IAuditLog audit, string action, CancellationToken ct)
     {
+        // Under the account's lock, as the sign-ins: parallel guesses each count.
+        using var turn = await locks.AcquireAsync(user.NormalizedUserName!, ct);
+        await db.Entry(user).ReloadAsync(ct);
         var lockedOut = await users.IsLockedOutAsync(user);
         if (!lockedOut && await users.CheckPasswordAsync(user, password))
         {
@@ -274,12 +290,13 @@ public static class AuthEndpoints
 
         if (!lockedOut)
         {
-            await users.AccessFailedAsync(user);
+            await SignInLocks.CountFailureAsync(users, db, user);
         }
 
+        await SignInLocks.DiscardUnsavedAsync(db);
         audit.Record(action, AuditOutcome.Failure, new { reason = lockedOut ? "locked_out" : "wrong_current_password" })
             .WithTarget("user", user.Id.ToString());
-        await db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync(CancellationToken.None);
         return ApiProblems.Create(StatusCodes.Status400BadRequest, "auth.wrong_current_password", "The current password is not correct.");
     }
 

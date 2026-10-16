@@ -199,16 +199,23 @@ public static partial class AgentInput
     /// A listing of entries that are all usable, at most <see cref="FileLimits.MaxListEntries"/> (<c>Truncated</c> when
     /// there were more), with the number of entries left out for their names or values (<c>Skipped</c>): the agent's own
     /// count of the names it refuses (it drops them before its cap) plus what the panel still refuses, as a number to show.
+    /// A page's <c>Next</c> is a name the panel accepts or nothing (then the listing says it is incomplete); a page cut here
+    /// goes on after its last entry kept. Whether the page holds what was asked for is checked by the panel's caller,
+    /// which knows where the page was to start (<see cref="Servers.ServerFiles.ListPageAsync"/>).
     /// </summary>
     private static FileListResult FileListing(FileListResult listing)
     {
         var read = (listing.Entries ?? []).ToList();
         var usable = read.Where(IsEntry).ToList();
+        var cut = usable.Count > FileLimits.MaxListEntries;
+        var next = listing.Next is null || IsFileName(listing.Next) ? listing.Next : null;
+        var entries = cut ? usable[..FileLimits.MaxListEntries] : usable;
         return listing with
         {
-            Entries = usable.Count > FileLimits.MaxListEntries ? usable[..FileLimits.MaxListEntries] : usable,
-            Truncated = listing.Truncated || usable.Count > FileLimits.MaxListEntries,
+            Entries = entries,
+            Truncated = listing.Truncated || (cut && next is null) || (listing.Next is not null && next is null),
             Skipped = (int)Math.Min(MaxSkipped, (long)Math.Clamp(listing.Skipped, 0, MaxSkipped) + read.Count - usable.Count),
+            Next = cut && next is not null ? entries[^1].Name : next,
         };
     }
 
