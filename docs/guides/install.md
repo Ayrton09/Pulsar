@@ -98,13 +98,20 @@ It asks for the PostgreSQL `postgres` password (step 1) and for a password for P
    a web server's identity only (server authentication), so trusting it vouches only for the names it lists, never
    for other sites, code or clients; the installer prints its thumbprint and names;
 4. opens the panel's port (**8443**, `-Port` chooses another) in Windows Firewall, on Domain and Private networks
-   (`-FirewallPublic` also opens it on networks Windows treats as public; `-NoFirewall` leaves the firewall alone);
-5. starts the panel and creates the administrator;
+   (`-FirewallPublic` also opens it on networks Windows treats as public; `-NoFirewall` leaves the firewall alone), and
+   the SFTP port (**2022**, `-SftpPort` chooses another; it must differ from `-Port` and `-AgentsPort`) with its own
+   rule, `Pulsar-Panel-SFTP`, the same way;
+5. starts the panel and creates the administrator; if `-SftpPort` is not 2022 it sets that port in the panel's SFTP
+   settings (the port is a panel setting kept in the database, not in the configuration file);
 6. adds this PC as a node, installs the agent in `C:\Program Files\Pulsar\Agent` and enrolls it; the agent runs as the
    **PulsarAgent** service (LocalSystem) and keeps its data in `C:\ProgramData\Pulsar\Agent`. Game servers go to
    `C:\PulsarServers` (`-ServersRoot` chooses another folder).
 
-When it ends, open <https://localhost:8443> and sign in as `admin`.
+When it ends, open <https://localhost:8443> and sign in as `admin`. The installer also prints the SFTP host key's
+fingerprint (`SHA256:…`) to check at the first SFTP connection; users find it, with their SFTP address, in the panel's
+**Account** page, and administrators change the SFTP switch, port and public host in **Nodes → SFTP**
+(see [SFTP](sftp.md)). With `-RestoreFrom` the port comes back with the database: `-SftpPort` then only names the port
+to open in the firewall.
 
 ### Panel and nodes on different machines
 
@@ -392,7 +399,7 @@ powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Uninstall
 ```
 
 It removes the services, the programs (`Backup-Pulsar.ps1` in the panel's folder too), the firewall rules
-(`Pulsar-Panel-HTTPS`, and `Pulsar-Panel-Agents` for the agents' port) and the trust the script gave the panel's
+(`Pulsar-Panel-HTTPS`, `Pulsar-Panel-Agents` for the agents' port and `Pulsar-Panel-SFTP` for SFTP) and the trust the script gave the panel's
 certificate (in all-in-one mode, or with `-TrustCertificate`; a certificate this machine trusted already stays
 trusted). It removes only certificates it marked as its own when it trusted them: one that an install made before
 that mark only noted in the panel's data folder is named in a warning instead, for you to remove in `certlm.msc`

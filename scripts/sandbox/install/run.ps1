@@ -126,6 +126,9 @@ try {
     Check "panel's certificate trusted by this machine, marked as the installer's" ($null -ne $trusted -and $trusted.FriendlyName -eq 'Pulsar panel (trusted by Install-Pulsar.ps1)') "$thumbprint $($trusted.FriendlyName)"
     $firewall = Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue
     Check 'firewall rule for the panel, on Domain and Private networks only' ($null -ne $firewall -and "$($firewall.Profile)" -eq 'Domain, Private') "$($firewall.Profile)"
+    $sftpFirewall = Get-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -ErrorAction SilentlyContinue
+    $sftpPort = if ($sftpFirewall) { "$(($sftpFirewall | Get-NetFirewallPortFilter).LocalPort)" } else { '' }
+    Check 'firewall rule for SFTP (port 2022), on Domain and Private networks only' ($null -ne $sftpFirewall -and $sftpPort -eq '2022' -and "$($sftpFirewall.Profile)" -eq 'Domain, Private') "$sftpPort $($sftpFirewall.Profile)"
 
     # --- The panel as a browser sees it (the certificate is trusted now) ---
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -236,7 +239,7 @@ try {
     Check 'services removed' ($null -eq (Get-Service PulsarPanel, PulsarAgent -ErrorAction SilentlyContinue))
     Check 'programs removed' (-not (Test-Path 'C:\Program Files\Pulsar\Panel') -and -not (Test-Path 'C:\Program Files\Pulsar\Agent'))
     Check "certificate no longer trusted" (-not (Test-Path "Cert:\LocalMachine\Root\$thumbprint"))
-    Check 'firewall rule removed' ($null -eq (Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue))
+    Check 'firewall rules removed' ($null -eq (Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue) -and $null -eq (Get-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -ErrorAction SilentlyContinue))
     Check 'panel keys kept' ((Get-ChildItem (Join-Path $panelData 'keys') -Filter 'key-*.xml').Count -ge 1)
 }
 catch {
