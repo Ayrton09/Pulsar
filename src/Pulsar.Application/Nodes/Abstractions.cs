@@ -27,6 +27,27 @@ public interface IPanelKeyRing
     void Reload();
 }
 
+/// <summary>How a request reached the panel: what a node code carries besides the token and the panel key (Phase 18).</summary>
+/// <param name="Url">The panel's origin as the request reached it (<see cref="NodeCode.IsValidUrl"/>).</param>
+/// <param name="CertificateSha256">
+/// The TLS certificate the panel itself served that request (<see cref="NodeCode.CertificateHash"/>); null when it did not
+/// serve one, or one that clients may not see (a proxy in front of it).
+/// </param>
+public sealed record PanelAddress(string Url, string? CertificateSha256);
+
+/// <summary>What a node's setup is told by the API host, which knows the request (Phase 18).</summary>
+public interface INodeSetup
+{
+    /// <summary>
+    /// The panel's address as the current request reached it; null outside a request, or when an agent could not use it
+    /// (plain HTTP other than on the panel's machine).
+    /// </summary>
+    PanelAddress? RequestAddress { get; }
+
+    /// <summary>Whether the panel serves the agent's setup (<c>PulsarAgentSetup.exe</c>) for download.</summary>
+    bool AgentSetupAvailable { get; }
+}
+
 /// <summary>Live state of a connected agent (memory only, rebuilt from every Hello).</summary>
 public sealed record AgentConnectionInfo(
     NodeId NodeId,

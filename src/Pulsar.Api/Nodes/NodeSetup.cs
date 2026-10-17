@@ -1,0 +1,140 @@
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
+using Microsoft.Extensions.Options;
+using Microsoft.Net.Http.Headers;
+using Pulsar.Api.Agents;
+using Pulsar.Api.Http;
+using Pulsar.Application.Nodes;
+using Pulsar.Contracts;
+
+namespace Pulsar.Api.Nodes;
+
+/// <summary><c>Downloads</c> settings: what the panel serves to the machines it enrolls (Phase 18).</summary>
+public sealed class DownloadsOptions
+{
+    public const string SectionName = "Downloads";
+
+    /// <summary>
+    /// The folder <c>PulsarAgentSetup.exe</c> is served from: <c>downloads</c> next to the panel's executable unless set (a
+    /// relative path is taken from there too). Only that one file name is ever served from it.
+    /// </summary>
+    public string? Path { get; set; }
+}
+
+/// <summary>
+/// The agent's setup the panel offers for download (<c>GET /downloads/PulsarAgentSetup.exe</c>, docs/architecture/08 T37):
+/// one fixed file from one fixed folder, no path from the request.
+/// </summary>
+internal sealed class AgentSetupDownload(IOptions<DownloadsOptions> options)
+{
+    public const string FileName = "PulsarAgentSetup.exe";
+
+    public const string RoutePath = "/downloads/" + FileName;
+
+    public string FilePath { get; } = System.IO.Path.Combine(
+        System.IO.Path.GetFullPath(options.Value.Path ?? "downloads", AppContext.BaseDirectory), FileName);
+
+    /// <summary>The file is there (a folder of that name is not).</summary>
+    public bool Exists => File.Exists(FilePath);
+
+    /// <summary>The file to send, or null when it is not there or cannot be read now.</summary>
+    public FileStream? Open()
+    {
+        try
+        {
+            return new FileStream(FilePath, new FileStreamOptions
+            {
+                Mode = FileMode.Open,
+                Access = FileAccess.Read,
+                Share = FileShare.Read,
+                Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+            });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+}
+
+/// <summary>
+/// <see cref="INodeSetup"/> from the current request: the origin it reached the panel by (what the browser shows, and what
+/// the PowerShell command uses), and the certificate Kestrel served on its connection.
+/// </summary>
+internal sealed class HttpNodeSetup(IHttpContextAccessor accessor, AgentSetupDownload download) : INodeSetup
+{
+    // Headers a proxy in front of the panel adds: whatever certificate it serves, Kestrel's is not the one clients see.
+    private static readonly string[] s_proxyHeaders =
+    [
+        ForwardedHeadersDefaults.XForwardedForHeaderName,
+        ForwardedHeadersDefaults.XForwardedProtoHeaderName,
+        ForwardedHeadersDefaults.XForwardedHostHeaderName,
+        ForwardedHeadersDefaults.XForwardedPrefixHeaderName,
+        ForwardedHeadersDefaults.XOriginalForHeaderName,
+        ForwardedHeadersDefaults.XOriginalProtoHeaderName,
+        ForwardedHeadersDefaults.XOriginalHostHeaderName,
+        ForwardedHeadersDefaults.XOriginalPrefixHeaderName,
+        "Forwarded",
+        HeaderNames.Via,
+    ];
+
+    public PanelAddress? RequestAddress => accessor.HttpContext is { } http ? AddressOf(http) : null;
+
+    public bool AgentSetupAvailable => download.Exists;
+
+    /// <summary>
+    /// The origin <paramref name="http"/> reached the panel by, exactly as agents check it (<see cref="AgentEndpoints.PanelOrigin"/>),
+    /// with the certificate the panel served it; null when an agent could not use that origin, or it is not written as an
+    /// agent would write it (a default port, which browsers leave out): rewriting it could name another host.
+    /// </summary>
+    internal static PanelAddress? AddressOf(HttpContext http)
+    {
+        var url = AgentEndpoints.PanelOrigin(http.Request);
+        return NodeCode.IsValidUrl(url) ? new PanelAddress(url, ServedCertificate(http)) : null;
+    }
+
+    /// <summary>
+    /// The certificate Kestrel presented in this connection's TLS handshake (for the host the client asked for), when the
+    /// client saw it: null over plain HTTP, over HTTP/3 (Kestrel does not expose QUIC's), and when a proxy forwarded the
+    /// request, which may terminate TLS with a certificate of its own. A proxy that re-encrypts without saying so gives
+    /// Kestrel's certificate, which the node's setup then finds is not the one it is served, and refuses.
+    /// </summary>
+    private static string? ServedCertificate(HttpContext http)
+    {
+        if (s_proxyHeaders.Any(http.Request.Headers.ContainsKey))
+        {
+            return null;
+        }
+
+        var certificate = http.Features.Get<ISslStreamFeature>()?.SslStream.LocalCertificate;
+        return certificate is null ? null : NodeCode.CertificateHash(certificate.GetRawCertData());
+    }
+}
+
+internal static class DownloadEndpoints
+{
+    /// <summary>
+    /// <c>GET /downloads/PulsarAgentSetup.exe</c>, anonymous: the public installer, with no secret inside, for a machine
+    /// that is not signed in to the panel (docs/architecture/08, T37). The node code, which is the secret, comes separately.
+    /// </summary>
+    public static IEndpointRouteBuilder MapDownloadEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapGet(AgentSetupDownload.RoutePath, Results<FileStreamHttpResult, ProblemHttpResult> (AgentSetupDownload setup, HttpResponse response) =>
+            {
+                if (setup.Open() is not { } file)
+                {
+                    return ApiProblems.Create(StatusCodes.Status404NotFound, "downloads.not_found",
+                        "This panel has no agent setup to download.", "Copy PulsarAgentSetup.exe from the Pulsar release to the machine instead.");
+                }
+
+                // Checked again at every download: a panel update brings a new setup.
+                response.Headers.CacheControl = "no-cache";
+                return TypedResults.File(file, "application/octet-stream", AgentSetupDownload.FileName,
+                    lastModified: File.GetLastWriteTimeUtc(file.SafeFileHandle));
+            })
+            .AllowAnonymous()
+            .ExcludeFromDescription();
+        return app;
+    }
+}

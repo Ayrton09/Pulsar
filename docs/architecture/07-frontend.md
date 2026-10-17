@@ -72,6 +72,8 @@ The server page has a fixed header (name, status, power actions, live CPU/RAM) a
 
 *Phase 2:* nodes are created from a dialog on `/nodes` (no `/nodes/new` page) that ends with the one-time enrollment command (since Phase 9 the installer's: `Install-Pulsar.ps1 -Mode Agent -PanelUrl … -Token … -PanelKey …`, run in the release ZIP's folder), and `/nodes/:id` is a single page (machine, live usage, credentials, administration) until servers give it more to show. Node state refreshed by polling every 5 s until Phase 5 moved it to the live channel.
 
+*Easy install (Phase 18):* the enrollment dialog (Add node, and a node's "New enrollment command") leads with "Install with PulsarAgentSetup.exe": the panel's address (the browser's origin) and the node code (doc 03, "Node code"), each with a copy button, and a "Download PulsarAgentSetup.exe" link to `/downloads/PulsarAgentSetup.exe` when the enrollment says `agentSetupAvailable` (otherwise a line saying to take it from the release). The installer script's command folds under "Advanced: install with PowerShell". When the panel gives no code (`nodeCode: null`: reached by an address agents cannot use) the dialog shows the command alone, as before. The code is a one-time secret like the token: it leaves the mutation cache once shown.
+
 ## Real time
 
 - **One SignalR connection per tab** to `/hubs/panel`, authenticated by cookie.
@@ -179,7 +181,7 @@ The server page's Administration section says when a newer version of the server
 
 - `npm run build` writes straight into `src/Pulsar.Api/wwwroot` (git-ignored). The panel picks the files up as regular static web assets, so `MapStaticAssets()` fingerprints and precompresses them at publish time.
 - `dotnet publish -p:BuildWebClient=true` runs `npm ci` + `npm run build` first; by default the .NET build does not need Node.js.
-- `MapFallbackToFile("index.html")` serves client routes; unknown routes under `/api`, `/hubs` and `/agent` return a 404 `ProblemDetails` instead of the SPA.
+- `MapFallbackToFile("index.html")` serves client routes; unknown routes under `/api`, `/hubs`, `/agent` and `/downloads` return a 404 `ProblemDetails` instead of the SPA.
 - **Serve the published output.** With `dotnet run` outside the Development environment, the precompressed asset variants (`.gz`) only exist under `obj/` and are not served correctly. Development (`launchSettings.json`, port 5180) and published builds work; E2E tests therefore run against `dotnet publish` output.
 - Node.js is only needed to build; the published panel does not require it.
 - After an update, a tab opened before it cannot load pages it had not visited (the old build's files are gone): the route table's error page reloads it once (not again within a minute, so a broken build cannot loop) and otherwise offers a reload. A browser offline or a panel restarting fails to load pages the same way: the page reloads only when the panel answers (`/health/live`), since a reload then would show the browser's own error page and lose the tab; otherwise it says the panel cannot be reached and offers the reload, translated like the rest of the interface.

@@ -21,6 +21,8 @@ public sealed class RoutingTests(NoDatabaseApiFactory factory) : IClassFixture<N
     [InlineData("/api/v1/servers/unknown/route")]
     [InlineData("/hubs/unknown")]
     [InlineData("/agent/v1/unknown")]
+    [InlineData("/downloads/unknown")]
+    [InlineData("/downloads/PulsarAgentSetup.exe/unknown")]
     public async Task UnknownBackendRoutesReturnProblemDetailsInsteadOfTheSpa(string path)
     {
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });

@@ -4,7 +4,6 @@ import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Badge, Card, Table, Td, Th } from '../../components/ui/Display';
 import { Checkbox, Field, Input } from '../../components/ui/Form';
-import { copyText } from '../../lib/clipboard';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
 import {
@@ -14,6 +13,7 @@ import {
   type CreatedEnrollmentToken,
   type EnrollmentTokenView,
 } from './api';
+import { CopyBlock } from './components';
 import { enrollCommand, msiCommand } from './nodeStatus';
 
 /**
@@ -264,37 +264,6 @@ function CreatedToken({ created }: { created: CreatedEnrollmentToken }) {
         <li>{t('enrollmentTokens.msiNote', { file: created.agentPackage })}</li>
         <li>{t('nodes.enroll.trust')}</li>
       </ul>
-    </div>
-  );
-}
-
-function CopyBlock({ label, text }: { label: string; text: string }) {
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState<boolean | null>(null);
-  return (
-    <div className="space-y-1">
-      <p className="text-sm font-medium">{label}</p>
-      <div className="relative">
-        <pre
-          aria-label={label}
-          className="overflow-x-auto rounded-md border border-border bg-bg p-3 pr-20 font-mono text-xs break-all whitespace-pre-wrap"
-        >
-          {text}
-        </pre>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="absolute top-2 right-2"
-          onClick={() => void copyText(text).then(setCopied)}
-        >
-          {t('nodes.enroll.copy')}
-        </Button>
-      </div>
-      {copied !== null && (
-        <p role="status" className={`text-xs ${copied ? 'text-success' : 'text-danger'}`}>
-          {copied ? t('nodes.enroll.copied') : t('nodes.enroll.copyFailed')}
-        </p>
-      )}
     </div>
   );
 }

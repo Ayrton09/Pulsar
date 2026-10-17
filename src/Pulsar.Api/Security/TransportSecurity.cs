@@ -51,7 +51,8 @@ internal static partial class TransportSecurity
 
     /// <summary>
     /// Adds HTTPS enforcement unless plain HTTP was explicitly allowed. API calls that still arrive over HTTP get a
-    /// clear problem instead of failing deeper (antiforgery refuses Secure cookies on HTTP).
+    /// clear problem instead of failing deeper (antiforgery refuses Secure cookies on HTTP); so do downloads, since a
+    /// program fetched over plain HTTP could be swapped on the way.
     /// </summary>
     public static void UseTransportSecurity(this WebApplication app, SecurityOptions security)
     {
@@ -71,7 +72,8 @@ internal static partial class TransportSecurity
         app.Use(async (context, next) =>
         {
             if (!context.Request.IsHttps && (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
-                || context.Request.Path.StartsWithSegments("/agent", StringComparison.OrdinalIgnoreCase)))
+                || context.Request.Path.StartsWithSegments("/agent", StringComparison.OrdinalIgnoreCase)
+                || context.Request.Path.StartsWithSegments("/downloads", StringComparison.OrdinalIgnoreCase)))
             {
                 await ApiProblems.Create(StatusCodes.Status400BadRequest, "transport.https_required",
                     "This panel only accepts HTTPS.",

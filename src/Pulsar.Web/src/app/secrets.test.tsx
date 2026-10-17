@@ -147,6 +147,8 @@ describe('one-time secrets', () => {
           token: 'pulsar_enroll_one-time-secret',
           expiresAt: '2026-10-16T12:00:00Z',
           panelKeyFingerprint: 'sha256:panel-key',
+          nodeCode: 'pulsar-node-1.one-time-code',
+          agentSetupAvailable: true,
         }),
     });
     const queryClient = renderAt(`/nodes/${node.id}`);
@@ -155,8 +157,11 @@ describe('one-time secrets', () => {
     await user.click(await screen.findByRole('button', { name: 'New enrollment command' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Enroll Buenos Aires 1' });
+    expect(dialog).toHaveTextContent('pulsar-node-1.one-time-code');
+    await user.click(within(dialog).getByRole('button', { name: 'Advanced: install with PowerShell' }));
     expect(dialog).toHaveTextContent('pulsar_enroll_one-time-secret');
     await vi.waitFor(() => expect(cacheHolds(queryClient, 'pulsar_enroll_one-time-secret')).toBe(false));
+    expect(cacheHolds(queryClient, 'pulsar-node-1.one-time-code')).toBe(false);
   });
 
   it("drops a game database's password once shown", async () => {

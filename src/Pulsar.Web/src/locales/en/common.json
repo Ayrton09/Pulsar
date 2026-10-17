@@ -837,11 +837,21 @@
       "steps": "On the Windows machine, extract the Pulsar release ZIP, open PowerShell as administrator in its folder and run:",
       "command": "Enrollment command",
       "copy": "Copy",
+      "copyNamed": "Copy {{name}}",
       "copied": "Copied to the clipboard.",
-      "copyFailed": "The browser did not allow copying. Select the command and copy it by hand.",
+      "copyFailed": "The browser did not allow copying. Select the text and copy it by hand.",
       "once": "The command works once, until {{expires}}. It is not shown again: create a new one if you lose it.",
+      "codeOnce": "The code and the command hold the enrollment token: keep them secret. They work once, until {{expires}}, and are not shown again: create new ones if you lose them.",
       "fingerprint": "The agent checks that the panel holds the key {{fingerprint}}, so a copy of this command is useless against any other server.",
-      "trust": "If the panel's certificate is self-signed, copy panel.cer from the panel's machine (C:\\ProgramData\\Pulsar\\Panel\\tls) next to the script and add -TrustCertificate .\\panel.cer."
+      "trust": "If the panel's certificate is self-signed, copy panel.cer from the panel's machine (C:\\ProgramData\\Pulsar\\Panel\\tls) next to the script and add -TrustCertificate .\\panel.cer.",
+      "setupTitle": "Install with PulsarAgentSetup.exe",
+      "setupSteps": "On the Windows machine, run PulsarAgentSetup.exe as administrator, then paste the panel's address and this code.",
+      "download": "Download PulsarAgentSetup.exe",
+      "noSetup": "This panel has no PulsarAgentSetup.exe to download: take it from the published Pulsar release.",
+      "address": "Panel address",
+      "code": "Node code",
+      "setupTrust": "The setup trusts the panel's certificate only when it is the one named in the code, so nothing is copied by hand. Behind a reverse proxy the code names none: the machine must already trust the proxy's certificate.",
+      "advanced": "Advanced: install with PowerShell"
     },
     "credentials": {
       "title": "Credentials",

@@ -16,6 +16,7 @@ public sealed class PanelClient : IDisposable
     private static readonly Uri s_baseAddress = new("https://localhost");
     private static readonly PanelCookies s_secureCookies = new(secure: true);
     private readonly CookieContainer _cookies = new();
+    private readonly Uri _baseAddress = s_baseAddress;
 
     private PanelClient(WebApplicationFactory<Program> factory, bool sendAntiforgeryHeader)
     {
@@ -23,15 +24,34 @@ public sealed class PanelClient : IDisposable
             new AntiforgeryHeaderHandler(_cookies, sendAntiforgeryHeader), new CookieContainerHandler(_cookies));
     }
 
+    private PanelClient(SocketsHttpHandler transport, Uri baseAddress)
+    {
+        _baseAddress = baseAddress;
+        transport.UseCookies = true;
+        transport.CookieContainer = _cookies;
+        Http = new HttpClient(new AntiforgeryHeaderHandler(_cookies, enabled: true) { InnerHandler = transport }) { BaseAddress = baseAddress };
+    }
+
     public HttpClient Http { get; }
 
     /// <summary>The cookies as a browser sends them (for the live channel's WebSocket).</summary>
-    public string CookieHeader => _cookies.GetCookieHeader(s_baseAddress);
+    public string CookieHeader => _cookies.GetCookieHeader(_baseAddress);
 
     /// <summary>Creates a client and loads the session (which issues the antiforgery token).</summary>
     public static async Task<PanelClient> CreateAsync(WebApplicationFactory<Program> factory, bool sendAntiforgeryHeader = true)
     {
         var client = new PanelClient(factory, sendAntiforgeryHeader);
+        await client.GetSessionAsync();
+        return client;
+    }
+
+    /// <summary>
+    /// A client of the panel on real Kestrel (<see cref="KestrelPanelFactory"/>): <paramref name="transport"/> trusts its
+    /// certificate, and is the client's from now on. Loads the session first.
+    /// </summary>
+    public static async Task<PanelClient> CreateAsync(SocketsHttpHandler transport, Uri baseAddress)
+    {
+        var client = new PanelClient(transport, baseAddress);
         await client.GetSessionAsync();
         return client;
     }

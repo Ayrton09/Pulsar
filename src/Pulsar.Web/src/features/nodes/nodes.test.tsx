@@ -179,6 +179,9 @@ describe('nodes page', () => {
               token: 'one-time-token',
               expiresAt: '2026-10-01T12:30:00Z',
               panelKeyFingerprint: 'sha256:panel-key',
+              // A panel reached by an address agents cannot use gives no code: the command is the only way.
+              nodeCode: null,
+              agentSetupAvailable: false,
             },
           },
           201,
@@ -197,7 +200,91 @@ describe('nodes page', () => {
       `powershell -ExecutionPolicy Bypass -File .\\Install-Pulsar.ps1 -Mode Agent -PanelUrl ${window.location.origin} -Token one-time-token -PanelKey sha256:panel-key`,
     );
     expect(screen.getByRole('heading', { name: 'Enroll Córdoba 1' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Install with PulsarAgentSetup.exe' })).not.toBeInTheDocument();
     expect(body).toEqual({ name: 'Córdoba 1', description: null, publicHost: null });
+  });
+
+  it('offers the node code for PulsarAgentSetup.exe first, and the command as the advanced path', async () => {
+    const code = 'pulsar-node-1.eyJ1cmwiOiJodHRwczovL3BhbmVsLmV4YW1wbGUuY29tIn0';
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/nodes': () => json([]),
+      'POST /api/v1/nodes': () =>
+        json(
+          {
+            node: { ...pending, name: 'Córdoba 1' },
+            enrollment: {
+              token: 'one-time-token',
+              expiresAt: '2026-10-01T12:30:00Z',
+              panelKeyFingerprint: 'sha256:panel-key',
+              nodeCode: code,
+              agentSetupAvailable: true,
+            },
+          },
+          201,
+        ),
+    });
+    renderAt('/nodes');
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+
+    await user.click(await screen.findByRole('button', { name: 'Add node' }));
+    await user.type(screen.getByLabelText('Name'), 'Córdoba 1');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    const setup = await screen.findByRole('region', { name: 'Install with PulsarAgentSetup.exe' });
+    expect(within(setup).getByLabelText('Node code')).toHaveTextContent(code);
+    expect(within(setup).getByLabelText('Panel address')).toHaveTextContent(window.location.origin);
+    const download = within(setup).getByRole('link', { name: 'Download PulsarAgentSetup.exe' });
+    expect(download).toHaveAttribute('href', '/downloads/PulsarAgentSetup.exe');
+    expect(download).toHaveAttribute('download');
+    expect(screen.getByText(/keep them secret/)).toBeInTheDocument();
+
+    await user.click(within(setup).getByRole('button', { name: 'Copy Node code' }));
+    expect(writeText).toHaveBeenCalledWith(code);
+    expect(within(setup).getByRole('status')).toHaveTextContent('Copied to the clipboard.');
+
+    // The installer script's command stays one click away.
+    const advanced = screen.getByRole('button', { name: 'Advanced: install with PowerShell' });
+    expect(advanced).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('Enrollment command')).not.toBeInTheDocument();
+    await user.click(advanced);
+    expect(advanced).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Enrollment command')).toHaveTextContent(
+      '-Token one-time-token -PanelKey sha256:panel-key',
+    );
+  });
+
+  it('says where to get the setup when the panel has none to download', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/nodes': () => json([]),
+      'POST /api/v1/nodes': () =>
+        json(
+          {
+            node: { ...pending, name: 'Córdoba 1' },
+            enrollment: {
+              token: 'one-time-token',
+              expiresAt: '2026-10-01T12:30:00Z',
+              panelKeyFingerprint: 'sha256:panel-key',
+              nodeCode: 'pulsar-node-1.e30',
+              agentSetupAvailable: false,
+            },
+          },
+          201,
+        ),
+    });
+    renderAt('/nodes');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Add node' }));
+    await user.type(screen.getByLabelText('Name'), 'Córdoba 1');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    const setup = await screen.findByRole('region', { name: 'Install with PulsarAgentSetup.exe' });
+    expect(within(setup).queryByRole('link', { name: 'Download PulsarAgentSetup.exe' })).not.toBeInTheDocument();
+    expect(within(setup).getByText(/has no PulsarAgentSetup.exe to download/)).toBeInTheDocument();
+    expect(within(setup).getByLabelText('Node code')).toHaveTextContent('pulsar-node-1.e30');
   });
 
   it('does not offer to add nodes to users who can only view them', async () => {

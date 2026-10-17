@@ -160,10 +160,14 @@ try
         options.CloseOnAuthenticationExpiration = true;
     }).RequireSignedInUser();
 
-    // API, hub and agent routes must never fall through to the SPA's index.html.
+    // The agent's setup, for machines added as nodes (Phase 18): one fixed file, anonymous (docs/architecture/08, T37).
+    app.MapDownloadEndpoints();
+
+    // API, hub, agent and download routes must never fall through to the SPA's index.html.
     app.MapNotFoundFallback("/api");
     app.MapNotFoundFallback("/hubs");
     app.MapNotFoundFallback("/agent");
+    app.MapNotFoundFallback("/downloads");
 
     app.MapStaticAssets();
     app.MapFallbackToFile("index.html");

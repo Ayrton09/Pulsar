@@ -283,6 +283,22 @@ Admin (UI)                  Panel                                   Windows node
 
 The enrollment endpoint is rate limited. A leaked token works at most once and for 30 minutes; the administrator sees the hostname and fingerprint of the node that consumed it.
 
+### Node code (Phase 18)
+
+With the token, `POST /api/v1/nodes` and `POST /api/v1/nodes/{id}/enrollment-tokens` return `nodeCode`: what `PulsarAgentSetup.exe` needs, in one string the administrator pastes on the machine with the panel's address (`Pulsar.Contracts.NodeCode`, which the panel writes and the agent's setup reads):
+
+```
+pulsar-node-1.<base64url, no padding, of UTF-8 JSON>
+{"url":"https://panel.example.com:8443","token":"<enrollment token>","key":"sha256:<panel key fingerprint>","cert":"<64 lowercase hex digits>"}
+```
+
+- `url`: the origin the administrator's request reached the panel by, exactly as agents compare it (`scheme://host[:port]` in lower case, no trailing slash, no default port; the PowerShell command uses the same, from the browser). An origin agents could not use gives no code (`nodeCode: null`): plain HTTP other than `localhost` or a loopback address, or one not written as an agent writes it.
+- `token`: the single-use token above (a reusable one, `pulsar_enroll_…`, also fits the format). `key`: the panel key the agent pins, as `--panel-key` takes it.
+- `cert`: the lowercase hex SHA-256 of the DER of the TLS certificate Kestrel presented in that request's handshake (`SslStream.LocalCertificate`, for the host the browser asked for), so the node's setup can trust that certificate without copying `panel.cer`. `null` when the panel cannot tell what certificate its clients see: plain HTTP, HTTP/3 (Kestrel does not expose QUIC's), or a request that came through a proxy (any `X-Forwarded-*`, `X-Original-*`, `Forwarded` or `Via` header), which may serve a certificate of its own. The setup then needs a certificate the machine already trusts. A proxy that re-encrypts to Kestrel without saying so gives Kestrel's hash, which does not match what the node is served: the setup refuses.
+- Reading it is strict (`NodeCode.TryParse`): at most 2048 characters, exactly the prefix, base64url without padding or whitespace in its one canonical spelling, a JSON object (no BOM, comments or trailing commas, nothing nested) with exactly these four members once each (`cert` may be null), each well formed: `url` in printable ASCII and at most 512 characters, the token 32 random bytes in base64url (with or without `pulsar_enroll_`), the key `sha256:` and 32 bytes in base64url, `cert` 64 lowercase hex digits. Anything else is not a code; callers trim what a person pasted. A later format takes another prefix.
+- The code carries the token: it is a secret for as long as the token works. Like the token it is shown once, never stored (the panel keeps the token's hash only) and never audited or logged (`EnrollmentInstructions` and `NodeCode` print `***` in its place).
+- `agentSetupAvailable` says whether the panel serves `GET /downloads/PulsarAgentSetup.exe` (`Downloads:Path`, by default the `downloads` folder next to the panel's executable; doc 08, T37), which **Add node** then links to.
+
 ### Bulk enrollment (Phase 14)
 
 To enroll many machines with one command (the agent MSI deployed through Intune or a group policy, or a script), an administrator with `node.credentials.manage` held globally creates a **reusable enrollment token** (`/api/v1/enrollment-tokens`): a name, a number of uses (1 to 1000), an expiry (1 hour to 90 days) and whether the nodes it creates wait for approval (on by default: `requireApproval` left out of the request is `true`). The value (`pulsar_enroll_` and 32 random bytes) is shown once; only its SHA-256 is stored, with its first characters to recognize it. At most 50 usable tokens exist at a time, and a token can be revoked whenever. Tokens are never deleted (the nodes they created name them); the list shows every usable one and the 20 newest of the others (revoked, expired or used up).

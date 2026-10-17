@@ -14,6 +14,7 @@ using Pulsar.Api.Access;
 using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Http;
+using Pulsar.Api.Nodes;
 using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
 using Pulsar.Api.Sftp;
@@ -84,6 +85,11 @@ internal static class ApiServiceCollectionExtensions
         // Background work (the scheduler) sets who it acts as before resolving anything that audits.
         services.AddScoped<IRequestContext>(sp => sp.GetRequiredService<RequestContextOverride>().Context ?? sp.GetRequiredService<HttpRequestContext>());
         AddSftp(services, configuration);
+        // Phase 18: the node code's address and certificate come from the administrator's request; the agent's setup
+        // from the panel's downloads folder.
+        services.AddOptions<DownloadsOptions>().Bind(configuration.GetSection(DownloadsOptions.SectionName));
+        services.AddSingleton<AgentSetupDownload>();
+        services.AddSingleton<INodeSetup, HttpNodeSetup>();
         services.AddSingleton<InitialSetup>();
         services.AddSingleton<FailedLoginBudget>();
         services.AddSingleton<SignInLocks>();

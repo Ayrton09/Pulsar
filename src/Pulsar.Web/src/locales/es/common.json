@@ -837,11 +837,21 @@
       "steps": "En la máquina Windows, descomprimí el ZIP de Pulsar, abrí PowerShell como administrador en esa carpeta y ejecutá:",
       "command": "Comando de enrolamiento",
       "copy": "Copiar",
+      "copyNamed": "Copiar {{name}}",
       "copied": "Copiado al portapapeles.",
-      "copyFailed": "El navegador no permitió copiar. Seleccioná el comando y copialo a mano.",
+      "copyFailed": "El navegador no permitió copiar. Seleccioná el texto y copialo a mano.",
       "once": "El comando sirve una sola vez, hasta el {{expires}}. No se vuelve a mostrar: si lo perdés, creá uno nuevo.",
+      "codeOnce": "El código y el comando llevan el token de enrolamiento: mantenelos en secreto. Sirven una sola vez, hasta el {{expires}}, y no se vuelven a mostrar: si los perdés, creá otros.",
       "fingerprint": "El agente verifica que el panel tenga la clave {{fingerprint}}, así que una copia de este comando no sirve contra ningún otro servidor.",
-      "trust": "Si el certificado del panel es autofirmado, copiá panel.cer desde la máquina del panel (C:\\ProgramData\\Pulsar\\Panel\\tls) junto al script y agregá -TrustCertificate .\\panel.cer."
+      "trust": "Si el certificado del panel es autofirmado, copiá panel.cer desde la máquina del panel (C:\\ProgramData\\Pulsar\\Panel\\tls) junto al script y agregá -TrustCertificate .\\panel.cer.",
+      "setupTitle": "Instalar con PulsarAgentSetup.exe",
+      "setupSteps": "En la máquina Windows, ejecutá PulsarAgentSetup.exe como administrador y pegá la dirección del panel y este código.",
+      "download": "Descargar PulsarAgentSetup.exe",
+      "noSetup": "Este panel no tiene PulsarAgentSetup.exe para descargar: tomalo de la versión publicada de Pulsar.",
+      "address": "Dirección del panel",
+      "code": "Código del nodo",
+      "setupTrust": "El instalador confía en el certificado del panel solo si es el que nombra el código, así que no hay que copiar nada a mano. Detrás de un proxy inverso el código no nombra ninguno: la máquina ya tiene que confiar en el certificado del proxy.",
+      "advanced": "Avanzado: instalar con PowerShell"
     },
     "credentials": {
       "title": "Credenciales",

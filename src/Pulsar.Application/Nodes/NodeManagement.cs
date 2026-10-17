@@ -88,7 +88,22 @@ public sealed record NodeDetails(NodeSummary Node, IReadOnlyList<NodeCredentialV
 /// Shown once to the administrator: the token and the fingerprint of the panel key, which the agent pins
 /// (<c>PulsarAgent.exe enroll --panel … --token … --panel-key …</c>).
 /// </summary>
-public sealed record EnrollmentInstructions(string Token, DateTimeOffset ExpiresAt, string PanelKeyFingerprint);
+/// <param name="NodeCode">
+/// The same for <c>PulsarAgentSetup.exe</c> in one string, with the panel's address and certificate as this request reached
+/// them (Phase 18, <see cref="Contracts.NodeCode"/>): as secret as the token. Null when an agent could not use that address
+/// (plain HTTP other than on the panel's machine).
+/// </param>
+/// <param name="AgentSetupAvailable">The panel serves <c>PulsarAgentSetup.exe</c> at <c>/downloads/PulsarAgentSetup.exe</c>.</param>
+public sealed record EnrollmentInstructions(string Token, DateTimeOffset ExpiresAt, string PanelKeyFingerprint, string? NodeCode, bool AgentSetupAvailable)
+{
+    // The token, and the code that carries it, are secrets: they must never reach a log through ToString.
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append(System.Globalization.CultureInfo.InvariantCulture,
+            $"Token = ***, ExpiresAt = {ExpiresAt}, PanelKeyFingerprint = {PanelKeyFingerprint}, NodeCode = {(NodeCode is null ? "null" : "***")}, AgentSetupAvailable = {AgentSetupAvailable}");
+        return true;
+    }
+}
 
 public sealed record CreatedNode(NodeSummary Node, EnrollmentInstructions Enrollment);
 
@@ -107,6 +122,7 @@ public sealed class NodeManagement(
     IRequestContext request,
     IAuditLog audit,
     VisibleResources visible,
+    INodeSetup setup,
     TimeProvider clock)
 {
     public async Task<IReadOnlyList<NodeSummary>> ListAsync(CancellationToken cancellationToken)
@@ -372,6 +388,10 @@ public sealed class NodeManagement(
         return await SummarizeAsync(node, cancellationToken);
     }
 
+    /// <summary>
+    /// A single-use token, and the node code that carries it with the panel's address and certificate as the
+    /// administrator's request reached them (Phase 18). Neither is stored nor audited: only the token's hash is kept.
+    /// </summary>
     private async Task<EnrollmentInstructions> IssueTokenAsync(Node node, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var (token, plain) = NodeEnrollmentToken.Issue(node.Id, request.UserId, now);
@@ -379,7 +399,8 @@ public sealed class NodeManagement(
         audit.Record(AuditActions.Node.EnrollmentTokenCreated, metadata: new { expiresAt = token.ExpiresAt })
             .WithNode(node.Id).WithTarget("node", node.Id.ToString());
         var panelKey = (await keys.GetPublicKeysAsync(cancellationToken))[0];
-        return new EnrollmentInstructions(plain, token.ExpiresAt, panelKey.KeyId);
+        var code = setup.RequestAddress is { } address ? NodeCode.Create(address.Url, plain, panelKey.KeyId, address.CertificateSha256) : null;
+        return new EnrollmentInstructions(plain, token.ExpiresAt, panelKey.KeyId, code, setup.AgentSetupAvailable);
     }
 
     /// <summary>

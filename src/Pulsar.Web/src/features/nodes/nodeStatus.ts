@@ -32,3 +32,6 @@ export function enrollCommand(origin: string, token: string, panelKeyFingerprint
 export function msiCommand(origin: string, token: string, panelKeyFingerprint: string, agentPackage: string): string {
   return `msiexec /i ${agentPackage} /qn PANELURL=${origin} TOKEN=${token} PANELKEY=${panelKeyFingerprint}`;
 }
+
+/** Where the panel serves the agent's setup, when it has it (the enrollment says so: agentSetupAvailable). */
+export const agentSetupPath = '/downloads/PulsarAgentSetup.exe';
