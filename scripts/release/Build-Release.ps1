@@ -3,19 +3,83 @@
 # Update keeps those patched), Install-Pulsar.ps1, the guides and the licenses, plus a SHA-256 checksum file; and the
 # agent-only MSI next to it (Build-AgentMsi.ps1), for Intune, group policies and other silent installs, whose agent is
 # self-contained (no .NET runtime needed on the target: a silent managed install has no step that would fetch one).
+# With Inno Setup 7, also the setup wizards (scripts\release\setup): PulsarAgentSetup.exe, which goes into the panel's
+# downloads folder (the panel serves it to new nodes, so the ZIP and PulsarSetup.exe carry it), and PulsarSetup.exe.
 #   .\scripts\release\Build-Release.ps1 -Version 1.0.0
-# Output: artifacts\release\pulsar-<version>-windows-x64.zip, pulsar-agent-<version>-windows-x64.msi and a .sha256 of each
+# Output: artifacts\release\pulsar-<version>-windows-x64.zip, pulsar-agent-<version>-windows-x64.msi,
+# PulsarSetup-<version>.exe, PulsarAgentSetup-<version>.exe and a .sha256 of each
 param(
     [string] $Version = '0.0.0-dev',
     [string] $Output = (Join-Path $PSScriptRoot '..\..\artifacts\release'),
     # The web app is already built into src\Pulsar.Api\wwwroot (CI builds and tests it in its own job).
-    [switch] $SkipWebBuild)
+    [switch] $SkipWebBuild,
+    # Inno Setup 7's command-line compiler (ISCC.exe). Without it, the per-user and the machine-wide installs of Inno
+    # Setup 7 are looked in.
+    [string] $InnoSetupCompiler,
+    # Fails when Inno Setup 7 is not found, instead of building the ZIP and the MSI without the setups.
+    [switch] $RequireSetups)
 $ErrorActionPreference = 'Stop'
+
+# Inno Setup 7's ISCC.exe (-InnoSetupCompiler, or an install of it), or $null (with a warning) when there is none.
+function Find-InnoSetupCompiler {
+    $candidates = @($InnoSetupCompiler)
+    if (-not $InnoSetupCompiler) {
+        $candidates = @(@($env:LOCALAPPDATA, ${env:ProgramFiles(x86)}, $env:ProgramFiles) | Where-Object { $_ } | ForEach-Object {
+                if ($_ -eq $env:LOCALAPPDATA) { Join-Path $_ 'Programs\Inno Setup 7\ISCC.exe' } else { Join-Path $_ 'Inno Setup 7\ISCC.exe' }
+            })
+    }
+    foreach ($candidate in $candidates) {
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+        $engine = & {
+            $ErrorActionPreference = 'Continue'
+            (& $candidate --version 2>&1 | ForEach-Object { "$_" }) -join ' '
+        }
+        # The scripts use Inno Setup 7 (SetupArchitecture, 64-bit setups).
+        if ($engine -notmatch '^\s*(\d+)\.\d+' -or [int]$Matches[1] -lt 7) { throw "$candidate is not Inno Setup 7 or later ($engine)." }
+        return (Resolve-Path -LiteralPath $candidate).Path
+    }
+    $message = "Inno Setup 7 was not found ($($candidates -join ', ')): the setups (PulsarSetup.exe, PulsarAgentSetup.exe) are not built."
+    if ($RequireSetups -or $InnoSetupCompiler) { throw $message }
+    Write-Warning $message
+    return $null
+}
+
+# Compiles one of scripts\release\setup's setups from the staged release into $Output; its path. A warning fails the
+# build like an error.
+function Build-Setup([string] $compiler, [string] $script, [string] $release, [string] $numeric) {
+    $arguments = @('--quiet', '--messages-jsonl', "/DVersion=$Version", "/DNumericVersion=$numeric.0", "/DRelease=$release", "/O$Output", (Join-Path $PSScriptRoot "setup\$script"))
+    $lines = & {
+        $ErrorActionPreference = 'Continue'
+        @(& $compiler @arguments 2>&1 | ForEach-Object { "$_" })
+    }
+    $code = $LASTEXITCODE
+    $messages = @($lines | Where-Object { $_ -match '^\s*\{' } | ForEach-Object { $_ | ConvertFrom-Json })
+    $other = @($lines | Where-Object { $_ -notmatch '^\s*\{' -and $_.Trim() })
+    foreach ($message in $messages) { Write-Host "${script}: $($message.severity): $($message.message)" }
+    if ($code -ne 0 -or $messages.Count -gt 0) {
+        throw "$script did not compile cleanly (ISCC exit code $code, $($messages.Count) message(s)).$([Environment]::NewLine)$($other -join [Environment]::NewLine)"
+    }
+    $name = [IO.Path]::GetFileNameWithoutExtension($script)
+    $setup = Join-Path $Output "$name-$Version.exe"
+    if (-not (Test-Path -LiteralPath $setup)) { throw "$script compiled, but $setup is missing." }
+    return $setup
+}
+
+function Write-Checksum([string] $path) {
+    $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$hash  $(Split-Path $path -Leaf)" | Set-Content "$path.sha256" -Encoding ASCII
+    return $hash
+}
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $name = "pulsar-$Version-windows-x64"
+# The setups' Windows version resource takes numbers only.
+$numeric = ($Version -split '[-+]')[0]
+if ($numeric -notmatch '^\d+\.\d+\.\d+$') { throw "The version must start with major.minor.patch, not '$Version'." }
 New-Item -ItemType Directory -Force $Output | Out-Null
 $Output = (Resolve-Path $Output).Path
+# Before the long builds: whether the setups can be built.
+$iscc = Find-InnoSetupCompiler
 $staging = Join-Path $Output $name
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
 $msiAgent = Join-Path $Output "$name-msi-agent"
@@ -72,17 +136,18 @@ foreach ($config in (Join-Path $staging 'panel\Pulsar.Api.runtimeconfig.json'), 
 if ($LASTEXITCODE -ne 0) { throw 'agent MSI failed' }
 Remove-Item $msiAgent -Recurse -Force
 $msi = Join-Path $Output "pulsar-agent-$Version-windows-x64.msi"
-$msiHash = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLowerInvariant()
-"$msiHash  $(Split-Path $msi -Leaf)" | Set-Content "$msi.sha256" -Encoding ASCII
+$msiHash = Write-Checksum $msi
 
 Copy-Item (Join-Path $repo 'scripts\install\*.ps1') $staging
 Copy-Item (Join-Path $repo 'LICENSE') $staging
 New-Item -ItemType Directory -Force (Join-Path $staging 'docs') | Out-Null
 Copy-Item (Join-Path $repo 'docs\guides\*.md') (Join-Path $staging 'docs')
+$easy = ''
+if ($iscc) { $easy = "$([Environment]::NewLine)The easy way: PulsarSetup-$Version.exe, published next to this ZIP (docs\install.md, `"Easy install`").$([Environment]::NewLine)" }
 @"
 Pulsar $Version for Windows (x64)
-
-Install: open PowerShell as administrator in this folder and run
+$easy
+Install with this ZIP: open PowerShell as administrator in this folder and run
     powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1
 This folder must be one only administrators can change (docs\install.md, step 2 shows how to make it): the installer
 refuses to run from any other. It downloads and checks what this machine lacks (the .NET $(($runtimes.Keys | ForEach-Object { "$_ $($runtimes[$_])" }) -join ' and ')
@@ -90,11 +155,28 @@ runtimes, and PostgreSQL 18 for a panel without one); docs\install.md says how, 
 Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas under MIT.
 "@ | Set-Content (Join-Path $staging 'README.txt') -Encoding UTF8
 
+# The agent's setup first: in the panel's downloads folder, the panel serves it at /downloads/PulsarAgentSetup.exe
+# (Install-Pulsar.ps1 copies the folder along with the panel, and keeps it on updates), so the ZIP and PulsarSetup.exe
+# carry it there.
+$agentSetup = $null
+if ($iscc) {
+    $agentSetup = Build-Setup $iscc 'PulsarAgentSetup.iss' $staging $numeric
+    $downloads = New-Item -ItemType Directory -Force (Join-Path $staging 'panel\downloads')
+    Copy-Item -LiteralPath $agentSetup -Destination (Join-Path $downloads.FullName 'PulsarAgentSetup.exe')
+}
+
 $zip = Join-Path $Output "$name.zip"
 if (Test-Path $zip) { Remove-Item $zip }
 Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $zip -CompressionLevel Optimal
-$hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-"$hash  $name.zip" | Set-Content "$zip.sha256" -Encoding ASCII
+$hash = Write-Checksum $zip
 Write-Host "Release: $zip"
 Write-Host "SHA-256: $hash"
 Write-Host "Agent MSI: $msi (SHA-256 $msiHash)"
+
+if ($iscc) {
+    $setup = Build-Setup $iscc 'PulsarSetup.iss' $staging $numeric
+    foreach ($built in $setup, $agentSetup) {
+        $builtHash = Write-Checksum $built
+        Write-Host "Setup: $built ($([Math]::Round((Get-Item -LiteralPath $built).Length / 1MB, 1)) MB, SHA-256 $builtHash)"
+    }
+}

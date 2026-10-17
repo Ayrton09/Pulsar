@@ -12,6 +12,23 @@ Updates replace Pulsar's programs and keep everything else: settings, database, 
 Update the **panel first, then the nodes**. A panel accepts agents of its own version and of the previous one, so nodes
 keep working while you get to each of them; an agent newer than its panel is refused until the panel is updated.
 
+## With the setups
+
+On the panel's machine, download and check the new `PulsarSetup-<version>.exe` as for an install
+([install.md](install.md#easy-install)) and run it. It finds what this machine has (the PulsarPanel and PulsarAgent
+services), shows the license and what it will update, and runs `Install-Pulsar.ps1 -Update -Unattended` (below) from
+`C:\Program Files\Pulsar\Setup\payload`, with the same steps, checks and log. It asks for nothing else: settings,
+passwords, nodes and game servers stay as they are. On each node, run the new `PulsarAgentSetup-<version>.exe` (from
+the Releases page, or the updated panel's `https://<panel>/downloads/PulsarAgentSetup.exe`), or `PulsarSetup.exe`
+where the panel runs too. A setup older than what is installed refuses to run, since the database may have changes an
+older panel cannot read. Silently: `PulsarSetup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART` (no secret is
+needed), with the exit codes of [silent installs](install.md#silent-installs-with-the-setups). When the update fails
+before it changes anything, the setup says why and leaves Pulsar as it was; otherwise see
+[If something goes wrong](#if-something-goes-wrong).
+
+An agent installed with the agent MSI is updated with its MSI (below): `PulsarAgentSetup.exe` refuses that machine,
+and `PulsarSetup.exe` updates only its panel.
+
 ## Updating
 
 On each machine, download and check the new release ZIP as in [install.md](install.md) (step 2), and extract it, in

@@ -776,6 +776,131 @@ Check 'release: the ZIP''s panel and agent are framework-dependent, for the newe
 Check 'release: the MSI''s agent is self-contained' ($buildRelease -match "dotnet publish \(Join-Path \`$repo 'src\\Pulsar.Agent'\) @common --self-contained -o \`$msiAgent" -and $buildRelease -match '-AgentDir \$msiAgent')
 Check 'release: the ZIP records the runtimes it was built for (release.json)' ($buildRelease -match "Join-Path \`$staging 'release.json'")
 Check 'release: the MSI refuses an agent that is not self-contained' ($buildMsi -match 'includedFrameworks')
+Check 'release: Build-Release.ps1 builds the agent''s setup into the panel''s downloads folder before the ZIP, then PulsarSetup.exe' (
+    $buildRelease -match "Build-Setup \`$iscc 'PulsarAgentSetup\.iss'" -and $buildRelease -match "Join-Path \`$staging 'panel\\downloads'" -and
+    $buildRelease.IndexOf("'PulsarAgentSetup.iss'") -lt $buildRelease.IndexOf('Compress-Archive') -and
+    $buildRelease.IndexOf('Compress-Archive') -lt $buildRelease.IndexOf("'PulsarSetup.iss'") -and $buildRelease -match "Join-Path \`$downloads\.FullName 'PulsarAgentSetup\.exe'")
+Check 'release: an Inno Setup warning fails the build' ($buildRelease -match "'--messages-jsonl'" -and $buildRelease -match '\$messages\.Count -gt 0')
+
+# --- The setup wizards (scripts\release\setup, Inno Setup 7; read here, never compiled or run) --------------------------
+
+$setupFolder = Join-Path $PSScriptRoot '..\release\setup'
+$commonIss = Get-Content -Raw -LiteralPath (Join-Path $setupFolder 'Common.iss')
+$wizardIss = [ordered]@{}
+foreach ($name in 'PulsarSetup.iss', 'PulsarAgentSetup.iss') { $wizardIss[$name] = Get-Content -Raw -LiteralPath (Join-Path $setupFolder $name) }
+
+# A section's lines (all its occurrences), without comment lines.
+function Get-IssSection([string] $text, [string] $section) {
+    $current = ''
+    foreach ($line in $text -split "`r?`n") {
+        if ($line -match '^\s*\[([A-Za-z]+)\]\s*$') { $current = $Matches[1]; continue }
+        if ($current -eq $section -and $line.Trim() -and $line -notmatch '^\s*;') { $line }
+    }
+}
+
+# The [Code] of a setup (Common.iss's and its own) as blocks, one per function, procedure or external declaration (each
+# starts at the line's beginning, as these scripts write them): name -> text, without comment lines.
+function Get-IssCode([string[]] $texts) {
+    $blocks = [ordered]@{}
+    $name = '(top)'
+    foreach ($line in @($texts | ForEach-Object { Get-IssSection $_ 'Code' })) {
+        if ($line -match '^\s*//') { continue }
+        if ($line -match '^(?:function|procedure)\s+(\w+)') { $name = $Matches[1]; $blocks[$name] = '' }
+        if (-not $blocks.Contains($name)) { $blocks[$name] = '' }
+        $blocks[$name] += $line + "`n"
+    }
+    return $blocks
+}
+
+$setupDirective = @{}
+foreach ($line in Get-IssSection $commonIss 'Setup') { if ($line -match '^\s*(\w+)=(.*)$') { $setupDirective[$Matches[1]] = $Matches[2].Trim() } }
+foreach ($pair in ([ordered]@{
+        PrivilegesRequired = 'admin'; SetupArchitecture = 'x64'; ArchitecturesAllowed = 'x64compatible'; ArchitecturesInstallIn64BitMode = 'x64compatible'
+        MinVersion = '10.0.19045'; DefaultDirName = '{commonpf64}\Pulsar\Setup'; DisableDirPage = 'yes'; UsePreviousAppDir = 'no'
+        AllowCancelDuringInstall = 'no'; AppPublisher = 'Pulsar contributors'; Compression = 'lzma2/ultra64'; SolidCompression = 'yes'
+        AppId = '{{{#AppGuid}}'
+    }).GetEnumerator()) {
+    Check "setups: $($pair.Key)=$($pair.Value)" ($setupDirective[$pair.Key] -ceq $pair.Value) "$($setupDirective[$pair.Key])"
+}
+Check 'setups: a fixed AppId GUID, the same in both (one entry in Apps)' ($commonIss -match '#define AppGuid "[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}"' -and @($wizardIss.Values | Where-Object { $_ -match '(?m)^\s*AppId=' }).Count -eq 0)
+Check 'setups: English and Spanish, from Inno Setup''s own message files' ((@(Get-IssSection $commonIss 'Languages') -join '|') -match 'Name: "en"; MessagesFile: "compiler:Default\.isl"' -and (@(Get-IssSection $commonIss 'Languages') -join '|') -match 'Name: "es"; MessagesFile: "compiler:Languages\\Spanish\.isl"')
+
+foreach ($name in $wizardIss.Keys) {
+    $text = $wizardIss[$name]
+    $files = @(Get-IssSection $text 'Files')
+    Check "$name includes Common.iss and builds $([IO.Path]::GetFileNameWithoutExtension($name))-<version>.exe" ($text -match '(?m)^#include "Common\.iss"' -and $text -match "(?m)^OutputBaseFilename=$([IO.Path]::GetFileNameWithoutExtension($name))-\{#Version\}$")
+    # The payload: in the setup's own folder in Program Files (never {tmp} or a profile), with no permissions added.
+    $elsewhere = @($files | Where-Object { $_ -notmatch 'DestDir: "\{app\}\\payload(\\(panel|agent))?"' -or $_ -match '(?i)Permissions:|\{tmp\}|\{user|\{localappdata\}|\{commonappdata\}' })
+    Check "${name}: the payload goes to {app}\payload, with Program Files' permissions" ($files.Count -gt 0 -and $elsewhere.Count -eq 0) ($elsewhere -join ' | ')
+    $last = $files[$files.Count - 1]
+    Check "${name}: Install-Pulsar.ps1 is the last file and runs once it is in place; the rest goes after the install" ($last -match 'Source: "\{#Release\}\\Install-Pulsar\.ps1"' -and $last -match 'AfterInstall: RunPulsarSetup' -and $last -notmatch 'deleteafterinstall' -and
+        @($files | Select-Object -First ($files.Count - 1) | Where-Object { $_ -notmatch 'deleteafterinstall' }).Count -eq 0)
+    $sections = @('Registry', 'INI', 'Icons', 'Tasks', 'Run' | Where-Object { @(Get-IssSection $text $_).Count -gt 0 -or ($_ -ne 'Run' -and @(Get-IssSection $commonIss $_).Count -gt 0) })
+    Check "${name}: no [Registry], [INI], [Icons] or [Tasks] section, and only Common.iss's [Run] entry" ($sections.Count -eq 0) ($sections -join ', ')
+
+    $code = Get-IssCode @($commonIss, $text)
+    $all = ($code.Values -join '')
+    # Programs run by the setup: one, Windows PowerShell 64-bit (a 64-bit setup's {sys}; {sysnative} is not there for
+    # it), with -File and -Unattended.
+    $runs = @([regex]::Matches($all, '\b(Exec\w*|ShellExec\w*|CreateProcess\w*|WinExec)\s*\(') | ForEach-Object { $_.Groups[1].Value })
+    Check "${name}: the only program it starts is Install-Pulsar.ps1's PowerShell (ExecAndLogOutput)" (($runs -join ',') -ceq 'ExecAndLogOutput') ($runs -join ',')
+    Check "${name}: 64-bit Windows PowerShell by full path, -NoProfile -NonInteractive -File, -Unattended" (
+        $code['RunInstallScript'] -match "ExecAndLogOutput\(ExpandConstant\('\{sys\}\\WindowsPowerShell\\v1\.0\\powershell\.exe'\)" -and
+        $code['RunInstallScript'] -match "'-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' \+ QuoteArgument\(Folder \+ '\\Install-Pulsar\.ps1'\) \+ ' -Unattended' \+ Arguments" -and
+        $all -notmatch '\{sysnative\}' -and $all -notmatch '(?i)-Command\b')
+    # No secret on the command line: what builds and runs it reads no secret field and no secret.
+    $secretPattern = '(?i)password|nodecode|connectionstring|token|secret'
+    $leaks = @('InstallArguments', 'RunInstallScript', 'NamedArgument', 'QuoteArgument', 'RunInstallStep' | Where-Object { $code[$_] -and ($code[$_] -replace '^.*\n', '' -replace 'ClearSecretVariables', '') -match $secretPattern })
+    Check "${name}: no secret on Install-Pulsar.ps1's command line (its arguments are built from no secret)" ($leaks.Count -eq 0 -and $code.Contains('InstallArguments')) ($leaks -join ', ')
+    $fields = @('AdminPage.Values[1]', 'AdminPage.Values[2]', 'PostgresPage.Values[0]', 'CertificatePasswordEdit.Text', 'DatabasePage.Values[0]', 'NodePage.Values[1]')
+    $readers = @(foreach ($block in $code.Keys) {
+            if ($block -like 'Secret*' -or $block -eq 'ClearSecretFields') { continue }
+            foreach ($field in $fields) { if ($code[$block].Contains($field)) { "$block reads $field" } }
+        })
+    Check "${name}: the secret fields are read only by the Secret* functions (and emptied by ClearSecretFields)" ($readers.Count -eq 0) ($readers -join ', ')
+    $users = @(foreach ($block in $code.Keys) {
+            if ($block -like 'Secret*' -or $block -like 'Check*' -or $block -in 'PassSecrets', 'HasConnectionString') { continue }
+            if ($code[$block] -cmatch '\bSecret[A-Z]\w*') { "$block uses $($Matches[0])" }
+        })
+    Check "${name}: secrets are used only to check the pages and to pass them on (PassSecrets)" ($users.Count -eq 0) ($users -join ', ')
+    $passed = @(($code['PassSecrets'] -split "`n") | Where-Object { $_ -cmatch '\bSecret[A-Z]\w*' })
+    $passedNames = @($passed | ForEach-Object { if ($_ -cmatch "^\s*(?:if .* then\s+)?SetSecretVariable\('(PULSAR_[A-Z_]+)', Secret[A-Z]\w*\);\s*$") { $Matches[1] } })
+    Check "${name}: PassSecrets hands every secret to the environment (SetSecretVariable) and nowhere else" ($passed.Count -gt 0 -and $passedNames.Count -eq $passed.Count) ($passed -join ' | ')
+    Check "${name}: the secrets go in the variables Install-Pulsar.ps1 reads" (@($passedNames | Where-Object { $_ -notin @($SecretInputs.Values) }).Count -eq 0) ($passedNames -join ', ')
+    # Never stored: no saved wizard values, nothing written to the registry or to files, no secret logged.
+    $stores = @([regex]::Matches($all, '\b(SetPreviousData|RegisterPreviousData|RegWrite\w*|SetIni\w*|SaveStringToFile|SaveStringsTo\w*)\b') | ForEach-Object { $_.Value })
+    Check "${name}: nothing is stored (no SetPreviousData, registry writes or files)" ($stores.Count -eq 0) ($stores -join ', ')
+    $logged = @(($all -split "`n") | Where-Object { $line = $_; $line -match '\bLog\(' -and ($line -cmatch '\bSecret[A-Z]' -or $line -cmatch '\bLine\b' -or @($fields | Where-Object { $line.Contains($_) }).Count -gt 0) })
+    Check "${name}: no secret and no line of the installer's output goes to the setup's log" ($logged.Count -eq 0) ($logged -join ' | ')
+    Check "${name}: updates with -Update, asking nothing" ($code['InstallArguments'] -match "if UpdateMode then\s+Result := ' -Update'" -and $code['ShouldSkipPage'] -match 'UpdateMode')
+}
+
+$commonCode = Get-IssCode @($commonIss)
+Check 'setups: the secrets leave the setup''s environment once Install-Pulsar.ps1 has started, and after it ends' ($commonCode['ScriptOutput'] -match 'if FirstLine then\s+ClearSecretVariables' -and $commonCode['RunInstallScript'] -match 'finally\s+ClearSecretVariables')
+$cleared = @([regex]::Matches($commonCode['ClearSecretVariables'], "RemoveEnvironmentVariable\('(PULSAR_[A-Z_]+)', 0\)") | ForEach-Object { $_.Groups[1].Value })
+Check 'setups: ClearSecretVariables removes every variable Install-Pulsar.ps1 takes a secret from' (@(@($SecretInputs.Values) + 'PULSAR_SECRETS_FILE' | Where-Object { $_ -notin $cleared }).Count -eq 0) ($cleared -join ', ')
+Check 'setups: the payload''s folder is C:\Program Files\Pulsar\Setup and no other (/DIR= refused)' ($commonCode['PrepareToInstall'] -match "PathSame\(ExpandConstant\('\{app\}'\), ExpandConstant\('\{commonpf64\}\\Pulsar\\Setup'\)\)")
+Check 'setups: the uninstaller runs Install-Pulsar.ps1 -Uninstall and stops (entry kept) when it fails' ($commonCode['CurUninstallStepChanged'] -match "RunInstallScript\(' -Uninstall'\)" -and $commonCode['CurUninstallStepChanged'] -match 'Abort;')
+Check 'setups: nothing changed (2 to 6) rolls the setup back; otherwise its entry in Apps stays' ($commonCode['RunInstallStep'] -match '\(Code < ExitUsage\) or \(Code > ExitCertificate\)' -and $commonCode['RunInstallStep'] -match 'RunKept := True' -and $commonCode['RunInstallStep'] -match 'Abort;')
+Check 'setups: the browser opens only https://localhost:<port>/ from PULSAR-PANEL-URL, as the user who started the setup' (
+    $commonCode['ScriptOutput'] -match "if IsLocalPanelUrl\(Copy\(Line, 18, Length\(Line\)\)\) then\s+RunPanelUrl := " -and
+    (@(Get-IssSection $commonIss 'Run') -join '|') -match 'Filename: "\{code:GetPanelUrl\}";.*Flags: postinstall shellexec runasoriginaluser nowait skipifsilent; Check: HasPanelUrl' -and
+    @(Get-IssSection $commonIss 'Run').Count -eq 1 -and (@(Get-IssSection $commonIss 'Run') -join '') -notmatch 'Parameters:')
+foreach ($case in @(@('https://localhost:8443/', $true), @('https://localhost:65535/', $true), @('https://localhost:8443', $false), @('https://evil.example/', $false), @('https://localhost:8443/x', $false), @('https://localhost:/', $false), @('https://localhost:99999/', $false), @('https://localhost:84a3/', $false))) {
+    # The same rule, in PowerShell: the Pascal function cannot run here.
+    $url = $case[0]
+    $ok = $url.Length -ge 20 -and $url.Length -le 24 -and $url.StartsWith('https://localhost:', [StringComparison]::Ordinal) -and $url.EndsWith('/') -and $url.Substring(18, $url.Length - 19) -match '^\d+$' -and [int]$url.Substring(18, $url.Length - 19) -le 65535
+    Check "setups: IsLocalPanelUrl's rule $(if ($case[1]) { 'takes' } else { 'refuses' }) $url" ($ok -eq $case[1])
+}
+Check 'setups: IsLocalPanelUrl is that rule' ($commonCode['IsLocalPanelUrl'] -match "\(Length\(Url\) < 20\) or \(Length\(Url\) > 24\) then\s+Exit;\s+if \(Copy\(Url, 1, 18\) <> 'https://localhost:'\) or \(Url\[Length\(Url\)\] <> '/'\)" -and $commonCode['IsLocalPanelUrl'] -match '<= 65535')
+# Every message the code uses is there in English and Spanish.
+$allIss = @($commonIss) + @($wizardIss.Values)
+$defined = @{}
+foreach ($line in @($allIss | ForEach-Object { @(Get-IssSection $_ 'CustomMessages') })) { if ($line -match '^(en|es)\.(\w+)=') { $defined["$($Matches[1]).$($Matches[2])"] = $true } }
+$used = @(@($allIss | ForEach-Object { [regex]::Matches($_, "CustomMessage\('(\w+)'\)|\{cm:(\w+)\}") | ForEach-Object { if ($_.Groups[1].Success) { $_.Groups[1].Value } else { $_.Groups[2].Value } } }) | Select-Object -Unique)
+$untranslated = @($used | Where-Object { -not $defined["en.$_"] -or -not $defined["es.$_"] })
+$onlyOne = @($defined.Keys | Where-Object { $other = if ($_ -like 'en.*') { 'es.' + $_.Substring(3) } else { 'en.' + $_.Substring(3) }; -not $defined[$other] })
+Check 'setups: every message the code uses is defined in English and Spanish' ($used.Count -gt 20 -and $untranslated.Count -eq 0 -and $onlyOne.Count -eq 0) "missing: $($untranslated -join ', '); one language only: $($onlyOne -join ', ')"
 
 if ($script:failures -gt 0) {
     Write-Host "$($script:failures) check(s) failed." -ForegroundColor Red
