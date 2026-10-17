@@ -27,11 +27,27 @@
     another): its database, keys, certificates and settings. Nodes reconnect on their own when the panel's address
     leads to this machine.
 
+    What Pulsar needs and this machine lacks is downloaded over HTTPS and checked before anything is installed: the
+    .NET 10 runtimes (Microsoft's installers, against the SHA-512 in Microsoft's release metadata and Microsoft's
+    signature) and, for a panel without -ConnectionString or a local PostgreSQL 15 or later, the newest PostgreSQL 18
+    (EDB's installer, against EnterpriseDB's signature). A download that cannot be checked is not run, and nothing is
+    changed. -DotNetInstallers and -PostgresInstaller take installers from a folder instead (offline machines).
+
+    -Unattended is for the setup wizards and other automation: nothing prompts, secrets come from the environment or
+    -SecretsFile (never the command line), progress lines start with "PULSAR-STEP <n>/<total> ", and the exit code
+    says how it ended. Every run writes a log, without secrets, to <DataRoot>\Setup\logs.
+
     Every step is described in docs/guides/install.md.
 
 .EXAMPLE
     .\Install-Pulsar.ps1
-    Panel and agent on this PC (asks for the PostgreSQL password and the administrator's password).
+    Panel and agent on this PC (asks for the administrator's password, and for the PostgreSQL password when a
+    PostgreSQL is installed already).
+
+.EXAMPLE
+    $env:PULSAR_NODE_CODE = '<the code the panel shows>'; .\Install-Pulsar.ps1 -Mode Agent
+    Adds this machine as a node with the code from the panel's Add node dialog: the panel's certificate is checked
+    against the code and trusted, without copying it by hand.
 
 .EXAMPLE
     .\Install-Pulsar.ps1 -Mode Agent -PanelUrl https://panel.example.com:8443 -Token <token> -PanelKey <fingerprint> -TrustCertificate .\panel.cer
@@ -43,9 +59,24 @@ param(
     [ValidateSet('AllInOne', 'Panel', 'Agent')]
     [string] $Mode = 'AllInOne',
 
+    # --- Unattended (the setup wizards, automation) ---
+    # Nothing prompts: what would be asked comes from this (elevated) process's environment or -SecretsFile, never
+    # from the command line, which other programs can read (docs/guides/install.md, "Unattended installs").
+    [switch] $Unattended,
+    # A JSON file of secrets ({"adminPassword": "...", ...}) that only SYSTEM and Administrators may own or open, in a
+    # folder only they may change; deleted once read. Or set PULSAR_SECRETS_FILE.
+    [string] $SecretsFile,
+    # EDB's PostgreSQL installer (postgresql-<version>-<build>-windows-x64.exe, PostgreSQL 15 or later) to use instead
+    # of downloading the newest PostgreSQL 18; checked the same way.
+    [string] $PostgresInstaller,
+    # A folder with Microsoft's .NET runtime installers (dotnet-runtime-10.0.<n>-win-x64.exe and
+    # aspnetcore-runtime-10.0.<n>-win-x64.exe) to use instead of downloading them; checked the same way.
+    [string] $DotNetInstallers,
+
     # --- Panel ---
-    # An existing database (Npgsql connection string). Without it, a 'pulsar' database and role are created in the
-    # local PostgreSQL with -PostgresPassword (the postgres superuser's password).
+    # An existing database (Npgsql connection string; or PULSAR_CONNECTION_STRING, since it holds a password).
+    # Without it, a 'pulsar' database and role are created in the local PostgreSQL with -PostgresPassword (the postgres
+    # superuser's password), or in a PostgreSQL 18 this script installs when there is none.
     [string] $ConnectionString,
     [SecureString] $PostgresPassword,
     [int] $PostgresPort = 5432,
@@ -76,6 +107,11 @@ param(
     [switch] $FirewallPublic,
 
     # --- Agent ---
+    # The code the panel's Add node dialog shows (pulsar-node-1....): the panel's address, an enrollment token, the panel
+    # key's fingerprint and the SHA-256 of the panel's certificate, instead of -Token, -PanelKey and -TrustCertificate.
+    # Prefer PULSAR_NODE_CODE: a command line shows in the process list.
+    [string] $NodeCode,
+    # The panel's address (with -NodeCode: only when this machine reaches the panel at another address than the code's).
     [string] $PanelUrl,
     # The enrollment token; or leave it out and set PULSAR_ENROLLMENT_TOKEN: a command line shows in the process list.
     [string] $Token,
@@ -125,14 +161,235 @@ $ServerAuthentication = '1.3.6.1.5.5.7.3.1'
 $Icacls = Join-Path ([Environment]::SystemDirectory) 'icacls.exe'
 $Sc = Join-Path ([Environment]::SystemDirectory) 'sc.exe'
 
+# What this script downloads, and from where (docs/guides/install.md, "What the installer downloads"). Only over
+# HTTPS; nothing it cannot check runs.
+# - PostgreSQL: the newest release of this major version (never a newer major version on its own: that needs a data
+#   upgrade), from postgresql.org's list of versions; EDB's Windows installer, signed by EnterpriseDB.
+$PostgresMajor = 18
+$PostgresVersionsUrl = 'https://www.postgresql.org/versions.json'
+$PostgresDownloadsUrl = 'https://get.enterprisedb.com/postgresql'
+$PostgresSigner = 'EnterpriseDB Corporation'
+# - .NET: the newest runtimes of this channel, from Microsoft's release metadata, which lists each installer's SHA-512;
+#   the installers are signed by Microsoft, and only Microsoft's download hosts are taken from the metadata.
+$DotNetChannel = '10.0'
+$DotNetReleasesUrl = 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json'
+$DotNetHosts = @('builds.dotnet.microsoft.com', 'download.visualstudio.microsoft.com')
+$DotNetSigner = 'Microsoft Corporation'
+# The shared frameworks Pulsar's programs may use, in the order they are installed, with the installer of each (its
+# component in releases.json and its file name there).
+$DotNetFrameworks = [ordered]@{
+    'Microsoft.NETCore.App' = @{ Component = 'runtime'; File = 'dotnet-runtime' }
+    'Microsoft.AspNetCore.App' = @{ Component = 'aspnetcore-runtime'; File = 'aspnetcore-runtime' }
+}
+# The Extended Key Usage of a certificate for signing code (id-kp-codeSigning): an installer's signer must have it.
+$CodeSigning = '1.3.6.1.5.5.7.3.3'
+# The node code (version 1) the panel's Add node dialog shows, as src/Pulsar.Contracts/NodeCode.cs writes and reads it:
+# its prefix, its longest form, the longest panel origin it carries, and what starts a reusable enrollment token.
+$NodeCodePrefix = 'pulsar-node-1.'
+$NodeCodeMaxLength = 2048
+$NodeCodeMaxUrlLength = 512
+$ReusableTokenPrefix = 'pulsar_enroll_'
+# This script's own folder: its logs and, while it runs, its downloads. SYSTEM and Administrators only.
+$SetupRoot = Join-Path $DataRoot 'Setup'
+$SetupLogs = Join-Path $SetupRoot 'logs'
+
+# Exit codes with -Unattended (docs/guides/install.md, "Unattended installs"). Without it, a failure is an error, as it
+# always was (exit code 1 under powershell -File).
+$ExitFailed = 1         # anything else: the message says what failed, and what was left
+$ExitUsage = 2          # wrong or missing parameters, secrets or node code: nothing was changed
+$ExitUnsupported = 3    # this machine, this folder or this account cannot install Pulsar as they are: nothing was changed
+$ExitOffline = 4        # a download, or the panel, could not be reached: nothing was changed
+$ExitUntrusted = 5      # a download or a given installer failed its checks (signature, hash, version): nothing was changed
+$ExitCertificate = 6    # the panel's certificate is not the node code's, or may not be trusted: nothing was changed
+$ExitRestart = 3010     # done; an installer (.NET) asks for Windows to be restarted to finish
+
+# The progress steps of each kind of run: every run prints each of its steps once, in this order, a step it does not
+# need too (saying so), so that "<n>/<total>" only moves forward.
+$StepPlans = @{
+    AllInOne = @('check', 'downloads', 'dotnet', 'postgres', 'panel', 'administrator', 'agent')
+    Panel = @('check', 'downloads', 'dotnet', 'postgres', 'panel', 'administrator')
+    Agent = @('check', 'downloads', 'dotnet', 'agent')
+    Update = @('check', 'downloads', 'dotnet', 'update')
+    Uninstall = @('check', 'remove')
+}
+
+# The secrets a run may be given outside its command line: their names in -SecretsFile and their environment variables.
+$SecretInputs = [ordered]@{
+    adminPassword = 'PULSAR_ADMIN_PASSWORD'
+    postgresPassword = 'PULSAR_POSTGRES_PASSWORD'
+    connectionString = 'PULSAR_CONNECTION_STRING'
+    certificatePassword = 'PULSAR_CERTIFICATE_PASSWORD'
+    enrollmentToken = 'PULSAR_ENROLLMENT_TOKEN'
+    nodeCode = 'PULSAR_NODE_CODE'
+}
+# A JSON string: no raw control characters, only JSON's escapes.
+$JsonStringPattern = '"(?:[^"\\\x00-\x1F]|\\["\\/bfnrt]|\\u[0-9A-Fa-f]{4})*"'
+
+# What this run knows that must never be written out (Register-Secret), its log, its downloads folder, its step plan
+# and whether an installer asked for a restart.
+$SetupSecrets = New-Object Collections.Generic.List[string]
+$SetupLogFile = $null
+$SetupDownloads = $null
+$StepPlan = @()
+$RestartNeeded = $false
+
 function Write-Step([string] $message) { Write-Host "==> $message" -ForegroundColor Cyan }
+
+# --- Log, progress and exit codes ----------------------------------------------------------------------------------
+
+# An error that ends this run with $code (one of the $Exit* codes above).
+function New-SetupError([int] $code, [string] $message) {
+    $exception = New-Object InvalidOperationException $message
+    $exception.Data['PulsarExitCode'] = $code
+    return $exception
+}
+
+# The exit code an error ($record: what a catch block gets) ends this run with: its own, or $ExitFailed.
+function Get-SetupExitCode($record) {
+    for ($exception = $record.Exception; $null -ne $exception; $exception = $exception.InnerException) {
+        if ($exception.Data.Contains('PulsarExitCode')) { return [int]$exception.Data['PulsarExitCode'] }
+    }
+    return $ExitFailed
+}
+
+# Text that must never be written out (passwords, tokens, the node code, connection strings): the log and the console
+# show "[secret]" instead. Very short ones are left alone: replacing every "abc" would garble the log and hide little.
+function Register-Secret([string] $value) {
+    if ($value -and $value.Length -ge 4 -and -not $SetupSecrets.Contains($value)) { $SetupSecrets.Add($value) }
+}
+
+# $text with every registered secret replaced, the longest first (one may contain another).
+function Protect-SetupText([string] $text) {
+    $result = "$text"
+    foreach ($secret in @($SetupSecrets | Sort-Object Length -Descending)) { $result = $result.Replace($secret, '[secret]') }
+    return $result
+}
+
+# Appends to this run's log, each line with the time, the secrets replaced. Not a transcript: that would record this
+# script's command line, where -Token or -NodeCode may be.
+function Write-SetupLog([string] $text) {
+    if (-not $SetupLogFile) { return }
+    $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss.fff')
+    $lines = @((Protect-SetupText $text) -split "`r?`n" | ForEach-Object { "$stamp $_" })
+    [IO.File]::AppendAllText($SetupLogFile, ($lines -join "`r`n") + "`r`n", (New-Object Text.UTF8Encoding $false))
+}
+
+# A progress line: "PULSAR-STEP <n>/<total> <text>", n being $key's place in $plan (this run's steps).
+function Format-SetupStep([string] $key, [string] $text, [string[]] $plan) {
+    $index = [Array]::IndexOf($plan, $key)
+    if ($index -lt 0) { throw "This run has no step '$key'." }
+    return "PULSAR-STEP $($index + 1)/$($plan.Count) $(ConvertTo-PrintableText $text)"
+}
+
+# Prints a progress line, as is with -Unattended (the wizards show the text after the prefix), as "[n/total] text"
+# otherwise.
+function Write-SetupStep([string] $key, [string] $text) {
+    $line = Format-SetupStep $key $text $StepPlan
+    if ($Unattended) { Write-Host $line }
+    else { Write-Host ($line -replace '^PULSAR-STEP (\d+/\d+) ', '[$1] ') -ForegroundColor Cyan }
+}
+
+# Shows one record of the main part's output (Write-Host, warnings, errors, objects) as it would have been shown, and
+# writes it to the log, both with the secrets replaced.
+function Write-SetupRecord($record) {
+    if ($record -is [Management.Automation.InformationRecord] -and $record.MessageData -is [Management.Automation.HostInformationMessage]) {
+        $message = $record.MessageData
+        $text = Protect-SetupText $message.Message
+        Write-SetupLog $text
+        $options = @{ Object = $text; NoNewline = [bool]$message.NoNewLine }
+        if ($null -ne $message.ForegroundColor) { $options.ForegroundColor = $message.ForegroundColor }
+        Write-Host @options
+        return
+    }
+    if ($record -is [Management.Automation.WarningRecord]) {
+        $text = Protect-SetupText $record.Message
+        Write-SetupLog "WARNING: $text"
+        Write-Warning $text
+        return
+    }
+    if ($record -is [Management.Automation.VerboseRecord] -or $record -is [Management.Automation.DebugRecord]) {
+        Write-SetupLog (Protect-SetupText $record.Message)
+        return
+    }
+    if ($record -is [Management.Automation.ErrorRecord]) { $text = "ERROR: $($record.Exception.Message)" }
+    elseif ($record -is [Management.Automation.InformationRecord]) { $text = "$($record.MessageData)" }
+    else { $text = ($record | Out-String).TrimEnd() }
+    $text = Protect-SetupText $text
+    Write-SetupLog $text
+    Write-Host $text
+}
+
+# The parameters this run was given, fit for the log: secrets are named, never shown.
+function Get-ParameterSummary($bound) {
+    $parts = foreach ($name in $bound.Keys) {
+        $value = $bound[$name]
+        if ($name -in 'Token', 'NodeCode', 'ConnectionString' -or $value -is [SecureString]) { "-$name [secret]" }
+        elseif ($value -is [Management.Automation.SwitchParameter]) { "-${name}:$([bool]$value)" }
+        else { "-$name $(@($value) -join ',')" }
+    }
+    return ($parts -join ' ')
+}
+
+# Makes this script's folder ($SetupRoot, then its logs folder) for SYSTEM and Administrators only, in the call that
+# creates it, and checks it. Whoever else could change it could read the log, or replace a download before it runs.
+function New-SetupFolder([string] $path) {
+    if (Test-Path -LiteralPath $path) { throw (New-SetupError $ExitUnsupported "$path already exists: someone else may have made it. Nothing was changed.") }
+    $security = New-Object Security.AccessControl.DirectorySecurity
+    $security.SetAccessRuleProtection($true, $false)
+    foreach ($sid in 'S-1-5-18', 'S-1-5-32-544') {
+        $security.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier $sid), 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+    }
+    $null = [IO.Directory]::CreateDirectory($path, $security)
+    if (-not (Test-PrivateFolder $path)) {
+        throw (New-SetupError $ExitUnsupported "$path could not be made for SYSTEM and Administrators alone (someone made it meanwhile, or the drive keeps no permissions). Nothing was changed.")
+    }
+}
+
+# Whether a folder is as New-PrivateFolder makes it: not a link, owned by SYSTEM or Administrators, nothing inherited
+# and nobody else allowed in. Made by someone else meanwhile, or on a drive that keeps no permissions (FAT, exFAT, a
+# share that ignores them), it is not.
+function Test-PrivateFolder([string] $path) {
+    try {
+        $item = Get-Item -LiteralPath $path -Force
+        if ($item -isnot [IO.DirectoryInfo] -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+        $acl = Get-Acl -LiteralPath $path
+        $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier])
+        if ($null -eq $owner -or $owner.Value -notin 'S-1-5-18', 'S-1-5-32-544') { return $false }
+        $allowed = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object { $_.AccessControlType -eq 'Allow' } |
+            ForEach-Object { $_.IdentityReference.Value } | Select-Object -Unique)
+        return $acl.AreAccessRulesProtected -and $allowed.Count -gt 0 -and @($allowed | Where-Object { $_ -notin 'S-1-5-18', 'S-1-5-32-544' }).Count -eq 0
+    }
+    catch {
+        return $false
+    }
+}
+
+# Makes this script's folder if needed and starts this run's log there.
+function Start-SetupLog {
+    if (-not (Test-Path -LiteralPath $DataRoot)) { $null = New-Item -ItemType Directory $DataRoot }
+    if (-not (Test-Path -LiteralPath $SetupRoot)) { New-SetupFolder $SetupRoot }
+    $findings = @(Find-UntrustedWriters $SetupRoot)
+    if ($findings.Count -gt 0 -or -not (Test-PrivateFolder $SetupRoot)) {
+        $detail = if ($findings.Count -gt 0) { Get-UntrustedWritersMessage $findings } else { "  it is not for SYSTEM and Administrators alone" }
+        throw (New-SetupError $ExitUnsupported "This script keeps its log and its downloads in $SetupRoot, which others could change:$([Environment]::NewLine)$detail$([Environment]::NewLine)Delete that folder (someone else may have made it) and run this script again. Nothing was changed.")
+    }
+    if (-not (Test-Path -LiteralPath $SetupLogs)) { New-SetupFolder $SetupLogs }
+    $script:SetupLogFile = Join-Path $SetupLogs ('install-{0:yyyyMMdd-HHmmss}-{1}.log' -f (Get-Date), $PID)
+    Write-SetupLog "Install-Pulsar.ps1 in $PSScriptRoot, on $([Environment]::OSVersion.VersionString), PowerShell $($PSVersionTable.PSVersion): $(Get-ParameterSummary $SetupParameters)"
+    if ($Unattended) { Write-Host "PULSAR-LOG $SetupLogFile" }
+}
 
 function Assert-Administrator {
     $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Run this script in an elevated PowerShell (right-click > Run as administrator).'
+        throw (New-SetupError $ExitUnsupported 'Run this script in an elevated PowerShell (right-click > Run as administrator).')
     }
-    if (-not [Environment]::Is64BitOperatingSystem) { throw 'Pulsar needs 64-bit Windows.' }
+    if (-not [Environment]::Is64BitOperatingSystem) { throw (New-SetupError $ExitUnsupported 'Pulsar needs 64-bit Windows.') }
+    # A 32-bit program (a 32-bit setup, say) that starts powershell.exe gets the 32-bit one, which sees another Program
+    # Files and another registry.
+    if (-not [Environment]::Is64BitProcess) {
+        throw (New-SetupError $ExitUnsupported "Run this script in 64-bit Windows PowerShell ($([Environment]::GetFolderPath('Windows'))\System32\WindowsPowerShell\v1.0\powershell.exe; a 32-bit program reaches it as Sysnative\WindowsPowerShell\v1.0\powershell.exe).")
+    }
 }
 
 # --- Where this script runs from ------------------------------------------------------------------------------------
@@ -218,19 +475,20 @@ function Get-UntrustedWritersMessage([string[]] $findings) {
 function Assert-TrustedLocation {
     $findings = @(Find-UntrustedWriters $PSScriptRoot)
     if ($findings.Count -gt 0) {
-        throw "This script runs as administrator and installs the programs next to it to run as services, so it refuses to run from a folder that other accounts could change (a game server's account could replace a program, or this script, and take over the machine). Here, in ${PSScriptRoot}:$([Environment]::NewLine)$(Get-UntrustedWritersMessage $findings)$([Environment]::NewLine)Extract the release ZIP into a new folder in $env:ProgramFiles, which only administrators can change, as docs/guides/install.md shows (step 2), and run this script from there. Nothing was changed."
+        throw (New-SetupError $ExitUnsupported "This script runs as administrator and installs the programs next to it to run as services, so it refuses to run from a folder that other accounts could change (a game server's account could replace a program, or this script, and take over the machine). Here, in ${PSScriptRoot}:$([Environment]::NewLine)$(Get-UntrustedWritersMessage $findings)$([Environment]::NewLine)Extract the release ZIP into a new folder in $env:ProgramFiles, which only administrators can change, as docs/guides/install.md shows (step 2), and run this script from there. Nothing was changed.")
     }
 }
 
 # Pulsar's programs (.NET 10) refuse to start on a Windows that lacks updates: Windows Server 2022 as installed from its
-# original image stops them with "Your Windows doesn't fully support CET". Checked before anything is installed.
+# original image stops them with "Your Windows doesn't fully support CET". Checked before Pulsar is installed (once
+# the .NET runtimes the programs need are, which then stay).
 function Assert-RuntimeSupported {
     $result = Invoke-Native (Join-Path $PSScriptRoot 'agent\PulsarAgent.exe') help
     if ($result.ExitCode -eq 0) { return }
     if ($result.Output -match 'CET') {
-        throw "This Windows lacks updates that Pulsar needs ($($result.Output.Trim() -replace '\s+', ' ')). Install all available Windows updates (Settings > Windows Update, or sconfig on Server Core), restart, and run this script again."
+        throw (New-SetupError $ExitUnsupported "This Windows lacks updates that Pulsar needs ($($result.Output.Trim() -replace '\s+', ' ')). Install all available Windows updates (Settings > Windows Update, or sconfig on Server Core), restart, and run this script again. Pulsar was not installed.")
     }
-    throw "Pulsar's programs do not start on this Windows (exit code $($result.ExitCode)):$([Environment]::NewLine)$($result.Output)"
+    throw (New-SetupError $ExitUnsupported "Pulsar's programs do not start on this Windows (exit code $($result.ExitCode)):$([Environment]::NewLine)$($result.Output)")
 }
 
 function Test-Service([string] $name) { return $null -ne (Get-Service -Name $name -ErrorAction SilentlyContinue) }
@@ -321,9 +579,15 @@ function Write-StaleBackupTasks {
     }
 }
 
-# Copies a release folder over an installed one, keeping the local settings file.
+# Puts a release folder's program in place of an installed one, keeping the local settings file and the panel's
+# downloads folder (PulsarAgentSetup.exe, which the panel serves to new nodes; a release that has one replaces it).
+# What else was there goes first: a program from a self-contained release left its own copy of the .NET runtime there,
+# which the new framework-dependent program would load instead of the shared runtime that Microsoft Update patches.
 function Copy-Program([string] $source, [string] $target) {
     if (-not (Test-Path (Join-Path $source '*'))) { throw "$source is missing: run this script from the extracted release ZIP." }
+    if (Test-Path -LiteralPath $target) {
+        Get-ChildItem -LiteralPath $target -Force | Where-Object { $_.Name -notin 'appsettings.Production.json', 'downloads' } | Remove-Item -Recurse -Force
+    }
     New-Item -ItemType Directory -Force $target | Out-Null
     Get-ChildItem $source | Where-Object Name -ne 'appsettings.Production.json' | Copy-Item -Destination $target -Recurse -Force
 }
@@ -462,16 +726,28 @@ function Wait-PanelReady($client) {
 
 # --- Database ---------------------------------------------------------------------------------------------------
 
-# The newest PostgreSQL service on this machine (there may be several versions), started if it is not running.
-function Find-PostgresBin {
+# The newest PostgreSQL service on this machine (there may be several versions), or $null when there is none. Its psql
+# runs as administrator here, so a PostgreSQL whose programs others could change is refused.
+function Get-LocalPostgres {
     $found = foreach ($service in Get-CimInstance Win32_Service -Filter "Name LIKE 'postgresql%'") {
         if ($service.PathName -match '^"?([^"]+\\bin)\\pg_ctl\.exe') {
             $bin = $Matches[1]
-            $version = (Invoke-Native (Join-Path $bin 'psql.exe') --version).Output
+            $psql = Join-Path $bin 'psql.exe'
+            if (-not (Test-Path -LiteralPath $psql)) { continue }
+            $findings = @(Find-UntrustedWriters $psql)
+            if ($findings.Count -gt 0) {
+                throw (New-SetupError $ExitUnsupported "This script runs PostgreSQL's psql.exe as administrator, and the one of the service $($service.Name) could be changed by other accounts:$([Environment]::NewLine)$(Get-UntrustedWritersMessage $findings)$([Environment]::NewLine)Install PostgreSQL in a folder only administrators can change (its installer's default, in Program Files), or pass -ConnectionString. Nothing was changed.")
+            }
+            $version = (Invoke-Native $psql --version).Output
             if ($version -match '(\d+)\.\d+') { [pscustomobject]@{ Service = $service; Bin = $bin; Major = [int]$Matches[1] } }
         }
     }
-    $newest = $found | Sort-Object Major -Descending | Select-Object -First 1
+    return $found | Sort-Object Major -Descending | Select-Object -First 1
+}
+
+# The newest PostgreSQL service on this machine (there may be several versions), started if it is not running.
+function Find-PostgresBin {
+    $newest = Get-LocalPostgres
     if (-not $newest) {
         throw 'No local PostgreSQL service was found. Install PostgreSQL (docs/guides/install.md, step 1) or pass -ConnectionString.'
     }
@@ -485,12 +761,246 @@ function Find-PostgresBin {
     return $newest.Bin
 }
 
+# psql in $bin as the postgres superuser over localhost, its password in its environment (never its command line);
+# $stdin, when given, is the SQL instead of $arguments (a statement with a secret in it goes there). Its exit code and
+# output (unaligned, without headers).
+function Invoke-Psql([string] $bin, [string] $password, [string[]] $arguments, [string] $stdin = $null) {
+    $psql = Join-Path $bin 'psql.exe'
+    $common = @('-h', 'localhost', '-p', $PostgresPort, '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A')
+    $env:PGPASSWORD = $password
+    try {
+        if ($stdin) { return Invoke-NativeWithInput $stdin $psql @common -f - }
+        return Invoke-Native $psql @common @arguments
+    }
+    finally {
+        Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+    }
+}
+
+# Whether the postgres password this run was given opens the local PostgreSQL: checked before anything is downloaded.
+function Assert-PostgresLogin {
+    $bin = Find-PostgresBin
+    $result = Invoke-Psql $bin (ConvertFrom-Secure $PostgresPassword) @('-c', 'SELECT 1')
+    if ($result.ExitCode -ne 0) {
+        throw (New-SetupError $ExitUsage "Could not connect to the local PostgreSQL as 'postgres' with the password given: $($result.Output.Trim()) Nothing was changed.")
+    }
+}
+
+# What the panel's database needs on this machine: $null (-ConnectionString names one), the newest local PostgreSQL
+# (15 or later, with its postgres password, asked for unless given), or a PostgreSQL to install: the newest
+# $PostgresMajor (or what -PostgresInstaller holds), as the service postgresql-x64-<major> in Program Files, on
+# -PostgresPort. Whatever would stop that install (the service, its folder or the port taken) stops this run now.
+function Get-PostgresPlan {
+    if ($ConnectionString) { return $null }
+    $local = Get-LocalPostgres
+    if ($local -and $local.Major -ge 15) {
+        if ($PostgresInstaller) { Write-Warning "PostgreSQL $($local.Major) is installed here already: Pulsar's database is made in it, and -PostgresInstaller is not used." }
+        if (-not $PostgresPassword) {
+            $script:PostgresPassword = Read-Secret "Password of PostgreSQL's 'postgres' user (chosen when PostgreSQL $($local.Major) was installed)" 'postgresPassword'
+        }
+        Assert-PostgresLogin
+        return [pscustomobject]@{ Install = $false; Major = $local.Major }
+    }
+    $major = $PostgresMajor
+    if ($PostgresInstaller) {
+        $named = Test-PostgresInstallerName (Split-Path -Leaf $PostgresInstaller)
+        if (-not $named -or $named.Major -lt 15) {
+            throw (New-SetupError $ExitUsage "-PostgresInstaller must be EDB's installer of PostgreSQL 15 or later, named as EDB names it (postgresql-$PostgresMajor.<minor>-<build>-windows-x64.exe), not $(Split-Path -Leaf $PostgresInstaller).")
+        }
+        if (-not (Test-Path -LiteralPath $PostgresInstaller -PathType Leaf)) { throw (New-SetupError $ExitUsage "$PostgresInstaller was not found.") }
+        $major = $named.Major
+    }
+    $service = "postgresql-x64-$major"
+    $prefix = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) "PostgreSQL\$major"
+    $older = ''
+    if ($local) { $older = " (PostgreSQL $($local.Major), the one installed here, is too old for Pulsar)" }
+    if (Test-Service $service) {
+        throw (New-SetupError $ExitUnsupported "PostgreSQL $major would be installed as the service $service, which exists already but is not a PostgreSQL this script can use$older. Remove it, or pass -ConnectionString. Nothing was changed.")
+    }
+    if (Test-Path -LiteralPath $prefix) {
+        throw (New-SetupError $ExitUnsupported "PostgreSQL $major would be installed in $prefix, which exists already (left by an earlier PostgreSQL?)$older. Remove it, or pass -ConnectionString. Nothing was changed.")
+    }
+    if (@(Get-NetTCPConnection -LocalPort $PostgresPort -State Listen -ErrorAction SilentlyContinue).Count -gt 0) {
+        throw (New-SetupError $ExitUnsupported "PostgreSQL $major would listen on port $PostgresPort, which another program uses$older. Pass another port with -PostgresPort, or pass -ConnectionString. Nothing was changed.")
+    }
+    return [pscustomobject]@{ Install = $true; Major = $major; Port = $PostgresPort; Service = $service; Prefix = $prefix; Data = (Join-Path $prefix 'data') }
+}
+
+# The PostgreSQL version EDB's installer file name gives ("postgresql-18.6-2-windows-x64.exe": major 18, minor 6,
+# build 2), or $null for another name.
+function Test-PostgresInstallerName([string] $name) {
+    if ($name -cnotmatch '^postgresql-(\d{2,3})\.(\d{1,4})-(\d{1,3})-windows-x64\.exe\z') { return $null }
+    return [pscustomobject]@{ Major = [int]$Matches[1]; Minor = [int]$Matches[2]; Build = [int]$Matches[3] }
+}
+
+# The newest release of PostgreSQL $major in postgresql.org's list of versions ($versions: versions.json read with
+# ConvertFrom-JsonDocument, a list of {"major": "18", "latestMinor": "6", "supported": true, ...}), as "18.6". Only
+# that major version: a newer one needs a data upgrade, never done on its own.
+function Select-PostgresVersion($versions, [int] $major) {
+    if ($versions -isnot [Collections.IList]) { throw (New-SetupError $ExitUntrusted "postgresql.org's list of versions is not a list. Nothing was changed.") }
+    $matching = @($versions | Where-Object { $_ -is [Collections.IDictionary] -and (Get-JsonValue $_ 'major') -is [string] -and (Get-JsonValue $_ 'major') -ceq "$major" })
+    if ($matching.Count -ne 1) { throw (New-SetupError $ExitUntrusted "postgresql.org's list of versions has $($matching.Count) entries for PostgreSQL $major, not one. Nothing was changed.") }
+    $minor = Get-JsonValue $matching[0] 'latestMinor'
+    if ($minor -isnot [string] -or $minor -cnotmatch '^\d{1,4}\z') { throw (New-SetupError $ExitUntrusted "postgresql.org's list of versions gives no release of PostgreSQL $major. Nothing was changed.") }
+    if ((Get-JsonValue $matching[0] 'supported') -ne $true) { Write-Warning "postgresql.org no longer supports PostgreSQL ${major}: plan an upgrade to a newer major version." }
+    return "$major.$([int]$minor)"
+}
+
+# The address of EDB's Windows installer of a PostgreSQL release and build ("18.6", 2).
+function Get-PostgresInstallerUrl([string] $version, [int] $build) {
+    return "$PostgresDownloadsUrl/postgresql-$version-$build-windows-x64.exe"
+}
+
+# The newest build of EDB's installer of $version (EDB numbers its rebuilds of a release: -1, -2...): the highest that
+# exists, looking until three in a row do not (EDB's server answers 403 or 404 for those).
+function Find-PostgresInstallerUrl([string] $version) {
+    $found = $null
+    $misses = 0
+    for ($build = 1; $build -le 20 -and $misses -lt 3; $build++) {
+        $url = Get-PostgresInstallerUrl $version $build
+        $status = 0
+        try { $status = [PulsarDownloads]::Probe($url) }
+        catch { throw (New-SetupError $ExitOffline "EDB's download server could not be reached ($($_.Exception.GetBaseException().Message)).") }
+        if ($status -eq 200) { $found = $url; $misses = 0 } else { $misses++ }
+    }
+    if (-not $found) { throw (New-SetupError $ExitOffline "EDB offers no Windows installer of PostgreSQL $version at $PostgresDownloadsUrl.") }
+    return $found
+}
+
+# EDB's installer of the PostgreSQL to install, in the private downloads folder and checked: the one -PostgresInstaller
+# names (copied), or the newest build of the newest release of the plan's major version, downloaded. Either must be
+# signed by EnterpriseDB.
+function Get-PostgresInstallerFile($plan) {
+    if ($PostgresInstaller) {
+        $file = Copy-SetupInstaller $PostgresInstaller
+        $what = "The PostgreSQL installer $PostgresInstaller"
+    }
+    else {
+        try {
+            Write-Step "Looking up the newest PostgreSQL $($plan.Major) ($PostgresVersionsUrl)"
+            $version = Select-PostgresVersion (ConvertFrom-JsonDocument (Get-SetupText $PostgresVersionsUrl 1MB)) $plan.Major
+            $url = Find-PostgresInstallerUrl $version
+            Write-Step "Downloading PostgreSQL $version from EDB ($url)"
+            $file = Save-SetupDownload $url (Split-Path -Leaf ([Uri]$url).AbsolutePath) 1GB
+        }
+        catch {
+            $code = Get-SetupExitCode $_
+            if ($code -ne $ExitOffline) { throw }
+            throw (New-SetupError $ExitOffline "PostgreSQL could not be downloaded ($($_.Exception.Message)) and this machine has no PostgreSQL 15 or later for Pulsar's database. Connect it to the internet and run this script again, or pass EDB's installer with -PostgresInstaller, or install PostgreSQL yourself, or use a database elsewhere with -ConnectionString. Nothing was changed.")
+        }
+        $what = "The PostgreSQL installer downloaded from $url"
+    }
+    Assert-InstallerSignature (Get-AuthenticodeSignature -LiteralPath $file) $PostgresSigner $what
+    return $file
+}
+
+# The pg_hba.conf rules that let in more than this machine ($rows: "type|address|netmask|error", one per rule, as psql
+# prints pg_hba_file_rules), each fit to print: a rule with an error, or a host rule for anything but a loopback
+# address (127.0.0.0/8 or ::1). Nothing when every rule is local.
+function Find-NonLocalHbaRules([string[]] $rows) {
+    foreach ($row in $rows) {
+        if (-not $row.Trim()) { continue }
+        $parts = $row.Split('|')
+        if ($parts.Count -ne 4) { "a rule this script cannot read ($(ConvertTo-PrintableText $row))"; continue }
+        $type, $address, $netmask, $problem = $parts
+        if ($problem) { "a rule PostgreSQL cannot use ($(ConvertTo-PrintableText $problem))"; continue }
+        if ($type -ceq 'local') { continue }
+        $ip = $null
+        $mask = $null
+        if ([Net.IPAddress]::TryParse($address, [ref] $ip) -and [Net.IPAddress]::TryParse($netmask, [ref] $mask)) {
+            $bytes = $ip.GetAddressBytes()
+            $maskBytes = $mask.GetAddressBytes()
+            if ($bytes.Length -eq 4 -and $maskBytes.Length -eq 4 -and $bytes[0] -eq 127 -and $maskBytes[0] -eq 255) { continue }
+            if ($bytes.Length -eq 16 -and $ip.Equals([Net.IPAddress]::IPv6Loopback) -and @($maskBytes | Where-Object { $_ -ne 255 }).Count -eq 0) { continue }
+        }
+        ConvertTo-PrintableText "$type $address $netmask"
+    }
+}
+
+# Waits for a PostgreSQL service to run (an installer or a restart may leave it starting), and for it to take
+# connections with $password.
+function Wait-PostgresReady([string] $service, [string] $bin, [string] $password) {
+    $deadline = (Get-Date).AddMinutes(2)
+    $last = $null
+    while ((Get-Date) -lt $deadline) {
+        $state = (Get-Service -Name $service -ErrorAction SilentlyContinue).Status
+        if ($state -eq 'Stopped') { Start-Service -Name $service -ErrorAction SilentlyContinue }
+        if ($state -eq 'Running') {
+            $last = Invoke-Psql $bin $password @('-c', 'SELECT 1')
+            if ($last.ExitCode -eq 0) { return }
+        }
+        Start-Sleep -Seconds 2
+    }
+    $detail = if ($last) { $last.Output.Trim() } else { "the service $service does not run" }
+    throw "PostgreSQL did not take connections within 2 minutes ($detail)."
+}
+
+# Installs PostgreSQL with EDB's installer ($installer, checked; $plan from Get-PostgresPlan), unattended: the server
+# and its command-line tools (no pgAdmin, no StackBuilder). Its superuser password is random and given in an options
+# file only SYSTEM and Administrators can read, deleted when the installer ends (never on a command line, which other
+# programs can read). It is replaced at once by another random one (the installer may pass the first to its own
+# helpers), which is kept nowhere: install.md says how an administrator sets a new one. Then PostgreSQL listens on
+# this machine only, and its pg_hba.conf may let in nothing else. Returns the superuser's password, for this run only.
+function Install-PostgresServer([string] $installer, $plan) {
+    $installPassword = New-Secret 32
+    Register-Secret $installPassword
+    $options = Join-Path $SetupDownloads 'postgresql-options.txt'
+    # The installer unpacks and logs into its TEMP: one of this script's private folders.
+    $temp = Join-Path $SetupDownloads 'postgresql-temp'
+    $null = New-Item -ItemType Directory $temp
+    Write-PrivateFile $options "superpassword=$installPassword`r`n"
+    Write-Step "Installing PostgreSQL $($plan.Major) in $($plan.Prefix) (the service $($plan.Service), port $($plan.Port); this takes a few minutes)"
+    try {
+        $code = Start-Installer $installer @('--mode', 'unattended', '--unattendedmodeui', 'none', '--optionfile', $options,
+            '--prefix', $plan.Prefix, '--datadir', $plan.Data, '--serverport', "$($plan.Port)", '--servicename', $plan.Service,
+            '--disable-components', 'pgAdmin,stackbuilder') $temp 60
+    }
+    finally {
+        Remove-Item -LiteralPath $options -Force -ErrorAction SilentlyContinue
+    }
+    $left = "If PostgreSQL $($plan.Major) now shows in Apps, remove it (and $($plan.Prefix)) before running this script again."
+    if ($code -ne 0) {
+        $kept = Join-Path $SetupRoot ('postgresql-install-{0:yyyyMMdd-HHmmss}' -f (Get-Date))
+        Move-Item -LiteralPath $temp $kept -ErrorAction SilentlyContinue
+        throw "PostgreSQL's installer failed (exit code $code). Its logs are in $kept, which only administrators can open: delete it once read, since they may hold the password that attempt was given. $left"
+    }
+    Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+    $bin = Join-Path $plan.Prefix 'bin'
+    try {
+        Wait-PostgresReady $plan.Service $bin $installPassword
+        $password = New-Secret 32
+        Register-Secret $password
+        $changed = Invoke-Psql $bin $installPassword @() "ALTER ROLE postgres PASSWORD '$password';"
+        if ($changed.ExitCode -ne 0) { throw "The postgres password could not be changed: $($changed.Output.Trim())" }
+        # Only the superuser and PostgreSQL's own roles: anything else was made by whoever connected meanwhile.
+        $roles = Invoke-Psql $bin $password @('-c', "SELECT rolname FROM pg_roles WHERE rolname <> 'postgres' AND rolname !~ '^pg_'")
+        if ($roles.ExitCode -ne 0) { throw "Its roles could not be listed: $($roles.Output.Trim())" }
+        if ($roles.Output.Trim()) { throw "It has roles this script did not make ($(ConvertTo-PrintableText ($roles.Output.Trim() -replace '\s+', ', '))): something else connected to it while it was being installed." }
+        Write-Step 'PostgreSQL: listening on this machine only'
+        $set = Invoke-Psql $bin $password @('-c', "ALTER SYSTEM SET listen_addresses = 'localhost'")
+        if ($set.ExitCode -ne 0) { throw "listen_addresses could not be set: $($set.Output.Trim())" }
+        Restart-Service -Name $plan.Service -Force
+        Wait-PostgresReady $plan.Service $bin $password
+        $listen = Invoke-Psql $bin $password @('-c', 'SHOW listen_addresses')
+        if ($listen.ExitCode -ne 0 -or $listen.Output.Trim() -cne 'localhost') { throw "It listens on '$(ConvertTo-PrintableText $listen.Output.Trim())', not on localhost only." }
+        $rules = Invoke-Psql $bin $password @('-F', '|', '-c', "SELECT type, coalesce(address, ''), coalesce(netmask, ''), coalesce(error, '') FROM pg_hba_file_rules")
+        if ($rules.ExitCode -ne 0) { throw "pg_hba.conf's rules could not be read: $($rules.Output.Trim())" }
+        $open = @(Find-NonLocalHbaRules ($rules.Output -split "`r?`n"))
+        if ($open.Count -gt 0) { throw "pg_hba.conf in $($plan.Data) lets in more than this machine: $($open -join '; ')." }
+    }
+    catch {
+        throw "PostgreSQL $($plan.Major) was installed, but setting it up failed: $($_.Exception.Message) $left"
+    }
+    return ConvertTo-SecureString $password -AsPlainText -Force
+}
+
 function New-PanelDatabase {
     $bin = Find-PostgresBin
     if (-not $PostgresPassword) {
-        $PostgresPassword = Read-Host -AsSecureString "Password of PostgreSQL's 'postgres' user (chosen when PostgreSQL was installed)"
+        $PostgresPassword = Read-Secret "Password of PostgreSQL's 'postgres' user (chosen when PostgreSQL was installed)" 'postgresPassword'
     }
     $password = New-Secret 32
+    Register-Secret $password
     $env:PGPASSWORD = ConvertFrom-Secure $PostgresPassword
     try {
         $psql = Join-Path $bin 'psql.exe'
@@ -793,8 +1303,12 @@ function Get-ListedNames($names) {
 # Trusts a panel's certificate machine-wide (the agent runs as SYSTEM) for the panel at $hostName, marked so -Uninstall
 # removes it again. One that was already trusted is left unmarked: something else trusted it, and -Uninstall leaves it.
 function Add-TrustedCertificate([string] $cer, [string] $hostName, [string[]] $panelNames = @()) {
-    $certificate = Read-Certificate $cer
-    Assert-TrustableCertificate $certificate $cer $hostName $panelNames
+    Add-TrustedCertificateObject (Read-Certificate $cer) $cer $hostName $panelNames
+}
+
+# Add-TrustedCertificate for a certificate already read ($label names it in messages): the one a node code pins.
+function Add-TrustedCertificateObject([Security.Cryptography.X509Certificates.X509Certificate2] $certificate, [string] $label, [string] $hostName, [string[]] $panelNames = @()) {
+    Assert-TrustableCertificate $certificate $label $hostName $panelNames
     $names = Get-CertificateNames $certificate
     Write-Host "    $(ConvertTo-PrintableText $certificate.Subject), thumbprint $($certificate.Thumbprint), for $(@(Get-ListedNames $names) -join ', ')"
     $trusted = "Cert:\LocalMachine\Root\$($certificate.Thumbprint)"
@@ -865,10 +1379,27 @@ function Write-PanelConfig([hashtable] $settings) {
     Remove-Item $staging
 }
 
+# What would stop a panel's install, checked before anything is downloaded or changed: the panel (or, in all-in-one
+# mode, the agent) installed already, ports that clash, a missing certificate or backup, and the administrator's
+# password (asked for unless given).
+function Assert-PanelInstallable {
+    if (Test-Service $PanelService) { throw (New-SetupError $ExitUsage 'The panel is already installed on this machine. Use -Update to update it, or -Uninstall first.') }
+    if ($Mode -eq 'AllInOne' -and (Test-Service $AgentService)) { throw (New-SetupError $ExitUsage 'The agent is already installed on this machine. Use -Update to update it, or -Uninstall first.') }
+    if ($AgentsPort -and $AgentsPort -eq $Port) { throw (New-SetupError $ExitUsage '-AgentsPort must be another port than -Port: browsers must never be asked for a client certificate.') }
+    if ($SftpPort -eq $Port -or ($AgentsPort -and $SftpPort -eq $AgentsPort)) { throw (New-SetupError $ExitUsage '-SftpPort must be another port than -Port and -AgentsPort.') }
+    if ($CertificatePath -and -not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) { throw (New-SetupError $ExitUsage "$CertificatePath was not found.") }
+    if ($RestoreFrom) {
+        if (-not (Test-Path -LiteralPath (Join-Path $RestoreFrom 'panel-data\keys'))) { throw (New-SetupError $ExitUsage "$RestoreFrom is not a Pulsar backup (no panel-data\keys).") }
+        return
+    }
+    if (-not $AdminPassword) {
+        $script:AdminPassword = Read-Secret "Password for the panel's first administrator, '$AdminUserName' (at least 12 characters)" 'adminPassword'
+    }
+    if ((ConvertFrom-Secure $AdminPassword).Length -lt 12) { throw (New-SetupError $ExitUsage "The administrator's password needs at least 12 characters.") }
+}
+
 function Install-Panel {
-    if (Test-Service $PanelService) { throw 'The panel is already installed on this machine. Use -Update to update it, or -Uninstall first.' }
-    if ($AgentsPort -and $AgentsPort -eq $Port) { throw '-AgentsPort must be another port than -Port: browsers must never be asked for a client certificate.' }
-    if ($SftpPort -eq $Port -or ($AgentsPort -and $SftpPort -eq $AgentsPort)) { throw '-SftpPort must be another port than -Port and -AgentsPort.' }
+    Assert-PanelInstallable
     $backup = $null
     if ($RestoreFrom) {
         $backup = @{
@@ -876,12 +1407,7 @@ function Install-Panel {
             Data = Join-Path $RestoreFrom 'panel-data'
             Dump = Join-Path $RestoreFrom 'pulsar.dump'
         }
-        if (-not (Test-Path (Join-Path $backup.Data 'keys'))) { throw "$RestoreFrom is not a Pulsar backup (no panel-data\keys)." }
     }
-    elseif (-not $AdminPassword) {
-        $AdminPassword = Read-Host -AsSecureString "Password for the panel's first administrator, '$AdminUserName' (at least 12 characters)"
-    }
-    if (-not $backup -and (ConvertFrom-Secure $AdminPassword).Length -lt 12) { throw "The administrator's password needs at least 12 characters." }
 
     $connection = $ConnectionString
     if (-not $connection) {
@@ -893,6 +1419,7 @@ function Install-Panel {
         Restore-PanelDatabase $backup.Dump $connection
     }
 
+    Write-SetupStep 'panel' 'Installing the panel'
     Write-Step "Installing the panel in $PanelDir"
     Copy-Program (Join-Path $PSScriptRoot 'panel') $PanelDir
     Copy-BackupScript
@@ -910,6 +1437,7 @@ function Install-Panel {
     foreach ($folder in 'keys', 'logs', 'tls') { New-Item -ItemType Directory -Force (Join-Path $PanelData $folder) | Out-Null }
 
     $setupToken = New-Secret 48
+    Register-Secret $setupToken
     if ($backup) {
         Write-Step 'Restoring the keys, certificates and settings from the backup'
         foreach ($folder in 'keys', 'keyring', 'tls') {
@@ -973,8 +1501,10 @@ function Install-Panel {
     Initialize-PanelClient
     $client = [PulsarInstallerClient]::new("https://localhost:$Port", $certificate.Thumbprint)
     try {
+        if ($backup) { Write-SetupStep 'administrator' 'Waiting for the restored panel' }
+        else { Write-SetupStep 'administrator' "Creating the administrator '$AdminUserName'" }
         Wait-PanelReady $client
-        if ($backup) { return @{ Certificate = $certificate; Node = $null; Sftp = $null } }
+        if ($backup) { return @{ Certificate = $certificate; Node = $null; Sftp = $null; Port = $Port } }
 
         Write-Step "Creating the administrator '$AdminUserName'"
         $null = Invoke-Panel $client GET '/api/v1/auth/session'
@@ -1000,7 +1530,7 @@ function Install-Panel {
     finally {
         $client.Dispose()
     }
-    return @{ Certificate = $certificate; Node = $node; Sftp = $sftp }
+    return @{ Certificate = $certificate; Node = $node; Sftp = $sftp; Port = $Port }
 }
 
 function Write-SftpSummary($sftp) {
@@ -1078,81 +1608,1085 @@ function Uninstall-Agent {
     Remove-Item $AgentDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# --- Secrets given outside the command line ---------------------------------------------------------------------
+
+# Who besides SYSTEM and Administrators may own or open a file, by its permissions ($acl, as Get-Acl reads them): what
+# makes a file unfit to hold secrets (the secrets file, PostgreSQL's options file). Nothing when nobody may.
+function Get-PrivateFileProblems([Security.AccessControl.FileSystemSecurity] $acl) {
+    $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier])
+    if ($null -eq $owner -or $owner.Value -notin 'S-1-5-18', 'S-1-5-32-544') {
+        "it is owned by $(if ($null -ne $owner) { Get-AccountName $owner } else { 'nobody' })"
+    }
+    foreach ($rule in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
+        if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin 'S-1-5-18', 'S-1-5-32-544') {
+            "$(Get-AccountName $rule.IdentityReference) may open it"
+        }
+    }
+}
+
+# Writes a new file in one of this script's private folders, which it inherits (SYSTEM and Administrators only): never
+# one that is there already (or a link left there), and checked once written.
+function Write-PrivateFile([string] $path, [string] $text) {
+    $stream = New-Object IO.FileStream($path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try {
+        $bytes = (New-Object Text.UTF8Encoding $false).GetBytes($text)
+        $stream.Write($bytes, 0, $bytes.Length)
+    }
+    finally { $stream.Dispose() }
+    $problems = @(Get-PrivateFileProblems (Get-Acl -LiteralPath $path))
+    if ($problems.Count -gt 0) {
+        Remove-Item -LiteralPath $path -Force
+        throw "$path came out readable by others ($($problems -join '; ')): its folder is not this script's own."
+    }
+}
+
+# Reads the secrets file once and deletes it: a file only SYSTEM and Administrators may own or open, in a folder only
+# they may change (whoever could replace it would choose the administrator's password), at most 64 KiB of UTF-8 JSON
+# whose names are $SecretInputs' and whose values are text.
+function Read-SecretsFile([string] $path) {
+    $full = [IO.Path]::GetFullPath($path)
+    $item = Get-Item -LiteralPath $full -Force -ErrorAction SilentlyContinue
+    if ($item -isnot [IO.FileInfo] -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw (New-SetupError $ExitUsage "The secrets file $full is not a file (missing, a folder or a link). Nothing was changed.")
+    }
+    $problems = @(Get-PrivateFileProblems (Get-Acl -LiteralPath $full)) + @(Find-UntrustedWriters $full)
+    if ($problems.Count -gt 0) {
+        throw (New-SetupError $ExitUsage "The secrets file $full must be one only SYSTEM and Administrators may own, open or replace, and it is not:$([Environment]::NewLine)  $(@($problems | Select-Object -First 10) -join "$([Environment]::NewLine)  ")$([Environment]::NewLine)It was not read. Nothing was changed.")
+    }
+    if ($item.Length -gt 64KB) { throw (New-SetupError $ExitUsage "The secrets file $full is larger than 64 KiB. Nothing was changed.") }
+    $bytes = [IO.File]::ReadAllBytes($full)
+    try { Remove-Item -LiteralPath $full -Force }
+    catch { Write-Warning "The secrets file $full could not be deleted ($($_.Exception.Message)): delete it yourself." }
+    $start = 0
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { $start = 3 }
+    try { $text = (New-Object Text.UTF8Encoding $false, $true).GetString($bytes, $start, $bytes.Length - $start) }
+    catch { throw (New-SetupError $ExitUsage "The secrets file $full is not UTF-8 text. Nothing was changed.") }
+    $values = ConvertFrom-FlatJson $text "The secrets file $full"
+    foreach ($name in $values.Keys) {
+        if ($name -cnotin @($SecretInputs.Keys)) {
+            throw (New-SetupError $ExitUsage "The secrets file $full names '$(ConvertTo-PrintableText $name)', which is none of $(@($SecretInputs.Keys) -join ', '). Nothing was changed.")
+        }
+    }
+    return $values
+}
+
+# The secrets this run may need, from -SecretsFile (or PULSAR_SECRETS_FILE) and the environment ($SecretInputs), the
+# file's first. Each variable is removed from this process's environment as it is read, so that nothing this script
+# starts (installers, psql, the agent) inherits it.
+function Read-SetupInputs {
+    $fromEnvironment = @{}
+    foreach ($name in $SecretInputs.Keys) {
+        $value = [Environment]::GetEnvironmentVariable($SecretInputs[$name], 'Process')
+        if ($null -ne $value) {
+            [Environment]::SetEnvironmentVariable($SecretInputs[$name], $null, 'Process')
+            if ($value) { $fromEnvironment[$name] = $value }
+        }
+    }
+    $file = $SecretsFile
+    $fileVariable = [Environment]::GetEnvironmentVariable('PULSAR_SECRETS_FILE', 'Process')
+    if ($null -ne $fileVariable) {
+        [Environment]::SetEnvironmentVariable('PULSAR_SECRETS_FILE', $null, 'Process')
+        if (-not $file) { $file = $fileVariable }
+    }
+    $inputs = @{}
+    if ($file) {
+        $read = Read-SecretsFile $file
+        foreach ($name in $read.Keys) { if ($null -ne $read[$name]) { $inputs[$name] = [string]$read[$name] } }
+    }
+    foreach ($name in $fromEnvironment.Keys) { if (-not $inputs.ContainsKey($name)) { $inputs[$name] = $fromEnvironment[$name] } }
+    foreach ($value in $inputs.Values) { Register-Secret $value }
+    return $inputs
+}
+
+# Takes the secrets read outside the command line where the parameters left them out, and registers every secret this
+# run has, so that none is written out.
+function Use-SetupInputs([hashtable] $inputs) {
+    if (-not $AdminPassword -and $inputs['adminPassword']) { $script:AdminPassword = ConvertTo-SecureString $inputs['adminPassword'] -AsPlainText -Force }
+    if (-not $PostgresPassword -and $inputs['postgresPassword']) { $script:PostgresPassword = ConvertTo-SecureString $inputs['postgresPassword'] -AsPlainText -Force }
+    if (-not $CertificatePassword -and $inputs['certificatePassword']) { $script:CertificatePassword = ConvertTo-SecureString $inputs['certificatePassword'] -AsPlainText -Force }
+    if (-not $ConnectionString -and $inputs['connectionString']) { $script:ConnectionString = $inputs['connectionString'] }
+    if (-not $Token -and $inputs['enrollmentToken']) { $script:Token = $inputs['enrollmentToken'] }
+    if (-not $NodeCode -and $inputs['nodeCode']) { $script:NodeCode = $inputs['nodeCode'] }
+    foreach ($secure in @($AdminPassword, $PostgresPassword, $CertificatePassword)) { if ($secure) { Register-Secret (ConvertFrom-Secure $secure) } }
+    foreach ($text in @($ConnectionString, $Token, $NodeCode)) { Register-Secret $text }
+    if ($ConnectionString) {
+        foreach ($part in $ConnectionString.Split(';')) { if ($part -match '^\s*(password|pwd|psw)\s*=\s*(.*?)\s*$') { Register-Secret $Matches[2] } }
+    }
+}
+
+# Asks for a secret, or, with -Unattended (nothing may be asked), says where it should have come from.
+function Read-Secret([string] $prompt, [string] $name) {
+    if ($Unattended) {
+        $what = $prompt -replace ' \(.*\z', ''
+        $variable = $SecretInputs[$name]
+        throw (New-SetupError $ExitUsage "$what is needed, and nothing may be asked (-Unattended): give it in the environment variable $variable or as ""$name"" in the secrets file (-SecretsFile). Nothing was changed.")
+    }
+    $value = Read-Host -AsSecureString $prompt
+    Register-Secret (ConvertFrom-Secure $value)
+    return $value
+}
+
+# --- JSON ---------------------------------------------------------------------------------------------------------
+
+# A JSON object whose values are text or null and nothing else (no numbers, lists, nesting or repeated names), as a
+# dictionary with case-sensitive names: the node code and the secrets file. Strict, so that what is read is what was
+# meant: anything else is refused, never guessed at.
+function ConvertFrom-FlatJson([string] $text, [string] $what) {
+    $space = '[ \t\r\n]*'
+    $member = $space + '(' + $JsonStringPattern + ')' + $space + ':' + $space + '(' + $JsonStringPattern + '|null)' + $space
+    $timeout = [TimeSpan]::FromSeconds(2)
+    $object = '^' + $space + '\{(?:' + $member + '(?:,' + $member + ')*|' + $space + ')\}' + $space + '\z'
+    if (-not [regex]::new($object, 'None', $timeout).IsMatch($text)) {
+        throw (New-SetupError $ExitUsage "$what is not a JSON object of names and text.")
+    }
+    $values = New-Object 'Collections.Generic.Dictionary[string,object]' ([StringComparer]::Ordinal)
+    foreach ($match in [regex]::new('\G' + $space + '[{,]' + $member, 'None', $timeout).Matches($text)) {
+        $name = ConvertFrom-JsonString $match.Groups[1].Value $what
+        if ($values.ContainsKey($name)) { throw (New-SetupError $ExitUsage "$what names '$(ConvertTo-PrintableText $name)' more than once.") }
+        $value = $null
+        if ($match.Groups[2].Value -cne 'null') { $value = ConvertFrom-JsonString $match.Groups[2].Value $what }
+        $values[$name] = $value
+    }
+    return , $values
+}
+
+# The text of a JSON string as $JsonStringPattern matched it (quotes included): JSON's escapes, and no half of a
+# UTF-16 surrogate pair alone.
+function ConvertFrom-JsonString([string] $quoted, [string] $what) {
+    $escapes = @{ '"' = '"'; '\' = '\'; '/' = '/'; 'b' = [string][char]8; 'f' = [string][char]12; 'n' = "`n"; 'r' = "`r"; 't' = "`t" }
+    $value = [regex]::Replace($quoted.Substring(1, $quoted.Length - 2), '\\(?:u([0-9A-Fa-f]{4})|(.))', {
+            param($escape)
+            if ($escape.Groups[1].Success) { return [string][char][Convert]::ToInt32($escape.Groups[1].Value, 16) }
+            return $escapes[$escape.Groups[2].Value]
+        })
+    try { $null = (New-Object Text.UTF8Encoding $false, $true).GetBytes($value) }
+    catch { throw (New-SetupError $ExitUsage "$what holds text that is not Unicode (half of a surrogate pair).") }
+    return $value
+}
+
+# A JSON document of any size as dictionaries (names compared as written) and arrays: Microsoft's release metadata is
+# over a megabyte, and Windows PowerShell's ConvertFrom-Json has a size limit of its own.
+function ConvertFrom-JsonDocument([string] $json) {
+    try {
+        if ($PSVersionTable.PSEdition -eq 'Desktop') {
+            Add-Type -AssemblyName System.Web.Extensions
+            $serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+            $serializer.MaxJsonLength = [int]::MaxValue
+            $serializer.RecursionLimit = 64
+            return , $serializer.DeserializeObject($json)
+        }
+        return , (ConvertFrom-Json $json -AsHashtable -NoEnumerate)
+    }
+    catch {
+        throw (New-SetupError $ExitUntrusted "A downloaded document is not JSON ($($_.Exception.GetBaseException().Message)). Nothing was changed.")
+    }
+}
+
+# A value of a JSON object read by ConvertFrom-JsonDocument, or $null when it has none (or is not an object).
+function Get-JsonValue($object, [string] $name) {
+    if ($object -is [Collections.IDictionary] -and @($object.Keys) -ccontains $name) { return , $object[$name] }
+    return $null
+}
+
+# --- Node codes -----------------------------------------------------------------------------------------------------
+
+function New-NodeCodeError([string] $why) {
+    return New-SetupError $ExitUsage "This is not a node code the panel makes ($why). Copy it again from the panel (Nodes > Add node). Nothing was changed."
+}
+
+# Base64url without padding or whitespace, in its one canonical spelling (the bits past the last byte are zero): its
+# bytes, or $null for anything else. As NodeCode.TryDecode reads it.
+function ConvertFrom-Base64Url([string] $text) {
+    if ($text -cnotmatch '^[A-Za-z0-9_-]*\z' -or $text.Length % 4 -eq 1) { return $null }
+    $base64 = $text.Replace('-', '+').Replace('_', '/')
+    $base64 += '=' * ((4 - $base64.Length % 4) % 4)
+    try { $bytes = [Convert]::FromBase64String($base64) }
+    catch { return $null }
+    if ([Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_') -cne $text) { return $null }
+    return , $bytes
+}
+
+# 32 random bytes (an enrollment token's) or a SHA-256 (a key's fingerprint) in canonical base64url: 43 characters.
+function Test-RandomPart([string] $text) {
+    if ($text.Length -ne 43) { return $false }
+    $bytes = ConvertFrom-Base64Url $text
+    return $null -ne $bytes -and $bytes.Length -eq 32
+}
+
+# Whether $url is a panel address a node code may carry (NodeCode.IsValidUrl): an origin (scheme://host[:port], in
+# lower case, without a trailing slash, path, query, fragment or credentials, and no default port) in printable
+# ASCII, at most $NodeCodeMaxUrlLength characters, over https; plain http only for localhost or a loopback address,
+# as the agent accepts it.
+function Test-PanelUrl([string] $url) {
+    if (-not $url -or $url.Length -gt $NodeCodeMaxUrlLength -or $url -cnotmatch '^[\x21-\x7E]+\z') { return $false }
+    $uri = $null
+    if (-not [Uri]::TryCreate($url, [UriKind]::Absolute, [ref] $uri)) { return $false }
+    if ($uri.UserInfo -or $uri.AbsolutePath -cne '/' -or $uri.Query -or $uri.Fragment) { return $false }
+    # The origin as .NET writes it (Uri.GetLeftPart): Windows PowerShell's Uri writes an IPv6 address in full, .NET's
+    # in its short form, which IPAddress writes too.
+    $hostText = $uri.Host
+    if ($uri.HostNameType -eq [UriHostNameType]::IPv6) { $hostText = '[' + [Net.IPAddress]::Parse($uri.DnsSafeHost).ToString() + ']' }
+    $origin = $uri.Scheme + '://' + $hostText
+    if (-not $uri.IsDefaultPort) { $origin += ':' + $uri.Port }
+    if ($origin.ToLowerInvariant() -cne $url) { return $false }
+    if ($uri.Scheme -ceq 'https') { return $true }
+    if ($uri.Scheme -cne 'http') { return $false }
+    # "localhost" or a loopback address, never a name a name server answers for ("loopback", which Uri also counts).
+    if ($uri.HostNameType -eq [UriHostNameType]::IPv4 -or $uri.HostNameType -eq [UriHostNameType]::IPv6) {
+        $address = $null
+        return [Net.IPAddress]::TryParse($uri.DnsSafeHost, [ref] $address) -and [Net.IPAddress]::IsLoopback($address)
+    }
+    return $uri.Host -ceq 'localhost'
+}
+
+# The node code the panel's Add node dialog shows: $NodeCodePrefix and base64url (no padding) of UTF-8 JSON
+# {"url": the panel's origin, "token": an enrollment token, "key": the panel key's fingerprint, "cert": the lowercase
+# hexadecimal SHA-256 of the panel's TLS certificate (its DER), or null when the panel cannot tell which certificate its
+# clients see}. Read as strictly as src/Pulsar.Contracts/NodeCode.cs reads it: at most $NodeCodeMaxLength characters
+# (before decoding), exactly that prefix, canonical base64url, a JSON object (nothing nested) with exactly those four
+# members, each once and well formed (Test-PanelUrl; a single-use token or one with $ReusableTokenPrefix; "sha256:"
+# and a fingerprint; 64 lowercase hexadecimal digits or null). Anything else is refused. Spaces around it are a copy's.
+function ConvertFrom-NodeCode([string] $code) {
+    $code = "$code".Trim()
+    if ($code.Length -gt $NodeCodeMaxLength) { throw (New-NodeCodeError "longer than $NodeCodeMaxLength characters") }
+    if (-not $code.StartsWith($NodeCodePrefix, [StringComparison]::Ordinal)) { throw (New-NodeCodeError "it does not start with $NodeCodePrefix") }
+    $bytes = ConvertFrom-Base64Url $code.Substring($NodeCodePrefix.Length)
+    if ($null -eq $bytes -or $bytes.Length -eq 0) { throw (New-NodeCodeError 'its data is not canonical base64url') }
+    try { $json = (New-Object Text.UTF8Encoding $false, $true).GetString($bytes) }
+    catch { throw (New-NodeCodeError 'its data is not UTF-8 text') }
+    try { $fields = ConvertFrom-FlatJson $json 'The node code' }
+    catch { throw (New-NodeCodeError 'its data is not a JSON object of names and text') }
+    $names = @('url', 'token', 'key', 'cert')
+    if ($fields.Count -ne $names.Count -or @($names | Where-Object { -not $fields.ContainsKey($_) }).Count -gt 0) {
+        throw (New-NodeCodeError "it must hold $($names -join ', ') and nothing else")
+    }
+    $url = $fields['url']
+    $token = $fields['token']
+    $key = $fields['key']
+    $hash = $fields['cert']
+    if ($url -isnot [string] -or -not (Test-PanelUrl $url)) { throw (New-NodeCodeError 'its url is not a panel''s https:// origin') }
+    $tokenPart = $token
+    if ($token -is [string] -and $token.StartsWith($ReusableTokenPrefix, [StringComparison]::Ordinal)) { $tokenPart = $token.Substring($ReusableTokenPrefix.Length) }
+    if ($token -isnot [string] -or -not (Test-RandomPart $tokenPart)) { throw (New-NodeCodeError 'its token is not an enrollment token') }
+    if ($key -isnot [string] -or -not $key.StartsWith('sha256:', [StringComparison]::Ordinal) -or -not (Test-RandomPart $key.Substring(7))) { throw (New-NodeCodeError 'its key is not a panel key''s fingerprint') }
+    if ($null -ne $hash -and ($hash -isnot [string] -or $hash -cnotmatch '^[0-9a-f]{64}\z')) { throw (New-NodeCodeError 'its cert is not a lowercase SHA-256') }
+    return [pscustomobject]@{ Url = $url; Token = $token; PanelKey = $key; CertificateHash = $hash }
+}
+
+# The lowercase hexadecimal SHA-256 of a certificate's encoding (DER), as a node code pins it.
+function Get-CertificateHash([Security.Cryptography.X509Certificates.X509Certificate2] $certificate) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return (($sha.ComputeHash($certificate.RawData) | ForEach-Object { $_.ToString('x2') }) -join '') }
+    finally { $sha.Dispose() }
+}
+
+# Reads the certificate the panel at $uri presents, without trusting it: the TLS handshake is given up as soon as the
+# certificate arrives, before anything is sent. Also whether this machine already trusts it for that host (its chain
+# and its names, as Windows checks them).
+function Read-PanelCertificate([Uri] $uri) {
+    Initialize-SetupNetwork
+    try { $probe = [PulsarTlsProbe]::Read($uri.DnsSafeHost, $uri.Port, 15000) }
+    catch {
+        throw (New-SetupError $ExitOffline "The panel at $($uri.GetLeftPart('Authority')) could not be reached ($($_.Exception.GetBaseException().Message)). Check its address and that this machine reaches it. Nothing was changed.")
+    }
+    return [pscustomobject]@{
+        Certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new([byte[]]$probe.Certificate)
+        Trusted = ($probe.Errors -eq [Net.Security.SslPolicyErrors]::None)
+        Errors = "$($probe.Errors)"
+    }
+}
+
+# What to do with the certificate the panel presents ($presented, from Read-PanelCertificate) for a node code ($code,
+# from ConvertFrom-NodeCode): 'trusted' when this machine trusts it already, 'trust' when it is the one the code pins
+# and may be trusted (the checks -TrustCertificate makes: not a certificate authority, made for $hostName and the
+# panel only, for a web server's identity only). Anything else stops the run, before anything changes.
+function Resolve-NodeCertificate($code, $presented, [string] $hostName) {
+    $hash = Get-CertificateHash $presented.Certificate
+    if ($null -eq $code.CertificateHash) {
+        if ($presented.Trusted) { return 'trusted' }
+        throw (New-SetupError $ExitCertificate "This machine does not trust the panel's certificate for $hostName ($($presented.Errors)), and the node code pins none (the panel took its certificate for one every machine trusts). Install the certificate's authority on this machine, or make the code again in the panel. Nothing was changed.")
+    }
+    if ($hash -cne $code.CertificateHash) {
+        throw (New-SetupError $ExitCertificate "The panel at $hostName presents a certificate whose SHA-256 is $hash, not the $($code.CertificateHash) the node code names: this address leads to something else than the panel that made the code (or the panel's certificate changed since). Check the address, or make a new code in the panel. Nothing was changed.")
+    }
+    if ($presented.Trusted) { return 'trusted' }
+    try { Assert-TrustableCertificate $presented.Certificate "The panel's certificate" $hostName }
+    catch { throw (New-SetupError $ExitCertificate "$($_.Exception.Message) Nothing was changed.") }
+    return 'trust'
+}
+
+# --- Downloads and signatures -------------------------------------------------------------------------------------
+
+# HTTPS downloads (TLS 1.2, or 1.3 where Windows has it) that follow only redirects to other HTTPS addresses, with
+# their size capped, and the reading of a server's TLS certificate without trusting it.
+function Initialize-SetupNetwork {
+    if ('PulsarDownloads' -as [type]) { return }
+    $source = @'
+using System;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+public static class PulsarDownloads
+{
+    public static void UseTls()
+    {
+        SecurityProtocolType protocols = SecurityProtocolType.Tls12;
+        // TLS 1.3 (12288) where Windows has it: Windows 11 and Windows Server 2022 or later.
+        if (Environment.OSVersion.Version.Build >= 20348) { protocols |= (SecurityProtocolType)12288; }
+        try { ServicePointManager.SecurityProtocol = protocols; }
+        catch (NotSupportedException) { ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12; }
+    }
+
+    private static HttpClient NewClient()
+    {
+        HttpClientHandler handler = new HttpClientHandler();
+        handler.AllowAutoRedirect = false;
+        handler.UseCookies = false;
+        HttpClient client = new HttpClient(handler);
+        client.Timeout = Timeout.InfiniteTimeSpan;
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Pulsar-Install/1");
+        return client;
+    }
+
+    private static Uri Https(Uri uri)
+    {
+        if (!uri.IsAbsoluteUri || uri.Scheme != Uri.UriSchemeHttps) { throw new HttpRequestException("refused an address that is not HTTPS: " + uri.OriginalString); }
+        return uri;
+    }
+
+    // Up to 5 redirects, each to an HTTPS address; 60 seconds for each answer's headers.
+    private static HttpResponseMessage Send(HttpClient client, HttpMethod method, string url)
+    {
+        Uri uri = Https(new Uri(url, UriKind.Absolute));
+        for (int hop = 0; hop <= 5; hop++)
+        {
+            HttpResponseMessage response;
+            using (CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60)))
+            {
+                try { response = client.SendAsync(new HttpRequestMessage(method, uri), HttpCompletionOption.ResponseHeadersRead, timeout.Token).GetAwaiter().GetResult(); }
+                catch (OperationCanceledException) { throw new HttpRequestException(uri.Host + " did not answer within 60 seconds"); }
+            }
+            int status = (int)response.StatusCode;
+            if (status >= 300 && status <= 399 && response.Headers.Location != null)
+            {
+                Uri next = response.Headers.Location.IsAbsoluteUri ? response.Headers.Location : new Uri(uri, response.Headers.Location);
+                response.Dispose();
+                uri = Https(next);
+                continue;
+            }
+            return response;
+        }
+        throw new HttpRequestException("too many redirects from " + url);
+    }
+
+    public static int Probe(string url)
+    {
+        using (HttpClient client = NewClient())
+        using (HttpResponseMessage response = Send(client, HttpMethod.Head, url))
+        {
+            return (int)response.StatusCode;
+        }
+    }
+
+    public static string GetText(string url, long maxBytes)
+    {
+        using (MemoryStream buffer = new MemoryStream())
+        {
+            Fetch(url, buffer, maxBytes);
+            return new UTF8Encoding(false, true).GetString(buffer.ToArray());
+        }
+    }
+
+    public static void Download(string url, string path, long maxBytes)
+    {
+        using (FileStream file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            Fetch(url, file, maxBytes);
+        }
+    }
+
+    private static void Fetch(string url, Stream target, long maxBytes)
+    {
+        using (HttpClient client = NewClient())
+        using (HttpResponseMessage response = Send(client, HttpMethod.Get, url))
+        {
+            if (response.StatusCode != HttpStatusCode.OK) { throw new HttpRequestException(url + " answered " + (int)response.StatusCode + " " + response.ReasonPhrase); }
+            long? announced = response.Content.Headers.ContentLength;
+            if (announced.HasValue && announced.Value > maxBytes) { throw new IOException(url + " is larger than " + maxBytes + " bytes"); }
+            using (Stream source = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
+            {
+                byte[] chunk = new byte[81920];
+                long total = 0;
+                while (true)
+                {
+                    Task<int> read = source.ReadAsync(chunk, 0, chunk.Length);
+                    if (!read.Wait(TimeSpan.FromSeconds(60)))
+                    {
+                        response.Dispose();
+                        throw new IOException("the download from " + url + " stalled for 60 seconds");
+                    }
+                    int count = read.Result;
+                    if (count == 0) { break; }
+                    total += count;
+                    if (total > maxBytes) { throw new IOException(url + " is larger than " + maxBytes + " bytes"); }
+                    target.Write(chunk, 0, count);
+                }
+                if (announced.HasValue && total != announced.Value) { throw new IOException("the download from " + url + " ended early"); }
+            }
+        }
+    }
+}
+
+public sealed class PulsarTlsProbe
+{
+    public byte[] Certificate;
+    public SslPolicyErrors Errors;
+
+    // Connects, takes the certificate the server presents and gives the handshake up: nothing is sent over it.
+    public static PulsarTlsProbe Read(string host, int port, int timeoutMilliseconds)
+    {
+        PulsarTlsProbe result = new PulsarTlsProbe();
+        using (TcpClient tcp = new TcpClient(AddressFamily.InterNetworkV6))
+        {
+            tcp.Client.DualMode = true;
+            Task connect = tcp.ConnectAsync(host, port);
+            if (!connect.Wait(timeoutMilliseconds)) { throw new TimeoutException("no connection within " + (timeoutMilliseconds / 1000) + " seconds"); }
+            using (SslStream ssl = new SslStream(tcp.GetStream(), false, (sender, certificate, chain, errors) =>
+            {
+                if (certificate != null && result.Certificate == null)
+                {
+                    result.Certificate = certificate.GetRawCertData();
+                    result.Errors = errors;
+                }
+                return false;
+            }))
+            {
+                ssl.ReadTimeout = timeoutMilliseconds;
+                ssl.WriteTimeout = timeoutMilliseconds;
+                try { ssl.AuthenticateAsClient(host, null, SslProtocols.Tls12, false); }
+                catch (AuthenticationException) { }
+                catch (IOException) { }
+            }
+        }
+        if (result.Certificate == null) { throw new IOException("no TLS certificate came from " + host + ":" + port); }
+        return result;
+    }
+}
+'@
+    if ($PSVersionTable.PSEdition -eq 'Desktop') { Add-Type -TypeDefinition $source -ReferencedAssemblies System.Net.Http }
+    else { Add-Type -TypeDefinition $source }
+    [PulsarDownloads]::UseTls()
+}
+
+# A new private folder for this run's downloads, in $SetupRoot (SYSTEM and Administrators only, as every file put
+# there): nobody else can replace an installer between its checks and its run. Deleted when the run ends.
+function New-SetupDownloads {
+    if ($SetupDownloads) { return }
+    Initialize-SetupNetwork
+    # Left by a run that was stopped: this script's own.
+    Get-ChildItem -LiteralPath $SetupRoot -Directory -Filter 'downloads-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    $folder = Join-Path $SetupRoot ('downloads-' + [Guid]::NewGuid().ToString('N'))
+    New-SetupFolder $folder
+    $script:SetupDownloads = $folder
+}
+
+function Remove-SetupDownloads {
+    if (-not $SetupDownloads -or -not (Test-Path -LiteralPath $SetupDownloads)) { return }
+    try { Remove-Item -LiteralPath $SetupDownloads -Recurse -Force }
+    catch { Write-SetupLog "The downloads in $SetupDownloads could not all be deleted ($($_.Exception.Message)); the next run deletes them." }
+}
+
+# A small document over HTTPS ($maxBytes at most), as text.
+function Get-SetupText([string] $url, [long] $maxBytes) {
+    Initialize-SetupNetwork
+    try { return [PulsarDownloads]::GetText($url, $maxBytes) }
+    catch { throw (New-SetupError $ExitOffline "$url could not be read ($($_.Exception.GetBaseException().Message))") }
+}
+
+# Downloads $url over HTTPS into the private downloads folder as $name ($maxBytes at most): its path.
+function Save-SetupDownload([string] $url, [string] $name, [long] $maxBytes) {
+    $path = Join-Path $SetupDownloads $name
+    try { [PulsarDownloads]::Download($url, $path, $maxBytes) }
+    catch {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        throw (New-SetupError $ExitOffline "$url could not be downloaded ($($_.Exception.GetBaseException().Message))")
+    }
+    return $path
+}
+
+# Copies an installer the administrator gave (-PostgresInstaller, -DotNetInstallers) into the private downloads
+# folder: what is checked and run is that copy, which nobody else can change.
+function Copy-SetupInstaller([string] $path) {
+    $source = (Resolve-Path -LiteralPath $path).ProviderPath
+    $copy = Join-Path $SetupDownloads (Split-Path -Leaf $source)
+    [IO.File]::Copy($source, $copy, $false)
+    return $copy
+}
+
+# The organizations (O=) a certificate's subject names, read from its encoding (the subject's text form quotes and
+# escapes as Windows sees fit).
+function Get-CertificateOrganizations([Security.Cryptography.X509Certificates.X509Certificate2] $certificate) {
+    $data = $certificate.SubjectName.RawData
+    $name = Read-DerElement $data 0
+    if ($name.Tag -ne 0x30 -or $name.Next -ne $data.Length) { throw 'The certificate is malformed.' }
+    $position = $name.Start
+    while ($position -lt $name.Next) {
+        $set = Read-DerElement $data $position
+        if ($set.Tag -ne 0x31 -or $set.Next -gt $name.Next) { throw 'The certificate is malformed.' }
+        $inner = $set.Start
+        while ($inner -lt $set.Next) {
+            $attribute = Read-DerElement $data $inner
+            if ($attribute.Tag -ne 0x30 -or $attribute.Next -gt $set.Next) { throw 'The certificate is malformed.' }
+            $oid = Read-DerElement $data $attribute.Start
+            if ($oid.Tag -ne 0x06) { throw 'The certificate is malformed.' }
+            $value = Read-DerElement $data $oid.Next
+            if ($value.Next -ne $attribute.Next) { throw 'The certificate is malformed.' }
+            # 2.5.4.10, organizationName.
+            if ($oid.Length -eq 3 -and $data[$oid.Start] -eq 0x55 -and $data[$oid.Start + 1] -eq 0x04 -and $data[$oid.Start + 2] -eq 0x0A) {
+                $bytes = New-Object byte[] $value.Length
+                [Array]::Copy($data, $value.Start, $bytes, 0, $value.Length)
+                switch ($value.Tag) {
+                    0x0C { (New-Object Text.UTF8Encoding $false, $true).GetString($bytes) }
+                    { $_ -in 0x13, 0x14, 0x16 } { [Text.Encoding]::GetEncoding(28591).GetString($bytes) }
+                    0x1E { [Text.Encoding]::BigEndianUnicode.GetString($bytes) }
+                    default { throw 'The certificate is malformed.' }
+                }
+            }
+            $inner = $attribute.Next
+        }
+        $position = $set.Next
+    }
+}
+
+# Checks the signature of an installer before it runs ($signature: Get-AuthenticodeSignature of the file in the
+# private downloads folder). It must be valid (the file is as its publisher signed it, and Windows chains the signer to
+# a root it trusts), embedded in the file (not a catalog's), and by a certificate for signing code whose subject names
+# $organization and no other organization. $what names the file in the message.
+function Assert-InstallerSignature($signature, [string] $organization, [string] $what) {
+    $refused = "is not run. Nothing was changed."
+    if ($null -eq $signature) { throw (New-SetupError $ExitUntrusted "$what has no signature that could be read, and $refused") }
+    $status = "$($signature.Status)"
+    if ($status -cne 'Valid') {
+        $detail = ''
+        if ($signature.PSObject.Properties['StatusMessage'] -and $signature.StatusMessage) { $detail = ": $($signature.StatusMessage)" }
+        throw (New-SetupError $ExitUntrusted "$what is not validly signed ($status$detail), and $refused")
+    }
+    if ($signature.PSObject.Properties['SignatureType'] -and "$($signature.SignatureType)" -cne 'Authenticode') {
+        throw (New-SetupError $ExitUntrusted "$what is not signed itself (its signature is a $($signature.SignatureType) one), and $refused")
+    }
+    $signer = $signature.SignerCertificate
+    if ($signer -isnot [Security.Cryptography.X509Certificates.X509Certificate2]) { throw (New-SetupError $ExitUntrusted "$what names no signer, and $refused") }
+    $subject = ConvertTo-PrintableText $signer.Subject
+    $uses = Get-CertificateUses $signer
+    if ($null -eq $uses -or $uses -notcontains $CodeSigning) {
+        throw (New-SetupError $ExitUntrusted "$what is signed by $subject with a certificate that is not for signing code, and $refused")
+    }
+    $organizations = @(Get-CertificateOrganizations $signer)
+    if ($organizations.Count -ne 1 -or $organizations[0] -cne $organization) {
+        throw (New-SetupError $ExitUntrusted "$what is signed by $subject, not by $organization, and $refused")
+    }
+}
+
+# Checks a downloaded file's SHA-512 against the one its publisher lists.
+function Assert-FileHash([string] $path, [string] $expected, [string] $what) {
+    $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA512).Hash
+    if (-not [string]::Equals($actual, $expected, [StringComparison]::OrdinalIgnoreCase)) {
+        throw (New-SetupError $ExitUntrusted "$what does not match the SHA-512 Microsoft lists for it ($($expected.ToLowerInvariant())): it is not run. Nothing was changed.")
+    }
+}
+
+# Arguments as Windows programs read them back (CommandLineToArgvW's rules): quoted when empty or holding a space, a
+# tab or a quote, with the backslashes before a quote and at the end doubled inside quotes.
+function ConvertTo-CommandLine([string[]] $arguments) {
+    $quoted = foreach ($argument in $arguments) {
+        if ($argument -and $argument -notmatch '[\s"]') { $argument; continue }
+        $text = [regex]::Replace("$argument", '(\\*)"', '$1$1\"')
+        $text = [regex]::Replace($text, '(\\+)\z', '$1$1')
+        '"' + $text + '"'
+    }
+    return ($quoted -join ' ')
+}
+
+# Runs an installer from the private downloads folder, after its checks, and waits for it ($minutes at most): its
+# exit code. Its arguments are never secrets (other programs can read a command line): those go in files. $temp, when
+# given, is its TEMP and TMP, where it unpacks and logs.
+function Start-Installer([string] $exe, [string[]] $arguments, [string] $temp = $null, [int] $minutes = 30) {
+    $info = New-Object Diagnostics.ProcessStartInfo $exe
+    $info.Arguments = ConvertTo-CommandLine $arguments
+    $info.UseShellExecute = $false
+    $info.WorkingDirectory = Split-Path $exe
+    if ($temp) {
+        $info.EnvironmentVariables['TEMP'] = $temp
+        $info.EnvironmentVariables['TMP'] = $temp
+    }
+    Write-SetupLog "Running $exe $($info.Arguments)"
+    $process = [Diagnostics.Process]::Start($info)
+    try {
+        if (-not $process.WaitForExit($minutes * 60000)) { throw "$exe did not finish within $minutes minutes." }
+        return $process.ExitCode
+    }
+    finally { $process.Dispose() }
+}
+
+# --- .NET ---------------------------------------------------------------------------------------------------------
+
+# Variables that change which .NET runtime a program uses or load code into it (DOTNET_ROOT, startup hooks, profilers,
+# additional dependencies): removed from this process, so that the .NET programs this script runs as administrator
+# (the agent, the panel's migrations) and the installers it starts never take them from whoever set this account's
+# environment. The services get the machine's, checked in Assert-DotNetLocation.
+function Clear-DotNetEnvironment {
+    foreach ($name in @([Environment]::GetEnvironmentVariables('Process').Keys)) {
+        if ("$name" -match '^(DOTNET_|COREHOST_|COMPlus_|CORECLR_)') {
+            [Environment]::SetEnvironmentVariable("$name", $null, 'Process')
+            Write-SetupLog "Removed $name from this process's environment."
+        }
+    }
+}
+
+# Adds a shared framework a program needs to $needed (name -> [version], the highest wins). Only the frameworks this
+# script can install, of $DotNetChannel.
+function Add-RuntimeRequirement([hashtable] $needed, [string] $name, [string] $version) {
+    if ($name -cnotin @($DotNetFrameworks.Keys)) {
+        throw (New-SetupError $ExitUnsupported "This release's programs need the .NET framework '$(ConvertTo-PrintableText $name)', which this script cannot install. Nothing was changed.")
+    }
+    if ($version -cnotmatch ('^' + [regex]::Escape($DotNetChannel) + '\.\d{1,4}\z')) {
+        throw (New-SetupError $ExitUnsupported "This release's programs need $name $(ConvertTo-PrintableText $version), not $DotNetChannel.x. Nothing was changed.")
+    }
+    $parsed = [version]$version
+    if (-not $needed.ContainsKey($name) -or $needed[$name] -lt $parsed) { $needed[$name] = $parsed }
+}
+
+# The .NET runtimes programs need ($configs: the text of their runtimeconfig.json; a self-contained program's names
+# none), at least the patch the release was built with ($release: the text of its release.json, Build-Release.ps1's,
+# or $null): name -> [version].
+function Read-RuntimeRequirements([string[]] $configs, [string] $release) {
+    $needed = @{}
+    foreach ($text in $configs) {
+        $options = ($text | ConvertFrom-Json).runtimeOptions
+        $frameworks = @()
+        if ($options.PSObject.Properties['framework']) { $frameworks += $options.framework }
+        if ($options.PSObject.Properties['frameworks']) { $frameworks += @($options.frameworks) }
+        foreach ($framework in $frameworks) { Add-RuntimeRequirement $needed $framework.name $framework.version }
+    }
+    if ($release -and $needed.Count -gt 0) {
+        $recorded = ($release | ConvertFrom-Json).runtimes
+        foreach ($property in $recorded.PSObject.Properties) {
+            if ($needed.ContainsKey($property.Name)) { Add-RuntimeRequirement $needed $property.Name $property.Value }
+        }
+    }
+    return $needed
+}
+
+# The .NET runtimes the parts this run installs need (the agent's too: its program checks this Windows first).
+function Get-RuntimeRequirements([string[]] $parts) {
+    $programs = @{ panel = 'panel\Pulsar.Api.runtimeconfig.json'; agent = 'agent\PulsarAgent.runtimeconfig.json' }
+    $configs = foreach ($part in @(@($parts) + 'agent' | Select-Object -Unique)) {
+        $path = Join-Path $PSScriptRoot $programs[$part]
+        if (-not (Test-Path -LiteralPath $path)) { throw (New-SetupError $ExitUnsupported "$path is missing: run this script from the extracted release ZIP. Nothing was changed.") }
+        Get-Content -LiteralPath $path -Raw
+    }
+    $release = $null
+    $releaseFile = Join-Path $PSScriptRoot 'release.json'
+    if (Test-Path -LiteralPath $releaseFile) { $release = Get-Content -LiteralPath $releaseFile -Raw }
+    return Read-RuntimeRequirements @($configs) $release
+}
+
+# The .NET runtimes of $DotNetChannel installed for 64-bit programs in $root: name -> the highest version, from the
+# shared framework folders `dotnet --list-runtimes` lists (none without a host resolver, host\fxr, of that channel).
+function Get-InstalledRuntimes([string] $root) {
+    $found = @{}
+    $channel = [version]$DotNetChannel
+    $hosts = @(Get-ChildItem -LiteralPath (Join-Path $root 'host\fxr') -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -cmatch '^\d+\.\d+\.\d+\z' -and [version]$_.Name -ge $channel -and (Test-Path -LiteralPath (Join-Path $_.FullName 'hostfxr.dll')) })
+    if ($hosts.Count -eq 0) { return $found }
+    foreach ($name in $DotNetFrameworks.Keys) {
+        foreach ($folder in Get-ChildItem -LiteralPath (Join-Path $root "shared\$name") -Directory -ErrorAction SilentlyContinue) {
+            if ($folder.Name -cnotmatch ('^' + [regex]::Escape($DotNetChannel) + '\.\d{1,4}\z')) { continue }
+            if (-not (Test-Path -LiteralPath (Join-Path $folder.FullName "$name.deps.json"))) { continue }
+            $version = [version]$folder.Name
+            if (-not $found.ContainsKey($name) -or $found[$name] -lt $version) { $found[$name] = $version }
+        }
+    }
+    return $found
+}
+
+# The runtimes of $needed that $installed lacks, or has older, in the order they are installed.
+function Get-MissingRuntimes([hashtable] $needed, [hashtable] $installed) {
+    foreach ($name in $DotNetFrameworks.Keys) {
+        if ($needed.ContainsKey($name) -and (-not $installed.ContainsKey($name) -or $installed[$name] -lt $needed[$name])) { $name }
+    }
+}
+
+# Whether $url is one of Microsoft's download addresses for $file: https, a host of $DotNetHosts, the file's name last.
+function Test-DotNetDownloadUrl($url, [string] $file) {
+    $uri = $null
+    if ($url -isnot [string] -or -not [Uri]::TryCreate($url, [UriKind]::Absolute, [ref] $uri)) { return $false }
+    return $uri.Scheme -ceq 'https' -and $uri.Host -in $DotNetHosts -and $uri.IsDefaultPort -and -not $uri.UserInfo -and -not $uri.Query -and
+        $uri.AbsolutePath.EndsWith("/$file", [StringComparison]::Ordinal)
+}
+
+# The win-x64 installers of a .NET runtime in Microsoft's release metadata ($metadata: releases.json read with
+# ConvertFrom-JsonDocument; $component: 'runtime' or 'aspnetcore-runtime'; $file: its installer's name without the
+# version): for each release of $DotNetChannel, the version (stable ones only, 10.0.n), address and SHA-512. An entry
+# for that installer whose address is not Microsoft's, or whose hash is not a SHA-512, makes the metadata untrusted.
+function Get-DotNetInstallerEntries($metadata, [string] $component, [string] $file) {
+    if ((Get-JsonValue $metadata 'channel-version') -cne $DotNetChannel) {
+        throw (New-SetupError $ExitUntrusted "Microsoft's release metadata is not that of .NET $DotNetChannel. Nothing was changed.")
+    }
+    $releases = Get-JsonValue $metadata 'releases'
+    if ($releases -isnot [Collections.IList]) { throw (New-SetupError $ExitUntrusted "Microsoft's release metadata lists no releases. Nothing was changed.") }
+    foreach ($release in $releases) {
+        $part = Get-JsonValue $release $component
+        $version = Get-JsonValue $part 'version'
+        if ($version -isnot [string] -or $version -cnotmatch ('^' + [regex]::Escape($DotNetChannel) + '\.\d{1,4}\z')) { continue }
+        $name = "$file-win-x64.exe"
+        $files = Get-JsonValue $part 'files'
+        if ($files -isnot [Collections.IList]) { continue }
+        $entries = @(foreach ($entry in $files) {
+                if ((Get-JsonValue $entry 'name') -ceq $name -and (Get-JsonValue $entry 'rid') -ceq 'win-x64') { $entry }
+            })
+        if ($entries.Count -eq 0) { continue }
+        $url = Get-JsonValue $entries[0] 'url'
+        $hash = Get-JsonValue $entries[0] 'hash'
+        if ($entries.Count -ne 1 -or -not (Test-DotNetDownloadUrl $url "$file-$version-win-x64.exe") -or $hash -isnot [string] -or $hash -cnotmatch '^[0-9A-Fa-f]{128}\z') {
+            throw (New-SetupError $ExitUntrusted "Microsoft's release metadata lists the $file $version installer in a way this script does not trust (more than once, not from Microsoft's download hosts, or without a SHA-512). Nothing was changed.")
+        }
+        [pscustomobject]@{ Version = [version]$version; Text = $version; Url = $url; Hash = $hash.ToLowerInvariant() }
+    }
+}
+
+# The installers of the missing runtimes ($missing: names; $needed: name -> the least version), in the private
+# downloads folder and checked: downloaded from Microsoft (the newest $DotNetChannel release its metadata lists, with
+# the SHA-512 listed there), or copied from -DotNetInstallers (the newest of each there, its SHA-512 checked too when
+# the metadata can be read). Each must be signed by Microsoft and be at least the version the release needs.
+function Get-DotNetInstallers([string[]] $missing, [hashtable] $needed) {
+    $metadata = $null
+    try {
+        Write-Step "Reading Microsoft's .NET $DotNetChannel release metadata ($DotNetReleasesUrl)"
+        $metadata = ConvertFrom-JsonDocument (Get-SetupText $DotNetReleasesUrl 32MB)
+    }
+    catch {
+        # Metadata that is there but not as it should be is refused, whatever the installers' source.
+        if ((Get-SetupExitCode $_) -ne $ExitOffline) { throw }
+        if (-not $DotNetInstallers) {
+            throw (New-SetupError $ExitOffline "The .NET runtimes Pulsar needs could not be downloaded ($($_.Exception.Message)). Connect this machine to the internet and run this script again, or give Microsoft's installers with -DotNetInstallers. Nothing was changed.")
+        }
+        Write-Warning "Microsoft's release metadata could not be read ($($_.Exception.Message)): the installers in $DotNetInstallers are checked by their signature and version, not by their SHA-512."
+    }
+    foreach ($name in $missing) {
+        $framework = $DotNetFrameworks[$name]
+        $entries = @()
+        if ($null -ne $metadata) { $entries = @(Get-DotNetInstallerEntries $metadata $framework.Component $framework.File) }
+        $entry = $null
+        if ($DotNetInstallers) {
+            $pattern = '^' + [regex]::Escape($framework.File) + '-(' + [regex]::Escape($DotNetChannel) + '\.\d{1,4})-win-x64\.exe\z'
+            $local = Get-ChildItem -LiteralPath $DotNetInstallers -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -cmatch $pattern } |
+                Sort-Object { [version]($_.Name -creplace $pattern, '$1') } -Descending | Select-Object -First 1
+            if (-not $local) { throw (New-SetupError $ExitUsage "$DotNetInstallers has no $($framework.File)-$DotNetChannel.<n>-win-x64.exe, the installer of $name. Nothing was changed.") }
+            $version = [version]($local.Name -creplace $pattern, '$1')
+            $file = Copy-SetupInstaller $local.FullName
+            $what = "The $name installer $($local.FullName)"
+            if ($null -ne $metadata) {
+                $entry = $entries | Where-Object { $_.Version -eq $version } | Select-Object -First 1
+                if (-not $entry) { throw (New-SetupError $ExitUntrusted "$what is of a version Microsoft's release metadata does not list ($version). Nothing was changed.") }
+            }
+        }
+        else {
+            $entry = $entries | Sort-Object Version -Descending | Select-Object -First 1
+            if (-not $entry) { throw (New-SetupError $ExitUntrusted "Microsoft's release metadata lists no $($framework.File) installer for 64-bit Windows. Nothing was changed.") }
+            $version = $entry.Version
+            Write-Step "Downloading $name $($entry.Text) from Microsoft"
+            $file = Save-SetupDownload $entry.Url "$($framework.File)-$($entry.Text)-win-x64.exe" 512MB
+            $what = "The $name installer downloaded from $($entry.Url)"
+        }
+        if ($version -lt $needed[$name]) {
+            throw (New-SetupError $ExitUntrusted "$what is $name $version, older than this release needs ($($needed[$name])). Nothing was changed.")
+        }
+        if ($entry) { Assert-FileHash $file $entry.Hash $what }
+        Assert-InstallerSignature (Get-AuthenticodeSignature -LiteralPath $file) $DotNetSigner $what
+        [pscustomobject]@{ Name = $name; Version = $version; Path = $file }
+    }
+}
+
+# Runs the checked runtime installers, quietly and without restarting Windows; one that asks for a restart (3010) makes
+# this run end with $ExitRestart.
+function Install-DotNetRuntimes([object[]] $installers) {
+    foreach ($installer in $installers) {
+        Write-Step "Installing $($installer.Name) $($installer.Version)"
+        $log = Join-Path $SetupLogs ('{0}-{1:yyyyMMdd-HHmmss}.log' -f [IO.Path]::GetFileNameWithoutExtension($installer.Path), (Get-Date))
+        $code = Start-Installer $installer.Path @('/install', '/quiet', '/norestart', '/log', $log)
+        if ($code -in 3010, 1641) { $script:RestartNeeded = $true }
+        elseif ($code -ne 0) { throw "The installer of $($installer.Name) $($installer.Version) failed (exit code $code); its log is $log." }
+    }
+}
+
+# Whether two paths name the same folder.
+function Test-SamePath([string] $a, [string] $b) {
+    return [string]::Equals([IO.Path]::GetFullPath($a).TrimEnd('\'), [IO.Path]::GetFullPath($b).TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)
+}
+
+# The .NET runtime the services will load: from $root (Program Files\dotnet, where Microsoft's installers put it),
+# as the machine's environment and the registry say (a DOTNET_ROOT elsewhere is refused), and from folders only
+# SYSTEM, Administrators and TrustedInstaller can change, since the agent runs as SYSTEM: the host resolver and every
+# runtime of the channel (a folder others could add a newer patch to would be loaded instead).
+function Assert-DotNetLocation([string] $root, [hashtable] $needed) {
+    foreach ($variable in 'DOTNET_ROOT_X64', 'DOTNET_ROOT') {
+        $value = [Environment]::GetEnvironmentVariable($variable, 'Machine')
+        if ($value -and -not (Test-SamePath $value $root)) {
+            throw (New-SetupError $ExitUnsupported "The machine's environment sets $variable to ${value}: Pulsar's services would load .NET from there instead of $root, where Microsoft's installers put it. Remove the variable, or make it $root.")
+        }
+    }
+    $registered = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\dotnet\Setup\InstalledVersions\x64' -ErrorAction SilentlyContinue
+    if ($registered -and $registered.PSObject.Properties['InstallLocation'] -and $registered.InstallLocation -and -not (Test-SamePath $registered.InstallLocation $root)) {
+        throw (New-SetupError $ExitUnsupported "Windows has .NET registered in $($registered.InstallLocation), not in ${root}: Pulsar's services would load it from there. Repair .NET's installation (Apps) so that it is in $root.")
+    }
+    $item = Get-Item -LiteralPath $root -Force
+    $findings = @(Find-UntrustedWriter $item $ModifyRights) + @(Find-UntrustedAncestors $item)
+    $folders = @((Join-Path $root 'host\fxr'), (Join-Path $root 'shared'))
+    foreach ($name in $needed.Keys) {
+        $shared = Join-Path $root "shared\$name"
+        $folders += $shared
+        $folders += @(Get-ChildItem -LiteralPath $shared -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "$DotNetChannel.*" } | ForEach-Object { $_.FullName })
+    }
+    foreach ($folder in $folders) {
+        if (-not (Test-Path -LiteralPath $folder)) { continue }
+        if ($folder -like '*\shared' -or $folder -like "*\shared\Microsoft.*App") { $findings += @(Find-UntrustedWriter (Get-Item -LiteralPath $folder -Force) $ModifyRights) }
+        else { $findings += @(Find-UntrustedWriters $folder) }
+    }
+    $findings = @($findings | Select-Object -Unique)
+    if ($findings.Count -gt 0) {
+        throw (New-SetupError $ExitUnsupported "Pulsar's services (the agent runs as SYSTEM) would load .NET from $root, which other accounts could change:$([Environment]::NewLine)$(Get-UntrustedWritersMessage $findings)$([Environment]::NewLine)Repair .NET's installation so that only administrators can change it.")
+    }
+}
+
+# Checks, after any install, that the runtimes the release needs are there, where the services will load them.
+function Assert-DotNetRuntimes([hashtable] $needed, [string] $root) {
+    if ($needed.Count -eq 0) { return }
+    $missing = @(Get-MissingRuntimes $needed (Get-InstalledRuntimes $root))
+    if ($missing.Count -gt 0) {
+        $text = @($missing | ForEach-Object { "$_ $($needed[$_])" }) -join ', '
+        throw "This machine still lacks $text after installing it. Restart Windows and run this script again."
+    }
+    Assert-DotNetLocation $root $needed
+}
+
 # --- Main -------------------------------------------------------------------------------------------------------
 
-Assert-Administrator
-Assert-TrustedLocation
-# Checked before anything changes: with an agent from the MSI, only a panel is this script's to install, update or remove.
-$agentPackage = Get-AgentPackage
-if ($agentPackage) {
-    if ($Update -or $Uninstall) {
-        if (-not (Test-Service $PanelService)) { throw (Get-AgentPackageMessage $agentPackage) }
+# The parts of Pulsar this run installs or updates: 'panel', 'agent' or both.
+function Get-SetupParts($agentPackage) {
+    if ($Update) {
+        $parts = @()
+        if (Test-Service $PanelService) { $parts += 'panel' }
+        if (-not $agentPackage -and (Test-Service $AgentService)) { $parts += 'agent' }
+        if ($parts.Count -eq 0) { throw (New-SetupError $ExitUsage 'Pulsar is not installed on this machine.') }
+        return $parts
     }
-    elseif ($Mode -ne 'Panel') { throw (Get-AgentPackageMessage $agentPackage) }
-}
-if (-not $Uninstall) { Assert-RuntimeSupported }
-
-if ($Update) {
-    $any = $false
-    if ($agentPackage) { Write-Warning "The agent is left as it is. $(Get-AgentPackageMessage $agentPackage)" }
-    elseif (Test-Service $AgentService) { Update-Agent; $any = $true }
-    if (Test-Service $PanelService) { Update-Panel; $any = $true }
-    if (-not $any) { throw 'Pulsar is not installed on this machine.' }
-    Write-Host 'Pulsar is updated.' -ForegroundColor Green
-    return
+    switch ($Mode) {
+        'AllInOne' { return @('panel', 'agent') }
+        'Panel' { return @('panel') }
+        default { return @('agent') }
+    }
 }
 
-if ($Uninstall) {
-    if ($agentPackage) { Write-Warning "The agent is left as it is. $(Get-AgentPackageMessage $agentPackage)" }
-    elseif (Test-Service $AgentService) { Uninstall-Agent }
-    if (Test-Service $PanelService) { Uninstall-Panel }
-    # What -Mode Agent -TrustCertificate or -Mode AllInOne trusted (an agent from the MSI may need it: then it stays).
-    if (-not $agentPackage) { Remove-TrustedCertificates }
-    $removed = if ($agentPackage) { 'The panel is removed (not the agent: see above).' } else { 'Pulsar is removed.' }
-    Write-Host "$removed Kept: the database, $DataRoot (the panel's keys, needed to read its database's secrets, and logs) and the game servers' folders." -ForegroundColor Green
-    return
+function Get-StepPlan {
+    if ($Uninstall) { return $StepPlans['Uninstall'] }
+    if ($Update) { return $StepPlans['Update'] }
+    return $StepPlans[$Mode]
 }
 
-if ($RestoreFrom -and $Mode -ne 'Panel') { throw '-RestoreFrom restores a panel: use it with -Mode Panel (nodes keep their agents).' }
-
-switch ($Mode) {
-    'Agent' {
-        # The process list shows this script's own command line: the token can come from the environment instead.
-        if (-not $Token -and $env:PULSAR_ENROLLMENT_TOKEN) { $Token = $env:PULSAR_ENROLLMENT_TOKEN }
-        if (-not ($PanelUrl -and $Token -and $PanelKey)) {
-            throw 'An agent needs -PanelUrl, -Token (or the PULSAR_ENROLLMENT_TOKEN environment variable) and -PanelKey: the panel shows them in Nodes > Add node.'
+# An agent's values: from a node code (-NodeCode, PULSAR_NODE_CODE or the secrets file's), or -PanelUrl, -Token and
+# -PanelKey. The code as read ($null without one) and the panel's address.
+function Resolve-AgentInputs {
+    $code = $null
+    if ($NodeCode) {
+        if ($Token -or $PanelKey -or $TrustCertificate) {
+            throw (New-SetupError $ExitUsage 'A node code holds the enrollment token, the panel key and the certificate: give it without -Token, -PanelKey and -TrustCertificate (and with -PanelUrl only when this machine reaches the panel at another address than the code names). Nothing was changed.')
         }
-        if ($TrustCertificate) {
-            $panelUri = $null
-            if (-not [Uri]::TryCreate($PanelUrl, [UriKind]::Absolute, [ref] $panelUri)) { throw "-PanelUrl is not an address: $PanelUrl" }
+        $code = ConvertFrom-NodeCode $NodeCode
+        if (-not $PanelUrl) { $script:PanelUrl = $code.Url }
+        elseif (-not (Test-PanelUrl $PanelUrl)) { throw (New-SetupError $ExitUsage "-PanelUrl is not a panel's https:// address: $(ConvertTo-PrintableText $PanelUrl). Nothing was changed.") }
+        $script:Token = $code.Token
+        $script:PanelKey = $code.PanelKey
+        Register-Secret $code.Token
+    }
+    if (-not ($PanelUrl -and $Token -and $PanelKey)) {
+        throw (New-SetupError $ExitUsage 'An agent needs the node code the panel shows in Nodes > Add node (in PULSAR_NODE_CODE, or -NodeCode), or -PanelUrl, -Token (or the PULSAR_ENROLLMENT_TOKEN environment variable) and -PanelKey. Nothing was changed.')
+    }
+    $uri = $null
+    if (-not [Uri]::TryCreate($PanelUrl, [UriKind]::Absolute, [ref] $uri)) { throw (New-SetupError $ExitUsage "-PanelUrl is not an address: $(ConvertTo-PrintableText $PanelUrl). Nothing was changed.") }
+    if (Test-Service $AgentService) { throw (New-SetupError $ExitUsage 'The agent is already installed on this machine. Use -Update to update it, or -Uninstall first.') }
+    return [pscustomobject]@{ Code = $code; Uri = $uri }
+}
+
+# Everything that prints or fails below goes through Write-SetupRecord (the log, secrets replaced) and ends in an exit
+# code with -Unattended.
+$main = {
+    $script:StepPlan = Get-StepPlan
+    Write-SetupStep 'check' 'Checking this machine and what it needs'
+    Clear-DotNetEnvironment
+    Use-SetupInputs (Read-SetupInputs)
+    Assert-TrustedLocation
+    # Checked before anything changes: with an agent from the MSI, only a panel is this script's to install, update or remove.
+    $agentPackage = Get-AgentPackage
+    if ($agentPackage) {
+        if ($Update -or $Uninstall) {
+            if (-not (Test-Service $PanelService)) { throw (New-SetupError $ExitUnsupported (Get-AgentPackageMessage $agentPackage)) }
+        }
+        elseif ($Mode -ne 'Panel') { throw (New-SetupError $ExitUnsupported (Get-AgentPackageMessage $agentPackage)) }
+    }
+
+    if ($Uninstall) {
+        Write-SetupStep 'remove' 'Removing Pulsar'
+        if ($agentPackage) { Write-Warning "The agent is left as it is. $(Get-AgentPackageMessage $agentPackage)" }
+        elseif (Test-Service $AgentService) { Uninstall-Agent }
+        if (Test-Service $PanelService) { Uninstall-Panel }
+        # What -Mode Agent -TrustCertificate or -Mode AllInOne trusted (an agent from the MSI may need it: then it stays).
+        if (-not $agentPackage) { Remove-TrustedCertificates }
+        $removed = if ($agentPackage) { 'The panel is removed (not the agent: see above).' } else { 'Pulsar is removed.' }
+        Write-Host "$removed Kept: the database (and PostgreSQL), the .NET runtimes, $DataRoot (the panel's keys, needed to read its database's secrets, and logs) and the game servers' folders." -ForegroundColor Green
+        return
+    }
+
+    # --- What this run needs, checked before anything is downloaded or changed ---
+    if (-not $Update -and $RestoreFrom -and $Mode -ne 'Panel') { throw (New-SetupError $ExitUsage '-RestoreFrom restores a panel: use it with -Mode Panel (nodes keep their agents).') }
+    $parts = @(Get-SetupParts $agentPackage)
+    $agent = $null
+    $postgres = $null
+    if (-not $Update) {
+        if ($Mode -eq 'Agent') {
+            $agent = Resolve-AgentInputs
+            if ($TrustCertificate) {
+                try { Assert-TrustableCertificate (Read-Certificate $TrustCertificate) $TrustCertificate $agent.Uri.DnsSafeHost }
+                catch { throw (New-SetupError $ExitCertificate "$($_.Exception.Message) Nothing was changed.") }
+            }
+        }
+        else {
+            Assert-PanelInstallable
+            $postgres = Get-PostgresPlan
+        }
+    }
+    $needed = Get-RuntimeRequirements $parts
+    $dotnetRoot = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'dotnet'
+    $missing = @(Get-MissingRuntimes $needed (Get-InstalledRuntimes $dotnetRoot))
+    $certificateAction = $null
+    $presented = $null
+    # Plain http, which a code allows only to this machine's own panel (loopback, as the agent does), has no certificate.
+    if ($agent -and $agent.Code -and $agent.Uri.Scheme -ceq 'https') {
+        Write-Step "Reading the certificate the panel presents at $($agent.Uri.GetLeftPart('Authority'))"
+        $presented = Read-PanelCertificate $agent.Uri
+        $certificateAction = Resolve-NodeCertificate $agent.Code $presented $agent.Uri.DnsSafeHost
+        if ($certificateAction -eq 'trusted') { Write-Host '    This machine trusts it already.' }
+        else { Write-Host "    It is the one the node code names (SHA-256 $(Get-CertificateHash $presented.Certificate))." }
+    }
+
+    # --- Downloads: all of them, and their checks, before anything is installed ---
+    $wanted = @()
+    if ($missing.Count -gt 0) { $wanted += ".NET $DotNetChannel ($($missing -join ', '))" }
+    if ($postgres -and $postgres.Install) { $wanted += "PostgreSQL $($postgres.Major)" }
+    $dotnetInstallers = @()
+    $postgresInstaller = $null
+    if ($wanted.Count -eq 0) { Write-SetupStep 'downloads' 'Nothing to download' }
+    else {
+        Write-SetupStep 'downloads' "Downloading and checking $($wanted -join ' and ')"
+        New-SetupDownloads
+        if ($missing.Count -gt 0) { $dotnetInstallers = @(Get-DotNetInstallers $missing $needed) }
+        if ($postgres -and $postgres.Install) { $postgresInstaller = Get-PostgresInstallerFile $postgres }
+    }
+
+    # --- .NET ---
+    if ($dotnetInstallers.Count -gt 0) {
+        Write-SetupStep 'dotnet' "Installing .NET $DotNetChannel ($(@($dotnetInstallers | ForEach-Object { "$($_.Name) $($_.Version)" }) -join ', '))"
+        Install-DotNetRuntimes $dotnetInstallers
+    }
+    elseif ($needed.Count -gt 0) { Write-SetupStep 'dotnet' ".NET ${DotNetChannel}: installed already" }
+    else { Write-SetupStep 'dotnet' '.NET: not needed (these programs carry their own)' }
+    Assert-DotNetRuntimes $needed $dotnetRoot
+    Assert-RuntimeSupported
+
+    if ($Update) {
+        Write-SetupStep 'update' 'Updating Pulsar'
+        if ($agentPackage) { Write-Warning "The agent is left as it is. $(Get-AgentPackageMessage $agentPackage)" }
+        elseif ($parts -contains 'agent') { Update-Agent }
+        if ($parts -contains 'panel') { Update-Panel }
+        Write-Host 'Pulsar is updated.' -ForegroundColor Green
+    }
+    elseif ($Mode -eq 'Agent') {
+        Write-SetupStep 'agent' 'Installing the agent'
+        if ($certificateAction -eq 'trust') {
+            Write-Step "Trusting the panel's certificate (the one the node code names)"
+            Add-TrustedCertificateObject $presented.Certificate "The panel's certificate" $agent.Uri.DnsSafeHost
+        }
+        elseif ($TrustCertificate) {
             Write-Step "Trusting the panel's certificate ($TrustCertificate)"
-            Add-TrustedCertificate $TrustCertificate $panelUri.DnsSafeHost
+            Add-TrustedCertificate $TrustCertificate $agent.Uri.DnsSafeHost
         }
         Install-Agent $PanelUrl $Token $PanelKey
         Write-Host 'The agent is installed. The node appears as online in the panel.' -ForegroundColor Green
     }
-    'Panel' {
-        $installed = Install-Panel
-        Write-Host ''
-        Write-Host "The panel is running: https://$($env:COMPUTERNAME):$Port (also https://localhost:$Port on this machine)." -ForegroundColor Green
-        if ($installed.Certificate.SelfSigned) {
-            Write-Host "Its certificate is self-signed: browsers warn about it until it is trusted. Nodes need it trusted: copy"
-            Write-Host "$($installed.Certificate.Cer) to each node and pass it with -TrustCertificate."
+    else {
+        if (-not $postgres) { Write-SetupStep 'postgres' 'Using the database of -ConnectionString' }
+        elseif ($postgres.Install) {
+            Write-SetupStep 'postgres' "Installing PostgreSQL $($postgres.Major)"
+            $script:PostgresPassword = Install-PostgresServer $postgresInstaller $postgres
         }
-        Write-SftpSummary $installed.Sftp
-    }
-    'AllInOne' {
+        else { Write-SetupStep 'postgres' "Using PostgreSQL $($postgres.Major), installed already" }
         $installed = Install-Panel
         $certificate = $installed.Certificate
-        if ($certificate.SelfSigned) {
-            Write-Step "Trusting the panel's certificate on this machine (the agent and this PC's browsers check it)"
-            Add-TrustedCertificate $certificate.Cer 'localhost' $certificate.Names
+        if ($Mode -eq 'Panel') {
+            Write-Host ''
+            Write-Host "The panel is running: https://$($env:COMPUTERNAME):$($installed.Port) (also https://localhost:$($installed.Port) on this machine)." -ForegroundColor Green
+            if ($certificate.SelfSigned) {
+                Write-Host "Its certificate is self-signed: browsers warn about it until it is trusted. Nodes join with the code Nodes > Add node"
+                Write-Host "shows, which pins it (or copy $($certificate.Cer) to each node and pass it with -TrustCertificate)."
+            }
         }
-        $enrollment = $installed.Node.enrollment
-        Install-Agent "https://localhost:$Port" $enrollment.token $enrollment.panelKeyFingerprint
-        Write-Host ''
-        Write-Host "Pulsar is running: open https://localhost:$Port and sign in as '$AdminUserName'." -ForegroundColor Green
-        Write-Host "From other computers: https://$($env:COMPUTERNAME):$Port (they warn about the self-signed certificate unless they trust $($certificate.Cer))."
+        else {
+            Write-SetupStep 'agent' 'Adding this PC as a node'
+            if ($certificate.SelfSigned) {
+                Write-Step "Trusting the panel's certificate on this machine (the agent and this PC's browsers check it)"
+                Add-TrustedCertificate $certificate.Cer 'localhost' $certificate.Names
+            }
+            $enrollment = $installed.Node.enrollment
+            Register-Secret $enrollment.token
+            Install-Agent "https://localhost:$($installed.Port)" $enrollment.token $enrollment.panelKeyFingerprint
+            Write-Host ''
+            Write-Host "Pulsar is running: open https://localhost:$($installed.Port) and sign in as '$AdminUserName'." -ForegroundColor Green
+            Write-Host "From other computers: https://$($env:COMPUTERNAME):$($installed.Port) (they warn about the self-signed certificate unless they trust $($certificate.Cer))."
+        }
         Write-SftpSummary $installed.Sftp
+        if ($Unattended) { Write-Host "PULSAR-PANEL-URL https://localhost:$($installed.Port)/" }
     }
+    if ($RestartNeeded) { Write-Warning 'Restart Windows when you can: a .NET installer asks for it to finish. Pulsar runs meanwhile.' }
 }
+
+$SetupParameters = $PSBoundParameters
+$outcome = 0
+try {
+    Assert-Administrator
+    Start-SetupLog
+    & $main *>&1 | ForEach-Object { Write-SetupRecord $_ }
+    if ($RestartNeeded) { $outcome = $ExitRestart }
+    Write-SetupLog "Done (exit code $outcome)."
+}
+catch {
+    $outcome = Get-SetupExitCode $_
+    $message = Protect-SetupText $_.Exception.Message
+    Write-SetupLog "FAILED (exit code $outcome): $message$([Environment]::NewLine)$($_.ScriptStackTrace)"
+    if (-not $Unattended) {
+        # As errors always were, without a secret a program's output may have carried into the message.
+        if ($message -cne $_.Exception.Message) { throw $message }
+        throw
+    }
+    Write-Host "PULSAR-ERROR $outcome $(ConvertTo-PrintableText ($message -replace '\s*\r?\n\s*', ' '))"
+}
+finally {
+    Remove-SetupDownloads
+}
+if ($Unattended) { exit $outcome }

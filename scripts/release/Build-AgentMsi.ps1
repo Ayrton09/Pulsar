@@ -15,6 +15,10 @@
 # - Uninstall: runs "PulsarAgent unenroll" (game servers stop, the service, node key and configuration go), then
 #   removes the program. If unenroll fails, the uninstall fails and leaves the program in place, so it can be retried.
 #   Game server folders and the agent's logs (enroll.log and unenroll.log among them) stay.
+# The agent in the package is self-contained, unlike the ZIP's (framework-dependent, with Install-Pulsar.ps1 installing
+# the .NET runtime it needs): a silent managed install (Intune, a group policy) runs the package and nothing else, so
+# nothing would download and check a .NET runtime first, and the agent would not start. A folder that is not a
+# self-contained publish is refused.
 # Run it with Windows PowerShell (powershell.exe), as Build-Release.ps1 does.
 param(
     [Parameter(Mandatory)] [string] $AgentDir,
@@ -33,6 +37,12 @@ $numeric = ($Version -split '[-+]')[0]
 if ($numeric -notmatch '^\d+\.\d+\.\d+$') { throw "The MSI version must start with major.minor.patch, not '$Version'." }
 $AgentDir = (Resolve-Path $AgentDir).Path
 if (-not (Test-Path (Join-Path $AgentDir 'PulsarAgent.exe'))) { throw "$AgentDir has no PulsarAgent.exe." }
+# A self-contained program's runtimeconfig.json lists the frameworks it carries (includedFrameworks); a
+# framework-dependent one, those it needs installed.
+$runtimeConfig = Join-Path $AgentDir 'PulsarAgent.runtimeconfig.json'
+if (-not (Test-Path $runtimeConfig) -or -not (Get-Content -Raw $runtimeConfig | ConvertFrom-Json).runtimeOptions.PSObject.Properties['includedFrameworks']) {
+    throw "$AgentDir is not a self-contained publish of the agent (dotnet publish -r win-x64 --self-contained): the MSI's agent must carry its own .NET runtime."
+}
 New-Item -ItemType Directory -Force $Output | Out-Null
 $Output = (Resolve-Path $Output).Path
 $msi = Join-Path $Output "pulsar-agent-$Version-windows-x64.msi"

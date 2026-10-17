@@ -36,7 +36,11 @@ cd "$env:ProgramFiles\PulsarSetup-<version>"
 powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Update
 ```
 
-It updates whatever this machine has, the panel, the agent or both:
+It updates whatever this machine has, the panel, the agent or both. First it makes sure the machine has the .NET
+runtimes the new release needs, at least the patch it was built with: a release's programs run on the shared .NET
+runtime, so a newer release may need a newer patch than Microsoft Update installed so far. What is missing is
+downloaded and checked as on a first install ([install.md](install.md#what-the-installer-downloads); offline,
+`-DotNetInstallers`), before anything is replaced. Then:
 
 - **Panel**: the PulsarPanel service stops, its programs are replaced (the copy of `Backup-Pulsar.ps1` in its folder
   too, which a nightly backup task runs) and it starts again, applying any database changes at start. Browsers
@@ -52,7 +56,12 @@ Intune and group policies can deploy the new package the same way. An older pack
 ("A newer version of the Pulsar Agent is installed"). `Install-Pulsar.ps1 -Update` leaves such an agent alone (it
 updates only the panel, if the machine has one): the MSI and the script each maintain only the agents they installed.
 
-The settings files (`appsettings.Production.json`) are never replaced.
+The settings files (`appsettings.Production.json`) are never replaced, and neither is the panel's `downloads` folder
+(the agent's setup it offers new nodes, [install.md](install.md#the-agents-setup)). Everything else in the programs'
+folders is replaced, not added to: releases before the easy install (Phase 18) carried their own copy of the .NET
+runtime there, which the new programs would otherwise load instead of the shared one that Microsoft Update patches.
+`-Update -Unattended` updates without asking, with the progress lines, log and exit codes of
+[unattended installs](install.md#unattended-installs).
 
 A nightly backup task that runs `Backup-Pulsar.ps1` from an extracted release folder (`C:\PulsarSetup`, as this guide
 once said) should run the copy in `C:\Program Files\Pulsar\Panel` instead, and the old folder be deleted

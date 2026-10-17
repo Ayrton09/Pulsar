@@ -12,8 +12,9 @@
     <Deterministic>true</Deterministic>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <!--
-      Releases are self-contained win-x64 builds (scripts/release/Build-Release.ps1): the lock files include that
-      runtime, so a release restores in locked mode like every other build. This does not make builds runtime-specific.
+      Releases are win-x64 builds (scripts/release/Build-Release.ps1: framework-dependent in the ZIP, self-contained in
+      the agent MSI): the lock files include that runtime, so a release restores in locked mode like every other build.
+      This does not make builds runtime-specific.
     -->
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
 
