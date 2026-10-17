@@ -374,7 +374,7 @@ Installing Pulsar should be as easy as AMP's: download one program, click throug
 - *Not yet:* code signing for the setups. Until it is in place, SmartScreen asks for **Run anyway**.
 
 **Done when:**
-1. On a clean Windows (Sandbox), `PulsarSetup.exe` with the defaults ends showing the panel's sign-in page, which opens in the browser.
+1. On a clean Windows (Sandbox), `PulsarSetup.exe` with the defaults ends showing the address of the panel's sign-in page (it opens nothing itself), which, copied into a browser, opens it.
    - It downloaded the latest PostgreSQL 18 and .NET 10 and checked them.
    - PostgreSQL listens only on this machine.
    - No password appears in any process's command line.

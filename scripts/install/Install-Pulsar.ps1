@@ -158,6 +158,9 @@ $TrustedName = 'Pulsar panel (trusted by Install-Pulsar.ps1)'
 $TrustedMarker = Join-Path $PanelData 'tls\trusted-thumbprint.txt'
 # The Extended Key Usage of a web server's certificate (id-kp-serverAuth): the only use the panel's certificate needs.
 $ServerAuthentication = '1.3.6.1.5.5.7.3.1'
+# What marks the 'pulsar' role in PostgreSQL as this script's (COMMENT ON ROLE): a run may drop it when it is all that an
+# install which failed left (Get-PanelDatabaseState).
+$PulsarRoleComment = 'Pulsar panel (made by Install-Pulsar.ps1)'
 # Windows' own programs by full path: this runs elevated, and a program found through PATH could be anyone's.
 $Icacls = Join-Path ([Environment]::SystemDirectory) 'icacls.exe'
 $Sc = Join-Path ([Environment]::SystemDirectory) 'sc.exe'
@@ -171,12 +174,14 @@ $PostgresMajor = 18
 $PostgresVersionsUrl = 'https://www.postgresql.org/versions.json'
 $PostgresDownloadsUrl = 'https://get.enterprisedb.com/postgresql'
 # Who signs EDB's installers: its code-signing certificate's subject (country, state, locality and organization, each
-# exactly) and the authority that issues it (as read from EDB's signed programs of PostgreSQL 18; docs/guides/install.md
-# says what a release must confirm when EDB changes them).
+# exactly), the authority that issues it, by name and by thumbprint (DigiCert Trusted G4 Code Signing RSA4096 SHA384
+# 2021 CA1), and the root its chain ends at (DigiCert Trusted Root G4), as read from EDB's signed programs of PostgreSQL
+# 18 (docs/guides/install.md says what a release must confirm when EDB changes them).
 $PostgresSigner = @{
     Subject = [ordered]@{ C = 'US'; S = 'Delaware'; L = 'Wilmington'; O = 'EnterpriseDB Corporation' }
     Issuer = [ordered]@{ CN = 'DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1'; O = 'DigiCert, Inc.'; C = 'US' }
-    Roots = @()
+    IssuerThumbprints = @('7B0F360B775F76C94A12CA48445AA2D2A875701C')
+    Roots = @('DDFB16CD4931C973A2037D3FC83A4D7D775D05E4')
 }
 # - .NET: the newest runtimes of this channel, from Microsoft's release metadata, which lists each installer's SHA-512;
 #   the installers are signed by Microsoft, and only Microsoft's download hosts are taken from the metadata.
@@ -188,6 +193,7 @@ $DotNetHosts = @('builds.dotnet.microsoft.com', 'download.visualstudio.microsoft
 $DotNetSigner = @{
     Subject = [ordered]@{ C = 'US'; S = 'Washington'; L = 'Redmond'; O = 'Microsoft Corporation' }
     Issuer = $null
+    IssuerThumbprints = @()
     Roots = @('8F43288AD272F3103B6FB1428485EA3014C0BCFE', '3B1EFD3A66EA28B16697394703A72CA340A05BD5')
 }
 # The shared frameworks Pulsar's programs may use, in the order they are installed, with the installer of each (its
@@ -788,11 +794,11 @@ function Find-PostgresBin {
 }
 
 # psql in $bin as the postgres superuser over localhost, its password in its environment (never its command line);
-# $stdin, when given, is the SQL instead of $arguments (a statement with a secret in it goes there). Its exit code and
-# output (unaligned, without headers).
-function Invoke-Psql([string] $bin, [string] $password, [string[]] $arguments, [string] $stdin = $null) {
+# $stdin, when given, is the SQL instead of $arguments (a statement with a secret in it goes there); $database, the
+# database it connects to. Its exit code and output (unaligned, without headers).
+function Invoke-Psql([string] $bin, [string] $password, [string[]] $arguments, [string] $stdin = $null, [string] $database = 'postgres') {
     $psql = Join-Path $bin 'psql.exe'
-    $common = @('-h', 'localhost', '-p', $PostgresPort, '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A')
+    $common = @('-h', 'localhost', '-p', $PostgresPort, '-U', 'postgres', '-d', $database, '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A')
     $env:PGPASSWORD = $password
     try {
         if ($stdin) { return Invoke-NativeWithInput $stdin $psql @common -f - }
@@ -825,6 +831,9 @@ function Get-PostgresPlan {
             $script:PostgresPassword = Read-Secret "Password of PostgreSQL's 'postgres' user (chosen when PostgreSQL $($local.Major) was installed)" 'postgresPassword'
         }
         Assert-PostgresLogin
+        # A 'pulsar' role or database this run could not replace (a panel's data, someone else's) stops it now.
+        $state = Get-PanelDatabaseState (Find-PostgresBin) (ConvertFrom-Secure $PostgresPassword)
+        if ($state -cnotin 'none', 'leftover') { throw (New-SetupError $ExitUsage "$(Get-PanelDatabaseMessage $state) Nothing was changed.") }
         return [pscustomobject]@{ Install = $false; Major = $local.Major }
     }
     $major = $PostgresMajor
@@ -877,17 +886,25 @@ function Get-PostgresInstallerUrl([string] $version, [int] $build) {
     return "$PostgresDownloadsUrl/postgresql-$version-$build-windows-x64.exe"
 }
 
+# The HTTP status a HEAD request for $url ends with, after its redirects.
+function Get-DownloadStatus([string] $url) {
+    return [PulsarDownloads]::Probe($url)
+}
+
 # The newest build of EDB's installer of $version (EDB numbers its rebuilds of a release: -1, -2...): the highest that
-# exists, looking until three in a row do not (EDB's server answers 403 or 404 for those).
+# exists, looking until three in a row do not (EDB's server answers 403 or 404 for those). Any other answer (too many
+# requests, a server error) is a server that could not say, not a build that is missing: the run stops, as offline.
 function Find-PostgresInstallerUrl([string] $version) {
     $found = $null
     $misses = 0
     for ($build = 1; $build -le 20 -and $misses -lt 3; $build++) {
         $url = Get-PostgresInstallerUrl $version $build
         $status = 0
-        try { $status = [PulsarDownloads]::Probe($url) }
+        try { $status = Get-DownloadStatus $url }
         catch { throw (New-SetupError $ExitOffline "EDB's download server could not be reached ($($_.Exception.GetBaseException().Message)).") }
-        if ($status -eq 200) { $found = $url; $misses = 0 } else { $misses++ }
+        if ($status -eq 200) { $found = $url; $misses = 0 }
+        elseif ($status -in 403, 404) { $misses++ }
+        else { throw (New-SetupError $ExitOffline "EDB's download server answered $status for $url, so the newest build of PostgreSQL $version cannot be told. Try again later.") }
     }
     if (-not $found) { throw (New-SetupError $ExitOffline "EDB offers no Windows installer of PostgreSQL $version at $PostgresDownloadsUrl.") }
     return $found
@@ -921,7 +938,10 @@ function Get-PostgresInstallerFile($plan) {
         }
         $what = "The PostgreSQL installer downloaded from $url"
     }
-    Assert-InstallerSignature (Get-AuthenticodeSignature -LiteralPath $file) $PostgresSigner $what
+    $signature = Get-AuthenticodeSignature -LiteralPath $file
+    $chain = $null
+    if ($signature.SignerCertificate) { $chain = Get-SignerChain $file $signature.SignerCertificate }
+    Assert-InstallerSignature $signature $PostgresSigner $what $chain
     # Signed for the release it was chosen for, not an older one of EDB's under the expected name.
     Assert-InstallerVersion (Get-Item -LiteralPath $file).VersionInfo 'PostgreSQL' $version $what -contains
     return $file
@@ -1027,38 +1047,76 @@ function Install-PostgresServer([string] $installer, $plan) {
     return ConvertTo-Secure $password
 }
 
+# What the local PostgreSQL has of Pulsar's ($bin, $password: its postgres superuser's): 'none' (no 'pulsar' role or
+# database), 'leftover' (the 'pulsar' role this script made, marked with $PulsarRoleComment, and no database or an
+# empty one it owns: what an install that failed left, which nothing can use, since only the panel's settings had the
+# role's password), or, for anything else, what is there, fit to print: a panel's data (a panel removed with
+# -Uninstall keeps it) or someone else's are never dropped.
+function Get-PanelDatabaseState([string] $bin, [string] $password) {
+    $role = Invoke-Psql $bin $password @('-c', "SELECT 'role:' || coalesce(shobj_description(oid, 'pg_authid'), '') FROM pg_roles WHERE rolname = 'pulsar'")
+    if ($role.ExitCode -ne 0) { throw "Could not connect to PostgreSQL as 'postgres': $($role.Output.Trim())" }
+    $database = Invoke-Psql $bin $password @('-c', "SELECT 'owner:' || pg_get_userbyid(datdba) FROM pg_database WHERE datname = 'pulsar'")
+    if ($database.ExitCode -ne 0) { throw "Could not list PostgreSQL's databases: $($database.Output.Trim())" }
+    $roleText = $role.Output.Trim()
+    $owner = $database.Output.Trim()
+    if (-not $roleText -and -not $owner) { return 'none' }
+    if ($owner -and $owner -cne 'owner:pulsar') {
+        return "PostgreSQL already has a 'pulsar' database, owned by '$(ConvertTo-PrintableText $owner.Substring(6))', which this script did not make"
+    }
+    if ($roleText -cne "role:$PulsarRoleComment") {
+        return "PostgreSQL already has a 'pulsar' role, which this script did not mark as its own (an install made before it marked them, or something else)"
+    }
+    if ($owner) {
+        # Every table, sequence, view or index outside PostgreSQL's own schemas.
+        $relations = Invoke-Psql $bin $password @('-c', "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'") -database 'pulsar'
+        if ($relations.ExitCode -ne 0) { throw "Could not look into PostgreSQL's 'pulsar' database: $($relations.Output.Trim())" }
+        if ($relations.Output.Trim() -cne '0') {
+            return "PostgreSQL already has Pulsar's 'pulsar' database, with tables in it: a panel's data (a panel removed with -Uninstall keeps it), or what an install left once it had prepared the database"
+        }
+    }
+    return 'leftover'
+}
+
+# What to do about a 'pulsar' role or database this script may not replace ($state, from Get-PanelDatabaseState).
+function Get-PanelDatabaseMessage([string] $state) {
+    return "$state. To start over, drop the 'pulsar' database and role (docs/guides/install.md, ""Starting over""; first back up what you need of it), then run this script again; to install the panel with a backup's data, drop them and use -RestoreFrom; or give the panel another database with -ConnectionString."
+}
+
 function New-PanelDatabase {
     $bin = Find-PostgresBin
     if (-not $PostgresPassword) {
-        $PostgresPassword = Read-Secret "Password of PostgreSQL's 'postgres' user (chosen when PostgreSQL was installed)" 'postgresPassword'
+        $script:PostgresPassword = Read-Secret "Password of PostgreSQL's 'postgres' user (chosen when PostgreSQL was installed)" 'postgresPassword'
     }
+    $superuser = ConvertFrom-Secure $PostgresPassword
+    $state = Get-PanelDatabaseState $bin $superuser
+    if ($state -ceq 'leftover') {
+        Write-Step "Dropping the 'pulsar' role, and its empty database, that an install which failed left"
+        $dropped = Invoke-Psql $bin $superuser @('-c', 'DROP DATABASE IF EXISTS pulsar WITH (FORCE)', '-c', 'DROP ROLE pulsar')
+        if ($dropped.ExitCode -ne 0) { throw "Could not drop the 'pulsar' role and database an install that failed left: $($dropped.Output.Trim())" }
+    }
+    elseif ($state -cne 'none') { throw (Get-PanelDatabaseMessage $state) }
     $password = New-Secret 32
     Register-Secret $password
-    $env:PGPASSWORD = ConvertFrom-Secure $PostgresPassword
-    try {
-        $psql = Join-Path $bin 'psql.exe'
-        $common = @('-h', 'localhost', '-p', $PostgresPort, '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q', '-t')
-        $exists = Invoke-Native $psql @common -c "SELECT count(*) FROM pg_roles WHERE rolname = 'pulsar'"
-        if ($exists.ExitCode -ne 0) { throw "Could not connect to PostgreSQL as 'postgres': $($exists.Output)" }
-        if ($exists.Output.Trim() -ne '0') {
-            throw "PostgreSQL already has a 'pulsar' role (an earlier install?). Pass its database with -ConnectionString, or drop it first."
-        }
-        # On standard input, not the command line: every process on this machine can read command lines.
-        $created = Invoke-NativeWithInput "CREATE ROLE pulsar LOGIN PASSWORD '$password';" $psql @common -f -
-        if ($created.ExitCode -ne 0) { throw "Could not create the 'pulsar' role: $($created.Output)" }
-        $created = Invoke-Native $psql @common -c 'CREATE DATABASE pulsar OWNER pulsar'
-        if ($created.ExitCode -ne 0) {
-            # Nobody else knows the role's password: kept, it would only make the next run refuse.
-            $dropped = Invoke-Native $psql @common -c 'DROP ROLE pulsar'
-            $left = ''
-            if ($dropped.ExitCode -ne 0) { $left = " The 'pulsar' role created for it could not be dropped ($($dropped.Output)): drop it before running this script again." }
-            throw "Could not create the 'pulsar' database: $($created.Output)$left"
-        }
-    }
-    finally {
-        Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+    # On standard input, not the command line: every process on this machine can read command lines. Marked as this
+    # script's in the same transaction (Get-PanelDatabaseState).
+    $created = Invoke-Psql $bin $superuser @() "BEGIN;`nCREATE ROLE pulsar LOGIN PASSWORD '$password';`nCOMMENT ON ROLE pulsar IS '$PulsarRoleComment';`nCOMMIT;`n"
+    if ($created.ExitCode -ne 0) { throw "Could not create the 'pulsar' role: $($created.Output.Trim())" }
+    $created = Invoke-Psql $bin $superuser @('-c', 'CREATE DATABASE pulsar OWNER pulsar')
+    if ($created.ExitCode -ne 0) {
+        # Nobody else knows the role's password: kept, it would only make the next run refuse.
+        $dropped = Invoke-Psql $bin $superuser @('-c', 'DROP ROLE pulsar')
+        $left = ''
+        if ($dropped.ExitCode -ne 0) { $left = " The 'pulsar' role created for it could not be dropped ($($dropped.Output.Trim())): drop it before running this script again." }
+        throw "Could not create the 'pulsar' database: $($created.Output.Trim())$left"
     }
     return "Host=localhost;Port=$PostgresPort;Database=pulsar;Username=pulsar;Password=$password"
+}
+
+# Drops the 'pulsar' database and role New-PanelDatabase made, for an install that failed after it: nobody else knows
+# the role's password. What could not be dropped, fit to print, or nothing.
+function Remove-PanelDatabase {
+    $dropped = Invoke-Psql (Find-PostgresBin) (ConvertFrom-Secure $PostgresPassword) @('-c', 'DROP DATABASE IF EXISTS pulsar WITH (FORCE)', '-c', 'DROP ROLE IF EXISTS pulsar')
+    if ($dropped.ExitCode -ne 0) { return "the 'pulsar' database and role in PostgreSQL (they could not be dropped: $($dropped.Output.Trim()))" }
 }
 
 # --- Certificate ------------------------------------------------------------------------------------------------
@@ -1436,27 +1494,119 @@ function Write-PanelConfig([hashtable] $settings) {
     Remove-Item $staging
 }
 
+# Whether the panel can listen on TCP port $port as it does, on every address (Kestrel's https://*:<port>, and its SFTP
+# server, which follows it): nothing listens there on any address, and Windows lets a program take it for itself (not
+# a port in a range Hyper-V or WinNAT keep, netsh interface ipv4 show excludedportrange protocol=tcp).
+function Test-PortFree([int] $port) {
+    if (@(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue).Count -gt 0) { return $false }
+    $listener = $null
+    try {
+        if ([Net.Sockets.Socket]::OSSupportsIPv6) {
+            $listener = New-Object Net.Sockets.TcpListener ([Net.IPAddress]::IPv6Any, $port)
+            $listener.Server.DualMode = $true
+        }
+        else { $listener = New-Object Net.Sockets.TcpListener ([Net.IPAddress]::Any, $port) }
+        $listener.ExclusiveAddressUse = $true
+        $listener.Start()
+        return $true
+    }
+    catch { return $false }
+    finally { if ($listener) { $listener.Stop() } }
+}
+
+# What keeps a PFX file from being the panel's certificate, fit to print: it does not open with $password, or holds no
+# private key. $null when it can be. Its key is read without being stored anywhere.
+function Test-PfxFile([string] $path, [string] $password) {
+    try {
+        $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $path).ProviderPath)
+        $certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @($bytes, $password, [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+    }
+    catch { return "it does not open with the password given ($($_.Exception.GetBaseException().Message.Trim()))" }
+    try {
+        if (-not $certificate.HasPrivateKey) { return 'it holds no private key' }
+        return $null
+    }
+    finally { $certificate.Dispose() }
+}
+
+# The port of an endpoint's URL in the panel's settings ("https://*:8443").
+function Get-EndpointPort([string] $url) {
+    return [int]($url -replace '^.*:(\d+)/?$', '$1')
+}
+
 # What would stop a panel's install, checked before anything is downloaded or changed: the panel (or, in all-in-one
-# mode, the agent) installed already, ports that clash, a missing certificate or backup, and the administrator's
-# password (asked for unless given).
+# mode, the agent) installed already, ports that clash or are taken (the backup's, with -RestoreFrom), a certificate
+# (or a backup's) that is missing or does not open with its password, and the administrator's password (asked for
+# unless given). The database is checked with PostgreSQL's (Get-PostgresPlan).
 function Assert-PanelInstallable {
     if (Test-Service $PanelService) { throw (New-SetupError $ExitUsage 'The panel is already installed on this machine. Use -Update to update it, or -Uninstall first.') }
     if ($Mode -eq 'AllInOne' -and (Test-Service $AgentService)) { throw (New-SetupError $ExitUsage 'The agent is already installed on this machine. Use -Update to update it, or -Uninstall first.') }
-    if ($AgentsPort -and $AgentsPort -eq $Port) { throw (New-SetupError $ExitUsage '-AgentsPort must be another port than -Port: browsers must never be asked for a client certificate.') }
-    if ($SftpPort -eq $Port -or ($AgentsPort -and $SftpPort -eq $AgentsPort)) { throw (New-SetupError $ExitUsage '-SftpPort must be another port than -Port and -AgentsPort.') }
-    if ($CertificatePath -and -not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) { throw (New-SetupError $ExitUsage "$CertificatePath was not found.") }
+    $https = $Port
+    $agents = $AgentsPort
+    $what = @{ Https = '-Port'; Agents = '-AgentsPort' }
     if ($RestoreFrom) {
-        if (-not (Test-Path -LiteralPath (Join-Path $RestoreFrom 'panel-data\keys'))) { throw (New-SetupError $ExitUsage "$RestoreFrom is not a Pulsar backup (no panel-data\keys).") }
-        return
+        if (-not (Test-Path -LiteralPath (Join-Path $RestoreFrom 'panel-data\keys'))) { throw (New-SetupError $ExitUsage "$RestoreFrom is not a Pulsar backup (no panel-data\keys). Nothing was changed.") }
+        $settingsFile = Join-Path $RestoreFrom 'appsettings.Production.json'
+        if (-not (Test-Path -LiteralPath $settingsFile -PathType Leaf)) { throw (New-SetupError $ExitUsage "$RestoreFrom is not a Pulsar backup (no appsettings.Production.json). Nothing was changed.") }
+        $old = Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json
+        $https = Get-EndpointPort $old.Kestrel.Endpoints.Https.Url
+        $agents = 0
+        if ($old.Kestrel.Endpoints.PSObject.Properties['Agents']) { $agents = Get-EndpointPort $old.Kestrel.Endpoints.Agents.Url }
+        $what = @{ Https = "the backup's panel port"; Agents = "the backup's agents' port" }
+        $tlsPassword = $old.Kestrel.Endpoints.Https.Certificate.Password
+        Register-Secret $tlsPassword
+        $problem = Test-PfxFile (Join-Path $RestoreFrom 'panel-data\tls\panel.pfx') $tlsPassword
+        if ($problem) { throw (New-SetupError $ExitUsage "The backup's HTTPS certificate (panel-data\tls\panel.pfx in $RestoreFrom) cannot be the panel's: $problem. Nothing was changed.") }
     }
+    elseif ($CertificatePath) {
+        if (-not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) { throw (New-SetupError $ExitUsage "$CertificatePath was not found. Nothing was changed.") }
+        $password = ''
+        if ($CertificatePassword) { $password = ConvertFrom-Secure $CertificatePassword }
+        $problem = Test-PfxFile $CertificatePath $password
+        if ($problem) { throw (New-SetupError $ExitUsage "$CertificatePath cannot be the panel's certificate: $problem. Give its password in PULSAR_CERTIFICATE_PASSWORD, -CertificatePassword or the secrets file. Nothing was changed.") }
+    }
+    if ($agents -and $agents -eq $https) { throw (New-SetupError $ExitUsage "$($what.Agents) must be another port than $($what.Https): browsers must never be asked for a client certificate. Nothing was changed.") }
+    if ($SftpPort -eq $https -or ($agents -and $SftpPort -eq $agents)) { throw (New-SetupError $ExitUsage "-SftpPort must be another port than -Port and -AgentsPort ($https$(if ($agents) { ", $agents" })). Nothing was changed.") }
+    foreach ($port in @(@($what.Https, $https), @($what.Agents, $agents), @('-SftpPort', $SftpPort))) {
+        if ($port[1] -and -not (Test-PortFree $port[1])) {
+            throw (New-SetupError $ExitUnsupported "The panel would listen on port $($port[1]) ($($port[0])), which is taken: another program listens on it, or Windows keeps it (netsh interface ipv4 show excludedportrange protocol=tcp). Stop that program, or choose another port. Nothing was changed.")
+        }
+    }
+    if ($RestoreFrom) { return }
     if (-not $AdminPassword) {
         $script:AdminPassword = Read-Secret "Password for the panel's first administrator, '$AdminUserName' (at least 12 characters)" 'adminPassword'
     }
     if ((ConvertFrom-Secure $AdminPassword).Length -lt 12) { throw (New-SetupError $ExitUsage "The administrator's password needs at least 12 characters.") }
 }
 
+# Undoes what a panel's install that failed did once it had made its database ($database: New-PanelDatabase made the
+# 'pulsar' database and role) and maybe its service ($service): the service, the firewall rules (unless -NoFirewall),
+# the program, and the database and role, whose password nobody else knows. Each thing that could not be undone, fit to
+# print; nothing when all was. The panel's data folder stays, as -Uninstall leaves it.
+function Undo-PanelInstall([bool] $service, [bool] $database) {
+    $left = @()
+    if ($service) {
+        Stop-Service $PanelService -ErrorAction SilentlyContinue
+        $deleted = Invoke-Native $Sc delete $PanelService
+        if ($deleted.ExitCode -ne 0) { $left += "the service $PanelService (sc.exe delete: $($deleted.Output.Trim()))" }
+        Start-Sleep -Seconds 2
+    }
+    if (-not $NoFirewall) {
+        foreach ($rule in 'Pulsar-Panel-HTTPS', 'Pulsar-Panel-Agents', 'Pulsar-Panel-SFTP') {
+            try { Get-NetFirewallRule -Name $rule -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction Stop }
+            catch { $left += "the firewall rule $rule" }
+        }
+    }
+    Remove-Item -LiteralPath $PanelDir -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $PanelDir) { $left += $PanelDir }
+    if ($database) {
+        try { $left += @(Remove-PanelDatabase) }
+        catch { $left += "the 'pulsar' database and role in PostgreSQL ($($_.Exception.Message))" }
+    }
+    return $left
+}
+
 function Install-Panel {
-    Assert-PanelInstallable
     $backup = $null
     if ($RestoreFrom) {
         $backup = @{
@@ -1471,129 +1621,142 @@ function Install-Panel {
         Write-Step 'Creating the panel database in the local PostgreSQL'
         $connection = New-PanelDatabase
     }
-    if ($backup -and (Test-Path $backup.Dump)) {
-        Write-Step 'Restoring the database from the backup'
-        Restore-PanelDatabase $backup.Dump $connection
-    }
-
-    Write-SetupStep 'panel' 'Installing the panel'
-    Write-Step "Installing the panel in $PanelDir"
-    Copy-Program (Join-Path $PSScriptRoot 'panel') $PanelDir
-    Copy-BackupScript
-
-    # The service first: its virtual account exists from then on, and the folders below grant it access.
-    $exe = Join-Path $PanelDir 'Pulsar.Api.exe'
-    $result = Invoke-Native $Sc create $PanelService binPath= "`"$exe`"" start= delayed-auto obj= $PanelAccount DisplayName= 'Pulsar Panel'
-    if ($result.ExitCode -ne 0) { throw "Could not create the panel service: $($result.Output)" }
-    $null = Invoke-Native $Sc description $PanelService 'Pulsar game server panel (web interface and API).'
-    $null = Invoke-Native $Sc failure $PanelService reset= 86400 actions= restart/5000/restart/15000/restart/60000
-    $null = Invoke-Native $Sc failureflag $PanelService 1
-
-    New-Item -ItemType Directory -Force $PanelData | Out-Null
-    Set-PrivateAcl $PanelData -modify @($PanelAccount)
-    foreach ($folder in 'keys', 'logs', 'tls') { New-Item -ItemType Directory -Force (Join-Path $PanelData $folder) | Out-Null }
-
-    $setupToken = New-Secret 48
-    Register-Secret $setupToken
-    if ($backup) {
-        Write-Step 'Restoring the keys, certificates and settings from the backup'
-        foreach ($folder in 'keys', 'keyring', 'tls') {
-            if (Test-Path (Join-Path $backup.Data $folder)) { Copy-Item (Join-Path $backup.Data $folder) $PanelData -Recurse -Force }
-        }
-        $old = $backup.Settings
-        $tlsPassword = $old.Kestrel.Endpoints.Https.Certificate.Password
-        # The backup's passwords, as the ones made here: never in the log.
-        Register-Secret $tlsPassword
-        Register-Secret $old.DataProtection.CertificatePassword
-        $pfx = Join-Path $PanelData 'tls\panel.pfx'
-        $thumbprint = (New-Object Security.Cryptography.X509Certificates.X509Certificate2($pfx, $tlsPassword)).Thumbprint
-        $certificate = @{ Path = $pfx; Password = $tlsPassword; Cer = (Join-Path $PanelData 'tls\panel.cer'); SelfSigned = $true; Thumbprint = $thumbprint }
-        $Port = [int]($old.Kestrel.Endpoints.Https.Url -replace '^.*:(\d+)/?$', '$1')
-        if ($old.Kestrel.Endpoints.PSObject.Properties['Agents']) {
-            $AgentsPort = [int]($old.Kestrel.Endpoints.Agents.Url -replace '^.*:(\d+)/?$', '$1')
-        }
-        $keyRing = @{ Path = (Join-Path $PanelData 'keyring\keyring.pfx'); Password = $old.DataProtection.CertificatePassword }
-        # The SFTP port is a panel setting kept in the database (restored with it): -SftpPort only names the port to open.
-        if ($SftpPort -eq $Port -or ($AgentsPort -and $SftpPort -eq $AgentsPort)) { throw "-SftpPort must be another port than the backup's panel and agents' ports ($Port, $AgentsPort)." }
-    }
-    else {
-        $certificate = New-PanelCertificate
-        $keyRing = New-KeyRingCertificate
-    }
-
-    $endpoints = @{ Https = @{ Url = "https://*:$Port"; Certificate = @{ Path = $certificate.Path; Password = $certificate.Password } } }
-    if ($AgentsPort) {
-        # The same certificate: agents already trust it.
-        $endpoints.Agents = @{ Url = "https://*:$AgentsPort"; Certificate = @{ Path = $certificate.Path; Password = $certificate.Password } }
-    }
-
-    $settings = @{
-        ConnectionStrings = @{ Pulsar = $connection }
-        Kestrel = @{ Endpoints = $endpoints }
-        DataProtection = @{ KeysPath = (Join-Path $PanelData 'keys'); CertificatePath = $keyRing.Path; CertificatePassword = $keyRing.Password }
-        Pulsar = @{ LogsDirectory = (Join-Path $PanelData 'logs') }
-    }
-    if (-not $backup) { $settings.InitialSetup = @{ Token = $setupToken } }
-    Write-PanelConfig $settings
-
-    if (-not $NoFirewall) {
-        # Domain and Private networks: on a network Windows treats as public (a coffee shop's, a hotel's), only with -FirewallPublic.
-        $profiles = if ($FirewallPublic) { @('Any') } else { @('Domain', 'Private') }
-        Write-Step "Allowing the panel's HTTPS port ($Port) in Windows Firewall ($($profiles -join ', ') networks)"
-        Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-        $null = New-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -DisplayName 'Pulsar Panel (HTTPS)' -Direction Inbound `
-            -Protocol TCP -LocalPort $Port -Program $exe -Action Allow -Profile $profiles
-        Get-NetFirewallRule -Name 'Pulsar-Panel-Agents' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-        if ($AgentsPort) {
-            Write-Step "Allowing the agents' port ($AgentsPort) in Windows Firewall ($($profiles -join ', ') networks)"
-            $null = New-NetFirewallRule -Name 'Pulsar-Panel-Agents' -DisplayName 'Pulsar Panel (agents)' -Direction Inbound `
-                -Protocol TCP -LocalPort $AgentsPort -Program $exe -Action Allow -Profile $profiles
-        }
-        Write-Step "Allowing the SFTP port ($SftpPort) in Windows Firewall ($($profiles -join ', ') networks)"
-        Get-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-        $null = New-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -DisplayName 'Pulsar Panel (SFTP)' -Direction Inbound `
-            -Protocol TCP -LocalPort $SftpPort -Program $exe -Action Allow -Profile $profiles
-    }
-
-    Invoke-PanelMigrations
-    Write-Step 'Starting the panel'
-    Start-Panel
-    Initialize-PanelClient
-    $client = [PulsarInstallerClient]::new("https://localhost:$Port", $certificate.Thumbprint)
+    # From here on, a failure undoes what this install did (Undo-PanelInstall): left, the database and its role would
+    # only make the next run refuse, since their password goes with the panel's settings.
+    $madeService = $false
     try {
-        if ($backup) { Write-SetupStep 'administrator' 'Waiting for the restored panel' }
-        else { Write-SetupStep 'administrator' "Creating the administrator '$AdminUserName'" }
-        Wait-PanelReady $client
-        if ($backup) { return @{ Certificate = $certificate; Node = $null; Sftp = $null; Port = $Port } }
+        if ($backup -and (Test-Path $backup.Dump)) {
+            Write-Step 'Restoring the database from the backup'
+            Restore-PanelDatabase $backup.Dump $connection
+        }
 
-        Write-Step "Creating the administrator '$AdminUserName'"
-        $null = Invoke-Panel $client GET '/api/v1/auth/session'
-        $null = Invoke-Panel $client POST '/api/v1/auth/setup' @{ token = $setupToken; userName = $AdminUserName; password = (ConvertFrom-Secure $AdminPassword); displayName = $null; email = $null }
-        # The setup token is spent; keep no secret the panel no longer needs.
-        $settings.Remove('InitialSetup')
+        Write-SetupStep 'panel' 'Installing the panel'
+        Write-Step "Installing the panel in $PanelDir"
+        Copy-Program (Join-Path $PSScriptRoot 'panel') $PanelDir
+        Copy-BackupScript
+
+        # The service first: its virtual account exists from then on, and the folders below grant it access.
+        $exe = Join-Path $PanelDir 'Pulsar.Api.exe'
+        $result = Invoke-Native $Sc create $PanelService binPath= "`"$exe`"" start= delayed-auto obj= $PanelAccount DisplayName= 'Pulsar Panel'
+        if ($result.ExitCode -ne 0) { throw "Could not create the panel service: $($result.Output)" }
+        $madeService = $true
+        $null = Invoke-Native $Sc description $PanelService 'Pulsar game server panel (web interface and API).'
+        $null = Invoke-Native $Sc failure $PanelService reset= 86400 actions= restart/5000/restart/15000/restart/60000
+        $null = Invoke-Native $Sc failureflag $PanelService 1
+
+        New-Item -ItemType Directory -Force $PanelData | Out-Null
+        Set-PrivateAcl $PanelData -modify @($PanelAccount)
+        foreach ($folder in 'keys', 'logs', 'tls') { New-Item -ItemType Directory -Force (Join-Path $PanelData $folder) | Out-Null }
+
+        $setupToken = New-Secret 48
+        Register-Secret $setupToken
+        if ($backup) {
+            Write-Step 'Restoring the keys, certificates and settings from the backup'
+            foreach ($folder in 'keys', 'keyring', 'tls') {
+                if (Test-Path (Join-Path $backup.Data $folder)) { Copy-Item (Join-Path $backup.Data $folder) $PanelData -Recurse -Force }
+            }
+            $old = $backup.Settings
+            $tlsPassword = $old.Kestrel.Endpoints.Https.Certificate.Password
+            # The backup's passwords, as the ones made here: never in the log.
+            Register-Secret $tlsPassword
+            Register-Secret $old.DataProtection.CertificatePassword
+            $pfx = Join-Path $PanelData 'tls\panel.pfx'
+            $thumbprint = (New-Object Security.Cryptography.X509Certificates.X509Certificate2($pfx, $tlsPassword)).Thumbprint
+            $certificate = @{ Path = $pfx; Password = $tlsPassword; Cer = (Join-Path $PanelData 'tls\panel.cer'); SelfSigned = $true; Thumbprint = $thumbprint }
+            $Port = [int]($old.Kestrel.Endpoints.Https.Url -replace '^.*:(\d+)/?$', '$1')
+            if ($old.Kestrel.Endpoints.PSObject.Properties['Agents']) {
+                $AgentsPort = [int]($old.Kestrel.Endpoints.Agents.Url -replace '^.*:(\d+)/?$', '$1')
+            }
+            $keyRing = @{ Path = (Join-Path $PanelData 'keyring\keyring.pfx'); Password = $old.DataProtection.CertificatePassword }
+            # The SFTP port is a panel setting kept in the database (restored with it): -SftpPort only names the port to
+            # open (Assert-PanelInstallable checked it against the backup's ports).
+        }
+        else {
+            $certificate = New-PanelCertificate
+            $keyRing = New-KeyRingCertificate
+        }
+
+        $endpoints = @{ Https = @{ Url = "https://*:$Port"; Certificate = @{ Path = $certificate.Path; Password = $certificate.Password } } }
+        if ($AgentsPort) {
+            # The same certificate: agents already trust it.
+            $endpoints.Agents = @{ Url = "https://*:$AgentsPort"; Certificate = @{ Path = $certificate.Path; Password = $certificate.Password } }
+        }
+
+        $settings = @{
+            ConnectionStrings = @{ Pulsar = $connection }
+            Kestrel = @{ Endpoints = $endpoints }
+            DataProtection = @{ KeysPath = (Join-Path $PanelData 'keys'); CertificatePath = $keyRing.Path; CertificatePassword = $keyRing.Password }
+            Pulsar = @{ LogsDirectory = (Join-Path $PanelData 'logs') }
+        }
+        if (-not $backup) { $settings.InitialSetup = @{ Token = $setupToken } }
         Write-PanelConfig $settings
 
-        $node = $null
-        if ($Mode -eq 'AllInOne') {
-            $null = Invoke-Panel $client GET '/api/v1/auth/session'
-            $node = Invoke-Panel $client POST '/api/v1/nodes' @{ name = $env:COMPUTERNAME }
-            # The enrollment token, and the node code that carries it: never in the log.
-            Register-Secret $node.enrollment.token
-            if ($node.enrollment.PSObject.Properties['nodeCode'] -and $node.enrollment.nodeCode) { Register-Secret $node.enrollment.nodeCode }
+        if (-not $NoFirewall) {
+            # Domain and Private networks: on a network Windows treats as public (a coffee shop's, a hotel's), only with -FirewallPublic.
+            $profiles = if ($FirewallPublic) { @('Any') } else { @('Domain', 'Private') }
+            Write-Step "Allowing the panel's HTTPS port ($Port) in Windows Firewall ($($profiles -join ', ') networks)"
+            Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+            $null = New-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -DisplayName 'Pulsar Panel (HTTPS)' -Direction Inbound `
+                -Protocol TCP -LocalPort $Port -Program $exe -Action Allow -Profile $profiles
+            Get-NetFirewallRule -Name 'Pulsar-Panel-Agents' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+            if ($AgentsPort) {
+                Write-Step "Allowing the agents' port ($AgentsPort) in Windows Firewall ($($profiles -join ', ') networks)"
+                $null = New-NetFirewallRule -Name 'Pulsar-Panel-Agents' -DisplayName 'Pulsar Panel (agents)' -Direction Inbound `
+                    -Protocol TCP -LocalPort $AgentsPort -Program $exe -Action Allow -Profile $profiles
+            }
+            Write-Step "Allowing the SFTP port ($SftpPort) in Windows Firewall ($($profiles -join ', ') networks)"
+            Get-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+            $null = New-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -DisplayName 'Pulsar Panel (SFTP)' -Direction Inbound `
+                -Protocol TCP -LocalPort $SftpPort -Program $exe -Action Allow -Profile $profiles
         }
 
-        # The SFTP server starts on its default port (2022); another port is an administrator's setting in the database.
-        $null = Invoke-Panel $client GET '/api/v1/auth/session'
-        if ($SftpPort -ne 2022) {
-            Write-Step "Setting the SFTP port to $SftpPort"
-            $null = Invoke-Panel $client PUT '/api/v1/sftp/settings' @{ enabled = $true; port = $SftpPort; publicHost = $null }
+        Invoke-PanelMigrations
+        Write-Step 'Starting the panel'
+        Start-Panel
+        Initialize-PanelClient
+        $client = [PulsarInstallerClient]::new("https://localhost:$Port", $certificate.Thumbprint)
+        try {
+            if ($backup) { Write-SetupStep 'administrator' 'Waiting for the restored panel' }
+            else { Write-SetupStep 'administrator' "Creating the administrator '$AdminUserName'" }
+            Wait-PanelReady $client
+            if ($backup) { return @{ Certificate = $certificate; Node = $null; Sftp = $null; Port = $Port } }
+
+            Write-Step "Creating the administrator '$AdminUserName'"
+            $null = Invoke-Panel $client GET '/api/v1/auth/session'
+            $null = Invoke-Panel $client POST '/api/v1/auth/setup' @{ token = $setupToken; userName = $AdminUserName; password = (ConvertFrom-Secure $AdminPassword); displayName = $null; email = $null }
+            # The setup token is spent; keep no secret the panel no longer needs.
+            $settings.Remove('InitialSetup')
+            Write-PanelConfig $settings
+
+            $node = $null
+            if ($Mode -eq 'AllInOne') {
+                $null = Invoke-Panel $client GET '/api/v1/auth/session'
+                $node = Invoke-Panel $client POST '/api/v1/nodes' @{ name = $env:COMPUTERNAME }
+                # The enrollment token, and the node code that carries it: never in the log.
+                Register-Secret $node.enrollment.token
+                if ($node.enrollment.PSObject.Properties['nodeCode'] -and $node.enrollment.nodeCode) { Register-Secret $node.enrollment.nodeCode }
+            }
+
+            # The SFTP server starts on its default port (2022); another port is an administrator's setting in the database.
+            $null = Invoke-Panel $client GET '/api/v1/auth/session'
+            if ($SftpPort -ne 2022) {
+                Write-Step "Setting the SFTP port to $SftpPort"
+                $null = Invoke-Panel $client PUT '/api/v1/sftp/settings' @{ enabled = $true; port = $SftpPort; publicHost = $null }
+            }
+            $sftp = Invoke-Panel $client GET '/api/v1/sftp'
         }
-        $sftp = Invoke-Panel $client GET '/api/v1/sftp'
+        finally {
+            $client.Dispose()
+        }
+        return @{ Certificate = $certificate; Node = $node; Sftp = $sftp; Port = $Port }
     }
-    finally {
-        $client.Dispose()
+    catch {
+        $failure = $_.Exception.Message
+        $left = @(Undo-PanelInstall $madeService (-not $ConnectionString))
+        $undone = "What this install had done to the panel is undone: its service, program and firewall rules$(if (-not $ConnectionString) { ", and the 'pulsar' database and role it made" })."
+        if ($left.Count -gt 0) { $undone = "Undoing this install left $($left -join '; '): remove them before running this script again (docs/guides/install.md, ""Starting over"")." }
+        throw (New-SetupError $ExitFailed "$failure$([Environment]::NewLine)$undone")
     }
-    return @{ Certificate = $certificate; Node = $node; Sftp = $sftp; Port = $Port }
 }
 
 function Write-SftpSummary($sftp) {
@@ -1659,9 +1822,31 @@ function Update-Agent {
     Start-Service $AgentService
 }
 
+# The .NET runtimes the installed agent's program needs that $dotnetRoot lacks (removed from Apps before Pulsar, say):
+# without them it cannot run. Nothing for a program that carries its own, or that cannot be read.
+function Get-AgentMissingRuntimes([string] $dotnetRoot) {
+    $config = Join-Path $AgentDir 'PulsarAgent.runtimeconfig.json'
+    if (-not (Test-Path -LiteralPath $config)) { return }
+    try { $needed = Read-RuntimeRequirements @(Get-Content -LiteralPath $config -Raw) $null }
+    catch { return }
+    Get-MissingRuntimes $needed (Get-InstalledRuntimes $dotnetRoot)
+}
+
 function Uninstall-Agent {
     Write-Step 'Removing the agent'
     $exe = Join-Path $AgentDir 'PulsarAgent.exe'
+    $missing = @(Get-AgentMissingRuntimes (Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'dotnet'))
+    if ((Test-Path $exe) -and $missing.Count -gt 0) {
+        # Its program cannot run: the service goes (it could not start anyway), the program and its data stay to finish
+        # with once .NET is back.
+        Write-Warning "The agent's program cannot run: this machine lacks $($missing -join ', ') (removed before Pulsar?). Its service is stopped and removed; its program stays in $AgentDir, with its node key, configuration and game servers' Windows accounts. Install the .NET 10 runtime again (https://dotnet.microsoft.com/download/dotnet/10.0), run & '$exe' unenroll in an elevated PowerShell, then delete $AgentDir (docs/guides/install.md, Uninstalling)."
+        if (Test-Service $AgentService) {
+            Stop-Service $AgentService -ErrorAction SilentlyContinue
+            $deleted = Invoke-Native $Sc delete $AgentService
+            if ($deleted.ExitCode -ne 0) { throw "The agent's service could not be removed (sc.exe delete: $($deleted.Output.Trim()))." }
+        }
+        return
+    }
     if (Test-Path $exe) {
         # Stops the game servers, deletes the node key and the configuration, and removes the service. When it cannot,
         # nothing is deleted: the program stays to try again with, as the agent MSI does.
@@ -2275,21 +2460,30 @@ function Find-NameMismatches($attributes, $expected) {
 }
 
 # The chain Windows builds for an installer's signer ($certificate, from $path's signature), from the certificates the
-# signature carries and the machine's stores, as the thumbprints from the signer to its root and what is wrong with it
-# besides time (a signer certificate past its end still makes a valid signature when it was timestamped). Revocation is
-# not checked here: Get-AuthenticodeSignature did.
+# signature carries and the machine's stores, as the thumbprints from the signer to its root, what is wrong with it
+# besides time (a signer certificate past its end still makes a valid signature when it was timestamped) and
+# revocation, and whether a certificate in it is revoked: 'Revoked', 'Unknown' (its authority could not be asked: no
+# internet, or no revocation address) or 'Good'. Revocation is checked here, online, for every certificate but the
+# root: Get-AuthenticodeSignature does not check it (Windows PowerShell asks WinVerifyTrust for no revocation checks).
 function Get-SignerChain([string] $path, [Security.Cryptography.X509Certificates.X509Certificate2] $certificate) {
     $carried = New-Object Security.Cryptography.X509Certificates.X509Certificate2Collection
     try { $carried.Import($path) } catch { Write-Verbose "No certificates read from the signature of ${path}: $($_.Exception.Message)" }
     $chain = New-Object Security.Cryptography.X509Certificates.X509Chain
     try {
-        $chain.ChainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+        $chain.ChainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::Online
+        $chain.ChainPolicy.RevocationFlag = [Security.Cryptography.X509Certificates.X509RevocationFlag]::ExcludeRoot
+        $chain.ChainPolicy.UrlRetrievalTimeout = [TimeSpan]::FromSeconds(30)
         $chain.ChainPolicy.ExtraStore.AddRange($carried)
         $null = $chain.Build($certificate)
-        $ignored = @('NoError', 'NotTimeValid', 'NotTimeNested', 'RevocationStatusUnknown', 'OfflineRevocation')
+        $statuses = @($chain.ChainStatus | ForEach-Object { "$($_.Status)" } | Select-Object -Unique)
+        $revocation = 'Good'
+        if ($statuses -contains 'Revoked') { $revocation = 'Revoked' }
+        elseif ($statuses -contains 'RevocationStatusUnknown' -or $statuses -contains 'OfflineRevocation') { $revocation = 'Unknown' }
+        $ignored = @('NoError', 'NotTimeValid', 'NotTimeNested', 'Revoked', 'RevocationStatusUnknown', 'OfflineRevocation')
         return [pscustomobject]@{
             Thumbprints = @($chain.ChainElements | ForEach-Object { $_.Certificate.Thumbprint })
-            Problems = @($chain.ChainStatus | ForEach-Object { "$($_.Status)" } | Where-Object { $_ -notin $ignored } | Select-Object -Unique)
+            Problems = @($statuses | Where-Object { $_ -notin $ignored })
+            Revocation = $revocation
         }
     }
     finally { $chain.Dispose() }
@@ -2299,8 +2493,9 @@ function Get-SignerChain([string] $path, [Security.Cryptography.X509Certificates
 # private downloads folder). It must be valid (the file is as its publisher signed it, and Windows chains the signer to
 # a root it trusts), embedded in the file (not a catalog's), and by a certificate for signing code of $signer's: its
 # subject's attributes as $signer.Subject says, issued by the authority $signer.Issuer names (when it names one), and
-# with its chain ($chain, Get-SignerChain's) ending at one of $signer.Roots (when it lists any). $what names the file in
-# the message.
+# with its chain ($chain, Get-SignerChain's) ending at one of $signer.Roots (when it lists any), through one of
+# $signer.IssuerThumbprints (when it lists any). Nothing in that chain may be revoked; when that could not be checked
+# (offline), a warning says so. $what names the file in the message.
 function Assert-InstallerSignature($signature, $signer, [string] $what, $chain = $null) {
     $refused = "is not run. Nothing was changed."
     if ($null -eq $signature) { throw (New-SetupError $ExitUntrusted "$what has no signature that could be read, and $refused") }
@@ -2339,6 +2534,17 @@ function Assert-InstallerSignature($signature, $signer, [string] $what, $chain =
             $found = 'no chain'
             if ($root) { $found = "a chain to $root$(if (@($chain.Problems).Count -gt 0) { " ($(@($chain.Problems) -join ', '))" })" }
             throw (New-SetupError $ExitUntrusted "$what is signed by $subject with a certificate that does not chain up to its publisher's own root ($(@($signer.Roots) -join ' or ')): $found, and $refused")
+        }
+        if (@($signer.IssuerThumbprints).Count -gt 0 -and @($chain.Thumbprints)[1] -notin @($signer.IssuerThumbprints)) {
+            throw (New-SetupError $ExitUntrusted "$what is signed by $subject with a certificate issued by $(@($chain.Thumbprints)[1]), not by its publisher's authority ($(@($signer.IssuerThumbprints) -join ' or ')), and $refused")
+        }
+    }
+    if ($chain) {
+        if ($chain.Revocation -ceq 'Revoked') {
+            throw (New-SetupError $ExitUntrusted "$what is signed by $subject with a certificate that is revoked (it, or an authority's above it), and $refused")
+        }
+        if ($chain.Revocation -cne 'Good') {
+            Write-Warning "Whether the certificate that signed $what (by $subject) has been revoked could not be checked (its authority did not answer: no internet?). It is run on the strength of its other checks."
         }
     }
 }
@@ -2857,7 +3063,12 @@ $main = {
             $script:PostgresPassword = Install-PostgresServer $postgresInstaller $postgres
         }
         else { Write-SetupStep 'postgres' "Using PostgreSQL $($postgres.Major), installed already" }
-        $installed = Install-Panel
+        try { $installed = Install-Panel }
+        catch {
+            if (-not ($postgres -and $postgres.Install)) { throw }
+            # Its superuser's password was this run's alone: a next run would ask for it.
+            throw (New-SetupError (Get-SetupExitCode $_) "$($_.Exception.Message)$([Environment]::NewLine)PostgreSQL $($postgres.Major), which this run installed, stays, and its postgres password was kept nowhere: before running this script again, remove PostgreSQL $($postgres.Major) from Apps and delete $($postgres.Prefix) (it holds nothing of Pulsar's), or give postgres a password of yours (docs/guides/install.md, ""The postgres superuser's password"").")
+        }
         $certificate = $installed.Certificate
         if ($Mode -eq 'Panel') {
             Write-Host ''

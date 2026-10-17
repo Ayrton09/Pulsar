@@ -93,7 +93,8 @@ Pulsar keeps, with its data.
 In the panel, **Nodes → Add node**: give the node a name. The dialog shows the panel's address, a node code and a link
 to `PulsarAgentSetup.exe`, which the panel serves ([The agent's setup](#the-agents-setup); it is also on the Releases
 page, as `PulsarAgentSetup-<version>.exe`). On the node, run it (SmartScreen as above), and give it the code (the
-address too when the node reaches the panel at another address than the code names) and the game servers' folder.
+address too when the node reaches the panel at another address than the code names: `https://`, the name or IP
+address and the port, nothing after it, which the setup writes in lower case) and the game servers' folder.
 It reads the certificate the panel presents, checks it against the code and has the agent pin it (the agent accepts
 that certificate and no other; the node's certificate stores are not changed): nobody copies `panel.cer`. The dialog
 also shows the SHA-256 of the `PulsarAgentSetup.exe` it links to: on the node, `Get-FileHash .\PulsarAgentSetup.exe`
@@ -128,7 +129,8 @@ mean what [its documentation](https://jrsoftware.org/ishelp/index.php?topic=setu
 A newer `PulsarSetup.exe` (or `PulsarAgentSetup.exe` on a node) run on a PC where Pulsar is installed updates it,
 asking nothing but the license ([update.md](update.md)); a setup older than what is installed refuses to run. To
 remove Pulsar, **Settings → Apps → Pulsar → Uninstall**: it runs `Install-Pulsar.ps1 -Uninstall`
-([Uninstalling](#uninstalling)) and keeps the data.
+([Uninstalling](#uninstalling)) and keeps the data. Remove Pulsar before the .NET runtimes: the agent's program needs
+them to unenroll.
 
 ## Advanced and automation: the installer script
 
@@ -157,7 +159,11 @@ folder only administrators can change (its installer's default, in Program Files
 as administrator.
 
 Pulsar's own user, `pulsar`, gets a random password of its own, kept in the panel's settings (readable only by
-SYSTEM, Administrators and the panel's service account).
+SYSTEM, Administrators and the panel's service account), and a comment that marks it as the installer's. A
+`pulsar` user or database that is already there stops the install before anything changes (exit code 2), unless it
+is what an install that failed left: the installer's own user, with no database or an empty one, which it drops and
+makes again. Anything else (a panel's data, which `-Uninstall` keeps, or someone else's) it never drops:
+[Starting over](#starting-over) says what to do.
 
 Already have a PostgreSQL elsewhere? Create an empty database and a user that owns it, and give the installer its
 connection string with `-ConnectionString "Host=…;Port=5432;Database=…;Username=…;Password=…"` instead, or in the
@@ -241,8 +247,14 @@ powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1
 
 It asks for a password for Pulsar's first administrator, `admin` (at least 12 characters; `-AdminUserName` chooses
 another name), and for the `postgres` password when a PostgreSQL is installed already (step 1). It checks everything
-it can before it changes anything (the folder, the ports, the passwords, what is installed), prints each step as
-`[n/total] …`, and writes a log ([Unattended installs](#unattended-installs)). Then it:
+it can before it changes anything (the folder, the passwords, what is installed, PostgreSQL's `pulsar` user and
+database), and so the ports and the PFX: the panel's ports (`-Port`, `-AgentsPort`, `-SftpPort`, or a backup's) must
+be free on every address, where nothing listens and Windows keeps none of them for itself, and the PFX of
+`-CertificatePath` (or a backup's) must open with its password and hold its private key. Ports and PFX are checked
+before anything changes. It prints each step as `[n/total] …` and writes a log
+([Unattended installs](#unattended-installs)). If a step fails once the `pulsar` database exists, it undoes what it
+did to the panel: its service, program and firewall rules, and the database and user it made (the panel's data
+folder stays). Then it:
 
 1. downloads and checks what the machine lacks, then installs it: the .NET 10 runtimes and, without a PostgreSQL to
    use, PostgreSQL 18 (step 1; [What the installer downloads](#what-the-installer-downloads));
@@ -567,15 +579,19 @@ fails, or fails a check, is not run, and nothing is changed.
 
 | What | Where from | Checked |
 |---|---|---|
-| The .NET runtime and, for the panel, the ASP.NET Core runtime: the newest 10.0 patch, at least the one the release was built with (its `release.json`) | Microsoft's release metadata (`https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json`) and the Windows x64 installers it lists, from Microsoft's download hosts only | The SHA-512 the metadata lists; the Authenticode signature: valid (Windows chains it to a root it trusts), in the file itself, by a certificate for code signing whose subject is `O=Microsoft Corporation, L=Redmond, S=Washington, C=US` and whose chain ends at Microsoft Root Certificate Authority 2011 (or 2010); the version information (`Microsoft .NET Runtime - 10.0.<n> (x64)`, version 10.0.<n>) and the version |
-| PostgreSQL: the newest release of major version 18 (never a newer major version on its own: that needs a data upgrade), never older than the release's floor (`postgresMinimum` in its `release.json`), and EDB's newest build of it | postgresql.org's list of versions (`https://www.postgresql.org/versions.json`); EDB's installer, `https://get.enterprisedb.com/postgresql/postgresql-18.<minor>-<build>-windows-x64.exe` | The Authenticode signature: valid, in the file itself, by a certificate for code signing whose subject is `O=EnterpriseDB Corporation, L=Wilmington, S=Delaware, C=US`, issued by `DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1`; the version information (a `PostgreSQL` product of version 18.<minor>) |
+| The .NET runtime and, for the panel, the ASP.NET Core runtime: the newest 10.0 patch, at least the one the release was built with (its `release.json`) | Microsoft's release metadata (`https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json`) and the Windows x64 installers it lists, from Microsoft's download hosts only | The SHA-512 the metadata lists; the Authenticode signature: valid (Windows chains it to a root it trusts), in the file itself, by a certificate for code signing whose subject is `O=Microsoft Corporation, L=Redmond, S=Washington, C=US` and whose chain ends at Microsoft Root Certificate Authority 2011 (or 2010), none of it revoked; the version information (`Microsoft .NET Runtime - 10.0.<n> (x64)`, version 10.0.<n>) and the version |
+| PostgreSQL: the newest release of major version 18 (never a newer major version on its own: that needs a data upgrade), never older than the release's floor (`postgresMinimum` in its `release.json`), and EDB's newest build of it | postgresql.org's list of versions (`https://www.postgresql.org/versions.json`); EDB's installer, `https://get.enterprisedb.com/postgresql/postgresql-18.<minor>-<build>-windows-x64.exe` | The Authenticode signature: valid, in the file itself, by a certificate for code signing whose subject is `O=EnterpriseDB Corporation, L=Wilmington, S=Delaware, C=US`, issued by `DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1` (that very certificate, thumbprint `7B0F360B775F76C94A12CA48445AA2D2A875701C`), whose chain ends at DigiCert Trusted Root G4 (`DDFB16CD4931C973A2037D3FC83A4D7D775D05E4`), none of it revoked; the version information (a `PostgreSQL` product of version 18.<minor>) |
 
 Every download also has a time limit: 10 minutes, and a second more for each 128 KiB of its size.
 
+Revocation is checked by the installer itself, online, for each certificate of the chain but its root (Windows
+PowerShell's `Get-AuthenticodeSignature` does not): a revoked one is refused (exit code 5). When it cannot be checked
+(no internet, an offline install), the installer says so in a warning, in its log too, and goes on with the other checks.
+
 The signers' identities are those of EDB's signed PostgreSQL 18 programs and Microsoft's .NET 10 installers when the
 release was made. Before a release, its Sandbox run (`scripts/sandbox/install`) must confirm them on the real
-downloads: EDB's installer's signer and issuer (`Get-AuthenticodeSignature` on it, and its `SignerCertificate.Issuer`)
-and its version information (`(Get-Item <installer>).VersionInfo`: a `ProductName` with `PostgreSQL` in it and a
+downloads: EDB's installer's signer, issuer and chain (`Get-AuthenticodeSignature` on it, its
+`SignerCertificate.Issuer`, and the thumbprints of the chain Windows builds for it) and its version information (`(Get-Item <installer>).VersionInfo`: a `ProductName` with `PostgreSQL` in it and a
 `ProductVersion` or `FileVersion` starting with `18.<minor>`). When a publisher changes them (a new certificate
 authority, a new address in its certificate), the installer refuses its files (exit code 5) until a release of
 Pulsar names the new ones.
@@ -655,8 +671,8 @@ It ends with one of these exit codes (without `-Unattended`, a failure is a Powe
 |---|---|
 | `0` | Done. |
 | `1` | It failed; the message, and the log, say what failed and what was left. |
-| `2` | Wrong or missing parameters, secrets or node code, or what it would install is installed already (`-Update` updates it). Nothing was changed. |
-| `3` | This machine, the installer's folder or the account cannot install Pulsar as they are: not elevated, a 32-bit PowerShell, a folder others can change, Windows updates missing, an agent from the MSI, a PostgreSQL port, service or folder taken. Nothing was changed (but for the .NET runtimes, when the Windows updates check fails after they were installed). |
+| `2` | Wrong or missing parameters, secrets or node code, a PFX its password does not open, or what it would install is installed already (`-Update` updates it; a `pulsar` database or user in PostgreSQL that is not an empty leftover, [Starting over](#starting-over)). Nothing was changed. |
+| `3` | This machine, the installer's folder or the account cannot install Pulsar as they are: not elevated, a 32-bit PowerShell, a folder others can change, Windows updates missing, an agent from the MSI, a port the panel would listen on taken, a PostgreSQL port, service or folder taken. Nothing was changed (but for the .NET runtimes, when the Windows updates check fails after they were installed). |
 | `4` | A download, or the panel at a node code's address, could not be reached. Nothing was changed. |
 | `5` | A download or a given installer failed its checks (signature, SHA-512, version), or Microsoft's or postgresql.org's metadata was not as expected. Nothing was changed. |
 | `6` | The certificate the panel presents is not the node code's (another machine, or a proxy serving its own), or may not be trusted or pinned (it can issue certificates, does not name the panel's address...). Nothing was changed. |
@@ -728,14 +744,30 @@ Back up the panel as described in [backup.md](backup.md): without its keys, the 
   in the installer's log).
 - **The installer stops with an error**: it says what failed, and its log in `C:\ProgramData\Pulsar\Setup\logs` has
   the details. Run it again after fixing it; if the panel or the agent was already installed, remove it first with
-  `-Uninstall`, or from **Apps** when a setup installed it (it keeps the database and data).
+  `-Uninstall`, or from **Apps** when a setup installed it (it keeps the database and data). A panel's install that
+  failed once its database existed has undone itself (the message says so, or names what it could not undo); when
+  that run had also installed PostgreSQL 18, whose `postgres` password it kept nowhere, remove PostgreSQL 18 from Apps
+  and delete `C:\Program Files\PostgreSQL\18` (it holds nothing of Pulsar's) before running it again, or give
+  `postgres` a password of yours ([The postgres superuser's password](#the-postgres-superusers-password)) and give it
+  to the installer.
+- **"The panel would listen on port … which is taken"**: another program listens on that port, or Windows keeps it
+  (Hyper-V and WinNAT reserve ranges: `netsh interface ipv4 show excludedportrange protocol=tcp`). Stop that program,
+  or choose another port (`-Port`, `-AgentsPort`, `-SftpPort`, or the setup's advanced settings). Nothing was changed.
+- **"… cannot be the panel's certificate"**: the PFX does not open with the password given, or holds no private key.
+  Give its password (`PULSAR_CERTIFICATE_PASSWORD`, or the setup's field), or export it again with its key. Nothing
+  was changed.
+- **"PostgreSQL already has a 'pulsar' role" / "… a 'pulsar' database"**: see [Starting over](#starting-over).
+  Nothing was changed.
 - **"could not be downloaded" / "could not be reached"**: the machine has no internet, or a proxy or firewall stops
   HTTPS to Microsoft's, postgresql.org's or EDB's servers. Nothing was installed; see
   [Offline installs](#offline-installs).
 - **"is not validly signed" / "is signed by …, not by …" / "does not match the SHA-512"**: a download (or an installer
   given offline) is not what its publisher made, or Windows cannot check its signature (on a machine without internet,
   Windows may lack the root certificate the signature chains to; open any HTTPS site once, or import the root). It was
-  not run and nothing was changed: download it again, from the publisher's site.
+  not run and nothing was changed: download it again, from the publisher's site. **"… with a certificate that is
+  revoked"**: its publisher withdrew the certificate that signed it; do not run it, and get a newer one from them.
+  **"Whether the certificate that signed … has been revoked could not be checked"** is a warning: the authority could
+  not be asked (no internet), and the installer went on with its other checks.
 - **"PostgreSQL 18 was installed, but setting it up failed"**: remove PostgreSQL 18 from Apps (and
   `C:\Program Files\PostgreSQL\18`, whose data holds nothing yet) and run the installer again.
 - **"It refuses to run from a folder that other accounts could change"**: the release was extracted where accounts
@@ -753,6 +785,31 @@ Back up the panel as described in [backup.md](backup.md): without its keys, the 
 - **The browser warns about the certificate**: expected with the self-signed certificate on other computers. Trust
   `panel.cer` on them, or install a real certificate (`-CertificatePath` when installing; to change it later, edit
   `Kestrel:Endpoints:Https:Certificate` in the panel's `appsettings.Production.json` and restart the service).
+
+### Starting over
+
+The panel's database stays in PostgreSQL when the panel is removed (`-Uninstall`, or **Apps**), and its `pulsar`
+user's password goes with the panel's settings: an install over it stops before anything changes (exit code 2). The
+installer drops by itself only what an install that failed left: its own `pulsar` user (marked as its own) with no
+database or an empty one. Anything else stays until you decide:
+
+- **To keep the data**: install the panel from a backup made by `Backup-Pulsar.ps1` ([backup.md](backup.md)) with
+  `-Mode Panel -RestoreFrom`, after dropping the database and user as below (the backup brings its data back). If you
+  have no backup and need the data, dump it first:
+  `& "$bin\pg_dump.exe" -h localhost -U postgres -Fc -f D:\pulsar-before-reinstall.dump pulsar` (with `$bin` below).
+- **To start from nothing**: drop them, in an elevated PowerShell on the panel's machine (adjust the PostgreSQL
+  version in the path; psql asks for the `postgres` password, which, when the installer installed PostgreSQL, you set
+  first as in [The postgres superuser's password](#the-postgres-superusers-password)):
+
+  ```powershell
+  $bin = 'C:\Program Files\PostgreSQL\18\bin'
+  & "$bin\psql.exe" -h localhost -U postgres -d postgres -c "DROP DATABASE IF EXISTS pulsar WITH (FORCE)" -c "DROP ROLE IF EXISTS pulsar"
+  ```
+
+  Then run the installer again. With the database gone, `C:\ProgramData\Pulsar\Panel` (the old panel's keys and logs)
+  protects nothing: delete it too before installing again (a new panel makes its own keys, and `-RestoreFrom` brings
+  the backup's).
+- **Or** give the panel another database with `-ConnectionString` (step 1).
 
 ## Uninstalling
 
@@ -773,9 +830,14 @@ that mark only noted in the panel's data folder is named in a warning instead, f
 (*Trusted Root Certification Authorities*) if it is the panel's (the panel's service account can change that note, so
 the script does not act on it). It keeps the
 database, `C:\ProgramData\Pulsar` and the game servers' folders, and PostgreSQL and the .NET runtimes, which other
-programs may use: remove them from **Apps** when nothing else needs them (PostgreSQL's data folder stays until you
-delete it). Delete game servers from the panel first: that also
-removes their Windows accounts. An agent installed with the MSI is not the script's to remove: it says so and removes
+programs may use: remove them from **Apps** when nothing else needs them, after Pulsar (the agent's program needs the
+.NET runtime to unenroll; PostgreSQL's data folder stays until you delete it). Delete game servers from the panel
+first: that also removes their Windows accounts.
+
+If the .NET runtime the agent needs is gone already, `-Uninstall` cannot run the agent's program: it says so in a
+warning, stops and removes the agent's service (`sc.exe`), and keeps the program in `C:\Program Files\Pulsar\Agent`
+with the node key, the configuration and the game servers' Windows accounts. Install the .NET 10 runtime again, run
+`& 'C:\Program Files\Pulsar\Agent\PulsarAgent.exe' unenroll` in an elevated PowerShell, and delete that folder. An agent installed with the MSI is not the script's to remove: it says so and removes
 only the panel, if this machine has one.
 
 If the agent cannot unenroll (stop its game servers, delete its key and configuration, remove its service), the script
@@ -810,10 +872,13 @@ As a last resort, when `unenroll` keeps failing for a reason you cannot fix, rem
 in an elevated PowerShell, then uninstall again:
 
 ```powershell
-& 'C:\Program Files\Pulsar\Agent\PulsarAgent.exe' service stop --stop-servers  # stops its game servers gracefully
+sc.exe stop PulsarAgent  # needs no .NET runtime; its game servers keep running in their own processes
 sc.exe delete PulsarAgent
 Remove-Item C:\ProgramData\Pulsar\Agent\config\agent.json
 ```
 
-With the service and the configuration gone, `unenroll` finds nothing to remove and succeeds. The node key stays in the
+While the .NET runtime is there, run `& 'C:\Program Files\Pulsar\Agent\PulsarAgent.exe' service stop --stop-servers`
+before them: it also stops the game servers gracefully. Otherwise stop the games yourself (Task Manager), and delete
+their Windows accounts (`pulsar_<id>`, Computer Management, Local Users and Groups). With the service and the
+configuration gone, `unenroll` finds nothing to remove and succeeds. The node key stays in the
 key store, and the node stays in the panel until you delete it there.

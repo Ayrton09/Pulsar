@@ -57,10 +57,16 @@ begin
 end;
 
 function CheckNodePage: Boolean;
+var
+  Address: String;
 begin
-  if (PanelAddress <> '') and not IsPanelAddress(PanelAddress) then begin
-    Result := Refuse(CustomMessage('ErrorAddress'));
-    Exit;
+  // In the one form Install-Pulsar.ps1 takes, which goes on as -PanelUrl.
+  if PanelAddress <> '' then begin
+    if not NormalizePanelAddress(PanelAddress, Address) then begin
+      Result := Refuse(CustomMessage('ErrorAddress'));
+      Exit;
+    end;
+    NodePage.Values[0] := Address;
   end;
   // Silent: the code comes from PULSAR_NODE_CODE, which Install-Pulsar.ps1 checks.
   if not WizardSilent and not IsNodeCode(SecretNodeCode) then begin

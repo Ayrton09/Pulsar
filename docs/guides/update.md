@@ -91,6 +91,8 @@ scheduled task that runs a `Backup-Pulsar.ps1` other than that copy. Delete old 
 ## If something goes wrong
 
 - The panel does not start after an update: its log (`C:\ProgramData\Pulsar\Panel\logs`) says why. To go back,
-  restore the backup made before the update with the previous version's ZIP (`Install-Pulsar.ps1 -Uninstall`, then
-  `-Mode Panel -RestoreFrom …`, [backup.md](backup.md)).
+  restore the backup made before the update with the previous version's ZIP (`Install-Pulsar.ps1 -Uninstall`, drop the
+  `pulsar` database and user that `-Uninstall` keeps, as [install.md](install.md#starting-over) shows, then
+  `-Mode Panel -RestoreFrom …`, [backup.md](backup.md)). Without that drop the install stops before changing anything:
+  it never replaces a database with data in it.
 - A node shows as offline: on the node, `& 'C:\Program Files\Pulsar\Agent\PulsarAgent.exe' status --check`.

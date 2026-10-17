@@ -65,11 +65,14 @@ $installParts = Get-ScriptParts $installScript (@($shared) + @('Read-DerElement'
         'Resolve-NodeCertificate', 'Assert-PinnableCertificate', 'Get-EnrollArguments', 'Test-PostgresInstallerName', 'Select-PostgresVersion', 'Get-PostgresInstallerUrl', 'Find-NonLocalHbaRules',
         'Get-NameAttributes', 'Find-NameMismatches', 'Assert-InstallerSignature', 'Assert-InstallerVersion', 'Read-PostgresMinimum',
         'Assert-PostgresMinimum', 'ConvertTo-Secure', 'ConvertFrom-Secure', 'Assert-NotOlderThanInstalled', 'ConvertTo-CommandLine', 'Add-RuntimeRequirement', 'Read-RuntimeRequirements',
-        'Get-InstalledRuntimes', 'Get-MissingRuntimes', 'Test-DotNetDownloadUrl', 'Get-DotNetInstallerEntries', 'Copy-Program', 'Initialize-SetupNetwork')) `
+        'Get-InstalledRuntimes', 'Get-MissingRuntimes', 'Test-DotNetDownloadUrl', 'Get-DotNetInstallerEntries', 'Copy-Program', 'Initialize-SetupNetwork',
+        # What a panel's install checks first and undoes when it fails; EDB's builds; signers' chains; the agent's runtimes.
+        'Test-PortFree', 'Test-PfxFile', 'Get-EndpointPort', 'Assert-PanelInstallable', 'Get-PanelDatabaseState', 'Get-PanelDatabaseMessage',
+        'New-Secret', 'New-PanelDatabase', 'Remove-PanelDatabase', 'Undo-PanelInstall', 'Find-PostgresInstallerUrl', 'Get-SignerChain', 'Get-AgentMissingRuntimes')) `
     (@($sharedVariables) + @('TrustedName', 'ServerAuthentication', 'ExitFailed', 'ExitUsage', 'ExitUnsupported', 'ExitOffline', 'ExitUntrusted',
         'ExitCertificate', 'ExitRestart', 'NodeCodePrefix', 'NodeCodeMaxLength', 'NodeCodeMaxUrlLength', 'ReusableTokenPrefix', 'JsonStringPattern',
         'DotNetChannel', 'DotNetHosts', 'DotNetFrameworks', 'CodeSigning', 'PostgresDownloadsUrl', 'PostgresSigner', 'DotNetSigner', 'StepPlans',
-        'SetupSecrets', 'SecretInputs'))
+        'SetupSecrets', 'SecretInputs', 'PulsarRoleComment'))
 $backupParts = Get-ScriptParts $backupScript (@($shared) + @('Find-UntrustedDestination', 'New-PrivateFolder', 'Assert-TrustedPgDump')) $sharedVariables
 # Every pg_dump the backup may run is checked first: -PostgresBin's, and each service's before its --version.
 $backupText = Get-Content -Raw -LiteralPath $backupScript
@@ -624,6 +627,30 @@ Check 'PostgreSQL: pg_hba.conf rules for this machine only pass' (@(Find-NonLoca
 foreach ($bad in 'host|0.0.0.0|0.0.0.0|', 'host|192.168.1.0|255.255.255.0|', 'hostnossl|::|::|', 'host|samehost||', 'host|127.0.0.1|0.0.0.0|', 'host|::1|ffff:ffff:ffff:ffff::|', 'host|::ffff:127.0.0.1|ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff|', 'host|127.0.0.1|255.255.255.255|invalid', 'garbage') {
     Check "PostgreSQL: a pg_hba.conf rule that lets in more than this machine: $bad" (@(Find-NonLocalHbaRules @($bad)).Count -eq 1)
 }
+# EDB's newest build of a release: what its server answers for each build (Get-DownloadStatus, mocked), 403 and 404
+# meaning there is none; anything else is a server that could not answer, not a missing build.
+function Find-Build([object[]] $answers) {
+    $script:probed = @()
+    $result = & {
+        function Get-DownloadStatus([string] $url) {
+            $script:probed += $url
+            $answer = $answers[$script:probed.Count - 1]
+            if ($answer -is [string]) { throw $answer }
+            return $answer
+        }
+        Get-Caught { $script:found = Find-PostgresInstallerUrl '18.6' }
+    }
+    if ($null -eq $result) { return $script:found }
+    return $result
+}
+Check "PostgreSQL: EDB's newest build, looking until three in a row are missing (404)" ((Find-Build @(200, 200, 404, 404, 404)) -ceq (Get-PostgresInstallerUrl '18.6' 2) -and $script:probed.Count -eq 5)
+Check "PostgreSQL: a build EDB withholds (403) is missing too, and a later one is found" ((Find-Build @(200, 403, 200, 404, 403, 404)) -ceq (Get-PostgresInstallerUrl '18.6' 3))
+foreach ($case in ([ordered]@{ 'too many requests (429)' = @(200, 429); 'a server error (503)' = @(503); 'a redirect without an address (302)' = @(200, 200, 302); 'no answer' = @(200, 'the connection was reset') }).GetEnumerator()) {
+    $caught = Find-Build $case.Value
+    Check "PostgreSQL: EDB's server answering with $($case.Key) is an offline error, not a missing build" ($caught -isnot [string] -and (Get-SetupExitCode $caught) -eq 4 -and $script:probed.Count -eq $case.Value.Count) "$caught"
+}
+$caught = Find-Build @(404, 404, 404)
+Check "PostgreSQL: no build of the release at all says so" ($caught -isnot [string] -and (Get-SetupExitCode $caught) -eq 4 -and $caught.Exception.Message -match 'offers no Windows installer') "$caught"
 
 # --- .NET's release metadata and runtimes ------------------------------------------------------------------------
 
@@ -736,17 +763,60 @@ function New-SigningCertificate([string] $subject, $uses = @($CodeSigning), $iss
 function Signature([string] $status, $certificate, [string] $type = 'Authenticode') {
     [pscustomobject]@{ Status = $status; StatusMessage = "status $status"; SignerCertificate = $certificate; SignatureType = $type }
 }
-# What Get-SignerChain gives: the thumbprints from the signer to its root, and the problems besides time.
-function Chain([string] $root, [string[]] $problems = @()) { [pscustomobject]@{ Thumbprints = @(('11' * 20), ('22' * 20), $root); Problems = $problems } }
+# What Get-SignerChain gives: the thumbprints from the signer to its root, the problems besides time and revocation, and
+# what the revocation check found.
+function Chain([string] $root, [string[]] $problems = @(), [string] $revocation = 'Good', [string] $issuer = ('22' * 20)) {
+    [pscustomobject]@{ Thumbprints = @(('11' * 20), $issuer, $root); Problems = $problems; Revocation = $revocation }
+}
 $microsoftRoot = '8F43288AD272F3103B6FB1428485EA3014C0BCFE'
+# EDB's chain, as Windows builds it for EDB's signed PostgreSQL 18 programs: DigiCert's code-signing authority, then
+# DigiCert Trusted Root G4.
+$edbIssuer = '7B0F360B775F76C94A12CA48445AA2D2A875701C'
+$edbRoot = 'DDFB16CD4931C973A2037D3FC83A4D7D775D05E4'
+function EdbChain([string] $revocation = 'Good') { Chain $edbRoot @() $revocation $edbIssuer }
 # As EDB's and Microsoft's installers are signed (read from EDB's PostgreSQL 18 programs and Microsoft's .NET 10 installers).
 $edb = New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation, L=Wilmington, S=Delaware, C=US'
 $microsoft = New-SigningCertificate 'CN=.NET, O=Microsoft Corporation, L=Redmond, S=Washington, C=US' -issuer $otherIssuer
 function Assert-Signature($signature, $signer = $PostgresSigner, $chain = $null) { Get-Caught { Assert-InstallerSignature $signature $signer 'The installer' $chain } }
-Check "signature: EDB's installer, valid, by EnterpriseDB, from DigiCert's authority" ($null -eq (Assert-Signature (Signature 'Valid' $edb))) "$(Assert-Signature (Signature 'Valid' $edb))"
+Check "signature: EDB's installer, valid, by EnterpriseDB, from DigiCert's authority, up to DigiCert Trusted Root G4" ($null -eq (Assert-Signature (Signature 'Valid' $edb) $PostgresSigner (EdbChain))) "$(Assert-Signature (Signature 'Valid' $edb) $PostgresSigner (EdbChain))"
+Check "signature: EDB's signer is pinned to DigiCert Trusted Root G4 and DigiCert's code-signing authority by thumbprint" ((@($PostgresSigner.Roots) -join ',') -ceq $edbRoot -and (@($PostgresSigner.IssuerThumbprints) -join ',') -ceq $edbIssuer)
+foreach ($case in ([ordered]@{
+        'without a chain' = $null
+        'whose chain ends at another root' = Chain ('AB' * 20) @() 'Good' $edbIssuer
+        'issued by another authority of the same name' = Chain $edbRoot @() 'Good' ('CD' * 20)
+        'whose chain has a problem' = Chain $edbRoot @('NotSignatureValid') 'Good' $edbIssuer
+    }).GetEnumerator()) {
+    $caught = Assert-Signature (Signature 'Valid' $edb) $PostgresSigner $case.Value
+    Check "signature: refuses EDB's installer $($case.Key)" ((Get-SetupExitCode $caught) -eq 5) "$caught"
+}
 Check "signature: Microsoft's installer, valid, by Microsoft, up to Microsoft's root (2011 or 2010)" ($null -eq (Assert-Signature (Signature 'Valid' $microsoft) $DotNetSigner (Chain $microsoftRoot)) -and
     $null -eq (Assert-Signature (Signature 'Valid' $microsoft) $DotNetSigner (Chain '3B1EFD3A66EA28B16697394703A72CA340A05BD5'))) "$(Assert-Signature (Signature 'Valid' $microsoft) $DotNetSigner (Chain $microsoftRoot))"
-Check 'signature: without the SignatureType of newer PowerShell versions, the rest is checked' ($null -eq (Assert-Signature ([pscustomobject]@{ Status = 'Valid'; SignerCertificate = $edb })))
+Check 'signature: without the SignatureType of newer PowerShell versions, the rest is checked' ($null -eq (Assert-Signature ([pscustomobject]@{ Status = 'Valid'; SignerCertificate = $edb }) $PostgresSigner (EdbChain)))
+# Revocation (Get-AuthenticodeSignature does not check it in Windows PowerShell): a revoked signer is refused, one whose
+# revocation could not be checked (offline) is let through with a warning, for both publishers.
+foreach ($case in ([ordered]@{ "EDB's" = @($edb, $PostgresSigner, 'EdbChain'); "Microsoft's" = @($microsoft, $DotNetSigner, 'Chain') }).GetEnumerator()) {
+    $certificate, $signer, $maker = $case.Value
+    $revoked = if ($maker -eq 'EdbChain') { EdbChain 'Revoked' } else { Chain $microsoftRoot @() 'Revoked' }
+    $unknown = if ($maker -eq 'EdbChain') { EdbChain 'Unknown' } else { Chain $microsoftRoot @() 'Unknown' }
+    $caught = Assert-Signature (Signature 'Valid' $certificate) $signer $revoked
+    Check "signature: refuses $($case.Key) installer whose signer's certificate (or an authority's above it) is revoked" ((Get-SetupExitCode $caught) -eq 5 -and $caught.Exception.Message -match 'revoked') "$caught"
+    $warnings = @(& { $WarningPreference = 'Continue'; Assert-InstallerSignature (Signature 'Valid' $certificate) $signer 'The installer' $unknown } 3>&1 | Where-Object { $_ -is [Management.Automation.WarningRecord] })
+    Check "signature: $($case.Key) installer whose revocation could not be checked runs, with a warning" ($warnings.Count -eq 1 -and $warnings[0].Message -match 'revoked') (@($warnings | ForEach-Object Message) -join ' | ')
+}
+# The chain is built for real (no network: these certificates name no revocation address), with revocation checked
+# online, the root excluded.
+$issuerFile = Join-Path ([IO.Path]::GetTempPath()) ("pulsar-test-issuer-" + [Guid]::NewGuid().ToString('N') + '.cer')
+[IO.File]::WriteAllBytes($issuerFile, $digiCert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+try { $built = Get-SignerChain $issuerFile $edb }
+finally { Remove-Item -LiteralPath $issuerFile -Force }
+Check 'signer chain: built from the certificates the signature carries, revocation unknown when it cannot be checked, never a problem of its own' (
+    @($built.Thumbprints).Count -eq 2 -and @($built.Thumbprints)[0] -ceq $edb.Thumbprint -and @($built.Thumbprints)[1] -ceq $digiCert.Thumbprint -and
+    $built.Revocation -ceq 'Unknown' -and @($built.Problems | Where-Object { $_ -match 'Revocation|Revoked' }).Count -eq 0) "$(@($built.Thumbprints) -join ',') $($built.Revocation) $(@($built.Problems) -join ',')"
+$chainText = $installParts['Get-SignerChain']
+Check 'signer chain: revocation is checked online, for every certificate but the root' ($chainText -match 'RevocationMode = \[Security\.Cryptography\.X509Certificates\.X509RevocationMode\]::Online' -and
+    $chainText -match 'RevocationFlag = \[Security\.Cryptography\.X509Certificates\.X509RevocationFlag\]::ExcludeRoot' -and $chainText -notmatch 'NoCheck')
+$installTextForChains = Get-Content -Raw -LiteralPath $installScript
+Check "signer chain: EDB's installer is checked with its chain, as Microsoft's" ($installTextForChains -match '(?s)\$chain = Get-SignerChain \$file \$signature\.SignerCertificate[^\r\n]*\r?\n\s*Assert-InstallerSignature \$signature \$PostgresSigner \$what \$chain')
 foreach ($case in ([ordered]@{
         'not signed' = Signature 'NotSigned' $null
         'changed after it was signed' = Signature 'HashMismatch' $edb
@@ -899,6 +969,187 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 
+# --- A panel's install: checked before anything changes, undone when it fails -------------------------------------
+
+$root = Join-Path $Scratch ("pulsar-script-tests-" + [Guid]::NewGuid().ToString('N'))
+$null = New-Item -ItemType Directory $root
+$listeners = @()
+try {
+    # Ports: taken when something listens on them, on any address (the panel listens on all of them).
+    $taken = New-Object Net.Sockets.TcpListener ([Net.IPAddress]::Loopback, 0)
+    $taken.Start()
+    $listeners += $taken
+    $takenPort = ([Net.IPEndPoint]$taken.LocalEndpoint).Port
+    $free = @(1..3 | ForEach-Object { $probe = New-Object Net.Sockets.TcpListener ([Net.IPAddress]::Any, 0); $probe.Start(); $probe })
+    $freePorts = @($free | ForEach-Object { ([Net.IPEndPoint]$_.LocalEndpoint).Port })
+    $free | ForEach-Object { $_.Stop() }
+    Check 'ports: one nothing listens on is free' (Test-PortFree $freePorts[0])
+    Check 'ports: one a program listens on, on the loopback address only, is taken' (-not (Test-PortFree $takenPort))
+    Check 'ports: a port in a URL' ((Get-EndpointPort 'https://*:8443') -eq 8443 -and (Get-EndpointPort 'https://[::]:9443/') -eq 9443)
+
+    # A PFX with its key, as -CertificatePath gives one.
+    $rsa = [Security.Cryptography.RSACng]::new(2048)
+    $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=localhost', $rsa, [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    $made = $request.CreateSelfSigned([DateTimeOffset]::Now.AddDays(-1), [DateTimeOffset]::Now.AddDays(1))
+    $pfxFile = Join-Path $root 'panel.pfx'
+    [IO.File]::WriteAllBytes($pfxFile, $made.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx, 'the right password'))
+    $cerFile = Join-Path $root 'panel.cer'
+    [IO.File]::WriteAllBytes($cerFile, $made.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+    $rsa.Dispose()
+    Check 'PFX: opens with its password, with its key' ($null -eq (Test-PfxFile $pfxFile 'the right password')) "$(Test-PfxFile $pfxFile 'the right password')"
+    Check 'PFX: another password is a problem' ((Test-PfxFile $pfxFile 'wrong') -match 'password')
+    Check 'PFX: a certificate without its key is a problem' ((Test-PfxFile $cerFile '') -match 'private key')
+
+    # Assert-PanelInstallable as the install calls it, with nothing installed here (the services mocked).
+    $backupFolder = Join-Path $root 'backup'
+    $null = New-Item -ItemType Directory -Force (Join-Path $backupFolder 'panel-data\keys'), (Join-Path $backupFolder 'panel-data\tls')
+    Copy-Item -LiteralPath $pfxFile (Join-Path $backupFolder 'panel-data\tls\panel.pfx')
+    function Write-BackupSettings([int] $https, [string] $password) {
+        @{ Kestrel = @{ Endpoints = @{ Https = @{ Url = "https://*:$https"; Certificate = @{ Path = 'x'; Password = $password } } } }; DataProtection = @{ CertificatePassword = 'k' } } |
+            ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $backupFolder 'appsettings.Production.json') -Encoding UTF8
+    }
+    function Test-Preflight([hashtable] $values) {
+        & {
+            $PanelService = 'PulsarPanel'; $AgentService = 'PulsarAgent'; $Mode = 'Panel'; $AdminUserName = 'admin'; $AdminPassword = ConvertTo-Secure 'a long enough password'
+            $Port = $freePorts[0]; $AgentsPort = 0; $SftpPort = $freePorts[1]; $CertificatePath = $null; $CertificatePassword = $null; $RestoreFrom = $null
+            foreach ($name in $values.Keys) { Set-Variable -Name $name -Value $values[$name] }
+            function Test-Service([string] $name) { return $false }
+            Get-Caught { Assert-PanelInstallable }
+        }
+    }
+    Check 'preflight: free ports and no certificate pass' ($null -eq (Test-Preflight @{})) "$(Test-Preflight @{})"
+    Check "preflight: a PFX that opens with its password passes" ($null -eq (Test-Preflight @{ CertificatePath = $pfxFile; CertificatePassword = (ConvertTo-Secure 'the right password'); AgentsPort = $freePorts[2] }))
+    foreach ($case in ([ordered]@{
+            'the HTTPS port taken' = @(@{ Port = $takenPort }, 3, "$takenPort")
+            'the agents'' port taken' = @(@{ AgentsPort = $takenPort }, 3, "$takenPort")
+            'the SFTP port taken' = @(@{ SftpPort = $takenPort }, 3, "$takenPort")
+            'a PFX its password does not open' = @(@{ CertificatePath = $pfxFile; CertificatePassword = (ConvertTo-Secure 'wrong') }, 2, 'password')
+            'a PFX without its key' = @(@{ CertificatePath = $cerFile }, 2, 'private key')
+            'a backup whose panel port is taken' = @(@{ RestoreFrom = $backupFolder; Port = 1; Backup = @($takenPort, 'the right password') }, 3, "$takenPort")
+            'a backup whose certificate does not open with its password' = @(@{ RestoreFrom = $backupFolder; Backup = @($freePorts[0], 'wrong') }, 2, 'password')
+        }).GetEnumerator()) {
+        $values = $case.Value[0].Clone()
+        if ($values.ContainsKey('Backup')) { Write-BackupSettings $values.Backup[0] $values.Backup[1]; $values.Remove('Backup') }
+        $caught = Test-Preflight $values
+        Check "preflight: refuses $($case.Key), nothing changed (exit code $($case.Value[1]))" ((Get-SetupExitCode $caught) -eq $case.Value[1] -and $caught.Exception.Message -match [regex]::Escape($case.Value[2]) -and $caught.Exception.Message -match 'Nothing was changed') "$caught"
+    }
+    Write-BackupSettings $freePorts[0] 'the right password'
+    Check 'preflight: a backup with free ports and a certificate that opens passes' ($null -eq (Test-Preflight @{ RestoreFrom = $backupFolder }))
+
+    # PostgreSQL's 'pulsar' role and database (psql mocked): none, the empty leftover of an install that failed (a role
+    # this script marked, no database or an empty one of its own), or something to keep.
+    function Invoke-PsqlMock([string] $role, [string] $owner, [string] $relations, [scriptblock] $block) {
+        $script:sql = New-Object Collections.Generic.List[string]
+        & {
+            $PostgresPort = 5432
+            $PostgresPassword = ConvertTo-Secure 'the postgres password'
+            function Find-PostgresBin { 'C:\PostgreSQL\bin' }
+            function Write-Step { }
+            function Invoke-Psql([string] $bin, [string] $password, [string[]] $arguments, [string] $stdin = $null, [string] $database = 'postgres') {
+                $text = if ($stdin) { $stdin } else { $arguments -join ' ' }
+                $script:sql.Add("${database}: $text")
+                $output = ''
+                if ($text -match "FROM pg_roles WHERE rolname = 'pulsar'") { $output = $role }
+                elseif ($text -match "FROM pg_database WHERE datname = 'pulsar'") { $output = $owner }
+                elseif ($text -match 'FROM pg_class') { $output = $relations }
+                [pscustomobject]@{ ExitCode = 0; Output = $output }
+            }
+            & $block
+        }
+    }
+    $marked = "role:$PulsarRoleComment"
+    Check "database: no 'pulsar' role or database" ((Invoke-PsqlMock '' '' '' { Get-PanelDatabaseState 'b' 'p' }) -ceq 'none')
+    Check "database: the role this script made, without a database, is a leftover" ((Invoke-PsqlMock $marked '' '' { Get-PanelDatabaseState 'b' 'p' }) -ceq 'leftover')
+    Check "database: the role this script made, with an empty database it owns, is a leftover (its tables counted in that database)" (
+        (Invoke-PsqlMock $marked 'owner:pulsar' '0' { Get-PanelDatabaseState 'b' 'p' }) -ceq 'leftover' -and @($script:sql | Where-Object { $_ -like 'pulsar: *pg_class*' }).Count -eq 1)
+    foreach ($case in ([ordered]@{
+            'a database with tables in it (a panel removed with -Uninstall)' = @($marked, 'owner:pulsar', '42')
+            'a role this script did not mark' = @('role:', 'owner:pulsar', '0')
+            'a role marked otherwise' = @('role:someone else''s', '', '')
+            'a database owned by another role' = @($marked, 'owner:postgres', '0')
+            'a database without the role' = @('', 'owner:postgres', '')
+        }).GetEnumerator()) {
+        $state = Invoke-PsqlMock $case.Value[0] $case.Value[1] $case.Value[2] { Get-PanelDatabaseState 'b' 'p' }
+        Check "database: keeps $($case.Key)" ($state -notin 'none', 'leftover' -and $state -match 'pulsar') "$state"
+    }
+    Check 'database: what is kept says how to start over' ((Get-PanelDatabaseMessage 'x') -match 'Starting over' -and (Get-PanelDatabaseMessage 'x') -match '-ConnectionString')
+    $connection = Invoke-PsqlMock '' '' '' { New-PanelDatabase }
+    $created = @($script:sql | Where-Object { $_ -match 'CREATE ROLE' })
+    Check "database: a new 'pulsar' role, marked as this script's in the same transaction, on standard input, and its database" (
+        $connection -match '^Host=localhost;Port=5432;Database=pulsar;Username=pulsar;Password=[A-Za-z0-9]{32}$' -and $created.Count -eq 1 -and
+        $created[0] -match "BEGIN;[\s\S]*CREATE ROLE pulsar LOGIN PASSWORD '[A-Za-z0-9]{32}';[\s\S]*COMMENT ON ROLE pulsar IS '$([regex]::Escape($PulsarRoleComment))';[\s\S]*COMMIT;" -and
+        @($script:sql | Where-Object { $_ -match 'CREATE DATABASE pulsar OWNER pulsar' }).Count -eq 1 -and @($script:sql | Where-Object { $_ -match 'DROP' }).Count -eq 0) ($script:sql -join ' | ')
+    $connection = Invoke-PsqlMock $marked 'owner:pulsar' '0' { New-PanelDatabase }
+    $drop = [array]::IndexOf(@($script:sql), @($script:sql | Where-Object { $_ -match 'DROP DATABASE IF EXISTS pulsar WITH \(FORCE\) -c DROP ROLE pulsar' })[0])
+    $create = [array]::IndexOf(@($script:sql), @($script:sql | Where-Object { $_ -match 'CREATE ROLE' })[0])
+    Check 'database: an empty leftover is dropped, then made again' ($connection -match 'Password=' -and $drop -ge 0 -and $create -gt $drop) ($script:sql -join ' | ')
+    $caught = Invoke-PsqlMock $marked 'owner:pulsar' '42' { Get-Caught { New-PanelDatabase } }
+    Check "database: one with tables in it is never dropped" ($null -ne $caught -and $caught.Exception.Message -match 'Starting over' -and @($script:sql | Where-Object { $_ -match 'DROP|CREATE' }).Count -eq 0) "$caught"
+
+    # Undoing a panel's install that failed after it made its database: its service, firewall rules, program and the
+    # database and role it made.
+    $panelFolder = Join-Path $root 'Panel'
+    function Test-Undo([bool] $service, [bool] $database, [int] $dropCode = 0) {
+        $null = New-Item -ItemType Directory -Force $panelFolder
+        Set-Content -LiteralPath (Join-Path $panelFolder 'Pulsar.Api.exe') 'x'
+        $script:calls = New-Object Collections.Generic.List[string]
+        & {
+            $PanelDir = $panelFolder; $PanelService = 'PulsarPanel'; $Sc = 'sc.exe'; $NoFirewall = $false
+            $PostgresPassword = ConvertTo-Secure 'the postgres password'
+            function Stop-Service { $script:calls.Add("Stop-Service $($args[0])") }
+            function Start-Sleep { }
+            function Write-Step { }
+            function Invoke-Native([string] $exe) { $script:calls.Add("$exe $($args -join ' ')"); [pscustomobject]@{ ExitCode = 0; Output = '' } }
+            function Get-NetFirewallRule([string] $Name) { $script:calls.Add("rule $Name") }
+            function Remove-NetFirewallRule { }
+            function Find-PostgresBin { 'C:\PostgreSQL\bin' }
+            function Invoke-Psql([string] $bin, [string] $password, [string[]] $arguments) { $script:calls.Add("psql $($arguments -join ' ')"); [pscustomobject]@{ ExitCode = $dropCode; Output = 'it failed' } }
+            @(Undo-PanelInstall $service $database)
+        }
+    }
+    $left = @(Test-Undo $true $true)
+    Check 'undo: the service it made, its firewall rules, its program and the database and role it made' (
+        $left.Count -eq 0 -and $script:calls -contains 'Stop-Service PulsarPanel' -and $script:calls -contains 'sc.exe delete PulsarPanel' -and
+        $script:calls -contains 'rule Pulsar-Panel-HTTPS' -and $script:calls -contains 'rule Pulsar-Panel-SFTP' -and
+        $script:calls -contains 'psql -c DROP DATABASE IF EXISTS pulsar WITH (FORCE) -c DROP ROLE IF EXISTS pulsar' -and -not (Test-Path -LiteralPath $panelFolder)) "$($left -join ' | ') / $($script:calls -join ' | ')"
+    $left = @(Test-Undo $false $false)
+    Check 'undo: no service or database it did not make' ($left.Count -eq 0 -and @($script:calls | Where-Object { $_ -match 'sc\.exe|psql|Stop-Service' }).Count -eq 0) ($script:calls -join ' | ')
+    $left = @(Test-Undo $true $true 1)
+    Check 'undo: what could not be undone is said' ($left.Count -eq 1 -and $left[0] -match "'pulsar'" -and $left[0] -match 'it failed') ($left -join ' | ')
+
+    # The agent's runtimes, removed from Apps before Pulsar: -Uninstall cannot run its program then.
+    $agentFolder = Join-Path $root 'Agent'
+    $dotnetFolder = Join-Path $root 'dotnet'
+    $null = New-Item -ItemType Directory -Force $agentFolder, (Join-Path $dotnetFolder 'host\fxr\10.0.13'), (Join-Path $dotnetFolder 'shared\Microsoft.NETCore.App\10.0.13')
+    Set-Content -LiteralPath (Join-Path $agentFolder 'PulsarAgent.runtimeconfig.json') '{"runtimeOptions": {"tfm": "net10.0", "framework": {"name": "Microsoft.NETCore.App", "version": "10.0.12"}}}'
+    $AgentDir = $agentFolder
+    Check 'agent runtimes: all missing in a folder without .NET' ((@(Get-AgentMissingRuntimes (Join-Path $root 'missing')) -join ',') -ceq 'Microsoft.NETCore.App')
+    $null = New-Item -ItemType File (Join-Path $dotnetFolder 'host\fxr\10.0.13\hostfxr.dll'), (Join-Path $dotnetFolder 'shared\Microsoft.NETCore.App\10.0.13\Microsoft.NETCore.App.deps.json')
+    Check 'agent runtimes: none missing when a newer patch is there' (@(Get-AgentMissingRuntimes $dotnetFolder).Count -eq 0)
+    Remove-Item -LiteralPath (Join-Path $agentFolder 'PulsarAgent.runtimeconfig.json')
+    Check 'agent runtimes: none for a program that carries its own' (@(Get-AgentMissingRuntimes (Join-Path $root 'missing')).Count -eq 0)
+}
+finally {
+    $listeners | ForEach-Object { $_.Stop() }
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# The order of a panel's install (read from the script): every check before anything changes, then what fails once its
+# database is made undone.
+$mainText = ($installAst.FindAll({ param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$main' }, $false) | Select-Object -First 1).Extent.Text
+$order = @('Assert-PanelInstallable', 'Get-PostgresPlan', 'New-SetupDownloads', 'Install-DotNetRuntimes', 'Install-PostgresServer', 'Install-Panel' | ForEach-Object { $mainText.IndexOf($_) })
+Check 'install order: the panel''s checks (ports, PFX, database) come before any download or install' (@($order | Where-Object { $_ -lt 0 }).Count -eq 0 -and (@($order) -join ',') -eq (@($order | Sort-Object) -join ',')) ($order -join ',')
+$installPanel = $installAst.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Install-Panel' }, $true) | Select-Object -First 1
+$panelTry = @($installPanel.Body.FindAll({ param($node) $node -is [Management.Automation.Language.TryStatementAst] -and @($node.CatchClauses | Where-Object { $_.Body.Extent.Text -match 'Undo-PanelInstall' }).Count -gt 0 }, $true))
+$madeAt = $installPanel.Extent.Text.IndexOf('New-PanelDatabase')
+Check 'install order: once the database is made, a failure undoes the install (from the restore of the dump to the last call to the panel)' (
+    $panelTry.Count -eq 1 -and $madeAt -ge 0 -and ($installPanel.Extent.StartOffset + $madeAt) -lt $panelTry[0].Extent.StartOffset -and
+    @('Restore-PanelDatabase', 'Copy-Program', 'New-PanelCertificate', 'Invoke-PanelMigrations', 'Start-Panel', "'/api/v1/sftp'" | Where-Object { $panelTry[0].Body.Extent.Text -notmatch [regex]::Escape($_) }).Count -eq 0 -and
+    @($installPanel.Body.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Assert-PanelInstallable' }, $true)).Count -eq 0)
+$uninstallAgent = ($installAst.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Uninstall-Agent' }, $true) | Select-Object -First 1).Extent.Text
+Check 'uninstall: without the runtimes the agent needs, its service is removed with sc.exe instead of running its program' (
+    $uninstallAgent.IndexOf('Get-AgentMissingRuntimes') -ge 0 -and $uninstallAgent.IndexOf('Get-AgentMissingRuntimes') -lt $uninstallAgent.IndexOf('unenroll'))
+
 # --- The release: framework-dependent ZIP, self-contained MSI (read from the build scripts, never run) --------------
 
 $buildRelease = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\release\Build-Release.ps1')
@@ -910,12 +1161,18 @@ Check 'release: the ZIP records the runtimes it was built for (release.json)' ($
 $releaseWorkflow = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\.github\workflows\release.yml')
 Check 'release: CI builds the setups with Inno Setup 7.1.0 pinned by SHA-256 and signer, and fails without them' (
     $releaseWorkflow -match 'releases/download/is-7_1_0/innosetup-7\.1\.0-x64\.exe' -and $releaseWorkflow -match "-ne '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f'" -and
-    $releaseWorkflow -match 'O=Pyrsys B\\\.V\\\.' -and $releaseWorkflow -match 'Build-Release\.ps1 .*-RequireSetups' -and
+    $releaseWorkflow -match "-cne 'O=Pyrsys B\.V\.'" -and $releaseWorkflow -match 'Build-Release\.ps1 .*-RequireSetups' -and
     $releaseWorkflow.IndexOf('innosetup-7.1.0-x64.exe') -lt $releaseWorkflow.IndexOf('./scripts/release/Build-Release.ps1'))
-Check 'release: the setups are attested and published with their SHA-256 files' (
-    $releaseWorkflow -match 'subject-path: \|[\s\S]*artifacts/release/\*\.exe' -and
-    $releaseWorkflow -match 'PulsarSetup-\$version\.exe artifacts/release/PulsarSetup-\$version\.exe\.sha256' -and
-    $releaseWorkflow -match 'PulsarAgentSetup-\$version\.exe artifacts/release/PulsarAgentSetup-\$version\.exe\.sha256')
+Check 'release: the setups are uploaded by the build, then attested and published with their SHA-256 files' (
+    $releaseWorkflow -match 'path: \|[\s\S]*artifacts/release/\*\.exe[\s\S]*artifacts/release/\*\.sha256' -and
+    $releaseWorkflow -match 'subject-path: \|[\s\S]*release/\*\.exe' -and
+    $releaseWorkflow -match '"PulsarSetup-\$version\.exe" "PulsarAgentSetup-\$version\.exe"; do\s+files\+=\("release/\$name" "release/\$name\.sha256"\)')
+# Only the publish job may write, and it runs nothing of the repository; every action is pinned by commit SHA.
+$jobs = [regex]::Split($releaseWorkflow, '(?m)^  publish:')
+$actions = @([regex]::Matches($releaseWorkflow, '(?m)^\s*- uses: (\S+)') | ForEach-Object { $_.Groups[1].Value })
+Check 'release: a read-only build job without stored credentials, a publish job that runs no repository code, actions pinned by SHA' (
+    $jobs.Count -eq 2 -and $jobs[0] -notmatch ':\s*write' -and $jobs[0] -match 'persist-credentials: false' -and $jobs[1] -notmatch 'checkout|scripts/|npm|dotnet' -and
+    $actions.Count -gt 0 -and @($actions | Where-Object { $_ -notmatch '@[0-9a-f]{40}\z' }).Count -eq 0) ($actions -join ', ')
 Check 'release: ISCC comes from Program Files first, and it and its DLLs are checked as signed by Pyrsys B.V. before each compile' (
     $buildRelease -match "@\(\`$env:ProgramFiles, \`$\{env:ProgramFiles\(x86\)\}, \`$env:LOCALAPPDATA\)" -and $buildRelease -match "\`$InnoSetupSigner = 'Pyrsys B\.V\.'" -and
     $buildRelease -match 'Assert-InnoSetupSigned \$candidate' -and $buildRelease -match "Assert-InnoSetupSigned \`$compiler\s+\`$lines = & \{")
@@ -1046,6 +1303,50 @@ foreach ($case in @(@('https://localhost:8443/', $true), @('https://localhost:65
     Check "setups: IsLocalPanelUrl's rule $(if ($case[1]) { 'takes' } else { 'refuses' }) $url" ($ok -eq $case[1])
 }
 Check 'setups: IsLocalPanelUrl is that rule' ($commonCode['IsLocalPanelUrl'] -match "\(Length\(Url\) < 20\) or \(Length\(Url\) > 24\) then\s+Exit;\s+if \(Copy\(Url, 1, 18\) <> 'https://localhost:'\) or \(Url\[Length\(Url\)\] <> '/'\)" -and $commonCode['IsLocalPanelUrl'] -match '<= 65535')
+# The panel's address a node page takes (NormalizePanelAddress): put in the one form Install-Pulsar.ps1 takes, or refused
+# there with the page's message. The same rule, in PowerShell (the Pascal function cannot run here), and each address it
+# gives must pass the script's own Test-PanelUrl.
+function ConvertTo-WizardAddress([string] $address) {
+    if ($address.Length -le 8 -or $address.Length -gt 512 -or -not $address.Substring(0, 8).Equals('https://', [StringComparison]::OrdinalIgnoreCase)) { return $null }
+    $rest = $address.Substring(8)
+    if ($rest.EndsWith('/')) { $rest = $rest.Substring(0, $rest.Length - 1) }
+    if ($rest.StartsWith('[')) {
+        $close = $rest.IndexOf(']') + 1
+        if ($close -lt 3) { return $null }
+        $hostPart = $rest.Substring(0, $close); $portPart = $rest.Substring($close)
+        if ($hostPart.Substring(1, $hostPart.Length - 2) -cnotmatch '^[0-9a-fA-F:.]*\z') { return $null }
+    }
+    else {
+        $colon = $rest.IndexOf(':')
+        if ($colon -lt 0) { $colon = $rest.Length }
+        $hostPart = $rest.Substring(0, $colon); $portPart = $rest.Substring($colon)
+        if (-not $hostPart -or $hostPart.StartsWith('.') -or $hostPart.Contains('..') -or $hostPart -cnotmatch '^[0-9a-zA-Z._-]+\z') { return $null }
+    }
+    if ($portPart) {
+        if ($portPart.Length -lt 2 -or $portPart.Length -gt 6 -or $portPart[0] -ne ':' -or $portPart[1] -eq '0' -or $portPart.Substring(1) -cnotmatch '^[0-9]+\z') { return $null }
+        $number = [int]$portPart.Substring(1)
+        if ($number -lt 1 -or $number -gt 65535 -or $number -eq 443) { return $null }
+    }
+    return 'https://' + $hostPart.ToLowerInvariant() + $portPart
+}
+foreach ($case in @(@('https://panel.example.com:8443', 'https://panel.example.com:8443'), @('HTTPS://Panel.Example.COM:8443/', 'https://panel.example.com:8443'),
+        @('https://PANEL', 'https://panel'), @('https://10.0.0.5:9443/', 'https://10.0.0.5:9443'), @('https://[FD00::5]:8443', 'https://[fd00::5]:8443'), @('https://my_box-1.lan', 'https://my_box-1.lan'))) {
+    $normal = ConvertTo-WizardAddress $case[0]
+    Check "setups: the panel's address $($case[0]) is taken as $($case[1]), which Install-Pulsar.ps1 takes" ($normal -ceq $case[1] -and (Test-PanelUrl $normal)) "$normal"
+}
+foreach ($bad in 'https://panel.example.com/pulsar', 'https://panel.example.com//', 'https://panel.example.com?x=1', 'https://panel.example.com#x', 'https://admin@panel.example.com',
+    'https://admin:pw@panel.example.com:8443', 'https://panel.example.com:443', 'https://panel.example.com:', 'https://panel.example.com:08443', 'https://panel.example.com:65536',
+    'https://panel.example.com:84a3', 'http://panel.example.com', 'https://', 'https:///', 'https://pa nel', 'https://a..b', 'https://.panel', 'https://[]:8443', 'https://[fd00::5', 'ftp://panel') {
+    Check "setups: the panel's address $bad is refused" ($null -eq (ConvertTo-WizardAddress $bad))
+}
+$normalize = $commonCode['NormalizePanelAddress']
+Check 'setups: NormalizePanelAddress is that rule' ($null -ne $normalize -and $normalize -match "SameText\(Copy\(Address, 1, 8\), 'https://'\)" -and
+    $normalize -match "if Rest\[Length\(Rest\)\] = '/' then" -and $normalize -match "\(PortText\[2\] = '0'\)" -and $normalize -match '\(Number = 443\)' -and
+    $normalize -match "Normal := 'https://' \+ Lowercase\(Host\) \+ PortText;" -and $normalize -match "\(Pos\('\.\.', Host\) > 0\)" -and -not $commonCode.Contains('IsPanelAddress'))
+foreach ($name in $wizardIss.Keys) {
+    $nodeCheck = (Get-IssCode @($commonIss, $wizardIss[$name]))['CheckNodePage']
+    Check "${name}: the node page puts the address in that form before passing it on, and refuses another" ($nodeCheck -match 'if not NormalizePanelAddress\(PanelAddress, Address\) then begin\s+Result := Refuse\(CustomMessage\(''ErrorAddress''\)\);' -and $nodeCheck -match 'NodePage\.Values\[0\] := Address;')
+}
 # Every message the code uses is there in English and Spanish.
 $allIss = @($commonIss) + @($wizardIss.Values)
 $defined = @{}

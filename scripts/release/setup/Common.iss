@@ -103,8 +103,8 @@ en.FolderSubCaption=Games need a lot of space (Counter-Strike 2, about 85 GB). C
 es.FolderSubCaption=Los juegos ocupan mucho espacio (Counter-Strike 2, unos 85 GB). Elegí una carpeta nueva o vacía en un disco local, que no esté dentro de una carpeta que otros usuarios puedan cambiar.
 en.ErrorFolder=Choose a folder on a local drive, such as %1.
 es.ErrorFolder=Elegí una carpeta en un disco local, como %1.
-en.ErrorAddress=The panel's address starts with https://, like https://panel.example.com:8443.
-es.ErrorAddress=La dirección del panel empieza con https://, como https://panel.example.com:8443.
+en.ErrorAddress=The panel's address is https://, the panel's name or IP address and its port, and nothing more, like https://panel.example.com:8443 (no path, ? or #, no user name, and no :443, which https:// already means).
+es.ErrorAddress=La dirección del panel es https://, el nombre o la dirección IP del panel y su puerto, y nada más, como https://panel.example.com:8443 (sin ruta, ? ni #, sin nombre de usuario, y sin :443, que https:// ya implica).
 en.ErrorNodeCode=That is not a node code: copy the whole code Nodes > Add node shows (it starts with pulsar-node-1.).
 es.ErrorNodeCode=Eso no es un código de nodo: copiá el código completo que muestra Nodos > Agregar nodo (empieza con pulsar-node-1.).
 en.ErrorUnsafe=%1 contains a character the setup does not accept (a quote or a control character).
@@ -320,11 +320,62 @@ begin
   Result := IsSafeArgument(Path) and not PathHasInvalidCharacters(Path, True) and (Pos('\..', Path + '\') = 0);
 end;
 
-// A panel's address as the Add node dialog shows it (https://panel:8443): Install-Pulsar.ps1 reads it strictly.
-function IsPanelAddress(const Address: String): Boolean;
+// A panel's address as the Add node dialog shows it (https://panel.example.com:8443), in the one form Install-Pulsar.ps1
+// takes (Test-PanelUrl, as Pulsar.Contracts.NodeCode writes origins): the scheme and the host in lower case, the port
+// only when it is not 443, nothing after it. One final '/' is dropped; anything else (a path, a query, a fragment, a
+// user name, the port 443, a character no host name has) is refused. True, with that form in Normal, or False.
+function NormalizePanelAddress(const Address: String; var Normal: String): Boolean;
+var
+  Rest, Host, PortText: String;
+  I, Colon, Number: Integer;
+  C: Char;
 begin
-  Result := (Length(Address) > 8) and (Length(Address) <= 512) and SameText(Copy(Address, 1, 8), 'https://') and
-    (Pos(' ', Address) = 0) and IsSafeArgument(Address);
+  Result := False;
+  Normal := '';
+  if (Length(Address) <= 8) or (Length(Address) > 512) or not SameText(Copy(Address, 1, 8), 'https://') then
+    Exit;
+  Rest := Copy(Address, 9, Length(Address));
+  if Rest[Length(Rest)] = '/' then
+    Rest := Copy(Rest, 1, Length(Rest) - 1);
+  // An IPv6 address in brackets, or a name or an IPv4 address; then ':' and the port, or nothing.
+  if Copy(Rest, 1, 1) = '[' then begin
+    Colon := Pos(']', Rest);
+    if Colon < 3 then
+      Exit;
+    Host := Copy(Rest, 1, Colon);
+    PortText := Copy(Rest, Colon + 1, Length(Rest));
+    for I := 2 to Length(Host) - 1 do begin
+      C := Host[I];
+      if not (((C >= '0') and (C <= '9')) or ((C >= 'a') and (C <= 'f')) or ((C >= 'A') and (C <= 'F')) or (C = ':') or (C = '.')) then
+        Exit;
+    end;
+  end else begin
+    Colon := Pos(':', Rest);
+    if Colon = 0 then
+      Colon := Length(Rest) + 1;
+    Host := Copy(Rest, 1, Colon - 1);
+    PortText := Copy(Rest, Colon, Length(Rest));
+    if (Host = '') or (Host[1] = '.') or (Pos('..', Host) > 0) then
+      Exit;
+    for I := 1 to Length(Host) do begin
+      C := Host[I];
+      if not (((C >= '0') and (C <= '9')) or ((C >= 'a') and (C <= 'z')) or ((C >= 'A') and (C <= 'Z')) or (C = '.') or (C = '-') or (C = '_')) then
+        Exit;
+    end;
+  end;
+  // ':' and 1 to 65535 without a leading zero, never 443 (https's own, which an origin leaves out).
+  if PortText <> '' then begin
+    if (Length(PortText) < 2) or (Length(PortText) > 6) or (PortText[1] <> ':') or (PortText[2] = '0') then
+      Exit;
+    for I := 2 to Length(PortText) do
+      if (PortText[I] < '0') or (PortText[I] > '9') then
+        Exit;
+    Number := StrToIntDef(Copy(PortText, 2, Length(PortText)), 0);
+    if (Number < 1) or (Number > 65535) or (Number = 443) then
+      Exit;
+  end;
+  Normal := 'https://' + Lowercase(Host) + PortText;
+  Result := True;
 end;
 
 // The shape of a node code ("pulsar-node-1." and base64url, at most 2048 characters): Install-Pulsar.ps1 reads it

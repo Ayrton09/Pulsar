@@ -9,8 +9,8 @@ OutputBaseFilename=PulsarSetup-{#Version}
 VersionInfoDescription=Pulsar setup
 
 [Messages]
-en.WelcomeLabel2=This will install [name/ver] on your computer: the panel (Pulsar's web interface), this PC as a node that runs game servers, or both.%n%nSetup downloads what this PC lacks, the newest .NET 10 runtimes and, for the panel, PostgreSQL 18, and checks every download before running it. At the end it opens the panel's sign-in page.
-es.WelcomeLabel2=Esto va a instalar [name/ver] en tu computadora: el panel (la interfaz web de Pulsar), esta PC como un nodo que corre servidores de juegos, o las dos cosas.%n%nEl instalador descarga lo que le falta a esta PC, los runtimes de .NET 10 más nuevos y, para el panel, PostgreSQL 18, y comprueba cada descarga antes de ejecutarla. Al final abre la página de inicio de sesión del panel.
+en.WelcomeLabel2=This will install [name/ver] on your computer: the panel (Pulsar's web interface), this PC as a node that runs game servers, or both.%n%nSetup downloads what this PC lacks, the newest .NET 10 runtimes and, for the panel, PostgreSQL 18, and checks every download before running it. At the end it shows the address of the panel's sign-in page, to copy into your browser.
+es.WelcomeLabel2=Esto va a instalar [name/ver] en tu computadora: el panel (la interfaz web de Pulsar), esta PC como un nodo que corre servidores de juegos, o las dos cosas.%n%nEl instalador descarga lo que le falta a esta PC, los runtimes de .NET 10 más nuevos y, para el panel, PostgreSQL 18, y comprueba cada descarga antes de ejecutarla. Al final muestra la dirección de la página de inicio de sesión del panel, para que la copies en tu navegador.
 
 [CustomMessages]
 en.ModeCaption=What to install
@@ -377,10 +377,16 @@ begin
 end;
 
 function CheckNodePage: Boolean;
+var
+  Address: String;
 begin
-  if (PanelAddress <> '') and not IsPanelAddress(PanelAddress) then begin
-    Result := Refuse(CustomMessage('ErrorAddress'));
-    Exit;
+  // In the one form Install-Pulsar.ps1 takes, which goes on as -PanelUrl.
+  if PanelAddress <> '' then begin
+    if not NormalizePanelAddress(PanelAddress, Address) then begin
+      Result := Refuse(CustomMessage('ErrorAddress'));
+      Exit;
+    end;
+    NodePage.Values[0] := Address;
   end;
   // Silent: the code comes from PULSAR_NODE_CODE, which Install-Pulsar.ps1 checks.
   if not WizardSilent and not IsNodeCode(SecretNodeCode) then begin
