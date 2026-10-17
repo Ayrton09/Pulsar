@@ -802,17 +802,23 @@ function Find-PostgresBin {
 # psql in $bin as the postgres superuser over localhost, its password in its environment (never its command line);
 # $stdin, when given, is the SQL instead of $arguments (a statement with a secret in it goes there). Its exit code and
 # output (unaligned, without headers). Always in the 'postgres' database: a database's owner sets what sessions in it
-# run with (search_path, and its own functions), so the superuser never connects to one a role of Pulsar's owns.
+# run with (search_path, and its own functions), so the superuser never connects to one a role of Pulsar's owns. Even
+# in 'postgres', a cluster upgraded from PostgreSQL 14 or older may still let every role create in its public schema:
+# the session searches pg_catalog alone (pg_temp last), so no function or operator a role planted there runs as the
+# superuser. -X: no psqlrc (a startup file can run shell commands); PostgreSQL's own variables were cleared at the
+# start (Clear-PostgresEnvironment).
 function Invoke-Psql([string] $bin, [string] $password, [string[]] $arguments, [string] $stdin = $null) {
     $psql = Join-Path $bin 'psql.exe'
-    $common = @('-h', 'localhost', '-p', $PostgresPort, '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A')
+    $common = @('-X', '-h', 'localhost', '-p', $PostgresPort, '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A')
     $env:PGPASSWORD = $password
+    # Startup options win over the role's and the database's own settings.
+    $env:PGOPTIONS = '-c search_path=pg_catalog,pg_temp'
     try {
         if ($stdin) { return Invoke-NativeWithInput $stdin $psql @common -f - }
         return Invoke-Native $psql @common @arguments
     }
     finally {
-        Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+        Remove-Item Env:PGPASSWORD, Env:PGOPTIONS -ErrorAction SilentlyContinue
     }
 }
 
@@ -821,7 +827,7 @@ function Assert-PostgresLogin {
     $bin = Find-PostgresBin
     $result = Invoke-Psql $bin (ConvertFrom-Secure $PostgresPassword) @('-c', 'SELECT 1')
     if ($result.ExitCode -ne 0) {
-        throw (New-SetupError $ExitUsage "Could not connect to the local PostgreSQL as 'postgres' with the password given: $($result.Output.Trim()) Nothing was changed.")
+        throw (New-SetupError $ExitUsage "Could not connect to the local PostgreSQL as 'postgres' with the password given: $(ConvertTo-PrintableText $result.Output.Trim()) Nothing was changed.")
     }
 }
 
@@ -991,7 +997,7 @@ function Wait-PostgresReady([string] $service, [string] $bin, [string] $password
         }
         Start-Sleep -Seconds 2
     }
-    $detail = if ($last) { $last.Output.Trim() } else { "the service $service does not run" }
+    $detail = if ($last) { ConvertTo-PrintableText $last.Output.Trim() } else { "the service $service does not run" }
     throw "PostgreSQL did not take connections within 2 minutes ($detail)."
 }
 
@@ -1031,20 +1037,20 @@ function Install-PostgresServer([string] $installer, $plan) {
         $password = New-Secret 32
         Register-Secret $password
         $changed = Invoke-Psql $bin $installPassword @() "ALTER ROLE postgres PASSWORD '$password';"
-        if ($changed.ExitCode -ne 0) { throw "The postgres password could not be changed: $($changed.Output.Trim())" }
+        if ($changed.ExitCode -ne 0) { throw "The postgres password could not be changed: $(ConvertTo-PrintableText $changed.Output.Trim())" }
         # Only the superuser and PostgreSQL's own roles: anything else was made by whoever connected meanwhile.
         $roles = Invoke-Psql $bin $password @('-c', "SELECT rolname FROM pg_roles WHERE rolname <> 'postgres' AND rolname !~ '^pg_'")
-        if ($roles.ExitCode -ne 0) { throw "Its roles could not be listed: $($roles.Output.Trim())" }
+        if ($roles.ExitCode -ne 0) { throw "Its roles could not be listed: $(ConvertTo-PrintableText $roles.Output.Trim())" }
         if ($roles.Output.Trim()) { throw "It has roles this script did not make ($(ConvertTo-PrintableText ($roles.Output.Trim() -replace '\s+', ', '))): something else connected to it while it was being installed." }
         Write-Step 'PostgreSQL: listening on this machine only'
         $set = Invoke-Psql $bin $password @('-c', "ALTER SYSTEM SET listen_addresses = 'localhost'")
-        if ($set.ExitCode -ne 0) { throw "listen_addresses could not be set: $($set.Output.Trim())" }
+        if ($set.ExitCode -ne 0) { throw "listen_addresses could not be set: $(ConvertTo-PrintableText $set.Output.Trim())" }
         Restart-Service -Name $plan.Service -Force
         Wait-PostgresReady $plan.Service $bin $password
         $listen = Invoke-Psql $bin $password @('-c', 'SHOW listen_addresses')
         if ($listen.ExitCode -ne 0 -or $listen.Output.Trim() -cne 'localhost') { throw "It listens on '$(ConvertTo-PrintableText $listen.Output.Trim())', not on localhost only." }
         $rules = Invoke-Psql $bin $password @('-F', '|', '-c', "SELECT type, coalesce(address, ''), coalesce(netmask, ''), coalesce(error, '') FROM pg_hba_file_rules")
-        if ($rules.ExitCode -ne 0) { throw "pg_hba.conf's rules could not be read: $($rules.Output.Trim())" }
+        if ($rules.ExitCode -ne 0) { throw "pg_hba.conf's rules could not be read: $(ConvertTo-PrintableText $rules.Output.Trim())" }
         $open = @(Find-NonLocalHbaRules ($rules.Output -split "`r?`n"))
         if ($open.Count -gt 0) { throw "pg_hba.conf in $($plan.Data) lets in more than this machine: $($open -join '; ')." }
     }
@@ -1064,9 +1070,9 @@ function Install-PostgresServer([string] $installer, $plan) {
 # database it made itself (Undo-PanelInstall); one that could not is for the administrator to drop ("Starting over").
 function Get-PanelDatabaseState([string] $bin, [string] $password) {
     $role = Invoke-Psql $bin $password @('-c', "SELECT 'role:' || coalesce(shobj_description(oid, 'pg_authid'), '') FROM pg_roles WHERE rolname = 'pulsar'")
-    if ($role.ExitCode -ne 0) { throw "Could not connect to PostgreSQL as 'postgres': $($role.Output.Trim())" }
+    if ($role.ExitCode -ne 0) { throw "Could not connect to PostgreSQL as 'postgres': $(ConvertTo-PrintableText $role.Output.Trim())" }
     $database = Invoke-Psql $bin $password @('-c', "SELECT 'owner:' || pg_get_userbyid(datdba) FROM pg_database WHERE datname = 'pulsar'")
-    if ($database.ExitCode -ne 0) { throw "Could not list PostgreSQL's databases: $($database.Output.Trim())" }
+    if ($database.ExitCode -ne 0) { throw "Could not list PostgreSQL's databases: $(ConvertTo-PrintableText $database.Output.Trim())" }
     $roleText = $role.Output.Trim()
     $owner = $database.Output.Trim()
     if (-not $roleText -and -not $owner) { return 'none' }
@@ -1098,7 +1104,7 @@ function New-PanelDatabase {
         # The role alone: PostgreSQL refuses to drop it if a database of its own appeared meanwhile.
         Write-Step "Dropping the 'pulsar' role that an install which failed left"
         $dropped = Invoke-Psql $bin $superuser @('-c', 'DROP ROLE pulsar')
-        if ($dropped.ExitCode -ne 0) { throw "Could not drop the 'pulsar' role an install that failed left: $($dropped.Output.Trim())" }
+        if ($dropped.ExitCode -ne 0) { throw "Could not drop the 'pulsar' role an install that failed left: $(ConvertTo-PrintableText $dropped.Output.Trim())" }
     }
     elseif ($state -cne 'none') { throw (Get-PanelDatabaseMessage $state) }
     $password = New-Secret 32
@@ -1106,14 +1112,14 @@ function New-PanelDatabase {
     # On standard input, not the command line: every process on this machine can read command lines. Marked as this
     # script's in the same transaction (Get-PanelDatabaseState).
     $created = Invoke-Psql $bin $superuser @() "BEGIN;`nCREATE ROLE pulsar LOGIN PASSWORD '$password';`nCOMMENT ON ROLE pulsar IS '$PulsarRoleComment';`nCOMMIT;`n"
-    if ($created.ExitCode -ne 0) { throw "Could not create the 'pulsar' role: $($created.Output.Trim())" }
+    if ($created.ExitCode -ne 0) { throw "Could not create the 'pulsar' role: $(ConvertTo-PrintableText $created.Output.Trim())" }
     $created = Invoke-Psql $bin $superuser @('-c', 'CREATE DATABASE pulsar OWNER pulsar')
     if ($created.ExitCode -ne 0) {
         # Nobody else knows the role's password: kept, it would only make the next run refuse.
         $dropped = Invoke-Psql $bin $superuser @('-c', 'DROP ROLE pulsar')
         $left = ''
-        if ($dropped.ExitCode -ne 0) { $left = " The 'pulsar' role created for it could not be dropped ($($dropped.Output.Trim())): drop it before running this script again." }
-        throw "Could not create the 'pulsar' database: $($created.Output.Trim())$left"
+        if ($dropped.ExitCode -ne 0) { $left = " The 'pulsar' role created for it could not be dropped ($(ConvertTo-PrintableText $dropped.Output.Trim())): drop it before running this script again." }
+        throw "Could not create the 'pulsar' database: $(ConvertTo-PrintableText $created.Output.Trim())$left"
     }
     return "Host=localhost;Port=$PostgresPort;Database=pulsar;Username=pulsar;Password=$password"
 }
@@ -1122,7 +1128,7 @@ function New-PanelDatabase {
 # the role's password. What could not be dropped, fit to print, or nothing.
 function Remove-PanelDatabase {
     $dropped = Invoke-Psql (Find-PostgresBin) (ConvertFrom-Secure $PostgresPassword) @('-c', 'DROP DATABASE IF EXISTS pulsar WITH (FORCE)', '-c', 'DROP ROLE IF EXISTS pulsar')
-    if ($dropped.ExitCode -ne 0) { return "the 'pulsar' database and role in PostgreSQL (they could not be dropped: $($dropped.Output.Trim()))" }
+    if ($dropped.ExitCode -ne 0) { return "the 'pulsar' database and role in PostgreSQL (they could not be dropped: $(ConvertTo-PrintableText $dropped.Output.Trim()))" }
 }
 
 # --- Certificate ------------------------------------------------------------------------------------------------
@@ -2656,6 +2662,18 @@ function Start-Installer([string] $exe, [string[]] $arguments, [string] $temp = 
 # additional dependencies): removed from this process, so that the .NET programs this script runs as administrator
 # (the agent, the panel's migrations) and the installers it starts never take them from whoever set this account's
 # environment. The services get the machine's, checked in Assert-DotNetLocation.
+# libpq's and psql's variables from whoever started this script (PGHOSTADDR would send the superuser's password
+# elsewhere, PGOPTIONS or PGSERVICEFILE change the session, PSQLRC runs a startup file): the PostgreSQL programs this
+# script runs as administrator get only what it sets.
+function Clear-PostgresEnvironment {
+    foreach ($name in @([Environment]::GetEnvironmentVariables('Process').Keys)) {
+        if ("$name" -match '^(PG|PSQL)') {
+            [Environment]::SetEnvironmentVariable("$name", $null, 'Process')
+            Write-SetupLog "Removed $name from this process's environment."
+        }
+    }
+}
+
 function Clear-DotNetEnvironment {
     foreach ($name in @([Environment]::GetEnvironmentVariables('Process').Keys)) {
         if ("$name" -match '^(DOTNET_|COREHOST_|COMPlus_|CORECLR_)') {
@@ -2979,6 +2997,7 @@ $main = {
     $script:StepPlan = Get-StepPlan
     Write-SetupStep 'check' 'Checking this machine and what it needs'
     Clear-DotNetEnvironment
+    Clear-PostgresEnvironment
     Use-SetupInputs (Read-SetupInputs)
     Assert-TrustedLocation
     # Checked before anything changes: with an agent from the MSI, only a panel is this script's to install, update or remove.

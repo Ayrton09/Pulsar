@@ -140,14 +140,21 @@ path* can. To move to another bucket, add a storage for it and choose it in the 
 ### On the same machine (the database was lost or damaged)
 
 1. Stop the panel: `Stop-Service PulsarPanel`.
-2. Recreate the database from the dump, as the `postgres` user (PowerShell as administrator; adjust the PostgreSQL
-   version in the path):
+2. Recreate the database as the `postgres` user, in the `postgres` database, then restore the dump into it as
+   `pulsar`, never as `postgres`: a dump carries the panel's own objects (functions among them), and whoever had the
+   `pulsar` role's password could have planted one that would run as the superuser in a restore made as `postgres`
+   (`--role` does not stop it). `pg_restore` asks for the `pulsar` role's password: it is in the panel's connection
+   string (`ConnectionStrings:Pulsar` in `C:\Program Files\Pulsar\Panel\appsettings.Production.json`) or, if you no longer have it, set a
+   new one with `\password pulsar` and put it in that connection string too (PowerShell as administrator; adjust the
+   PostgreSQL version in the path):
 
    ```powershell
-   $bin = 'C:\Program Files\PostgreSQL\17\bin'
-   & "$bin\psql.exe" -U postgres -c "DROP DATABASE IF EXISTS pulsar WITH (FORCE)" -c "CREATE DATABASE pulsar OWNER pulsar"
-   & "$bin\pg_restore.exe" -U postgres -d pulsar --no-owner --role=pulsar D:\PulsarBackups\pulsar-backup-<date>\pulsar.dump
+   $bin = 'C:\Program Files\PostgreSQL\18\bin'
+   & "$bin\psql.exe" -X -h localhost -U postgres -d postgres -c "DROP DATABASE IF EXISTS pulsar WITH (FORCE)" -c "CREATE DATABASE pulsar OWNER pulsar"
+   & "$bin\pg_restore.exe" -h localhost -U pulsar -d pulsar --no-owner D:\PulsarBackups\pulsar-backup-<date>\pulsar.dump
    ```
+
+   Or restore with the installer, which does the same: `Install-Pulsar.ps1 -RestoreFrom` (docs/guides/install.md).
 
 3. Start the panel: `Start-Service PulsarPanel`.
 

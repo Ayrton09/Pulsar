@@ -1101,6 +1101,18 @@ try {
         $null -ne $psqlFunction -and @($psqlFunction.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'database' }).Count -eq 0 -and
         $psqlFunction.Extent.Text -match "'-U', 'postgres', '-d', 'postgres'" -and @($psqlRuns | Where-Object { $_.Extent.Text -notmatch '^Invoke-Native \$psql --version$' }).Count -eq 0 -and
         $installText -notmatch '(?i)Invoke-Psql[^\r\n]*-database') (@($psqlRuns | ForEach-Object { $_.Extent.Text }) -join ' | ')
+    # Even there, a role may have planted functions or operators in public (clusters upgraded from PostgreSQL 14 or
+    # older): the session searches pg_catalog alone, reads no psqlrc, and libpq's variables from the caller are gone.
+    Check "database: the superuser's psql searches pg_catalog only and reads no startup file" (
+        $psqlFunction.Extent.Text -match "\`$common = @\('-X'," -and
+        $psqlFunction.Extent.Text -match "\`$env:PGOPTIONS = '-c search_path=pg_catalog,pg_temp'" -and
+        $psqlFunction.Extent.Text -match 'Remove-Item Env:PGPASSWORD, Env:PGOPTIONS')
+    $mainBlock = $installAst.Find({ param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$main' }, $true)
+    Check 'database: libpq and psql variables from the caller are cleared before anything runs' (
+        $null -ne $mainBlock -and $mainBlock.Extent.Text -match 'Clear-PostgresEnvironment' -and
+        $installText -match "function Clear-PostgresEnvironment[\s\S]*?'\^\(PG\|PSQL\)'")
+    $backupText = Get-Content -Raw (Join-Path $PSScriptRoot '..\install\Backup-Pulsar.ps1')
+    Check "backup: pg_dump gets no libpq variables from the caller" ($backupText -match "'\^\(PG\|PSQL\)'[\s\S]*?\`$env:PGPASSWORD = ")
 
     # Undoing a panel's install that failed after it made its database: its service, firewall rules, program and the
     # database and role it made.

@@ -237,6 +237,11 @@ foreach ($part in $settings.ConnectionStrings.Pulsar.Split(';')) {
 }
 $port = '5432'
 if ($parts.ContainsKey('port')) { $port = $parts['port'] }
+# libpq's variables from whoever started this script (PGHOSTADDR would send the password elsewhere): pg_dump gets only
+# what is set here.
+foreach ($name in @([Environment]::GetEnvironmentVariables('Process').Keys)) {
+    if ("$name" -match '^(PG|PSQL)') { [Environment]::SetEnvironmentVariable("$name", $null, 'Process') }
+}
 $env:PGPASSWORD = $parts['password']
 try {
     $ErrorActionPreference = 'Continue'
