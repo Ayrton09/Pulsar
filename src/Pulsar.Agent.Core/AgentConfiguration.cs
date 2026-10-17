@@ -82,6 +82,11 @@ public sealed class AgentPaths(string root)
 /// The address the agent used before the panel moved it to its agents' address (Phase 16): tried when <paramref name="Panel"/>
 /// cannot be reached, so a closed agents' port never cuts the node off.
 /// </param>
+/// <param name="PanelCertificate">
+/// The lowercase hex SHA-256 of the panel's TLS certificate, pinned at enrollment from a node code (Phase 18): the agent
+/// then accepts that certificate, at every address of the panel, and no other, whether the machine trusts it or not
+/// (<see cref="Panel.PanelTransport.WithPinnedCertificate"/>). Null: the machine's trusted roots decide.
+/// </param>
 public sealed record AgentConfig(
     Uri Panel,
     Guid NodeId,
@@ -94,7 +99,8 @@ public sealed record AgentConfig(
     DateTimeOffset? KeyCreatedAt = null,
     PendingRotation? PendingRotation = null,
     string? BackupsRoot = null,
-    Uri? FallbackPanel = null)
+    Uri? FallbackPanel = null,
+    string? PanelCertificate = null)
 {
     public DateTimeOffset CurrentKeyCreatedAt => KeyCreatedAt ?? EnrolledAt;
 

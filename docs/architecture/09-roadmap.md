@@ -336,13 +336,61 @@ Like AMP, TCAdmin or Pterodactyl, every server's files can be reached with an SF
 8. Shell, exec and port forwarding are refused, and repeated wrong passwords lock the account like the browser sign-in.
 9. The tests drive it with SSH.NET against the real agent, and the Sandbox installs the panel with its SFTP port open.
 
+## Phase 18 — Easy install · *next* (at the user's request)
+
+Installing Pulsar should be as easy as AMP's: download one program, click through a few pages, and finish in the browser. Today it takes a separate PostgreSQL install, an administrator PowerShell, console passwords, and copying the panel's certificate to every node.
+
+**Decided with the user (2026-10-16):**
+- One `PulsarSetup.exe` with a wizard, and a `PulsarAgentSetup.exe` for nodes on other machines. Nodes join with the panel's address and a code from **Add node**.
+- The setup downloads the latest version of what Pulsar needs at install time, rather than carrying copies that age:
+  - **PostgreSQL:** the newest release of major version 18;
+  - **.NET:** the newest .NET 10 and ASP.NET Core runtimes, which Microsoft Update then keeps patched;
+  - **Pulsar itself:** stays inside the setup while the repository is private, since GitHub only serves a private repository's releases to signed-in users. Once the repository is public, the setup can download the latest Pulsar too.
+- Inno Setup 7 builds both setups. Its license allows any use; its site asks commercial users above USD 5,000 of revenue to buy a license.
+
+**Design:**
+- *Wizard.*
+  - Pages, in English and Spanish:
+    1. What to install: the panel and this PC as a node, the panel only, or a node only.
+    2. The game servers' folder.
+    3. *Advanced*, closed by default: ports, host name, a certificate of your own, public networks in the firewall, an existing PostgreSQL.
+  - Underneath it runs `Install-Pulsar.ps1` without prompts, so every check the script makes still applies, and the ZIP stays published for automation.
+  - Uninstalling goes through Windows' *Apps*. A newer setup run on an installed machine updates it.
+- *Downloads.* Only over HTTPS. A file that cannot be checked is not run, and the setup changes nothing.
+  - **PostgreSQL.**
+    - Latest version: read from postgresql.org's list of versions. The setup never moves to a newer major version on its own, because that needs a data upgrade.
+    - What is downloaded: EDB's Windows installer, which is Authenticode-signed by EnterpriseDB. The setup checks that signature before running it. EDB's binaries ZIP is not used: almost none of its files are signed.
+    - How it is installed: unattended, without pgAdmin or StackBuilder, listening on this machine only, with a random superuser password given in an options file (never on a command line, which other programs can read). The password is used once and not kept.
+    - No internet: the setup offers an existing PostgreSQL instead.
+  - **.NET.** The runtimes' installers are checked against the SHA-512 in Microsoft's release metadata (`releases.json`) and against Microsoft's signature. Pulsar's panel and agent become framework-dependent.
+- *First administrator.*
+  - A wizard page asks for the administrator's name and password (twice). The script needs that session to add this PC as a node and to apply the SFTP port.
+  - The password reaches the script outside any command line: through the elevated process's environment or a temporary file only SYSTEM and Administrators can read, deleted at once.
+  - At the end the setup shows the panel's sign-in page to open (it runs as administrator, so it starts no browser).
+- *Nodes on other machines.*
+  - **Add node** shows a code and a link to `PulsarAgentSetup.exe`.
+  - The code carries the enrollment token, the panel key's fingerprint and the SHA-256 of the panel's TLS certificate.
+  - The agent setup asks for the panel's address and the code. It reads the certificate the panel presents, checks it against that hash (not a CA, server authentication only, the host is in its names), and the agent pins it: it accepts that certificate and no other, and the machine's certificate stores are not changed. Nobody copies `panel.cer` by hand anymore.
+- *Not yet:* code signing for the setups. Until it is in place, SmartScreen asks for **Run anyway**.
+
+**Done when:**
+1. On a clean Windows (Sandbox), `PulsarSetup.exe` with the defaults ends showing the address of the panel's sign-in page (it opens nothing itself), which, copied into a browser, opens it.
+   - It downloaded the latest PostgreSQL 18 and .NET 10 and checked them.
+   - PostgreSQL listens only on this machine.
+   - No password appears in any process's command line.
+2. The new administrator signs in, and this PC shows as an online node.
+3. `PulsarAgentSetup.exe` on a second machine joins with the address and the code, with no certificate copied by hand.
+4. Without internet, the setup says so and changes nothing (or uses an existing PostgreSQL when given one).
+5. Uninstalling from *Apps* removes Pulsar's services, firewall rules and trust, and keeps the data unless asked.
+6. A tampered or wrongly signed download is refused.
+
 ## Post-v1 (tentative order)
 
 Linux agent. (Server hosts and bulk enrollment: Phase 14; backups of running games: Phase 15; client certificates for agents: Phase 16; SFTP: Phase 17.)
 
 ## Before the first public release
 
-- A Windows installer (`.exe`, Inno Setup) on top of `Install-Pulsar.ps1`, with the ZIP still published for automation.
+- A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).
 - Code signing for the installer and the programs (SignPath Foundation or Azure Trusted Signing), so SmartScreen does not warn.
 - A reporting contact in `CODE_OF_CONDUCT.md`; branch protection for `main`; CodeQL on (skipped while the repository is private).
 - Tag `v1.0.0` (the release workflow builds, attests and drafts the release). The version is 1.0.0 until then.

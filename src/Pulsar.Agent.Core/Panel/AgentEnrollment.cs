@@ -9,13 +9,18 @@ namespace Pulsar.Agent.Core.Panel;
 /// <param name="PanelKeyFingerprint">Fingerprint of the panel key, shown next to the token: the agent pins it.</param>
 /// <param name="ServersRoot">Where server directories go (null: the default); the folder is restricted like the state directory.</param>
 /// <param name="BackupsRoot">Where backups go (null: inside the state directory); restricted like the state directory.</param>
+/// <param name="PanelCertificate">
+/// The panel certificate to pin (<see cref="AgentConfig.PanelCertificate"/>): from a node code, once its setup saw the panel
+/// present it. Null: the machine's trusted roots decide.
+/// </param>
 public sealed record EnrollmentRequest(
     string Panel,
     string Token,
     string PanelKeyFingerprint,
     string? ServersRoot,
     bool Development,
-    string? BackupsRoot = null);
+    string? BackupsRoot = null,
+    string? PanelCertificate = null);
 
 /// <summary>
 /// Pairs this machine with a panel (docs/architecture/03): pins the panel key the administrator was shown, creates the
@@ -51,6 +56,10 @@ public sealed class AgentEnrollment(
 
         var panel = PanelAddress.Parse(request.Panel);
         var origin = PanelAddress.Origin(panel);
+        if (request.PanelCertificate is { } pin && !NodeCode.IsCertificateHash(pin))
+        {
+            throw new AgentException("The panel certificate to pin must be its SHA-256 in 64 lowercase hexadecimal digits, as the node code carries it.");
+        }
 
         // The key comes first: a panel's agents' address asks for it as the client certificate from the first request on
         // (Phase 16). It is deleted again unless the enrollment is saved.
@@ -60,7 +69,7 @@ public sealed class AgentEnrollment(
         try
         {
             using var certificate = NodeCertificate.TryCreate(key, out _);
-            using var http = transport.CreateClient(panel, certificate);
+            using var http = transport.CreateClient(panel, certificate, request.PanelCertificate);
             var identity = await PanelTransport.GetAsync<PanelIdentityResponse>(http, AgentProtocol.PanelIdentityPath, cancellationToken);
             // The fingerprint is recomputed rather than trusting the KeyId the panel sends next to the key.
             var pinned = identity.Keys.FirstOrDefault(k => k.KeyId == request.PanelKeyFingerprint
@@ -103,7 +112,7 @@ public sealed class AgentEnrollment(
             }
 
             var config = new AgentConfig(panel, result.NodeId, result.CredentialId, key.Reference, result.PanelKeys,
-                request.ServersRoot, clock.GetUtcNow(), request.Development, BackupsRoot: request.BackupsRoot);
+                request.ServersRoot, clock.GetUtcNow(), request.Development, BackupsRoot: request.BackupsRoot, PanelCertificate: request.PanelCertificate);
             configs.Save(config);
             saved = true;
             AwaitingApproval = result.AwaitingApproval;

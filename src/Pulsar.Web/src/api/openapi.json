@@ -12910,7 +12910,9 @@
         "required": [
           "token",
           "expiresAt",
-          "panelKeyFingerprint"
+          "panelKeyFingerprint",
+          "nodeCode",
+          "agentSetupSha256"
         ],
         "type": "object",
         "properties": {
@@ -12923,6 +12925,21 @@
           },
           "panelKeyFingerprint": {
             "type": "string"
+          },
+          "nodeCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "agentSetupSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "agentSetupAvailable": {
+            "type": "boolean"
           }
         }
       },

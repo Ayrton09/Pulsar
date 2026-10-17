@@ -14,6 +14,7 @@ using Pulsar.Api.Access;
 using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Http;
+using Pulsar.Api.Nodes;
 using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
 using Pulsar.Api.Sftp;
@@ -84,6 +85,11 @@ internal static class ApiServiceCollectionExtensions
         // Background work (the scheduler) sets who it acts as before resolving anything that audits.
         services.AddScoped<IRequestContext>(sp => sp.GetRequiredService<RequestContextOverride>().Context ?? sp.GetRequiredService<HttpRequestContext>());
         AddSftp(services, configuration);
+        // Phase 18: the node code's address and certificate come from the administrator's request; the agent's setup
+        // from the panel's downloads folder.
+        services.AddOptions<DownloadsOptions>().Bind(configuration.GetSection(DownloadsOptions.SectionName));
+        services.AddSingleton<AgentSetupDownload>();
+        services.AddSingleton<INodeSetup, HttpNodeSetup>();
         services.AddSingleton<InitialSetup>();
         services.AddSingleton<FailedLoginBudget>();
         services.AddSingleton<SignInLocks>();
@@ -207,6 +213,12 @@ internal static class ApiServiceCollectionExtensions
     private static void AddRateLimiting(IServiceCollection services, IConfiguration configuration)
     {
         var limits = configuration.GetSection(AuthRateLimitOptions.SectionName).Get<AuthRateLimitOptions>() ?? new AuthRateLimitOptions();
+        var downloads = configuration.GetSection(DownloadsOptions.SectionName).Get<DownloadsOptions>() ?? new DownloadsOptions();
+        if (downloads.ConcurrentPerAddress < 1 || downloads.PerAddressPerHour < 1)
+        {
+            throw new InvalidOperationException($"{DownloadsOptions.SectionName}:ConcurrentPerAddress and PerAddressPerHour must be at least 1.");
+        }
+
         services.AddRateLimiter(options =>
         {
             options.AddPolicy(AuthEndpoints.RateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
@@ -218,6 +230,9 @@ internal static class ApiServiceCollectionExtensions
             options.AddPolicy(AgentEndpoints.AuthRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
                 ClientAddress.PartitionOf(context.Connection.RemoteIpAddress),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            // The agent's setup, anonymous and a whole program each time: so many at once and an hour per address.
+            options.AddPolicy(DownloadEndpoints.RateLimitPolicy, context => RateLimitPartition.Get(
+                ClientAddress.PartitionOf(context.Connection.RemoteIpAddress), _ => DownloadEndpoints.CreateLimiter(downloads)));
             // Each API key has its own budget (a script in a loop must not slow the panel down), keys that do not work
             // share their client's; browsers have none. Refused requests count too (ApiKeyRateLimit).
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>

@@ -62,6 +62,47 @@ public class PanelTransport
     }
 
     /// <summary>
+    /// Accepts only the panel certificate whose SHA-256 is <paramref name="certificateSha256"/> (<see cref="NodeCode.CertificateHash"/>):
+    /// the one a node code pinned at enrollment (Phase 18, docs/architecture/03 "Transport"), whose chain need not lead
+    /// to a root the machine trusts. Any other certificate is refused, even one the machine trusts. The machine's
+    /// certificate stores are never changed for it. Tests override it for handlers without TLS.
+    /// </summary>
+    public virtual HttpMessageHandler WithPinnedCertificate(HttpMessageHandler handler, string certificateSha256)
+    {
+        if (handler is SocketsHttpHandler sockets)
+        {
+            sockets.SslOptions.RemoteCertificateValidationCallback = (_, certificate, chain, errors) => IsPinnedCertificate(certificate, chain, errors, certificateSha256);
+        }
+
+        return handler;
+    }
+
+    /// <summary>
+    /// The certificate is the pinned one, for the host the agent asked for, and valid in time: of the checks it failed
+    /// (<paramref name="errors"/>), only the chain's missing trusted root is forgiven (<see cref="X509ChainStatusFlags.UntrustedRoot"/>,
+    /// <see cref="X509ChainStatusFlags.PartialChain"/>), and only because the pin names it exactly. Expiry, a start date
+    /// still ahead, revocation or any other chain error refuse it, so a pinned certificate that has expired needs pinning again.
+    /// </summary>
+    internal static bool IsPinnedCertificate(X509Certificate? certificate, X509Chain? chain, SslPolicyErrors errors, string certificateSha256)
+    {
+        if (certificate is null
+            || (errors & ~SslPolicyErrors.RemoteCertificateChainErrors) != SslPolicyErrors.None
+            || !string.Equals(NodeCode.CertificateHash(certificate.GetRawCertData()), certificateSha256, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if ((errors & SslPolicyErrors.RemoteCertificateChainErrors) == SslPolicyErrors.None)
+        {
+            return true;
+        }
+
+        // The chain's statuses say which errors: with no chain to read them from, none is forgiven.
+        const X509ChainStatusFlags Forgiven = X509ChainStatusFlags.UntrustedRoot | X509ChainStatusFlags.PartialChain;
+        return chain is not null && chain.ChainStatus.All(status => (status.Status & ~Forgiven) == X509ChainStatusFlags.NoError);
+    }
+
+    /// <summary>
     /// Hook for the hub connection options (transport, authentication header, URL, client certificate and the
     /// WebSocket, <see cref="ConnectHubAsync"/>, are already set).
     /// </summary>
@@ -71,16 +112,17 @@ public class PanelTransport
 
     /// <summary>
     /// Opens the hub's WebSocket through <see cref="CreateHttpHandler()"/>, so it checks the panel's certificate as
-    /// every other request to the panel does and presents <paramref name="certificate"/> the same way (the WebSocket's own
-    /// options cannot set how the chain is built).
+    /// every other request to the panel does (<paramref name="panelCertificate"/>: the pinned one, if any) and presents
+    /// <paramref name="certificate"/> the same way (the WebSocket's own options cannot set how the chain is built).
     /// </summary>
-    public async ValueTask<WebSocket> ConnectHubAsync(Uri hub, string accessToken, X509Certificate2? certificate, CancellationToken cancellationToken)
+    public async ValueTask<WebSocket> ConnectHubAsync(Uri hub, string accessToken, X509Certificate2? certificate, string? panelCertificate,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(hub);
         var socket = new ClientWebSocket();
         socket.Options.SetRequestHeader("Authorization", $"Bearer {accessToken}");
         // Only for the upgrade: the connection it hands over stays with the WebSocket.
-        using var invoker = new HttpMessageInvoker(CreateHttpHandler(certificate), disposeHandler: true);
+        using var invoker = new HttpMessageInvoker(CreateHttpHandler(certificate, panelCertificate), disposeHandler: true);
         try
         {
             await socket.ConnectAsync(hub, invoker, cancellationToken);
@@ -93,11 +135,26 @@ public class PanelTransport
         }
     }
 
-    internal HttpMessageHandler CreateHttpHandler(X509Certificate2? certificate) =>
-        certificate is null ? CreateHttpHandler() : WithClientCertificate(CreateHttpHandler(), certificate);
+    /// <param name="certificate">The client certificate to present, if any.</param>
+    /// <param name="panelCertificate">The panel certificate the configuration pins (<see cref="AgentConfig.PanelCertificate"/>), if any.</param>
+    internal HttpMessageHandler CreateHttpHandler(X509Certificate2? certificate, string? panelCertificate)
+    {
+        var handler = CreateHttpHandler();
+        if (panelCertificate is not null)
+        {
+            handler = WithPinnedCertificate(handler, panelCertificate);
+        }
 
-    internal HttpClient CreateClient(Uri panel, X509Certificate2? certificate = null) =>
-        new(CreateHttpHandler(certificate), disposeHandler: true) { BaseAddress = panel, Timeout = RequestTimeout, MaxResponseContentBufferSize = MaxResponseBytes };
+        return certificate is null ? handler : WithClientCertificate(handler, certificate);
+    }
+
+    internal HttpClient CreateClient(Uri panel, X509Certificate2? certificate, string? panelCertificate) =>
+        new(CreateHttpHandler(certificate, panelCertificate), disposeHandler: true)
+        {
+            BaseAddress = panel,
+            Timeout = RequestTimeout,
+            MaxResponseContentBufferSize = MaxResponseBytes,
+        };
 
     /// <summary>
     /// Posts a protocol request; a non-success answer becomes <see cref="AgentException"/> (rejected on the panel's 401),

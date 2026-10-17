@@ -57,6 +57,24 @@ public sealed class AgentConfigurationTests : IDisposable
     }
 
     [Fact]
+    public void ThePinnedPanelCertificateRoundTripsMovesWithThePanelAndOlderConfigurationsHaveNone()
+    {
+        var store = new AgentConfigStore(new AgentPaths(_root));
+        var config = new AgentConfig(new Uri("https://panel.example.com:8443/"), Guid.NewGuid(), Guid.NewGuid(),
+            new NodeKeyReference("PulsarAgent-1", NodeKeyScope.Machine, NodeKeyStorage.Tpm), [], null, DateTimeOffset.UnixEpoch, Development: false);
+        var pin = NodeCode.CertificateHash([1, 2, 3]);
+
+        store.Save(config);
+        Assert.Null(store.Load()!.PanelCertificate);
+        store.Save(config with { PanelCertificate = pin });
+
+        Assert.Equal(pin, store.Load()!.PanelCertificate);
+        Assert.Contains($"\"panelCertificate\": \"{pin}\"", File.ReadAllText(store.Paths.ConfigFile), StringComparison.Ordinal);
+        // The agents' address is served with the same certificate.
+        Assert.Equal(pin, store.Load()!.MovedTo(new Uri("https://panel.example.com:8444/")).PanelCertificate);
+    }
+
+    [Fact]
     public void MovingKeepsTheAddressLeftAsFallbackButNeverTheNewOne()
     {
         var main = new Uri("https://panel.example.com:8443/");

@@ -3,9 +3,13 @@
 # machine key and stay one after a rotation) and the release install check (scripts/sandbox/install). Each check gets
 # its own VM (a differencing disk over a base disk, its own virtual TPM, no network), removed afterwards.
 #
-# 1. On the host, no elevation needed, build the bundles (PostgreSQL binaries: the zip from EDB, extracted):
+# 1. On the host, no elevation needed, build the bundles (PostgreSQL binaries: the zip from EDB, extracted; installers:
+#    a folder with the .NET runtime installers and, optionally, EDB's PostgreSQL installer, as
+#    scripts\sandbox\install\prepare.ps1 says: the VMs have no network, and the release's programs need .NET):
 #      .\scripts\sandbox\agent-install\prepare.ps1 -PgHome <pgsql>
-#      .\scripts\sandbox\install\prepare.ps1 -PgHome <pgsql>
+#      .\scripts\sandbox\install\prepare.ps1 -Installers <installers> -PgHome <pgsql>
+#    The install bundle carries the installers; with EDB's among them, its check installs PostgreSQL with it and leaves
+#    -PgHome's binaries unused.
 # 2. As administrator, with Hyper-V on and the Windows Server 2022 evaluation ISO (Microsoft Evaluation Center):
 #      powershell -ExecutionPolicy Bypass -File .\scripts\hyperv\run.ps1 -IsoPath <iso> -PgHome <pgsql> -UpdatePackage <msu>
 # The ISO's Windows has no updates, and Pulsar's programs (.NET 10) do not start on it ("Your Windows doesn't fully

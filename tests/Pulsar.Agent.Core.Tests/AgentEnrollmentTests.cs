@@ -164,6 +164,39 @@ public sealed class AgentEnrollmentTests : IDisposable
     }
 
     [Fact]
+    public async Task ThePinnedPanelCertificateIsUsedFromTheFirstRequestOnAndSaved()
+    {
+        var pin = NodeCode.CertificateHash([1, 2, 3]);
+        var panel = new FakePanel(this, busyAnswers: 0, retryAfter: null);
+
+        var config = await RunAsync(Enrollment(panel).EnrollAsync(Request() with { PanelCertificate = pin }, TestContext.Current.CancellationToken));
+
+        Assert.Equal([pin], panel.Pins);
+        Assert.Equal(pin, config.PanelCertificate);
+        Assert.Equal(pin, new AgentConfigStore(new AgentPaths(_root)).Load()!.PanelCertificate);
+
+        // Without one, the machine's trust decides: nothing is pinned.
+        var unpinned = new FakePanel(this, busyAnswers: 0, retryAfter: null);
+        Assert.Null((await RunAsync(Enrollment(unpinned).EnrollAsync(Request(), TestContext.Current.CancellationToken))).PanelCertificate);
+        Assert.Empty(unpinned.Pins);
+    }
+
+    [Fact]
+    public async Task APinThatIsNotACertificatesHashIsRefusedBeforeAnythingIsSent()
+    {
+        var panel = new FakePanel(this, busyAnswers: 0, retryAfter: null);
+
+        foreach (var pin in new[] { "", "ABCDEF", NodeCode.CertificateHash([1]).ToUpperInvariant(), NodeCode.CertificateHash([1]) + "0" })
+        {
+            await Assert.ThrowsAsync<AgentException>(() => RunAsync(Enrollment(panel).EnrollAsync(Request() with { PanelCertificate = pin }, TestContext.Current.CancellationToken)));
+        }
+
+        Assert.Equal(0, panel.Enrollments);
+        Assert.Empty(panel.Pins);
+        Assert.Empty(_keys.Names);
+    }
+
+    [Fact]
     public async Task AnUnreadablePreviousConfigurationIsReplacedWithAWarning()
     {
         var paths = new AgentPaths(_root);
@@ -207,7 +240,16 @@ public sealed class AgentEnrollmentTests : IDisposable
 
         public int Enrollments => _enrollments;
 
+        /// <summary>The panel certificates the handlers were told to pin.</summary>
+        public ConcurrentQueue<string> Pins { get; } = new();
+
         public override HttpMessageHandler CreateHttpHandler() => new Handler(this);
+
+        public override HttpMessageHandler WithPinnedCertificate(HttpMessageHandler handler, string certificateSha256)
+        {
+            Pins.Enqueue(certificateSha256);
+            return handler;
+        }
 
         private HttpResponseMessage Answer(HttpRequestMessage request)
         {

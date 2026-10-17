@@ -2,16 +2,22 @@
 # through prepare.ps1, or a CI runner), as a user following docs/guides/install.md would: the release copied into
 # C:\Program Files\PulsarSetup, which only administrators can change from the moment it exists (the installer refuses
 # the bundle's own folder, which others can change),
-# panel and agent on one PC, database created in the local PostgreSQL service. Then checks what the installer left,
-# backs up from the panel's folder, updates and uninstalls.
+# panel and agent on one PC, unattended (as the setup wizard runs it: secrets in the environment, progress lines, exit
+# code), with the .NET runtimes installed from the bundle's installers (the ZIP's programs are framework-dependent and
+# the sandbox has no network), and the database created in PostgreSQL 18 installed with EDB's installer from the
+# bundle, or in a PostgreSQL service registered here from -PgBin, or in the machine's own (CI runners have one). Then
+# checks what the installer left, backs up from the panel's folder, restores, updates and uninstalls.
 # Every check is written to report\summary.txt as PASS/FAIL; the last line is "done", and the exit code is 1 on any FAIL.
-# Never run it on a machine you use: it installs services and trusts a certificate machine-wide.
+# Never run it on a machine you use: it installs services and runtimes, and trusts certificates machine-wide.
 param(
     [Parameter(Mandatory)] [string] $Bundle,
-    # PostgreSQL binaries: registered here as a service, as PostgreSQL's installer does. Without it, the machine's
-    # PostgreSQL service is used (CI runners have one) with -PostgresPassword.
+    # PostgreSQL binaries: registered here as a service, as PostgreSQL's installer does, when the bundle's installers
+    # have no PostgreSQL installer. Without either, the machine's PostgreSQL service is used with -PostgresPassword.
     [string] $PgBin,
-    [string] $PostgresPassword = 'sandbox-postgres-password')
+    [string] $PostgresPassword = 'sandbox-postgres-password',
+    # The installers prepare.ps1 put in the bundle (.NET's, maybe EDB's), and the roots their signatures chain to.
+    # Without them (a CI runner), the installer downloads what it needs.
+    [string] $Installers = (Join-Path $Bundle 'installers'))
 $ErrorActionPreference = 'Stop'
 $report = New-Item -ItemType Directory -Force (Join-Path $Bundle 'report')
 $summary = Join-Path $report 'summary.txt'
@@ -49,10 +55,51 @@ $panelUrl = 'https://localhost:8443'
 $adminPassword = 'sandbox administrator password'
 $panelData = 'C:\ProgramData\Pulsar\Panel'
 
+# Sets the postgres superuser's password as docs/guides/install.md says (trust for 127.0.0.1 and ::1 a moment, then
+# back), here with the password on psql's standard input instead of typed: the installer kept the one it chose nowhere.
+function Set-PostgresPassword([string] $service, [string] $data, [string] $bin, [string] $password) {
+    Stop-Service $service
+    $hba = Join-Path $data 'pg_hba.conf'
+    $copy = "$hba.sandbox"
+    Copy-Item $hba $copy
+    $trust = "host    postgres    postgres    127.0.0.1/32    trust`r`nhost    postgres    postgres    ::1/128         trust`r`n"
+    [IO.File]::WriteAllText($hba, $trust + [IO.File]::ReadAllText($copy))
+    Start-Service $service
+    $ErrorActionPreference = 'Continue'
+    "ALTER ROLE postgres PASSWORD '$password';" | & (Join-Path $bin 'psql.exe') -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f - *> (Join-Path $report 'pg-password.txt')
+    $ok = $LASTEXITCODE -eq 0
+    Copy-Item $copy $hba -Force
+    Remove-Item $copy
+    Restart-Service $service
+    return $ok
+}
+
+$pgInstaller = $null
+if ($Installers -and (Test-Path $Installers)) {
+    $pgInstaller = Get-ChildItem $Installers -Filter 'postgresql-*-windows-x64.exe' -File | Select-Object -First 1
+}
+else { $Installers = $null }
+$pgService = 'postgresql-x64-18'
+$pgData = 'C:\Program Files\PostgreSQL\18\data'
+
 try {
-    # --- PostgreSQL as its installer leaves it: a service, a superuser password ---
-    if ($PgBin) {
-        $pgHome = 'C:\pgsql-local'
+    # The roots the installers' signatures chain to: a sandbox without network has only those Windows ships with (the
+    # machine is disposable; a real one gets them from Windows Update as it checks a signature).
+    if ($Installers -and (Test-Path (Join-Path $Installers 'roots'))) {
+        foreach ($root in Get-ChildItem (Join-Path $Installers 'roots') -Filter '*.cer') {
+            $null = Import-Certificate -FilePath $root.FullName -CertStoreLocation 'Cert:\LocalMachine\Root'
+        }
+    }
+
+    # --- PostgreSQL: none (the installer installs it), or as its installer leaves it: a service, a superuser password ---
+    if ($pgInstaller) {
+        if ($PgBin) { Add-Content $summary "INFO $($pgInstaller.Name) is in the bundle: the installer installs PostgreSQL with it, and -PgBin is not used" }
+        Check 'no postgresql service before the install (the installer installs one)' ($null -eq (Get-Service 'postgresql*' -ErrorAction SilentlyContinue))
+    }
+    elseif ($PgBin) {
+        # Where only administrators can change it: the installer runs its psql as administrator, and refuses one in a
+        # folder others could change (C:\ lets every account change what it makes there).
+        $pgHome = Join-Path $env:ProgramFiles 'PostgreSQL-sandbox'
         Copy-Item (Split-Path $PgBin) $pgHome -Recurse
         # The PostgreSQL binaries zip relies on the Visual C++ runtime, which a clean Windows may lack.
         Copy-Item (Join-Path $Bundle 'vcrt\*') (Join-Path $pgHome 'bin')
@@ -65,7 +112,7 @@ try {
         & (Join-Path $pgHome 'bin\pg_ctl.exe') register -N postgresql-x64-sandbox -U 'NT AUTHORITY\NetworkService' -D C:\pgdata -S auto *> (Join-Path $report 'pg-register.txt')
         Start-Service postgresql-x64-sandbox
     }
-    Check 'postgresql service installed' ($null -ne (Get-Service 'postgresql*' -ErrorAction SilentlyContinue))
+    if (-not $pgInstaller) { Check 'postgresql service installed' ($null -ne (Get-Service 'postgresql*' -ErrorAction SilentlyContinue)) }
 
     # --- The release where the guide puts it (step 2); from where other accounts can change it, refused ---
     $refused = Invoke-Refused (Join-Path $bundled 'Install-Pulsar.ps1')
@@ -85,17 +132,59 @@ try {
     $releaseOwner = $releaseAcl.GetOwner([Security.Principal.SecurityIdentifier]).Value
     Check 'release folder: only SYSTEM, Administrators and TrustedInstaller can change it' ($releaseWriters.Count -eq 0 -and $releaseOwner -in $trustedSids) "owner $releaseOwner; others: $($releaseWriters -join ', ')"
 
-    # --- Install, as the guide says (here with the passwords given instead of typed) ---
-    $installed = $true
-    try {
-        & $installer -PostgresPassword (ConvertTo-SecureString $PostgresPassword -AsPlainText -Force) `
-            -AdminPassword (ConvertTo-SecureString $adminPassword -AsPlainText -Force) *>&1 | Tee-Object -FilePath (Join-Path $report 'install.txt')
+    # --- Install, as the setup wizard runs it: unattended, the passwords in its environment ---
+    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $installer, '-Unattended')
+    if ($pgInstaller) { $arguments += @('-PostgresInstaller', $pgInstaller.FullName) }
+    if ($Installers) { $arguments += @('-DotNetInstallers', $Installers) }
+    # Every process's command line while it runs: no password may show in any.
+    $commandLines = Join-Path $report 'command-lines.txt'
+    $watcher = Start-Job -ArgumentList $commandLines {
+        param($file)
+        $seen = New-Object 'Collections.Generic.HashSet[string]'
+        while ($true) {
+            foreach ($line in @(Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine } | Where-Object { $_ })) {
+                if ($seen.Add($line)) { Add-Content -LiteralPath $file -Value $line }
+            }
+            Start-Sleep -Milliseconds 200
+        }
     }
-    catch {
-        $installed = $false
-        Add-Content (Join-Path $report 'install.txt') "FAILED: $_"
+    $env:PULSAR_ADMIN_PASSWORD = $adminPassword
+    if (-not $pgInstaller) { $env:PULSAR_POSTGRES_PASSWORD = $PostgresPassword }
+    $output = & {
+        $ErrorActionPreference = 'Continue'
+        @(& powershell.exe @arguments 2>&1 | ForEach-Object { "$_" })
     }
-    Check 'installer completed' $installed
+    $installExit = $LASTEXITCODE
+    Remove-Item Env:PULSAR_ADMIN_PASSWORD, Env:PULSAR_POSTGRES_PASSWORD -ErrorAction SilentlyContinue
+    Stop-Job $watcher
+    Remove-Job $watcher -Force
+    $output | Set-Content (Join-Path $report 'install.txt')
+    Check 'installer completed (unattended: exit code 0, or 3010 for a restart .NET asks for)' ($installExit -in 0, 3010) "exit $installExit; $(@($output | Where-Object { $_ -like 'PULSAR-ERROR *' }) -join ' ')"
+    $steps = @($output | Where-Object { $_ -match '^PULSAR-STEP \d+/\d+ ' } | ForEach-Object { ($_ -split ' ')[1] })
+    Check 'installer: progress lines for each step of an all-in-one install, in order' (($steps -join ',') -eq '1/7,2/7,3/7,4/7,5/7,6/7,7/7') ($steps -join ',')
+    Check 'installer: the panel''s address at the end' (@($output | Where-Object { $_ -ceq 'PULSAR-PANEL-URL https://localhost:8443/' }).Count -eq 1)
+    $logLine = @($output | Where-Object { $_ -like 'PULSAR-LOG *' }) | Select-Object -First 1
+    $log = if ($logLine) { $logLine.Substring('PULSAR-LOG '.Length) } else { '' }
+    $logText = if ($log -and (Test-Path -LiteralPath $log)) { Get-Content -Raw -LiteralPath $log } else { '' }
+    Check 'installer: a log in C:\ProgramData\Pulsar\Setup\logs, without the passwords' ($log -like 'C:\ProgramData\Pulsar\Setup\logs\install-*.log' -and $logText -match 'PULSAR-STEP 7/7' -and -not $logText.Contains($adminPassword) -and -not $logText.Contains($PostgresPassword)) $log
+    $seenLines = if (Test-Path $commandLines) { Get-Content -Raw $commandLines } else { '' }
+    Check 'installer: no password on any command line while it ran' ($seenLines -and -not $seenLines.Contains($adminPassword) -and -not $seenLines.Contains($PostgresPassword) -and $seenLines -notmatch '(?i)superpassword')
+    # The random password EDB's installer got is unknown here: what its helpers were started with is in
+    # report\command-lines.txt, for a person to read.
+    $edbHelpers = @(($seenLines -split "`r?`n") | Where-Object { $_ -match '(?i)initcluster|cscript|initdb' })
+    Add-Content $summary "INFO command lines of PostgreSQL's installer helpers seen: $($edbHelpers.Count) (report\command-lines.txt)"
+    $setupLeft = @(Get-ChildItem 'C:\ProgramData\Pulsar\Setup' -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'downloads-*' -or $_.Name -like '*options*' })
+    Check 'installer: its downloads and PostgreSQL''s options file are gone' ($setupLeft.Count -eq 0) (($setupLeft | ForEach-Object FullName) -join ', ')
+    $runtimes = @('Microsoft.NETCore.App', 'Microsoft.AspNetCore.App' | Where-Object { @(Get-ChildItem "C:\Program Files\dotnet\shared\$_" -Directory -Filter '10.0.*' -ErrorAction SilentlyContinue).Count -gt 0 })
+    Check 'installer: the .NET 10 runtime and ASP.NET Core runtime are installed' ($runtimes.Count -eq 2) ($runtimes -join ', ')
+    if ($pgInstaller) {
+        Check "installer: PostgreSQL 18 installed as $pgService, running" ((Get-Service $pgService -ErrorAction SilentlyContinue).Status -eq 'Running')
+        $listening = @(Get-NetTCPConnection -LocalPort 5432 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $_.LocalAddress } | Select-Object -Unique)
+        Check 'installer: PostgreSQL listens on this machine only' ($listening.Count -gt 0 -and @($listening | Where-Object { $_ -notin '127.0.0.1', '::1' }).Count -eq 0) ($listening -join ', ')
+        Check 'installer: no pgAdmin and no Stack Builder' (-not (Test-Path 'C:\Program Files\PostgreSQL\18\pgAdmin 4') -and -not (Test-Path 'C:\Program Files\PostgreSQL\18\stackbuilder'))
+        # Its superuser's password is kept nowhere: set one as the guide says, for the drop and restore below.
+        Check "postgres password set as install.md says" (Set-PostgresPassword $pgService $pgData 'C:\Program Files\PostgreSQL\18\bin' $PostgresPassword) (Get-Content (Join-Path $report 'pg-password.txt') -Raw -ErrorAction SilentlyContinue)
+    }
 
     $panel = Get-CimInstance Win32_Service -Filter "Name='PulsarPanel'"
     Check 'panel service: own virtual account, automatic start, running' ($panel.StartName -eq 'NT SERVICE\PulsarPanel' -and $panel.StartMode -eq 'Auto' -and $panel.State -eq 'Running') "$($panel.StartName) $($panel.StartMode) $($panel.State)"
@@ -188,8 +277,8 @@ try {
     Remove-Item 'C:\Program Files\Pulsar\Panel', $panelData -Recurse -Force
     $env:PGPASSWORD = $PostgresPassword
     # The newest PostgreSQL service's programs, as the installer chose.
-    $pgBinDir = 'C:\pgsql-local\bin'
-    if (-not $PgBin) {
+    $pgBinDir = Join-Path $env:ProgramFiles 'PostgreSQL-sandbox\bin'
+    if ($pgInstaller -or -not $PgBin) {
         $pgBinDir = (Get-CimInstance Win32_Service -Filter "Name LIKE 'postgresql%' AND State = 'Running'" |
             ForEach-Object { if ($_.PathName -match '^"?([^"]+\\bin)\\pg_ctl\.exe') { $Matches[1] } } | Select-Object -First 1)
     }

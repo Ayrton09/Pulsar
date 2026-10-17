@@ -28,7 +28,7 @@ public sealed class CredentialRotationClient(PanelTransport transport)
         var authorization = currentKey.Sign(ProtocolCrypto.SignedData(AgentProtocol.Purposes.AuthorizeRotation, ProtocolCrypto.GuidBytes(config.NodeId),
             ProtocolCrypto.GuidBytes(config.CredentialId), ProtocolCrypto.GuidBytes(sessionId), publicKey));
 
-        using var http = transport.CreateClient(panel, certificate);
+        using var http = transport.CreateClient(panel, certificate, config.PanelCertificate);
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         var signed = await PanelTransport.PostAsync<RotateCredentialRequest, SignedMessage>(http, AgentProtocol.RotateCredentialPath,
             new RotateCredentialRequest(publicKey, newKey.Reference.Storage, proof, authorization), cancellationToken);

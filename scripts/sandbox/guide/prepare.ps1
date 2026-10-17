@@ -1,6 +1,7 @@
 # Prepares a Windows Sandbox in which a person installs Pulsar by following docs/guides/install.md and nothing else,
 # on a clean Windows 11 with internet access: the release ZIP and its checksum are on the sandbox's desktop, and
-# everything else (PostgreSQL, the game) is downloaded inside it, as on a real machine.
+# everything else is downloaded inside it, as on a real machine (the .NET runtimes and PostgreSQL by the installer,
+# which checks them; the game by the agent).
 # Run on the host, no elevation needed:
 #   .\scripts\sandbox\guide\prepare.ps1
 # Then open artifacts\guide-sandbox\guide.wsb. The sandbox is discarded when closed; nothing is installed on the host.

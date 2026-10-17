@@ -1,8 +1,11 @@
 name: Release
 
-# A tag v<version> (for example v1.0.0) builds the Windows release ZIP and the agent-only MSI in CI, attests their
-# provenance and creates a draft GitHub release with the ZIP, the MSI and the SHA-256 file of each
-# (docs/architecture/08, "Supply chain and releases"). A maintainer reviews the draft, adds the notes and publishes it.
+# A tag v<version> (for example v1.0.0) builds the Windows release ZIP, the agent-only MSI and the setup wizards
+# (PulsarSetup.exe, PulsarAgentSetup.exe, with Inno Setup pinned by its SHA-256) in CI, attests their provenance and
+# creates a draft GitHub release with each of them and its SHA-256 file (docs/architecture/08, "Supply chain and
+# releases"). A maintainer reviews the draft, adds the notes and publishes it. Two jobs: the build runs npm and dotnet
+# (lifecycle scripts included) with a read-only token and no credentials left in the checkout; the publish job holds the
+# write permissions, runs nothing from the repository and only attests and releases what the build uploaded.
 on:
   push:
     tags: ['v*']
@@ -15,42 +18,88 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  release:
-    name: Windows release
+  build:
+    name: Windows release build
     runs-on: windows-2022
     permissions:
-      contents: write      # the draft release
-      id-token: write      # provenance attestation
-      attestations: write
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           global-json-file: global.json
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: src/Pulsar.Web/package-lock.json
 
-      - name: Build the release ZIP and the agent MSI
+      # Inno Setup 7.1.0, the release its scripts are written for: this exact installer (its SHA-256), signed by its
+      # publisher, installed for all users in Program Files. Build-Release.ps1 checks ISCC's signature again before
+      # each setup it compiles.
+      - name: Install Inno Setup 7.1.0
         shell: pwsh
-        run: ./scripts/release/Build-Release.ps1 -Version $env:GITHUB_REF_NAME.Substring(1)
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.0-x64.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe' -OutFile $installer
+          $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f') { throw "The Inno Setup installer is not the pinned one (SHA-256 $hash)." }
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          # The subject decoded one attribute to a line: a name that merely contains "O=Pyrsys B.V." comes out quoted.
+          $lines = @($signature.SignerCertificate.SubjectName.Decode([System.Security.Cryptography.X509Certificates.X500DistinguishedNameFlags]::UseNewLines).Split([char[]]("`r`n"), [StringSplitOptions]::RemoveEmptyEntries))
+          $organizations = @($lines | Where-Object { $_ -clike 'O=*' })
+          if ($signature.Status -ne 'Valid' -or @($lines | Where-Object { $_.Contains('"') }).Count -ne 0 -or $organizations.Count -ne 1 -or $organizations[0] -cne 'O=Pyrsys B.V.') { throw "The Inno Setup installer is not signed by Pyrsys B.V. ($($signature.Status))." }
+          $process = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/ALLUSERS', "/LOG=$(Join-Path $env:RUNNER_TEMP 'innosetup.log')" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "The Inno Setup installer failed (exit code $($process.ExitCode))." }
 
-      - uses: actions/attest-build-provenance@v4
+      - name: Build the release ZIP, the agent MSI and the setups
+        shell: pwsh
+        run: ./scripts/release/Build-Release.ps1 -Version $env:GITHUB_REF_NAME.Substring(1) -RequireSetups -InnoSetupCompiler (Join-Path $env:ProgramFiles 'Inno Setup 7\ISCC.exe')
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          subject-path: |
+          name: release
+          path: |
             artifacts/release/*.zip
             artifacts/release/*.msi
+            artifacts/release/*.exe
+            artifacts/release/*.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Attest and draft the release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write      # the draft release
+      id-token: write      # provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: release
+          path: release
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: |
+            release/*.zip
+            release/*.msi
+            release/*.exe
 
       - name: Create the draft release
-        shell: pwsh
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          $version = $env:GITHUB_REF_NAME.Substring(1)
-          gh release create $env:GITHUB_REF_NAME artifacts/release/pulsar-$version-windows-x64.zip artifacts/release/pulsar-$version-windows-x64.zip.sha256 `
-            artifacts/release/pulsar-agent-$version-windows-x64.msi artifacts/release/pulsar-agent-$version-windows-x64.msi.sha256 `
-            --draft --title "Pulsar $version" --generate-notes
+          version="${GITHUB_REF_NAME#v}"
+          files=()
+          for name in "pulsar-$version-windows-x64.zip" "pulsar-agent-$version-windows-x64.msi" "PulsarSetup-$version.exe" "PulsarAgentSetup-$version.exe"; do
+            files+=("release/$name" "release/$name.sha256")
+          done
+          gh release create "$GITHUB_REF_NAME" "${files[@]}" --draft --title "Pulsar $version" --generate-notes

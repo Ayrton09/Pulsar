@@ -72,7 +72,8 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   const createNode = page.getByRole('dialog', { name: 'Add node' });
   await createNode.getByLabel('Name').fill(nodeName);
   await createNode.getByRole('button', { name: 'Create' }).click();
-  const command = (await page.getByLabel('Enrollment command').textContent()) ?? '';
+  await page.getByRole('button', { name: 'Advanced: install with PowerShell' }).click();
+  const command = (await page.getByLabel('Enrollment command', { exact: true }).textContent()) ?? '';
   const [, panel = '', token = '', panelKey = ''] = /-PanelUrl (\S+) -Token (\S+) -PanelKey (\S+)/.exec(command) ?? [];
   execFileSync(agentExe, [
     'enroll',
