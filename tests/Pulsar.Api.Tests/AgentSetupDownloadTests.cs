@@ -137,6 +137,21 @@ public sealed class AgentSetupDownloadTests : IClassFixture<NoDatabaseApiFactory
     }
 
     [Fact]
+    public void AddressWithDownloadsInTheHourIsNeverIdleSoItsCountIsNotDropped()
+    {
+        // ASP.NET Core drops a partition whose limiter has been idle for 10 seconds, and with it the hour's count.
+        using var limiter = DownloadEndpoints.CreateLimiter(new DownloadsOptions { ConcurrentPerAddress = 2, PerAddressPerHour = 5 });
+
+        using (var download = limiter.AttemptAcquire())
+        {
+            Assert.True(download.IsAcquired);
+        }
+
+        // The download ended and gave its place back, but the hour still holds its count.
+        Assert.Null(limiter.IdleDuration);
+    }
+
+    [Fact]
     public async Task TheSetupsSha256IsComputedOnceForEachVersionOfTheFile()
     {
         var download = new AgentSetupDownload(Options.Create(new DownloadsOptions { Path = _folder }));

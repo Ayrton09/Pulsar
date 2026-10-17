@@ -36,8 +36,11 @@ function Assert-InnoSetupSigned([string] $compiler) {
     foreach ($file in $files) {
         $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
         $subject = "$($signature.SignerCertificate.Subject)"
-        $organizations = @([regex]::Matches($subject, '(?:^|,\s*)O=("(?:[^"]|"")*"|[^,]*)') | ForEach-Object { $_.Groups[1].Value.Trim('"') })
-        if ("$($signature.Status)" -cne 'Valid' -or "$($signature.SignatureType)" -cne 'Authenticode' -or $organizations.Count -ne 1 -or $organizations[0] -cne $InnoSetupSigner) {
+        # The subject decoded one attribute to a line, not matched as text: a name that merely contains "O=Pyrsys B.V."
+        # (in a CN, say) comes out quoted or on a line of its own, never as the organization line.
+        $lines = if ($signature.SignerCertificate) { @($signature.SignerCertificate.SubjectName.Decode([System.Security.Cryptography.X509Certificates.X500DistinguishedNameFlags]::UseNewLines).Split([char[]]("`r`n"), [StringSplitOptions]::RemoveEmptyEntries)) } else { @() }
+        $organizations = @($lines | Where-Object { $_ -clike 'O=*' })
+        if ("$($signature.Status)" -cne 'Valid' -or "$($signature.SignatureType)" -cne 'Authenticode' -or $lines.Count -eq 0 -or @($lines | Where-Object { $_.Contains('"') }).Count -ne 0 -or $organizations.Count -ne 1 -or $organizations[0] -cne "O=$InnoSetupSigner") {
             throw "$($file.FullName) is not validly signed by $InnoSetupSigner, Inno Setup's publisher ($($signature.Status), $subject): the setups are not built with it. Reinstall Inno Setup 7 from https://jrsoftware.org (in Program Files)."
         }
     }

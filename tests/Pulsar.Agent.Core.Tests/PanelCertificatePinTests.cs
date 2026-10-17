@@ -82,16 +82,57 @@ public sealed class PanelCertificatePinTests : IDisposable
     }
 
     [Fact]
+    public async Task APinnedCertificateThatHasExpiredOrNotYetBegunIsRefused()
+    {
+        using var expired = SelfSigned("localhost", DateTimeOffset.UtcNow.AddDays(-10), DateTimeOffset.UtcNow.AddDays(-1));
+        using var future = SelfSigned("localhost", DateTimeOffset.UtcNow.AddDays(1), DateTimeOffset.UtcNow.AddDays(10));
+
+        foreach (var certificate in new[] { expired, future })
+        {
+            await using var panel = new TlsPanel(certificate);
+
+            await Assert.ThrowsAnyAsync<HttpRequestException>(() => GetAsync(panel.Port, NodeCode.CertificateHash(certificate.RawData)));
+            Assert.Equal(0, panel.Requests);
+        }
+    }
+
+    [Fact]
     public void APinnedAgentRefusesEvenACertificateTheMachineTrusts()
     {
         var pin = NodeCode.CertificateHash(_panel.RawData);
+        using var chain = Build(_panel);
+        using var otherChain = Build(_other);
 
-        Assert.True(PanelTransport.IsPinnedCertificate(_panel, SslPolicyErrors.None, pin));
-        Assert.True(PanelTransport.IsPinnedCertificate(_panel, SslPolicyErrors.RemoteCertificateChainErrors, pin));
-        Assert.False(PanelTransport.IsPinnedCertificate(_other, SslPolicyErrors.None, pin));
-        Assert.False(PanelTransport.IsPinnedCertificate(_panel, SslPolicyErrors.RemoteCertificateNameMismatch, pin));
-        Assert.False(PanelTransport.IsPinnedCertificate(null, SslPolicyErrors.RemoteCertificateNotAvailable, pin));
-        Assert.False(PanelTransport.IsPinnedCertificate(_panel, SslPolicyErrors.None, pin.ToUpperInvariant()));
+        Assert.True(PanelTransport.IsPinnedCertificate(_panel, null, SslPolicyErrors.None, pin));
+        Assert.True(PanelTransport.IsPinnedCertificate(_panel, chain, SslPolicyErrors.RemoteCertificateChainErrors, pin));
+        Assert.False(PanelTransport.IsPinnedCertificate(_panel, null, SslPolicyErrors.RemoteCertificateChainErrors, pin));
+        Assert.False(PanelTransport.IsPinnedCertificate(_other, otherChain, SslPolicyErrors.None, pin));
+        Assert.False(PanelTransport.IsPinnedCertificate(_panel, chain, SslPolicyErrors.RemoteCertificateNameMismatch, pin));
+        Assert.False(PanelTransport.IsPinnedCertificate(null, null, SslPolicyErrors.RemoteCertificateNotAvailable, pin));
+        Assert.False(PanelTransport.IsPinnedCertificate(_panel, chain, SslPolicyErrors.None, pin.ToUpperInvariant()));
+    }
+
+    [Fact]
+    public void OnlyAMissingTrustedRootIsForgivenOfTheChainsErrors()
+    {
+        using var expired = SelfSigned("localhost", DateTimeOffset.UtcNow.AddDays(-10), DateTimeOffset.UtcNow.AddDays(-1));
+        using var future = SelfSigned("localhost", DateTimeOffset.UtcNow.AddDays(1), DateTimeOffset.UtcNow.AddDays(10));
+
+        foreach (var certificate in new[] { expired, future })
+        {
+            using var chain = Build(certificate);
+
+            Assert.Contains(chain.ChainStatus, status => status.Status.HasFlag(X509ChainStatusFlags.NotTimeValid));
+            Assert.False(PanelTransport.IsPinnedCertificate(certificate, chain, SslPolicyErrors.RemoteCertificateChainErrors, NodeCode.CertificateHash(certificate.RawData)));
+        }
+    }
+
+    /// <summary>The chain as the agent builds it: nothing fetched, no revocation check, the machine's roots.</summary>
+    private static X509Chain Build(X509Certificate2 certificate)
+    {
+        var chain = new X509Chain { ChainPolicy = { DisableCertificateDownloads = true, RevocationMode = X509RevocationMode.NoCheck } };
+        chain.Build(certificate);
+        return chain;
     }
 
     private static async Task<HttpStatusCode> GetAsync(int port, string? pin)
@@ -102,7 +143,9 @@ public sealed class PanelCertificatePinTests : IDisposable
     }
 
     /// <summary>A certificate like the installer's: self-signed, not an authority, for a web server's identity, for <paramref name="name"/>.</summary>
-    private static X509Certificate2 SelfSigned(string name)
+    private static X509Certificate2 SelfSigned(string name) => SelfSigned(name, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
+
+    private static X509Certificate2 SelfSigned(string name, DateTimeOffset notBefore, DateTimeOffset notAfter)
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var request = new CertificateRequest($"CN={name}", key, HashAlgorithmName.SHA256);
@@ -111,7 +154,7 @@ public sealed class PanelCertificatePinTests : IDisposable
         request.CertificateExtensions.Add(names.Build());
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], false));
-        using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
+        using var certificate = request.CreateSelfSigned(notBefore, notAfter);
         // SChannel signs with a key it can open: an ephemeral one is not.
         return X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pfx, "test"), "test");
     }

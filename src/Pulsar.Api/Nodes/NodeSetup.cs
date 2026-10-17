@@ -196,8 +196,44 @@ internal static class DownloadEndpoints
     public static RateLimiter CreateLimiter(DownloadsOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return RateLimiter.CreateChained(
-            new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = options.ConcurrentPerAddress, QueueLimit = 0 }),
-            new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions { PermitLimit = options.PerAddressPerHour, Window = TimeSpan.FromHours(1), QueueLimit = 0 }));
+        return new DownloadLimiter(options);
+    }
+
+    /// <summary>
+    /// The concurrency cap and the hourly window chained. A chain reports the idle time of its first limiter, which is idle
+    /// as soon as a download ends; ASP.NET Core drops a partition idle for 10 seconds, and the hour's count with it. This
+    /// one is idle as the window is: not while the hour holds a count.
+    /// </summary>
+    private sealed class DownloadLimiter : RateLimiter
+    {
+        private readonly RateLimiter _chain;
+        private readonly FixedWindowRateLimiter _hour;
+
+        public DownloadLimiter(DownloadsOptions options)
+        {
+            _hour = new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions { PermitLimit = options.PerAddressPerHour, Window = TimeSpan.FromHours(1), QueueLimit = 0 });
+            _chain = CreateChained(
+                new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = options.ConcurrentPerAddress, QueueLimit = 0 }),
+                _hour);
+        }
+
+        public override TimeSpan? IdleDuration => _hour.IdleDuration;
+
+        public override RateLimiterStatistics? GetStatistics() => _chain.GetStatistics();
+
+        protected override RateLimitLease AttemptAcquireCore(int permitCount) => _chain.AttemptAcquire(permitCount);
+
+        protected override ValueTask<RateLimitLease> AcquireAsyncCore(int permitCount, CancellationToken cancellationToken) =>
+            _chain.AcquireAsync(permitCount, cancellationToken);
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _chain.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 }

@@ -849,7 +849,7 @@
       "download": "Descargar PulsarAgentSetup.exe",
       "noSetup": "Este panel no tiene PulsarAgentSetup.exe para descargar: tomalo de la versión publicada de Pulsar.",
       "setupHash": "SHA-256 de PulsarAgentSetup.exe",
-      "setupHashHelp": "Después de descargarlo, comparalo en la máquina con: Get-FileHash .\\PulsarAgentSetup.exe (o revisá la firma digital del archivo). Un valor distinto significa que no es el archivo que sirve este panel.",
+      "setupHashHelp": "Después de descargarlo, comparalo en la máquina con: Get-FileHash .\\PulsarAgentSetup.exe y verificá que coincida con el SHA-256 que se muestra acá (el instalador no está firmado digitalmente). Un valor distinto significa que no es el archivo que sirve este panel.",
       "address": "Dirección del panel",
       "code": "Código del nodo",
       "setupTrust": "El agente acepta el certificado del panel solo si es el que nombra el código, y lo fija: no hay que copiar nada a mano y los almacenes de certificados de la máquina no cambian. Un proxy inverso que marca lo que reenvía (encabezados Forwarded, X-Forwarded-* o Via) hace que el código no nombre ningún certificado: la máquina ya tiene que confiar en el del proxy. Uno que reenvía sin decirlo sirve otro certificado que el del código, y el instalador no sigue.",

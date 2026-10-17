@@ -71,20 +71,36 @@ public class PanelTransport
     {
         if (handler is SocketsHttpHandler sockets)
         {
-            sockets.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, errors) => IsPinnedCertificate(certificate, errors, certificateSha256);
+            sockets.SslOptions.RemoteCertificateValidationCallback = (_, certificate, chain, errors) => IsPinnedCertificate(certificate, chain, errors, certificateSha256);
         }
 
         return handler;
     }
 
     /// <summary>
-    /// The certificate is the pinned one, for the host the agent asked for: of the checks it failed (<paramref name="errors"/>),
-    /// only its chain's are forgiven, and only because the pin names it exactly.
+    /// The certificate is the pinned one, for the host the agent asked for, and valid in time: of the checks it failed
+    /// (<paramref name="errors"/>), only the chain's missing trusted root is forgiven (<see cref="X509ChainStatusFlags.UntrustedRoot"/>,
+    /// <see cref="X509ChainStatusFlags.PartialChain"/>), and only because the pin names it exactly. Expiry, a start date
+    /// still ahead, revocation or any other chain error refuse it, so a pinned certificate that has expired needs pinning again.
     /// </summary>
-    internal static bool IsPinnedCertificate(X509Certificate? certificate, SslPolicyErrors errors, string certificateSha256) =>
-        certificate is not null
-        && (errors & ~SslPolicyErrors.RemoteCertificateChainErrors) == SslPolicyErrors.None
-        && string.Equals(NodeCode.CertificateHash(certificate.GetRawCertData()), certificateSha256, StringComparison.Ordinal);
+    internal static bool IsPinnedCertificate(X509Certificate? certificate, X509Chain? chain, SslPolicyErrors errors, string certificateSha256)
+    {
+        if (certificate is null
+            || (errors & ~SslPolicyErrors.RemoteCertificateChainErrors) != SslPolicyErrors.None
+            || !string.Equals(NodeCode.CertificateHash(certificate.GetRawCertData()), certificateSha256, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if ((errors & SslPolicyErrors.RemoteCertificateChainErrors) == SslPolicyErrors.None)
+        {
+            return true;
+        }
+
+        // The chain's statuses say which errors: with no chain to read them from, none is forgiven.
+        const X509ChainStatusFlags Forgiven = X509ChainStatusFlags.UntrustedRoot | X509ChainStatusFlags.PartialChain;
+        return chain is not null && chain.ChainStatus.All(status => (status.Status & ~Forgiven) == X509ChainStatusFlags.NoError);
+    }
 
     /// <summary>
     /// Hook for the hub connection options (transport, authentication header, URL, client certificate and the
