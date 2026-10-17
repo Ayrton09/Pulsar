@@ -22,7 +22,8 @@
 #   .\scripts\sandbox\setup\prepare.ps1 -Networking [-Installers <folder>] [-Wizard]
 # Then open artifacts\setup-sandbox\setup.wsb and wait for report\summary.txt to end with "done". With -Wizard, the
 # sandbox opens the wizard: click through it with the defaults and the administrator password run.ps1 shows, check
-# that it ends in the browser at the panel's sign-in page, and close the browser; the checks then run.
+# that its Finished page shows the panel's sign-in page (https://localhost:8443/) to copy, open it in the browser,
+# and close the browser; the checks then run.
 # The sandbox is discarded when closed; nothing is installed on the host.
 param(
     # The installers downloaded beforehand (see above): required without -Networking.

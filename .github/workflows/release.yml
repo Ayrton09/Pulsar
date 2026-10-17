@@ -1,8 +1,9 @@
 name: Release
 
-# A tag v<version> (for example v1.0.0) builds the Windows release ZIP and the agent-only MSI in CI, attests their
-# provenance and creates a draft GitHub release with the ZIP, the MSI and the SHA-256 file of each
-# (docs/architecture/08, "Supply chain and releases"). A maintainer reviews the draft, adds the notes and publishes it.
+# A tag v<version> (for example v1.0.0) builds the Windows release ZIP, the agent-only MSI and the setup wizards
+# (PulsarSetup.exe, PulsarAgentSetup.exe, with Inno Setup pinned by its SHA-256) in CI, attests their provenance and
+# creates a draft GitHub release with each of them and its SHA-256 file (docs/architecture/08, "Supply chain and
+# releases"). A maintainer reviews the draft, adds the notes and publishes it.
 on:
   push:
     tags: ['v*']
@@ -35,15 +36,31 @@ jobs:
           cache: npm
           cache-dependency-path: src/Pulsar.Web/package-lock.json
 
-      - name: Build the release ZIP and the agent MSI
+      # Inno Setup 7.1.0, the release its scripts are written for: this exact installer (its SHA-256), signed by its
+      # publisher, installed for all users in Program Files. Build-Release.ps1 checks ISCC's signature again before
+      # each setup it compiles.
+      - name: Install Inno Setup 7.1.0
         shell: pwsh
-        run: ./scripts/release/Build-Release.ps1 -Version $env:GITHUB_REF_NAME.Substring(1)
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.0-x64.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe' -OutFile $installer
+          $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f') { throw "The Inno Setup installer is not the pinned one (SHA-256 $hash)." }
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(^|, )O=Pyrsys B\.V\.(,|$)') { throw "The Inno Setup installer is not signed by Pyrsys B.V. ($($signature.Status))." }
+          $process = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/ALLUSERS', "/LOG=$(Join-Path $env:RUNNER_TEMP 'innosetup.log')" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "The Inno Setup installer failed (exit code $($process.ExitCode))." }
+
+      - name: Build the release ZIP, the agent MSI and the setups
+        shell: pwsh
+        run: ./scripts/release/Build-Release.ps1 -Version $env:GITHUB_REF_NAME.Substring(1) -RequireSetups -InnoSetupCompiler (Join-Path $env:ProgramFiles 'Inno Setup 7\ISCC.exe')
 
       - uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             artifacts/release/*.zip
             artifacts/release/*.msi
+            artifacts/release/*.exe
 
       - name: Create the draft release
         shell: pwsh
@@ -53,4 +70,6 @@ jobs:
           $version = $env:GITHUB_REF_NAME.Substring(1)
           gh release create $env:GITHUB_REF_NAME artifacts/release/pulsar-$version-windows-x64.zip artifacts/release/pulsar-$version-windows-x64.zip.sha256 `
             artifacts/release/pulsar-agent-$version-windows-x64.msi artifacts/release/pulsar-agent-$version-windows-x64.msi.sha256 `
+            artifacts/release/PulsarSetup-$version.exe artifacts/release/PulsarSetup-$version.exe.sha256 `
+            artifacts/release/PulsarAgentSetup-$version.exe artifacts/release/PulsarAgentSetup-$version.exe.sha256 `
             --draft --title "Pulsar $version" --generate-notes

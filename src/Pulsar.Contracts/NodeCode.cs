@@ -198,6 +198,10 @@ public sealed class NodeCode
         return uri.Scheme == Uri.UriSchemeHttps || (uri.Scheme == Uri.UriSchemeHttp && IsLoopback(uri));
     }
 
+    /// <summary>A certificate's hash as a code carries it (<see cref="CertificateHash"/>): 64 lowercase hex digits.</summary>
+    public static bool IsCertificateHash([NotNullWhen(true)] string? hash) =>
+        hash is { Length: 64 } && !hash.AsSpan().ContainsAnyExcept(s_lowerHex);
+
     /// <summary>The code without its token, for logs and debuggers.</summary>
     public override string ToString() =>
         $"NodeCode {{ Url = {Url}, Token = ***, PanelKey = {PanelKey}, CertificateSha256 = {CertificateSha256 ?? "null"} }}";
@@ -213,8 +217,6 @@ public sealed class NodeCode
 
     private static bool IsPanelKey([NotNullWhen(true)] string? key) =>
         key is not null && key.StartsWith(KeyPrefix, StringComparison.Ordinal) && IsRandomPart(key.AsSpan(KeyPrefix.Length));
-
-    private static bool IsCertificateHash(string hash) => hash.Length == 64 && !hash.AsSpan().ContainsAnyExcept(s_lowerHex);
 
     // 32 bytes in base64url without padding, in its canonical spelling.
     private static bool IsRandomPart(ReadOnlySpan<char> value) => value.Length == RandomPartLength && TryDecode(value) is { Length: 32 };

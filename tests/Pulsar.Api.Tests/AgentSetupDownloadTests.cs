@@ -101,6 +101,69 @@ public sealed class AgentSetupDownloadTests : IClassFixture<NoDatabaseApiFactory
     }
 
     [Fact]
+    public async Task EachAddressHasSoManyDownloadsAnHour()
+    {
+        await File.WriteAllBytesAsync(Path.Combine(_folder, "PulsarAgentSetup.exe"), [0x4D, 0x5A], Ct);
+        await using var limited = _panel.WithWebHostBuilder(builder => builder.UseSetting("Downloads:PerAddressPerHour", "2"));
+        using var client = limited.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+
+        for (var i = 0; i < 2; i++)
+        {
+            using var allowed = await client.GetAsync(new Uri("/downloads/PulsarAgentSetup.exe", UriKind.Relative), Ct);
+            Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+        }
+
+        using var refused = await client.GetAsync(new Uri("/downloads/PulsarAgentSetup.exe", UriKind.Relative), Ct);
+        await SetupTests.AssertProblemAsync(refused, HttpStatusCode.TooManyRequests, "rate_limit.exceeded");
+    }
+
+    [Fact]
+    public void EachAddressHasSoManyDownloadsAtOnce()
+    {
+        using var limiter = DownloadEndpoints.CreateLimiter(new DownloadsOptions { ConcurrentPerAddress = 2, PerAddressPerHour = 100 });
+
+        using var first = limiter.AttemptAcquire();
+        using var second = limiter.AttemptAcquire();
+        using (var third = limiter.AttemptAcquire())
+        {
+            Assert.True(first.IsAcquired && second.IsAcquired);
+            Assert.False(third.IsAcquired);
+        }
+
+        // One that ends gives its place back.
+        first.Dispose();
+        using var again = limiter.AttemptAcquire();
+        Assert.True(again.IsAcquired);
+    }
+
+    [Fact]
+    public async Task TheSetupsSha256IsComputedOnceForEachVersionOfTheFile()
+    {
+        var download = new AgentSetupDownload(Options.Create(new DownloadsOptions { Path = _folder }));
+        var path = Path.Combine(_folder, "PulsarAgentSetup.exe");
+        Assert.Null(await download.Sha256Async(Ct));
+
+        byte[] first = [0x4D, 0x5A, .. RandomNumberGenerator.GetBytes(4096)];
+        await File.WriteAllBytesAsync(path, first, Ct);
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(first)), await download.Sha256Async(Ct));
+
+        // Rewritten in place with the same size and time: the hash computed for that version stands (it is not read again).
+        var written = File.GetLastWriteTimeUtc(path);
+        byte[] same = [0x4D, 0x5A, .. RandomNumberGenerator.GetBytes(4096)];
+        await File.WriteAllBytesAsync(path, same, Ct);
+        File.SetLastWriteTimeUtc(path, written);
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(first)), await download.Sha256Async(Ct));
+
+        // A new version (a panel update brings a new setup): hashed again.
+        byte[] next = [0x4D, 0x5A, .. RandomNumberGenerator.GetBytes(8192)];
+        await File.WriteAllBytesAsync(path, next, Ct);
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(next)), await download.Sha256Async(Ct));
+
+        File.Delete(path);
+        Assert.Null(await download.Sha256Async(Ct));
+    }
+
+    [Fact]
     public void TheFolderIsDownloadsNextToThePanelUnlessSet()
     {
         Assert.Equal(Path.Combine(AppContext.BaseDirectory, "downloads", "PulsarAgentSetup.exe"),

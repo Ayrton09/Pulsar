@@ -93,14 +93,20 @@ public sealed record NodeDetails(NodeSummary Node, IReadOnlyList<NodeCredentialV
 /// them (Phase 18, <see cref="Contracts.NodeCode"/>): as secret as the token. Null when an agent could not use that address
 /// (plain HTTP other than on the panel's machine).
 /// </param>
-/// <param name="AgentSetupAvailable">The panel serves <c>PulsarAgentSetup.exe</c> at <c>/downloads/PulsarAgentSetup.exe</c>.</param>
-public sealed record EnrollmentInstructions(string Token, DateTimeOffset ExpiresAt, string PanelKeyFingerprint, string? NodeCode, bool AgentSetupAvailable)
+/// <param name="AgentSetupSha256">
+/// The lowercase hex SHA-256 of the <c>PulsarAgentSetup.exe</c> the panel serves at <c>/downloads/PulsarAgentSetup.exe</c>,
+/// shown next to the download so whoever fetches it can compare (docs/architecture/08, T37); null when it serves none.
+/// </param>
+public sealed record EnrollmentInstructions(string Token, DateTimeOffset ExpiresAt, string PanelKeyFingerprint, string? NodeCode, string? AgentSetupSha256)
 {
+    /// <summary>The panel serves <c>PulsarAgentSetup.exe</c> at <c>/downloads/PulsarAgentSetup.exe</c>.</summary>
+    public bool AgentSetupAvailable => AgentSetupSha256 is not null;
+
     // The token, and the code that carries it, are secrets: they must never reach a log through ToString.
     private bool PrintMembers(System.Text.StringBuilder builder)
     {
         builder.Append(System.Globalization.CultureInfo.InvariantCulture,
-            $"Token = ***, ExpiresAt = {ExpiresAt}, PanelKeyFingerprint = {PanelKeyFingerprint}, NodeCode = {(NodeCode is null ? "null" : "***")}, AgentSetupAvailable = {AgentSetupAvailable}");
+            $"Token = ***, ExpiresAt = {ExpiresAt}, PanelKeyFingerprint = {PanelKeyFingerprint}, NodeCode = {(NodeCode is null ? "null" : "***")}, AgentSetupAvailable = {AgentSetupAvailable}, AgentSetupSha256 = {AgentSetupSha256 ?? "null"}");
         return true;
     }
 }
@@ -400,7 +406,7 @@ public sealed class NodeManagement(
             .WithNode(node.Id).WithTarget("node", node.Id.ToString());
         var panelKey = (await keys.GetPublicKeysAsync(cancellationToken))[0];
         var code = setup.RequestAddress is { } address ? NodeCode.Create(address.Url, plain, panelKey.KeyId, address.CertificateSha256) : null;
-        return new EnrollmentInstructions(plain, token.ExpiresAt, panelKey.KeyId, code, setup.AgentSetupAvailable);
+        return new EnrollmentInstructions(plain, token.ExpiresAt, panelKey.KeyId, code, await setup.AgentSetupSha256Async(cancellationToken));
     }
 
     /// <summary>

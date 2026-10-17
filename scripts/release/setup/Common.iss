@@ -66,7 +66,9 @@ DisableWelcomePage=no
 AllowCancelDuringInstall=no
 CloseApplications=no
 RestartIfNeededByRun=no
-SetupMutex=PulsarSetup,Global\PulsarSetup
+; This session's only: a Global\ name could be taken first by any account on the PC, which would keep every setup from
+; running (the ZIP's Install-Pulsar.ps1 still would). Install-Pulsar.ps1 refuses to install over what is there.
+SetupMutex=PulsarSetup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern dynamic
@@ -151,8 +153,8 @@ en.OutcomeOffline=A download, or the panel at the node code's address, could not
 es.OutcomeOffline=No se pudo llegar a una descarga, o al panel en la dirección del código del nodo. Revisá la conexión a internet de esta PC (y que el panel esté funcionando en esa dirección) y volvé a ejecutar el instalador. Sin internet, mirá "Offline installs" en la guía de instalación.
 en.OutcomeUntrusted=A download failed its checks (signature, hash or version), so it was not run.
 es.OutcomeUntrusted=Una descarga no pasó sus comprobaciones (firma, hash o versión), así que no se ejecutó.
-en.OutcomeCertificate=The certificate the panel presents is not the one the node code names, or it may not be trusted. Check that the address leads to your panel, and create a new code in Nodes > Add node.
-es.OutcomeCertificate=El certificado que presenta el panel no es el que nombra el código del nodo, o no se puede confiar en él. Comprobá que la dirección lleve a tu panel y creá un código nuevo en Nodos > Agregar nodo.
+en.OutcomeCertificate=The certificate the panel presents is not the one the node code names (another machine, or a proxy in front of the panel that serves its own), or it may not be pinned. Check that the address leads to your panel, and create a new code in Nodes > Add node, opened at the address nodes use.
+es.OutcomeCertificate=El certificado que presenta el panel no es el que nombra el código del nodo (otra máquina, o un proxy delante del panel que sirve el suyo), o no se puede fijar. Comprobá que la dirección lleve a tu panel y creá un código nuevo en Nodos > Agregar nodo, abierto desde la dirección que usan los nodos.
 en.OutcomeUnknown=The installer ended unexpectedly (exit code %1).
 es.OutcomeUnknown=El instalador terminó de forma inesperada (código de salida %1).
 en.OutcomeNotStarted=Windows PowerShell could not be started: %1
@@ -171,8 +173,8 @@ en.FinishedRestart=Restart Windows when you can: a .NET installer asks for it to
 es.FinishedRestart=Reiniciá Windows cuando puedas: un instalador de .NET lo pide para terminar. Mientras tanto Pulsar funciona.
 en.FinishedLog=The installer's log: %1
 es.FinishedLog=El log del instalador: %1
-en.OpenSignInPage=Open the panel's sign-in page
-es.OpenSignInPage=Abrir la página de inicio de sesión del panel
+en.FinishedAddress=The panel's sign-in page (select it and copy it with Ctrl+C, then open it in your browser):
+es.FinishedAddress=La página de inicio de sesión del panel (seleccionala y copiala con Ctrl+C, y después abrila en tu navegador):
 en.NewerInstalled=Pulsar %1 is installed on this PC, which is newer than this setup's version (%2). A setup cannot go back to an older version.
 es.NewerInstalled=En esta PC está instalado Pulsar %1, más nuevo que la versión de este instalador (%2). Un instalador no puede volver a una versión anterior.
 en.WrongFolder=This setup installs into %1 only.
@@ -194,10 +196,9 @@ Type: files; Name: "{app}\payload\release.json"
 Type: dirifempty; Name: "{app}\payload"
 Type: dirifempty; Name: "{commonpf64}\Pulsar"
 
-[Run]
-; Opens the panel's sign-in page in the browser of the user who started the setup (not as administrator). The address
-; is the PULSAR-PANEL-URL line, taken only as https://localhost:<port>/.
-Filename: "{code:GetPanelUrl}"; Description: "{cm:OpenSignInPage}"; Flags: postinstall shellexec runasoriginaluser nowait skipifsilent; Check: HasPanelUrl
+; No [Run] entry opens the panel: started elevated (by an administrator's own elevated prompt, a deployment tool),
+; runasoriginaluser has no other user to run as, and the browser would run as administrator. The Finished page shows
+; the address to copy instead (ShowFinishedText).
 
 [Code]
 const
@@ -436,16 +437,39 @@ begin
     end;
 end;
 
-// A newer Pulsar installed by a setup ($Installed): its database may have changes an older panel cannot read.
+// A program of a newer Pulsar installed here ($Path: Pulsar.Api.exe or PulsarAgent.exe, by its file version, whoever
+// installed it: a setup, the ZIP's script, or by hand), as $Installed.
+function NewerProgramInstalled(const Path: String; const Current: Int64; var Installed: String): Boolean;
+var
+  Version: Int64;
+begin
+  Result := False;
+  if not FileExists(Path) or not GetPackedVersion(Path, Version) then
+    Exit;
+  if ComparePackedVersion(Version, Current) > 0 then begin
+    if not GetVersionNumbersString(Path, Installed) then
+      Installed := Path;
+    Result := True;
+  end;
+end;
+
+// A newer Pulsar installed here ($Installed): its database may have changes an older panel cannot read, and an older
+// agent may not speak its panel's protocol. The version a setup recorded, and the installed programs' own versions
+// (Install-Pulsar.ps1 -Update refuses an older release too).
 function NewerVersionInstalled(var Installed: String): Boolean;
 var
   Previous, Current: Int64;
 begin
   Result := False;
-  if not RegQueryStringValue(HKLM64, UninstallKey + '\{{#AppGuid}}_is1', 'DisplayVersion', Installed) then
+  if not StrToVersion('{#NumericVersion}', Current) then
     Exit;
-  if StrToVersion(NumericVersion(Installed), Previous) and StrToVersion('{#NumericVersion}', Current) then
-    Result := ComparePackedVersion(Previous, Current) > 0;
+  if RegQueryStringValue(HKLM64, UninstallKey + '\{{#AppGuid}}_is1', 'DisplayVersion', Installed) then
+    if StrToVersion(NumericVersion(Installed), Previous) and (ComparePackedVersion(Previous, Current) > 0) then begin
+      Result := True;
+      Exit;
+    end;
+  Result := NewerProgramInstalled(ExpandConstant('{commonpf64}\Pulsar\Panel\Pulsar.Api.exe'), Current, Installed) or
+    NewerProgramInstalled(ExpandConstant('{commonpf64}\Pulsar\Agent\PulsarAgent.exe'), Current, Installed);
 end;
 
 // The installers given for an offline install (docs/guides/install.md, "Offline installs"), passed on to the script.
@@ -689,10 +713,17 @@ begin
   Abort;
 end;
 
-// The Finished page: what was done ($Done) and the log, or why it is not fully installed.
+function HasPanelUrl: Boolean;
+begin
+  Result := (RunPanelUrl <> '') and not RunKept;
+end;
+
+// The Finished page: what was done ($Done) and the log, or why it is not fully installed; and the panel's sign-in page
+// (PULSAR-PANEL-URL, only ever https://localhost:<port>/) in a read-only box to copy, never opened from here.
 procedure ShowFinishedText(const Done: String);
 var
   Text: String;
+  Address: TNewEdit;
 begin
   if RunKept then begin
     WizardForm.FinishedHeadingLabel.Caption := CustomMessage('FinishedFailedHeading');
@@ -704,20 +735,20 @@ begin
       Text := Text + Paragraph + CustomMessage('FinishedRestart');
     if RunLogPath <> '' then
       Text := Text + Paragraph + FmtMessage(CustomMessage('FinishedLog'), [RunLogPath]);
+    if HasPanelUrl then
+      Text := Text + Paragraph + CustomMessage('FinishedAddress');
   end;
   WizardForm.FinishedLabel.Caption := Text;
   WizardForm.AdjustLabelHeight(WizardForm.FinishedLabel);
-  WizardForm.RunList.Top := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height + ScaleY(12);
-end;
-
-function GetPanelUrl(Param: String): String;
-begin
-  Result := RunPanelUrl;
-end;
-
-function HasPanelUrl: Boolean;
-begin
-  Result := (RunPanelUrl <> '') and not RunKept;
+  if HasPanelUrl then begin
+    Address := TNewEdit.Create(WizardForm);
+    Address.Parent := WizardForm.FinishedPage;
+    Address.ReadOnly := True;
+    Address.Left := WizardForm.FinishedLabel.Left;
+    Address.Width := WizardForm.FinishedLabel.Width;
+    Address.Top := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height + ScaleY(8);
+    Address.Text := RunPanelUrl;
+  end;
 end;
 
 function NeedRestart: Boolean;

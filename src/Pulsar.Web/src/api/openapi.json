@@ -12912,7 +12912,7 @@
           "expiresAt",
           "panelKeyFingerprint",
           "nodeCode",
-          "agentSetupAvailable"
+          "agentSetupSha256"
         ],
         "type": "object",
         "properties": {
@@ -12927,6 +12927,12 @@
             "type": "string"
           },
           "nodeCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "agentSetupSha256": {
             "type": [
               "null",
               "string"

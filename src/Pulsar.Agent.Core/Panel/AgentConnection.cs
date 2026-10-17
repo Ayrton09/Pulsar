@@ -720,7 +720,7 @@ public sealed partial class AgentConnection(
                 }
 
                 // The WebSocket goes through the transport's handler: the panel's certificate is checked as for its requests.
-                o.WebSocketFactory = (context, ct) => transport.ConnectHubAsync(context.Uri, token.AccessToken, certificate, ct);
+                o.WebSocketFactory = (context, ct) => transport.ConnectHubAsync(context.Uri, token.AccessToken, certificate, config.PanelCertificate, ct);
                 transport.ConfigureHub(o);
             })
             .AddJsonProtocol(o => ProtocolJson.Configure(o.PayloadSerializerOptions));
@@ -757,7 +757,7 @@ public sealed partial class AgentConnection(
             LogConnected(grant.SessionId, verifier.PanelClockOffset);
             // Consoles browsers were already watching: their output resumes where the panel's copy ends.
             servers?.SubscribeConsoles(hello.ConsoleSubscriptions ?? []);
-            await _channel.AttachAsync(connection, new PanelHttp(transport, panel, token.AccessToken, certificate), deadline.Token);
+            await _channel.AttachAsync(connection, new PanelHttp(transport, panel, token.AccessToken, certificate, config.PanelCertificate), deadline.Token);
             var previousCertificate = _sessionCertificate;
             _sessionPanel = panel;
             _sessionCertificate = certificate;

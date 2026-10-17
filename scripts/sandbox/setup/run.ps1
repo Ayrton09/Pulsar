@@ -141,9 +141,9 @@ try {
     if ($Wizard) {
         Remove-Item Env:PULSAR_ADMIN_PASSWORD
         Add-Type -AssemblyName System.Windows.Forms
-        $null = [Windows.Forms.MessageBox]::Show("The setup wizard opens next. Keep the defaults (the panel and this PC as a node) and use this administrator password:`n`n$adminPassword`n`nAt the end, check that the browser opens the panel's sign-in page, then close the browser.", 'Pulsar setup check')
+        $null = [Windows.Forms.MessageBox]::Show("The setup wizard opens next. Keep the defaults (the panel and this PC as a node) and use this administrator password:`n`n$adminPassword`n`nAt the end, check that the Finished page shows https://localhost:8443/ to copy and opens no browser itself, open that address in the browser, then close the browser.", 'Pulsar setup check')
         $code = Invoke-Setup $Setup "/LOG=`"$report\setup.log`"$offlineArguments"
-        Add-Content $summary 'INFO wizard: whether it ended in the browser at the sign-in page is for the person who ran it to say'
+        Add-Content $summary 'INFO wizard: whether the Finished page showed the sign-in page to copy is for the person who ran it to say'
     }
     else {
         $code = Invoke-Setup $Setup "$silent /LOG=`"$report\setup.log`" /MODE=AllInOne$offlineArguments"

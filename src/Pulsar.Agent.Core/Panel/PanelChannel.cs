@@ -104,7 +104,7 @@ public sealed class PanelChannel
             return null;
         }
 
-        var client = new HttpClient(http.Transport.CreateHttpHandler(http.Certificate), disposeHandler: true)
+        var client = new HttpClient(http.Transport.CreateHttpHandler(http.Certificate, http.PanelCertificate), disposeHandler: true)
         {
             BaseAddress = http.Panel,
             Timeout = Timeout.InfiniteTimeSpan,
@@ -156,7 +156,7 @@ public sealed class PanelChannel
 }
 
 /// <summary>How to reach the panel over HTTP within a session.</summary>
-internal sealed record PanelHttp(PanelTransport Transport, Uri Panel, string AccessToken, X509Certificate2? Certificate = null)
+internal sealed record PanelHttp(PanelTransport Transport, Uri Panel, string AccessToken, X509Certificate2? Certificate, string? PanelCertificate)
 {
     // Holds the session token: never print it.
     public override string ToString() => $"PanelHttp {{ Panel = {Panel} }}";

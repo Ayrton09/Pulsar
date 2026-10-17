@@ -36,7 +36,7 @@ internal static class AgentCommands
             Usage:
               PulsarAgent enroll --panel <url> --token <token> --panel-key <fingerprint>
                                  [--servers-root <dir>] [--backups-root <dir>] [--no-service] [--dev] [--data-dir <dir>]
-                                 [--log-file <file>]
+                                 [--log-file <file>] [--panel-certificate <sha256>]
                   Pairs this machine with a panel (copy the command the panel shows), then installs and
                   starts the PulsarAgent service. Run it from an elevated prompt. To keep the token out of
                   the process list, pass --token - and paste it, or set {TokenVariable} instead. A reusable
@@ -64,13 +64,18 @@ internal static class AgentCommands
               --backups-root
                            Where backups go (default: the backups folder of the state directory); only
                            SYSTEM and Administrators can open it.
+              --panel-certificate
+                           The SHA-256 (64 lowercase hexadecimal digits) of the panel's own TLS certificate,
+                           as a node code carries it: the agent accepts that certificate and no other,
+                           without this machine trusting it (its stores are not changed). Left out, this
+                           machine's trusted roots decide.
             """);
         return 0;
     }
 
     public static async Task<int> EnrollAsync(CommandLine line)
     {
-        line.Allow("panel", "token", "panel-key", "servers-root", "backups-root", "no-service", "dev", "data-dir", "log-file");
+        line.Allow("panel", "token", "panel-key", "servers-root", "backups-root", "no-service", "dev", "data-dir", "log-file", "panel-certificate");
         return await LoggedAsync(line, "enroll", () => EnrollCoreAsync(line));
     }
 
@@ -85,7 +90,13 @@ internal static class AgentCommands
 
         var request = new EnrollmentRequest(line.Required("panel"),
             EnrollmentToken(line, Environment.GetEnvironmentVariable(TokenVariable), Console.In), line.Required("panel-key"),
-            DirectoryOption(line, "servers-root"), development, DirectoryOption(line, "backups-root"));
+            DirectoryOption(line, "servers-root"), development, DirectoryOption(line, "backups-root"), line.Value("panel-certificate"));
+        if (request.PanelCertificate is { } pin && !NodeCode.IsCertificateHash(pin))
+        {
+            await Console.Error.WriteLineAsync("--panel-certificate must be the SHA-256 of the panel's certificate in 64 lowercase hexadecimal digits, as the node code carries it.");
+            return 1;
+        }
+
         if (!development && !WindowsDirectorySecurity.IsElevated())
         {
             await Console.Error.WriteLineAsync("Enrollment creates a machine key and a protected state directory: run it from an elevated prompt (Run as administrator).");
@@ -155,6 +166,7 @@ internal static class AgentCommands
                 Enrolled with {PanelAddress.Origin(config.Panel)} as node {config.NodeId}.
                   Node key:   {ProtocolCrypto.Fingerprint(key.PublicKey)} ({Storage(config.Key.Storage)})
                   Panel key:  {request.PanelKeyFingerprint} (pinned)
+                  Panel TLS:  {(config.PanelCertificate is { } pinned ? $"certificate SHA-256 {pinned} (pinned)" : "this machine's trusted roots")}
                   State:      {paths.Root}
                 """);
         }
@@ -303,6 +315,7 @@ internal static class AgentCommands
               Node key:   {fingerprint} ({Storage(config.Key.Storage)}{(config.Development ? ", development" : string.Empty)})
               Key age:    {(DateTimeOffset.UtcNow - config.CurrentKeyCreatedAt).Days} days (replaced automatically after {new AgentConnectionOptions().KeyRotationInterval.Days}){(config.PendingRotation is null ? string.Empty : "; a rotation is pending: the agent completes it when it next connects")}
               Panel keys: {string.Join(", ", config.PanelKeys.Select(k => k.KeyId))}
+              Panel TLS:  {(config.PanelCertificate is { } pinned ? $"certificate SHA-256 {pinned} (pinned)" : "this machine's trusted roots")}
               Servers:    {config.ServersRoot ?? "(not set)"}
               Backups:    {config.BackupsRootOrDefault(paths)}
               State:      {paths.Root}

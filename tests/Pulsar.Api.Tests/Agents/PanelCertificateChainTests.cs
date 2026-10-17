@@ -96,7 +96,7 @@ public sealed class PanelCertificateChainTests : IAsyncDisposable
         var transport = new ObservingTransport();
 
         await Assert.ThrowsAnyAsync<Exception>(async () =>
-            (await transport.ConnectHubAsync(new Uri($"wss://localhost:{panel.Port}/agent/v1/hub"), "token", null, Ct)).Dispose());
+            (await transport.ConnectHubAsync(new Uri($"wss://localhost:{panel.Port}/agent/v1/hub"), "token", null, null, Ct)).Dispose());
 
         var chain = Assert.Single(transport.Chains);
         Assert.Equal([_leaf.Thumbprint], chain.Elements);

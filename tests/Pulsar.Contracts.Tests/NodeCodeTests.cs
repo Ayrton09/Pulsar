@@ -27,6 +27,20 @@ public sealed class NodeCodeTests
     }
 
     [Fact]
+    public void TheCertificateACodeCarriesIsAPinTheAgentTakes()
+    {
+        // The setup passes the code's hash to PulsarAgent enroll --panel-certificate, which takes only that form.
+        Assert.True(NodeCode.TryParse(NodeCode.Create(Url, s_token, s_key, s_cert), out var code));
+        Assert.True(NodeCode.IsCertificateHash(code.CertificateSha256));
+        Assert.Equal(s_cert, code.CertificateSha256);
+        Assert.False(NodeCode.IsCertificateHash(null));
+        Assert.False(NodeCode.IsCertificateHash(s_cert.ToUpperInvariant()));
+        Assert.False(NodeCode.IsCertificateHash(s_cert[1..]));
+        Assert.False(NodeCode.IsCertificateHash(s_cert + "0"));
+        Assert.False(NodeCode.IsCertificateHash(s_cert[..63] + "g"));
+    }
+
+    [Fact]
     public void ACodeReadsBackAsItWasMade()
     {
         Assert.True(NodeCode.TryParse(NodeCode.Create(Url, s_token, s_key, s_cert), out var parsed));

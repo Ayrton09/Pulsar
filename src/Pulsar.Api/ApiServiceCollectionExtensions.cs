@@ -213,6 +213,12 @@ internal static class ApiServiceCollectionExtensions
     private static void AddRateLimiting(IServiceCollection services, IConfiguration configuration)
     {
         var limits = configuration.GetSection(AuthRateLimitOptions.SectionName).Get<AuthRateLimitOptions>() ?? new AuthRateLimitOptions();
+        var downloads = configuration.GetSection(DownloadsOptions.SectionName).Get<DownloadsOptions>() ?? new DownloadsOptions();
+        if (downloads.ConcurrentPerAddress < 1 || downloads.PerAddressPerHour < 1)
+        {
+            throw new InvalidOperationException($"{DownloadsOptions.SectionName}:ConcurrentPerAddress and PerAddressPerHour must be at least 1.");
+        }
+
         services.AddRateLimiter(options =>
         {
             options.AddPolicy(AuthEndpoints.RateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
@@ -224,6 +230,9 @@ internal static class ApiServiceCollectionExtensions
             options.AddPolicy(AgentEndpoints.AuthRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
                 ClientAddress.PartitionOf(context.Connection.RemoteIpAddress),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            // The agent's setup, anonymous and a whole program each time: so many at once and an hour per address.
+            options.AddPolicy(DownloadEndpoints.RateLimitPolicy, context => RateLimitPartition.Get(
+                ClientAddress.PartitionOf(context.Connection.RemoteIpAddress), _ => DownloadEndpoints.CreateLimiter(downloads)));
             // Each API key has its own budget (a script in a loop must not slow the panel down), keys that do not work
             // share their client's; browsers have none. Refused requests count too (ApiKeyRateLimit).
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>

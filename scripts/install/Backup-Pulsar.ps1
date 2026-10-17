@@ -168,12 +168,30 @@ $config = Join-Path $InstallRoot 'Panel\appsettings.Production.json'
 $panelData = Join-Path $DataRoot 'Panel'
 if (-not (Test-Path $config)) { throw "The panel is not installed here ($config not found)." }
 
+# pg_dump runs as administrator here (as SYSTEM in the nightly task): one that other accounts could change, or that
+# sits in a folder they could add files to, would run their code as it. Refused, as Install-Pulsar.ps1 refuses such a
+# psql.exe, before it is run at all (its --version too).
+function Assert-TrustedPgDump([string] $bin) {
+    $pgDump = Join-Path $bin 'pg_dump.exe'
+    $findings = @(Find-UntrustedWriters $pgDump)
+    if ($findings.Count -gt 0) {
+        $shown = @($findings | Select-Object -First 10)
+        throw "This script runs PostgreSQL's pg_dump.exe as administrator (a nightly task runs it as SYSTEM), and $pgDump could be changed by other accounts:$([Environment]::NewLine)  $($shown -join "$([Environment]::NewLine)  ")$([Environment]::NewLine)Install PostgreSQL in a folder only administrators can change (its installer's default, in Program Files), or pass -PostgresBin with such a folder. Nothing was backed up."
+    }
+}
+
 # pg_dump must be as new as the server: the newest PostgreSQL installed here.
-if (-not $PostgresBin) {
+if ($PostgresBin) {
+    if (-not (Test-Path -LiteralPath (Join-Path $PostgresBin 'pg_dump.exe') -PathType Leaf)) { throw "$PostgresBin has no pg_dump.exe. Nothing was backed up." }
+    Assert-TrustedPgDump $PostgresBin
+}
+else {
     $newest = 0
     foreach ($service in Get-CimInstance Win32_Service -Filter "Name LIKE 'postgresql%'") {
         if ($service.PathName -match '^"?([^"]+\\bin)\\pg_ctl\.exe') {
             $bin = $Matches[1]
+            if (-not (Test-Path -LiteralPath (Join-Path $bin 'pg_dump.exe') -PathType Leaf)) { continue }
+            Assert-TrustedPgDump $bin
             $version = (& (Join-Path $bin 'pg_dump.exe') --version) -join ' '
             if ($version -match '(\d+)\.\d+' -and [int]$Matches[1] -gt $newest) {
                 $newest = [int]$Matches[1]

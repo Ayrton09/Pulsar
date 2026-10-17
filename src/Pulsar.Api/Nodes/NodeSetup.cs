@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
@@ -20,6 +22,15 @@ public sealed class DownloadsOptions
     /// relative path is taken from there too). Only that one file name is ever served from it.
     /// </summary>
     public string? Path { get; set; }
+
+    /// <summary>
+    /// How many downloads one client address (an IPv6 /64, the loopback as one) may have running at once: the route is
+    /// anonymous, and each download is the whole setup.
+    /// </summary>
+    public int ConcurrentPerAddress { get; set; } = 4;
+
+    /// <summary>How many downloads one client address may start in an hour (more answer 429 until the hour ends).</summary>
+    public int PerAddressPerHour { get; set; } = 60;
 }
 
 /// <summary>
@@ -37,6 +48,9 @@ internal sealed class AgentSetupDownload(IOptions<DownloadsOptions> options)
 
     /// <summary>The file is there (a folder of that name is not).</summary>
     public bool Exists => File.Exists(FilePath);
+
+    // The hash of the version of the file last read (its time and size), computed once for it.
+    private HashedSetup? _hashed;
 
     /// <summary>The file to send, or null when it is not there or cannot be read now.</summary>
     public FileStream? Open()
@@ -56,6 +70,39 @@ internal sealed class AgentSetupDownload(IOptions<DownloadsOptions> options)
             return null;
         }
     }
+
+    /// <summary>
+    /// The file's SHA-256 (lowercase hex), shown in Add node for whoever downloads it to compare (docs/architecture/08,
+    /// T37): read once for each version of the file (its time and size, from the handle it is read through, which keeps
+    /// it from being written meanwhile), or null when it is not there or cannot be read now.
+    /// </summary>
+    public async ValueTask<string?> Sha256Async(CancellationToken cancellationToken)
+    {
+        await using var file = Open();
+        if (file is null)
+        {
+            return null;
+        }
+
+        var version = (File.GetLastWriteTimeUtc(file.SafeFileHandle), file.Length);
+        if (Volatile.Read(ref _hashed) is { } hashed && hashed.Version == version)
+        {
+            return hashed.Sha256;
+        }
+
+        try
+        {
+            var sha256 = Convert.ToHexStringLower(await SHA256.HashDataAsync(file, cancellationToken));
+            Volatile.Write(ref _hashed, new HashedSetup(version, sha256));
+            return sha256;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    private sealed record HashedSetup((DateTime LastWrite, long Length) Version, string Sha256);
 }
 
 /// <summary>
@@ -81,7 +128,7 @@ internal sealed class HttpNodeSetup(IHttpContextAccessor accessor, AgentSetupDow
 
     public PanelAddress? RequestAddress => accessor.HttpContext is { } http ? AddressOf(http) : null;
 
-    public bool AgentSetupAvailable => download.Exists;
+    public ValueTask<string?> AgentSetupSha256Async(CancellationToken cancellationToken) => download.Sha256Async(cancellationToken);
 
     /// <summary>
     /// The origin <paramref name="http"/> reached the panel by, exactly as agents check it (<see cref="AgentEndpoints.PanelOrigin"/>),
@@ -134,7 +181,23 @@ internal static class DownloadEndpoints
                     lastModified: File.GetLastWriteTimeUtc(file.SafeFileHandle));
             })
             .AllowAnonymous()
+            .RequireRateLimiting(RateLimitPolicy)
             .ExcludeFromDescription();
         return app;
+    }
+
+    /// <summary>The rate limit policy of the download route (<see cref="CreateLimiter"/>, one per client address).</summary>
+    public const string RateLimitPolicy = "downloads";
+
+    /// <summary>
+    /// One client address's budget for the anonymous download (<see cref="DownloadsOptions"/>): so many at once, held for
+    /// as long as the file is being sent, and so many an hour. Whatever is over either answers 429 at once.
+    /// </summary>
+    public static RateLimiter CreateLimiter(DownloadsOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return RateLimiter.CreateChained(
+            new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = options.ConcurrentPerAddress, QueueLimit = 0 }),
+            new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions { PermitLimit = options.PerAddressPerHour, Window = TimeSpan.FromHours(1), QueueLimit = 0 }));
     }
 }

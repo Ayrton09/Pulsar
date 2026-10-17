@@ -52,13 +52,21 @@ export function EnrollmentCommand({ instructions }: { instructions: EnrollmentIn
             </h3>
             <p className="text-sm">{t('nodes.enroll.setupSteps')}</p>
             {instructions.agentSetupAvailable ? (
-              <a
-                href={agentSetupPath}
-                download
-                className="inline-flex h-8 items-center rounded-md border border-border bg-surface px-3 text-sm font-medium hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                {t('nodes.enroll.download')}
-              </a>
+              <>
+                <a
+                  href={agentSetupPath}
+                  download
+                  className="inline-flex h-8 items-center rounded-md border border-border bg-surface px-3 text-sm font-medium hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                >
+                  {t('nodes.enroll.download')}
+                </a>
+                {instructions.agentSetupSha256 && (
+                  <>
+                    <CopyBlock label={t('nodes.enroll.setupHash')} text={instructions.agentSetupSha256} />
+                    <p className="text-xs text-muted">{t('nodes.enroll.setupHashHelp')}</p>
+                  </>
+                )}
+              </>
             ) : (
               <p className="text-xs text-muted">{t('nodes.enroll.noSetup')}</p>
             )}

@@ -39,6 +39,7 @@ public sealed class NodeCodeApiTests(NodeCodeApiTests.Panel factory) : IClassFix
         // The test server has no TLS of its own to tell: the setup then needs a certificate the machine already trusts.
         Assert.Null(code.CertificateSha256);
         Assert.False(enrollment.AgentSetupAvailable);
+        Assert.Null(enrollment.AgentSetupSha256);
 
         // What the code carries enrolls the machine, as the command does.
         await using var agent = new TestAgent(factory);
@@ -58,6 +59,8 @@ public sealed class NodeCodeApiTests(NodeCodeApiTests.Panel factory) : IClassFix
             var reissued = await NewEnrollmentAsync(admin, created.Node.Id);
 
             Assert.True(reissued.AgentSetupAvailable);
+            // For whoever downloads it to compare (docs/architecture/08, T37).
+            Assert.Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData([0x4D, 0x5A])), reissued.AgentSetupSha256);
             Assert.True(NodeCode.TryParse(reissued.NodeCode, out var code));
             Assert.Equal(reissued.Token, code.Token);
             Assert.NotEqual(created.Enrollment.Token, code.Token);
@@ -222,7 +225,7 @@ public sealed class PanelAddressTests
     [Fact]
     public void TheInstructionsNeverPrintTheirSecrets()
     {
-        var printed = new EnrollmentInstructions("one-time-token", DateTimeOffset.UnixEpoch, "sha256:panel-key", "pulsar-node-1.the-code", true).ToString();
+        var printed = new EnrollmentInstructions("one-time-token", DateTimeOffset.UnixEpoch, "sha256:panel-key", "pulsar-node-1.the-code", "ab12").ToString();
 
         Assert.DoesNotContain("one-time-token", printed, StringComparison.Ordinal);
         Assert.DoesNotContain("the-code", printed, StringComparison.Ordinal);

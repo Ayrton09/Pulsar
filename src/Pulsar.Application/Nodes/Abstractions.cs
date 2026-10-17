@@ -44,8 +44,11 @@ public interface INodeSetup
     /// </summary>
     PanelAddress? RequestAddress { get; }
 
-    /// <summary>Whether the panel serves the agent's setup (<c>PulsarAgentSetup.exe</c>) for download.</summary>
-    bool AgentSetupAvailable { get; }
+    /// <summary>
+    /// The lowercase hex SHA-256 of the agent's setup (<c>PulsarAgentSetup.exe</c>) the panel serves for download, or null
+    /// when it serves none.
+    /// </summary>
+    ValueTask<string?> AgentSetupSha256Async(CancellationToken cancellationToken);
 }
 
 /// <summary>Live state of a connected agent (memory only, rebuilt from every Hello).</summary>

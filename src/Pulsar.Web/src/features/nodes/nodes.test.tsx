@@ -181,6 +181,7 @@ describe('nodes page', () => {
               panelKeyFingerprint: 'sha256:panel-key',
               // A panel reached by an address agents cannot use gives no code: the command is the only way.
               nodeCode: null,
+              agentSetupSha256: null,
               agentSetupAvailable: false,
             },
           },
@@ -206,6 +207,7 @@ describe('nodes page', () => {
 
   it('offers the node code for PulsarAgentSetup.exe first, and the command as the advanced path', async () => {
     const code = 'pulsar-node-1.eyJ1cmwiOiJodHRwczovL3BhbmVsLmV4YW1wbGUuY29tIn0';
+    const setupHash = '9f2b5c'.padEnd(64, '0');
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
       'GET /api/v1/nodes': () => json([]),
@@ -218,6 +220,7 @@ describe('nodes page', () => {
               expiresAt: '2026-10-01T12:30:00Z',
               panelKeyFingerprint: 'sha256:panel-key',
               nodeCode: code,
+              agentSetupSha256: setupHash,
               agentSetupAvailable: true,
             },
           },
@@ -238,6 +241,9 @@ describe('nodes page', () => {
     const download = within(setup).getByRole('link', { name: 'Download PulsarAgentSetup.exe' });
     expect(download).toHaveAttribute('href', '/downloads/PulsarAgentSetup.exe');
     expect(download).toHaveAttribute('download');
+    // Its SHA-256, for whoever downloads it to compare.
+    expect(within(setup).getByLabelText('SHA-256 of PulsarAgentSetup.exe')).toHaveTextContent(setupHash);
+    expect(within(setup).getByText(/Get-FileHash/)).toBeInTheDocument();
     expect(screen.getByText(/keep them secret/)).toBeInTheDocument();
 
     await user.click(within(setup).getByRole('button', { name: 'Copy Node code' }));
@@ -268,6 +274,7 @@ describe('nodes page', () => {
               expiresAt: '2026-10-01T12:30:00Z',
               panelKeyFingerprint: 'sha256:panel-key',
               nodeCode: 'pulsar-node-1.e30',
+              agentSetupSha256: null,
               agentSetupAvailable: false,
             },
           },

@@ -58,7 +58,11 @@ change its path to the one above and delete that folder: the old copy there does
 could have changed it (`Install-Pulsar.ps1 -Update` warns about such tasks).
 
 If PostgreSQL runs on another machine, pass the folder of PostgreSQL's programs (`pg_dump.exe`, from a PostgreSQL
-installation of the same or a later major version) with `-PostgresBin`.
+installation of the same or a later major version) with `-PostgresBin`. The script runs `pg_dump.exe` as administrator
+(as SYSTEM in the task), so it refuses one, `-PostgresBin`'s or a local service's, that anyone but SYSTEM,
+Administrators and TrustedInstaller could change, in a folder they could add files to or below one they could rename,
+before running it at all, as `Install-Pulsar.ps1` refuses such a `psql.exe`: keep PostgreSQL in Program Files (its
+installer's default).
 
 ## Backing up game servers
 

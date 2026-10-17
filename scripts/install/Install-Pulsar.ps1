@@ -47,7 +47,7 @@
 .EXAMPLE
     $env:PULSAR_NODE_CODE = '<the code the panel shows>'; .\Install-Pulsar.ps1 -Mode Agent
     Adds this machine as a node with the code from the panel's Add node dialog: the panel's certificate is checked
-    against the code and trusted, without copying it by hand.
+    against the code and pinned in the agent (not trusted by this machine), without copying it by hand.
 
 .EXAMPLE
     .\Install-Pulsar.ps1 -Mode Agent -PanelUrl https://panel.example.com:8443 -Token <token> -PanelKey <fingerprint> -TrustCertificate .\panel.cer
@@ -109,6 +109,7 @@ param(
     # --- Agent ---
     # The code the panel's Add node dialog shows (pulsar-node-1....): the panel's address, an enrollment token, the panel
     # key's fingerprint and the SHA-256 of the panel's certificate, instead of -Token, -PanelKey and -TrustCertificate.
+    # The agent pins that certificate (it accepts it and no other); no certificate store of this machine is changed.
     # Prefer PULSAR_NODE_CODE: a command line shows in the process list.
     [string] $NodeCode,
     # The panel's address (with -NodeCode: only when this machine reaches the panel at another address than the code's).
@@ -164,22 +165,37 @@ $Sc = Join-Path ([Environment]::SystemDirectory) 'sc.exe'
 # What this script downloads, and from where (docs/guides/install.md, "What the installer downloads"). Only over
 # HTTPS; nothing it cannot check runs.
 # - PostgreSQL: the newest release of this major version (never a newer major version on its own: that needs a data
-#   upgrade), from postgresql.org's list of versions; EDB's Windows installer, signed by EnterpriseDB.
+#   upgrade), from postgresql.org's list of versions, never older than the release's floor (release.json's
+#   postgresMinimum); EDB's Windows installer, signed by EnterpriseDB, of that version.
 $PostgresMajor = 18
 $PostgresVersionsUrl = 'https://www.postgresql.org/versions.json'
 $PostgresDownloadsUrl = 'https://get.enterprisedb.com/postgresql'
-$PostgresSigner = 'EnterpriseDB Corporation'
+# Who signs EDB's installers: its code-signing certificate's subject (country, state, locality and organization, each
+# exactly) and the authority that issues it (as read from EDB's signed programs of PostgreSQL 18; docs/guides/install.md
+# says what a release must confirm when EDB changes them).
+$PostgresSigner = @{
+    Subject = [ordered]@{ C = 'US'; S = 'Delaware'; L = 'Wilmington'; O = 'EnterpriseDB Corporation' }
+    Issuer = [ordered]@{ CN = 'DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1'; O = 'DigiCert, Inc.'; C = 'US' }
+    Roots = @()
+}
 # - .NET: the newest runtimes of this channel, from Microsoft's release metadata, which lists each installer's SHA-512;
 #   the installers are signed by Microsoft, and only Microsoft's download hosts are taken from the metadata.
 $DotNetChannel = '10.0'
 $DotNetReleasesUrl = 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json'
 $DotNetHosts = @('builds.dotnet.microsoft.com', 'download.visualstudio.microsoft.com')
-$DotNetSigner = 'Microsoft Corporation'
+# Who signs Microsoft's installers: the subject of its code-signing certificates, which chain up to one of Microsoft's
+# code-signing roots (Microsoft Root Certificate Authority 2011, which .NET's installers chain to, and 2010).
+$DotNetSigner = @{
+    Subject = [ordered]@{ C = 'US'; S = 'Washington'; L = 'Redmond'; O = 'Microsoft Corporation' }
+    Issuer = $null
+    Roots = @('8F43288AD272F3103B6FB1428485EA3014C0BCFE', '3B1EFD3A66EA28B16697394703A72CA340A05BD5')
+}
 # The shared frameworks Pulsar's programs may use, in the order they are installed, with the installer of each (its
-# component in releases.json and its file name there).
+# component in releases.json, its file name there, and the product name its version information gives, followed by
+# " - <version> (x64)").
 $DotNetFrameworks = [ordered]@{
-    'Microsoft.NETCore.App' = @{ Component = 'runtime'; File = 'dotnet-runtime' }
-    'Microsoft.AspNetCore.App' = @{ Component = 'aspnetcore-runtime'; File = 'aspnetcore-runtime' }
+    'Microsoft.NETCore.App' = @{ Component = 'runtime'; File = 'dotnet-runtime'; Product = 'Microsoft .NET Runtime' }
+    'Microsoft.AspNetCore.App' = @{ Component = 'aspnetcore-runtime'; File = 'aspnetcore-runtime'; Product = 'Microsoft ASP.NET Core Runtime' }
 }
 # The Extended Key Usage of a certificate for signing code (id-kp-codeSigning): an installer's signer must have it.
 $CodeSigning = '1.3.6.1.5.5.7.3.3'
@@ -519,6 +535,16 @@ function Invoke-NativeWithInput([string] $stdin, [string] $exe) {
     $ErrorActionPreference = 'Continue'
     $output = ($stdin | & $exe @args 2>&1 | ForEach-Object { "$_" }) -join [Environment]::NewLine
     return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+}
+
+# A read-only SecureString holding $text, built character by character: ConvertTo-SecureString -AsPlainText takes the
+# secret as a cmdlet's parameter, which PowerShell's module logging writes to the event log (this script's functions
+# belong to no module, and method calls are not logged).
+function ConvertTo-Secure([string] $text) {
+    $secure = New-Object Security.SecureString
+    foreach ($character in $text.ToCharArray()) { $secure.AppendChar($character) }
+    $secure.MakeReadOnly()
+    return $secure
 }
 
 function ConvertFrom-Secure([SecureString] $secure) {
@@ -871,14 +897,19 @@ function Find-PostgresInstallerUrl([string] $version) {
 # names (copied), or the newest build of the newest release of the plan's major version, downloaded. Either must be
 # signed by EnterpriseDB.
 function Get-PostgresInstallerFile($plan) {
+    $minimum = Read-PostgresMinimum (Get-ReleaseText)
     if ($PostgresInstaller) {
-        $file = Copy-SetupInstaller $PostgresInstaller
+        $named = Test-PostgresInstallerName (Split-Path -Leaf $PostgresInstaller)
+        $version = "$($named.Major).$($named.Minor)"
         $what = "The PostgreSQL installer $PostgresInstaller"
+        Assert-PostgresMinimum $version $minimum $what
+        $file = Copy-SetupInstaller $PostgresInstaller
     }
     else {
         try {
             Write-Step "Looking up the newest PostgreSQL $($plan.Major) ($PostgresVersionsUrl)"
             $version = Select-PostgresVersion (ConvertFrom-JsonDocument (Get-SetupText $PostgresVersionsUrl 1MB)) $plan.Major
+            Assert-PostgresMinimum $version $minimum "postgresql.org's newest release"
             $url = Find-PostgresInstallerUrl $version
             Write-Step "Downloading PostgreSQL $version from EDB ($url)"
             $file = Save-SetupDownload $url (Split-Path -Leaf ([Uri]$url).AbsolutePath) 1GB
@@ -891,6 +922,8 @@ function Get-PostgresInstallerFile($plan) {
         $what = "The PostgreSQL installer downloaded from $url"
     }
     Assert-InstallerSignature (Get-AuthenticodeSignature -LiteralPath $file) $PostgresSigner $what
+    # Signed for the release it was chosen for, not an older one of EDB's under the expected name.
+    Assert-InstallerVersion (Get-Item -LiteralPath $file).VersionInfo 'PostgreSQL' $version $what -contains
     return $file
 }
 
@@ -991,7 +1024,7 @@ function Install-PostgresServer([string] $installer, $plan) {
     catch {
         throw "PostgreSQL $($plan.Major) was installed, but setting it up failed: $($_.Exception.Message) $left"
     }
-    return ConvertTo-SecureString $password -AsPlainText -Force
+    return ConvertTo-Secure $password
 }
 
 function New-PanelDatabase {
@@ -1065,7 +1098,8 @@ function New-PanelCertificate {
             throw 'The self-signed certificate came out usable for more than a web server (its Extended Key Usage is not server authentication alone).'
         }
         $password = New-Secret 32
-        $null = Export-PfxCertificate -Cert $certificate -FilePath $pfx -Password (ConvertTo-SecureString $password -AsPlainText -Force)
+        Register-Secret $password
+        $null = Export-PfxCertificate -Cert $certificate -FilePath $pfx -Password (ConvertTo-Secure $password)
         $null = Export-Certificate -Cert $certificate -FilePath $cer
     }
     finally {
@@ -1113,7 +1147,8 @@ function New-KeyRingCertificate {
         -KeyExportPolicy Exportable -KeyAlgorithm RSA -KeyLength 3072 -KeyUsage KeyEncipherment, DataEncipherment `
         -NotAfter (Get-Date).AddYears(100)
     $password = New-Secret 32
-    $null = Export-PfxCertificate -Cert $certificate -FilePath $pfx -Password (ConvertTo-SecureString $password -AsPlainText -Force)
+    Register-Secret $password
+    $null = Export-PfxCertificate -Cert $certificate -FilePath $pfx -Password (ConvertTo-Secure $password)
     Remove-Item "Cert:\LocalMachine\My\$($certificate.Thumbprint)" -DeleteKey
     return @{ Path = $pfx; Password = $password }
 }
@@ -1293,6 +1328,30 @@ function Assert-TrustableCertificate([Security.Cryptography.X509Certificates.X50
     }
 }
 
+# Checks that the panel's certificate a node code names may be pinned in the agent (PulsarAgent enroll
+# --panel-certificate), which then accepts that certificate for the panel and nothing else, and changes no certificate
+# store: it must be a web server's own (Basic Constraints that say CA=false, server authentication alone) and name
+# $hostName, the address the agent uses. The names it lists besides do not matter: nothing on this machine trusts it.
+# No switch lets another through: -TrustCertificate is for those.
+function Assert-PinnableCertificate([Security.Cryptography.X509Certificates.X509Certificate2] $certificate, [string] $hostName) {
+    $label = "The panel's certificate"
+    $repeated = @($certificate.Extensions | Group-Object { $_.Oid.Value } | Where-Object Count -gt 1)
+    if ($repeated.Count -gt 0) { throw "$label is malformed: it has an extension more than once ($(($repeated | ForEach-Object Name) -join ', '))." }
+    if ((Get-CertificateAuthority $certificate) -ne $false) {
+        throw "$label does not say it cannot issue certificates (its Basic Constraints are missing or say CA=true): it is not a web server's own, and the node code is not used with it. The installer's own self-signed certificate says CA=false; make a new one like it, or trust the panel's with -TrustCertificate."
+    }
+    if (-not (Test-ServerAuthenticationOnly (Get-CertificateUses $certificate))) {
+        throw "$label may be used for more than a web server's identity (its Extended Key Usage is not server authentication, $ServerAuthentication, alone), and the node code is not used with it. Make a new one like the installer's own, or trust the panel's with -TrustCertificate."
+    }
+    $names = Get-CertificateNames $certificate
+    if (-not (Test-CertificateNames $names $hostName)) {
+        $listed = @(Get-ListedNames $names)
+        $listedText = 'no names in a Subject Alternative Name'
+        if ($listed.Count -gt 0) { $listedText = $listed -join ', ' }
+        throw "$label is not made for $hostName, the panel's address here (it lists $listedText), so the agent would refuse it. Use the address the certificate names (-PanelUrl), or make the panel's certificate for the address nodes use (-HostName when the panel is installed)."
+    }
+}
+
 # A certificate's names as they would be printed.
 function Get-ListedNames($names) {
     foreach ($name in $names.Dns) { ConvertTo-PrintableText $name }
@@ -1302,13 +1361,11 @@ function Get-ListedNames($names) {
 
 # Trusts a panel's certificate machine-wide (the agent runs as SYSTEM) for the panel at $hostName, marked so -Uninstall
 # removes it again. One that was already trusted is left unmarked: something else trusted it, and -Uninstall leaves it.
+# Only for -TrustCertificate and the all-in-one panel's own certificate: a node code never comes here (its certificate
+# is pinned in the agent, Assert-PinnableCertificate).
 function Add-TrustedCertificate([string] $cer, [string] $hostName, [string[]] $panelNames = @()) {
-    Add-TrustedCertificateObject (Read-Certificate $cer) $cer $hostName $panelNames
-}
-
-# Add-TrustedCertificate for a certificate already read ($label names it in messages): the one a node code pins.
-function Add-TrustedCertificateObject([Security.Cryptography.X509Certificates.X509Certificate2] $certificate, [string] $label, [string] $hostName, [string[]] $panelNames = @()) {
-    Assert-TrustableCertificate $certificate $label $hostName $panelNames
+    $certificate = Read-Certificate $cer
+    Assert-TrustableCertificate $certificate $cer $hostName $panelNames
     $names = Get-CertificateNames $certificate
     Write-Host "    $(ConvertTo-PrintableText $certificate.Subject), thumbprint $($certificate.Thumbprint), for $(@(Get-ListedNames $names) -join ', ')"
     $trusted = "Cert:\LocalMachine\Root\$($certificate.Thumbprint)"
@@ -1445,6 +1502,9 @@ function Install-Panel {
         }
         $old = $backup.Settings
         $tlsPassword = $old.Kestrel.Endpoints.Https.Certificate.Password
+        # The backup's passwords, as the ones made here: never in the log.
+        Register-Secret $tlsPassword
+        Register-Secret $old.DataProtection.CertificatePassword
         $pfx = Join-Path $PanelData 'tls\panel.pfx'
         $thumbprint = (New-Object Security.Cryptography.X509Certificates.X509Certificate2($pfx, $tlsPassword)).Thumbprint
         $certificate = @{ Path = $pfx; Password = $tlsPassword; Cer = (Join-Path $PanelData 'tls\panel.cer'); SelfSigned = $true; Thumbprint = $thumbprint }
@@ -1517,6 +1577,9 @@ function Install-Panel {
         if ($Mode -eq 'AllInOne') {
             $null = Invoke-Panel $client GET '/api/v1/auth/session'
             $node = Invoke-Panel $client POST '/api/v1/nodes' @{ name = $env:COMPUTERNAME }
+            # The enrollment token, and the node code that carries it: never in the log.
+            Register-Secret $node.enrollment.token
+            if ($node.enrollment.PSObject.Properties['nodeCode'] -and $node.enrollment.nodeCode) { Register-Secret $node.enrollment.nodeCode }
         }
 
         # The SFTP server starts on its default port (2022); another port is an administrator's setting in the database.
@@ -1566,13 +1629,21 @@ function Uninstall-Panel {
 
 # --- Agent ------------------------------------------------------------------------------------------------------
 
-function Install-Agent([string] $panel, [string] $token, [string] $panelKey) {
+# PulsarAgent enroll's arguments, the token left out (it goes through the environment: the process list shows command
+# lines). $panelCertificate: the SHA-256 of the panel's certificate the agent is to pin (a node code's, once the panel
+# presented it and Assert-PinnableCertificate passed it), or nothing.
+function Get-EnrollArguments([string] $panel, [string] $panelKey, [string] $panelCertificate, [string] $serversRoot) {
+    $arguments = @('enroll', '--panel', $panel, '--panel-key', $panelKey)
+    if ($panelCertificate) { $arguments += @('--panel-certificate', $panelCertificate) }
+    if ($serversRoot) { $arguments += @('--servers-root', $serversRoot) }
+    return , $arguments
+}
+
+function Install-Agent([string] $panel, [string] $token, [string] $panelKey, [string] $panelCertificate = '') {
     if (Test-Service $AgentService) { throw 'The agent is already installed on this machine. Use -Update to update it, or -Uninstall first.' }
     Write-Step "Installing the agent in $AgentDir"
     Copy-Program (Join-Path $PSScriptRoot 'agent') $AgentDir
-    # The token goes through the environment: the process list shows command lines.
-    $arguments = @('enroll', '--panel', $panel, '--panel-key', $panelKey)
-    if ($ServersRoot) { $arguments += @('--servers-root', $ServersRoot) }
+    $arguments = Get-EnrollArguments $panel $panelKey $panelCertificate $ServersRoot
     Write-Step 'Enrolling this machine as a node (the agent installs and starts its service)'
     $env:PULSAR_ENROLLMENT_TOKEN = $token
     try { $result = Invoke-Native (Join-Path $AgentDir 'PulsarAgent.exe') @arguments }
@@ -1701,9 +1772,9 @@ function Read-SetupInputs {
 # Takes the secrets read outside the command line where the parameters left them out, and registers every secret this
 # run has, so that none is written out.
 function Use-SetupInputs([hashtable] $inputs) {
-    if (-not $AdminPassword -and $inputs['adminPassword']) { $script:AdminPassword = ConvertTo-SecureString $inputs['adminPassword'] -AsPlainText -Force }
-    if (-not $PostgresPassword -and $inputs['postgresPassword']) { $script:PostgresPassword = ConvertTo-SecureString $inputs['postgresPassword'] -AsPlainText -Force }
-    if (-not $CertificatePassword -and $inputs['certificatePassword']) { $script:CertificatePassword = ConvertTo-SecureString $inputs['certificatePassword'] -AsPlainText -Force }
+    if (-not $AdminPassword -and $inputs['adminPassword']) { $script:AdminPassword = ConvertTo-Secure $inputs['adminPassword'] }
+    if (-not $PostgresPassword -and $inputs['postgresPassword']) { $script:PostgresPassword = ConvertTo-Secure $inputs['postgresPassword'] }
+    if (-not $CertificatePassword -and $inputs['certificatePassword']) { $script:CertificatePassword = ConvertTo-Secure $inputs['certificatePassword'] }
     if (-not $ConnectionString -and $inputs['connectionString']) { $script:ConnectionString = $inputs['connectionString'] }
     if (-not $Token -and $inputs['enrollmentToken']) { $script:Token = $inputs['enrollmentToken'] }
     if (-not $NodeCode -and $inputs['nodeCode']) { $script:NodeCode = $inputs['nodeCode'] }
@@ -1897,22 +1968,23 @@ function Read-PanelCertificate([Uri] $uri) {
 }
 
 # What to do with the certificate the panel presents ($presented, from Read-PanelCertificate) for a node code ($code,
-# from ConvertFrom-NodeCode): 'trusted' when this machine trusts it already, 'trust' when it is the one the code pins
-# and may be trusted (the checks -TrustCertificate makes: not a certificate authority, made for $hostName and the
-# panel only, for a web server's identity only). Anything else stops the run, before anything changes.
+# from ConvertFrom-NodeCode): 'trusted' when this machine trusts it already (the agent checks it as it checks any
+# site's), 'pin' when it is the one the code names and may be pinned (Assert-PinnableCertificate): the agent is then
+# enrolled with --panel-certificate and accepts it alone. No certificate store is ever changed for a code. Anything
+# else stops the run, before anything changes.
 function Resolve-NodeCertificate($code, $presented, [string] $hostName) {
     $hash = Get-CertificateHash $presented.Certificate
     if ($null -eq $code.CertificateHash) {
         if ($presented.Trusted) { return 'trusted' }
-        throw (New-SetupError $ExitCertificate "This machine does not trust the panel's certificate for $hostName ($($presented.Errors)), and the node code pins none (the panel took its certificate for one every machine trusts). Install the certificate's authority on this machine, or make the code again in the panel. Nothing was changed.")
+        throw (New-SetupError $ExitCertificate "This machine does not trust the panel's certificate for $hostName ($($presented.Errors)), and the node code names none (the panel could not tell which certificate its clients see: a proxy in front of it, or plain HTTP). Install the certificate's authority on this machine, or enroll with -PanelUrl, -Token, -PanelKey and -TrustCertificate instead of a code. Nothing was changed.")
     }
     if ($hash -cne $code.CertificateHash) {
-        throw (New-SetupError $ExitCertificate "The panel at $hostName presents a certificate whose SHA-256 is $hash, not the $($code.CertificateHash) the node code names: this address leads to something else than the panel that made the code (or the panel's certificate changed since). Check the address, or make a new code in the panel. Nothing was changed.")
+        throw (New-SetupError $ExitCertificate "The panel at $hostName presents a certificate whose SHA-256 is $hash, not the $($code.CertificateHash) the node code names: this address leads to something else than the panel that made the code, or to a proxy in front of it that serves another certificate (one that passes the requests on without saying so), or the panel's certificate changed since. Check the address, or make a new code in the panel, opened at the address nodes use. Behind such a proxy, give its certificate's authority to this machine, or enroll with -PanelUrl, -Token, -PanelKey and -TrustCertificate instead of a code. Nothing was changed.")
     }
     if ($presented.Trusted) { return 'trusted' }
-    try { Assert-TrustableCertificate $presented.Certificate "The panel's certificate" $hostName }
+    try { Assert-PinnableCertificate $presented.Certificate $hostName }
     catch { throw (New-SetupError $ExitCertificate "$($_.Exception.Message) Nothing was changed.") }
-    return 'trust'
+    return 'pin'
 }
 
 # --- Downloads and signatures -------------------------------------------------------------------------------------
@@ -2012,24 +2084,40 @@ public static class PulsarDownloads
         }
     }
 
+    // How long a download of this many bytes may take in all: 10 minutes, and a second more for every 128 KiB (about
+    // 1 Mbit/s), so that a server sending a byte now and then cannot hold the run for ever.
+    public static TimeSpan TimeLimit(long bytes)
+    {
+        return TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(Math.Max(0, bytes) / (128 * 1024));
+    }
+
     private static void Fetch(string url, Stream target, long maxBytes)
     {
+        System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
         using (HttpClient client = NewClient())
         using (HttpResponseMessage response = Send(client, HttpMethod.Get, url))
         {
             if (response.StatusCode != HttpStatusCode.OK) { throw new HttpRequestException(url + " answered " + (int)response.StatusCode + " " + response.ReasonPhrase); }
             long? announced = response.Content.Headers.ContentLength;
             if (announced.HasValue && announced.Value > maxBytes) { throw new IOException(url + " is larger than " + maxBytes + " bytes"); }
+            TimeSpan limit = TimeLimit(announced.HasValue ? announced.Value : maxBytes);
             using (Stream source = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
             {
                 byte[] chunk = new byte[81920];
                 long total = 0;
                 while (true)
                 {
-                    Task<int> read = source.ReadAsync(chunk, 0, chunk.Length);
-                    if (!read.Wait(TimeSpan.FromSeconds(60)))
+                    TimeSpan left = limit - clock.Elapsed;
+                    if (left <= TimeSpan.Zero)
                     {
                         response.Dispose();
+                        throw new IOException("the download from " + url + " took longer than " + (int)limit.TotalMinutes + " minutes");
+                    }
+                    Task<int> read = source.ReadAsync(chunk, 0, chunk.Length);
+                    if (!read.Wait(left < TimeSpan.FromSeconds(60) ? left : TimeSpan.FromSeconds(60)))
+                    {
+                        response.Dispose();
+                        if (clock.Elapsed >= limit) { throw new IOException("the download from " + url + " took longer than " + (int)limit.TotalMinutes + " minutes"); }
                         throw new IOException("the download from " + url + " stalled for 60 seconds");
                     }
                     int count = read.Result;
@@ -2130,10 +2218,12 @@ function Copy-SetupInstaller([string] $path) {
     return $copy
 }
 
-# The organizations (O=) a certificate's subject names, read from its encoding (the subject's text form quotes and
-# escapes as Windows sees fit).
-function Get-CertificateOrganizations([Security.Cryptography.X509Certificates.X509Certificate2] $certificate) {
-    $data = $certificate.SubjectName.RawData
+# The attributes of a certificate's subject or issuer ($distinguishedName: its SubjectName or IssuerName), read from
+# its encoding (the text form quotes and escapes as Windows sees fit): one [pscustomobject]@{ Type; Value } each, the
+# type 'CN', 'C', 'L', 'S', 'O' or 'OU', or the attribute's identifier for others.
+function Get-NameAttributes([Security.Cryptography.X509Certificates.X500DistinguishedName] $distinguishedName) {
+    $types = @{ '2.5.4.3' = 'CN'; '2.5.4.6' = 'C'; '2.5.4.7' = 'L'; '2.5.4.8' = 'S'; '2.5.4.10' = 'O'; '2.5.4.11' = 'OU' }
+    $data = $distinguishedName.RawData
     $name = Read-DerElement $data 0
     if ($name.Tag -ne 0x30 -or $name.Next -ne $data.Length) { throw 'The certificate is malformed.' }
     $position = $name.Start
@@ -2148,28 +2238,70 @@ function Get-CertificateOrganizations([Security.Cryptography.X509Certificates.X5
             if ($oid.Tag -ne 0x06) { throw 'The certificate is malformed.' }
             $value = Read-DerElement $data $oid.Next
             if ($value.Next -ne $attribute.Next) { throw 'The certificate is malformed.' }
-            # 2.5.4.10, organizationName.
-            if ($oid.Length -eq 3 -and $data[$oid.Start] -eq 0x55 -and $data[$oid.Start + 1] -eq 0x04 -and $data[$oid.Start + 2] -eq 0x0A) {
-                $bytes = New-Object byte[] $value.Length
-                [Array]::Copy($data, $value.Start, $bytes, 0, $value.Length)
-                switch ($value.Tag) {
-                    0x0C { (New-Object Text.UTF8Encoding $false, $true).GetString($bytes) }
-                    { $_ -in 0x13, 0x14, 0x16 } { [Text.Encoding]::GetEncoding(28591).GetString($bytes) }
-                    0x1E { [Text.Encoding]::BigEndianUnicode.GetString($bytes) }
-                    default { throw 'The certificate is malformed.' }
-                }
+            # 2.5.4.x: the attributes above, all three bytes long (55 04 x).
+            $type = $null
+            if ($oid.Length -eq 3 -and $data[$oid.Start] -eq 0x55 -and $data[$oid.Start + 1] -eq 0x04) { $type = $types["2.5.4.$($data[$oid.Start + 2])"] }
+            if (-not $type) {
+                $oidBytes = New-Object byte[] $oid.Length
+                [Array]::Copy($data, $oid.Start, $oidBytes, 0, $oid.Length)
+                $type = 'oid:' + [BitConverter]::ToString($oidBytes)
             }
+            $bytes = New-Object byte[] $value.Length
+            [Array]::Copy($data, $value.Start, $bytes, 0, $value.Length)
+            $text = switch ($value.Tag) {
+                0x0C { (New-Object Text.UTF8Encoding $false, $true).GetString($bytes) }
+                { $_ -in 0x13, 0x14, 0x16 } { [Text.Encoding]::GetEncoding(28591).GetString($bytes) }
+                0x1E { [Text.Encoding]::BigEndianUnicode.GetString($bytes) }
+                default { $null }
+            }
+            # Only an attribute checked below must be text; another (an e-mail address, a serial number) may be anything.
+            if ($null -eq $text -and -not $type.StartsWith('oid:')) { throw 'The certificate is malformed.' }
+            [pscustomobject]@{ Type = $type; Value = $text }
             $inner = $attribute.Next
         }
         $position = $set.Next
     }
 }
 
+# The attributes of $attributes (Get-NameAttributes) that are not as $expected says (type -> value, each exactly once
+# and exactly that, case included), as "type=value" to print. Nothing when all are; other types are not looked at.
+function Find-NameMismatches($attributes, $expected) {
+    foreach ($type in $expected.Keys) {
+        $found = @($attributes | Where-Object { $_.Type -ceq $type })
+        if ($found.Count -ne 1 -or $found[0].Value -cne $expected[$type]) {
+            "$type=$(if ($found.Count -eq 0) { '(none)' } else { (@($found | ForEach-Object { ConvertTo-PrintableText $_.Value }) -join ' and ') })"
+        }
+    }
+}
+
+# The chain Windows builds for an installer's signer ($certificate, from $path's signature), from the certificates the
+# signature carries and the machine's stores, as the thumbprints from the signer to its root and what is wrong with it
+# besides time (a signer certificate past its end still makes a valid signature when it was timestamped). Revocation is
+# not checked here: Get-AuthenticodeSignature did.
+function Get-SignerChain([string] $path, [Security.Cryptography.X509Certificates.X509Certificate2] $certificate) {
+    $carried = New-Object Security.Cryptography.X509Certificates.X509Certificate2Collection
+    try { $carried.Import($path) } catch { Write-Verbose "No certificates read from the signature of ${path}: $($_.Exception.Message)" }
+    $chain = New-Object Security.Cryptography.X509Certificates.X509Chain
+    try {
+        $chain.ChainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+        $chain.ChainPolicy.ExtraStore.AddRange($carried)
+        $null = $chain.Build($certificate)
+        $ignored = @('NoError', 'NotTimeValid', 'NotTimeNested', 'RevocationStatusUnknown', 'OfflineRevocation')
+        return [pscustomobject]@{
+            Thumbprints = @($chain.ChainElements | ForEach-Object { $_.Certificate.Thumbprint })
+            Problems = @($chain.ChainStatus | ForEach-Object { "$($_.Status)" } | Where-Object { $_ -notin $ignored } | Select-Object -Unique)
+        }
+    }
+    finally { $chain.Dispose() }
+}
+
 # Checks the signature of an installer before it runs ($signature: Get-AuthenticodeSignature of the file in the
 # private downloads folder). It must be valid (the file is as its publisher signed it, and Windows chains the signer to
-# a root it trusts), embedded in the file (not a catalog's), and by a certificate for signing code whose subject names
-# $organization and no other organization. $what names the file in the message.
-function Assert-InstallerSignature($signature, [string] $organization, [string] $what) {
+# a root it trusts), embedded in the file (not a catalog's), and by a certificate for signing code of $signer's: its
+# subject's attributes as $signer.Subject says, issued by the authority $signer.Issuer names (when it names one), and
+# with its chain ($chain, Get-SignerChain's) ending at one of $signer.Roots (when it lists any). $what names the file in
+# the message.
+function Assert-InstallerSignature($signature, $signer, [string] $what, $chain = $null) {
     $refused = "is not run. Nothing was changed."
     if ($null -eq $signature) { throw (New-SetupError $ExitUntrusted "$what has no signature that could be read, and $refused") }
     $status = "$($signature.Status)"
@@ -2181,16 +2313,68 @@ function Assert-InstallerSignature($signature, [string] $organization, [string] 
     if ($signature.PSObject.Properties['SignatureType'] -and "$($signature.SignatureType)" -cne 'Authenticode') {
         throw (New-SetupError $ExitUntrusted "$what is not signed itself (its signature is a $($signature.SignatureType) one), and $refused")
     }
-    $signer = $signature.SignerCertificate
-    if ($signer -isnot [Security.Cryptography.X509Certificates.X509Certificate2]) { throw (New-SetupError $ExitUntrusted "$what names no signer, and $refused") }
-    $subject = ConvertTo-PrintableText $signer.Subject
-    $uses = Get-CertificateUses $signer
+    $certificate = $signature.SignerCertificate
+    if ($certificate -isnot [Security.Cryptography.X509Certificates.X509Certificate2]) { throw (New-SetupError $ExitUntrusted "$what names no signer, and $refused") }
+    $subject = ConvertTo-PrintableText $certificate.Subject
+    $uses = Get-CertificateUses $certificate
     if ($null -eq $uses -or $uses -notcontains $CodeSigning) {
         throw (New-SetupError $ExitUntrusted "$what is signed by $subject with a certificate that is not for signing code, and $refused")
     }
-    $organizations = @(Get-CertificateOrganizations $signer)
-    if ($organizations.Count -ne 1 -or $organizations[0] -cne $organization) {
-        throw (New-SetupError $ExitUntrusted "$what is signed by $subject, not by $organization, and $refused")
+    $wrong = @(Find-NameMismatches @(Get-NameAttributes $certificate.SubjectName) $signer.Subject)
+    if ($wrong.Count -gt 0) {
+        $expected = @($signer.Subject.Keys | ForEach-Object { "$_=$($signer.Subject[$_])" }) -join ', '
+        throw (New-SetupError $ExitUntrusted "$what is signed by $subject, not by $expected ($($wrong -join ', ')), and $refused")
+    }
+    if ($signer.Issuer) {
+        $wrong = @(Find-NameMismatches @(Get-NameAttributes $certificate.IssuerName) $signer.Issuer)
+        if ($wrong.Count -gt 0) {
+            $expected = @($signer.Issuer.Keys | ForEach-Object { "$_=$($signer.Issuer[$_])" }) -join ', '
+            throw (New-SetupError $ExitUntrusted "$what is signed with a certificate issued by $(ConvertTo-PrintableText $certificate.Issuer), not by $expected ($($wrong -join ', ')), and $refused")
+        }
+    }
+    if (@($signer.Roots).Count -gt 0) {
+        $root = $null
+        if ($chain -and @($chain.Thumbprints).Count -ge 2) { $root = @($chain.Thumbprints)[-1] }
+        if (-not $root -or @($chain.Problems).Count -gt 0 -or $root -notin @($signer.Roots)) {
+            $found = 'no chain'
+            if ($root) { $found = "a chain to $root$(if (@($chain.Problems).Count -gt 0) { " ($(@($chain.Problems) -join ', '))" })" }
+            throw (New-SetupError $ExitUntrusted "$what is signed by $subject with a certificate that does not chain up to its publisher's own root ($(@($signer.Roots) -join ' or ')): $found, and $refused")
+        }
+    }
+}
+
+# Checks that an installer's version information ($versionInfo: its file's VersionInfo) is that of $product (its
+# ProductName, exactly, or containing it with -contains) at $version: its ProductVersion or FileVersion starts with
+# $version, followed by nothing or by what is not a digit ("10.0.12" for "10.0.12.36422", "18.6" for "18.6-1").
+function Assert-InstallerVersion($versionInfo, [string] $product, [string] $version, [string] $what, [switch] $contains) {
+    $name = "$($versionInfo.ProductName)"
+    $nameMatches = if ($contains) { $name.IndexOf($product, [StringComparison]::OrdinalIgnoreCase) -ge 0 } else { $name -ceq $product }
+    $pattern = '^' + [regex]::Escape($version) + '(\z|[^0-9])'
+    $versionMatches = "$($versionInfo.ProductVersion)" -cmatch $pattern -or "$($versionInfo.FileVersion)" -cmatch $pattern
+    if (-not $nameMatches -or -not $versionMatches) {
+        throw (New-SetupError $ExitUntrusted "$what says it is '$(ConvertTo-PrintableText $name)' $(ConvertTo-PrintableText "$($versionInfo.ProductVersion)"), not $product $version, and is not run. Nothing was changed.")
+    }
+}
+
+# The oldest PostgreSQL release a release of Pulsar installs ($release: the text of its release.json, Build-Release.ps1's,
+# or $null): its postgresMinimum ("18.6"), or $null when it records none.
+function Read-PostgresMinimum([string] $release) {
+    if (-not $release) { return $null }
+    $parsed = $release | ConvertFrom-Json
+    if (-not $parsed.PSObject.Properties['postgresMinimum']) { return $null }
+    $minimum = $parsed.postgresMinimum
+    if ($minimum -isnot [string] -or $minimum -cnotmatch '^\d{2,3}\.\d{1,4}\z') { throw (New-SetupError $ExitUnsupported "release.json's postgresMinimum is not a PostgreSQL release ('18.6'). Nothing was changed.") }
+    return $minimum
+}
+
+# Refuses a PostgreSQL release ("18.6") older than $minimum (Read-PostgresMinimum's) of the same major version: one
+# with security fixes missing, which a list of versions or an installer given offline could pass off as current.
+function Assert-PostgresMinimum([string] $version, [string] $minimum, [string] $what) {
+    if (-not $minimum) { return }
+    $parts = $version.Split('.')
+    $floor = $minimum.Split('.')
+    if ($parts[0] -ceq $floor[0] -and [int]$parts[1] -lt [int]$floor[1]) {
+        throw (New-SetupError $ExitUntrusted "$what is PostgreSQL $version, older than $minimum, the oldest this release of Pulsar installs (it lacks fixes that release has). Nothing was changed.")
     }
 }
 
@@ -2292,10 +2476,15 @@ function Get-RuntimeRequirements([string[]] $parts) {
         if (-not (Test-Path -LiteralPath $path)) { throw (New-SetupError $ExitUnsupported "$path is missing: run this script from the extracted release ZIP. Nothing was changed.") }
         Get-Content -LiteralPath $path -Raw
     }
-    $release = $null
+    return Read-RuntimeRequirements @($configs) (Get-ReleaseText)
+}
+
+# The text of the release's release.json (Build-Release.ps1's, next to this script), or $null without one (a script run
+# from the repository).
+function Get-ReleaseText {
     $releaseFile = Join-Path $PSScriptRoot 'release.json'
-    if (Test-Path -LiteralPath $releaseFile) { $release = Get-Content -LiteralPath $releaseFile -Raw }
-    return Read-RuntimeRequirements @($configs) $release
+    if (Test-Path -LiteralPath $releaseFile) { return Get-Content -LiteralPath $releaseFile -Raw }
+    return $null
 }
 
 # The .NET runtimes of $DotNetChannel installed for 64-bit programs in $root: name -> the highest version, from the
@@ -2410,7 +2599,12 @@ function Get-DotNetInstallers([string[]] $missing, [hashtable] $needed) {
             throw (New-SetupError $ExitUntrusted "$what is $name $version, older than this release needs ($($needed[$name])). Nothing was changed.")
         }
         if ($entry) { Assert-FileHash $file $entry.Hash $what }
-        Assert-InstallerSignature (Get-AuthenticodeSignature -LiteralPath $file) $DotNetSigner $what
+        $signature = Get-AuthenticodeSignature -LiteralPath $file
+        $chain = $null
+        if ($signature.SignerCertificate) { $chain = Get-SignerChain $file $signature.SignerCertificate }
+        Assert-InstallerSignature $signature $DotNetSigner $what $chain
+        # Signed for the version it was chosen as ("10.0.13"), not an older one under the expected name.
+        Assert-InstallerVersion (Get-Item -LiteralPath $file).VersionInfo "$($framework.Product) - $($version.Major).$($version.Minor).$($version.Build) (x64)" "$($version.Major).$($version.Minor).$($version.Build)" $what
         [pscustomobject]@{ Name = $name; Version = $version; Path = $file }
     }
 }
@@ -2478,6 +2672,29 @@ function Assert-DotNetRuntimes([hashtable] $needed, [string] $root) {
 }
 
 # --- Main -------------------------------------------------------------------------------------------------------
+
+# Refuses to update to a release ($release: its release.json's version, "1.2.0" or "1.2.0-beta") older than a program
+# installed here ($installed: the file versions of the installed Pulsar.Api.exe and PulsarAgent.exe, "1.3.0.0"): the
+# database of a newer panel may hold what an older one cannot read, and an older agent may not speak its panel's
+# protocol. Nothing to compare (no release.json, nothing installed) passes.
+function Assert-NotOlderThanInstalled([string] $release, [string[]] $installed) {
+    if ($release -cnotmatch '^(\d+)\.(\d+)\.(\d+)') { return }
+    $releaseVersion = New-Object Version ([int]$Matches[1]), ([int]$Matches[2]), ([int]$Matches[3])
+    foreach ($text in @($installed | Where-Object { $_ })) {
+        if ($text -cnotmatch '^(\d+)\.(\d+)\.(\d+)') { continue }
+        $installedVersion = New-Object Version ([int]$Matches[1]), ([int]$Matches[2]), ([int]$Matches[3])
+        if ($releaseVersion -lt $installedVersion) {
+            throw (New-SetupError $ExitUsage "This release of Pulsar ($release) is older than the one installed here ($installedVersion): an update cannot go back to an older version (a newer panel's database may hold what an older one cannot read). Nothing was changed.")
+        }
+    }
+}
+
+# The file versions of the Pulsar programs installed here (the panel's and the agent's), for Assert-NotOlderThanInstalled.
+function Get-InstalledVersions {
+    foreach ($exe in (Join-Path $PanelDir 'Pulsar.Api.exe'), (Join-Path $AgentDir 'PulsarAgent.exe')) {
+        if (Test-Path -LiteralPath $exe -PathType Leaf) { "$((Get-Item -LiteralPath $exe).VersionInfo.FileVersion)" }
+    }
+}
 
 # The parts of Pulsar this run installs or updates: 'panel', 'agent' or both.
 function Get-SetupParts($agentPackage) {
@@ -2557,6 +2774,10 @@ $main = {
     # --- What this run needs, checked before anything is downloaded or changed ---
     if (-not $Update -and $RestoreFrom -and $Mode -ne 'Panel') { throw (New-SetupError $ExitUsage '-RestoreFrom restores a panel: use it with -Mode Panel (nodes keep their agents).') }
     $parts = @(Get-SetupParts $agentPackage)
+    if ($Update) {
+        $releaseText = Get-ReleaseText
+        if ($releaseText) { Assert-NotOlderThanInstalled "$(($releaseText | ConvertFrom-Json).version)" @(Get-InstalledVersions) }
+    }
     $agent = $null
     $postgres = $null
     if (-not $Update) {
@@ -2575,15 +2796,17 @@ $main = {
     $needed = Get-RuntimeRequirements $parts
     $dotnetRoot = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'dotnet'
     $missing = @(Get-MissingRuntimes $needed (Get-InstalledRuntimes $dotnetRoot))
-    $certificateAction = $null
-    $presented = $null
+    # The certificate the agent pins (a node code's), if any: never added to a certificate store.
+    $pinnedCertificate = ''
     # Plain http, which a code allows only to this machine's own panel (loopback, as the agent does), has no certificate.
     if ($agent -and $agent.Code -and $agent.Uri.Scheme -ceq 'https') {
         Write-Step "Reading the certificate the panel presents at $($agent.Uri.GetLeftPart('Authority'))"
         $presented = Read-PanelCertificate $agent.Uri
-        $certificateAction = Resolve-NodeCertificate $agent.Code $presented $agent.Uri.DnsSafeHost
-        if ($certificateAction -eq 'trusted') { Write-Host '    This machine trusts it already.' }
-        else { Write-Host "    It is the one the node code names (SHA-256 $(Get-CertificateHash $presented.Certificate))." }
+        if ((Resolve-NodeCertificate $agent.Code $presented $agent.Uri.DnsSafeHost) -eq 'trusted') { Write-Host '    This machine trusts it already.' }
+        else {
+            $pinnedCertificate = Get-CertificateHash $presented.Certificate
+            Write-Host "    It is the one the node code names (SHA-256 $pinnedCertificate): the agent pins it, and accepts no other. This machine's certificate stores are not changed."
+        }
     }
 
     # --- Downloads: all of them, and their checks, before anything is installed ---
@@ -2619,15 +2842,12 @@ $main = {
     }
     elseif ($Mode -eq 'Agent') {
         Write-SetupStep 'agent' 'Installing the agent'
-        if ($certificateAction -eq 'trust') {
-            Write-Step "Trusting the panel's certificate (the one the node code names)"
-            Add-TrustedCertificateObject $presented.Certificate "The panel's certificate" $agent.Uri.DnsSafeHost
-        }
-        elseif ($TrustCertificate) {
+        # Never with a node code (Resolve-AgentInputs refuses -TrustCertificate with one): its certificate is pinned.
+        if ($TrustCertificate) {
             Write-Step "Trusting the panel's certificate ($TrustCertificate)"
             Add-TrustedCertificate $TrustCertificate $agent.Uri.DnsSafeHost
         }
-        Install-Agent $PanelUrl $Token $PanelKey
+        Install-Agent $PanelUrl $Token $PanelKey $pinnedCertificate
         Write-Host 'The agent is installed. The node appears as online in the panel.' -ForegroundColor Green
     }
     else {
@@ -2644,7 +2864,7 @@ $main = {
             Write-Host "The panel is running: https://$($env:COMPUTERNAME):$($installed.Port) (also https://localhost:$($installed.Port) on this machine)." -ForegroundColor Green
             if ($certificate.SelfSigned) {
                 Write-Host "Its certificate is self-signed: browsers warn about it until it is trusted. Nodes join with the code Nodes > Add node"
-                Write-Host "shows, which pins it (or copy $($certificate.Cer) to each node and pass it with -TrustCertificate)."
+                Write-Host "shows, whose agent pins it (or copy $($certificate.Cer) to each node and pass it with -TrustCertificate)."
             }
         }
         else {
@@ -2654,7 +2874,6 @@ $main = {
                 Add-TrustedCertificate $certificate.Cer 'localhost' $certificate.Names
             }
             $enrollment = $installed.Node.enrollment
-            Register-Secret $enrollment.token
             Install-Agent "https://localhost:$($installed.Port)" $enrollment.token $enrollment.panelKeyFingerprint
             Write-Host ''
             Write-Host "Pulsar is running: open https://localhost:$($installed.Port) and sign in as '$AdminUserName'." -ForegroundColor Green

@@ -49,7 +49,7 @@ public sealed class PanelAuthenticator(PanelTransport transport, TimeProvider? c
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(key);
         var origin = PanelAddress.Origin(panel);
-        using var http = transport.CreateClient(panel, certificate);
+        using var http = transport.CreateClient(panel, certificate, config.PanelCertificate);
 
         // A refusal that sends the agent to the agents' address signs this back, and so does the session's grant: an old
         // refusal or session played back does not answer this sign-in.

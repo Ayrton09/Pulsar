@@ -11453,7 +11453,8 @@ export interface components {
             expiresAt: string;
             panelKeyFingerprint: string;
             nodeCode: null | string;
-            agentSetupAvailable: boolean;
+            agentSetupSha256: null | string;
+            agentSetupAvailable?: boolean;
         };
         EnrollmentTokenView: {
             /** Format: uuid */

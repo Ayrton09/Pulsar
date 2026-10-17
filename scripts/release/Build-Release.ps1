@@ -17,19 +17,44 @@ param(
     # Setup 7 are looked in.
     [string] $InnoSetupCompiler,
     # Fails when Inno Setup 7 is not found, instead of building the ZIP and the MSI without the setups.
-    [switch] $RequireSetups)
+    [switch] $RequireSetups,
+    # The oldest PostgreSQL 18 release Install-Pulsar.ps1 installs (release.json's postgresMinimum): the current 18.x when
+    # the release is built (postgresql.org's versions.json, or the bin\postgres.exe --version of an up-to-date PostgreSQL).
+    # It refuses an older one, which a list of versions or an installer given offline could pass off as current.
+    [ValidatePattern('^18\.\d{1,4}$')] [string] $PostgresMinimum = '18.6')
 $ErrorActionPreference = 'Stop'
 
-# Inno Setup 7's ISCC.exe (-InnoSetupCompiler, or an install of it), or $null (with a warning) when there is none.
+# Inno Setup's signer: ISCC.exe and the DLLs next to it (its compiler, ISCmplr.dll, and the rest) must carry a valid
+# Authenticode signature, in the file itself, of this organization, before each run: whoever could swap one would put
+# code of their own in every setup this builds.
+$InnoSetupSigner = 'Pyrsys B.V.'
+
+function Assert-InnoSetupSigned([string] $compiler) {
+    $folder = Split-Path -Parent $compiler
+    $files = @(Get-Item -LiteralPath $compiler) + @(Get-ChildItem -LiteralPath $folder -File -Filter '*.dll')
+    if (-not (Test-Path -LiteralPath (Join-Path $folder 'ISCmplr.dll') -PathType Leaf)) { throw "$folder has no ISCmplr.dll: it is not an Inno Setup install." }
+    foreach ($file in $files) {
+        $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+        $subject = "$($signature.SignerCertificate.Subject)"
+        $organizations = @([regex]::Matches($subject, '(?:^|,\s*)O=("(?:[^"]|"")*"|[^,]*)') | ForEach-Object { $_.Groups[1].Value.Trim('"') })
+        if ("$($signature.Status)" -cne 'Valid' -or "$($signature.SignatureType)" -cne 'Authenticode' -or $organizations.Count -ne 1 -or $organizations[0] -cne $InnoSetupSigner) {
+            throw "$($file.FullName) is not validly signed by $InnoSetupSigner, Inno Setup's publisher ($($signature.Status), $subject): the setups are not built with it. Reinstall Inno Setup 7 from https://jrsoftware.org (in Program Files)."
+        }
+    }
+}
+
+# Inno Setup 7's ISCC.exe (-InnoSetupCompiler, or an install of it: Program Files first, where only administrators can
+# change it, then a per-user install), signed by its publisher; or $null (with a warning) when there is none.
 function Find-InnoSetupCompiler {
     $candidates = @($InnoSetupCompiler)
     if (-not $InnoSetupCompiler) {
-        $candidates = @(@($env:LOCALAPPDATA, ${env:ProgramFiles(x86)}, $env:ProgramFiles) | Where-Object { $_ } | ForEach-Object {
+        $candidates = @(@($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA) | Where-Object { $_ } | ForEach-Object {
                 if ($_ -eq $env:LOCALAPPDATA) { Join-Path $_ 'Programs\Inno Setup 7\ISCC.exe' } else { Join-Path $_ 'Inno Setup 7\ISCC.exe' }
             })
     }
     foreach ($candidate in $candidates) {
         if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+        Assert-InnoSetupSigned $candidate
         $engine = & {
             $ErrorActionPreference = 'Continue'
             (& $candidate --version 2>&1 | ForEach-Object { "$_" }) -join ' '
@@ -48,6 +73,8 @@ function Find-InnoSetupCompiler {
 # build like an error.
 function Build-Setup([string] $compiler, [string] $script, [string] $release, [string] $numeric) {
     $arguments = @('--quiet', '--messages-jsonl', "/DVersion=$Version", "/DNumericVersion=$numeric.0", "/DRelease=$release", "/O$Output", (Join-Path $PSScriptRoot "setup\$script"))
+    # Checked again right before it runs: the web build (npm ci) ran code from the registry since it was found.
+    Assert-InnoSetupSigned $compiler
     $lines = & {
         $ErrorActionPreference = 'Continue'
         @(& $compiler @arguments 2>&1 | ForEach-Object { "$_" })
@@ -128,7 +155,7 @@ foreach ($config in (Join-Path $staging 'panel\Pulsar.Api.runtimeconfig.json'), 
         }
     }
 }
-[ordered]@{ version = $Version; runtimes = $runtimes } | ConvertTo-Json | Set-Content (Join-Path $staging 'release.json') -Encoding ASCII
+[ordered]@{ version = $Version; runtimes = $runtimes; postgresMinimum = $PostgresMinimum } | ConvertTo-Json | Set-Content (Join-Path $staging 'release.json') -Encoding ASCII
 
 # In Windows PowerShell, whatever runs this script: the MSI is written through the Installer's COM interface, checked there.
 # By full path, like the other Windows programs the release and install scripts run.

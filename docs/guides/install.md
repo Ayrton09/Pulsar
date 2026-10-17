@@ -37,7 +37,9 @@ what the wizard does not ask.
 1. Download `PulsarSetup-<version>.exe` and its `.sha256` file from the project's
    [Releases](https://github.com/Ayrton09/Pulsar/releases) page, and check it as [step 2](#2-download-pulsar) shows
    for the ZIP: `(Get-FileHash .\PulsarSetup-<version>.exe -Algorithm SHA256).Hash` must show the value in the
-   `.sha256` file.
+   `.sha256` file. The release workflow builds the setups and attests their provenance, as it does the ZIP's: with
+   the GitHub CLI, `gh attestation verify .\PulsarSetup-<version>.exe --repo Ayrton09/Pulsar` (and the same for
+   `PulsarAgentSetup-<version>.exe`) says it was built by this repository's workflow from the tag's commit.
 2. Run it. It asks for administrator rights. The setups are not code-signed yet, so Windows SmartScreen may say
    *Windows protected your PC*: for a file whose SHA-256 you checked, click **More info**, check that the app is
    `PulsarSetup-<version>.exe`, and click **Run anyway**.
@@ -63,7 +65,8 @@ what the wizard does not ask.
    without a PostgreSQL to use, the newest PostgreSQL 18) and checks every download before anything runs (the table
    in [What the installer downloads](#what-the-installer-downloads)), then installs .NET, PostgreSQL (listening on this
    PC only), the panel, its administrator and, with a node, the agent.
-5. **Finish** opens the panel's sign-in page, `https://localhost:8443/`, in your browser: sign in as `admin`. Then see
+5. **Finish** shows the panel's sign-in page, `https://localhost:8443/`, in a box to copy (the setup runs as
+   administrator, so it opens no browser itself): open it in your browser and sign in as `admin`. Then see
    [First steps in the panel](#4-first-steps-in-the-panel).
 
 Underneath, the setup does what the [installer script](#advanced-and-automation-the-installer-script) does, with the
@@ -91,7 +94,10 @@ In the panel, **Nodes → Add node**: give the node a name. The dialog shows the
 to `PulsarAgentSetup.exe`, which the panel serves ([The agent's setup](#the-agents-setup); it is also on the Releases
 page, as `PulsarAgentSetup-<version>.exe`). On the node, run it (SmartScreen as above), and give it the code (the
 address too when the node reaches the panel at another address than the code names) and the game servers' folder.
-It reads the certificate the panel presents, checks it against the code and trusts it: nobody copies `panel.cer`.
+It reads the certificate the panel presents, checks it against the code and has the agent pin it (the agent accepts
+that certificate and no other; the node's certificate stores are not changed): nobody copies `panel.cer`. The dialog
+also shows the SHA-256 of the `PulsarAgentSetup.exe` it links to: on the node, `Get-FileHash .\PulsarAgentSetup.exe`
+must show the same value.
 The node appears as **Online**. It refuses a PC that runs the panel (run `PulsarSetup.exe` there, which updates both)
 and one whose agent the agent MSI installed.
 
@@ -296,10 +302,14 @@ The node code carries the enrollment token, the fingerprint of the panel key the
 reached by and the SHA-256 of the certificate it presented then. It is read strictly (anything that is not a code the
 panel makes is refused). The installer connects to that address, reads the certificate the panel presents without
 trusting it, and compares its SHA-256 with the code's: another certificate (another machine answering at that address,
-or a certificate changed since) is refused and nothing is changed. The certificate the code names is then trusted on
-this machine after the checks `-TrustCertificate` makes (below), unless the machine trusts it already: nobody copies
-`panel.cer`. A code without a certificate (the panel was reached through a proxy) needs one this machine trusts
-already. When this machine reaches the panel at another address than the code names (another DNS name, a port
+or a certificate changed since, or a proxy in front of the panel that serves its own certificate without marking the
+requests it forwards) is refused and nothing is changed. Unless this machine trusts it already, the certificate the
+code names must be a web server's own (Basic Constraints CA=false, server authentication alone) and name the address
+used; the agent is then enrolled with it pinned (`PulsarAgent enroll … --panel-certificate <sha256>`): it accepts that
+certificate from the panel and no other, and nothing is added to this machine's certificate stores, so the
+certificate vouches for nothing else here, whatever names it lists. Nobody copies `panel.cer`. A code without a
+certificate (the panel was reached through a proxy that adds `Forwarded`, `Via` or `X-Forwarded-*` headers) needs one
+this machine trusts already. When this machine reaches the panel at another address than the code names (another DNS name, a port
 forward), add `-PanelUrl https://that-name:port` (an origin, as the code has it): the certificate must still be the
 code's, and list that name. The code is as secret as the token in it, and works once and for 30 minutes; `-NodeCode`
 takes it too, but a command line shows in the process list.
@@ -361,7 +371,25 @@ panel carry `PulsarAgentSetup.exe` in its `downloads` folder, and the installer 
 must be one only administrators can change, as the program's folder is. `-Update` replaces the panel's program and
 keeps its `downloads` folder, but a release that carries a newer `PulsarAgentSetup.exe` replaces that file. Until the
 setups are code-signed, download it on a node only from a panel whose certificate the node's browser trusts, or copy
-it from the release.
+it from the release, and compare its SHA-256 with the one the Add node dialog shows (`Get-FileHash
+.\PulsarAgentSetup.exe`). Each address may have 4 downloads running and start 60 an hour (`"Downloads":
+{ "ConcurrentPerAddress": 4, "PerAddressPerHour": 60 }`); more answer 429 until the hour ends.
+
+#### Changing the panel's certificate
+
+A node added with a node code pins the panel's certificate: `PulsarAgent status` shows it (`Panel TLS: certificate
+SHA-256 … (pinned)`). Replacing the panel's certificate (a new self-signed one, a renewal, one from an authority in its
+place) leaves those nodes offline until each is pinned again: the agent's log says the TLS handshake failed
+(`RemoteCertificateValidationCallback`). For each, either
+
+- enroll it again: **Add node** for a new code (`PulsarAgentSetup.exe`, or `Install-Pulsar.ps1 -Uninstall` then
+  `-Mode Agent` with the code), or, in an elevated prompt on the node, `PulsarAgent enroll --panel <url> --token -
+  --panel-key <fingerprint> --panel-certificate <the new certificate's SHA-256>` with a token from
+  **New enrollment command** (the SHA-256 of `panel.cer`: `(Get-FileHash C:\ProgramData\Pulsar\Panel\tls\panel.cer).Hash.ToLower()`
+  on the panel, for the installer's own certificate, which is its DER); or
+- as an administrator of the node, set `"panelCertificate"` in `C:\ProgramData\Pulsar\Agent\config\agent.json` to the
+  new SHA-256 (lowercase), or remove it once the node trusts the new certificate's authority, and restart the service
+  (`PulsarAgent service stop`, then `start`).
 
 #### Agents' port: client certificates (optional)
 
@@ -539,8 +567,18 @@ fails, or fails a check, is not run, and nothing is changed.
 
 | What | Where from | Checked |
 |---|---|---|
-| The .NET runtime and, for the panel, the ASP.NET Core runtime: the newest 10.0 patch, at least the one the release was built with (its `release.json`) | Microsoft's release metadata (`https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json`) and the Windows x64 installers it lists, from Microsoft's download hosts only | The SHA-512 the metadata lists; the Authenticode signature: valid (Windows chains it to a root it trusts), in the file itself, by a certificate for code signing whose organization is `Microsoft Corporation` and nothing else; the version |
-| PostgreSQL: the newest release of major version 18 (never a newer major version on its own: that needs a data upgrade) and EDB's newest build of it | postgresql.org's list of versions (`https://www.postgresql.org/versions.json`); EDB's installer, `https://get.enterprisedb.com/postgresql/postgresql-18.<minor>-<build>-windows-x64.exe` | The Authenticode signature: valid, in the file itself, by a certificate for code signing whose organization is `EnterpriseDB Corporation` and nothing else |
+| The .NET runtime and, for the panel, the ASP.NET Core runtime: the newest 10.0 patch, at least the one the release was built with (its `release.json`) | Microsoft's release metadata (`https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json`) and the Windows x64 installers it lists, from Microsoft's download hosts only | The SHA-512 the metadata lists; the Authenticode signature: valid (Windows chains it to a root it trusts), in the file itself, by a certificate for code signing whose subject is `O=Microsoft Corporation, L=Redmond, S=Washington, C=US` and whose chain ends at Microsoft Root Certificate Authority 2011 (or 2010); the version information (`Microsoft .NET Runtime - 10.0.<n> (x64)`, version 10.0.<n>) and the version |
+| PostgreSQL: the newest release of major version 18 (never a newer major version on its own: that needs a data upgrade), never older than the release's floor (`postgresMinimum` in its `release.json`), and EDB's newest build of it | postgresql.org's list of versions (`https://www.postgresql.org/versions.json`); EDB's installer, `https://get.enterprisedb.com/postgresql/postgresql-18.<minor>-<build>-windows-x64.exe` | The Authenticode signature: valid, in the file itself, by a certificate for code signing whose subject is `O=EnterpriseDB Corporation, L=Wilmington, S=Delaware, C=US`, issued by `DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1`; the version information (a `PostgreSQL` product of version 18.<minor>) |
+
+Every download also has a time limit: 10 minutes, and a second more for each 128 KiB of its size.
+
+The signers' identities are those of EDB's signed PostgreSQL 18 programs and Microsoft's .NET 10 installers when the
+release was made. Before a release, its Sandbox run (`scripts/sandbox/install`) must confirm them on the real
+downloads: EDB's installer's signer and issuer (`Get-AuthenticodeSignature` on it, and its `SignerCertificate.Issuer`)
+and its version information (`(Get-Item <installer>).VersionInfo`: a `ProductName` with `PostgreSQL` in it and a
+`ProductVersion` or `FileVersion` starting with `18.<minor>`). When a publisher changes them (a new certificate
+authority, a new address in its certificate), the installer refuses its files (exit code 5) until a release of
+Pulsar names the new ones.
 
 The .NET installers run with `/install /quiet /norestart`; their logs go to `C:\ProgramData\Pulsar\Setup\logs`. One
 that asks for a restart does not get it: the installer finishes, says so, and (unattended) ends with code 3010.
@@ -569,7 +607,7 @@ them again):
   read after all, match the SHA-512 it lists for that version.
 - `-PostgresInstaller <file>`: EDB's installer, `postgresql-18.<minor>-<build>-windows-x64.exe` (from
   <https://www.enterprisedb.com/downloads/postgres-postgresql-downloads>; PostgreSQL 15 or later, its name gives the
-  version), signed by EnterpriseDB.
+  version, which its version information must confirm; of 18, at least the release's floor), signed by EnterpriseDB.
 
 Both are copied into the installer's private folder and checked and run from there. Without internet and without
 them, the installer says what it could not download and changes nothing; a panel can also use an existing PostgreSQL
@@ -621,15 +659,27 @@ It ends with one of these exit codes (without `-Unattended`, a failure is a Powe
 | `3` | This machine, the installer's folder or the account cannot install Pulsar as they are: not elevated, a 32-bit PowerShell, a folder others can change, Windows updates missing, an agent from the MSI, a PostgreSQL port, service or folder taken. Nothing was changed (but for the .NET runtimes, when the Windows updates check fails after they were installed). |
 | `4` | A download, or the panel at a node code's address, could not be reached. Nothing was changed. |
 | `5` | A download or a given installer failed its checks (signature, SHA-512, version), or Microsoft's or postgresql.org's metadata was not as expected. Nothing was changed. |
-| `6` | The certificate the panel presents is not the node code's, or may not be trusted (it can issue certificates, does not name the panel's address...). Nothing was changed. |
+| `6` | The certificate the panel presents is not the node code's (another machine, or a proxy serving its own), or may not be trusted or pinned (it can issue certificates, does not name the panel's address...). Nothing was changed. |
 | `3010` | Done; a .NET installer asks for Windows to be restarted to finish (Pulsar runs meanwhile). |
 
 PowerShell itself ends with 1 when it cannot bind a parameter (a misspelt one).
 
 Every run, unattended or not, writes a log to `C:\ProgramData\Pulsar\Setup\logs\install-<date>-<process>.log`: what
 it printed, the parameters it was given (secrets named, never shown), the installers it ran and their arguments, and
-the error, with every secret it knows of (the passwords and tokens it was given or made) replaced by `[secret]`. The
-folder is for SYSTEM and Administrators only. A failed PostgreSQL install keeps EDB's own logs in
+the error, with every secret it knows of replaced by `[secret]`: the passwords, tokens and node code it was given, the
+passwords it makes (PostgreSQL's, the HTTPS certificate's and the key ring's PFX passwords, the setup token), those it
+reads from a `-RestoreFrom` backup, and the enrollment token and node code the all-in-one install gets from the panel.
+The folder is for SYSTEM and Administrators only.
+
+#### Secrets and PowerShell's logging
+
+The installer builds its SecureStrings character by character, never with `ConvertTo-SecureString -AsPlainText`,
+whose parameters PowerShell's **module logging** writes to the event log. Logging that a machine's policy turns on
+for every script can still see secrets: **Script Block Logging** records script blocks as they are compiled (the
+installer's own code holds none, but its run does), and **transcription** (`Turn on PowerShell Transcription`) records
+everything a session prints and the values some commands show. On a machine where those policies are on, their logs
+(`Microsoft-Windows-PowerShell/Operational`, the transcripts' folder) are as secret as the passwords the install was
+given: run it where they are off, or protect and clear those logs afterwards. A failed PostgreSQL install keeps EDB's own logs in
 `C:\ProgramData\Pulsar\Setup\postgresql-install-<date>` (administrators only; they may hold the password that attempt
 was given): delete the folder once read.
 

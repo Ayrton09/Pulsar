@@ -62,14 +62,21 @@ $installParts = Get-ScriptParts $installScript (@($shared) + @('Read-DerElement'
         'New-SetupError', 'Get-SetupExitCode', 'Register-Secret', 'Protect-SetupText', 'Format-SetupStep', 'Read-Secret',
         'Get-PrivateFileProblems', 'Read-SecretsFile', 'ConvertFrom-FlatJson', 'ConvertFrom-JsonString', 'ConvertFrom-JsonDocument', 'Get-JsonValue',
         'New-NodeCodeError', 'ConvertFrom-Base64Url', 'Test-RandomPart', 'Test-PanelUrl', 'ConvertFrom-NodeCode', 'Get-CertificateHash',
-        'Resolve-NodeCertificate', 'Test-PostgresInstallerName', 'Select-PostgresVersion', 'Get-PostgresInstallerUrl', 'Find-NonLocalHbaRules',
-        'Get-CertificateOrganizations', 'Assert-InstallerSignature', 'ConvertTo-CommandLine', 'Add-RuntimeRequirement', 'Read-RuntimeRequirements',
+        'Resolve-NodeCertificate', 'Assert-PinnableCertificate', 'Get-EnrollArguments', 'Test-PostgresInstallerName', 'Select-PostgresVersion', 'Get-PostgresInstallerUrl', 'Find-NonLocalHbaRules',
+        'Get-NameAttributes', 'Find-NameMismatches', 'Assert-InstallerSignature', 'Assert-InstallerVersion', 'Read-PostgresMinimum',
+        'Assert-PostgresMinimum', 'ConvertTo-Secure', 'ConvertFrom-Secure', 'Assert-NotOlderThanInstalled', 'ConvertTo-CommandLine', 'Add-RuntimeRequirement', 'Read-RuntimeRequirements',
         'Get-InstalledRuntimes', 'Get-MissingRuntimes', 'Test-DotNetDownloadUrl', 'Get-DotNetInstallerEntries', 'Copy-Program', 'Initialize-SetupNetwork')) `
     (@($sharedVariables) + @('TrustedName', 'ServerAuthentication', 'ExitFailed', 'ExitUsage', 'ExitUnsupported', 'ExitOffline', 'ExitUntrusted',
         'ExitCertificate', 'ExitRestart', 'NodeCodePrefix', 'NodeCodeMaxLength', 'NodeCodeMaxUrlLength', 'ReusableTokenPrefix', 'JsonStringPattern',
         'DotNetChannel', 'DotNetHosts', 'DotNetFrameworks', 'CodeSigning', 'PostgresDownloadsUrl', 'PostgresSigner', 'DotNetSigner', 'StepPlans',
         'SetupSecrets', 'SecretInputs'))
-$backupParts = Get-ScriptParts $backupScript (@($shared) + @('Find-UntrustedDestination', 'New-PrivateFolder')) $sharedVariables
+$backupParts = Get-ScriptParts $backupScript (@($shared) + @('Find-UntrustedDestination', 'New-PrivateFolder', 'Assert-TrustedPgDump')) $sharedVariables
+# Every pg_dump the backup may run is checked first: -PostgresBin's, and each service's before its --version.
+$backupText = Get-Content -Raw -LiteralPath $backupScript
+Check 'backup: pg_dump.exe is checked before it runs, the one of -PostgresBin and of each service' (
+    $backupText -match 'Assert-TrustedPgDump \$PostgresBin' -and
+    $backupText -match "Assert-TrustedPgDump \`$bin\s+\`$version = \(& \(Join-Path \`$bin 'pg_dump\.exe'\) --version\)" -and
+    ([regex]::Matches($backupText, "& \(Join-Path \`$(bin|PostgresBin) 'pg_dump\.exe'\)")).Count -eq 2)
 
 # What the two scripts share must stay the same in both.
 $different = @(@($shared) + @($sharedVariables | ForEach-Object { '$' + $_ }) | Where-Object { $installParts[$_] -cne $backupParts[$_] })
@@ -297,6 +304,12 @@ try {
     $null = New-Item -ItemType Junction -Path $link -Value $private
     $findings = @(Find-UntrustedDestination $link)
     Check 'destination: a link is refused' (($findings -join ' ') -match 'is a link') ($findings -join ' | ')
+
+    # The backup's pg_dump: refused where this account could change it (never run here: an empty file).
+    $bin = Join-Path $root 'bin'
+    $null = New-Item -ItemType Directory $bin
+    Set-Content -LiteralPath (Join-Path $bin 'pg_dump.exe') -Value '' -Encoding ASCII
+    Check 'backup: a pg_dump.exe other accounts could change is refused' ((Get-Thrown { Assert-TrustedPgDump $bin }) -match 'could be changed by other accounts')
 }
 finally {
     # The junction alone, never what it leads to.
@@ -525,8 +538,26 @@ Check 'node code: the certificate''s hash is the lowercase hexadecimal SHA-256 o
 $sha.Dispose()
 function Presented($certificate, [bool] $trusted) { [pscustomobject]@{ Certificate = $certificate; Trusted = $trusted; Errors = $(if ($trusted) { 'None' } else { 'RemoteCertificateChainErrors' }) } }
 function Pin($value) { [pscustomobject]@{ Url = 'https://panel.example.com:8443'; Token = $token; PanelKey = $key; CertificateHash = $value } }
-Check 'node code: the pinned certificate, not trusted yet, is to be trusted' ((Resolve-NodeCertificate (Pin $panelHash) (Presented $panelCertificate $false) 'panel.example.com') -eq 'trust')
-Check 'node code: the pinned certificate, trusted already, is left as it is' ((Resolve-NodeCertificate (Pin $panelHash) (Presented $panelCertificate $true) 'panel.example.com') -eq 'trusted')
+Check 'node code: the certificate the code names, not trusted, is pinned in the agent' ((Resolve-NodeCertificate (Pin $panelHash) (Presented $panelCertificate $false) 'panel.example.com') -eq 'pin')
+Check 'node code: the certificate the code names, trusted already, is checked as any other (no pin)' ((Resolve-NodeCertificate (Pin $panelHash) (Presented $panelCertificate $true) 'panel.example.com') -eq 'trusted')
+# A code made to pass off other sites (localhost, machine names, another domain): only the agent pins it, for the panel.
+$luring = New-TestCertificate @((Dns 'evil.example'), (Dns 'localhost'), (Dns 'intranet'), (Dns 'wpad'), (Dns 'dc01'), (Dns '*.example.com'))
+Check 'node code: a certificate that names other sites is only ever pinned, never trusted' ((Resolve-NodeCertificate (Pin (Get-CertificateHash $luring)) (Presented $luring $false) 'evil.example') -eq 'pin')
+foreach ($case in ([ordered]@{
+        'without Basic Constraints' = @((New-TestCertificate @((Dns 'panel.example.com')) $null), 'Basic Constraints')
+        'for more than a web server' = @((New-TestCertificate @((Dns 'panel.example.com')) $false @($ServerAuth, '1.3.6.1.5.5.7.3.3')), 'Extended Key Usage')
+        'without Extended Key Usage' = @((New-TestCertificate @((Dns 'panel.example.com')) $false $null), 'Extended Key Usage')
+    }).GetEnumerator()) {
+    $caught = Get-Caught { Resolve-NodeCertificate (Pin (Get-CertificateHash $case.Value[0])) (Presented $case.Value[0] $false) 'panel.example.com' }
+    Check "node code: a certificate $($case.Key) is not pinned (no switch allows it)" ((Get-SetupExitCode $caught) -eq 6 -and $caught.Exception.Message -match $case.Value[1]) "$caught"
+}
+$TrustCertificateWithoutBasicConstraints = $true
+$caught = Get-Caught { Resolve-NodeCertificate (Pin (Get-CertificateHash (New-TestCertificate @((Dns 'panel.example.com')) $null))) (Presented (New-TestCertificate @((Dns 'panel.example.com')) $null) $false) 'panel.example.com' }
+$TrustCertificateWithoutBasicConstraints = $false
+Check 'node code: -TrustCertificate''s switches do not apply to a pin' ($null -ne $caught) "$caught"
+Check "node code: the agent is enrolled with the pin, and without one when there is none" (
+    ((Get-EnrollArguments 'https://panel.example.com:8443' $key $panelHash 'D:\Games') -join ' ') -ceq "enroll --panel https://panel.example.com:8443 --panel-key $key --panel-certificate $panelHash --servers-root D:\Games" -and
+    ((Get-EnrollArguments 'https://panel.example.com:8443' $key '' '') -join ' ') -ceq "enroll --panel https://panel.example.com:8443 --panel-key $key")
 Check 'node code: no pin and a certificate this machine trusts' ((Resolve-NodeCertificate (Pin $null) (Presented $panelCertificate $true) 'panel.example.com') -eq 'trusted')
 $caught = Get-Caught { Resolve-NodeCertificate (Pin $null) (Presented $panelCertificate $false) 'panel.example.com' }
 Check 'node code: no pin and a certificate this machine does not trust is refused' ((Get-SetupExitCode $caught) -eq 6) "$caught"
@@ -534,9 +565,35 @@ $caught = Get-Caught { Resolve-NodeCertificate (Pin $hash) (Presented $panelCert
 Check 'node code: another certificate than the pinned one is refused, even one this machine trusts' ((Get-SetupExitCode $caught) -eq 6 -and $caught.Exception.Message -match $panelHash -and $caught.Exception.Message -match $hash) "$caught"
 $authorityCertificate = New-TestCertificate @((Dns 'panel.example.com')) $true
 $caught = Get-Caught { Resolve-NodeCertificate (Pin (Get-CertificateHash $authorityCertificate)) (Presented $authorityCertificate $false) 'panel.example.com' }
-Check 'node code: a pinned certificate authority is refused (the -TrustCertificate checks)' ((Get-SetupExitCode $caught) -eq 6 -and $caught.Exception.Message -match 'CA=true') "$caught"
+Check 'node code: a certificate authority is not pinned' ((Get-SetupExitCode $caught) -eq 6 -and $caught.Exception.Message -match 'CA=true') "$caught"
 $caught = Get-Caught { Resolve-NodeCertificate (Pin $panelHash) (Presented $panelCertificate $false) 'other.example.com' }
-Check 'node code: a pinned certificate not made for the address used is refused' ((Get-SetupExitCode $caught) -eq 6 -and $caught.Exception.Message -match 'is not made for') "$caught"
+Check 'node code: a certificate not made for the address used is not pinned' ((Get-SetupExitCode $caught) -eq 6 -and $caught.Exception.Message -match 'is not made for') "$caught"
+$caught = Get-Caught { Resolve-NodeCertificate (Pin $hash) (Presented $panelCertificate $false) 'panel.example.com' }
+Check 'node code: another certificate than the code''s says a proxy may be serving it' ($caught.Exception.Message -match 'proxy') "$caught"
+
+# A node code never changes a certificate store: the only writes to one are Add-TrustedCertificate's, reached from
+# -TrustCertificate and the all-in-one panel's own certificate alone.
+$installTokens = $null
+$installErrors = $null
+$installAst = [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $installScript).ProviderPath, [ref] $installTokens, [ref] $installErrors)
+$storeWriters = @($installAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -or $node -is [Management.Automation.Language.TypeExpressionAst] -or
+            $node -is [Management.Automation.Language.StringConstantExpressionAst] -or $node -is [Management.Automation.Language.ExpandableStringExpressionAst] }, $true) |
+        Where-Object { $_.Extent.Text -match 'X509Store|Import-Certificate|Import-PfxCertificate|certutil|Cert:\\LocalMachine\\(Root|CA|TrustedPeople|AuthRoot|TrustedPublisher)' } |
+        ForEach-Object { $function = $_; while ($function -and $function -isnot [Management.Automation.Language.FunctionDefinitionAst]) { $function = $function.Parent }; if ($function) { $function.Name } else { '(script)' } } | Select-Object -Unique)
+Check 'node code: only Add-TrustedCertificate and Remove-TrustedCertificates touch the trusted roots' (@($storeWriters | Where-Object { $_ -notin 'Add-TrustedCertificate', 'Remove-TrustedCertificates' }).Count -eq 0) ($storeWriters -join ', ')
+$trustCalls = @($installAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -like 'Add-TrustedCertificate*' }, $true))
+$trustConditions = @(foreach ($trustCall in $trustCalls) {
+        $clause = $trustCall.Parent
+        while ($clause -and $clause -isnot [Management.Automation.Language.IfStatementAst]) { $clause = $clause.Parent }
+        if (-not $clause) { '(none)'; continue }
+        @($clause.Clauses | Where-Object { $_.Item2.Extent.StartOffset -le $trustCall.Extent.StartOffset -and $_.Item2.Extent.EndOffset -ge $trustCall.Extent.EndOffset } | ForEach-Object { $_.Item1.Extent.Text }) -join ''
+    })
+Check 'node code: the certificate stores are written for -TrustCertificate and the all-in-one panel''s own certificate only' (
+    $trustCalls.Count -eq 2 -and @($trustConditions | Where-Object { $_ -notin '$TrustCertificate', '$certificate.SelfSigned' }).Count -eq 0 -and
+    @($trustCalls | Where-Object { $_.GetCommandName() -cne 'Add-TrustedCertificate' }).Count -eq 0) ($trustConditions -join ' | ')
+$codeFunctions = @('ConvertFrom-NodeCode', 'Read-PanelCertificate', 'Resolve-NodeCertificate', 'Assert-PinnableCertificate', 'Resolve-AgentInputs', 'Install-Agent', 'Get-EnrollArguments')
+$codeTexts = @($installAst.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in $codeFunctions }, $true) | ForEach-Object { $_.Extent.Text })
+Check 'node code: what reads and uses a code never reaches a certificate store' ($codeTexts.Count -eq $codeFunctions.Count -and @($codeTexts | Where-Object { $_ -match 'Add-Trusted|X509Store|Cert:\\|Import-Certificate|certutil' }).Count -eq 0)
 
 # --- PostgreSQL's versions and EDB's installers ------------------------------------------------------------------
 
@@ -648,7 +705,19 @@ Check '.NET: download addresses are Microsoft''s' ((Test-DotNetDownloadUrl 'http
 
 # --- Signatures --------------------------------------------------------------------------------------------------
 
-function New-SigningCertificate([string] $subject, $uses = @($CodeSigning)) {
+# The issuers of the signing certificates below: DigiCert's for EDB's (by name only), another for the others.
+function New-IssuerCertificate([string] $subject) {
+    $rsa = [Security.Cryptography.RSACng]::new(2048)
+    try {
+        $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new($subject, $rsa, [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+        $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true, $false, 0, $true))
+        return $request.CreateSelfSigned([DateTimeOffset]::Now.AddDays(-2), [DateTimeOffset]::Now.AddDays(2))
+    }
+    finally { $rsa.Dispose() }
+}
+$digiCert = New-IssuerCertificate 'CN=DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1, O="DigiCert, Inc.", C=US'
+$otherIssuer = New-IssuerCertificate 'CN=Some Code Signing CA, O="Some CA, Inc.", C=US'
+function New-SigningCertificate([string] $subject, $uses = @($CodeSigning), $issuer = $digiCert) {
     $rsa = [Security.Cryptography.RSACng]::new(2048)
     try {
         $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new($subject, $rsa, [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
@@ -657,7 +726,8 @@ function New-SigningCertificate([string] $subject, $uses = @($CodeSigning)) {
             foreach ($use in $uses) { $null = $oids.Add([Security.Cryptography.Oid]::new($use)) }
             $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($oids, $false))
         }
-        $made = $request.CreateSelfSigned([DateTimeOffset]::Now.AddDays(-1), [DateTimeOffset]::Now.AddDays(1))
+        if ($null -eq $issuer) { $made = $request.CreateSelfSigned([DateTimeOffset]::Now.AddDays(-1), [DateTimeOffset]::Now.AddDays(1)) }
+        else { $made = $request.Create($issuer, [DateTimeOffset]::Now.AddDays(-1), [DateTimeOffset]::Now.AddDays(1), [byte[]](1..12)) }
         return [Security.Cryptography.X509Certificates.X509Certificate2]::new($made.RawData)
     }
     finally { $rsa.Dispose() }
@@ -666,11 +736,16 @@ function New-SigningCertificate([string] $subject, $uses = @($CodeSigning)) {
 function Signature([string] $status, $certificate, [string] $type = 'Authenticode') {
     [pscustomobject]@{ Status = $status; StatusMessage = "status $status"; SignerCertificate = $certificate; SignatureType = $type }
 }
-$edb = New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation, L=Bedford, S=Massachusetts, C=US'
-$microsoft = New-SigningCertificate 'CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US'
-function Assert-Signature($signature, [string] $organization = $PostgresSigner) { Get-Caught { Assert-InstallerSignature $signature $organization 'The installer' } }
-Check "signature: EDB's installer, valid, by EnterpriseDB" ($null -eq (Assert-Signature (Signature 'Valid' $edb))) "$(Assert-Signature (Signature 'Valid' $edb))"
-Check "signature: Microsoft's installer, valid, by Microsoft" ($null -eq (Assert-Signature (Signature 'Valid' $microsoft) $DotNetSigner))
+# What Get-SignerChain gives: the thumbprints from the signer to its root, and the problems besides time.
+function Chain([string] $root, [string[]] $problems = @()) { [pscustomobject]@{ Thumbprints = @(('11' * 20), ('22' * 20), $root); Problems = $problems } }
+$microsoftRoot = '8F43288AD272F3103B6FB1428485EA3014C0BCFE'
+# As EDB's and Microsoft's installers are signed (read from EDB's PostgreSQL 18 programs and Microsoft's .NET 10 installers).
+$edb = New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation, L=Wilmington, S=Delaware, C=US'
+$microsoft = New-SigningCertificate 'CN=.NET, O=Microsoft Corporation, L=Redmond, S=Washington, C=US' -issuer $otherIssuer
+function Assert-Signature($signature, $signer = $PostgresSigner, $chain = $null) { Get-Caught { Assert-InstallerSignature $signature $signer 'The installer' $chain } }
+Check "signature: EDB's installer, valid, by EnterpriseDB, from DigiCert's authority" ($null -eq (Assert-Signature (Signature 'Valid' $edb))) "$(Assert-Signature (Signature 'Valid' $edb))"
+Check "signature: Microsoft's installer, valid, by Microsoft, up to Microsoft's root (2011 or 2010)" ($null -eq (Assert-Signature (Signature 'Valid' $microsoft) $DotNetSigner (Chain $microsoftRoot)) -and
+    $null -eq (Assert-Signature (Signature 'Valid' $microsoft) $DotNetSigner (Chain '3B1EFD3A66EA28B16697394703A72CA340A05BD5'))) "$(Assert-Signature (Signature 'Valid' $microsoft) $DotNetSigner (Chain $microsoftRoot))"
 Check 'signature: without the SignatureType of newer PowerShell versions, the rest is checked' ($null -eq (Assert-Signature ([pscustomobject]@{ Status = 'Valid'; SignerCertificate = $edb })))
 foreach ($case in ([ordered]@{
         'not signed' = Signature 'NotSigned' $null
@@ -680,17 +755,74 @@ foreach ($case in ([ordered]@{
         'signed through a catalog' = Signature 'Valid' $edb 'Catalog'
         'valid without a signer' = Signature 'Valid' $null
         'signed by Microsoft, for EDB''s' = Signature 'Valid' $microsoft
-        'signed by an organization whose name starts alike' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation Ltd, C=US')
-        'signed by the name in another case' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation, O=enterprisedb corporation')
+        'signed by an organization whose name starts alike' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation Ltd, L=Wilmington, S=Delaware, C=US')
+        'signed by the name in another case' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation, O=enterprisedb corporation, L=Wilmington, S=Delaware, C=US')
         'signed with the name as common name only' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation')
-        'signed by two organizations' = Signature 'Valid' (New-SigningCertificate 'CN=x, O=EnterpriseDB Corporation, O=Someone Else')
-        'signed with a certificate for web servers' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation' @($ServerAuth))
-        'signed with a certificate without Extended Key Usage' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation' $null)
+        'signed by two organizations' = Signature 'Valid' (New-SigningCertificate 'CN=x, O=EnterpriseDB Corporation, O=Someone Else, L=Wilmington, S=Delaware, C=US')
+        'signed by the organization elsewhere (another state)' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation, L=Bedford, S=Massachusetts, C=US')
+        'signed by the organization without its locality' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation, S=Delaware, C=US')
+        'signed by EnterpriseDB with a certificate of another authority' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation, L=Wilmington, S=Delaware, C=US' -issuer $otherIssuer)
+        'signed by EnterpriseDB with a certificate of its own' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation, L=Wilmington, S=Delaware, C=US' -issuer $null)
+        'signed with a certificate for web servers' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation, L=Wilmington, S=Delaware, C=US' @($ServerAuth))
+        'signed with a certificate without Extended Key Usage' = Signature 'Valid' (New-SigningCertificate 'CN=EnterpriseDB Corporation, O=EnterpriseDB Corporation, L=Wilmington, S=Delaware, C=US' $null)
     }).GetEnumerator()) {
     $caught = Assert-Signature $case.Value
     Check "signature: refuses an installer $($case.Key)" ($null -ne $caught -and (Get-SetupExitCode $caught) -eq 5 -and $caught.Exception.Message -match 'Nothing was changed') "$caught"
 }
-Check 'signature: an organization with a comma, read from the encoding' ((@(Get-CertificateOrganizations (New-SigningCertificate 'CN=x, O="Pulsar, Inc.", C=US')) -join '|') -ceq 'Pulsar, Inc.')
+foreach ($case in ([ordered]@{
+        'without a chain' = $null
+        'whose chain ends at another root' = Chain ('AB' * 20)
+        'whose chain to Microsoft''s root has a problem' = Chain $microsoftRoot @('NotSignatureValid')
+        'whose chain is the signer alone' = [pscustomobject]@{ Thumbprints = @($microsoftRoot); Problems = @() }
+    }).GetEnumerator()) {
+    $caught = Assert-Signature (Signature 'Valid' $microsoft) $DotNetSigner $case.Value
+    Check "signature: refuses Microsoft's installer $($case.Key)" ((Get-SetupExitCode $caught) -eq 5 -and $caught.Exception.Message -match 'root') "$caught"
+}
+$caught = Assert-Signature (Signature 'Valid' (New-SigningCertificate 'CN=.NET, O=Microsoft Corporation, L=Redmond, S=Washington, C=GB' -issuer $otherIssuer)) $DotNetSigner (Chain $microsoftRoot)
+Check "signature: refuses Microsoft's installer signed by Microsoft elsewhere (another country)" ((Get-SetupExitCode $caught) -eq 5) "$caught"
+Check 'signature: a name''s attributes, read from the encoding (a comma inside one)' ((@(Get-NameAttributes (New-SigningCertificate 'CN=x, O="Pulsar, Inc.", C=US').SubjectName | ForEach-Object { "$($_.Type)=$($_.Value)" }) -join '|') -ceq 'C=US|O=Pulsar, Inc.|CN=x')
+
+# The version an installer says it is, against the one it was chosen as.
+function VersionInfo([string] $name, [string] $product, [string] $file = $product) { [pscustomobject]@{ ProductName = $name; ProductVersion = $product; FileVersion = $file } }
+Check "version: .NET's installer of the version chosen (as Microsoft's say it)" ($null -eq (Get-Caught { Assert-InstallerVersion (VersionInfo 'Microsoft .NET Runtime - 10.0.12 (x64)' '10.0.12.36422') 'Microsoft .NET Runtime - 10.0.12 (x64)' '10.0.12' 'The installer' }))
+Check "version: EDB's installer of the release chosen" ($null -eq (Get-Caught { Assert-InstallerVersion (VersionInfo 'PostgreSQL 18' '18.6-1') 'PostgreSQL' '18.6' 'The installer' -contains }))
+foreach ($case in ([ordered]@{
+        'another release' = @((VersionInfo 'Microsoft .NET Runtime - 10.0.1 (x64)' '10.0.1.1234'), 'Microsoft .NET Runtime - 10.0.12 (x64)', '10.0.12', $false)
+        'a release that only starts alike' = @((VersionInfo 'PostgreSQL 18' '18.60-1'), 'PostgreSQL', '18.6', $true)
+        'an older release of PostgreSQL' = @((VersionInfo 'PostgreSQL 18' '18.5-1'), 'PostgreSQL', '18.6', $true)
+        'another product of that version' = @((VersionInfo 'Microsoft ASP.NET Core Runtime - 10.0.12 (x64)' '10.0.12.36422'), 'Microsoft .NET Runtime - 10.0.12 (x64)', '10.0.12', $false)
+        'another product than PostgreSQL' = @((VersionInfo 'StackBuilder' '18.6'), 'PostgreSQL', '18.6', $true)
+        'no version information' = @((VersionInfo '' ''), 'PostgreSQL', '18.6', $true)
+    }).GetEnumerator()) {
+    $value = $case.Value
+    $caught = Get-Caught { Assert-InstallerVersion $value[0] $value[1] $value[2] 'The installer' -contains:$value[3] }
+    Check "version: refuses an installer of $($case.Key)" ((Get-SetupExitCode $caught) -eq 5) "$caught"
+}
+
+# The oldest PostgreSQL a release installs.
+Check 'PostgreSQL: the floor release.json records' ((Read-PostgresMinimum '{"version": "1.0.0", "runtimes": {}, "postgresMinimum": "18.6"}') -ceq '18.6' -and $null -eq (Read-PostgresMinimum '{"version": "1.0.0", "runtimes": {}}') -and $null -eq (Read-PostgresMinimum $null))
+Check 'PostgreSQL: a floor that is not a release is refused' ((Get-SetupExitCode (Get-Caught { Read-PostgresMinimum '{"postgresMinimum": "18.6; x"}' })) -eq 3)
+Check 'PostgreSQL: the floor and newer releases pass, and other major versions' ($null -eq (Get-Caught { Assert-PostgresMinimum '18.6' '18.6' 'x'; Assert-PostgresMinimum '18.10' '18.6' 'x'; Assert-PostgresMinimum '17.2' '18.6' 'x'; Assert-PostgresMinimum '18.0' $null 'x' }))
+$caught = Get-Caught { Assert-PostgresMinimum '18.5' '18.6' 'The installer' }
+Check 'PostgreSQL: an older release than the floor is refused' ((Get-SetupExitCode $caught) -eq 5 -and $caught.Exception.Message -match '18\.6') "$caught"
+# SecureStrings without ConvertTo-SecureString -AsPlainText, whose parameters module logging records.
+$secure = ConvertTo-Secure 'a secret of the test'
+Check 'secrets: SecureStrings are built from the text, read-only' ((ConvertFrom-Secure $secure) -ceq 'a secret of the test' -and $secure.IsReadOnly() -and (ConvertFrom-Secure (ConvertTo-Secure '')) -ceq '')
+$installText = Get-Content -Raw -LiteralPath $installScript
+$plainSecure = @(foreach ($path in $installScript, $backupScript) {
+        $parsed = [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path).ProviderPath, [ref] $null, [ref] $null)
+        $parsed.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'ConvertTo-SecureString' }, $true) | ForEach-Object { $_.Extent.Text }
+    })
+Check 'secrets: no ConvertTo-SecureString in the install and backup scripts' ($plainSecure.Count -eq 0) ($plainSecure -join ' | ')
+
+# -Update never goes back to an older release.
+Check 'update: a release as new as what is installed, or newer, updates it' ($null -eq (Get-Caught { Assert-NotOlderThanInstalled '1.2.0' @('1.2.0.0', '1.1.9.0'); Assert-NotOlderThanInstalled '1.3.0-beta' @('1.2.0.0'); Assert-NotOlderThanInstalled '1.0.0' @(); Assert-NotOlderThanInstalled '' @('9.0.0.0') }))
+$caught = Get-Caught { Assert-NotOlderThanInstalled '1.1.0' @('1.0.0.0', '1.2.0.0') }
+Check 'update: a release older than a program installed here is refused, nothing changed' ((Get-SetupExitCode $caught) -eq 2 -and $caught.Exception.Message -match '1\.2\.0') "$caught"
+Check 'update: -Update compares release.json''s version with the installed programs'' before anything else' ($installText -match 'if \(\$Update\) \{\s+\$releaseText = Get-ReleaseText\s+if \(\$releaseText\) \{ Assert-NotOlderThanInstalled')
+
+Check 'downloads: a download''s time is capped by its size, 10 minutes at least' ([PulsarDownloads]::TimeLimit(0) -eq [TimeSpan]::FromMinutes(10) -and
+    [PulsarDownloads]::TimeLimit(1GB) -eq ([TimeSpan]::FromMinutes(10) + [TimeSpan]::FromSeconds(8192)) -and [PulsarDownloads]::TimeLimit(-5) -eq [TimeSpan]::FromMinutes(10))
 
 # --- Files of secrets, runtimes on disk, programs replaced ---------------------------------------------------------
 
@@ -775,6 +907,20 @@ Check 'release: the ZIP''s panel and agent are framework-dependent, for the newe
     $buildRelease -match "dotnet publish \(Join-Path \`$repo 'src\\Pulsar.Api'\) @zipOptions" -and $buildRelease -match "dotnet publish \(Join-Path \`$repo 'src\\Pulsar.Agent'\) @zipOptions")
 Check 'release: the MSI''s agent is self-contained' ($buildRelease -match "dotnet publish \(Join-Path \`$repo 'src\\Pulsar.Agent'\) @common --self-contained -o \`$msiAgent" -and $buildRelease -match '-AgentDir \$msiAgent')
 Check 'release: the ZIP records the runtimes it was built for (release.json)' ($buildRelease -match "Join-Path \`$staging 'release.json'")
+$releaseWorkflow = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\.github\workflows\release.yml')
+Check 'release: CI builds the setups with Inno Setup 7.1.0 pinned by SHA-256 and signer, and fails without them' (
+    $releaseWorkflow -match 'releases/download/is-7_1_0/innosetup-7\.1\.0-x64\.exe' -and $releaseWorkflow -match "-ne '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f'" -and
+    $releaseWorkflow -match 'O=Pyrsys B\\\.V\\\.' -and $releaseWorkflow -match 'Build-Release\.ps1 .*-RequireSetups' -and
+    $releaseWorkflow.IndexOf('innosetup-7.1.0-x64.exe') -lt $releaseWorkflow.IndexOf('./scripts/release/Build-Release.ps1'))
+Check 'release: the setups are attested and published with their SHA-256 files' (
+    $releaseWorkflow -match 'subject-path: \|[\s\S]*artifacts/release/\*\.exe' -and
+    $releaseWorkflow -match 'PulsarSetup-\$version\.exe artifacts/release/PulsarSetup-\$version\.exe\.sha256' -and
+    $releaseWorkflow -match 'PulsarAgentSetup-\$version\.exe artifacts/release/PulsarAgentSetup-\$version\.exe\.sha256')
+Check 'release: ISCC comes from Program Files first, and it and its DLLs are checked as signed by Pyrsys B.V. before each compile' (
+    $buildRelease -match "@\(\`$env:ProgramFiles, \`$\{env:ProgramFiles\(x86\)\}, \`$env:LOCALAPPDATA\)" -and $buildRelease -match "\`$InnoSetupSigner = 'Pyrsys B\.V\.'" -and
+    $buildRelease -match 'Assert-InnoSetupSigned \$candidate' -and $buildRelease -match "Assert-InnoSetupSigned \`$compiler\s+\`$lines = & \{")
+Check 'release: release.json records the oldest PostgreSQL 18 the installer takes, a release of 18' ($buildRelease -match 'postgresMinimum = \$PostgresMinimum' -and
+    $buildRelease -match "\[ValidatePattern\('\^18\\\.\\d\{1,4\}\$'\)\] \[string\] \`$PostgresMinimum = '18\.\d+'")
 Check 'release: the MSI refuses an agent that is not self-contained' ($buildMsi -match 'includedFrameworks')
 Check 'release: Build-Release.ps1 builds the agent''s setup into the panel''s downloads folder before the ZIP, then PulsarSetup.exe' (
     $buildRelease -match "Build-Setup \`$iscc 'PulsarAgentSetup\.iss'" -and $buildRelease -match "Join-Path \`$staging 'panel\\downloads'" -and
@@ -882,10 +1028,17 @@ Check 'setups: ClearSecretVariables removes every variable Install-Pulsar.ps1 ta
 Check 'setups: the payload''s folder is C:\Program Files\Pulsar\Setup and no other (/DIR= refused)' ($commonCode['PrepareToInstall'] -match "PathSame\(ExpandConstant\('\{app\}'\), ExpandConstant\('\{commonpf64\}\\Pulsar\\Setup'\)\)")
 Check 'setups: the uninstaller runs Install-Pulsar.ps1 -Uninstall and stops (entry kept) when it fails' ($commonCode['CurUninstallStepChanged'] -match "RunInstallScript\(' -Uninstall'\)" -and $commonCode['CurUninstallStepChanged'] -match 'Abort;')
 Check 'setups: nothing changed (2 to 6) rolls the setup back; otherwise its entry in Apps stays' ($commonCode['RunInstallStep'] -match '\(Code < ExitUsage\) or \(Code > ExitCertificate\)' -and $commonCode['RunInstallStep'] -match 'RunKept := True' -and $commonCode['RunInstallStep'] -match 'Abort;')
-Check 'setups: the browser opens only https://localhost:<port>/ from PULSAR-PANEL-URL, as the user who started the setup' (
+Check 'setups: nothing is opened at the end (started elevated, a browser would run as administrator): the Finished page shows https://localhost:<port>/ from PULSAR-PANEL-URL in a read-only box' (
     $commonCode['ScriptOutput'] -match "if IsLocalPanelUrl\(Copy\(Line, 18, Length\(Line\)\)\) then\s+RunPanelUrl := " -and
-    (@(Get-IssSection $commonIss 'Run') -join '|') -match 'Filename: "\{code:GetPanelUrl\}";.*Flags: postinstall shellexec runasoriginaluser nowait skipifsilent; Check: HasPanelUrl' -and
-    @(Get-IssSection $commonIss 'Run').Count -eq 1 -and (@(Get-IssSection $commonIss 'Run') -join '') -notmatch 'Parameters:')
+    @(@($commonIss) + @($wizardIss.Values) | ForEach-Object { @(Get-IssSection $_ 'Run') }).Count -eq 0 -and
+    @((@($commonIss) + @($wizardIss.Values) -join "`n") -split "`r?`n" | Where-Object { $_ -notmatch '^\s*(;|//)' -and $_ -match 'runasoriginaluser' }).Count -eq 0 -and
+    $commonCode['ShowFinishedText'] -match 'Address\.ReadOnly := True;' -and $commonCode['ShowFinishedText'] -match 'Address\.Text := RunPanelUrl;')
+Check 'setups: one setup at a time in this session, with no Global\ name another account could take first' ($setupDirective['SetupMutex'] -ceq 'PulsarSetup')
+Check 'setups: a newer Pulsar is found by the version a setup recorded and by the installed programs'' own' (
+    $commonCode['NewerVersionInstalled'] -match "'DisplayVersion'" -and
+    $commonCode['NewerVersionInstalled'] -match "NewerProgramInstalled\(ExpandConstant\('\{commonpf64\}\\Pulsar\\Panel\\Pulsar\.Api\.exe'\)" -and
+    $commonCode['NewerVersionInstalled'] -match "NewerProgramInstalled\(ExpandConstant\('\{commonpf64\}\\Pulsar\\Agent\\PulsarAgent\.exe'\)" -and
+    $commonCode['NewerProgramInstalled'] -match 'GetPackedVersion\(Path, Version\)' -and $commonCode['NewerProgramInstalled'] -match 'ComparePackedVersion\(Version, Current\) > 0')
 foreach ($case in @(@('https://localhost:8443/', $true), @('https://localhost:65535/', $true), @('https://localhost:8443', $false), @('https://evil.example/', $false), @('https://localhost:8443/x', $false), @('https://localhost:/', $false), @('https://localhost:99999/', $false), @('https://localhost:84a3/', $false))) {
     # The same rule, in PowerShell: the Pascal function cannot run here.
     $url = $case[0]

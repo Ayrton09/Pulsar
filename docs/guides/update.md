@@ -21,7 +21,9 @@ services), shows the license and what it will update, and runs `Install-Pulsar.p
 passwords, nodes and game servers stay as they are. On each node, run the new `PulsarAgentSetup-<version>.exe` (from
 the Releases page, or the updated panel's `https://<panel>/downloads/PulsarAgentSetup.exe`), or `PulsarSetup.exe`
 where the panel runs too. A setup older than what is installed refuses to run, since the database may have changes an
-older panel cannot read. Silently: `PulsarSetup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART` (no secret is
+older panel cannot read: it compares its version with the one a setup recorded and with the installed programs' own
+(`Pulsar.Api.exe`, `PulsarAgent.exe`), whoever installed them, and `Install-Pulsar.ps1 -Update` refuses a release
+older than those programs too (exit code 2, nothing changed). Silently: `PulsarSetup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART` (no secret is
 needed), with the exit codes of [silent installs](install.md#silent-installs-with-the-setups). When the update fails
 before it changes anything, the setup says why and leaves Pulsar as it was; otherwise see
 [If something goes wrong](#if-something-goes-wrong).

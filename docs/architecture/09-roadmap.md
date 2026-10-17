@@ -366,15 +366,15 @@ Installing Pulsar should be as easy as AMP's: download one program, click throug
 - *First administrator.*
   - A wizard page asks for the administrator's name and password (twice). The script needs that session to add this PC as a node and to apply the SFTP port.
   - The password reaches the script outside any command line: through the elevated process's environment or a temporary file only SYSTEM and Administrators can read, deleted at once.
-  - At the end the setup opens the panel's sign-in page.
+  - At the end the setup shows the panel's sign-in page to open (it runs as administrator, so it starts no browser).
 - *Nodes on other machines.*
   - **Add node** shows a code and a link to `PulsarAgentSetup.exe`.
   - The code carries the enrollment token, the panel key's fingerprint and the SHA-256 of the panel's TLS certificate.
-  - The agent setup asks for the panel's address and the code. It reads the certificate the panel presents, checks it against that hash and the checks `-TrustCertificate` makes today (not a CA, the host is in its names), and trusts it. Nobody copies `panel.cer` by hand anymore.
+  - The agent setup asks for the panel's address and the code. It reads the certificate the panel presents, checks it against that hash (not a CA, server authentication only, the host is in its names), and the agent pins it: it accepts that certificate and no other, and the machine's certificate stores are not changed. Nobody copies `panel.cer` by hand anymore.
 - *Not yet:* code signing for the setups. Until it is in place, SmartScreen asks for **Run anyway**.
 
 **Done when:**
-1. On a clean Windows (Sandbox), `PulsarSetup.exe` with the defaults ends in the browser at the panel's sign-in page.
+1. On a clean Windows (Sandbox), `PulsarSetup.exe` with the defaults ends showing the panel's sign-in page, which opens in the browser.
    - It downloaded the latest PostgreSQL 18 and .NET 10 and checked them.
    - PostgreSQL listens only on this machine.
    - No password appears in any process's command line.

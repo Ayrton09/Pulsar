@@ -148,6 +148,7 @@ describe('one-time secrets', () => {
           expiresAt: '2026-10-16T12:00:00Z',
           panelKeyFingerprint: 'sha256:panel-key',
           nodeCode: 'pulsar-node-1.one-time-code',
+          agentSetupSha256: 'ab'.repeat(32),
           agentSetupAvailable: true,
         }),
     });
