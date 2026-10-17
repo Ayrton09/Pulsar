@@ -144,6 +144,7 @@ try
     api.MapServerScheduleEndpoints();
     api.MapNotificationEndpoints();
     api.MapSftpEndpoints();
+    api.MapPanelCertificateEndpoints();
 
     // Agent protocol: its own authentication, never the browser's (docs/architecture/03).
     app.MapAgentEndpoints();

@@ -12,6 +12,7 @@ import { MIN_PASSWORD_LENGTH } from './SetupPage';
 import { ApiKeysSection } from './ApiKeys';
 import { TwoFactorSection } from './TwoFactor';
 import { SftpAccessSection } from '../sftp/SftpAccessSection';
+import { PanelCertificateSection } from '../certificate/PanelCertificateSection';
 
 const profileSchema = z.object({
   displayName: z.string().trim().max(128, 'validation.tooLong'),
@@ -29,7 +30,7 @@ const passwordSchema = z
     message: 'validation.passwordsDiffer',
   });
 
-/** The signed-in user's own profile and password. */
+/** The signed-in user's own profile and password, and how they reach the panel (SFTP, the panel's certificate). */
 export function AccountPage() {
   const { t } = useTranslation();
   return (
@@ -40,6 +41,7 @@ export function AccountPage() {
         <PasswordForm />
         <TwoFactorSection />
         <SftpAccessSection />
+        <PanelCertificateSection />
         <ApiKeysSection />
       </div>
     </>

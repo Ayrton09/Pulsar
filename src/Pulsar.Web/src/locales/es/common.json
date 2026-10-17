@@ -764,7 +764,7 @@
   },
   "account": {
     "title": "Mi cuenta",
-    "description": "Tu perfil, tu contraseña, la verificación en dos pasos y tus API keys.",
+    "description": "Tu perfil, tu contraseña, la verificación en dos pasos, el acceso por SFTP, el certificado del panel y tus API keys.",
     "profile": "Perfil",
     "userNameFixed": "El usuario no se puede cambiar.",
     "emailHint": "Opcional. No lo ven otros usuarios.",
@@ -1866,5 +1866,27 @@
     "save": "Guardar",
     "offConfirm": "¿Apagar SFTP? Todas las conexiones SFTP terminan ahora.",
     "portConfirm": "¿Cambiar el puerto de SFTP? Todas las conexiones SFTP terminan ahora y los clientes tienen que usar el puerto nuevo."
+  },
+  "panelCertificate": {
+    "title": "Certificado del panel",
+    "hint": "Para que tu navegador no avise que la conexión no es privada cada vez que abrís el panel (pasa cuando su certificado es autofirmado, como el que crea el instalador), confiá una vez en el certificado en esta computadora.",
+    "fingerprint": "Huella (SHA-256)",
+    "copy": "Copiar {{what}}",
+    "covers": "Para {{names}}. Válido hasta {{date}}.",
+    "validUntil": "Válido hasta {{date}}.",
+    "checkTitle": "Comprobá que sea el de tu panel antes de confiar en él",
+    "check": "El SHA-256 del archivo descargado (en PowerShell: Get-FileHash pulsar-panel.cer), o el que tu navegador muestra para este sitio, tiene que coincidir con la huella que mostró el instalador en la PC del panel. Mientras tu navegador no confíe en este certificado, alguien en el medio podría cambiar esta página, así que no te guíes solo por la huella de arriba. Si no coincide, no lo instales.",
+    "download": "Descargar certificado",
+    "windowsTitle": "En Windows (Edge, Chrome):",
+    "windows1": "Hacé doble clic en pulsar-panel.cer y elegí Instalar certificado.",
+    "windows2": "Elegí Usuario actual y después Siguiente.",
+    "windows3": "Elegí Colocar todos los certificados en el siguiente almacén, después Examinar y Entidades de certificación raíz de confianza.",
+    "windows4": "Siguiente, Finalizar, y Sí en la advertencia de Windows.",
+    "windows5": "Reiniciá el navegador.",
+    "firefox": "Firefox tiene su propia lista: Ajustes → Privacidad y seguridad → Certificados → Ver certificados → Autoridades → Importar, elegí el archivo y marcá Confiar en esta CA para identificar sitios web.",
+    "after": "Después abrí el panel en la misma dirección: el aviso ya no aparece. Sigue apareciendo en una dirección que el certificado no incluye.",
+    "issued": "Este certificado lo emitió una autoridad: los navegadores que confían en ella no necesitan instalar nada.",
+    "notTrustable": "Este certificado podría emitir certificados para otros sitios, o servir para algo más que un servidor web: no lo instales como de confianza. Pedile a tu administrador que use uno como el del instalador.",
+    "unavailable": "Esta página no llegó al panel por su propio HTTPS (HTTP sin cifrar, o un proxy delante del panel), así que no hay un certificado del panel para mostrar."
   }
 }

@@ -764,7 +764,7 @@
   },
   "account": {
     "title": "My account",
-    "description": "Your profile, password, two-factor authentication and API keys.",
+    "description": "Your profile, password, two-factor authentication, SFTP access, the panel's certificate and API keys.",
     "profile": "Profile",
     "userNameFixed": "The user name cannot be changed.",
     "emailHint": "Optional. Not shown to other users.",
@@ -1866,5 +1866,27 @@
     "save": "Save",
     "offConfirm": "Turn SFTP off? Every SFTP connection ends now.",
     "portConfirm": "Change the SFTP port? Every SFTP connection ends now, and clients have to use the new port."
+  },
+  "panelCertificate": {
+    "title": "Panel certificate",
+    "hint": "Browsers warn that the connection is not private when the panel's certificate is self-signed, as the one the installer makes. To stop the warning on this computer, trust the certificate once.",
+    "fingerprint": "Fingerprint (SHA-256)",
+    "copy": "Copy {{what}}",
+    "covers": "For {{names}}. Valid until {{date}}.",
+    "validUntil": "Valid until {{date}}.",
+    "checkTitle": "Check it is your panel's before you trust it",
+    "check": "The SHA-256 of the downloaded file (in PowerShell: Get-FileHash pulsar-panel.cer), or the one your browser shows for this site, must match the fingerprint the installer showed on the panel's PC. Until your browser trusts this certificate, someone in the middle could change this page, so do not go by the fingerprint above alone. If it does not match, do not install it.",
+    "download": "Download certificate",
+    "windowsTitle": "On Windows (Edge, Chrome):",
+    "windows1": "Double-click pulsar-panel.cer and choose Install Certificate.",
+    "windows2": "Choose Current User, then Next.",
+    "windows3": "Choose Place all certificates in the following store, then Browse, and Trusted Root Certification Authorities.",
+    "windows4": "Next, Finish, and Yes to Windows' warning.",
+    "windows5": "Restart the browser.",
+    "firefox": "Firefox keeps its own list: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import, choose the file and check Trust this CA to identify websites.",
+    "after": "Then open the panel at the same address: the warning is gone. It stays at an address the certificate does not list.",
+    "issued": "An authority issued this certificate: browsers that trust that authority need nothing installed.",
+    "notTrustable": "This certificate could issue certificates for other sites, or serve more than a web server: do not install it as trusted. Ask your administrator to use one like the installer's.",
+    "unavailable": "This page did not reach the panel over its own HTTPS (plain HTTP, or a proxy in front of the panel), so there is no certificate of the panel's to show."
   }
 }
