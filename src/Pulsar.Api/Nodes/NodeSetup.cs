@@ -193,31 +193,55 @@ internal static class DownloadEndpoints
     /// One client address's budget for the anonymous download (<see cref="DownloadsOptions"/>): so many at once, held for
     /// as long as the file is being sent, and so many an hour. Whatever is over either answers 429 at once.
     /// </summary>
-    public static RateLimiter CreateLimiter(DownloadsOptions options)
+    public static RateLimiter CreateLimiter(DownloadsOptions options) => CreateLimiter(options, TimeSpan.FromHours(1));
+
+    /// <summary>The same with another window than the hour (tests roll it over in milliseconds).</summary>
+    internal static RateLimiter CreateLimiter(DownloadsOptions options, TimeSpan window)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return new DownloadLimiter(options);
+        return CreateLimiter(
+            new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = options.ConcurrentPerAddress, QueueLimit = 0 }),
+            new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions { PermitLimit = options.PerAddressPerHour, Window = window, QueueLimit = 0 }));
     }
+
+    /// <summary>The same over limiters made by the caller; disposing the result disposes both.</summary>
+    internal static RateLimiter CreateLimiter(ConcurrencyLimiter concurrency, FixedWindowRateLimiter window) => new DownloadLimiter(concurrency, window);
 
     /// <summary>
     /// The concurrency cap and the hourly window chained. A chain reports the idle time of its first limiter, which is idle
     /// as soon as a download ends; ASP.NET Core drops a partition idle for 10 seconds, and the hour's count with it. This
-    /// one is idle as the window is: not while the hour holds a count.
+    /// one is idle only when both limiters are: no download holds a place (a slow reader can hold one for hours, past
+    /// several windows, and a partition dropped then would give its address a fresh cap), and the window holds no count.
+    /// A chain also does not dispose its limiters, and ASP.NET Core evicts with DisposeAsync, which would only reach
+    /// <c>Dispose(false)</c> of the base: both are disposed here, or the window's timer stays rooted for every address.
     /// </summary>
     private sealed class DownloadLimiter : RateLimiter
     {
         private readonly RateLimiter _chain;
+        private readonly ConcurrencyLimiter _concurrency;
         private readonly FixedWindowRateLimiter _hour;
 
-        public DownloadLimiter(DownloadsOptions options)
+        public DownloadLimiter(ConcurrencyLimiter concurrency, FixedWindowRateLimiter hour)
         {
-            _hour = new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions { PermitLimit = options.PerAddressPerHour, Window = TimeSpan.FromHours(1), QueueLimit = 0 });
-            _chain = CreateChained(
-                new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = options.ConcurrentPerAddress, QueueLimit = 0 }),
-                _hour);
+            _concurrency = concurrency;
+            _hour = hour;
+            _chain = CreateChained(concurrency, hour);
         }
 
-        public override TimeSpan? IdleDuration => _hour.IdleDuration;
+        public override TimeSpan? IdleDuration
+        {
+            get
+            {
+                // Null while a place is held or the window holds a count; otherwise the shorter of the two idle times,
+                // so the partition stays at least 10 seconds after the last download ended too.
+                if (_concurrency.IdleDuration is not { } held || _hour.IdleDuration is not { } counted)
+                {
+                    return null;
+                }
+
+                return held < counted ? held : counted;
+            }
+        }
 
         public override RateLimiterStatistics? GetStatistics() => _chain.GetStatistics();
 
@@ -231,9 +255,17 @@ internal static class DownloadEndpoints
             if (disposing)
             {
                 _chain.Dispose();
+                _concurrency.Dispose();
+                _hour.Dispose();
             }
 
             base.Dispose(disposing);
+        }
+
+        protected override ValueTask DisposeAsyncCore()
+        {
+            Dispose(true);
+            return base.DisposeAsyncCore();
         }
     }
 }

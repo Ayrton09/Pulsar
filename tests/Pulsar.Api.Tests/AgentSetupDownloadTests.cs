@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Cryptography;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Options;
@@ -149,6 +150,48 @@ public sealed class AgentSetupDownloadTests : IClassFixture<NoDatabaseApiFactory
 
         // The download ended and gave its place back, but the hour still holds its count.
         Assert.Null(limiter.IdleDuration);
+    }
+
+    [Fact]
+    public async Task AddressWithADownloadStillRunningIsNotIdleEvenAfterTheWindowRolledOver()
+    {
+        // A short window stands for the hour. Once it rolled over the window alone is idle, but a download still being sent
+        // holds its place: dropping the partition then would give the address a fresh concurrency cap.
+        using var limiter = DownloadEndpoints.CreateLimiter(new DownloadsOptions { ConcurrentPerAddress = 1, PerAddressPerHour = 5 }, TimeSpan.FromMilliseconds(50));
+
+        var download = limiter.AttemptAcquire();
+        Assert.True(download.IsAcquired);
+        await Task.Delay(TimeSpan.FromMilliseconds(600), Ct);
+
+        Assert.Null(limiter.IdleDuration);
+
+        // Once the download ends and the window is idle, the partition may go.
+        download.Dispose();
+        Assert.NotNull(limiter.IdleDuration);
+    }
+
+    [Fact]
+    public async Task DisposingTheLimiterDisposesTheConcurrencyCapAndTheWindow()
+    {
+        foreach (var asynchronous in new[] { false, true })
+        {
+            var concurrency = new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = 1, QueueLimit = 0 });
+            var window = new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions { PermitLimit = 1, Window = TimeSpan.FromHours(1), QueueLimit = 0 });
+            var limiter = DownloadEndpoints.CreateLimiter(concurrency, window);
+
+            // ASP.NET Core evicts a partition with DisposeAsync.
+            if (asynchronous)
+            {
+                await limiter.DisposeAsync();
+            }
+            else
+            {
+                limiter.Dispose();
+            }
+
+            Assert.Throws<ObjectDisposedException>(() => concurrency.AttemptAcquire());
+            Assert.Throws<ObjectDisposedException>(() => window.AttemptAcquire());
+        }
     }
 
     [Fact]
