@@ -6,7 +6,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Audit;
 using Pulsar.Application.Notifications;
+using Pulsar.Domain.Audit;
 using Pulsar.Domain.Certificates;
 
 namespace Pulsar.Api.Certificates;
@@ -223,7 +225,13 @@ internal sealed partial class PublicIpCertificateService(
             }
             catch (CryptographicException ex)
             {
-                error = "The ACME account key cannot be read: the Data Protection key ring is missing or another one. " + ex.Message;
+                error = "A key could not be protected or read with this PC's Data Protection keys. " + ex.Message;
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested && ex is not OutOfMemoryException)
+            {
+                // Whatever else goes wrong still counts as a failed attempt: the backoff, the status and the notification.
+                error = $"The attempt failed unexpectedly ({ex.GetType().Name}); the panel's log has the details.";
+                LogAttemptUnexpected(logger, ex);
             }
 
             if (error is not null)
@@ -242,7 +250,7 @@ internal sealed partial class PublicIpCertificateService(
         AcmeDirectoryKind directory, CancellationToken cancellationToken)
     {
         var settingsOptions = options.Value;
-        using var accountKey = await AccountKeyAsync(db, settings, cancellationToken);
+        using var accountKey = await AccountKeyAsync(services, db, settings, cancellationToken);
         using var client = new AcmeClient(settingsOptions.HandlerOverride?.Invoke() ?? AcmeClient.CreateHandler(),
             new Uri(settingsOptions.DirectoryUrl(directory)), accountKey);
         var offered = await client.GetDirectoryAsync(cancellationToken);
@@ -277,7 +285,7 @@ internal sealed partial class PublicIpCertificateService(
         var now = clock.GetUtcNow();
         var replaces = settings.HasCurrentCertificate(now) && offered.RenewalInfo is not null ? settings.CertificateAriId : null;
         using var issued = await AcmeIssuance.IssueAsync(client, address, replaces, challenges, settingsOptions.ValidationTimeout,
-            settingsOptions.PollInterval, clock, cancellationToken);
+            settingsOptions.PollInterval, ChainTrust.For(directory, settingsOptions.TrustedRootsOverride), clock, cancellationToken);
         var leaf = issued.Leaf;
         var notBefore = new DateTimeOffset(leaf.NotBefore.ToUniversalTime(), TimeSpan.Zero);
         var notAfter = new DateTimeOffset(leaf.NotAfter.ToUniversalTime(), TimeSpan.Zero);
@@ -325,8 +333,9 @@ internal sealed partial class PublicIpCertificateService(
 
             db.ChangeTracker.Clear();
             var current = await db.PublicIpCertificateSettings.SingleOrDefaultAsync(cancellationToken);
-            if (current is null || current.PublicIp != ip || current.Directory != directory)
+            if (current is not { Enabled: true } || current.PublicIp != ip || current.Directory != directory)
             {
+                // Turned off (or changed) while the certificate was being issued: nothing keeps its key.
                 store.Serve(null);
                 return;
             }
@@ -424,9 +433,10 @@ internal sealed partial class PublicIpCertificateService(
                 suggested = window.Start + TimeSpan.FromTicks((long)(span.Ticks * Random.Shared.NextDouble()));
             }
         }
-        catch (AcmeException ex)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested && ex is not OutOfMemoryException)
         {
-            LogRenewalInfoFailed(logger, ex.Message);
+            // Never blocks the renewal: without ARI the half-life still holds.
+            LogRenewalInfoFailed(logger, ex is AcmeException ? ex.Message : ex.GetType().Name);
         }
 
         await using var scope = scopes.CreateAsyncScope();
@@ -439,33 +449,58 @@ internal sealed partial class PublicIpCertificateService(
         }
     }
 
-    /// <summary>The account key: made at the first attempt, kept encrypted with Data Protection, never replaced.</summary>
-    private async Task<ECDsa> AccountKeyAsync(IPulsarDbContext db, PublicIpCertificateSettings settings, CancellationToken cancellationToken)
+    /// <summary>
+    /// The account key: made at the first attempt and kept encrypted with Data Protection. One that cannot be read (the key
+    /// ring was lost) is replaced by a new one, and the account registered again: the old key is gone for good, and nothing
+    /// else would ever let the certificate be renewed. It is logged and audited.
+    /// </summary>
+    private async Task<ECDsa> AccountKeyAsync(IServiceProvider services, IPulsarDbContext db, PublicIpCertificateSettings settings,
+        CancellationToken cancellationToken)
     {
         var protector = dataProtection.CreateProtector(AccountKeyPurpose);
         var key = ECDsa.Create();
         try
         {
+            var replacing = false;
             if (settings.AccountKeyProtected is { } stored)
             {
-                var pkcs8 = protector.Unprotect(stored);
                 try
                 {
-                    key.ImportPkcs8PrivateKey(pkcs8, out _);
+                    var pkcs8 = protector.Unprotect(stored);
+                    try
+                    {
+                        key.ImportPkcs8PrivateKey(pkcs8, out _);
+                        return key;
+                    }
+                    finally
+                    {
+                        CryptographicOperations.ZeroMemory(pkcs8);
+                    }
                 }
-                finally
+                catch (CryptographicException ex)
                 {
-                    CryptographicOperations.ZeroMemory(pkcs8);
+                    LogAccountKeyUnreadable(logger, ex.Message);
+                    key.Dispose();
+                    key = ECDsa.Create();
+                    replacing = true;
                 }
-
-                return key;
             }
 
             key.GenerateKey(ECCurve.NamedCurves.nistP256);
             var created = key.ExportPkcs8PrivateKey();
             try
             {
-                settings.SetAccountKey(protector.Protect(created));
+                if (replacing)
+                {
+                    settings.ReplaceAccountKey(protector.Protect(created));
+                    services.GetRequiredService<IAuditLog>().Record(AuditActions.PublicIpCertificate.AccountKeyReplaced, AuditOutcome.Success,
+                        AuditActor.System, new { publicIp = settings.PublicIp })
+                        .WithTarget("public_ip_certificate", "settings");
+                }
+                else
+                {
+                    settings.SetAccountKey(protector.Protect(created));
+                }
             }
             finally
             {
@@ -558,6 +593,12 @@ internal sealed partial class PublicIpCertificateService(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The stored public IP certificate cannot be read ({Reason}): it is renewed as if there were none")]
     private static partial void LogUnreadable(ILogger logger, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The ACME account key cannot be read ({Reason}): the Data Protection key ring is missing or another one. A new account key is made and the account registered again")]
+    private static partial void LogAccountKeyUnreadable(ILogger logger, string reason);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The public IP certificate's attempt failed unexpectedly")]
+    private static partial void LogAttemptUnexpected(ILogger logger, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Let's Encrypt's renewal information could not be read: {Reason}")]
     private static partial void LogRenewalInfoFailed(ILogger logger, string reason);

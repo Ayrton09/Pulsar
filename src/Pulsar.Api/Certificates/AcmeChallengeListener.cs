@@ -17,14 +17,18 @@ namespace Pulsar.Api.Certificates;
 /// exactly <c>GET /.well-known/acme-challenge/&lt;token&gt;</c> (no body) for a token being validated now with its key
 /// authorization as text/plain, and 404 with an empty body to everything else: other paths, other methods, a query, a
 /// token not pending, a request target in absolute form or percent-encoded. No redirect, no other content, no listing.
-/// HTTP/1.1 only, no request body, a request line of 1 KiB and headers of 4 KiB at most, 5 seconds for the headers and
-/// between requests, and a bounded number of connections, from one address too (docs/architecture/08, T40).
+/// While no token is pending a connection is closed on arrival. HTTP/1.1 only, no request body, a request line of 1 KiB
+/// and headers of 4 KiB at most, 2 seconds for the headers and between requests, and a bounded number of connections,
+/// from one address too, with room kept for addresses holding none (docs/architecture/08, T40).
 /// </summary>
 internal sealed partial class AcmeChallengeListener(
     IOptions<PublicIpCertificateOptions> options, AcmeChallenges challenges, ILoggerFactory loggerFactory, ILogger<AcmeChallengeListener> logger)
     : IAsyncDisposable
 {
     public const string PathPrefix = "/.well-known/acme-challenge/";
+
+    /// <summary>How long a connection may take to send its request, and to send another (Let's Encrypt sends at once).</summary>
+    private static readonly TimeSpan s_idleTimeout = TimeSpan.FromSeconds(2);
 
     private readonly SemaphoreSlim _lock = new(1, 1);
     private WebApplication? _app;
@@ -138,7 +142,7 @@ internal sealed partial class AcmeChallengeListener(
         builder.Services.AddSingleton<IHostLifetime, QuietLifetime>();
         builder.WebHost.UseKestrelCore();
         builder.WebHost.UseSockets(sockets => sockets.CreateBoundListenSocket = BindExclusively);
-        var budget = new ConnectionBudget(settings.MaxChallengeConnectionsPerAddress);
+        var budget = new ConnectionBudget(settings.MaxChallengeConnectionsPerAddress, settings.MaxChallengeConnections);
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
             kestrel.AddServerHeader = false;
@@ -149,13 +153,20 @@ internal sealed partial class AcmeChallengeListener(
             kestrel.Limits.MaxRequestHeadersTotalSize = 4096;
             kestrel.Limits.MaxRequestHeaderCount = 32;
             kestrel.Limits.MaxResponseBufferSize = 4096;
-            kestrel.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(5);
-            kestrel.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(5);
+            kestrel.Limits.KeepAliveTimeout = s_idleTimeout;
+            kestrel.Limits.RequestHeadersTimeout = s_idleTimeout;
             void Listen(ListenOptions listen)
             {
                 listen.Protocols = HttpProtocols.Http1;
                 listen.Use(next => async connection =>
                 {
+                    // No token is being validated: nothing to answer, so the connection is closed on arrival, holding no place.
+                    if (challenges.Count == 0)
+                    {
+                        connection.Abort();
+                        return;
+                    }
+
                     var key = ClientAddress.PartitionOf((connection.RemoteEndPoint as IPEndPoint)?.Address);
                     if (!budget.TryTake(key))
                     {
@@ -236,22 +247,28 @@ internal sealed partial class AcmeChallengeListener(
         return null;
     }
 
-    /// <summary>Connections from one client address at once.</summary>
-    private sealed class ConnectionBudget(int perAddress)
+    /// <summary>
+    /// Connections from one client address at once. Once half of <c>total</c> is held, an address that already holds one gets
+    /// no more: the other half stays for addresses not holding any (Let's Encrypt checks from several), so a few addresses
+    /// cannot fill the listener between them.
+    /// </summary>
+    internal sealed class ConnectionBudget(int perAddress, int total)
     {
         private readonly Dictionary<string, int> _held = new(StringComparer.Ordinal);
+        private int _all;
 
         public bool TryTake(string key)
         {
             lock (_held)
             {
                 var held = _held.GetValueOrDefault(key);
-                if (held >= perAddress)
+                if (held >= perAddress || _all >= total || (held >= 1 && _all >= total / 2))
                 {
                     return false;
                 }
 
                 _held[key] = held + 1;
+                _all++;
                 return true;
             }
         }
@@ -262,6 +279,7 @@ internal sealed partial class AcmeChallengeListener(
             {
                 if (_held.TryGetValue(key, out var held))
                 {
+                    _all--;
                     if (held <= 1)
                     {
                         _held.Remove(key);

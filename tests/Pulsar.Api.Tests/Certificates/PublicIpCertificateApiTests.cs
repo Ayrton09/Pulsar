@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -22,7 +23,7 @@ namespace Pulsar.Api.Tests.Certificates;
 /// The panel with its ACME client pointed at <see cref="FakeAcmeServer"/> and its http-01 responder on a loopback port
 /// (never Let's Encrypt, never port 80), and notifications recorded instead of sent.
 /// </summary>
-public sealed class PublicIpCertificatePanel : PulsarApiFactory
+public class PublicIpCertificatePanel : PulsarApiFactory
 {
     public FakeAcmeServer Acme { get; } = FakeAcmeServer.StartAsync().GetAwaiter().GetResult();
 
@@ -50,6 +51,7 @@ public sealed class PublicIpCertificatePanel : PulsarApiFactory
             {
                 options.DirectoryOverride = Acme.DirectoryUrl.AbsoluteUri;
                 options.HandlerOverride = Acme.Handler;
+                options.TrustedRootsOverride = new X509Certificate2Collection(Acme.Authority.Root);
                 options.ChallengeBindAddress = "127.0.0.1";
                 options.ChallengePortOverride = 0;
                 options.PollInterval = TimeSpan.FromMilliseconds(20);

@@ -151,7 +151,7 @@ internal sealed class AcmeClient : IDisposable
 
             if (meta.TryGetProperty("termsOfService", out var tos))
             {
-                terms = tos.ValueKind == JsonValueKind.String && Uri.TryCreate(tos.GetString(), UriKind.Absolute, out var tosUri)
+                terms = tos.ValueKind == JsonValueKind.String && Uri.TryCreate(Text(tos), UriKind.Absolute, out var tosUri)
                     && tosUri.Scheme == Uri.UriSchemeHttps && tosUri.AbsoluteUri.Length <= MaxUrlLength ? tosUri.AbsoluteUri : throw Malformed("the directory");
             }
 
@@ -164,7 +164,14 @@ internal sealed class AcmeClient : IDisposable
 
                 foreach (var profile in offered.EnumerateObject())
                 {
-                    profiles.Add(profile.Name);
+                    try
+                    {
+                        profiles.Add(profile.Name);
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        throw new AcmeException("The ACME server's answer holds text Pulsar cannot read.", inner: ex);
+                    }
                 }
             }
         }
@@ -541,6 +548,11 @@ internal sealed class AcmeClient : IDisposable
         {
             throw new AcmeException($"Could not reach the ACME server ({ex.HttpRequestError}).", AcmeFailure.Unreachable, inner: ex);
         }
+        catch (IOException ex)
+        {
+            // An answer cut off after its headers (HttpIOException) or a connection that broke while it was read.
+            throw new AcmeException("The connection to the ACME server broke before its answer ended.", AcmeFailure.Unreachable, inner: ex);
+        }
     }
 
     private static async Task<byte[]> ReadBoundedAsync(HttpContent content, int maxBytes, CancellationToken cancellationToken)
@@ -578,13 +590,13 @@ internal sealed class AcmeClient : IDisposable
 
         try
         {
-            using var document = JsonDocument.Parse(response.Body, s_json);
+            using var document = Parse(response.Body);
             return document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("type", out var type)
-                && type.ValueKind == JsonValueKind.String && type.GetString() is { } value && value.StartsWith(ErrorPrefix, StringComparison.Ordinal)
+                && type.ValueKind == JsonValueKind.String && Text(type) is { } value && value.StartsWith(ErrorPrefix, StringComparison.Ordinal) && IsProblemType(value.AsSpan(ErrorPrefix.Length))
                 ? value[ErrorPrefix.Length..]
                 : null;
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or AcmeException)
         {
             return null;
         }
@@ -603,8 +615,15 @@ internal sealed class AcmeClient : IDisposable
         string? detail = null;
         if (type is not null)
         {
-            using var document = JsonDocument.Parse(response.Body, s_json);
-            detail = ProblemText(document.RootElement);
+            using var document = Parse(response.Body);
+            try
+            {
+                detail = ProblemText(document.RootElement);
+            }
+            catch (AcmeException)
+            {
+                // Text that is not text: the status and type still say what happened.
+            }
         }
 
         var message = $"The ACME server refused {what} ({status}{(type is null ? string.Empty : ", " + type)}){(detail is null ? "." : ": " + detail)}";
@@ -633,10 +652,52 @@ internal sealed class AcmeClient : IDisposable
 
         if (problem.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.String)
         {
-            return Clean(detail.GetString()!);
+            return Clean(Text(detail));
         }
 
-        return problem.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String ? Clean(type.GetString()!) : null;
+        return problem.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String ? Clean(Text(type)) : null;
+    }
+
+    /// <summary>
+    /// A problem type as the registry writes them (letters, digits and <c>:._-</c>, 64 at most): anything else is not put
+    /// in a message or a log line.
+    /// </summary>
+    private static bool IsProblemType(ReadOnlySpan<char> type)
+    {
+        if (type.Length is < 1 or > 64)
+        {
+            return false;
+        }
+
+        foreach (var c in type)
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c is not (':' or '.' or '_' or '-'))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// A JSON document, only if the answer is valid UTF-8: <see cref="JsonDocument"/> accepts invalid bytes inside strings
+    /// and fails later, when one is read.
+    /// </summary>
+    private static JsonDocument Parse(byte[] body) =>
+        System.Text.Unicode.Utf8.IsValid(body) ? JsonDocument.Parse(body, s_json) : throw new JsonException("The answer is not valid UTF-8.");
+
+    /// <summary>A string member's text; an answer whose text cannot be read (a lone surrogate, say) is malformed.</summary>
+    private static string Text(JsonElement element)
+    {
+        try
+        {
+            return element.GetString() ?? throw new AcmeException("The ACME server's answer holds text Pulsar cannot read.");
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new AcmeException("The ACME server's answer holds text Pulsar cannot read.", inner: ex);
+        }
     }
 
     private static string Clean(string text)
@@ -656,9 +717,9 @@ internal sealed class AcmeClient : IDisposable
             throw Malformed("the order");
         }
 
-        var authorizations = list.EnumerateArray().Select(a => a.ValueKind == JsonValueKind.String ? CheckUrl(a.GetString()!, "the order") : throw Malformed("the order")).ToList();
+        var authorizations = list.EnumerateArray().Select(a => a.ValueKind == JsonValueKind.String ? CheckUrl(Text(a), "the order") : throw Malformed("the order")).ToList();
         Uri? certificate = root.TryGetProperty("certificate", out _) ? RequiredUrl(root, "certificate", "the order") : null;
-        string? profile = root.TryGetProperty("profile", out var named) ? named.ValueKind == JsonValueKind.String ? named.GetString() : throw Malformed("the order") : null;
+        string? profile = root.TryGetProperty("profile", out var named) ? named.ValueKind == JsonValueKind.String ? Text(named) : throw Malformed("the order") : null;
         if (profile is not null && profile != ShortLivedProfile)
         {
             throw new AcmeException($"The ACME server put the order on another profile ({Clean(profile)}) than shortlived.");
@@ -678,7 +739,7 @@ internal sealed class AcmeClient : IDisposable
 
         try
         {
-            var document = JsonDocument.Parse(response.Body, s_json);
+            var document = Parse(response.Body);
             if (document.RootElement.ValueKind != JsonValueKind.Object)
             {
                 document.Dispose();
@@ -694,7 +755,7 @@ internal sealed class AcmeClient : IDisposable
     }
 
     private static string RequiredString(JsonElement element, string name, string what) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 and <= 4096 } text
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && Text(value) is { Length: > 0 and <= 4096 } text
             ? text
             : throw Malformed(what);
 

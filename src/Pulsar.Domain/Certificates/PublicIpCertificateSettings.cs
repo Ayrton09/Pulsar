@@ -210,6 +210,19 @@ public sealed class PublicIpCertificateSettings
         AccountKeyProtected = protectedKey;
     }
 
+    /// <summary>
+    /// A new account key in place of one nothing can read any more (the Data Protection key ring was lost): the old account
+    /// is forgotten, so a new one is registered with this key at the next attempt.
+    /// </summary>
+    public void ReplaceAccountKey(byte[] protectedKey)
+    {
+        ArgumentNullException.ThrowIfNull(protectedKey);
+        AccountKeyProtected = protectedKey;
+        AccountUrl = null;
+        AccountDirectory = null;
+        AccountContact = null;
+    }
+
     public void AccountRegistered(string url, AcmeDirectoryKind directory, string contact, string? termsOfService)
     {
         ArgumentException.ThrowIfNullOrEmpty(url);
@@ -314,11 +327,15 @@ public sealed class PublicIpCertificateSettings
         UpdatedAt = now;
     }
 
-    /// <summary>ARI's suggested renewal time, when it comes before the half-life (a revocation ahead, say).</summary>
+    /// <summary>
+    /// ARI's suggested renewal time, when it comes before the half-life (a revocation ahead, say) but not before a third of
+    /// the lifetime after the issue: a window in the past (a server's mistake) would otherwise renew at the hourly cap all
+    /// day, so a certificate is never renewed early more than once in that time.
+    /// </summary>
     public void RenewalInfoChecked(DateTimeOffset? suggested, DateTimeOffset now)
     {
         RenewalInfoCheckedAt = now;
-        if (suggested is { } at && at < (RenewAfter ?? HalfLife()))
+        if (suggested is { } at && at >= EarliestEarlyRenewal() && at < (RenewAfter ?? HalfLife()))
         {
             RenewAfter = at;
         }
@@ -346,6 +363,11 @@ public sealed class PublicIpCertificateSettings
         RenewalInfoCheckedAt = null;
         ExpiryNotifiedFor = null;
     }
+
+    private DateTimeOffset EarliestEarlyRenewal() =>
+        (IssuedAt ?? CertificateNotBefore) is { } from && CertificateNotAfter is { } to && CertificateNotBefore is { } start
+            ? from + ((to - start) / 3)
+            : DateTimeOffset.MaxValue;
 
     private DateTimeOffset HalfLife() =>
         CertificateNotBefore is { } from && CertificateNotAfter is { } to ? from + ((to - from) / 2) : DateTimeOffset.MinValue;

@@ -679,7 +679,9 @@ What to know:
   **Admin → Notifications** to be told when it fails and when the certificate is about to expire. If no new one comes,
   once the current one expires visitors from the internet see a security warning again; nothing else stops working.
 - **Let's Encrypt environment → Staging** tries the whole flow against Let's Encrypt's test environment: browsers do
-  not trust its certificates. Switch back to **Production** for the real one.
+  not trust its certificates. Switch back to **Production** for the real one. In production the panel keeps a certificate
+  only if it leads to a root this PC trusts (ISRG Root X1; Windows installs it by itself when it first opens a site that
+  uses it): the section shows the error otherwise.
 - Nodes on your local network, or that reach the panel by a name, are not affected. A node that reaches the panel by
   the public IP from the internet sees the Let's Encrypt certificate there: add it with a node code made while you
   reach the panel by that public IP (the code then names no certificate, and the node checks Let's Encrypt's as any

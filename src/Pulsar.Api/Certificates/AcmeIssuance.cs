@@ -40,6 +40,23 @@ internal sealed class AcmeChallenges
     }
 }
 
+/// <summary>
+/// What a chain must lead to: the machine's trusted roots (<see cref="Platform"/>, production), Let's Encrypt's staging
+/// roots that nothing trusts (<see cref="Staging"/>), or roots given (<see cref="Only"/>, tests: nothing in any store).
+/// </summary>
+internal sealed record ChainTrust(bool AllowUntrustedRoot, X509Certificate2Collection? Roots)
+{
+    public static ChainTrust Platform { get; } = new(false, null);
+
+    public static ChainTrust Staging { get; } = new(true, null);
+
+    public static ChainTrust Only(X509Certificate2Collection roots) => new(false, roots);
+
+    /// <summary>The trust for a directory: production must chain to a trusted root, staging need not.</summary>
+    public static ChainTrust For(AcmeDirectoryKind directory, X509Certificate2Collection? rootsOverride) =>
+        rootsOverride is not null ? Only(rootsOverride) : directory == AcmeDirectoryKind.Staging ? Staging : Platform;
+}
+
 /// <summary>A certificate Let's Encrypt issued: the chain (leaf first), its PEM, and the leaf's private key (PKCS#8).</summary>
 internal sealed record IssuedCertificate(IReadOnlyList<X509Certificate2> Chain, string ChainPem, byte[] PrivateKey) : IDisposable
 {
@@ -66,7 +83,7 @@ internal static class AcmeIssuance
     public const int MaxChainCertificates = 4;
 
     public static async Task<IssuedCertificate> IssueAsync(AcmeClient client, IPAddress address, string? replaces, AcmeChallenges challenges,
-        TimeSpan timeout, TimeSpan pollInterval, TimeProvider clock, CancellationToken cancellationToken)
+        TimeSpan timeout, TimeSpan pollInterval, ChainTrust trust, TimeProvider clock, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(address);
@@ -74,7 +91,7 @@ internal static class AcmeIssuance
         deadline.CancelAfter(timeout);
         try
         {
-            return await IssueCoreAsync(client, address, replaces, challenges, pollInterval, clock, deadline.Token);
+            return await IssueCoreAsync(client, address, replaces, challenges, pollInterval, trust, clock, deadline.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -83,7 +100,7 @@ internal static class AcmeIssuance
     }
 
     private static async Task<IssuedCertificate> IssueCoreAsync(AcmeClient client, IPAddress address, string? replaces, AcmeChallenges challenges,
-        TimeSpan pollInterval, TimeProvider clock, CancellationToken cancellationToken)
+        TimeSpan pollInterval, ChainTrust trust, TimeProvider clock, CancellationToken cancellationToken)
     {
         AcmeOrder order;
         try
@@ -125,7 +142,7 @@ internal static class AcmeIssuance
         var chain = ParseChain(pem);
         try
         {
-            Verify(chain, key, address, clock.GetUtcNow());
+            Verify(chain, key, address, clock.GetUtcNow(), trust);
             return new IssuedCertificate(chain, ChainPem(chain), key.ExportPkcs8PrivateKey());
         }
         catch
@@ -270,11 +287,13 @@ internal static class AcmeIssuance
     /// What the panel accepts to serve: a leaf on the key the CSR had, for the address and nothing else (one IP address, no
     /// DNS name), for server authentication, no certificate authority, valid now; and signed by the next certificate of the
     /// chain, which must be there (browsers fetch no missing intermediate). The chain is built from what was sent and the
-    /// machine's stores only: nothing is downloaded and revocation is not checked; an untrusted root is accepted here
-    /// (Let's Encrypt's staging), the leaf-to-intermediate signature is not.
+    /// machine's stores only: nothing is downloaded and revocation is not checked. It must lead to a trusted root, unless
+    /// <paramref name="trust"/> allows an untrusted one (Let's Encrypt's staging); the leaf-to-intermediate signature is
+    /// checked either way.
     /// </summary>
-    internal static void Verify(IReadOnlyList<X509Certificate2> chain, ECDsa key, IPAddress address, DateTimeOffset now)
+    internal static void Verify(IReadOnlyList<X509Certificate2> chain, ECDsa key, IPAddress address, DateTimeOffset now, ChainTrust? trust = null)
     {
+        trust ??= ChainTrust.Platform;
         var leaf = chain[0];
         using (var leafKey = leaf.GetECDsaPublicKey())
         {
@@ -313,17 +332,25 @@ internal static class AcmeIssuance
         built.ChainPolicy.DisableCertificateDownloads = true;
         built.ChainPolicy.VerificationTime = now.UtcDateTime;
         built.ChainPolicy.VerificationTimeIgnored = false;
+        if (trust.Roots is { } roots)
+        {
+            built.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+            built.ChainPolicy.CustomTrustStore.AddRange(roots);
+        }
+
         foreach (var certificate in chain.Skip(1))
         {
             built.ChainPolicy.ExtraStore.Add(certificate);
         }
         built.Build(leaf);
-        var tolerated = X509ChainStatusFlags.UntrustedRoot | X509ChainStatusFlags.PartialChain | X509ChainStatusFlags.NoError;
+        var tolerated = trust.AllowUntrustedRoot ? X509ChainStatusFlags.UntrustedRoot | X509ChainStatusFlags.PartialChain : X509ChainStatusFlags.NoError;
         if (built.ChainElements.Count < 2 || !built.ChainElements[1].Certificate.RawDataMemory.Span.SequenceEqual(chain[1].RawDataMemory.Span)
-            || built.ChainElements[0].ChainElementStatus.Any(s => (s.Status & ~tolerated) != 0)
-            || built.ChainElements[1].ChainElementStatus.Any(s => (s.Status & ~tolerated) != 0))
+            || built.ChainElements.Any(e => e.ChainElementStatus.Any(s => (s.Status & ~tolerated) != 0))
+            || (!trust.AllowUntrustedRoot && built.ChainStatus.Any(s => s.Status != X509ChainStatusFlags.NoError)))
         {
-            throw new AcmeException("The ACME server's certificate is not signed by the intermediate it came with.");
+            throw new AcmeException(trust.AllowUntrustedRoot
+                ? "The ACME server's certificate is not signed by the intermediate it came with."
+                : "The ACME server's certificate is not signed by the intermediate it came with, or does not lead to a root this PC trusts.");
         }
     }
 

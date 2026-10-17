@@ -114,12 +114,52 @@ public sealed class AcmeChallengeListenerTests : IAsyncLifetime
         TcpClient[] clients = [first, second, third];
 
         // One of the three (whichever the server took last) is closed at once, before any request; the others stay open
-        // (until the 5-second idle limit) and answer.
-        var closed = await Task.WhenAll(clients.Select(c => ClosedWithinAsync(c, TimeSpan.FromSeconds(2))));
+        // (until the 2-second idle limit) and answer.
+        var closed = await Task.WhenAll(clients.Select(c => ClosedWithinAsync(c, TimeSpan.FromSeconds(1))));
         Assert.Equal(1, closed.Count(c => c));
         var open = clients[Array.IndexOf(closed, false)];
         await open.GetStream().WriteAsync(Encoding.ASCII.GetBytes($"GET /.well-known/acme-challenge/{Token} HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n"), Ct);
         Assert.StartsWith("HTTP/1.1 200", await new StreamReader(open.GetStream()).ReadToEndAsync(Ct), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WithNoTokenPendingEveryConnectionIsClosedOnArrival()
+    {
+        _pending.Dispose();
+        using var first = await ConnectAsync();
+        using var second = await ConnectAsync();
+
+        Assert.All(await Task.WhenAll(new[] { first, second }.Select(c => ClosedWithinAsync(c, TimeSpan.FromSeconds(1)))), closed => Assert.True(closed));
+        _pending = _challenges.Add(Token, KeyAuthorization);
+    }
+
+    [Fact]
+    public async Task AConnectionThatSendsNothingIsClosedAfterTwoSeconds()
+    {
+        using var idle = await ConnectAsync();
+
+        // Kestrel looks at its timeouts once a second: the 2-second limit closes it within four.
+        Assert.True(await ClosedWithinAsync(idle, TimeSpan.FromSeconds(4)));
+    }
+
+    [Fact]
+    public void AddressesAlreadyHoldingConnectionsLeaveRoomForOthersOnceHalfIsHeld()
+    {
+        var budget = new AcmeChallengeListener.ConnectionBudget(perAddress: 4, total: 8);
+
+        // One address takes all its four (half of the eight): any of its further ones is refused ...
+        Assert.All(Enumerable.Range(0, 4), _ => Assert.True(budget.TryTake("a")));
+        Assert.False(budget.TryTake("a"));
+        // ... and four others still get one each (Let's Encrypt asks from several places), but not a second.
+        Assert.True(budget.TryTake("b"));
+        Assert.False(budget.TryTake("b"));
+        Assert.True(budget.TryTake("c"));
+        Assert.True(budget.TryTake("d"));
+        Assert.True(budget.TryTake("e"));
+        Assert.False(budget.TryTake("f"));
+
+        budget.Return("a");
+        Assert.True(budget.TryTake("f"));
     }
 
     [Fact]

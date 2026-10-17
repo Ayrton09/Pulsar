@@ -399,7 +399,8 @@
       },
       "public_ip_certificate": {
         "settings_changed": "Cambió la configuración del certificado de la IP pública",
-        "renewal_requested": "Pidió un certificado nuevo para la IP pública"
+        "renewal_requested": "Pidió un certificado nuevo para la IP pública",
+        "account_key_replaced": "Reemplazó la clave ilegible de la cuenta de Let's Encrypt"
       },
       "agent_transport": {
         "changed": "Cambió cómo se conectan los agentes"
@@ -1883,7 +1884,7 @@
     "terms": "Al activarlo aceptás los términos de Let's Encrypt:",
     "termsLink": "Acuerdo de suscriptor",
     "ports": "En tu router, reenviá los puertos TCP 80 y {{port}} a esta PC. Let's Encrypt comprueba el puerto 80; los visitantes usan el {{port}}.",
-    "enableConfirm": "¿Pedirle a Let's Encrypt un certificado para {{ip}}? Aceptás el acuerdo de suscriptor de Let's Encrypt, y Let's Encrypt se va a conectar al puerto 80 de esa dirección para comprobarla.",
+    "enableConfirm": "¿Pedirle a Let's Encrypt un certificado para {{ip}}? Aceptás el acuerdo de suscriptor de Let's Encrypt, y Let's Encrypt se va a conectar al puerto 80 de esa dirección para comprobarla. Un nodo remoto fijado al certificado propio del panel que llegue al panel por esa dirección y el puerto principal va a rechazar el certificado nuevo: tenés que enrolarlo de nuevo con un código de nodo hecho mientras entrás al panel por la IP pública.",
     "save": "Guardar",
     "serving": "Certificado en uso",
     "notServing": "Todavía sin certificado válido",

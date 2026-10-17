@@ -42,6 +42,9 @@ public sealed class PublicIpCertificateOptions
     /// <summary>Tests: what the ACME client sends its requests through (a handler trusting the fake server's certificate).</summary>
     internal Func<HttpMessageHandler>? HandlerOverride { get; set; }
 
+    /// <summary>Tests: the only roots an issued chain must lead to (the fake ACME server's CA), instead of the machine's trusted roots.</summary>
+    internal System.Security.Cryptography.X509Certificates.X509Certificate2Collection? TrustedRootsOverride { get; set; }
+
     /// <summary>Tests: a port (0: any free one) for the challenge listener instead of <see cref="ChallengePort"/>.</summary>
     internal int? ChallengePortOverride { get; set; }
 

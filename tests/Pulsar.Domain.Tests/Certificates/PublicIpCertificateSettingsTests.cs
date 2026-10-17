@@ -211,18 +211,38 @@ public sealed class PublicIpCertificateSettingsTests
 
         settings.RenewalInfoChecked(notBefore.AddHours(200), s_now);
         Assert.Equal(notBefore.AddHours(80), settings.RenewAfter);
+        // A window in the past (or before a third of the lifetime) is a mistake, not a reason to renew: ignored.
+        settings.RenewalInfoChecked(s_now.AddHours(-10), s_now);
         settings.RenewalInfoChecked(s_now.AddHours(10), s_now);
-        Assert.Equal(s_now.AddHours(10), settings.RenewAfter);
+        settings.RenewalInfoChecked(s_now.AddHours(53), s_now);
+        Assert.Equal(notBefore.AddHours(80), settings.RenewAfter);
+        settings.RenewalInfoChecked(s_now.AddHours(60), s_now);
+        Assert.Equal(s_now.AddHours(60), settings.RenewAfter);
 
         // A failed renewal waits its backoff, not past what is due.
-        settings.AttemptStarted(s_now.AddHours(10));
-        settings.Failed("renewal failed", null, s_now.AddHours(10));
-        Assert.Equal(s_now.AddHours(10).AddMinutes(15), settings.NextAttemptTime(s_now.AddHours(10), forced: false));
+        settings.AttemptStarted(s_now.AddHours(60));
+        settings.Failed("renewal failed", null, s_now.AddHours(60));
+        Assert.Equal(s_now.AddHours(60).AddMinutes(15), settings.NextAttemptTime(s_now.AddHours(60), forced: false));
 
         // Another address: the certificate is for nothing configured, a new one is asked for at once.
-        settings.Change(true, "5.6.7.8", null, AcmeDirectoryKind.Production, s_now.AddHours(11));
-        Assert.False(settings.HasCurrentCertificate(s_now.AddHours(11)));
-        Assert.Equal(s_now.AddHours(11), settings.NextAttemptTime(s_now.AddHours(11), forced: false));
+        settings.Change(true, "5.6.7.8", null, AcmeDirectoryKind.Production, s_now.AddHours(61));
+        Assert.False(settings.HasCurrentCertificate(s_now.AddHours(61)));
+        Assert.Equal(s_now.AddHours(61), settings.NextAttemptTime(s_now.AddHours(61), forced: false));
+    }
+
+    [Fact]
+    public void AnAccountKeyNothingCanReadIsReplacedAndTheAccountForgotten()
+    {
+        var settings = Enabled();
+        settings.SetAccountKey([1]);
+        settings.AccountRegistered("https://acme.example/acct/1", AcmeDirectoryKind.Production, "", null);
+        Assert.Throws<InvalidOperationException>(() => settings.SetAccountKey([2]));
+
+        settings.ReplaceAccountKey([3]);
+
+        Assert.Equal([3], settings.AccountKeyProtected);
+        Assert.False(settings.HasAccountAt(AcmeDirectoryKind.Production));
+        Assert.Null(settings.AccountUrl);
     }
 
     [Fact]

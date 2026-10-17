@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Pulsar.Api.Certificates;
+using Pulsar.Domain.Certificates;
 
 namespace Pulsar.Api.Tests.Certificates;
 
@@ -83,8 +84,8 @@ public sealed class AcmeClientTests : IAsyncLifetime
         Assert.True(key.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(csr.PublicKey.ExportSubjectPublicKeyInfo()));
         Assert.Equal(issued.ChainPem, AcmeIssuance.ChainPem(AcmeIssuance.ParseChain(issued.ChainPem)));
 
-        // Nothing is served on port 80 once the order is done.
-        Assert.Equal(HttpStatusCode.NotFound, await ChallengeStatusAsync(answer!.Split('.')[0]));
+        // Nothing is answered on port 80 once the order is done: the connection is closed on arrival.
+        await Assert.ThrowsAsync<HttpRequestException>(() => ChallengeStatusAsync(answer!.Split('.')[0]));
     }
 
     [Fact]
@@ -262,17 +263,115 @@ public sealed class AcmeClientTests : IAsyncLifetime
         using var authority = CertificateAuthority.Create();
         using var stranger = CertificateAuthority.Create();
         var now = DateTimeOffset.UtcNow;
+        var trust = ChainTrust.Only(new X509Certificate2Collection(authority.Root));
 
         var good = authority.IssueChain(key, s_address, TimeSpan.FromHours(160));
-        AcmeIssuance.Verify(good, key, s_address, now);
+        AcmeIssuance.Verify(good, key, s_address, now, trust);
 
-        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify(good, other, s_address, now));
-        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify(good, key, IPAddress.Parse("5.6.7.8"), now));
-        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify([good[0]], key, s_address, now));
-        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify([good[0], stranger.Intermediate], key, s_address, now));
-        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify(good, key, s_address, now.AddHours(161)));
+        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify(good, other, s_address, now, trust));
+        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify(good, key, IPAddress.Parse("5.6.7.8"), now, trust));
+        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify([good[0]], key, s_address, now, trust));
+        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify([good[0], stranger.Intermediate], key, s_address, now, trust));
+        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify(good, key, s_address, now.AddHours(161), trust));
         var expired = authority.IssueChain(key, s_address, TimeSpan.FromHours(1), now.AddHours(-2));
-        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify(expired, key, s_address, now));
+        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify(expired, key, s_address, now, trust));
+    }
+
+    [Fact]
+    public void ProductionMustChainToATrustedRootAndOnlyStagingMayNot()
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var authority = CertificateAuthority.Create();
+        using var stranger = CertificateAuthority.Create();
+        var now = DateTimeOffset.UtcNow;
+        var chain = authority.IssueChain(key, s_address, TimeSpan.FromHours(160));
+
+        // The roots it must lead to are the CA's own: another CA's, or none, is an untrusted root. (Custom roots only: no store.)
+        AcmeIssuance.Verify(chain, key, s_address, now, ChainTrust.Only(new X509Certificate2Collection(authority.Root)));
+        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify(chain, key, s_address, now, ChainTrust.Only(new X509Certificate2Collection(stranger.Root))));
+        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify(chain, key, s_address, now, ChainTrust.Only(new X509Certificate2Collection())));
+
+        // Staging's roots are trusted by nothing: it is accepted there, with the signature of its intermediate still checked.
+        var staging = new ChainTrust(AllowUntrustedRoot: true, Roots: new X509Certificate2Collection());
+        AcmeIssuance.Verify(chain, key, s_address, now, staging);
+        Assert.Throws<AcmeException>(() => AcmeIssuance.Verify([chain[0], stranger.Intermediate], key, s_address, now, staging));
+        Assert.Same(ChainTrust.Staging, ChainTrust.For(AcmeDirectoryKind.Staging, null));
+        Assert.Same(ChainTrust.Platform, ChainTrust.For(AcmeDirectoryKind.Production, null));
+        Assert.False(ChainTrust.For(AcmeDirectoryKind.Production, new X509Certificate2Collection()).AllowUntrustedRoot);
+    }
+
+    [Fact]
+    public async Task AnAnswerCutOffAfterItsHeadersIsAnAcmeException()
+    {
+        _acme.Intercept = async context =>
+        {
+            if (context.Request.Path != "/directory")
+            {
+                return false;
+            }
+
+            context.Response.ContentType = "application/json";
+            context.Response.ContentLength = 500;
+            await context.Response.WriteAsync("{\"newNonce\":");
+            await context.Response.Body.FlushAsync();
+            context.Abort();
+            return true;
+        };
+        using var client = Client();
+
+        var refused = await Assert.ThrowsAsync<AcmeException>(() => client.GetDirectoryAsync(Ct));
+
+        Assert.Equal(AcmeFailure.Unreachable, refused.Failure);
+    }
+
+    [Theory]
+    [InlineData("{\"newNonce\":\"\\xFF\\xFE\",\"newAccount\":\"a\",\"newOrder\":\"b\"}")]
+    [InlineData("{\"newNonce\":\"{base}new-nonce\",\"newAccount\":\"{base}new-account\",\"newOrder\":\"{base}new-order\",\"meta\":{\"profiles\":{\"\\xC3\":\"x\"}}}")]
+    [InlineData("{\"newNonce\":\"{base}new-nonce\",\"newAccount\":\"{base}new-account\",\"newOrder\":\"{base}new-order\",\"meta\":{\"termsOfService\":\"\\xFF\"}}")]
+    public async Task InvalidUtf8InAStringIsAnAcmeExceptionNotAnInvalidOperation(string json)
+    {
+        _acme.Intercept = async context =>
+        {
+            if (context.Request.Path != "/directory")
+            {
+                return false;
+            }
+
+            context.Response.ContentType = "application/json";
+            var bytes = json.Replace("{base}", _acme.BaseUrl.AbsoluteUri, StringComparison.Ordinal).Split("\\x")
+                .SelectMany((part, index) => index == 0 ? Encoding.UTF8.GetBytes(part) : [Convert.ToByte(part[..2], 16), .. Encoding.UTF8.GetBytes(part[2..])]).ToArray();
+            await context.Response.Body.WriteAsync(bytes);
+            return true;
+        };
+        using var client = Client();
+
+        await Assert.ThrowsAsync<AcmeException>(() => client.GetDirectoryAsync(Ct));
+    }
+
+    [Theory]
+    [InlineData("urn:ietf:params:acme:error:bad\\nFORGED: a log line")]
+    [InlineData("urn:ietf:params:acme:error:" + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public async Task AProblemTypeThatIsNotAnErrorNameIsNotPutInTheMessage(string type)
+    {
+        using var client = await RegisteredClientAsync();
+        _acme.Intercept = async context =>
+        {
+            if (context.Request.Path != "/new-order")
+            {
+                return false;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            context.Response.ContentType = "application/problem+json";
+            await context.Response.WriteAsync("{\"type\":\"" + type + "\",\"detail\":\"nope\"}");
+            return true;
+        };
+
+        var refused = await Assert.ThrowsAsync<AcmeException>(() => IssueAsync(client));
+
+        Assert.DoesNotContain("FORGED", refused.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("aaaaaaaaaa", refused.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain('\n', refused.Message);
     }
 
     [Theory]
@@ -326,7 +425,8 @@ public sealed class AcmeClientTests : IAsyncLifetime
     }
 
     private Task<IssuedCertificate> IssueAsync(AcmeClient client, string? replaces = null) =>
-        AcmeIssuance.IssueAsync(client, s_address, replaces, _challenges, TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(10), TimeProvider.System, Ct);
+        AcmeIssuance.IssueAsync(client, s_address, replaces, _challenges, TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(10),
+            ChainTrust.Only(new X509Certificate2Collection(_acme.Authority.Root)), TimeProvider.System, Ct);
 
     private async Task<HttpStatusCode> ChallengeStatusAsync(string token)
     {

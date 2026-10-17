@@ -399,7 +399,8 @@
       },
       "public_ip_certificate": {
         "settings_changed": "Changed the public IP certificate settings",
-        "renewal_requested": "Asked for a new public IP certificate"
+        "renewal_requested": "Asked for a new public IP certificate",
+        "account_key_replaced": "Replaced the unreadable Let's Encrypt account key"
       },
       "agent_transport": {
         "changed": "Changed how agents connect"
@@ -1883,7 +1884,7 @@
     "terms": "Turning this on means you accept Let's Encrypt's terms:",
     "termsLink": "Subscriber Agreement",
     "ports": "On your router, forward TCP ports 80 and {{port}} to this PC. Let's Encrypt checks port 80; visitors use {{port}}.",
-    "enableConfirm": "Ask Let's Encrypt for a certificate for {{ip}}? You accept Let's Encrypt's Subscriber Agreement, and Let's Encrypt will connect to port 80 of that address to check it.",
+    "enableConfirm": "Ask Let's Encrypt for a certificate for {{ip}}? You accept Let's Encrypt's Subscriber Agreement, and Let's Encrypt will connect to port 80 of that address to check it. A remote node pinned to the panel's own certificate that reaches the panel at that address on the main port will refuse the new certificate: enroll it again with a node code made while you reach the panel at the public IP.",
     "save": "Save",
     "serving": "Certificate in use",
     "notServing": "No valid certificate yet",
