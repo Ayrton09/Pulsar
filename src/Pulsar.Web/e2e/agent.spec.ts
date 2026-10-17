@@ -57,7 +57,10 @@ test('a real agent pairs, comes online, answers pings and is cut off when revoke
   await createDialog.getByLabel('Name').fill(nodeName);
   await createDialog.getByRole('button', { name: 'Create' }).click();
   const enrollDialog = page.getByRole('dialog', { name: `Enroll ${nodeName}` });
-  const command = (await enrollDialog.getByLabel('Enrollment command').textContent()) ?? '';
+  // The node code for PulsarAgentSetup.exe comes first; the script's command is the advanced path.
+  await expect(enrollDialog.getByLabel('Node code', { exact: true })).toContainText('pulsar-node-1.');
+  await enrollDialog.getByRole('button', { name: 'Advanced: install with PowerShell' }).click();
+  const command = (await enrollDialog.getByLabel('Enrollment command', { exact: true }).textContent()) ?? '';
   await page.screenshot({ path: 'test-results/screens/node-enroll.png', fullPage: true });
   // The installer's command; the test runs the development agent with the same values.
   const match =
