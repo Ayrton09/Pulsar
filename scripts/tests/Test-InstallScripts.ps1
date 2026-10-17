@@ -93,6 +93,62 @@ $TrustCertificateWithOtherUses = $false
 $Unattended = $false
 $WarningPreference = 'SilentlyContinue'
 
+# --- Public IP certificate (-PublicIp) ------------------------------------------------------------------------------
+
+# The address rule, as the panel's (PublicAddresses): what -PublicIp takes, and what it refuses before anything changes.
+. ([scriptblock]::Create((Get-ScriptParts $installScript @('Test-PublicIpAddress'))['Test-PublicIpAddress']))
+foreach ($address in '1.2.3.4', '8.8.8.8', '100.128.0.1', '172.32.0.1', '203.0.114.1', '2001:4860:4860::8888', '2a00:1450:4001:82a::200e', '2001:200::1') {
+    Check "-PublicIp takes the public address $address" (Test-PublicIpAddress $address)
+}
+foreach ($address in '10.0.0.1', '172.16.5.4', '192.168.1.10', '127.0.0.1', '0.0.0.0', '169.254.1.1', '100.64.0.1', '100.127.255.254', '192.0.0.9',
+    '192.0.2.10', '198.51.100.7', '203.0.113.10', '198.18.0.1', '192.88.99.1', '224.0.0.1', '240.0.0.1', '255.255.255.255', '::', '::1', 'fe80::1',
+    'fd12:3456::1', 'ff02::1', '2001:db8::1', '2001::1', '2002:c000:204::1', '3fff::1', '64:ff9b::808:808', '::ffff:8.8.8.8') {
+    Check "-PublicIp refuses the local, shared or reserved address $address" (-not (Test-PublicIpAddress $address))
+}
+foreach ($text in 'panel.example.com', '1.2.3', '01.2.3.4', '1.2.3.256', '1.2.3.4:8443', '[2001:4860::1]', '2001:4860::1%3', ' 1.2.3.4', '0x01020304', '16909060', '') {
+    Check "-PublicIp refuses '$text', which is not an address literal" (-not (Test-PublicIpAddress $text))
+}
+
+# What -PublicIp does: checked before anything changes (port 80 free too), a firewall rule for port 80 only with it, for
+# the panel's program on the panel's profiles, removed on -Uninstall and when an install is undone, and the setting
+# written through the API once the administrator exists; an agent refuses it.
+$installText = Get-Content -Raw -LiteralPath $installScript
+$publicIpParts = Get-ScriptParts $installScript @('Assert-PublicIpInstallable', 'Assert-PanelInstallable', 'Install-Panel', 'Uninstall-Panel', 'Undo-PanelInstall', 'Resolve-AgentInputs')
+# Assert-PanelInstallable runs it (the preflight checks below): without -PublicIp it does nothing; a private address is
+# refused before port 80 is even looked at.
+. ([scriptblock]::Create($publicIpParts['Assert-PublicIpInstallable']))
+$PublicIp = '192.168.1.10'
+Check '-PublicIp refuses a private address before anything changes' ((Get-Thrown { Assert-PublicIpInstallable }) -like "-PublicIp must be this panel's public IP address*")
+$PublicIp = ''
+Check 'without -PublicIp nothing is checked' ($null -eq (Get-Thrown { Assert-PublicIpInstallable }))
+Check '-PublicIp is a parameter of installs only' ($installText -match "\[Parameter\(ParameterSetName = 'Install'\)\] \[string\] \`$PublicIp,")
+Check '-PublicIp is checked with the panel''s ports: a public address, and port 80 free' (
+    $publicIpParts['Assert-PanelInstallable'] -match 'Assert-PublicIpInstallable' -and
+    $publicIpParts['Assert-PublicIpInstallable'] -match 'Test-PublicIpAddress \$PublicIp' -and $publicIpParts['Assert-PublicIpInstallable'] -match 'Test-PortFree 80')
+$panelRule = [regex]::Match($publicIpParts['Install-Panel'], "(?s)New-NetFirewallRule -Name 'Pulsar-Panel-HTTPS'.*?-Profile \`$profiles").Value
+$acmeRule = [regex]::Match($publicIpParts['Install-Panel'], "(?s)if \(\`$PublicIp\) \{\s+Write-Step [^\n]+\s+\`$null = New-NetFirewallRule -Name 'Pulsar-Panel-ACME'[^\n]+\s+-Protocol TCP -LocalPort 80 -Program \`$exe -Action Allow -Profile \`$profiles\s+\}").Value
+Check '-PublicIp opens port 80 only with it, for the panel''s program, on the panel''s networks' ($panelRule -and $acmeRule -and
+    @([regex]::Matches($installText, "New-NetFirewallRule -Name 'Pulsar-Panel-ACME'")).Count -eq 1 -and
+    $publicIpParts['Install-Panel'] -match "(?s)if \(-not \`$NoFirewall\) \{.*Get-NetFirewallRule -Name 'Pulsar-Panel-ACME' -ErrorAction SilentlyContinue \| Remove-NetFirewallRule\s+if \(\`$PublicIp\)")
+Check 'the port 80 rule goes with -Uninstall and when an install is undone' (
+    $publicIpParts['Uninstall-Panel'] -match "Get-NetFirewallRule -Name 'Pulsar-Panel-ACME' -ErrorAction SilentlyContinue \| Remove-NetFirewallRule" -and
+    $publicIpParts['Undo-PanelInstall'] -match "foreach \(\`$rule in [^\n]*'Pulsar-Panel-ACME'")
+Check '-PublicIp turns the certificate on through the API once the administrator exists (after -SftpPort''s setting)' (
+    $publicIpParts['Install-Panel'] -match "(?s)/api/v1/auth/setup.*/api/v1/sftp/settings.*if \(\`$PublicIp\) \{.*Invoke-Panel \`$client PUT '/api/v1/public-ip-certificate' @\{ enabled = \`$true; publicIp = \`$PublicIp; email = \`$null; directory = 'production' \}")
+Check 'an agent refuses -PublicIp' ($publicIpParts['Resolve-AgentInputs'] -match "if \(\`$PublicIp\) \{ throw \(New-SetupError \`$ExitUsage")
+
+# The wizard's field: on its own Advanced page, checked, passed on as -PublicIp (no secret), and shown in the summary.
+$publicIpIss = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\release\setup\PulsarSetup.iss')
+Check 'setup: the public IP page is an Advanced page of panel installs, after the network page' (
+    $publicIpIss -match "PublicIpPage := CreateInputQueryPage\(NetworkPage\.ID, CustomMessage\('PublicIpCaption'\)" -and
+    $publicIpIss -match "if PageID = PublicIpPage\.ID then\s+Result := UpdateMode or not InstallsPanel or not UsesAdvanced;" -and
+    $publicIpIss -match "PublicIpPage\.Values\[0\] := ExpandConstant\('\{param:PUBLICIP\|\}'\);")
+Check 'setup: the public IP is checked before going on, and passed on as -PublicIp' (
+    $publicIpIss -match "if CurPageID = PublicIpPage\.ID then\s+Result := CheckPublicIpPage;" -and
+    $publicIpIss -match "Result := \(PublicIpValue = ''\) or IsPublicIp\(PublicIpValue\);" -and
+    $publicIpIss -match "if PublicIpValue <> '' then\s+Result := Result \+ NamedArgument\('PublicIp', PublicIpValue\);" -and
+    $publicIpIss -match "FmtMessage\(CustomMessage\('MemoPublicIp'\), \[PublicIpValue\]\)")
+
 # --- Certificates -------------------------------------------------------------------------------------------------
 
 $ServerAuth = '1.3.6.1.5.5.7.3.1'

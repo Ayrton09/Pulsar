@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using Pulsar.Api.Agents;
+using Pulsar.Api.Certificates;
 using Pulsar.Api.Http;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
@@ -145,11 +146,13 @@ internal sealed class HttpNodeSetup(IHttpContextAccessor accessor, AgentSetupDow
     /// The certificate Kestrel presented in this connection's TLS handshake (for the host the client asked for), when the
     /// client saw it: null over plain HTTP, over HTTP/3 (Kestrel does not expose QUIC's), and when a proxy forwarded the
     /// request, which may terminate TLS with a certificate of its own. A proxy that re-encrypts without saying so gives
-    /// Kestrel's certificate, which the node's setup then finds is not the one it is served, and refuses.
+    /// Kestrel's certificate, which the node's setup then finds is not the one it is served, and refuses. Null too when the
+    /// handshake served the public IP certificate: publicly trusted and replaced every few days, it is checked as any
+    /// site's is, never pinned (docs/architecture/08, T40).
     /// </summary>
     private static string? ServedCertificate(HttpContext http)
     {
-        if (s_proxyHeaders.Any(http.Request.Headers.ContainsKey))
+        if (s_proxyHeaders.Any(http.Request.Headers.ContainsKey) || http.Features.Get<PublicIpCertificateFeature>() is not null)
         {
             return null;
         }

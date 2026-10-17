@@ -459,6 +459,162 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Certificates.PublicIpCertificateSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountContact")
+                        .HasMaxLength(261)
+                        .HasColumnType("character varying(261)")
+                        .HasColumnName("account_contact");
+
+                    b.Property<string>("AccountDirectory")
+                        .HasColumnType("text")
+                        .HasColumnName("account_directory");
+
+                    b.Property<byte[]>("AccountKeyProtected")
+                        .HasColumnType("bytea")
+                        .HasColumnName("account_key_protected");
+
+                    b.Property<string>("AccountUrl")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("account_url");
+
+                    b.Property<DateTimeOffset?>("AttemptWindowStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("attempt_window_started_at");
+
+                    b.Property<int>("AttemptsInWindow")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts_in_window");
+
+                    b.Property<string>("CertificateAriId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("certificate_ari_id");
+
+                    b.Property<string>("CertificateDirectory")
+                        .HasColumnType("text")
+                        .HasColumnName("certificate_directory");
+
+                    b.Property<string>("CertificateIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("certificate_ip");
+
+                    b.Property<DateTimeOffset?>("CertificateNotAfter")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("certificate_not_after");
+
+                    b.Property<DateTimeOffset?>("CertificateNotBefore")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("certificate_not_before");
+
+                    b.Property<byte[]>("CertificateProtected")
+                        .HasColumnType("bytea")
+                        .HasColumnName("certificate_protected");
+
+                    b.Property<string>("CertificateSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("certificate_sha256");
+
+                    b.Property<int>("ConsecutiveFailures")
+                        .HasColumnType("integer")
+                        .HasColumnName("consecutive_failures");
+
+                    b.Property<string>("ContactEmail")
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("contact_email");
+
+                    b.Property<string>("Directory")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("directory");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("ExpiryNotifiedFor")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("expiry_notified_for");
+
+                    b.Property<DateTimeOffset?>("FailureNotifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("failure_notified_at");
+
+                    b.Property<DateTimeOffset?>("IssuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("issued_at");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_attempt_at");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("last_error");
+
+                    b.Property<DateTimeOffset?>("LastErrorAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_error_at");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt_at");
+
+                    b.Property<string>("PublicIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("public_ip");
+
+                    b.Property<DateTimeOffset?>("RenewAfter")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("renew_after");
+
+                    b.Property<DateTimeOffset?>("RenewalInfoCheckedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("renewal_info_checked_at");
+
+                    b.Property<DateTimeOffset?>("TermsAgreedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("terms_agreed_at");
+
+                    b.Property<string>("TermsOfServiceUrl")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("terms_of_service_url");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_public_ip_certificate_settings");
+
+                    b.ToTable("public_ip_certificate_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_public_ip_certificate_settings_directory", "directory IN ('production', 'staging')");
+
+                            t.HasCheckConstraint("ck_public_ip_certificate_settings_enabled_ip", "NOT enabled OR public_ip IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_public_ip_certificate_settings_singleton", "id = 1");
+                        });
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Databases.DatabaseHost", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1311,7 +1467,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
 
                     b.ToTable("notification_deliveries", null, t =>
                         {
-                            t.HasCheckConstraint("ck_notification_deliveries_event", "event IN ('backup_failed', 'node_disk_low', 'node_offline', 'scheduled_task_failed', 'server_crashed', 'server_start_failed')");
+                            t.HasCheckConstraint("ck_notification_deliveries_event", "event IN ('backup_failed', 'node_disk_low', 'node_offline', 'public_ip_certificate', 'scheduled_task_failed', 'server_crashed', 'server_start_failed')");
 
                             t.HasCheckConstraint("ck_notification_deliveries_status", "status IN ('failed', 'pending', 'sent')");
                         });

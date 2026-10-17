@@ -30,6 +30,12 @@ public enum NotificationEvent
 
     /// <summary>A drive of a node (game servers or backups) is nearly full.</summary>
     NodeDiskLow,
+
+    /// <summary>
+    /// The panel's public IP certificate (Let's Encrypt) could not be renewed, is close to expiry, or was renewed again
+    /// after failing.
+    /// </summary>
+    PublicIpCertificate,
 }
 
 /// <summary>

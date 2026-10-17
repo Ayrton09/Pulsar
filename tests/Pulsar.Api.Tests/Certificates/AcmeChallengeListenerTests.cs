@@ -1,0 +1,190 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Pulsar.Api.Certificates;
+
+namespace Pulsar.Api.Tests.Certificates;
+
+/// <summary>
+/// The http-01 responder on its own port: the key authorization of a pending token for exactly
+/// <c>GET /.well-known/acme-challenge/&lt;token&gt;</c>, 404 with nothing for everything else, and its bounds.
+/// </summary>
+public sealed class AcmeChallengeListenerTests : IAsyncLifetime
+{
+    private const string Token = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0";
+    private const string KeyAuthorization = Token + ".9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI";
+    private readonly AcmeChallenges _challenges = new();
+    private AcmeChallengeListener _listener = null!;
+    private IDisposable _pending = null!;
+
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    public async ValueTask InitializeAsync()
+    {
+        _listener = new AcmeChallengeListener(
+            Options.Create(new PublicIpCertificateOptions { ChallengeBindAddress = "127.0.0.1", ChallengePortOverride = 0, MaxChallengeConnectionsPerAddress = 2 }),
+            _challenges, NullLoggerFactory.Instance, NullLogger<AcmeChallengeListener>.Instance);
+        Assert.True(await _listener.EnsureStartedAsync(Ct), _listener.Error);
+        _pending = _challenges.Add(Token, KeyAuthorization);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _pending.Dispose();
+        await _listener.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task APendingTokenGetsItsKeyAuthorizationAsPlainText()
+    {
+        var (status, headers, body) = await RawAsync($"GET /.well-known/acme-challenge/{Token} HTTP/1.1\r\nHost: 1.2.3.4\r\nConnection: close\r\n\r\n");
+
+        Assert.Equal(200, status);
+        Assert.Equal(KeyAuthorization, body);
+        Assert.Contains("Content-Type: text/plain", headers, StringComparison.Ordinal);
+        Assert.Contains("Cache-Control: no-store", headers, StringComparison.Ordinal);
+        Assert.Contains("X-Content-Type-Options: nosniff", headers, StringComparison.Ordinal);
+        Assert.DoesNotContain("Server:", headers, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("GET / HTTP/1.1")]
+    [InlineData("GET /index.html HTTP/1.1")]
+    [InlineData("GET /.well-known/acme-challenge/ HTTP/1.1")]
+    [InlineData("GET /.well-known/acme-challenge HTTP/1.1")]
+    [InlineData("GET /.well-known/acme-challenge/AnotherTokenThatIsNotPendingAtAllxxxxxxxxxx HTTP/1.1")]
+    [InlineData("GET /.well-known/acme-challenge/" + Token + "/ HTTP/1.1")]
+    [InlineData("GET /.well-known/acme-challenge/" + Token + "?x=1 HTTP/1.1")]
+    [InlineData("GET /.well-known/acme-challenge/%4CoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0 HTTP/1.1")]
+    [InlineData("GET /.well-known/acme-challenge/../acme-challenge/" + Token + " HTTP/1.1")]
+    [InlineData("GET //.well-known/acme-challenge/" + Token + " HTTP/1.1")]
+    [InlineData("GET http://1.2.3.4/.well-known/acme-challenge/" + Token + " HTTP/1.1")]
+    [InlineData("POST /.well-known/acme-challenge/" + Token + " HTTP/1.1")]
+    [InlineData("PUT /.well-known/acme-challenge/" + Token + " HTTP/1.1")]
+    [InlineData("DELETE /.well-known/acme-challenge/" + Token + " HTTP/1.1")]
+    [InlineData("OPTIONS * HTTP/1.1")]
+    public async Task EverythingElseIsAnEmpty404(string requestLine)
+    {
+        var (status, headers, body) = await RawAsync($"{requestLine}\r\nHost: 1.2.3.4\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+
+        Assert.Equal(404, status);
+        Assert.Empty(body);
+        Assert.DoesNotContain("Location:", headers, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HeadGetsNothingEither()
+    {
+        var (status, _, body) = await RawAsync($"HEAD /.well-known/acme-challenge/{Token} HTTP/1.1\r\nHost: 1.2.3.4\r\nConnection: close\r\n\r\n");
+
+        Assert.Equal(404, status);
+        Assert.Empty(body);
+    }
+
+    [Fact]
+    public async Task ATokenNoLongerPendingIs404()
+    {
+        using (_challenges.Add("SecondTokenSecondTokenSecondTokenSecond01", "x.y"))
+        {
+            Assert.Equal(200, (await RawAsync("GET /.well-known/acme-challenge/SecondTokenSecondTokenSecondTokenSecond01 HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n")).Status);
+        }
+
+        Assert.Equal(404, (await RawAsync("GET /.well-known/acme-challenge/SecondTokenSecondTokenSecondTokenSecond01 HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n")).Status);
+    }
+
+    [Fact]
+    public async Task OversizedRequestsAndBodiesAreRefused()
+    {
+        var headers = await RawAsync($"GET /.well-known/acme-challenge/{Token} HTTP/1.1\r\nHost: a\r\nX-Filler: {new string('a', 8000)}\r\nConnection: close\r\n\r\n");
+        Assert.Equal(431, headers.Status);
+        var line = await RawAsync($"GET /.well-known/acme-challenge/{Token}{new string('a', 2000)} HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n");
+        Assert.Equal(414, line.Status);
+        var body = await RawAsync($"GET /.well-known/acme-challenge/{Token} HTTP/1.1\r\nHost: a\r\nContent-Length: 10\r\nConnection: close\r\n\r\n0123456789");
+        Assert.True(body.Status is 404 or 413, $"{body.Status}");
+    }
+
+    [Fact]
+    public async Task OneAddressHoldsAFewConnectionsAtMost()
+    {
+        using var first = await ConnectAsync();
+        using var second = await ConnectAsync();
+        using var third = await ConnectAsync();
+        TcpClient[] clients = [first, second, third];
+
+        // One of the three (whichever the server took last) is closed at once, before any request; the others stay open
+        // (until the 5-second idle limit) and answer.
+        var closed = await Task.WhenAll(clients.Select(c => ClosedWithinAsync(c, TimeSpan.FromSeconds(2))));
+        Assert.Equal(1, closed.Count(c => c));
+        var open = clients[Array.IndexOf(closed, false)];
+        await open.GetStream().WriteAsync(Encoding.ASCII.GetBytes($"GET /.well-known/acme-challenge/{Token} HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n"), Ct);
+        Assert.StartsWith("HTTP/1.1 200", await new StreamReader(open.GetStream()).ReadToEndAsync(Ct), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StoppedItListensNoMore()
+    {
+        var port = _listener.ListeningPort!.Value;
+
+        await _listener.StopAsync();
+
+        Assert.Null(_listener.ListeningPort);
+        using var client = new TcpClient();
+        await Assert.ThrowsAnyAsync<SocketException>(() => client.ConnectAsync(IPAddress.Loopback, port, Ct).AsTask());
+    }
+
+    [Fact]
+    public async Task APortThatIsTakenIsReportedNotThrown()
+    {
+        using var taken = new TcpListener(IPAddress.Loopback, 0);
+        taken.Start();
+        var port = ((IPEndPoint)taken.LocalEndpoint).Port;
+        await using var listener = new AcmeChallengeListener(
+            Options.Create(new PublicIpCertificateOptions { ChallengeBindAddress = "127.0.0.1", ChallengePortOverride = port }),
+            _challenges, NullLoggerFactory.Instance, NullLogger<AcmeChallengeListener>.Instance);
+
+        Assert.False(await listener.EnsureStartedAsync(Ct));
+
+        Assert.Null(listener.ListeningPort);
+        Assert.StartsWith($"Port {port} could not be opened", listener.Error, StringComparison.Ordinal);
+    }
+
+    private async Task<TcpClient> ConnectAsync()
+    {
+        var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, _listener.ListeningPort!.Value, Ct);
+        return client;
+    }
+
+    /// <summary>The server closed the connection within <paramref name="wait"/> (an end of stream or a reset).</summary>
+    private static async Task<bool> ClosedWithinAsync(TcpClient client, TimeSpan wait)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        timeout.CancelAfter(wait);
+        try
+        {
+            return await client.GetStream().ReadAsync(new byte[16], timeout.Token) == 0;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+        catch (OperationCanceledException) when (!Ct.IsCancellationRequested)
+        {
+            return false;
+        }
+    }
+
+    private async Task<(int Status, string Headers, string Body)> RawAsync(string request)
+    {
+        using var client = await ConnectAsync();
+        var stream = client.GetStream();
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(request), Ct);
+        var text = await new StreamReader(stream, Encoding.ASCII).ReadToEndAsync(Ct);
+        var split = text.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+        var head = split < 0 ? text : text[..split];
+        var status = int.Parse(head.Split(' ')[1], System.Globalization.CultureInfo.InvariantCulture);
+        return (status, head, split < 0 ? string.Empty : text[(split + 4)..]);
+    }
+}

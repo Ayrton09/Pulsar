@@ -397,6 +397,10 @@
         "created": "Creó un token de enrolamiento reutilizable",
         "revoked": "Revocó un token de enrolamiento reutilizable"
       },
+      "public_ip_certificate": {
+        "settings_changed": "Cambió la configuración del certificado de la IP pública",
+        "renewal_requested": "Pidió un certificado nuevo para la IP pública"
+      },
       "agent_transport": {
         "changed": "Cambió cómo se conectan los agentes"
       },
@@ -753,6 +757,16 @@
       "lifetime_invalid": "Un token vale de 1 hora a 90 días.",
       "too_many": "El panel ya tiene 50 tokens que se pueden usar: revocá uno primero.",
       "not_found": "Ese token ya no existe."
+    },
+    "public_ip_certificate": {
+      "ip_required": "Escribí la IP pública del panel para activarlo.",
+      "ip_invalid": "Escribí una dirección IPv4 (como 203.0.113.10) o IPv6, sin puerto ni corchetes.",
+      "ip_not_public": "Esa no es una dirección pública de internet (es privada, local, compartida por tu proveedor o reservada). Usá la dirección que tiene tu router en internet.",
+      "email_invalid": "El email tiene que ser una dirección simple, como admin@example.com.",
+      "invalid_directory": "Elegí producción o staging.",
+      "disabled": "Primero activá el certificado de la IP pública.",
+      "too_many_attempts": "Ya se le pidió a Let's Encrypt 3 veces en esta hora: probá más tarde.",
+      "renewing": "Ya se está pidiendo un certificado en este momento."
     },
     "agent_transport": {
       "no_agents_endpoint": "El panel no tiene dirección de agentes: los agentes no tendrían adónde ir. Primero agregá el endpoint de Kestrel \"Agents\"."
@@ -1578,7 +1592,8 @@
       "backupFailed": "Falló un backup",
       "scheduledTaskFailed": "Falló una tarea programada",
       "nodeOffline": "Nodo desconectado (y cuando vuelve)",
-      "nodeDiskLow": "Nodo con poco disco"
+      "nodeDiskLow": "Nodo con poco disco",
+      "publicIpCertificate": "Certificado de la IP pública sin renovar o por vencer"
     },
     "servers": "Servidores",
     "allServers": "Todos los servidores",
@@ -1850,6 +1865,40 @@
     "copy": "Copiar {{what}}",
     "copyServer": "Copiar la dirección SFTP del servidor",
     "serverHint": "Conectate por SFTP:"
+  },
+  "publicIpCertificate": {
+    "title": "Certificado de la IP pública (Let's Encrypt)",
+    "description": "Un certificado gratuito de Let's Encrypt para la IP pública fija de este panel: quien abra https://<tu IP>:<puerto> desde internet ve el panel sin avisos de seguridad y sin instalar nada. Dura unos 6 días y se renueva solo.",
+    "enabled": "Usar un certificado de Let's Encrypt para mi IP pública",
+    "publicIp": "Dirección IP pública",
+    "publicIpHint": "La dirección de tu router en internet, que no puede cambiar (una IP fija). No la dirección local de esta PC.",
+    "email": "Email (opcional)",
+    "emailHint": "Donde Let's Encrypt puede escribirte sobre la cuenta.",
+    "directory": "Entorno de Let's Encrypt",
+    "directoryHint": "Staging es para probar: los navegadores no confían en sus certificados.",
+    "directories": {
+      "production": "Producción",
+      "staging": "Staging (certificados de prueba)"
+    },
+    "terms": "Al activarlo aceptás los términos de Let's Encrypt:",
+    "termsLink": "Acuerdo de suscriptor",
+    "ports": "En tu router, reenviá los puertos TCP 80 y {{port}} a esta PC. Let's Encrypt comprueba el puerto 80; los visitantes usan el {{port}}.",
+    "enableConfirm": "¿Pedirle a Let's Encrypt un certificado para {{ip}}? Aceptás el acuerdo de suscriptor de Let's Encrypt, y Let's Encrypt se va a conectar al puerto 80 de esa dirección para comprobarla.",
+    "save": "Guardar",
+    "serving": "Certificado en uso",
+    "notServing": "Todavía sin certificado válido",
+    "staging": "Staging",
+    "renewing": "Pidiéndoselo a Let's Encrypt…",
+    "listening": "Puerto {{port}} abierto para la comprobación",
+    "notListening": "Puerto {{port}} sin abrir",
+    "validUntil": "Válido hasta",
+    "lastRenewal": "Última renovación",
+    "nextAttempt": "Próximo intento",
+    "none": "Ninguno todavía",
+    "lastError": "Falló el último intento ({{when}}): {{error}}",
+    "attemptsLeft_one": "Queda {{count}} intento más en esta hora.",
+    "attemptsLeft_other": "Quedan {{count}} intentos más en esta hora.",
+    "renewNow": "Renovar ahora"
   },
   "sftpSettings": {
     "title": "SFTP",

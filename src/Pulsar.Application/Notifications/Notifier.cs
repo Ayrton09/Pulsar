@@ -52,6 +52,21 @@ public sealed class Notifier(IPulsarDbContext db, TimeProvider clock)
             (language, link) => Task.FromResult(NotificationTexts.NodeDiskLow(language, node.Name, drives, link)), cancellationToken);
     }
 
+    /// <summary>The public IP certificate could not be renewed (<paramref name="expiresAt"/>: the one still served, if any).</summary>
+    public Task PublicIpCertificateFailedAsync(string ip, string error, DateTimeOffset? expiresAt, CancellationToken cancellationToken) =>
+        QueueAsync(NotificationEvent.PublicIpCertificate, "panel:public_ip_certificate:failed", null, "/nodes",
+            (language, link) => Task.FromResult(NotificationTexts.PublicIpCertificateFailed(language, ip, error, expiresAt, link)), cancellationToken);
+
+    /// <summary>The certificate served now expires soon and no new one came yet: told once per certificate.</summary>
+    public Task PublicIpCertificateExpiringAsync(string ip, string sha256, DateTimeOffset expiresAt, CancellationToken cancellationToken) =>
+        QueueAsync(NotificationEvent.PublicIpCertificate, $"panel:public_ip_certificate:expiring:{sha256}", null, "/nodes",
+            (language, link) => Task.FromResult(NotificationTexts.PublicIpCertificateExpiring(language, ip, expiresAt, link)), cancellationToken);
+
+    /// <summary>A certificate came after failures that were notified.</summary>
+    public Task PublicIpCertificateRenewedAsync(string ip, DateTimeOffset expiresAt, CancellationToken cancellationToken) =>
+        QueueAsync(NotificationEvent.PublicIpCertificate, "panel:public_ip_certificate:renewed", null, "/nodes",
+            (language, link) => Task.FromResult(NotificationTexts.PublicIpCertificateRenewed(language, ip, expiresAt, link)), cancellationToken);
+
     private async Task ForServerAsync(Server server, NotificationEvent notificationEvent, string? qualifier,
         Func<string, ServerFacts, string?, NotificationMessage> build, CancellationToken cancellationToken)
     {
