@@ -47,8 +47,7 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     last_error_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     failure_notified_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     expiry_notified_for = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
-                    attempt_window_started_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    attempts_in_window = table.Column<int>(type: "integer", nullable: false),
+                    recent_attempts = table.Column<DateTimeOffset[]>(type: "timestamp with time zone[]", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     xmin = table.Column<uint>(type: "xid", rowVersion: true, nullable: false)
                 },

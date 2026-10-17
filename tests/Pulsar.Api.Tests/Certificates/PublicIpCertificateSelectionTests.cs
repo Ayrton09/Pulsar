@@ -101,8 +101,12 @@ public sealed class PublicIpCertificateSelectionTests : IDisposable
         store.Serve(third);
         Assert.Same(third, store.Current);
         Assert.Equal(IntPtr.Zero, first.Leaf.Handle);
+
+        // None: both go at once, keys included.
         store.Serve(null);
         Assert.Null(store.Current);
+        Assert.Equal(IntPtr.Zero, second.Leaf.Handle);
+        Assert.Equal(IntPtr.Zero, third.Leaf.Handle);
     }
 
     public void Dispose()

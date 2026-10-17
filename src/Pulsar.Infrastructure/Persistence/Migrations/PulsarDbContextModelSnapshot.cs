@@ -483,14 +483,6 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(512)")
                         .HasColumnName("account_url");
 
-                    b.Property<DateTimeOffset?>("AttemptWindowStartedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("attempt_window_started_at");
-
-                    b.Property<int>("AttemptsInWindow")
-                        .HasColumnType("integer")
-                        .HasColumnName("attempts_in_window");
-
                     b.Property<string>("CertificateAriId")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)")
@@ -574,6 +566,11 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasMaxLength(45)
                         .HasColumnType("character varying(45)")
                         .HasColumnName("public_ip");
+
+                    b.PrimitiveCollection<DateTimeOffset[]>("RecentAttempts")
+                        .IsRequired()
+                        .HasColumnType("timestamp with time zone[]")
+                        .HasColumnName("recent_attempts");
 
                     b.Property<DateTimeOffset?>("RenewAfter")
                         .HasColumnType("timestamp with time zone")

@@ -135,12 +135,13 @@ internal sealed class PublicIpCertificateStore : IDisposable
     public ServedCertificate? Current => Volatile.Read(ref _current);
 
     /// <summary>
-    /// Serves <paramref name="next"/> from the next handshake on (null: none). The one before stays alive one more swap, so
-    /// a handshake that picked it a moment ago still completes.
+    /// Serves <paramref name="next"/> from the next handshake on. The one before stays alive one more swap, so a handshake
+    /// that picked it a moment ago still completes. Null serves none and lets both go at once (their keys' containers
+    /// with them): the feature was turned off or the address changed.
     /// </summary>
     public void Serve(ServedCertificate? next)
     {
-        ServedCertificate? old;
+        List<ServedCertificate> old = [];
         lock (_lock)
         {
             if (ReferenceEquals(next, _current))
@@ -148,16 +149,24 @@ internal sealed class PublicIpCertificateStore : IDisposable
                 return;
             }
 
-            old = _previous;
-            _previous = _current;
-            Volatile.Write(ref _current, next);
-            if (ReferenceEquals(old, next) || ReferenceEquals(old, _previous))
+            if (_previous is { } previous && !ReferenceEquals(previous, next))
             {
-                old = null; // served again: still in use
+                old.Add(previous);
             }
+
+            _previous = next is null ? null : _current;
+            if (next is null && _current is { } current)
+            {
+                old.Add(current);
+            }
+
+            Volatile.Write(ref _current, next);
         }
 
-        old?.Dispose();
+        foreach (var certificate in old)
+        {
+            certificate.Dispose();
+        }
     }
 
     public void Dispose()

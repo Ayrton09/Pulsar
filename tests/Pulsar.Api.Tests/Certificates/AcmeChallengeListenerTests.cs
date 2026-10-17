@@ -123,6 +123,16 @@ public sealed class AcmeChallengeListenerTests : IAsyncLifetime
     }
 
     [Fact]
+    public void NoOtherSocketOnThisMachineCanTakeItsPort()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Exclusive binding is Windows' (SO_EXCLUSIVEADDRUSE).");
+        using var squatter = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        squatter.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+
+        Assert.Throws<SocketException>(() => squatter.Bind(new IPEndPoint(IPAddress.Loopback, _listener.ListeningPort!.Value)));
+    }
+
+    [Fact]
     public async Task StoppedItListensNoMore()
     {
         var port = _listener.ListeningPort!.Value;

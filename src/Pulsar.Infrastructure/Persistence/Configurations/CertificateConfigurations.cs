@@ -29,6 +29,7 @@ internal sealed class PublicIpCertificateSettingsConfiguration : IEntityTypeConf
         builder.Property(s => s.CertificateSha256).HasMaxLength(64);
         builder.Property(s => s.LastError).HasMaxLength(PublicIpCertificateSettings.MaxErrorLength);
         builder.Property(s => s.ExpiryNotifiedFor).HasMaxLength(64);
+        builder.PrimitiveCollection(s => s.RecentAttempts);
         builder.Property<uint>("Version").IsRowVersion();
     }
 }

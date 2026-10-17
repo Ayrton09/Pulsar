@@ -1,9 +1,11 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets;
 using Microsoft.Extensions.Options;
 using Pulsar.Api.Http;
 
@@ -135,6 +137,7 @@ internal sealed partial class AcmeChallengeListener(
         builder.Services.AddSingleton(loggerFactory);
         builder.Services.AddSingleton<IHostLifetime, QuietLifetime>();
         builder.WebHost.UseKestrelCore();
+        builder.WebHost.UseSockets(sockets => sockets.CreateBoundListenSocket = BindExclusively);
         var budget = new ConnectionBudget(settings.MaxChallengeConnectionsPerAddress);
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
@@ -183,6 +186,41 @@ internal sealed partial class AcmeChallengeListener(
         var app = builder.Build();
         app.Run(HandleAsync);
         return app;
+    }
+
+    /// <summary>
+    /// The listening socket, exclusively on Windows (as the SFTP server's): no other program on this machine, a game
+    /// server's included, can bind the same port more specifically and take Let's Encrypt's check, which would give it a
+    /// certificate for the panel's address. One that holds the port first makes this bind fail, and the status says so.
+    /// </summary>
+    internal static Socket BindExclusively(EndPoint endpoint)
+    {
+        if (endpoint is not IPEndPoint address)
+        {
+            return SocketTransportOptions.CreateDefaultBoundListenSocket(endpoint);
+        }
+
+        var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                socket.ExclusiveAddressUse = true;
+            }
+
+            if (address.Address.Equals(IPAddress.IPv6Any))
+            {
+                socket.DualMode = true;
+            }
+
+            socket.Bind(address);
+            return socket;
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
     }
 
     private static int? BoundPort(WebApplication app)

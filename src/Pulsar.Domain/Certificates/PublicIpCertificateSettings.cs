@@ -120,9 +120,8 @@ public sealed class PublicIpCertificateSettings
     /// <summary>The certificate whose coming expiry was notified (its SHA-256), so it is told once.</summary>
     public string? ExpiryNotifiedFor { get; private set; }
 
-    public DateTimeOffset? AttemptWindowStartedAt { get; private set; }
-
-    public int AttemptsInWindow { get; private set; }
+    /// <summary>When the attempts of the last hour started (a rolling hour: at most <see cref="MaxAttemptsPerHour"/>).</summary>
+    public IReadOnlyList<DateTimeOffset> RecentAttempts { get; private set; } = [];
 
     public DateTimeOffset UpdatedAt { get; private set; }
 
@@ -156,7 +155,9 @@ public sealed class PublicIpCertificateSettings
 
     /// <summary>
     /// False when nothing changed. Turning it on records that the administrator agreed to Let's Encrypt's terms; another
-    /// address or directory starts afresh (no backoff carried over from the old one: the hourly cap still holds).
+    /// address or directory starts afresh (no backoff carried over from the old one: the hourly cap still holds). Turning
+    /// it off, or another address or directory, forgets the certificate and its key: nothing keeps key material that
+    /// nothing serves.
     /// </summary>
     public bool Change(bool enabled, string? publicIp, string? email, AcmeDirectoryKind directory, DateTimeOffset now)
     {
@@ -182,6 +183,11 @@ public sealed class PublicIpCertificateSettings
             LastError = null;
             LastErrorAt = null;
             FailureNotifiedAt = null;
+        }
+
+        if (!enabled || PublicIp != ip || Directory != directory)
+        {
+            ForgetCertificate();
         }
 
         Enabled = enabled;
@@ -221,22 +227,25 @@ public sealed class PublicIpCertificateSettings
         CertificateProtected is not null && CertificateIp == PublicIp && CertificateDirectory == Directory
         && CertificateNotBefore <= now && now < CertificateNotAfter;
 
-    /// <summary>How many attempts may still start this hour (the window opens with the first attempt in it).</summary>
-    public int AttemptsLeft(DateTimeOffset now) =>
-        AttemptWindowStartedAt is { } start && now - start < TimeSpan.FromHours(1) ? Math.Max(0, MaxAttemptsPerHour - AttemptsInWindow) : MaxAttemptsPerHour;
+    /// <summary>How many attempts may still start now: those of the last hour count (a rolling hour).</summary>
+    public int AttemptsLeft(DateTimeOffset now) => Math.Max(0, MaxAttemptsPerHour - WithinTheHour(now).Count());
 
-    /// <summary>When the next attempt may start under the hourly cap.</summary>
-    public DateTimeOffset AttemptsAllowedAt(DateTimeOffset now) =>
-        AttemptsLeft(now) > 0 ? now : AttemptWindowStartedAt!.Value + TimeSpan.FromHours(1);
+    /// <summary>When the next attempt may start under the hourly cap: an hour after the oldest attempt that fills it.</summary>
+    public DateTimeOffset AttemptsAllowedAt(DateTimeOffset now)
+    {
+        var recent = WithinTheHour(now).Order().ToList();
+        return recent.Count < MaxAttemptsPerHour ? now : recent[recent.Count - MaxAttemptsPerHour] + TimeSpan.FromHours(1);
+    }
 
     /// <summary>
     /// When the renewal should next try (it may be now or past): at once when there is no certificate for this address and
-    /// directory, otherwise when it is due; never before a failure's backoff unless <paramref name="forced"/> (the button),
-    /// and never more often than the hourly cap.
+    /// directory (or the one kept cannot be used: <paramref name="certificateUsable"/>, a key ring that cannot read it),
+    /// otherwise when it is due; never before a failure's backoff unless <paramref name="forced"/> (the button), and never
+    /// more often than the hourly cap.
     /// </summary>
-    public DateTimeOffset NextAttemptTime(DateTimeOffset now, bool forced)
+    public DateTimeOffset NextAttemptTime(DateTimeOffset now, bool forced, bool certificateUsable = true)
     {
-        var due = HasCurrentCertificate(now) ? RenewAfter ?? HalfLife() : now;
+        var due = certificateUsable && HasCurrentCertificate(now) ? RenewAfter ?? HalfLife() : now;
         if (forced)
         {
             due = now;
@@ -253,16 +262,7 @@ public sealed class PublicIpCertificateSettings
     /// <summary>Counts an attempt before anything is sent, so a crash or restart in the middle still counts it.</summary>
     public void AttemptStarted(DateTimeOffset now)
     {
-        if (AttemptWindowStartedAt is { } start && now - start < TimeSpan.FromHours(1))
-        {
-            AttemptsInWindow++;
-        }
-        else
-        {
-            AttemptWindowStartedAt = now;
-            AttemptsInWindow = 1;
-        }
-
+        RecentAttempts = [.. WithinTheHour(now), now];
         LastAttemptAt = now;
         UpdatedAt = now;
     }
@@ -329,6 +329,23 @@ public sealed class PublicIpCertificateSettings
     public void FailureNotificationCleared() => FailureNotifiedAt = null;
 
     public void ExpiryNotified(string sha256) => ExpiryNotifiedFor = sha256;
+
+    private IEnumerable<DateTimeOffset> WithinTheHour(DateTimeOffset now) => RecentAttempts.Where(at => now - at < TimeSpan.FromHours(1));
+
+    private void ForgetCertificate()
+    {
+        CertificateProtected = null;
+        CertificateIp = null;
+        CertificateDirectory = null;
+        CertificateNotBefore = null;
+        CertificateNotAfter = null;
+        CertificateAriId = null;
+        CertificateSha256 = null;
+        IssuedAt = null;
+        RenewAfter = null;
+        RenewalInfoCheckedAt = null;
+        ExpiryNotifiedFor = null;
+    }
 
     private DateTimeOffset HalfLife() =>
         CertificateNotBefore is { } from && CertificateNotAfter is { } to ? from + ((to - from) / 2) : DateTimeOffset.MinValue;

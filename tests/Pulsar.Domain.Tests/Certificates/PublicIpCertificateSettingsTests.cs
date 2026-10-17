@@ -129,7 +129,7 @@ public sealed class PublicIpCertificateSettingsTests
         Assert.Equal(0, settings.ConsecutiveFailures);
         Assert.Null(settings.NextAttemptAt);
         Assert.Null(settings.LastError);
-        Assert.Equal(1, settings.AttemptsInWindow); // the hourly cap is not reset
+        Assert.Single(settings.RecentAttempts); // the hourly cap is not reset
         Assert.Equal(s_now, settings.TermsAgreedAt);
     }
 
@@ -187,10 +187,12 @@ public sealed class PublicIpCertificateSettingsTests
         Assert.Equal(0, settings.AttemptsLeft(s_now.AddMinutes(30)));
         // ...but not the hourly cap.
         Assert.Equal(s_now.AddHours(1), settings.NextAttemptTime(s_now.AddMinutes(30), forced: true));
-        Assert.Equal(PublicIpCertificateSettings.MaxAttemptsPerHour, settings.AttemptsLeft(s_now.AddHours(1)));
-
+        // A rolling hour: the first attempt is an hour old, the other two still count.
+        Assert.Equal(1, settings.AttemptsLeft(s_now.AddHours(1)));
         settings.AttemptStarted(s_now.AddHours(1));
-        Assert.Equal(2, settings.AttemptsLeft(s_now.AddHours(1)));
+        Assert.Equal(0, settings.AttemptsLeft(s_now.AddHours(1)));
+        Assert.Equal(s_now.AddMinutes(70), settings.AttemptsAllowedAt(s_now.AddHours(1)));
+        Assert.Equal(PublicIpCertificateSettings.MaxAttemptsPerHour, settings.AttemptsLeft(s_now.AddHours(2)));
     }
 
     [Fact]
@@ -221,6 +223,38 @@ public sealed class PublicIpCertificateSettingsTests
         settings.Change(true, "5.6.7.8", null, AcmeDirectoryKind.Production, s_now.AddHours(11));
         Assert.False(settings.HasCurrentCertificate(s_now.AddHours(11)));
         Assert.Equal(s_now.AddHours(11), settings.NextAttemptTime(s_now.AddHours(11), forced: false));
+    }
+
+    [Fact]
+    public void ACertificateThatCannotBeUsedIsReplacedWithinTheBackoff()
+    {
+        var settings = Enabled();
+        settings.Issued([1], "1.2.3.4", AcmeDirectoryKind.Production, s_now.AddHours(-1), s_now.AddHours(159), new string('c', 64), null, s_now);
+
+        Assert.Equal(s_now, settings.NextAttemptTime(s_now, forced: false, certificateUsable: false));
+        settings.AttemptStarted(s_now);
+        settings.Failed("unreachable", null, s_now);
+        Assert.Equal(s_now.AddMinutes(15), settings.NextAttemptTime(s_now, forced: false, certificateUsable: false));
+        Assert.Equal(s_now.AddHours(79), settings.NextAttemptTime(s_now, forced: false));
+    }
+
+    [Fact]
+    public void TurningItOffOrAnotherAddressForgetsTheCertificateAndItsKey()
+    {
+        var settings = Enabled();
+        settings.Issued([1, 2], "1.2.3.4", AcmeDirectoryKind.Production, s_now.AddHours(-1), s_now.AddHours(159), new string('d', 64), "a.b", s_now);
+        settings.Change(true, "1.2.3.4", "admin@example.com", AcmeDirectoryKind.Production, s_now);
+        Assert.NotNull(settings.CertificateProtected); // another email keeps it
+
+        settings.Change(false, "1.2.3.4", "admin@example.com", AcmeDirectoryKind.Production, s_now);
+        Assert.Null(settings.CertificateProtected);
+        Assert.Null(settings.CertificateSha256);
+        Assert.Null(settings.CertificateNotAfter);
+
+        settings.Change(true, "1.2.3.4", null, AcmeDirectoryKind.Production, s_now);
+        settings.Issued([1, 2], "1.2.3.4", AcmeDirectoryKind.Production, s_now.AddHours(-1), s_now.AddHours(159), new string('e', 64), null, s_now);
+        settings.Change(true, "1.2.3.4", null, AcmeDirectoryKind.Staging, s_now);
+        Assert.Null(settings.CertificateProtected);
     }
 
     [Fact]

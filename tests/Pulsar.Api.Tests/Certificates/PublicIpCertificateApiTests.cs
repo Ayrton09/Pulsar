@@ -180,7 +180,7 @@ public sealed class PublicIpCertificateRenewalTests(PublicIpCertificatePanel fac
             Assert.NotNull(row.AccountKeyProtected);
             Assert.NotNull(row.AccountUrl);
             Assert.DoesNotContain("BEGIN", Encoding.Latin1.GetString(row.CertificateProtected!), StringComparison.Ordinal);
-            Assert.Equal(1, row.AttemptsInWindow);
+            Assert.Single(row.RecentAttempts);
             var audited = await db.AuditLog.AsNoTracking().Where(e => e.Action == AuditActions.PublicIpCertificate.SettingsChanged).ToListAsync(Ct);
             Assert.Contains(audited, e => System.Text.Json.JsonDocument.Parse(e.Metadata).RootElement.EnumerateObject()
                 .Any(p => p.NameEquals("termsAgreed") && p.Value.ValueKind == System.Text.Json.JsonValueKind.True));
@@ -210,7 +210,10 @@ public sealed class PublicIpCertificateRenewalTests(PublicIpCertificatePanel fac
         status = await GetAsync(admin);
         Assert.False(status.Serving);
         Assert.False(status.Listening);
-        Assert.NotNull(status.Certificate);
+        // Its key is not kept either.
+        Assert.Null(status.Certificate);
+        await using var after = factory.Services.CreateAsyncScope();
+        Assert.Null((await after.ServiceProvider.GetRequiredService<IPulsarDbContext>().PublicIpCertificateSettings.AsNoTracking().SingleAsync(Ct)).CertificateProtected);
     }
 
     private static async Task<PublicIpCertificateResponse> GetAsync(PanelClient admin) =>

@@ -133,7 +133,9 @@ internal sealed partial class PublicIpCertificateService(
 
         await NotifyExpiryAsync(settings, now, cancellationToken);
         await CheckRenewalInfoAsync(settings, now, cancellationToken);
-        var next = settings.NextAttemptTime(now, _forced);
+        // A certificate kept but not served (the key ring cannot read it) is no certificate: a new one is asked for, with
+        // the same backoff and hourly cap.
+        var next = settings.NextAttemptTime(now, _forced, certificateUsable: store.Current?.Sha256 == settings.CertificateSha256);
         if (next > now)
         {
             var wait = next - now;
