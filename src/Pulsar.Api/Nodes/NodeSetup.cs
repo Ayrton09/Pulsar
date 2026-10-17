@@ -1,12 +1,10 @@
 using System.Security.Cryptography;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Http.HttpResults;
-using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Microsoft.Extensions.Options;
-using Microsoft.Net.Http.Headers;
 using Pulsar.Api.Agents;
 using Pulsar.Api.Http;
+using Pulsar.Api.Security;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
 
@@ -111,21 +109,6 @@ internal sealed class AgentSetupDownload(IOptions<DownloadsOptions> options)
 /// </summary>
 internal sealed class HttpNodeSetup(IHttpContextAccessor accessor, AgentSetupDownload download) : INodeSetup
 {
-    // Headers a proxy in front of the panel adds: whatever certificate it serves, Kestrel's is not the one clients see.
-    private static readonly string[] s_proxyHeaders =
-    [
-        ForwardedHeadersDefaults.XForwardedForHeaderName,
-        ForwardedHeadersDefaults.XForwardedProtoHeaderName,
-        ForwardedHeadersDefaults.XForwardedHostHeaderName,
-        ForwardedHeadersDefaults.XForwardedPrefixHeaderName,
-        ForwardedHeadersDefaults.XOriginalForHeaderName,
-        ForwardedHeadersDefaults.XOriginalProtoHeaderName,
-        ForwardedHeadersDefaults.XOriginalHostHeaderName,
-        ForwardedHeadersDefaults.XOriginalPrefixHeaderName,
-        "Forwarded",
-        HeaderNames.Via,
-    ];
-
     public PanelAddress? RequestAddress => accessor.HttpContext is { } http ? AddressOf(http) : null;
 
     public ValueTask<string?> AgentSetupSha256Async(CancellationToken cancellationToken) => download.Sha256Async(cancellationToken);
@@ -138,25 +121,17 @@ internal sealed class HttpNodeSetup(IHttpContextAccessor accessor, AgentSetupDow
     internal static PanelAddress? AddressOf(HttpContext http)
     {
         var url = AgentEndpoints.PanelOrigin(http.Request);
-        return NodeCode.IsValidUrl(url) ? new PanelAddress(url, ServedCertificate(http)) : null;
+        return NodeCode.IsValidUrl(url) ? new PanelAddress(url, ServedCertificateHash(http)) : null;
     }
 
     /// <summary>
-    /// The certificate Kestrel presented in this connection's TLS handshake (for the host the client asked for), when the
-    /// client saw it: null over plain HTTP, over HTTP/3 (Kestrel does not expose QUIC's), and when a proxy forwarded the
-    /// request, which may terminate TLS with a certificate of its own. A proxy that re-encrypts without saying so gives
-    /// Kestrel's certificate, which the node's setup then finds is not the one it is served, and refuses.
+    /// The hash of the certificate Kestrel presented in this connection's TLS handshake, when the client saw it
+    /// (<see cref="ServedCertificate"/>): none over plain HTTP, over HTTP/3, or through a proxy that says so. A proxy that
+    /// re-encrypts without saying so gives Kestrel's certificate, which the node's setup then finds is not the one it is
+    /// served, and refuses.
     /// </summary>
-    private static string? ServedCertificate(HttpContext http)
-    {
-        if (s_proxyHeaders.Any(http.Request.Headers.ContainsKey))
-        {
-            return null;
-        }
-
-        var certificate = http.Features.Get<ISslStreamFeature>()?.SslStream.LocalCertificate;
-        return certificate is null ? null : NodeCode.CertificateHash(certificate.GetRawCertData());
-    }
+    private static string? ServedCertificateHash(HttpContext http) =>
+        ServedCertificate.Der(http) is { } der ? NodeCode.CertificateHash(der) : null;
 }
 
 internal static class DownloadEndpoints

@@ -45,6 +45,11 @@
     PostgreSQL is installed already).
 
 .EXAMPLE
+    .\Install-Pulsar.ps1 -HostName panel.example.com, 203.0.113.7
+    The same, with a DNS name and a public IP address the panel is also reached by in its certificate (this PC's
+    names and private IPv4 addresses are always there).
+
+.EXAMPLE
     $env:PULSAR_NODE_CODE = '<the code the panel shows>'; .\Install-Pulsar.ps1 -Mode Agent
     Adds this machine as a node with the code from the panel's Add node dialog: the panel's certificate is checked
     against the code and pinned in the agent (not trusted by this machine), without copying it by hand.
@@ -88,10 +93,12 @@ param(
     # The port of the panel's SFTP server (users reach their servers' files with an SFTP client). Another port than
     # -Port and -AgentsPort. An administrator can change it later in the panel (Nodes > SFTP).
     [ValidateRange(1, 65535)] [int] $SftpPort = 2022,
-    # Extra names for the self-signed certificate (the machine's name, its DNS name and localhost are always in it).
-    # Letters, digits, '.', '-' and '_' (a leading '*.' for a wildcard), compared as written: ignoring case, the Kelvin
-    # sign would pass for a 'k'.
-    [ValidatePattern('^(\*\.)?[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.?\z', Options = 'None')]
+    # Extra names or IP addresses for the self-signed certificate (localhost, the machine's name and DNS name, 127.0.0.1,
+    # ::1 and the machine's private IPv4 addresses on networks with a router are always in it). A name has letters,
+    # digits, '.', '-' and '_' (a leading '*.' for a wildcard), compared as written: ignoring case, the Kelvin sign would
+    # pass for a 'k'. An address is IPv4, as four numbers (203.0.113.7), or IPv6 (2001:db8::7), and the certificate
+    # lists it as an address: browsers match an address only against those.
+    [ValidatePattern('^((\*\.)?[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.?|[0-9A-Fa-f.]*:[0-9A-Fa-f:.]*)\z', Options = 'None')]
     [string[]] $HostName = @(),
     # A PFX certificate to use instead of a self-signed one.
     [string] $CertificatePath,
@@ -1133,7 +1140,9 @@ function Remove-PanelDatabase {
 
 # --- Certificate ------------------------------------------------------------------------------------------------
 
-# Returns @{ Path; Password; Thumbprint; Cer } for the panel's HTTPS certificate, in the panel's private folder.
+# Returns @{ Path; Password; Thumbprint; Cer; SelfSigned; Sha256 } for the panel's HTTPS certificate, in the panel's
+# private folder; a self-signed one also has Names (what it lists, as Add-TrustedCertificate takes them) and Addresses
+# (the IP addresses other computers may use, the loopback ones left out).
 function New-PanelCertificate {
     $tls = Join-Path $PanelData 'tls'
     New-Item -ItemType Directory -Force $tls | Out-Null
@@ -1143,24 +1152,33 @@ function New-PanelCertificate {
         $password = ''
         if ($CertificatePassword) { $password = ConvertFrom-Secure $CertificatePassword }
         Copy-Item $CertificatePath $pfx -Force
-        $certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2($pfx, $password)
-        [IO.File]::WriteAllBytes($cer, $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-        return @{ Path = $pfx; Password = $password; Thumbprint = $certificate.Thumbprint; Cer = $cer; SelfSigned = $false }
+        # An ephemeral key: none is written to a key container (the profile's, by default) to read the certificate.
+        $certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @([IO.File]::ReadAllBytes($pfx), $password, [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+        try {
+            [IO.File]::WriteAllBytes($cer, $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+            return @{ Path = $pfx; Password = $password; Thumbprint = $certificate.Thumbprint; Cer = $cer; SelfSigned = $false; Sha256 = (Get-CertificateHash $certificate) }
+        }
+        finally { $certificate.Dispose() }
     }
 
-    $names = @('localhost', $env:COMPUTERNAME)
+    $machine = @('localhost', $env:COMPUTERNAME)
     $domain = (Get-CimInstance Win32_ComputerSystem).Domain
-    if ($domain -and $domain -ne 'WORKGROUP') { $names += "$($env:COMPUTERNAME).$domain" }
-    $names = @($names + $HostName | Where-Object { $_ } | Select-Object -Unique)
-    Write-Step "Creating a self-signed HTTPS certificate for $($names -join ', ')"
-    # Trusted machine-wide (here, and on nodes with -TrustCertificate), so it must not be able to issue certificates:
-    # Basic Constraints, critical, CA=false. Without them Windows may take it for a certificate authority, and whoever
-    # holds its key could vouch for any site. And for a web server's identity only (Extended Key Usage: server
-    # authentication; New-SelfSignedCertificate adds client authentication unless told).
-    $certificate = New-SelfSignedCertificate -DnsName $names -CertStoreLocation 'Cert:\LocalMachine\My' `
-        -FriendlyName 'Pulsar panel' -KeyExportPolicy Exportable -KeyLength 2048 -NotAfter (Get-Date).AddYears(5) `
-        -TextExtension @('2.5.29.19={critical}{text}ca=0', "2.5.29.37={text}$ServerAuthentication")
+    if ($domain -and $domain -ne 'WORKGROUP') { $machine += "$($env:COMPUTERNAME).$domain" }
+    $lan = @(Get-LanAddresses)
+    $names = Get-PanelCertificateNames $machine $lan $HostName
+    Write-Step "Creating a self-signed HTTPS certificate for $(@(Get-ListedNames $names) -join ', ')"
+    if ($lan.Count -eq 0) {
+        Write-Warning 'This PC has no private IPv4 address on a network with a router, so the certificate lists none: other computers must use its name (or pass -HostName with the address they use).'
+    }
+    $dhcp = @(Get-DhcpAddresses)
+    $leased = @($names.Ips | Where-Object { "$_" -in $dhcp } | ForEach-Object { "$_" })
+    if ($leased.Count -gt 0) {
+        Write-Warning "The router's DHCP server gave this PC $($leased -join ', '), which the certificate lists and which may change: reserve it for this PC in the router (a DHCP reservation), or the certificate stops matching the address other computers use."
+    }
+    $certificate = New-SelfSignedPanelCertificate $names
     try {
+        # Trusted machine-wide (here, and on nodes with -TrustCertificate), so it must not be able to issue
+        # certificates, and it is for a web server's identity only.
         if ((Get-CertificateAuthority $certificate) -ne $false) {
             throw 'The self-signed certificate came out able to issue certificates (its Basic Constraints do not say CA=false).'
         }
@@ -1169,14 +1187,181 @@ function New-PanelCertificate {
         }
         $password = New-Secret 32
         Register-Secret $password
-        $null = Export-PfxCertificate -Cert $certificate -FilePath $pfx -Password (ConvertTo-Secure $password)
-        $null = Export-Certificate -Cert $certificate -FilePath $cer
+        # Written into the panel's private folder, whose permissions the files take as they are made.
+        [IO.File]::WriteAllBytes($pfx, $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx, (ConvertTo-Secure $password)))
+        [IO.File]::WriteAllBytes($cer, $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+        $listed = @($names.Dns) + @($names.Ips | ForEach-Object { "$_" })
+        $addresses = @($names.Ips | Where-Object { -not [Net.IPAddress]::IsLoopback($_) } | ForEach-Object { "$_" })
+        return @{ Path = $pfx; Password = $password; Thumbprint = $certificate.Thumbprint; Cer = $cer; SelfSigned = $true; Names = $listed; Addresses = $addresses; Sha256 = (Get-CertificateHash $certificate) }
     }
     finally {
-        # The panel reads the PFX file; the store copy is not needed.
-        Remove-Item "Cert:\LocalMachine\My\$($certificate.Thumbprint)" -DeleteKey
+        # Its key was never in a store or a key container: it goes with the certificate.
+        $certificate.Dispose()
     }
-    return @{ Path = $pfx; Password = $password; Thumbprint = $certificate.Thumbprint; Cer = $cer; SelfSigned = $true; Names = $names }
+}
+
+# A self-signed certificate for the panel, made in memory: no certificate store and no key container is touched, and
+# its key leaves this process only in the PFX. It lists $names (Get-PanelCertificateNames) in its Subject Alternative
+# Name, each of its kind (DNS names, IP addresses: browsers match an address only against IP addresses, so an address
+# written as a DNS name would not do), and is otherwise what New-SelfSignedCertificate made before (it cannot list IP
+# addresses): subject CN=localhost, RSA 2048 with SHA-256, valid from 10 minutes ago for 5 years, a Subject Key
+# Identifier, Key Usage (critical) digital signature and key encipherment, and, since it is trusted machine-wide (here,
+# and on nodes with -TrustCertificate), Basic Constraints (critical) CA=false, so that whoever holds its key cannot vouch
+# for other sites with certificates it issues, and Extended Key Usage server authentication alone. Friendly name
+# 'Pulsar panel'.
+function New-SelfSignedPanelCertificate($names) {
+    # An ephemeral key (no name: nothing is stored), which only the PFX export reads.
+    $rsa = [Security.Cryptography.RSACng]::new(2048)
+    try {
+        if (-not $rsa.Key.IsEphemeral) { throw 'The certificate''s key came out stored in a key container.' }
+        $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=localhost', $rsa,
+            [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+        $alternative = New-Object Security.Cryptography.X509Certificates.SubjectAlternativeNameBuilder
+        foreach ($name in $names.Dns) { $alternative.AddDnsName($name) }
+        foreach ($address in $names.Ips) { $alternative.AddIpAddress($address) }
+        $extensions = $request.CertificateExtensions
+        $extensions.Add([Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($false, $false, 0, $true))
+        $usage = [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature -bor [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyEncipherment
+        $extensions.Add([Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new($usage, $true))
+        $uses = New-Object Security.Cryptography.OidCollection
+        $null = $uses.Add([Security.Cryptography.Oid]::new($ServerAuthentication))
+        $extensions.Add([Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($uses, $false))
+        $extensions.Add($alternative.Build($false))
+        $extensions.Add([Security.Cryptography.X509Certificates.X509SubjectKeyIdentifierExtension]::new($request.PublicKey, $false))
+        $now = [DateTimeOffset]::Now
+        $certificate = $request.CreateSelfSigned($now.AddMinutes(-10), $now.AddYears(5))
+        $certificate.FriendlyName = 'Pulsar panel'
+        return $certificate
+    }
+    finally { $rsa.Dispose() }
+}
+
+# What the panel's self-signed certificate lists, in the shape Get-CertificateNames reads one (Dns, Ips, Others): the
+# names of this machine ($machine: localhost, its name and DNS name) and -HostName's ($extra), as given, each once; then
+# 127.0.0.1 and ::1, this machine's private addresses ($lan, Get-LanAddresses) and -HostName's addresses, each once.
+function Get-PanelCertificateNames([string[]] $machine, $lan, [string[]] $extra) {
+    $dns = @($machine | Where-Object { $_ })
+    $ips = @([Net.IPAddress]::Loopback, [Net.IPAddress]::IPv6Loopback) + @($lan | Where-Object { $_ })
+    foreach ($name in @($extra | Where-Object { $_ })) {
+        $address = ConvertTo-CertificateAddress $name
+        if ($address) { $ips += $address }
+        else { $dns += $name }
+    }
+    $listed = @()
+    $seen = @{}
+    foreach ($address in $ips) {
+        if ($seen.ContainsKey("$address")) { continue }
+        $seen["$address"] = $true
+        $listed += $address
+    }
+    return [pscustomobject]@{ Dns = @($dns | Select-Object -Unique); Ips = $listed; Others = @() }
+}
+
+# What a -HostName is ($text): an IP address, given back as one ([Net.IPAddress]), or $null for a name, which -HostName's
+# pattern checked. An IPv4 address is four numbers from 0 to 255 (192.168.1.20); an IPv6 address has ':' (2001:db8::20),
+# without a zone ('%') or an IPv4 address written as IPv6 (::ffff:192.168.1.20: write it as IPv4). Anything else is an
+# error: a name whose last label is a number (10.1, 192.168.1.300, 0x7f), which browsers read as an IPv4 address written
+# in a form no certificate lists, and addresses no server has (0.0.0.0, ::, broadcast, multicast).
+function ConvertTo-CertificateAddress([string] $text) {
+    $octet = '(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'
+    $address = $null
+    if ($text -cmatch "^$octet(\.$octet){3}\z") {
+        $address = [Net.IPAddress]::Parse($text)
+        $first = $address.GetAddressBytes()[0]
+        if ($first -eq 0 -or $first -ge 224) { throw "$text is not an address a server has: give the one other computers reach the panel by." }
+        return $address
+    }
+    if ($text.Contains(':')) {
+        if ($text -cnotmatch '^[0-9A-Fa-f:.]+\z' -or -not [Net.IPAddress]::TryParse($text, [ref] $address) -or $address.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetworkV6) {
+            throw "$(ConvertTo-PrintableText $text) is not an IPv6 address (give it without brackets, a zone or a port, like 2001:db8::20)."
+        }
+        if ($address.IsIPv4MappedToIPv6) { throw "$text is an IPv4 address written as IPv6: give it as IPv4 ($($address.MapToIPv4()))." }
+        if ($address.Equals([Net.IPAddress]::IPv6Any) -or $address.IsIPv6Multicast) { throw "$text is not an address a server has: give the one other computers reach the panel by." }
+        return $address
+    }
+    $last = $text.TrimEnd('.').Split('.')[-1]
+    if ($last -match '^(0x[0-9a-f]*|[0-9]+)\z') {
+        throw "$text is neither a name (its last part is a number) nor an IPv4 address: write an address as four numbers from 0 to 255, like 192.168.1.20."
+    }
+    return $null
+}
+
+# Whether $address is a private-use IPv4 address (RFC 1918: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16): one on a local
+# network, never an internet site's. 169.254.0.0/16 (no DHCP server answered), 100.64.0.0/10 (a carrier's NAT, some
+# VPNs) and IPv6 addresses are not.
+function Test-PrivateAddress([Net.IPAddress] $address) {
+    if ($address.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork) { return $false }
+    $bytes = $address.GetAddressBytes()
+    return $bytes[0] -eq 10 -or ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) -or ($bytes[0] -eq 192 -and $bytes[1] -eq 168)
+}
+
+# This machine's addresses on its local networks, for the self-signed certificate (Select-LanAddresses).
+function Get-LanAddresses {
+    $addresses = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue)
+    $adapters = @(Get-NetAdapter -ErrorAction SilentlyContinue)
+    $routes = @(Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue)
+    Select-LanAddresses $addresses $adapters $routes
+}
+
+# This machine's IPv4 addresses that a DHCP server gave it (Get-NetIPAddress PrefixOrigin Dhcp), as text: they may
+# change unless the router reserves them.
+function Get-DhcpAddresses {
+    foreach ($entry in @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue)) {
+        $address = $null
+        if ("$($entry.PrefixOrigin)" -eq 'Dhcp' -and [Net.IPAddress]::TryParse("$($entry.IPAddress)", [ref] $address)) { "$address" }
+    }
+}
+
+# Of this machine's IPv4 addresses ($addresses, Get-NetIPAddress), those other computers on its networks can reach it by,
+# each once, in order: private-use ones (Test-PrivateAddress) in use (state Preferred, not Tentative or Duplicate), on a
+# network adapter that is up ($adapters, Get-NetAdapter, which lists neither the loopback nor hidden ones) and has a
+# default route ($routes, Get-NetRoute 0.0.0.0/0: a router). That leaves out the virtual switches that reach only this
+# PC's virtual machines and WSL (Hyper-V's Default Switch, WSL's, VirtualBox's and VMware's host-only networks), whose
+# addresses change at every start, without guessing from their names: the host's address on a Hyper-V external switch,
+# which has the router, stays. Public addresses and IPv6 ones are never added on their own (-HostName adds them).
+function Select-LanAddresses($addresses, $adapters, $routes) {
+    $up = @($adapters | Where-Object { "$($_.Status)" -eq 'Up' } | ForEach-Object { [int]$_.InterfaceIndex })
+    $routed = @($routes | ForEach-Object { [int]$_.InterfaceIndex })
+    $seen = @{}
+    foreach ($entry in $addresses) {
+        if ("$($entry.AddressState)" -ne 'Preferred') { continue }
+        $index = [int]$entry.InterfaceIndex
+        if ($index -notin $up -or $index -notin $routed) { continue }
+        $address = $null
+        if (-not [Net.IPAddress]::TryParse("$($entry.IPAddress)", [ref] $address) -or -not (Test-PrivateAddress $address)) { continue }
+        if ($seen.ContainsKey("$address")) { continue }
+        $seen["$address"] = $true
+        $address
+    }
+}
+
+# The line the setup wizard reads the panel certificate's fingerprint from: "PULSAR-CERTIFICATE <the lowercase
+# hexadecimal SHA-256 of its DER>", the fingerprint browsers show for it.
+function Format-CertificateLine([string] $sha256) {
+    if ($sha256 -cnotmatch '^[0-9a-f]{64}\z') { throw "Not a certificate's SHA-256: $(ConvertTo-PrintableText $sha256)" }
+    return "PULSAR-CERTIFICATE $sha256"
+}
+
+# A SHA-256 as browsers, the setup's last page and the panel's Account page show a certificate's fingerprint: in upper
+# case, a ':' between each two digits (Get-FileHash shows the same digits without them).
+function Format-Fingerprint([string] $sha256) {
+    return (@([regex]::Matches($sha256.ToUpperInvariant(), '..') | ForEach-Object { $_.Value }) -join ':')
+}
+
+# How other computers reach the panel at $port and come to trust its certificate ($certificate, New-PanelCertificate's),
+# printed once the install is done: its addresses, and the fingerprint to compare.
+function Write-RemoteAccess($certificate, [int] $port) {
+    $hosts = @()
+    if ($certificate.ContainsKey('Addresses')) {
+        $hosts += @($certificate.Addresses | ForEach-Object { if ($_.Contains(':')) { "[$_]" } else { $_ } })
+    }
+    $hosts += $env:COMPUTERNAME
+    Write-Host "From other computers: $(@($hosts | ForEach-Object { "https://${_}:$port" }) -join ' or ')."
+    if ($certificate.SelfSigned) {
+        Write-Host "Browsers there warn about its self-signed certificate until they trust it: the panel's Account page has it to download (Panel certificate), with the steps."
+    }
+    Write-Host "Its SHA-256 fingerprint, to check the certificate other PCs download or their browsers show before they trust it: $(Format-Fingerprint $certificate.Sha256)"
+    if ($Unattended) { Write-Host (Format-CertificateLine $certificate.Sha256) }
 }
 
 # What a certificate's Basic Constraints say: $true (it may issue certificates), $false (it may not), or $null when it
@@ -1311,19 +1496,22 @@ function Get-CertificateNames([Security.Cryptography.X509Certificates.X509Certif
 }
 
 # The names a certificate lists besides the panel's, as they would be printed: those in $panelNames (the -PanelUrl
-# host on a node; on the panel's own machine, the names its certificate was made for), localhost, and single-label
-# names (a machine's name on the local network, never an internet site's: the installer's certificate always lists the
-# panel machine's own) are the panel's. A wildcard stands for every name under it, so it never is, unless the panel's
-# own certificate was made for it (-HostName); neither are other kinds of names.
+# host on a node; on the panel's own machine, the names and addresses its certificate was made for), localhost and the
+# loopback addresses (127.x and ::1: this machine itself), and single-label names (a machine's name on the local network,
+# never an internet site's: the installer's certificate always lists the panel machine's own) are the panel's. A single
+# label that is a number (decimal, or hexadecimal with 0x) is not: some resolvers read 3232235777 as 192.168.1.1. A
+# wildcard stands for every name under it, so it never is, unless the panel's own certificate was made for it
+# (-HostName); neither are other addresses (private ones too: the router, a NAS) or other kinds of names.
 function Get-ForeignCertificateNames($names, [string[]] $panelNames) {
     $panel = @($panelNames | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('.').ToLowerInvariant() })
     foreach ($listed in $names.Dns) {
         $name = $listed.TrimEnd('.').ToLowerInvariant()
         if ($name -in $panel) { continue }
-        if (-not $name.StartsWith('*.') -and ($name -eq 'localhost' -or -not $name.Contains('.'))) { continue }
+        if (-not $name.StartsWith('*.') -and $name -notmatch '^(0x[0-9a-f]*|[0-9]+)\z' -and ($name -eq 'localhost' -or -not $name.Contains('.'))) { continue }
         ConvertTo-PrintableText $listed
     }
     foreach ($address in $names.Ips) {
+        if ([Net.IPAddress]::IsLoopback($address)) { continue }
         $isPanel = $false
         foreach ($panelName in $panel) {
             $parsed = $null
@@ -1380,7 +1568,7 @@ function Assert-TrustableCertificate([Security.Cryptography.X509Certificates.X50
     }
     $foreign = @(Get-ForeignCertificateNames $names (@($hostName) + $panelNames))
     if ($foreign.Count -gt 0) {
-        $message = "$cer also names $($foreign -join ', '), which this check cannot tell are the panel's (only $hostName, localhost and machine names are): trusted by this machine, whoever holds its key could pass for them to it. Make the panel's certificate for the names nodes use and no others (-HostName when the panel is installed)"
+        $message = "$cer also names $($foreign -join ', '), which this check cannot tell are the panel's (only $hostName, localhost, machine names and the loopback addresses are): trusted by this machine, whoever holds its key could pass for them to it. Make the panel's certificate for the names nodes use and no others (-HostName when the panel is installed)"
         if (-not $TrustCertificateWithOtherNames) {
             throw "$message, or pass -TrustCertificateWithOtherNames if every name it lists is yours."
         }
@@ -1395,6 +1583,19 @@ function Assert-TrustableCertificate([Security.Cryptography.X509Certificates.X50
             throw "$message, or pass -TrustCertificateWithOtherUses if you know it is the panel's own."
         }
         Write-Warning "$message. Trusted anyway, as -TrustCertificateWithOtherUses says."
+    }
+    # The installer's own is valid for 5 years (from 10 minutes before it was made); a longer one keeps vouching, if
+    # its key leaks, for longer than that.
+    if ($certificate.NotAfter -gt $certificate.NotBefore.AddYears(5).AddDays(1)) {
+        Write-Warning "$cer is valid for longer than 5 years (from $($certificate.NotBefore.ToString('yyyy-MM-dd')) to $($certificate.NotAfter.ToString('yyyy-MM-dd'))): trusted by this machine, it vouches for its names until then, even if its key leaks. The installer's own self-signed certificate is valid for 5 years; make a new one like it when you can."
+    }
+}
+
+# Checks that $certificate, read from $cer, is the one whose SHA-256 is $sha256 (Get-CertificateHash), when one is
+# given: the file may have changed since that certificate was made.
+function Assert-SameCertificate([Security.Cryptography.X509Certificates.X509Certificate2] $certificate, [string] $cer, [string] $sha256) {
+    if ($sha256 -and (Get-CertificateHash $certificate) -cne $sha256) {
+        throw "$cer is not the certificate this install made (its SHA-256 is not $sha256): something changed it, and it is not trusted."
     }
 }
 
@@ -1432,9 +1633,11 @@ function Get-ListedNames($names) {
 # Trusts a panel's certificate machine-wide (the agent runs as SYSTEM) for the panel at $hostName, marked so -Uninstall
 # removes it again. One that was already trusted is left unmarked: something else trusted it, and -Uninstall leaves it.
 # Only for -TrustCertificate and the all-in-one panel's own certificate: a node code never comes here (its certificate
-# is pinned in the agent, Assert-PinnableCertificate).
-function Add-TrustedCertificate([string] $cer, [string] $hostName, [string[]] $panelNames = @()) {
+# is pinned in the agent, Assert-PinnableCertificate). For the latter, $sha256 is the SHA-256 of the certificate the
+# install made: the panel's service account may change tls\panel.cer while the panel runs.
+function Add-TrustedCertificate([string] $cer, [string] $hostName, [string[]] $panelNames = @(), [string] $sha256 = '') {
     $certificate = Read-Certificate $cer
+    Assert-SameCertificate $certificate $cer $sha256
     Assert-TrustableCertificate $certificate $cer $hostName $panelNames
     $names = Get-CertificateNames $certificate
     Write-Host "    $(ConvertTo-PrintableText $certificate.Subject), thumbprint $($certificate.Thumbprint), for $(@(Get-ListedNames $names) -join ', ')"
@@ -1553,6 +1756,11 @@ function Get-EndpointPort([string] $url) {
 function Assert-PanelInstallable {
     if (Test-Service $PanelService) { throw (New-SetupError $ExitUsage 'The panel is already installed on this machine. Use -Update to update it, or -Uninstall first.') }
     if ($Mode -eq 'AllInOne' -and (Test-Service $AgentService)) { throw (New-SetupError $ExitUsage 'The agent is already installed on this machine. Use -Update to update it, or -Uninstall first.') }
+    # -HostName's names and addresses, as the self-signed certificate would list them (Get-PanelCertificateNames).
+    foreach ($name in $HostName) {
+        try { $null = ConvertTo-CertificateAddress $name }
+        catch { throw (New-SetupError $ExitUsage "-HostName: $($_.Exception.Message) Nothing was changed.") }
+    }
     $https = $Port
     $agents = $AgentsPort
     $what = @{ Https = '-Port'; Agents = '-AgentsPort' }
@@ -1673,8 +1881,10 @@ function Install-Panel {
             Register-Secret $tlsPassword
             Register-Secret $old.DataProtection.CertificatePassword
             $pfx = Join-Path $PanelData 'tls\panel.pfx'
-            $thumbprint = (New-Object Security.Cryptography.X509Certificates.X509Certificate2($pfx, $tlsPassword)).Thumbprint
-            $certificate = @{ Path = $pfx; Password = $tlsPassword; Cer = (Join-Path $PanelData 'tls\panel.cer'); SelfSigned = $true; Thumbprint = $thumbprint }
+            $restored = New-Object Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @([IO.File]::ReadAllBytes($pfx), $tlsPassword, [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+            try { $thumbprint = $restored.Thumbprint; $sha256 = Get-CertificateHash $restored }
+            finally { $restored.Dispose() }
+            $certificate = @{ Path = $pfx; Password = $tlsPassword; Cer = (Join-Path $PanelData 'tls\panel.cer'); SelfSigned = $true; Thumbprint = $thumbprint; Sha256 = $sha256 }
             $Port = [int]($old.Kestrel.Endpoints.Https.Url -replace '^.*:(\d+)/?$', '$1')
             if ($old.Kestrel.Endpoints.PSObject.Properties['Agents']) {
                 $AgentsPort = [int]($old.Kestrel.Endpoints.Agents.Url -replace '^.*:(\d+)/?$', '$1')
@@ -3118,23 +3328,24 @@ $main = {
         $certificate = $installed.Certificate
         if ($Mode -eq 'Panel') {
             Write-Host ''
-            Write-Host "The panel is running: https://$($env:COMPUTERNAME):$($installed.Port) (also https://localhost:$($installed.Port) on this machine)." -ForegroundColor Green
+            Write-Host "The panel is running: https://localhost:$($installed.Port) on this machine." -ForegroundColor Green
+            Write-RemoteAccess $certificate $installed.Port
             if ($certificate.SelfSigned) {
-                Write-Host "Its certificate is self-signed: browsers warn about it until it is trusted. Nodes join with the code Nodes > Add node"
-                Write-Host "shows, whose agent pins it (or copy $($certificate.Cer) to each node and pass it with -TrustCertificate)."
+                Write-Host "Nodes join with the code Nodes > Add node shows, whose agent pins the certificate (or copy $($certificate.Cer) to each"
+                Write-Host "node and pass it with -TrustCertificate)."
             }
         }
         else {
             Write-SetupStep 'agent' 'Adding this PC as a node'
             if ($certificate.SelfSigned) {
                 Write-Step "Trusting the panel's certificate on this machine (the agent and this PC's browsers check it)"
-                Add-TrustedCertificate $certificate.Cer 'localhost' $certificate.Names
+                Add-TrustedCertificate $certificate.Cer 'localhost' $certificate.Names $certificate.Sha256
             }
             $enrollment = $installed.Node.enrollment
             Install-Agent "https://localhost:$($installed.Port)" $enrollment.token $enrollment.panelKeyFingerprint
             Write-Host ''
             Write-Host "Pulsar is running: open https://localhost:$($installed.Port) and sign in as '$AdminUserName'." -ForegroundColor Green
-            Write-Host "From other computers: https://$($env:COMPUTERNAME):$($installed.Port) (they warn about the self-signed certificate unless they trust $($certificate.Cer))."
+            Write-RemoteAccess $certificate $installed.Port
         }
         Write-SftpSummary $installed.Sftp
         if ($Unattended) { Write-Host "PULSAR-PANEL-URL https://localhost:$($installed.Port)/" }

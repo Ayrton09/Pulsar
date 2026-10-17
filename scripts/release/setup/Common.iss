@@ -175,6 +175,8 @@ en.FinishedLog=The installer's log: %1
 es.FinishedLog=El log del instalador: %1
 en.FinishedAddress=The panel's sign-in page (select it and copy it with Ctrl+C, then open it in your browser):
 es.FinishedAddress=La página de inicio de sesión del panel (seleccionala y copiala con Ctrl+C, y después abrila en tu navegador):
+en.FinishedFingerprint=Certificate fingerprint (SHA-256). Before you trust the certificate on another PC, compare it with the downloaded file's (Get-FileHash, the same digits without colons) or the one your browser's certificate viewer shows, never with a page:
+es.FinishedFingerprint=Huella del certificado (SHA-256). Antes de confiar en el certificado en otra PC, comparala con la del archivo descargado (Get-FileHash, los mismos dígitos sin los dos puntos) o con la que muestra el visor de certificados de tu navegador, nunca con una página:
 en.NewerInstalled=Pulsar %1 is installed on this PC, which is newer than this setup's version (%2). A setup cannot go back to an older version.
 es.NewerInstalled=En esta PC está instalado Pulsar %1, más nuevo que la versión de este instalador (%2). Un instalador no puede volver a una versión anterior.
 en.WrongFolder=This setup installs into %1 only.
@@ -227,6 +229,7 @@ var
   RunStarted: Boolean;
   RunLogPath: String;
   RunPanelUrl: String;
+  RunCertificate: String;
   RunError: String;
   // It failed after changing something: the setup's entry in Apps stays, so that removing it removes what was left.
   RunKept: Boolean;
@@ -627,6 +630,35 @@ begin
   Result := (StrToIntDef(Port, 0) >= 1) and (StrToIntDef(Port, 0) <= 65535);
 end;
 
+// The SHA-256 of the panel's certificate as PULSAR-CERTIFICATE gives it: 64 lowercase hexadecimal digits, nothing else.
+function IsCertificateHash(const Hash: String): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  if Length(Hash) <> 64 then
+    Exit;
+  for I := 1 to Length(Hash) do
+    if not (((Hash[I] >= '0') and (Hash[I] <= '9')) or ((Hash[I] >= 'a') and (Hash[I] <= 'f'))) then
+      Exit;
+  Result := True;
+end;
+
+// A SHA-256 as browsers show a fingerprint: in upper case, a ':' between each two digits.
+function FormatFingerprint(const Hash: String): String;
+var
+  I: Integer;
+  Upper: String;
+begin
+  Upper := Uppercase(Hash);
+  Result := '';
+  for I := 1 to Length(Upper) do begin
+    if (I > 1) and (I mod 2 = 1) then
+      Result := Result + ':';
+    Result := Result + Copy(Upper, I, 1);
+  end;
+end;
+
 // Each line Install-Pulsar.ps1 prints (secrets already replaced by it). Not written to this setup's log: the script
 // keeps its own.
 procedure ScriptOutput(const S: String; const Error, FirstLine: Boolean);
@@ -649,6 +681,10 @@ begin
     if IsLocalPanelUrl(Copy(Line, 18, Length(Line))) then
       RunPanelUrl := Copy(Line, 18, Length(Line));
   end
+  else if Copy(Line, 1, 19) = 'PULSAR-CERTIFICATE ' then begin
+    if IsCertificateHash(Copy(Line, 20, Length(Line))) then
+      RunCertificate := Copy(Line, 20, Length(Line));
+  end
   else if Copy(Line, 1, 13) = 'PULSAR-ERROR ' then begin
     // "PULSAR-ERROR <code> <message>": the message.
     RunError := Copy(Line, 14, Length(Line));
@@ -669,6 +705,7 @@ begin
   RunStarted := False;
   RunLogPath := '';
   RunPanelUrl := '';
+  RunCertificate := '';
   RunError := '';
   Code := -1;
   Folder := ExpandConstant('{app}\payload');
@@ -770,11 +807,14 @@ begin
 end;
 
 // The Finished page: what was done ($Done) and the log, or why it is not fully installed; and the panel's sign-in page
-// (PULSAR-PANEL-URL, only ever https://localhost:<port>/) in a read-only box to copy, never opened from here.
+// (PULSAR-PANEL-URL, only ever https://localhost:<port>/) in a read-only box to copy, never opened from here, with its
+// certificate's fingerprint (PULSAR-CERTIFICATE) below, read-only too, to compare with what a browser shows.
 procedure ShowFinishedText(const Done: String);
 var
   Text: String;
   Address: TNewEdit;
+  FingerprintLabel: TNewStaticText;
+  Fingerprint: TNewMemo;
 begin
   if RunKept then begin
     WizardForm.FinishedHeadingLabel.Caption := CustomMessage('FinishedFailedHeading');
@@ -799,6 +839,27 @@ begin
     Address.Width := WizardForm.FinishedLabel.Width;
     Address.Top := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height + ScaleY(8);
     Address.Text := RunPanelUrl;
+    if RunCertificate <> '' then begin
+      FingerprintLabel := TNewStaticText.Create(WizardForm);
+      FingerprintLabel.Parent := WizardForm.FinishedPage;
+      FingerprintLabel.AutoSize := False;
+      FingerprintLabel.WordWrap := True;
+      FingerprintLabel.Left := Address.Left;
+      FingerprintLabel.Width := Address.Width;
+      FingerprintLabel.Top := Address.Top + Address.Height + ScaleY(12);
+      FingerprintLabel.Caption := CustomMessage('FinishedFingerprint');
+      WizardForm.AdjustLabelHeight(FingerprintLabel);
+      Fingerprint := TNewMemo.Create(WizardForm);
+      Fingerprint.Parent := WizardForm.FinishedPage;
+      Fingerprint.ReadOnly := True;
+      Fingerprint.WordWrap := True;
+      Fingerprint.ScrollBars := ssNone;
+      Fingerprint.Left := Address.Left;
+      Fingerprint.Width := Address.Width;
+      Fingerprint.Top := FingerprintLabel.Top + FingerprintLabel.Height + ScaleY(4);
+      Fingerprint.Height := ScaleY(36);
+      Fingerprint.Text := FormatFingerprint(RunCertificate);
+    end;
   end;
 end;
 
