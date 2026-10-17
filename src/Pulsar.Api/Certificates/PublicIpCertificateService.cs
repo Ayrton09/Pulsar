@@ -169,7 +169,7 @@ internal sealed partial class PublicIpCertificateService(
             {
                 using var ecdsa = ECDsa.Create();
                 ecdsa.ImportPkcs8PrivateKey(key, out _);
-                store.Serve(ServedCertificate.Create(chain, ecdsa, IPAddress.Parse(settings.CertificateIp!)));
+                store.Serve(ServedPublicIpCertificate.Create(chain, ecdsa, IPAddress.Parse(settings.CertificateIp!)));
             }
             finally
             {
@@ -295,7 +295,7 @@ internal sealed partial class PublicIpCertificateService(
         using (var ecdsa = ECDsa.Create())
         {
             ecdsa.ImportPkcs8PrivateKey(issued.PrivateKey, out _);
-            store.Serve(ServedCertificate.Create(issued.Chain, ecdsa, address));
+            store.Serve(ServedPublicIpCertificate.Create(issued.Chain, ecdsa, address));
         }
 
         var ip = address.ToString();

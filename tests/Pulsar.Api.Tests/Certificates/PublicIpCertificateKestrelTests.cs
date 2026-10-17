@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Certificates;
 using Pulsar.Api.Nodes;
+using Pulsar.Api.Security;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Nodes;
 using Pulsar.Contracts;
@@ -35,7 +36,7 @@ public sealed class PublicIpCertificateKestrelTests(PublicIpCertificateKestrelTe
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         // A leaf without intermediates: serving a chain on Windows would put the intermediate in this account's CA store.
         using var leaf = Leaf(key);
-        store.Serve(ServedCertificate.Create([leaf], key, IPAddress.Loopback));
+        store.Serve(ServedPublicIpCertificate.Create([leaf], key, IPAddress.Loopback));
         try
         {
             Assert.Equal(leaf.Thumbprint, await PresentedAsync(factory.MainPort, "127.0.0.1"));
@@ -49,6 +50,13 @@ public sealed class PublicIpCertificateKestrelTests(PublicIpCertificateKestrelTe
             var enrollment = (await created.Content.ReadFromJsonAsync<CreatedNode>(AccessScenario.Json, Ct))!.Enrollment;
             Assert.True(NodeCode.TryParse(enrollment.NodeCode, out var code));
             Assert.Null(code.CertificateSha256);
+
+            // Nor is it offered as the panel's own certificate to download and trust.
+            foreach (var path in new[] { "/api/v1/panel/certificate", "/api/v1/panel/certificate/download" })
+            {
+                using var offered = await admin.Http.GetAsync(new Uri(path, UriKind.Relative), Ct);
+                await Auth.SetupTests.AssertProblemAsync(offered, HttpStatusCode.NotFound, PanelCertificateEndpoints.PubliclyTrustedCode);
+            }
         }
         finally
         {

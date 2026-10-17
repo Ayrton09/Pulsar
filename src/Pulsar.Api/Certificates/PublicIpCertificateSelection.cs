@@ -21,14 +21,14 @@ internal sealed class PublicIpCertificateFeature
 }
 
 /// <summary>A Let's Encrypt certificate ready to serve: the leaf with its key, its chain, and what it is for.</summary>
-internal sealed class ServedCertificate : IDisposable
+internal sealed class ServedPublicIpCertificate : IDisposable
 {
     private static readonly TimeSpan s_contextRetry = TimeSpan.FromMinutes(1);
     private readonly Lock _lock = new();
     private SslStreamCertificateContext? _context;
     private long _failedAt;
 
-    private ServedCertificate(X509Certificate2 leaf, X509Certificate2Collection intermediates, IPAddress address)
+    private ServedPublicIpCertificate(X509Certificate2 leaf, X509Certificate2Collection intermediates, IPAddress address)
     {
         Leaf = leaf;
         Intermediates = intermediates;
@@ -90,7 +90,7 @@ internal sealed class ServedCertificate : IDisposable
     /// The chain (leaf first) with the leaf's private key. The key goes through a PKCS#12 into a key container of its own:
     /// SChannel cannot sign a handshake with a key that only lives in memory. The container goes with <see cref="Dispose"/>.
     /// </summary>
-    public static ServedCertificate Create(IReadOnlyList<X509Certificate2> chain, ECDsa key, IPAddress address)
+    public static ServedPublicIpCertificate Create(IReadOnlyList<X509Certificate2> chain, ECDsa key, IPAddress address)
     {
         ArgumentNullException.ThrowIfNull(chain);
         ArgumentNullException.ThrowIfNull(key);
@@ -107,7 +107,7 @@ internal sealed class ServedCertificate : IDisposable
                 intermediates.Add(X509CertificateLoader.LoadCertificate(certificate.RawData));
             }
 
-            return new ServedCertificate(leaf, intermediates, PublicAddresses.Normalize(address));
+            return new ServedPublicIpCertificate(leaf, intermediates, PublicAddresses.Normalize(address));
         }
         finally
         {
@@ -129,19 +129,19 @@ internal sealed class ServedCertificate : IDisposable
 internal sealed class PublicIpCertificateStore : IDisposable
 {
     private readonly Lock _lock = new();
-    private ServedCertificate? _current;
-    private ServedCertificate? _previous;
+    private ServedPublicIpCertificate? _current;
+    private ServedPublicIpCertificate? _previous;
 
-    public ServedCertificate? Current => Volatile.Read(ref _current);
+    public ServedPublicIpCertificate? Current => Volatile.Read(ref _current);
 
     /// <summary>
     /// Serves <paramref name="next"/> from the next handshake on. The one before stays alive one more swap, so a handshake
     /// that picked it a moment ago still completes. Null serves none and lets both go at once (their keys' containers
     /// with them): the feature was turned off or the address changed.
     /// </summary>
-    public void Serve(ServedCertificate? next)
+    public void Serve(ServedPublicIpCertificate? next)
     {
-        List<ServedCertificate> old = [];
+        List<ServedPublicIpCertificate> old = [];
         lock (_lock)
         {
             if (ReferenceEquals(next, _current))
@@ -240,7 +240,7 @@ internal sealed partial class PublicIpCertificateSelection(
     /// certificate's address), comes from an internet address that is not this machine's own, and reached the certificate's
     /// address: that address itself, or a local address of this machine of its family (a router's port forward).
     /// </summary>
-    internal static bool ShouldServe(ServedCertificate certificate, IPAddress? remote, IPAddress? local, string? serverName, DateTimeOffset now,
+    internal static bool ShouldServe(ServedPublicIpCertificate certificate, IPAddress? remote, IPAddress? local, string? serverName, DateTimeOffset now,
         bool loopbackIsInternet = false)
     {
         ArgumentNullException.ThrowIfNull(certificate);

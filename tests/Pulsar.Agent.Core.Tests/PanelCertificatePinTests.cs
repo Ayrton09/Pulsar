@@ -65,6 +65,26 @@ public sealed class PanelCertificatePinTests : IDisposable
     }
 
     [Fact]
+    public async Task APinIsTakenAtAnIpAddressTheCertificateListsAsOne()
+    {
+        // A node code may name the panel by its address on a home network (https://192.168.1.20:8443): the installer's
+        // certificate lists the panel machine's addresses as IP addresses, which the agent's name check matches.
+        using var listed = SelfSigned("localhost", IPAddress.Loopback);
+        await using (var panel = new TlsPanel(listed))
+        {
+            Assert.Equal(HttpStatusCode.OK, await GetAsync(panel.Port, NodeCode.CertificateHash(listed.RawData), "127.0.0.1"));
+            Assert.Equal(1, panel.Requests);
+        }
+
+        // One for the name alone is not for the address, pinned or not.
+        await using (var panel = new TlsPanel(_panel))
+        {
+            await Assert.ThrowsAnyAsync<HttpRequestException>(() => GetAsync(panel.Port, NodeCode.CertificateHash(_panel.RawData), "127.0.0.1"));
+            Assert.Equal(0, panel.Requests);
+        }
+    }
+
+    [Fact]
     public async Task TheHubsWebSocketIsPinnedTheSameWay()
     {
         await using var panel = new TlsPanel(_panel);
@@ -135,22 +155,31 @@ public sealed class PanelCertificatePinTests : IDisposable
         return chain;
     }
 
-    private static async Task<HttpStatusCode> GetAsync(int port, string? pin)
+    private static async Task<HttpStatusCode> GetAsync(int port, string? pin, string host = "localhost")
     {
-        using var http = new PanelTransport().CreateClient(new Uri($"https://localhost:{port}/"), null, pin);
+        using var http = new PanelTransport().CreateClient(new Uri($"https://{host}:{port}/"), null, pin);
         using var response = await http.GetAsync(new Uri(AgentProtocol.PanelIdentityPath.TrimStart('/'), UriKind.Relative), Ct);
         return response.StatusCode;
     }
 
-    /// <summary>A certificate like the installer's: self-signed, not an authority, for a web server's identity, for <paramref name="name"/>.</summary>
-    private static X509Certificate2 SelfSigned(string name) => SelfSigned(name, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10));
+    /// <summary>
+    /// A certificate like the installer's: self-signed, not an authority, for a web server's identity, for <paramref name="name"/>
+    /// and <paramref name="addresses"/> (as IP addresses).
+    /// </summary>
+    private static X509Certificate2 SelfSigned(string name, params IPAddress[] addresses) =>
+        SelfSigned(name, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(10), addresses);
 
-    private static X509Certificate2 SelfSigned(string name, DateTimeOffset notBefore, DateTimeOffset notAfter)
+    private static X509Certificate2 SelfSigned(string name, DateTimeOffset notBefore, DateTimeOffset notAfter, params IPAddress[] addresses)
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var request = new CertificateRequest($"CN={name}", key, HashAlgorithmName.SHA256);
         var names = new SubjectAlternativeNameBuilder();
         names.AddDnsName(name);
+        foreach (var address in addresses)
+        {
+            names.AddIpAddress(address);
+        }
+
         request.CertificateExtensions.Add(names.Build());
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], false));

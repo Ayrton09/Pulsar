@@ -51,16 +51,16 @@ en.NetworkCaption=Advanced: network
 es.NetworkCaption=Avanzado: red
 en.NetworkDescription=The panel's ports and the name nodes and browsers use.
 es.NetworkDescription=Los puertos del panel y el nombre que usan los nodos y los navegadores.
-en.NetworkSubCaption=Leave a field as it is unless you need another value. The agents' port (8444, say) is where nodes present a client certificate; the extra name is one nodes and browsers reach the panel by (a DNS name, a port forward's).
-es.NetworkSubCaption=Dejá cada campo como está salvo que necesites otro valor. El puerto de los agentes (8444, por ejemplo) es donde los nodos presentan un certificado de cliente; el nombre extra es uno por el que nodos y navegadores llegan al panel (un nombre DNS, el de una redirección de puertos).
+en.NetworkSubCaption=Leave a field as it is unless you need another value. The agents' port (8444, say) is where nodes present a client certificate; the extra name or IP address is one nodes and browsers reach the panel by (a DNS name, a public address, a port forward's). This PC's name and its local network addresses are in the certificate already.
+es.NetworkSubCaption=Dejá cada campo como está salvo que necesites otro valor. El puerto de los agentes (8444, por ejemplo) es donde los nodos presentan un certificado de cliente; el nombre o la dirección IP extra es uno por el que nodos y navegadores llegan al panel (un nombre DNS, una dirección pública, el de una redirección de puertos). El nombre de esta PC y sus direcciones de la red local ya están en el certificado.
 en.PanelPort=The panel's HTTPS port:
 es.PanelPort=Puerto HTTPS del panel:
 en.SftpPort=SFTP port:
 es.SftpPort=Puerto SFTP:
 en.AgentsPort=Agents' port (optional):
 es.AgentsPort=Puerto de los agentes (opcional):
-en.HostName=Another name for the certificate (optional):
-es.HostName=Otro nombre para el certificado (opcional):
+en.HostName=Another name or IP address for the certificate (optional):
+es.HostName=Otro nombre o dirección IP para el certificado (opcional):
 en.FirewallPublic=Also open the panel's ports on networks Windows treats as public
 es.FirewallPublic=Abrir también los puertos del panel en las redes que Windows considera públicas
 en.CertificateCaption=Advanced: certificate
@@ -109,8 +109,8 @@ en.ErrorPort=A port is a number from 1 to 65535 (the agents' port may be left em
 es.ErrorPort=Un puerto es un número de 1 a 65535 (el de los agentes puede quedar vacío).
 en.ErrorSamePorts=The panel's port, the SFTP port and the agents' port must all differ.
 es.ErrorSamePorts=El puerto del panel, el SFTP y el de los agentes tienen que ser distintos.
-en.ErrorHostName=A host name has letters, digits, '.', '-' and '_' (a leading '*.' for a wildcard), like panel.example.com. One name only: for more, use Install-Pulsar.ps1.
-es.ErrorHostName=Un nombre de host tiene letras, dígitos, '.', '-' y '_' (un '*.' al principio para un comodín), como panel.example.com. Uno solo: para más, usá Install-Pulsar.ps1.
+en.ErrorHostName=A host name has letters, digits, '.', '-' and '_' (a leading '*.' for a wildcard) and does not end in a number, like panel.example.com; an IP address is four numbers from 0 to 255 (203.0.113.7) or an IPv6 address (2001:db8::7). One only: for more, use Install-Pulsar.ps1.
+es.ErrorHostName=Un nombre de host tiene letras, dígitos, '.', '-' y '_' (un '*.' al principio para un comodín) y no termina en un número, como panel.example.com; una dirección IP son cuatro números de 0 a 255 (203.0.113.7) o una dirección IPv6 (2001:db8::7). Uno solo: para más, usá Install-Pulsar.ps1.
 en.ErrorCertificateMissing=The certificate file was not found.
 es.ErrorCertificateMissing=No se encontró el archivo del certificado.
 en.ErrorConnectionString=The connection string is too long or has a line break.
@@ -127,12 +127,12 @@ en.MemoAddress=Panel: https://%1:%2 (on this PC also https://localhost:%2), SFTP
 es.MemoAddress=Panel: https://%1:%2 (en esta PC también https://localhost:%2), SFTP en el puerto %3
 en.MemoAgentsPort=Agents' port (client certificates): %1
 es.MemoAgentsPort=Puerto de los agentes (certificados de cliente): %1
-en.MemoHostName=Another name in the certificate: %1
-es.MemoHostName=Otro nombre en el certificado: %1
+en.MemoHostName=Another name or address in the certificate: %1
+es.MemoHostName=Otro nombre o dirección en el certificado: %1
 en.MemoCertificate=Certificate: %1
 es.MemoCertificate=Certificado: %1
-en.MemoSelfSigned=Certificate: self-signed, for this PC's names
-es.MemoSelfSigned=Certificado: autofirmado, para los nombres de esta PC
+en.MemoSelfSigned=Certificate: self-signed, for this PC's names and local network addresses
+es.MemoSelfSigned=Certificado: autofirmado, para los nombres de esta PC y sus direcciones de la red local
 en.MemoFirewall=Windows Firewall: the panel's ports open on Domain and Private networks
 es.MemoFirewall=Firewall de Windows: los puertos del panel abiertos en redes de dominio y privadas
 en.MemoFirewallPublic=Windows Firewall: the panel's ports open on every network, public ones too
@@ -143,10 +143,10 @@ en.MemoDatabaseLocal=Database: in the PostgreSQL on this PC (PostgreSQL 18 is in
 es.MemoDatabaseLocal=Base de datos: en el PostgreSQL de esta PC (se instala PostgreSQL 18 si es anterior a la 15)
 en.MemoDatabaseElsewhere=Database: the one the connection string names
 es.MemoDatabaseElsewhere=Base de datos: la que nombra la cadena de conexión
-en.FinishedAllInOne=Pulsar is running on this PC, which is its first node. Sign in at %1 as '%2'.%n%nFrom other computers: https://%3:%4 (they warn about the self-signed certificate until they trust it).
-es.FinishedAllInOne=Pulsar está funcionando en esta PC, que es su primer nodo. Iniciá sesión en %1 como '%2'.%n%nDesde otras computadoras: https://%3:%4 (avisan del certificado autofirmado hasta que confíen en él).
-en.FinishedPanel=The panel is running: sign in at %1 as '%2' (from other computers: https://%3:%4). Unless you gave a certificate of your own, browsers warn about its self-signed one until they trust it.%n%nAdd nodes in Nodes > Add node, which offers PulsarAgentSetup.exe.
-es.FinishedPanel=El panel está funcionando: iniciá sesión en %1 como '%2' (desde otras computadoras: https://%3:%4). Salvo que hayas dado un certificado propio, los navegadores avisan de su certificado autofirmado hasta que confíen en él.%n%nAgregá nodos en Nodos > Agregar nodo, que ofrece PulsarAgentSetup.exe.
+en.FinishedAllInOne=Pulsar is running on this PC, which is its first node. Sign in at %1 as '%2'.%n%nFrom other computers: https://%3:%4, or this PC's IP address in place of its name (the log lists them). They warn about the self-signed certificate until they trust it: the panel's Account page has it to download, with the steps.
+es.FinishedAllInOne=Pulsar está funcionando en esta PC, que es su primer nodo. Iniciá sesión en %1 como '%2'.%n%nDesde otras computadoras: https://%3:%4, o la dirección IP de esta PC en lugar de su nombre (el log las muestra). Avisan del certificado autofirmado hasta que confíen en él: la página Mi cuenta del panel lo tiene para descargar, con los pasos.
+en.FinishedPanel=The panel is running: sign in at %1 as '%2' (from other computers: https://%3:%4, or this PC's IP address in place of its name). Unless you gave a certificate of your own, browsers warn about its self-signed one until they trust it: the panel's Account page has it to download, with the steps.%n%nAdd nodes in Nodes > Add node, which offers PulsarAgentSetup.exe.
+es.FinishedPanel=El panel está funcionando: iniciá sesión en %1 como '%2' (desde otras computadoras: https://%3:%4, o la dirección IP de esta PC en lugar de su nombre). Salvo que hayas dado un certificado propio, los navegadores avisan de su certificado autofirmado hasta que confíen en él: la página Mi cuenta del panel lo tiene para descargar, con los pasos.%n%nAgregá nodos en Nodos > Agregar nodo, que ofrece PulsarAgentSetup.exe.
 en.FinishedPostgres=PostgreSQL, when this setup installed it, is an app of its own in Settings > Apps: removing Pulsar keeps it and its data.
 es.FinishedPostgres=PostgreSQL, si lo instaló este instalador, es una aplicación aparte en Configuración > Aplicaciones: quitar Pulsar lo conserva, con sus datos.
 
@@ -337,14 +337,76 @@ begin
   Result := True;
 end;
 
-// One name for the certificate, as -HostName takes it: labels of letters, digits, '-' and '_' between dots, a leading
-// "*." for a wildcard and a final dot allowed.
-function IsHostName(Name: String): Boolean;
+// An IPv4 address as -HostName takes one: four numbers from 0 to 255 between dots, without leading zeros.
+function IsIPv4Address(const Name: String): Boolean;
 var
-  I, LabelLength: Integer;
+  I, Parts, Digits, Value: Integer;
+begin
+  Result := False;
+  Parts := 1;
+  Digits := 0;
+  Value := 0;
+  for I := 1 to Length(Name) do begin
+    if Name[I] = '.' then begin
+      if Digits = 0 then
+        Exit;
+      Parts := Parts + 1;
+      Digits := 0;
+      Value := 0;
+    end
+    else if (Name[I] >= '0') and (Name[I] <= '9') then begin
+      if (Digits = 1) and (Value = 0) then
+        Exit;
+      Digits := Digits + 1;
+      Value := Value * 10 + Ord(Name[I]) - Ord('0');
+      if (Digits > 3) or (Value > 255) then
+        Exit;
+    end
+    else
+      Exit;
+  end;
+  Result := (Parts = 4) and (Digits > 0);
+end;
+
+// The shape of an IPv6 address (hexadecimal digits, ':' and '.', at least two ':'): Install-Pulsar.ps1 reads it strictly.
+function IsIPv6Address(const Name: String): Boolean;
+var
+  I, Colons: Integer;
   C: Char;
 begin
   Result := False;
+  if (Length(Name) < 2) or (Length(Name) > 45) then
+    Exit;
+  Colons := 0;
+  for I := 1 to Length(Name) do begin
+    C := Name[I];
+    if C = ':' then
+      Colons := Colons + 1
+    else if not (((C >= '0') and (C <= '9')) or ((C >= 'a') and (C <= 'f')) or ((C >= 'A') and (C <= 'F')) or (C = '.')) then
+      Exit;
+  end;
+  Result := Colons >= 2;
+end;
+
+// One name or IP address for the certificate, as -HostName takes it: an IPv4 or IPv6 address, or labels of letters,
+// digits, '-' and '_' between dots, a leading "*." for a wildcard and a final dot allowed, the last label not a number
+// (browsers read such a name as an IPv4 address: 10.1, 192.168.1.300 and 0x7f are neither).
+function IsHostName(Name: String): Boolean;
+var
+  I, LabelLength, LabelStart: Integer;
+  C: Char;
+  Last: String;
+  Hex: Boolean;
+begin
+  Result := False;
+  if Pos(':', Name) > 0 then begin
+    Result := IsIPv6Address(Name);
+    Exit;
+  end;
+  if IsIPv4Address(Name) then begin
+    Result := True;
+    Exit;
+  end;
   if Copy(Name, 1, 2) = '*.' then
     Name := Copy(Name, 3, Length(Name));
   if Name <> '' then
@@ -353,19 +415,32 @@ begin
   if (Name = '') or (Length(Name) > 253) then
     Exit;
   LabelLength := 0;
+  LabelStart := 1;
   for I := 1 to Length(Name) do begin
     C := Name[I];
     if C = '.' then begin
       if LabelLength = 0 then
         Exit;
       LabelLength := 0;
+      LabelStart := I + 1;
     end
     else if ((C >= 'a') and (C <= 'z')) or ((C >= 'A') and (C <= 'Z')) or ((C >= '0') and (C <= '9')) or (C = '-') or (C = '_') then
       LabelLength := LabelLength + 1
     else
       Exit;
   end;
-  Result := LabelLength > 0;
+  if LabelLength = 0 then
+    Exit;
+  // The last label: a number (decimal, or hexadecimal after 0x) makes the name one browsers read as an address.
+  Last := Lowercase(Copy(Name, LabelStart, Length(Name)));
+  Hex := Copy(Last, 1, 2) = '0x';
+  if Hex then
+    Last := Copy(Last, 3, Length(Last));
+  for I := 1 to Length(Last) do
+    if not (((Last[I] >= '0') and (Last[I] <= '9')) or (Hex and (Last[I] >= 'a') and (Last[I] <= 'f'))) then begin
+      Result := True;
+      Exit;
+    end;
 end;
 
 // The value of a hexadecimal group of an IPv6 address (1 to 4 digits), or -1.

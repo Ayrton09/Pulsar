@@ -56,18 +56,21 @@ what the wizard does not ask.
    5. **Join a panel** (a node only): the panel's address and the node code from the panel's **Nodes → Add node**.
    6. **Game servers' folder** (with a node): `C:\PulsarServers`, or a new or empty folder of your choice.
    7. **Advanced** (with the panel, when shown): the panel's HTTPS port (8443), the SFTP port (2022), an agents' port
-      for [client certificates](#agents-port-client-certificates-optional) (none by default), one more name for the
-      panel's certificate (a DNS name nodes and browsers use; several names need the script's `-HostName`), opening
-      the ports on public networks too, a PFX certificate of your own and its password, and the connection string of
-      a PostgreSQL elsewhere.
+      for [client certificates](#agents-port-client-certificates-optional) (none by default), one more name or IP
+      address for the panel's certificate (a DNS name or a public address nodes and browsers use: this PC's names and
+      local network addresses are in it already; several need the script's `-HostName`), opening the ports on public
+      networks too, a PFX certificate of your own and its password, and the connection string of a PostgreSQL
+      elsewhere.
    8. **Ready**: what it will do (never a password).
 4. It installs, showing each step: it downloads what this PC lacks (the newest .NET 10 runtimes and, for a panel
    without a PostgreSQL to use, the newest PostgreSQL 18) and checks every download before anything runs (the table
    in [What the installer downloads](#what-the-installer-downloads)), then installs .NET, PostgreSQL (listening on this
    PC only), the panel, its administrator and, with a node, the agent.
 5. **Finish** shows the panel's sign-in page, `https://localhost:8443/`, in a box to copy (the setup runs as
-   administrator, so it opens no browser itself): open it in your browser and sign in as `admin`. Then see
-   [First steps in the panel](#4-first-steps-in-the-panel).
+   administrator, so it opens no browser itself), and below it the **certificate fingerprint (SHA-256)** of the
+   panel's HTTPS certificate: note it, to check the certificate from your other PCs
+   ([Connecting from another PC](#connecting-from-another-pc)). Open the address in your browser and sign in as
+   `admin`. Then see [First steps in the panel](#4-first-steps-in-the-panel).
 
 Underneath, the setup does what the [installer script](#advanced-and-automation-the-installer-script) does, with the
 same checks: it puts the release's programs and `Install-Pulsar.ps1` in `C:\Program Files\Pulsar\Setup\payload` (made
@@ -131,6 +134,108 @@ asking nothing but the license ([update.md](update.md)); a setup older than what
 remove Pulsar, **Settings → Apps → Pulsar → Uninstall**: it runs `Install-Pulsar.ps1 -Uninstall`
 ([Uninstalling](#uninstalling)) and keeps the data. Remove Pulsar before the .NET runtimes: the agent's program needs
 them to unenroll.
+
+## Connecting from another PC
+
+The panel and its SFTP server answer the other computers of your network: the installer opens their ports (8443 and
+2022) in Windows Firewall on Domain and Private networks (on a network Windows treats as public, set it to Private in
+Windows' network settings, or install with `-FirewallPublic`).
+
+- **The address**: the panel PC's IP address on your network, `https://192.168.1.20:8443` (the installer prints it at
+  the end, `From other computers: …`; `ipconfig` on that PC shows it as its IPv4 address), or its name,
+  `https://<PC name>:8443`, which home networks do not always resolve. The panel's self-signed certificate lists both:
+  `localhost`, the PC's name (and its DNS name in a domain), `127.0.0.1`, `::1` and the PC's private IPv4 addresses
+  (`10.x`, `172.16.x` to `172.31.x`, `192.168.x`) on networks with a router (a default gateway), each address as an IP
+  address, which is what browsers match an address against. Left out on their own: the addresses of virtual switches
+  that reach only that PC's virtual machines and WSL (Hyper-V's Default Switch, WSL's, VirtualBox's and VMware's
+  host-only networks: no gateway, and a new address at every start), `169.254.x` addresses, public addresses and IPv6
+  addresses. Add those you use with `-HostName` (`-HostName 203.0.113.7, panel.example.com`), or one with the setup's
+  Advanced page.
+- **Reserve the address** in your router (a *DHCP reservation* or *static lease* for the PC's network adapter), so it
+  never changes: the certificate lists the addresses the PC had when Pulsar was installed, and the installer warns
+  (in its output and its log) about each one a DHCP server gave
+  ([If the panel's address changes](#if-the-panels-address-changes)).
+- **SFTP**: the same address and port 2022 (`sftp://<user>@192.168.1.20:2022/`); at the first connection, check the
+  host key's fingerprint against the one the installer printed on the panel's PC (`The SFTP host key, to check at the
+  first connection: …`, in its output and its log), or the Account page's once this PC trusts the panel's certificate
+  ([Trusting the panel's certificate](#trusting-the-panels-certificate)): before that, a machine in the middle could
+  change what the page says ([SFTP](sftp.md)). SFTP does not use the HTTPS certificate.
+- **More nodes**: open **Nodes → Add node** at the address the new node will use (the PC's IP address, say): the node
+  code carries that address, which the certificate lists, and `PulsarAgentSetup.exe` pins the certificate there.
+
+### Trusting the panel's certificate
+
+Until a browser trusts the panel's self-signed certificate, it warns (*Your connection isn't private*) at every visit.
+Trust it once on each PC (and in Firefox, which keeps its own list):
+
+1. On that PC, open the panel at the address you will use (click through the warning this once), sign in and open
+   **My account → Panel certificate**. **Download** saves `pulsar-panel.cer`, the certificate the panel presented to
+   this browser.
+2. **Check that it is your panel's** before trusting it: its SHA-256 must be the fingerprint the installer showed on
+   the panel's PC (the setup's last page, the end of the installer's output and its log, or
+   `(Get-FileHash C:\ProgramData\Pulsar\Panel\tls\panel.cer).Hash` there). On this PC,
+   `(Get-FileHash $HOME\Downloads\pulsar-panel.cer).Hash` shows the file's (the same digits, without the colons), and the
+   browser shows the site's (the warning, or the address bar's icon → the certificate → SHA-256 fingerprint). The
+   Account page shows it too, but until the browser trusts the certificate a machine in the middle could change what
+   the page says: compare the file's or the browser's, never the page's alone. Different digits: something else
+   answered at that address; do not trust it.
+3. Windows (Edge, Chrome): double-click `pulsar-panel.cer` → **Install Certificate…** → **Current User** → **Place all
+   certificates in the following store** → **Browse…** → **Trusted Root Certification Authorities** → **Next** →
+   **Finish**, and **Yes** to Windows' warning. Firefox: **Settings → Privacy & Security → Certificates → View
+   Certificates… → Authorities → Import…**, choose the file and check **Trust this CA to identify websites**.
+4. Restart the browser and open the panel at the same address: no warning. One that still warns uses an address the
+   certificate does not list (above).
+
+The installer's certificate cannot issue other certificates and is for a web server's identity only, so trusting it
+vouches for the names and addresses it lists and nothing else. To stop trusting it: `certmgr.msc` → **Trusted Root
+Certification Authorities → Certificates** → the `localhost` certificate issued by `localhost` → **Delete** (Firefox:
+**Authorities**, the same certificate).
+
+### If the panel's address changes
+
+When the PC gets another address anyway (no reservation, a new router), browsers warn again at the new address (the
+certificate does not list it); the panel keeps working at `https://localhost:8443` on its PC and, where it resolves, at
+its name. `-Update` keeps the certificate: to make one for the new address, run this in an elevated Windows PowerShell
+on the panel's PC, with the names and addresses the certificate is to list (`localhost`, the PC's name, any `-HostName`
+you used, and the PC's addresses now, from `ipconfig`):
+
+```powershell
+$names = 'localhost', $env:COMPUTERNAME
+$addresses = '127.0.0.1', '192.168.1.20'
+$san = (@($names | ForEach-Object { "DNS=$_" }) + @($addresses | ForEach-Object { "IPAddress=$_" })) -join '&'
+# Like the installer's: not a certificate authority, for a web server's identity only, 5 years.
+$certificate = New-SelfSignedCertificate -Subject 'CN=localhost' -FriendlyName 'Pulsar panel' -CertStoreLocation Cert:\LocalMachine\My `
+    -KeyExportPolicy Exportable -KeyLength 2048 -NotAfter (Get-Date).AddYears(5) `
+    -TextExtension @("2.5.29.17={text}$san", '2.5.29.19={critical}{text}ca=0', '2.5.29.37={text}1.3.6.1.5.5.7.3.1')
+# The PFX keeps the password the panel's settings have for it, so they need no change (and it is typed nowhere).
+$password = (Get-Content 'C:\Program Files\Pulsar\Panel\appsettings.Production.json' -Raw | ConvertFrom-Json).Kestrel.Endpoints.Https.Certificate.Password
+$secure = New-Object SecureString
+foreach ($character in $password.ToCharArray()) { $secure.AppendChar($character) }
+$tls = 'C:\ProgramData\Pulsar\Panel\tls'
+Stop-Service PulsarPanel
+Copy-Item "$tls\panel.pfx" "$tls\panel.pfx.old"
+$null = Export-PfxCertificate -Cert $certificate -FilePath "$tls\panel.pfx" -Password $secure
+$null = Export-Certificate -Cert $certificate -FilePath "$tls\panel.cer"
+Remove-Item "Cert:\LocalMachine\My\$($certificate.Thumbprint)" -DeleteKey
+```
+
+With the panel and its node on this PC (the all-in-one install), its agent trusts the panel's certificate through this
+PC's Trusted Root store: replace the old one there, with the mark `-Uninstall` removes, then start the panel and note
+the new fingerprint:
+
+```powershell
+$mark = 'Pulsar panel (trusted by Install-Pulsar.ps1)'
+Get-ChildItem Cert:\LocalMachine\Root | Where-Object FriendlyName -eq $mark | Remove-Item
+$null = Import-Certificate -FilePath "$tls\panel.cer" -CertStoreLocation Cert:\LocalMachine\Root
+(Get-Item "Cert:\LocalMachine\Root\$($certificate.Thumbprint)").FriendlyName = $mark
+Start-Service PulsarPanel
+(Get-FileHash "$tls\panel.cer").Hash
+```
+
+Then: nodes on other machines that pinned the old certificate (those added with a node code) stay offline until each
+is pinned again ([Changing the panel's certificate](#changing-the-panels-certificate)); each browser that trusted the
+old certificate trusts the new one as above (and the old one can be deleted there). Until the panel works, keep
+`panel.pfx.old`: copied back over `panel.pfx`, it is the old certificate again.
 
 ## Advanced and automation: the installer script
 
@@ -262,10 +367,14 @@ folder stays). Then it:
 2. creates the `pulsar` database and user in the local PostgreSQL (with a random password);
 3. installs the panel in `C:\Program Files\Pulsar\Panel` as the **PulsarPanel** service, running as its own virtual
    account (`NT SERVICE\PulsarPanel`), with its data in `C:\ProgramData\Pulsar\Panel` (keys, logs, certificate);
-4. makes a self-signed HTTPS certificate for this PC's names and `localhost`, valid for 5 years, and trusts it on this
-   PC (the agent and this PC's browsers check it). It is marked as unable to issue other certificates and as good for
-   a web server's identity only (server authentication), so trusting it vouches only for the names it lists, never
-   for other sites, code or clients; the installer prints its thumbprint and names;
+4. makes a self-signed HTTPS certificate for this PC's names, `localhost` and this PC's addresses (`127.0.0.1`, `::1`
+   and its private IPv4 addresses on networks with a router, as IP addresses:
+   [Connecting from another PC](#connecting-from-another-pc)), valid for 5 years, and trusts it on this PC (the agent
+   and this PC's browsers check it). It is made in memory (no certificate store holds it or its key) and written to
+   the panel's private folder. It is marked as unable to issue other certificates and as good for a web server's
+   identity only (server authentication), so trusting it vouches only for the names and addresses it lists, never for
+   other sites, code or clients; the installer prints its names, addresses and thumbprint, and at the end its SHA-256
+   fingerprint, to compare with what browsers on other PCs are served;
 5. opens the panel's port (**8443**, `-Port` chooses another) in Windows Firewall, on Domain and Private networks
    (`-FirewallPublic` also opens it on networks Windows treats as public; `-NoFirewall` leaves the firewall alone), and
    the SFTP port (**2022**, `-SftpPort` chooses another; it must differ from `-Port` and `-AgentsPort`) with its own
@@ -290,9 +399,11 @@ On the panel's machine:
 powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Mode Panel
 ```
 
-To make the certificate valid for a name other machines use (a DNS name, or the address of a port forward), add
-`-HostName panel.example.com` (letters, digits, `.`, `-` and `_`, or a leading `*.` for a wildcard; several names are
-separated by commas). To use a real certificate instead of a self-signed one, pass it with
+To make the certificate valid for a name or address other machines use (a DNS name, a public IP address, the address
+of a port forward), add `-HostName panel.example.com` (a name: letters, digits, `.`, `-` and `_`, or a leading `*.` for
+a wildcard, not ending in a number; an address: IPv4 as four numbers, `203.0.113.7`, or IPv6, `2001:db8::7`, listed as
+an IP address; several are separated by commas). The PC's names and private IPv4 addresses are always in it
+([Connecting from another PC](#connecting-from-another-pc)). To use a real certificate instead of a self-signed one, pass it with
 `-CertificatePath C:\certs\panel.pfx -CertificatePassword (Read-Host -AsSecureString)`. Agents check the panel's
 certificate without downloading anything (so whoever answers at the panel's address cannot make them fetch addresses
 of its choosing): the PFX must contain the intermediate certificates (the full chain), and each node must already trust
@@ -351,14 +462,21 @@ the panel with `-HostName` for the name nodes use. A trusted certificate vouches
 it allows, so it also refuses, unless told:
 
 - one that lists names other than the host of `-PanelUrl`, `localhost` and machine names (a name without a dot, such as
-  the panel machine's own, which the installer's certificate always lists): another site's name, a wildcard, another
-  IP address. Nodes that use one name of a panel known by several (its machine's full name in a domain, a
-  `-HostName`) meet the others here: add `-TrustCertificateWithOtherNames` if every name it lists is yours;
+  the panel machine's own, which the installer's certificate always lists, but not a number such as `3232235777`, which
+  some programs read as an IPv4 address), or addresses other than that host and the loopback ones (`127.x`, `::1`):
+  another site's name, a wildcard, any other address, private ones included (`10.x`, `172.16.x` to `172.31.x`,
+  `192.168.x`: trusted, the certificate would vouch for your router or NAS too). The installer's certificate lists the
+  panel PC's private addresses, so a node whose `-PanelUrl` uses the one it has on that network takes it as it is when
+  the PC has no other; a node that uses the PC's name, or one name of a panel known by several (its machine's full name
+  in a domain, a `-HostName`), meets the others here: use the address in `-PanelUrl`, or add
+  `-TrustCertificateWithOtherNames` if every name it lists is yours;
 - one that may be used for more than a web server's identity: an Extended Key Usage beyond server authentication, or
   none at all (which allows every use, code signing included). Installers before this check also listed client
   authentication; add `-TrustCertificateWithOtherUses` if you know it is the panel's own.
 
-A name with characters a DNS name cannot have (a line break, an escape, a space) is refused outright. The node trusts
+A name with characters a DNS name cannot have (a line break, an escape, a space) is refused outright. A certificate
+valid for longer than 5 years (and a day: the installer's own is valid for 5) is trusted with a warning, since a leaked
+key would vouch for its names until it expires: make a new one like the installer's when you can. The node trusts
 the certificate exactly as it was read and checked, and the installer prints its subject, thumbprint and names (with
 any control character shown as `?`): whoever holds its key can pass for those names to this machine. `-Uninstall`
 removes the trust it gave: only certificates it marked as its own when it trusted them.
@@ -391,8 +509,9 @@ it from the release, and compare its SHA-256 with the one the Add node dialog sh
 #### Changing the panel's certificate
 
 A node added with a node code pins the panel's certificate: `PulsarAgent status` shows it (`Panel TLS: certificate
-SHA-256 … (pinned)`). Replacing the panel's certificate (a new self-signed one, a renewal, one from an authority in its
-place) leaves those nodes offline until each is pinned again: the agent's log says the TLS handshake failed
+SHA-256 … (pinned)`). Replacing the panel's certificate (a new self-signed one, for a new address say:
+[If the panel's address changes](#if-the-panels-address-changes); a renewal; one from an authority in its place)
+leaves those nodes offline until each is pinned again: the agent's log says the TLS handshake failed
 (`RemoteCertificateValidationCallback`). For each, either
 
 - enroll it again: **Add node** for a new code (`PulsarAgentSetup.exe`, or `Install-Pulsar.ps1 -Uninstall` then
@@ -722,6 +841,8 @@ details:
 - `PULSAR-STEP <n>/<total> <text>`: each step of the run, once and in order (a step it does not need says so), for a
   progress bar;
 - `PULSAR-PANEL-URL https://localhost:<port>/`, at the end of a panel's install: its sign-in page;
+- `PULSAR-CERTIFICATE <sha256>`, at the end of a panel's install: the lowercase hexadecimal SHA-256 of its HTTPS
+  certificate's DER, the fingerprint browsers show (the setup shows it on its last page);
 - `PULSAR-ERROR <code> <message>`, on one line, when it fails.
 
 It ends with one of these exit codes (without `-Unattended`, a failure is a PowerShell error, exit code 1 under

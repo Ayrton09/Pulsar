@@ -12,8 +12,8 @@ public sealed class PublicIpCertificateSelectionTests : IDisposable
 {
     private readonly CertificateAuthority _authority = CertificateAuthority.Create();
     private readonly ECDsa _key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-    private readonly ServedCertificate _v4;
-    private readonly ServedCertificate _v6;
+    private readonly ServedPublicIpCertificate _v4;
+    private readonly ServedPublicIpCertificate _v6;
 
     public PublicIpCertificateSelectionTests()
     {
@@ -117,13 +117,13 @@ public sealed class PublicIpCertificateSelectionTests : IDisposable
         _authority.Dispose();
     }
 
-    private ServedCertificate Served(string address)
+    private ServedPublicIpCertificate Served(string address)
     {
         var ip = IPAddress.Parse(address);
         var chain = _authority.IssueChain(_key, ip, TimeSpan.FromHours(160));
         try
         {
-            return ServedCertificate.Create(chain, _key, ip);
+            return ServedPublicIpCertificate.Create(chain, _key, ip);
         }
         finally
         {

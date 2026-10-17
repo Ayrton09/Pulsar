@@ -213,6 +213,16 @@ try {
     Check "panel's certificate is for a web server only (Extended Key Usage: server authentication)" (($uses -join ',') -eq '1.3.6.1.5.5.7.3.1') ($uses -join ', ')
     $trusted = Get-Item "Cert:\LocalMachine\Root\$thumbprint" -ErrorAction SilentlyContinue
     Check "panel's certificate trusted by this machine, marked as the installer's" ($null -ne $trusted -and $trusted.FriendlyName -eq 'Pulsar panel (trusted by Install-Pulsar.ps1)') "$thumbprint $($trusted.FriendlyName)"
+    # Its addresses as IP addresses ([7] iPAddress, 4 or 16 bytes: browsers match an address only against those), and its
+    # SHA-256 at the end of the installer's output for the setup's last page.
+    $alternative = $panelCertificate.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.17' }
+    $alternativeHex = if ($alternative) { [BitConverter]::ToString($alternative.RawData) } else { '' }
+    $ipv6Loopback = '87-10-' + ((@(@(0) * 15) + @(1) | ForEach-Object { '{0:X2}' -f $_ }) -join '-')
+    Check "panel's certificate lists 127.0.0.1 and ::1 as IP addresses" ($alternativeHex.Contains('87-04-7F-00-00-01') -and $alternativeHex.Contains($ipv6Loopback)) $alternativeHex
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $panelHash = (($sha.ComputeHash($panelCertificate.RawData) | ForEach-Object { $_.ToString('x2') }) -join '')
+    $sha.Dispose()
+    Check "installer: the certificate's SHA-256 at the end (PULSAR-CERTIFICATE)" (@($output | Where-Object { $_ -ceq "PULSAR-CERTIFICATE $panelHash" }).Count -eq 1) $panelHash
     $firewall = Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue
     Check 'firewall rule for the panel, on Domain and Private networks only' ($null -ne $firewall -and "$($firewall.Profile)" -eq 'Domain, Private') "$($firewall.Profile)"
     $sftpFirewall = Get-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -ErrorAction SilentlyContinue
@@ -232,6 +242,13 @@ try {
     $null = Invoke-RestMethod "$panelUrl/api/v1/auth/session" -WebSession $web
     $index = Invoke-WebRequest "$panelUrl/" -UseBasicParsing
     Check 'web app served' ($index.StatusCode -eq 200 -and $index.Content -match '<div id="root">')
+    # The Account page's Panel certificate: the one this connection was served, described and downloaded.
+    $described = Api GET '/api/v1/panel/certificate'
+    $downloadedFile = Join-Path $report 'pulsar-panel.cer'
+    Invoke-WebRequest "$panelUrl/api/v1/panel/certificate/download" -WebSession $web -UseBasicParsing -OutFile $downloadedFile
+    $downloaded = [IO.File]::ReadAllBytes($downloadedFile)
+    Check "the Account page's certificate is the panel's, one to trust, and so is its download" ($described.sha256 -ceq $panelHash -and $described.trustable -and
+        [Convert]::ToBase64String($downloaded) -ceq [Convert]::ToBase64String($panelCertificate.RawData)) "$($described.sha256) $($described.trustable)"
     Check 'node online' (Wait-Until { @(Api GET '/api/v1/nodes' | Where-Object { $_.connected }).Count -eq 1 } 90)
     $node = @(Api GET '/api/v1/nodes')[0]
     Check 'node is this machine' ($node.name -eq $env:COMPUTERNAME) $node.name

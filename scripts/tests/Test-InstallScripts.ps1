@@ -68,7 +68,10 @@ $installParts = Get-ScriptParts $installScript (@($shared) + @('Read-DerElement'
         'Get-InstalledRuntimes', 'Get-MissingRuntimes', 'Test-DotNetDownloadUrl', 'Get-DotNetInstallerEntries', 'Copy-Program', 'Initialize-SetupNetwork',
         # What a panel's install checks first and undoes when it fails; EDB's builds; signers' chains; the agent's runtimes.
         'Test-PortFree', 'Test-PfxFile', 'Get-EndpointPort', 'Assert-PanelInstallable', 'Get-PanelDatabaseState', 'Get-PanelDatabaseMessage',
-        'New-Secret', 'New-PanelDatabase', 'Remove-PanelDatabase', 'Undo-PanelInstall', 'Find-PostgresInstallerUrl', 'Get-SignerChain', 'Get-AgentMissingRuntimes')) `
+        'New-Secret', 'New-PanelDatabase', 'Remove-PanelDatabase', 'Undo-PanelInstall', 'Find-PostgresInstallerUrl', 'Get-SignerChain', 'Get-AgentMissingRuntimes',
+        # The panel's self-signed certificate: the names and addresses it lists, made in memory.
+        'New-PanelCertificate', 'New-SelfSignedPanelCertificate', 'Get-PanelCertificateNames', 'ConvertTo-CertificateAddress', 'Test-PrivateAddress',
+        'Get-LanAddresses', 'Select-LanAddresses', 'Get-DhcpAddresses', 'Format-CertificateLine', 'Format-Fingerprint', 'Write-RemoteAccess', 'Assert-SameCertificate')) `
     (@($sharedVariables) + @('TrustedName', 'ServerAuthentication', 'ExitFailed', 'ExitUsage', 'ExitUnsupported', 'ExitOffline', 'ExitUntrusted',
         'ExitCertificate', 'ExitRestart', 'NodeCodePrefix', 'NodeCodeMaxLength', 'NodeCodeMaxUrlLength', 'ReusableTokenPrefix', 'JsonStringPattern',
         'DotNetChannel', 'DotNetHosts', 'DotNetFrameworks', 'CodeSigning', 'PostgresDownloadsUrl', 'PostgresSigner', 'DotNetSigner', 'StepPlans',
@@ -169,7 +172,7 @@ function Email([string] $address) { @{ Tag = 0x81; Bytes = [Text.Encoding]::ASCI
 
 # A certificate made in memory, without its key. -Authority: $false (CA=false), $true, or $null (no Basic Constraints).
 # -Uses: the Extended Key Usage's purposes, or $null for none.
-function New-TestCertificate([object[]] $Names = @(), $Authority = $false, $Uses = @($ServerAuth)) {
+function New-TestCertificate([object[]] $Names = @(), $Authority = $false, $Uses = @($ServerAuth), [double] $Days = 1) {
     $rsa = [Security.Cryptography.RSACng]::new(2048)
     try {
         $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=Pulsar test', $rsa,
@@ -187,7 +190,7 @@ function New-TestCertificate([object[]] $Names = @(), $Authority = $false, $Uses
             foreach ($name in $Names) { $content += @(ConvertTo-Der $name.Tag $name.Bytes) }
             $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509Extension]::new('2.5.29.17', (ConvertTo-Der 0x30 ([byte[]]$content)), $false))
         }
-        $certificate = $request.CreateSelfSigned([DateTimeOffset]::Now.AddDays(-1), [DateTimeOffset]::Now.AddDays(1))
+        $certificate = $request.CreateSelfSigned([DateTimeOffset]::Now.AddDays(-1), [DateTimeOffset]::Now.AddDays($Days))
         return [Security.Cryptography.X509Certificates.X509Certificate2]::new($certificate.RawData)
     }
     finally { $rsa.Dispose() }
@@ -217,10 +220,11 @@ $hostNameAttribute = $hostNameParameter.Attributes | Where-Object { $_.TypeName.
 $hostNamePattern = $hostNameAttribute.PositionalArguments[0].Value
 $hostNameOptions = ($hostNameAttribute.NamedArguments | Where-Object { $_.ArgumentName -eq 'Options' }).Argument.Value
 Check '-HostName: the pattern is case-sensitive' ($hostNameOptions -eq 'None' -and $hostNamePattern) "$hostNameOptions"
-foreach ($good in @('panel.example.com', 'PANEL', '*.example.com', 'panel.example.com.', 'my_box-1.lan')) {
+foreach ($good in @('panel.example.com', 'PANEL', '*.example.com', 'panel.example.com.', 'my_box-1.lan', '192.168.1.20', '2001:db8::7', '::1', 'FD00::5', '::ffff:192.168.1.20')) {
     Check "-HostName: accepts '$good'" ([regex]::IsMatch($good, $hostNamePattern, 'None'))
 }
-foreach ($bad in @("panel.example.com$lf", "*.example.com$lf", "panel.example.com.$lf", "panel.example.com$lf$lf", "panel$lf.example.com", "panel.example.com$cr", 'pa nel', '', 'a..b')) {
+foreach ($bad in @("panel.example.com$lf", "*.example.com$lf", "panel.example.com.$lf", "panel.example.com$lf$lf", "panel$lf.example.com", "panel.example.com$cr", 'pa nel', '', 'a..b',
+        '[::1]', 'fe80::1%3', "2001:db8::7$lf", '2001:db8::7/64', 'panel.example.com:8443', 'https://panel.example.com')) {
     Check "-HostName: refuses '$(ConvertTo-PrintableText $bad)'" (-not [regex]::IsMatch($bad, $hostNamePattern, 'None'))
 }
 $thrown = Get-Thrown { Get-CertificateNames (New-TestCertificate @(@{ Tag = 0x87; Bytes = [byte[]](1, 2, 3, 4, 5) })) }
@@ -234,8 +238,25 @@ Check 'names: a wildcard does not stand for its domain' (-not (Test-CertificateN
 Check 'names: an IP address' ((Test-CertificateNames $names '192.168.1.20') -and (Test-CertificateNames $names 'fd00:0::5'))
 Check 'names: another IP address, or an IP written as a name, is not listed' (-not (Test-CertificateNames $names '192.168.1.21') -and -not (Test-CertificateNames $names 'other.example.com'))
 
-$names = Get-CertificateNames (New-TestCertificate @((Dns 'panel.example.com'), (Dns 'localhost'), (Dns 'PANEL'), (Ip '10.0.0.5')))
-Check "foreign names: none besides the panel's host, localhost and machine names (the panel's IP named in -PanelUrl)" (@(Get-ForeignCertificateNames $names @('10.0.0.5')).Count -eq 1 -and @(Get-ForeignCertificateNames $names @('panel.example.com', '10.0.0.5')).Count -eq 0)
+$names = Get-CertificateNames (New-TestCertificate @((Dns 'panel.example.com'), (Dns 'localhost'), (Dns 'PANEL'), (Ip '203.0.113.5')))
+Check "foreign names: none besides the panel's host, localhost and machine names (the panel's IP named in -PanelUrl)" (@(Get-ForeignCertificateNames $names @('203.0.113.5')).Count -eq 1 -and @(Get-ForeignCertificateNames $names @('panel.example.com', '203.0.113.5')).Count -eq 0 -and
+    (@(Get-ForeignCertificateNames $names @('panel.example.com')) -join ',') -eq '203.0.113.5')
+# The installer's certificate lists 127.0.0.1 and ::1: like localhost, this machine itself. A private address is
+# another machine of the local network (the router, a NAS), unless it is the panel's host.
+$names = Get-CertificateNames (New-TestCertificate @((Dns 'panel.example.com'), (Ip '127.0.0.1'), (Ip '::1'), (Ip '127.0.0.2')))
+Check 'foreign names: the loopback addresses are not' (@(Get-ForeignCertificateNames $names @('panel.example.com')).Count -eq 0) (@(Get-ForeignCertificateNames $names @('panel.example.com')) -join ',')
+$names = Get-CertificateNames (New-TestCertificate @((Dns 'panel.example.com'), (Ip '192.168.1.1'), (Ip '10.0.0.1'), (Ip '172.16.0.1'), (Ip '192.168.0.54')))
+$foreign = @(Get-ForeignCertificateNames $names @('panel.example.com'))
+Check 'foreign names: private IPv4 addresses (a router, a NAS) are' (($foreign -join ',') -ceq '192.168.1.1,10.0.0.1,172.16.0.1,192.168.0.54') ($foreign -join ',')
+$foreign = @(Get-ForeignCertificateNames $names @('192.168.0.54'))
+Check "foreign names: the private address of -PanelUrl is the panel's, the others are not" (($foreign -join ',') -ceq 'panel.example.com,192.168.1.1,10.0.0.1,172.16.0.1') ($foreign -join ',')
+# Some resolvers read a number as an IPv4 address (134744072 is 8.8.8.8, 3232235777 is 192.168.1.1, 0xc0a80101 too).
+$names = Get-CertificateNames (New-TestCertificate @((Dns 'panel.example.com'), (Dns '134744072'), (Dns '3232235777'), (Dns '0xc0a80101'), (Dns '0X7F000001'), (Dns 'PANEL'), (Dns 'box1')))
+$foreign = @(Get-ForeignCertificateNames $names @('panel.example.com'))
+Check 'foreign names: a single label that is a number (decimal or 0x) is, a machine name is not' (($foreign -join ',') -ceq '134744072,3232235777,0xc0a80101,0X7F000001') ($foreign -join ',')
+$names = Get-CertificateNames (New-TestCertificate @((Dns 'panel.example.com'), (Ip '169.254.1.1'), (Ip '100.64.0.1'), (Ip '172.32.0.1'), (Ip '172.15.0.1'), (Ip '203.0.113.7'), (Ip 'fd00::5'), (Ip 'fe80::1'), (Ip '::ffff:10.0.0.1')))
+$foreign = @(Get-ForeignCertificateNames $names @('panel.example.com'))
+Check 'foreign names: link-local, carrier NAT, public and IPv6 addresses (but ::1), and an IPv4 address written as IPv6, are' ($foreign.Count -eq 8) ($foreign -join ',')
 $names = Get-CertificateNames (New-TestCertificate @((Dns 'panel.example.com'), (Dns 'www.github.com'), (Dns '*.com'), (Ip '8.8.8.8'), (Email 'a@b.c')))
 $foreign = @(Get-ForeignCertificateNames $names @('panel.example.com'))
 Check 'foreign names: another site, a wildcard, an IP address and an e-mail address' (($foreign -join ',') -eq 'www.github.com,*.com,8.8.8.8,an e-mail address') ($foreign -join ',')
@@ -271,6 +292,199 @@ Check 'trust: -TrustCertificateWithOtherUses lets other uses through' ($null -eq
 $TrustCertificateWithOtherUses = $false
 $thrown = Assert-Cert (New-TestCertificate @((Dns "evil$esc[1A"), (Dns 'panel.example.com')))
 Check 'trust: a DNS name with an escape is refused, and the message has no control characters' ($null -ne $thrown -and $thrown -notmatch '[\x00-\x1F\x7F]') "$(ConvertTo-PrintableText $thrown)"
+# The warnings Assert-TrustableCertificate writes for a certificate.
+function Get-TrustWarnings($certificate) {
+    @(& { $WarningPreference = 'Continue'; Assert-TrustableCertificate $certificate 'panel.cer' 'panel.example.com' } 3>&1 | Where-Object { $_ -is [Management.Automation.WarningRecord] } | ForEach-Object { "$_" })
+}
+$warned = @(Get-TrustWarnings (New-TestCertificate $panelNames $false @($ServerAuth) 3650))
+Check 'trust: warns about a certificate valid for longer than 5 years (and a day)' ($warned.Count -eq 1 -and $warned[0] -match 'valid for longer than 5 years') ($warned -join ' | ')
+$warned = @(Get-TrustWarnings (New-TestCertificate $panelNames $false @($ServerAuth) 1825))
+Check "trust: no warning for 5 years (the installer's own)" ($warned.Count -eq 0) ($warned -join ' | ')
+
+# The all-in-one panel trusts the certificate it made, not whatever tls\panel.cer (which its service account may
+# change) holds by then.
+$madeCertificate = New-TestCertificate $panelNames
+$otherCertificate = New-TestCertificate $panelNames
+Check 'trust: the certificate read is the one made (its SHA-256)' ($null -eq (Get-Thrown { Assert-SameCertificate $madeCertificate 'panel.cer' (Get-CertificateHash $madeCertificate) }) -and
+    (Get-Thrown { Assert-SameCertificate $otherCertificate 'panel.cer' (Get-CertificateHash $madeCertificate) }) -match 'not the certificate this install made' -and
+    $null -eq (Get-Thrown { Assert-SameCertificate $otherCertificate 'panel.cer' '' }))
+$addTrusted = $parsed.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Add-TrustedCertificate' }, $true) | Select-Object -First 1
+$ownTrust = $parsed.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Add-TrustedCertificate' -and $node.Extent.Text -match '\$certificate\.Cer' }, $true) | Select-Object -First 1
+Check "trust: the all-in-one panel's certificate is checked against the one made before it is trusted" ($null -ne $addTrusted -and
+    $addTrusted.Body.Extent.Text -match 'Read-Certificate \$cer\s+Assert-SameCertificate \$certificate \$cer \$sha256' -and $null -ne $ownTrust -and $ownTrust.Extent.Text -match '\$certificate\.Sha256\s*$') "$(if ($ownTrust) { $ownTrust.Extent.Text })"
+
+# --- The panel's self-signed certificate: its names and addresses, made in memory ----------------------------------
+
+# -HostName: an address as one, a name as one, and what is neither refused.
+foreach ($case in @(@('192.168.1.20', '192.168.1.20'), @('203.0.113.7', '203.0.113.7'), @('2001:DB8:0::7', '2001:db8::7'), @('::1', '::1'), @('fd00::5', 'fd00::5'))) {
+    $address = ConvertTo-CertificateAddress $case[0]
+    Check "-HostName: $($case[0]) is the IP address $($case[1])" ($address -is [Net.IPAddress] -and "$address" -ceq $case[1]) "$address"
+}
+foreach ($name in 'panel.example.com', 'PANEL', '*.example.com', 'panel.example.com.', 'my_box-1.lan', 'face', 'box.1e', '1x.lan') {
+    Check "-HostName: $name is a name" ($null -eq (ConvertTo-CertificateAddress $name))
+}
+foreach ($case in ([ordered]@{
+        '10.1' = 'neither a name'; '192.168.1.300' = 'neither a name'; '1.2.3.4.5' = 'neither a name'; '01.2.3.4' = 'neither a name'; '192.168.01.1' = 'neither a name'
+        '0x7f' = 'neither a name'; 'box.0x10' = 'neither a name'; '*.1' = 'neither a name'; 'panel.1.' = 'neither a name'
+        '0.0.0.0' = 'not an address a server has'; '0.1.2.3' = 'not an address a server has'; '255.255.255.255' = 'not an address a server has'; '224.0.0.1' = 'not an address a server has'
+        '::' = 'not an address a server has'; 'ff02::1' = 'not an address a server has'; '::ffff:192.168.1.20' = 'give it as IPv4 \(192\.168\.1\.20\)'
+        '1:2' = 'not an IPv6 address'; '[::1]' = 'not an IPv6 address'; 'fe80::1%3' = 'not an IPv6 address'; '::1::2' = 'not an IPv6 address'
+    }).GetEnumerator()) {
+    $thrown = Get-Thrown { ConvertTo-CertificateAddress $case.Key }
+    Check "-HostName: refuses $($case.Key)" ($thrown -match $case.Value) "$thrown"
+}
+
+# Private-use addresses (RFC 1918), and nothing else.
+foreach ($case in @(@('10.0.0.1', $true), @('10.255.255.255', $true), @('172.16.0.1', $true), @('172.31.255.255', $true), @('192.168.0.54', $true),
+        @('172.15.255.255', $false), @('172.32.0.1', $false), @('192.169.0.1', $false), @('169.254.1.1', $false), @('100.64.0.1', $false), @('127.0.0.1', $false),
+        @('8.8.8.8', $false), @('fd00::1', $false), @('::ffff:10.0.0.1', $false))) {
+    Check "private addresses: $($case[0]) $(if ($case[1]) { 'is' } else { 'is not' }) one" ((Test-PrivateAddress ([Net.IPAddress]::Parse($case[0]))) -eq $case[1])
+}
+
+# This machine's addresses on its networks, from Get-NetIPAddress, Get-NetAdapter and Get-NetRoute (as they answer on a
+# PC with Ethernet, Wi-Fi, Hyper-V's Default Switch and a VPN adapter).
+function Net-Address([string] $address, [int] $index, [string] $state = 'Preferred', [string] $origin = 'Dhcp') { [pscustomobject]@{ IPAddress = $address; InterfaceIndex = $index; AddressState = $state; PrefixOrigin = $origin } }
+function Net-Adapter([int] $index, [string] $status) { [pscustomobject]@{ InterfaceIndex = $index; Status = $status } }
+function Net-Route([int] $index) { [pscustomobject]@{ InterfaceIndex = $index; DestinationPrefix = '0.0.0.0/0' } }
+$netAddresses = @(
+    (Net-Address '192.168.0.54' 17), (Net-Address '172.17.80.1' 16), (Net-Address '169.254.59.181' 5 'Tentative'), (Net-Address '10.8.0.2' 9),
+    (Net-Address '127.0.0.1' 1), (Net-Address '192.168.0.60' 17 'Tentative'), (Net-Address '192.168.0.61' 17 'Duplicate'), (Net-Address '203.0.113.9' 17),
+    (Net-Address '10.0.0.7' 21), (Net-Address '192.168.0.54' 21), (Net-Address '100.64.1.2' 21))
+$netAdapters = @((Net-Adapter 17 'Up'), (Net-Adapter 16 'Up'), (Net-Adapter 5 'Disconnected'), (Net-Adapter 9 'Disconnected'), (Net-Adapter 21 'Up'))
+$netRoutes = @((Net-Route 17), (Net-Route 9), (Net-Route 21))
+$selected = @(Select-LanAddresses $netAddresses $netAdapters $netRoutes)
+Check "LAN addresses: private ones in use, on adapters that are up and lead to a router (not Hyper-V's Default Switch, a disconnected VPN, the loopback, 169.254, public or carrier-NAT ones), each once" (
+    (@($selected | ForEach-Object { "$_" }) -join ',') -ceq '192.168.0.54,10.0.0.7' -and @($selected | Where-Object { $_ -isnot [Net.IPAddress] }).Count -eq 0) (@($selected | ForEach-Object { "$_" }) -join ',')
+Check 'LAN addresses: none without a router' (@(Select-LanAddresses $netAddresses $netAdapters @()).Count -eq 0)
+$lanFromCmdlets = & {
+    function Get-NetIPAddress { param($AddressFamily, $ErrorAction) if ($AddressFamily -eq 'IPv4') { $netAddresses } }
+    function Get-NetAdapter { param($ErrorAction) $netAdapters }
+    function Get-NetRoute { param($AddressFamily, $DestinationPrefix, $ErrorAction) if ($AddressFamily -eq 'IPv4' -and $DestinationPrefix -eq '0.0.0.0/0') { $netRoutes } }
+    @(Get-LanAddresses)
+}
+Check 'LAN addresses: read from Get-NetIPAddress (IPv4), Get-NetAdapter and Get-NetRoute (the default route)' ((@($lanFromCmdlets | ForEach-Object { "$_" }) -join ',') -ceq '192.168.0.54,10.0.0.7') (@($lanFromCmdlets | ForEach-Object { "$_" }) -join ',')
+$leasedAddresses = @((Net-Address '192.168.0.54' 17), (Net-Address '10.0.0.7' 21 'Preferred' 'Manual'), (Net-Address '127.0.0.1' 1 'Preferred' 'WellKnown'), (Net-Address '172.17.80.1' 16 'Preferred' 'Dhcp'))
+$leased = @(& { function Get-NetIPAddress { param($AddressFamily, $ErrorAction) if ($AddressFamily -eq 'IPv4') { $leasedAddresses } }; @(Get-DhcpAddresses) })
+Check 'DHCP addresses: those Get-NetIPAddress says a DHCP server gave' (($leased -join ',') -ceq '192.168.0.54,172.17.80.1') ($leased -join ',')
+
+# What the certificate lists: the machine's names, -HostName's names; the loopback addresses, the LAN's, -HostName's.
+$lan = @([Net.IPAddress]::Parse('192.168.0.54'), [Net.IPAddress]::Parse('10.0.0.7'))
+$listed = Get-PanelCertificateNames @('localhost', 'PANEL', 'PANEL.corp.example') $lan @('panel.example.com', '203.0.113.7', '2001:DB8::7', '192.168.0.54', 'PANEL', '::1')
+Check 'certificate names: DNS names as given, each once' (($listed.Dns -join ',') -ceq 'localhost,PANEL,PANEL.corp.example,panel.example.com') ($listed.Dns -join ',')
+Check 'certificate names: 127.0.0.1, ::1, the LAN addresses, then -HostName''s, each once, as IP addresses' (
+    (@($listed.Ips | ForEach-Object { "$_" }) -join ',') -ceq '127.0.0.1,::1,192.168.0.54,10.0.0.7,203.0.113.7,2001:db8::7' -and @($listed.Ips | Where-Object { $_ -isnot [Net.IPAddress] }).Count -eq 0 -and $listed.Others.Count -eq 0) (@($listed.Ips | ForEach-Object { "$_" }) -join ',')
+$thrown = Get-Thrown { Get-PanelCertificateNames @('localhost') @() @('10.1') }
+Check 'certificate names: a -HostName that is neither a name nor an address stops it' ($thrown -match 'neither a name') "$thrown"
+
+# The certificate itself, made in memory as the installer makes it (no store, no key container).
+$built = New-SelfSignedPanelCertificate $listed
+try {
+    $extensionOids = @($built.Extensions | ForEach-Object { $_.Oid.Value })
+    $basic = $built.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.19' }
+    $keyUsage = $built.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.15' }
+    $enhanced = $built.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.37' }
+    $alternative = $built.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.17' }
+    $usageFlags = [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature -bor [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyEncipherment
+    $read = Get-CertificateNames $built
+    Check 'self-signed certificate: subject and issuer CN=localhost' ($built.Subject -ceq 'CN=localhost' -and $built.Issuer -ceq 'CN=localhost') $built.Subject
+    Check 'self-signed certificate: its DNS names as DNS names, its addresses as IP addresses (browsers match addresses only against those)' (
+        ($read.Dns -join ',') -ceq 'localhost,PANEL,PANEL.corp.example,panel.example.com' -and (@($read.Ips | ForEach-Object { "$_" }) -join ',') -ceq '127.0.0.1,::1,192.168.0.54,10.0.0.7,203.0.113.7,2001:db8::7' -and $read.Others.Count -eq 0) "$($read.Dns -join ',') | $($read.Ips -join ',')"
+    Check 'self-signed certificate: Basic Constraints, critical, CA=false' ($null -ne $basic -and $basic.Critical -and (Get-CertificateAuthority $built) -eq $false)
+    Check 'self-signed certificate: Key Usage, critical, digital signature and key encipherment' ($null -ne $keyUsage -and $keyUsage.Critical -and
+        ([Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new($keyUsage, $true)).KeyUsages -eq $usageFlags)
+    Check 'self-signed certificate: Extended Key Usage server authentication alone, not critical' ($null -ne $enhanced -and -not $enhanced.Critical -and (Test-ServerAuthenticationOnly (Get-CertificateUses $built)))
+    Check 'self-signed certificate: the Subject Alternative Name is not critical, and there is a Subject Key Identifier' ($null -ne $alternative -and -not $alternative.Critical -and '2.5.29.14' -in $extensionOids)
+    Check 'self-signed certificate: those five extensions, each once' ($extensionOids.Count -eq 5 -and @($extensionOids | Select-Object -Unique).Count -eq 5) ($extensionOids -join ',')
+    Check 'self-signed certificate: RSA 2048 with SHA-256' ([Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPublicKey($built).KeySize -eq 2048 -and $built.SignatureAlgorithm.Value -eq '1.2.840.113549.1.1.11')
+    $now = Get-Date
+    Check 'self-signed certificate: valid from 10 minutes ago for 5 years' ($built.NotBefore -gt $now.AddMinutes(-11) -and $built.NotBefore -lt $now.AddMinutes(-9) -and
+        [Math]::Abs(($built.NotAfter - $now.AddYears(5)).TotalMinutes) -lt 2) "$($built.NotBefore) $($built.NotAfter)"
+    Check "self-signed certificate: with its key, named 'Pulsar panel'" ($built.HasPrivateKey -and $built.FriendlyName -ceq 'Pulsar panel')
+
+    # What consumes it: the all-in-one panel trusts it for what it was made for; a node's -TrustCertificate for its
+    # host and the loopback addresses besides; a node code pins it at an address it lists.
+    $madeFor = @($listed.Dns) + @($listed.Ips | ForEach-Object { "$_" })
+    Check "self-signed certificate: trusted on the panel's own machine for everything it lists" ($null -eq (Assert-Cert $built 'localhost' $madeFor)) "$(Assert-Cert $built 'localhost' $madeFor)"
+    $homeCertificate = New-SelfSignedPanelCertificate (Get-PanelCertificateNames @('localhost', 'PANEL') @([Net.IPAddress]::Parse('192.168.0.54')) @())
+    try {
+        Check "self-signed certificate: a node's -TrustCertificate takes the home panel's by its LAN address" ($null -eq (Assert-Cert $homeCertificate '192.168.0.54')) "$(Assert-Cert $homeCertificate '192.168.0.54')"
+        Check "self-signed certificate: by its name, its LAN address is another name (-TrustCertificateWithOtherNames)" ((Assert-Cert $homeCertificate 'PANEL') -match '192\.168\.0\.54.*TrustCertificateWithOtherNames') "$(Assert-Cert $homeCertificate 'PANEL')"
+        Check "self-signed certificate: a node's -TrustCertificate refuses it for an address it does not list" ((Assert-Cert $homeCertificate '192.168.0.55') -match 'is not made for 192\.168\.0\.55')
+        Check 'self-signed certificate: a node code pins it at its LAN address, not at another' ($null -eq (Get-Thrown { Assert-PinnableCertificate $homeCertificate '192.168.0.54' }) -and
+            (Get-Thrown { Assert-PinnableCertificate $homeCertificate '192.168.0.55' }) -match 'is not made for')
+    }
+    finally { $homeCertificate.Dispose() }
+    Check "self-signed certificate: a node's -TrustCertificate refuses one listing a public address but its host's" ((Assert-Cert $built 'PANEL') -match '203\.0\.113\.7.*TrustCertificateWithOtherNames' -and $null -eq (Assert-Cert $built '203.0.113.7' @('2001:db8::7', 'panel.example.com', 'PANEL.corp.example', '192.168.0.54', '10.0.0.7'))) "$(Assert-Cert $built 'PANEL')"
+}
+finally { $built.Dispose() }
+$certificateFunctions = @($parsed.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in 'New-PanelCertificate', 'New-SelfSignedPanelCertificate' }, $true))
+$storeUses = @($certificateFunctions | Where-Object { $_.Extent.Text -match '(?i)Cert:\\|New-SelfSignedCertificate|Export-PfxCertificate|Export-Certificate|X509Store|CngKey\]::Create|PersistKeySet|MachineKeySet' })
+Check 'self-signed certificate: made without a certificate store or a stored key' ($certificateFunctions.Count -eq 2 -and $storeUses.Count -eq 0) (@($storeUses | ForEach-Object Name) -join ', ')
+# -CertificatePath's PFX is opened with an ephemeral key (none written to a key container) and disposed.
+$panelCertificateText = @($certificateFunctions | Where-Object Name -eq 'New-PanelCertificate')[0].Extent.Text
+$pfxOpens = @([regex]::Matches($panelCertificateText, 'X509Certificate2\b[^\r\n]*') | ForEach-Object { $_.Value })
+Check '-CertificatePath: its PFX is opened with EphemeralKeySet, and disposed' ($pfxOpens.Count -eq 1 -and $pfxOpens[0] -match 'EphemeralKeySet' -and
+    ([regex]::Matches($panelCertificateText, '\$certificate\.Dispose\(\)')).Count -eq 2) ($pfxOpens -join ' | ')
+
+# The install's own: files in the panel's private folder (here a scratch one), what the summary prints.
+$tlsRoot = Join-Path $Scratch ("pulsar-script-tests-" + [Guid]::NewGuid().ToString('N'))
+$null = New-Item -ItemType Directory $tlsRoot
+try {
+    $madeOutput = @(& {
+            $PanelData = $tlsRoot; $CertificatePath = $null; $CertificatePassword = $null; $HostName = @('panel.example.com', '203.0.113.7')
+            function Get-CimInstance { [pscustomobject]@{ Domain = 'WORKGROUP' } }
+            function Get-LanAddresses { [Net.IPAddress]::Parse('192.168.0.54') }
+            function Get-DhcpAddresses { '192.168.0.54'; '172.17.80.1' }
+            function Write-Step { }
+            $WarningPreference = 'Continue'
+            New-PanelCertificate
+        } 3>&1)
+    $made = @($madeOutput | Where-Object { $_ -is [hashtable] })[0]
+    $madeWarnings = @($madeOutput | Where-Object { $_ -is [Management.Automation.WarningRecord] } | ForEach-Object { "$_" })
+    Check 'install certificate: a DHCP address it lists gets one warning, to reserve it in the router' ($madeWarnings.Count -eq 1 -and $madeWarnings[0] -match '192\.168\.0\.54' -and
+        $madeWarnings[0] -notmatch '172\.17\.80\.1' -and $madeWarnings[0] -match 'reservation') ($madeWarnings -join ' | ')
+    $pfxBytes = [IO.File]::ReadAllBytes((Join-Path $tlsRoot 'tls\panel.pfx'))
+    $opened = New-Object Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @($pfxBytes, $made.Password, [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+    try {
+        $cerBytes = [IO.File]::ReadAllBytes((Join-Path $tlsRoot 'tls\panel.cer'))
+        Check 'install certificate: panel.pfx opens with its password, with its key; panel.cer is the same certificate' ($opened.HasPrivateKey -and $opened.Thumbprint -eq $made.Thumbprint -and
+            [Convert]::ToBase64String($cerBytes) -ceq [Convert]::ToBase64String($opened.RawData) -and $made.Path -eq (Join-Path $tlsRoot 'tls\panel.pfx') -and $made.SelfSigned)
+        Check 'install certificate: its SHA-256 is the hash of its DER' ($made.Sha256 -ceq (Get-CertificateHash $opened) -and $made.Sha256 -cmatch '^[0-9a-f]{64}\z') "$($made.Sha256)"
+        Check 'install certificate: the names it is trusted for, the addresses other computers use' (($made.Names -join ',') -ceq "localhost,$env:COMPUTERNAME,panel.example.com,127.0.0.1,::1,192.168.0.54,203.0.113.7" -and
+            ($made.Addresses -join ',') -ceq '192.168.0.54,203.0.113.7') "$($made.Names -join ',') | $($made.Addresses -join ',')"
+        Check 'install certificate: its password is a secret of the run (never in the log)' ((Protect-SetupText "x $($made.Password) y") -ceq 'x [secret] y')
+    }
+    finally { $opened.Dispose() }
+
+    # -CertificatePath: a PFX of yours (here the one just made), copied into the panel's folder.
+    $ownRoot = Join-Path $tlsRoot 'own'
+    $null = New-Item -ItemType Directory $ownRoot
+    $own = & {
+        $PanelData = $ownRoot; $CertificatePath = Join-Path $tlsRoot 'tls\panel.pfx'; $CertificatePassword = ConvertTo-Secure $made.Password
+        New-PanelCertificate
+    }
+    Check '-CertificatePath: copied with its password, panel.cer and the SHA-256 of the same certificate' ($own.Thumbprint -eq $made.Thumbprint -and $own.Sha256 -ceq $made.Sha256 -and -not $own.SelfSigned -and
+        [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $ownRoot 'tls\panel.cer'))) -ceq [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $tlsRoot 'tls\panel.cer')))) "$($own.Thumbprint)"
+
+    $Unattended = $true
+    $printed = @(& { Write-RemoteAccess $made 8443 } 6>&1 | ForEach-Object { "$_" })
+    $Unattended = $false
+    $plain = @(& { Write-RemoteAccess @{ SelfSigned = $false; Sha256 = $made.Sha256 } 8443 } 6>&1 | ForEach-Object { "$_" })
+    Check 'summary: the addresses other computers use, and the fingerprint to compare' (($printed -join "`n") -match [regex]::Escape("https://192.168.0.54:8443 or https://203.0.113.7:8443 or https://$($env:COMPUTERNAME):8443") -and ($printed -join "`n") -match "fingerprint.*$(Format-Fingerprint $made.Sha256)" -and ($printed -join "`n") -match 'Account page') ($printed -join ' | ')
+    Check 'summary: with -Unattended, the line "PULSAR-CERTIFICATE <sha256>" for the setup wizard' (@($printed | Where-Object { $_ -ceq "PULSAR-CERTIFICATE $($made.Sha256)" }).Count -eq 1)
+    Check 'summary: without -Unattended no machine line, and no trust steps for a certificate of your own' (@($plain | Where-Object { $_ -like 'PULSAR-*' }).Count -eq 0 -and ($plain -join "`n") -notmatch 'to download' -and ($plain -join "`n") -match [regex]::Escape("https://$($env:COMPUTERNAME):8443")) ($plain -join ' | ')
+    $ipv6 = @(& { Write-RemoteAccess @{ SelfSigned = $true; Sha256 = $made.Sha256; Addresses = @('2001:db8::7') } 8443 } 6>&1 | ForEach-Object { "$_" })
+    Check 'summary: an IPv6 address in brackets' (($ipv6 -join "`n") -match [regex]::Escape('https://[2001:db8::7]:8443'))
+}
+finally {
+    Remove-Item -LiteralPath $tlsRoot -Recurse -Force
+    $SetupSecrets.Clear()
+}
+Check 'PULSAR-CERTIFICATE: the lowercase hexadecimal SHA-256, nothing else' ((Format-CertificateLine ('0f' * 32)) -ceq "PULSAR-CERTIFICATE $('0f' * 32)" -and
+    $null -ne (Get-Thrown { Format-CertificateLine ('0F' * 32) }) -and $null -ne (Get-Thrown { Format-CertificateLine ('0f' * 31) }) -and $null -ne (Get-Thrown { Format-CertificateLine "$('0f' * 32)$lf" }))
+Check 'fingerprint: as browsers show it, upper case with a colon between each two digits' ((Format-Fingerprint ('0123456789abcdef' * 4)) -ceq ((@('01', '23', '45', '67', '89', 'AB', 'CD', 'EF') * 4) -join ':'))
+$installMain = Get-Content -Raw -LiteralPath $installScript
+Check 'summary: printed for both a panel and an all-in-one install' (([regex]::Matches($installMain, 'Write-RemoteAccess \$certificate \$installed\.Port')).Count -eq 2)
 
 # --- Removing the trust an install gave ------------------------------------------------------------------------------
 
@@ -397,7 +611,7 @@ $guide = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\docs\guid
 foreach ($code in $codes) {
     Check "exit codes: $code is in install.md's table" ($guide -match ('\|\s*`' + $code + '`\s*\|'))
 }
-foreach ($name in @($SecretInputs.Values) + 'PULSAR_SECRETS_FILE', 'PULSAR-STEP', 'PULSAR-ERROR', 'PULSAR-LOG', 'PULSAR-PANEL-URL', '-PostgresInstaller', '-DotNetInstallers', '-NodeCode', '-Unattended') {
+foreach ($name in @($SecretInputs.Values) + 'PULSAR_SECRETS_FILE', 'PULSAR-STEP', 'PULSAR-ERROR', 'PULSAR-LOG', 'PULSAR-PANEL-URL', 'PULSAR-CERTIFICATE', '-PostgresInstaller', '-DotNetInstallers', '-NodeCode', '-Unattended') {
     Check "install.md documents $name" ($guide.Contains($name))
 }
 
@@ -1067,7 +1281,7 @@ try {
     function Test-Preflight([hashtable] $values) {
         & {
             $PanelService = 'PulsarPanel'; $AgentService = 'PulsarAgent'; $Mode = 'Panel'; $AdminUserName = 'admin'; $AdminPassword = ConvertTo-Secure 'a long enough password'
-            $Port = $freePorts[0]; $AgentsPort = 0; $SftpPort = $freePorts[1]; $CertificatePath = $null; $CertificatePassword = $null; $RestoreFrom = $null
+            $Port = $freePorts[0]; $AgentsPort = 0; $SftpPort = $freePorts[1]; $CertificatePath = $null; $CertificatePassword = $null; $RestoreFrom = $null; $HostName = @()
             foreach ($name in $values.Keys) { Set-Variable -Name $name -Value $values[$name] }
             function Test-Service([string] $name) { return $false }
             Get-Caught { Assert-PanelInstallable }
@@ -1075,12 +1289,15 @@ try {
     }
     Check 'preflight: free ports and no certificate pass' ($null -eq (Test-Preflight @{})) "$(Test-Preflight @{})"
     Check "preflight: a PFX that opens with its password passes" ($null -eq (Test-Preflight @{ CertificatePath = $pfxFile; CertificatePassword = (ConvertTo-Secure 'the right password'); AgentsPort = $freePorts[2] }))
+    Check 'preflight: -HostName names and IP addresses pass' ($null -eq (Test-Preflight @{ HostName = @('panel.example.com', '203.0.113.7', '2001:db8::7') }))
     foreach ($case in ([ordered]@{
             'the HTTPS port taken' = @(@{ Port = $takenPort }, 3, "$takenPort")
             'the agents'' port taken' = @(@{ AgentsPort = $takenPort }, 3, "$takenPort")
             'the SFTP port taken' = @(@{ SftpPort = $takenPort }, 3, "$takenPort")
             'a PFX its password does not open' = @(@{ CertificatePath = $pfxFile; CertificatePassword = (ConvertTo-Secure 'wrong') }, 2, 'password')
             'a PFX without its key' = @(@{ CertificatePath = $cerFile }, 2, 'private key')
+            'a -HostName that is neither a name nor an IP address' = @(@{ HostName = @('panel.example.com', '192.168.1.300') }, 2, '-HostName: 192.168.1.300 is neither a name')
+            'a -HostName address no server has' = @(@{ HostName = @('0.0.0.0') }, 2, '-HostName: 0.0.0.0 is not an address')
             'a backup whose panel port is taken' = @(@{ RestoreFrom = $backupFolder; Port = 1; Backup = @($takenPort, 'the right password') }, 3, "$takenPort")
             'a backup whose certificate does not open with its password' = @(@{ RestoreFrom = $backupFolder; Backup = @($freePorts[0], 'wrong') }, 2, 'password')
         }).GetEnumerator()) {
@@ -1438,6 +1655,42 @@ foreach ($name in $wizardIss.Keys) {
     $nodeCheck = (Get-IssCode @($commonIss, $wizardIss[$name]))['CheckNodePage']
     Check "${name}: the node page puts the address in that form before passing it on, and refuses another" ($nodeCheck -match 'if not NormalizePanelAddress\(PanelAddress, Address\) then begin\s+Result := Refuse\(CustomMessage\(''ErrorAddress''\)\);' -and $nodeCheck -match 'NodePage\.Values\[0\] := Address;')
 }
+# The certificate's fingerprint on the Finished page: from PULSAR-CERTIFICATE, only when it is a SHA-256, read-only.
+Check 'setups: the Finished page shows the fingerprint PULSAR-CERTIFICATE gives, only a lowercase SHA-256, read-only, next to the address' (
+    $commonCode['ScriptOutput'] -match "Copy\(Line, 1, 19\) = 'PULSAR-CERTIFICATE ' then begin\s+if IsCertificateHash\(Copy\(Line, 20, Length\(Line\)\)\) then\s+RunCertificate := Copy\(Line, 20, Length\(Line\)\);" -and
+    $commonCode['RunInstallScript'] -match "RunCertificate := '';" -and
+    $commonCode['IsCertificateHash'] -match 'Length\(Hash\) <> 64' -and $commonCode['IsCertificateHash'] -match "\(Hash\[I\] >= 'a'\) and \(Hash\[I\] <= 'f'\)" -and $commonCode['IsCertificateHash'] -cnotmatch "'A'" -and
+    $commonCode['ShowFinishedText'] -match 'if RunCertificate <> '''' then begin' -and $commonCode['ShowFinishedText'] -match 'Fingerprint\.ReadOnly := True;' -and
+    $commonCode['ShowFinishedText'] -match 'Fingerprint\.Text := FormatFingerprint\(RunCertificate\);' -and $commonCode['ShowFinishedText'] -match "CustomMessage\('FinishedFingerprint'\)" -and
+    $commonCode['ShowFinishedText'].IndexOf('if RunCertificate') -gt $commonCode['ShowFinishedText'].IndexOf('if HasPanelUrl then begin'))
+# FormatFingerprint's rule, in PowerShell: upper case, ':' between each two digits, as browsers show fingerprints.
+$hash = '0123456789abcdef' * 4
+$shown = (@([regex]::Matches($hash.ToUpperInvariant(), '..') | ForEach-Object { $_.Value })) -join ':'
+Check 'setups: FormatFingerprint writes the hash in upper case, a colon between each two digits' ($shown.Length -eq 95 -and $shown.StartsWith('01:23:45') -and
+    $commonCode['FormatFingerprint'] -match 'Upper := Uppercase\(Hash\);' -and $commonCode['FormatFingerprint'] -match "if \(I > 1\) and \(I mod 2 = 1\) then\s+Result := Result \+ ':';")
+# The Advanced page's extra name or address (IsHostName), as -HostName takes it. The same rule, in PowerShell (the Pascal
+# functions cannot run here); what it takes, Install-Pulsar.ps1 takes too.
+function Test-WizardHostName([string] $name) {
+    if ($name.Contains(':')) { return $name.Length -ge 2 -and $name.Length -le 45 -and $name -cmatch '^[0-9A-Fa-f:.]+\z' -and ([regex]::Matches($name, ':')).Count -ge 2 }
+    if ($name -cmatch '^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])){3}\z') { return $true }
+    if ($name.StartsWith('*.')) { $name = $name.Substring(2) }
+    if ($name.EndsWith('.')) { $name = $name.Substring(0, $name.Length - 1) }
+    if (-not $name -or $name.Length -gt 253 -or $name -cnotmatch '^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\z') { return $false }
+    $last = $name.Split('.')[-1].ToLowerInvariant()
+    if ($last.StartsWith('0x')) { return $last.Substring(2) -cnotmatch '^[0-9a-f]*\z' }
+    return $last -cnotmatch '^[0-9]+\z'
+}
+foreach ($good in 'panel.example.com', 'PANEL', '*.example.com', 'panel.example.com.', 'my_box-1.lan', '192.168.1.20', '203.0.113.7', '2001:db8::7', 'fd00::5', 'face', 'box.1e') {
+    Check "setups: the extra name or address $good is taken, as Install-Pulsar.ps1 takes it" ((Test-WizardHostName $good) -and [regex]::IsMatch($good, $hostNamePattern, 'None') -and $null -eq (Get-Thrown { ConvertTo-CertificateAddress $good }))
+}
+foreach ($bad in '10.1', '192.168.1.300', '1.2.3.4.5', '01.2.3.4', '0x7f', 'box.0x10', '*.1', '[::1]', 'fe80::1%3', '1:2', 'pa nel', '', 'a..b', 'panel.example.com:8443') {
+    Check "setups: the extra name or address $bad is refused" (-not (Test-WizardHostName $bad))
+}
+$hostCheck = (Get-IssCode @($commonIss, $wizardIss['PulsarSetup.iss']))
+Check 'setups: IsHostName is that rule' ($hostCheck['IsHostName'] -match 'if Pos\('':'', Name\) > 0 then begin\s+Result := IsIPv6Address\(Name\);' -and $hostCheck['IsHostName'] -match 'if IsIPv4Address\(Name\) then begin\s+Result := True;' -and
+    $hostCheck['IsHostName'] -match "Hex := Copy\(Last, 1, 2\) = '0x';" -and $hostCheck['IsIPv4Address'] -match '\(Digits = 1\) and \(Value = 0\)' -and $hostCheck['IsIPv4Address'] -match '\(Digits > 3\) or \(Value > 255\)' -and
+    $hostCheck['IsIPv4Address'] -match 'Result := \(Parts = 4\) and \(Digits > 0\);' -and $hostCheck['IsIPv6Address'] -match 'Result := Colons >= 2;' -and $hostCheck['CheckNetworkPage'] -match 'not IsHostName\(HostNameValue\)')
+
 # Every message the code uses is there in English and Spanish.
 $allIss = @($commonIss) + @($wizardIss.Values)
 $defined = @{}
