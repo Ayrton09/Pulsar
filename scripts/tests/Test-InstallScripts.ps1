@@ -1036,8 +1036,8 @@ try {
     Write-BackupSettings $freePorts[0] 'the right password'
     Check 'preflight: a backup with free ports and a certificate that opens passes' ($null -eq (Test-Preflight @{ RestoreFrom = $backupFolder }))
 
-    # PostgreSQL's 'pulsar' role and database (psql mocked): none, the empty leftover of an install that failed (a role
-    # this script marked, no database or an empty one of its own), or something to keep.
+    # PostgreSQL's 'pulsar' role and database (psql mocked): none, the leftover of an install that failed (a role this
+    # script marked, without a database), or something to keep (any 'pulsar' database: never looked into).
     function Invoke-PsqlMock([string] $role, [string] $owner, [string] $relations, [scriptblock] $block) {
         $script:sql = New-Object Collections.Generic.List[string]
         & {
@@ -1060,8 +1060,11 @@ try {
     $marked = "role:$PulsarRoleComment"
     Check "database: no 'pulsar' role or database" ((Invoke-PsqlMock '' '' '' { Get-PanelDatabaseState 'b' 'p' }) -ceq 'none')
     Check "database: the role this script made, without a database, is a leftover" ((Invoke-PsqlMock $marked '' '' { Get-PanelDatabaseState 'b' 'p' }) -ceq 'leftover')
-    Check "database: the role this script made, with an empty database it owns, is a leftover (its tables counted in that database)" (
-        (Invoke-PsqlMock $marked 'owner:pulsar' '0' { Get-PanelDatabaseState 'b' 'p' }) -ceq 'leftover' -and @($script:sql | Where-Object { $_ -like 'pulsar: *pg_class*' }).Count -eq 1)
+    # Its owner sets what a session in it runs with (ALTER DATABASE ... SET search_path, and objects of its own): the
+    # superuser never connects to it, so an empty one is kept as one with tables is.
+    $state = Invoke-PsqlMock $marked 'owner:pulsar' '0' { Get-PanelDatabaseState 'b' 'p' }
+    Check "database: keeps the database of the role this script made, even an empty one, without connecting to it" (
+        $state -notin 'none', 'leftover' -and $state -match "'pulsar' database" -and @($script:sql | Where-Object { $_ -notlike 'postgres: *' }).Count -eq 0) "$state / $($script:sql -join ' | ')"
     foreach ($case in ([ordered]@{
             'a database with tables in it (a panel removed with -Uninstall)' = @($marked, 'owner:pulsar', '42')
             'a role this script did not mark' = @('role:', 'owner:pulsar', '0')
@@ -1079,12 +1082,25 @@ try {
         $connection -match '^Host=localhost;Port=5432;Database=pulsar;Username=pulsar;Password=[A-Za-z0-9]{32}$' -and $created.Count -eq 1 -and
         $created[0] -match "BEGIN;[\s\S]*CREATE ROLE pulsar LOGIN PASSWORD '[A-Za-z0-9]{32}';[\s\S]*COMMENT ON ROLE pulsar IS '$([regex]::Escape($PulsarRoleComment))';[\s\S]*COMMIT;" -and
         @($script:sql | Where-Object { $_ -match 'CREATE DATABASE pulsar OWNER pulsar' }).Count -eq 1 -and @($script:sql | Where-Object { $_ -match 'DROP' }).Count -eq 0) ($script:sql -join ' | ')
-    $connection = Invoke-PsqlMock $marked 'owner:pulsar' '0' { New-PanelDatabase }
-    $drop = [array]::IndexOf(@($script:sql), @($script:sql | Where-Object { $_ -match 'DROP DATABASE IF EXISTS pulsar WITH \(FORCE\) -c DROP ROLE pulsar' })[0])
+    $connection = Invoke-PsqlMock $marked '' '' { New-PanelDatabase }
+    $drop = [array]::IndexOf(@($script:sql), 'postgres: -c DROP ROLE pulsar')
     $create = [array]::IndexOf(@($script:sql), @($script:sql | Where-Object { $_ -match 'CREATE ROLE' })[0])
-    Check 'database: an empty leftover is dropped, then made again' ($connection -match 'Password=' -and $drop -ge 0 -and $create -gt $drop) ($script:sql -join ' | ')
-    $caught = Invoke-PsqlMock $marked 'owner:pulsar' '42' { Get-Caught { New-PanelDatabase } }
-    Check "database: one with tables in it is never dropped" ($null -ne $caught -and $caught.Exception.Message -match 'Starting over' -and @($script:sql | Where-Object { $_ -match 'DROP|CREATE' }).Count -eq 0) "$caught"
+    Check 'database: a leftover role is dropped (no database with it: a DROP ROLE that fails if one appeared), then made again' (
+        $connection -match 'Password=' -and $drop -ge 0 -and $create -gt $drop -and @($script:sql | Where-Object { $_ -match 'DROP DATABASE' }).Count -eq 0) ($script:sql -join ' | ')
+    foreach ($relations in '0', '42') {
+        $caught = Invoke-PsqlMock $marked 'owner:pulsar' $relations { Get-Caught { New-PanelDatabase } }
+        Check "database: its 'pulsar' database is never dropped ($relations relations)" ($null -ne $caught -and $caught.Exception.Message -match 'Starting over' -and @($script:sql | Where-Object { $_ -match 'DROP|CREATE' }).Count -eq 0) "$caught"
+    }
+    # Every psql the script runs as the superuser connects to the 'postgres' database, which no role of Pulsar's owns:
+    # Invoke-Psql takes no other, and psql.exe runs nowhere else.
+    $psqlFunction = $installAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-Psql' }, $true)
+    $psqlRuns = @($installAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and
+                ($node.GetCommandName() -in 'Invoke-Native', 'Invoke-NativeWithInput' -or $node.InvocationOperator -eq 'Ampersand') -and @($node.CommandElements | Where-Object { $_ -is [Management.Automation.Language.VariableExpressionAst] -and $_.VariablePath.UserPath -eq 'psql' }).Count -gt 0 }, $true) |
+            Where-Object { $_.Extent.StartOffset -lt $psqlFunction.Extent.StartOffset -or $_.Extent.EndOffset -gt $psqlFunction.Extent.EndOffset })
+    Check "database: psql runs as the superuser in the 'postgres' database only" (
+        $null -ne $psqlFunction -and @($psqlFunction.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'database' }).Count -eq 0 -and
+        $psqlFunction.Extent.Text -match "'-U', 'postgres', '-d', 'postgres'" -and @($psqlRuns | Where-Object { $_.Extent.Text -notmatch '^Invoke-Native \$psql --version$' }).Count -eq 0 -and
+        $installText -notmatch '(?i)Invoke-Psql[^\r\n]*-database') (@($psqlRuns | ForEach-Object { $_.Extent.Text }) -join ' | ')
 
     # Undoing a panel's install that failed after it made its database: its service, firewall rules, program and the
     # database and role it made.
@@ -1149,6 +1165,13 @@ Check 'install order: once the database is made, a failure undoes the install (f
 $uninstallAgent = ($installAst.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Uninstall-Agent' }, $true) | Select-Object -First 1).Extent.Text
 Check 'uninstall: without the runtimes the agent needs, its service is removed with sc.exe instead of running its program' (
     $uninstallAgent.IndexOf('Get-AgentMissingRuntimes') -ge 0 -and $uninstallAgent.IndexOf('Get-AgentMissingRuntimes') -lt $uninstallAgent.IndexOf('unenroll'))
+$withoutRuntimes = $uninstallAgent.Substring(0, $uninstallAgent.IndexOf('return'))
+Check 'uninstall: without the runtimes, a running service is asked to stop its game servers (its stop-servers file) before it is stopped' (
+    $withoutRuntimes -match "\`$AgentStopServersMarker" -and $withoutRuntimes.IndexOf('Write-AgentStopServersMarker') -ge 0 -and
+    $withoutRuntimes.IndexOf('Write-AgentStopServersMarker') -lt $withoutRuntimes.IndexOf('Stop-Service') -and $installText -match "\`$AgentStopServersMarker = Join-Path \`$AgentData 'state\\stop-servers'")
+Check 'uninstall: without the runtimes, it says which game servers may keep running, and that the node is to be deleted in the panel' (
+    $withoutRuntimes -match 'keep running' -and $withoutRuntimes -match 'host-programs' -and $withoutRuntimes -match 'delete the node in the panel')
+Check 'uninstall: "Pulsar is removed" only when the agent''s program is gone' ($installText -match "if \(Test-Path -LiteralPath \(Join-Path \`$AgentDir 'PulsarAgent\.exe'\)\) \{ 'Pulsar is removed, but for the agent")
 
 # --- The release: framework-dependent ZIP, self-contained MSI (read from the build scripts, never run) --------------
 

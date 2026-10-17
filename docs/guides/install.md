@@ -161,9 +161,10 @@ as administrator.
 Pulsar's own user, `pulsar`, gets a random password of its own, kept in the panel's settings (readable only by
 SYSTEM, Administrators and the panel's service account), and a comment that marks it as the installer's. A
 `pulsar` user or database that is already there stops the install before anything changes (exit code 2), unless it
-is what an install that failed left: the installer's own user, with no database or an empty one, which it drops and
-makes again. Anything else (a panel's data, which `-Uninstall` keeps, or someone else's) it never drops:
-[Starting over](#starting-over) says what to do.
+is what an install that failed left: the installer's own user, with no database, which it drops and makes again. Any
+`pulsar` database (a panel's data, which `-Uninstall` keeps, an empty one, or someone else's) it never drops, nor
+opens: [Starting over](#starting-over) says what to do. An install that fails after making the database drops it
+itself.
 
 Already have a PostgreSQL elsewhere? Create an empty database and a user that owns it, and give the installer its
 connection string with `-ConnectionString "Host=…;Port=5432;Database=…;Username=…;Password=…"` instead, or in the
@@ -671,7 +672,7 @@ It ends with one of these exit codes (without `-Unattended`, a failure is a Powe
 |---|---|
 | `0` | Done. |
 | `1` | It failed; the message, and the log, say what failed and what was left. |
-| `2` | Wrong or missing parameters, secrets or node code, a PFX its password does not open, or what it would install is installed already (`-Update` updates it; a `pulsar` database or user in PostgreSQL that is not an empty leftover, [Starting over](#starting-over)). Nothing was changed. |
+| `2` | Wrong or missing parameters, secrets or node code, a PFX its password does not open, or what it would install is installed already (`-Update` updates it; a `pulsar` database in PostgreSQL, or a `pulsar` user that is not the leftover of a failed install, [Starting over](#starting-over)). Nothing was changed. |
 | `3` | This machine, the installer's folder or the account cannot install Pulsar as they are: not elevated, a 32-bit PowerShell, a folder others can change, Windows updates missing, an agent from the MSI, a port the panel would listen on taken, a PostgreSQL port, service or folder taken. Nothing was changed (but for the .NET runtimes, when the Windows updates check fails after they were installed). |
 | `4` | A download, or the panel at a node code's address, could not be reached. Nothing was changed. |
 | `5` | A download or a given installer failed its checks (signature, SHA-512, version), or Microsoft's or postgresql.org's metadata was not as expected. Nothing was changed. |
@@ -791,12 +792,22 @@ Back up the panel as described in [backup.md](backup.md): without its keys, the 
 The panel's database stays in PostgreSQL when the panel is removed (`-Uninstall`, or **Apps**), and its `pulsar`
 user's password goes with the panel's settings: an install over it stops before anything changes (exit code 2). The
 installer drops by itself only what an install that failed left: its own `pulsar` user (marked as its own) with no
-database or an empty one. Anything else stays until you decide:
+database (an install that fails after making the database drops it before it ends). Any `pulsar` database stays until
+you decide, even an empty one, and the installer does not look into it: whoever has the panel's database password
+owns that database, and its owner chooses what a session in it runs with (its `search_path`, and functions of its
+own), so a superuser connecting to it, as the installer would, could be made to run them. An install stopped half way
+(the machine lost power, say) can leave an empty one: drop it as below. For the same reason, open or dump that
+database as `pulsar`, never as `postgres`: the commands below connect as `postgres` to the `postgres` database only.
 
 - **To keep the data**: install the panel from a backup made by `Backup-Pulsar.ps1` ([backup.md](backup.md)) with
   `-Mode Panel -RestoreFrom`, after dropping the database and user as below (the backup brings its data back). If you
-  have no backup and need the data, dump it first:
-  `& "$bin\pg_dump.exe" -h localhost -U postgres -Fc -f D:\pulsar-before-reinstall.dump pulsar` (with `$bin` below).
+  have no backup and need the data, dump it first as `pulsar` (with `$bin` below; the first command gives `pulsar` a
+  new password, asked for twice, since the old one went with the panel's settings, and the second asks for it):
+
+  ```powershell
+  & "$bin\psql.exe" -h localhost -U postgres -d postgres -c "\password pulsar"
+  & "$bin\pg_dump.exe" -h localhost -U pulsar -Fc -f D:\pulsar-before-reinstall.dump pulsar
+  ```
 - **To start from nothing**: drop them, in an elevated PowerShell on the panel's machine (adjust the PostgreSQL
   version in the path; psql asks for the `postgres` password, which, when the installer installed PostgreSQL, you set
   first as in [The postgres superuser's password](#the-postgres-superusers-password)):
@@ -836,8 +847,14 @@ first: that also removes their Windows accounts.
 
 If the .NET runtime the agent needs is gone already, `-Uninstall` cannot run the agent's program: it says so in a
 warning, stops and removes the agent's service (`sc.exe`), and keeps the program in `C:\Program Files\Pulsar\Agent`
-with the node key, the configuration and the game servers' Windows accounts. Install the .NET 10 runtime again, run
-`& 'C:\Program Files\Pulsar\Agent\PulsarAgent.exe' unenroll` in an elevated PowerShell, and delete that folder. An agent installed with the MSI is not the script's to remove: it says so and removes
+with the node key, the configuration and the game servers' Windows accounts; its last line says Pulsar is removed
+"but for the agent's program and data". A service still running is asked to stop its game servers as it stops, as
+`unenroll` does. One that was not running cannot be asked, and the script does not end its game servers itself (only
+the agent's program can tell its host processes from others): they keep running, each in a host process, a
+`PulsarAgent.exe` run from `C:\ProgramData\Pulsar\Agent\host-programs`. End them in Task Manager (**Details**, *End
+process tree*: their games stop without saving), or let `unenroll` do it below. Install the .NET 10 runtime again,
+run `& 'C:\Program Files\Pulsar\Agent\PulsarAgent.exe' unenroll` in an elevated PowerShell, and delete that folder.
+Until then the node key keeps working: delete the node in the panel (it stays there, offline, until you do). An agent installed with the MSI is not the script's to remove: it says so and removes
 only the panel, if this machine has one.
 
 If the agent cannot unenroll (stop its game servers, delete its key and configuration, remove its service), the script

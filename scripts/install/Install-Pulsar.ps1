@@ -152,6 +152,10 @@ $PanelDir = Join-Path $InstallRoot 'Panel'
 $AgentDir = Join-Path $InstallRoot 'Agent'
 $PanelData = Join-Path $DataRoot 'Panel'
 $PanelConfig = Join-Path $PanelDir 'appsettings.Production.json'
+# The agent's state directory (its own default: this script never enrolls it with another), and the file there that asks
+# a running agent to stop its game servers as it stops (docs/architecture/06, "Server hosts").
+$AgentData = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Pulsar\Agent'
+$AgentStopServersMarker = Join-Path $AgentData 'state\stop-servers'
 # Certificates this script trusted carry this friendly name in Cert:\LocalMachine\Root: -Uninstall removes those only.
 $TrustedName = 'Pulsar panel (trusted by Install-Pulsar.ps1)'
 # Where earlier installs noted the certificate they trusted.
@@ -159,7 +163,9 @@ $TrustedMarker = Join-Path $PanelData 'tls\trusted-thumbprint.txt'
 # The Extended Key Usage of a web server's certificate (id-kp-serverAuth): the only use the panel's certificate needs.
 $ServerAuthentication = '1.3.6.1.5.5.7.3.1'
 # What marks the 'pulsar' role in PostgreSQL as this script's (COMMENT ON ROLE): a run may drop it when it is all that an
-# install which failed left (Get-PanelDatabaseState).
+# install which failed left (Get-PanelDatabaseState). Not a proof: a role with CREATEROLE can mark one too, so the mark
+# only ever lets a run drop a role with no database (PostgreSQL refuses to drop one that owns anything), never look into
+# or drop a database.
 $PulsarRoleComment = 'Pulsar panel (made by Install-Pulsar.ps1)'
 # Windows' own programs by full path: this runs elevated, and a program found through PATH could be anyone's.
 $Icacls = Join-Path ([Environment]::SystemDirectory) 'icacls.exe'
@@ -794,11 +800,12 @@ function Find-PostgresBin {
 }
 
 # psql in $bin as the postgres superuser over localhost, its password in its environment (never its command line);
-# $stdin, when given, is the SQL instead of $arguments (a statement with a secret in it goes there); $database, the
-# database it connects to. Its exit code and output (unaligned, without headers).
-function Invoke-Psql([string] $bin, [string] $password, [string[]] $arguments, [string] $stdin = $null, [string] $database = 'postgres') {
+# $stdin, when given, is the SQL instead of $arguments (a statement with a secret in it goes there). Its exit code and
+# output (unaligned, without headers). Always in the 'postgres' database: a database's owner sets what sessions in it
+# run with (search_path, and its own functions), so the superuser never connects to one a role of Pulsar's owns.
+function Invoke-Psql([string] $bin, [string] $password, [string[]] $arguments, [string] $stdin = $null) {
     $psql = Join-Path $bin 'psql.exe'
-    $common = @('-h', 'localhost', '-p', $PostgresPort, '-U', 'postgres', '-d', $database, '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A')
+    $common = @('-h', 'localhost', '-p', $PostgresPort, '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A')
     $env:PGPASSWORD = $password
     try {
         if ($stdin) { return Invoke-NativeWithInput $stdin $psql @common -f - }
@@ -1048,10 +1055,13 @@ function Install-PostgresServer([string] $installer, $plan) {
 }
 
 # What the local PostgreSQL has of Pulsar's ($bin, $password: its postgres superuser's): 'none' (no 'pulsar' role or
-# database), 'leftover' (the 'pulsar' role this script made, marked with $PulsarRoleComment, and no database or an
-# empty one it owns: what an install that failed left, which nothing can use, since only the panel's settings had the
-# role's password), or, for anything else, what is there, fit to print: a panel's data (a panel removed with
-# -Uninstall keeps it) or someone else's are never dropped.
+# database), 'leftover' (the 'pulsar' role this script made, marked with $PulsarRoleComment, and no database: what an
+# install that failed left, which nothing can use, since only the panel's settings had the role's password), or, for
+# anything else, what is there, fit to print: a panel's data (a panel removed with -Uninstall keeps it) or someone
+# else's are never dropped. A 'pulsar' database is never looked into, even an empty one: its owner chooses what a
+# session in it runs with (ALTER DATABASE pulsar SET search_path, and functions or views of its own that would then
+# run as the superuser), and whoever has the panel's database password is that owner. A failed install drops the
+# database it made itself (Undo-PanelInstall); one that could not is for the administrator to drop ("Starting over").
 function Get-PanelDatabaseState([string] $bin, [string] $password) {
     $role = Invoke-Psql $bin $password @('-c', "SELECT 'role:' || coalesce(shobj_description(oid, 'pg_authid'), '') FROM pg_roles WHERE rolname = 'pulsar'")
     if ($role.ExitCode -ne 0) { throw "Could not connect to PostgreSQL as 'postgres': $($role.Output.Trim())" }
@@ -1067,12 +1077,7 @@ function Get-PanelDatabaseState([string] $bin, [string] $password) {
         return "PostgreSQL already has a 'pulsar' role, which this script did not mark as its own (an install made before it marked them, or something else)"
     }
     if ($owner) {
-        # Every table, sequence, view or index outside PostgreSQL's own schemas.
-        $relations = Invoke-Psql $bin $password @('-c', "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'") -database 'pulsar'
-        if ($relations.ExitCode -ne 0) { throw "Could not look into PostgreSQL's 'pulsar' database: $($relations.Output.Trim())" }
-        if ($relations.Output.Trim() -cne '0') {
-            return "PostgreSQL already has Pulsar's 'pulsar' database, with tables in it: a panel's data (a panel removed with -Uninstall keeps it), or what an install left once it had prepared the database"
-        }
+        return "PostgreSQL already has Pulsar's 'pulsar' database: a panel's data (a panel removed with -Uninstall keeps it), or what an install that failed could not drop"
     }
     return 'leftover'
 }
@@ -1090,9 +1095,10 @@ function New-PanelDatabase {
     $superuser = ConvertFrom-Secure $PostgresPassword
     $state = Get-PanelDatabaseState $bin $superuser
     if ($state -ceq 'leftover') {
-        Write-Step "Dropping the 'pulsar' role, and its empty database, that an install which failed left"
-        $dropped = Invoke-Psql $bin $superuser @('-c', 'DROP DATABASE IF EXISTS pulsar WITH (FORCE)', '-c', 'DROP ROLE pulsar')
-        if ($dropped.ExitCode -ne 0) { throw "Could not drop the 'pulsar' role and database an install that failed left: $($dropped.Output.Trim())" }
+        # The role alone: PostgreSQL refuses to drop it if a database of its own appeared meanwhile.
+        Write-Step "Dropping the 'pulsar' role that an install which failed left"
+        $dropped = Invoke-Psql $bin $superuser @('-c', 'DROP ROLE pulsar')
+        if ($dropped.ExitCode -ne 0) { throw "Could not drop the 'pulsar' role an install that failed left: $($dropped.Output.Trim())" }
     }
     elseif ($state -cne 'none') { throw (Get-PanelDatabaseMessage $state) }
     $password = New-Secret 32
@@ -1832,19 +1838,38 @@ function Get-AgentMissingRuntimes([string] $dotnetRoot) {
     Get-MissingRuntimes $needed (Get-InstalledRuntimes $dotnetRoot)
 }
 
+# Asks the running agent to stop its game servers gracefully as it stops, as unenroll does: the file it reads then (and
+# deletes). Only for a running service, whose state folder exists once it has had a game server.
+function Write-AgentStopServersMarker {
+    if (Test-Path -LiteralPath (Split-Path -Parent $AgentStopServersMarker) -PathType Container) {
+        [IO.File]::WriteAllText($AgentStopServersMarker, '')
+    }
+}
+
 function Uninstall-Agent {
     Write-Step 'Removing the agent'
     $exe = Join-Path $AgentDir 'PulsarAgent.exe'
     $missing = @(Get-AgentMissingRuntimes (Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'dotnet'))
     if ((Test-Path $exe) -and $missing.Count -gt 0) {
         # Its program cannot run: the service goes (it could not start anyway), the program and its data stay to finish
-        # with once .NET is back.
-        Write-Warning "The agent's program cannot run: this machine lacks $($missing -join ', ') (removed before Pulsar?). Its service is stopped and removed; its program stays in $AgentDir, with its node key, configuration and game servers' Windows accounts. Install the .NET 10 runtime again (https://dotnet.microsoft.com/download/dotnet/10.0), run & '$exe' unenroll in an elevated PowerShell, then delete $AgentDir (docs/guides/install.md, Uninstalling)."
+        # with once .NET is back. A service still running is asked to stop its game servers first; the hosts one left
+        # running are not ended from here: only the agent's program can tell them from other processes (its records,
+        # checked against each host's process and pipe), so they are named for the administrator instead.
+        $games = "game servers it left running keep running, each in a host process (PulsarAgent.exe, run from $(Join-Path $AgentData 'host-programs')), until you end them (Task Manager, Details: End process tree; their games end with them, unsaved) or unenroll does"
+        $deleted = $null
         if (Test-Service $AgentService) {
+            if ((Get-Service $AgentService).Status -in 'Running', 'StartPending') {
+                Write-AgentStopServersMarker
+                $games = "its service was asked to stop its game servers as it stopped (any it could not stop keep running, each in a host process: PulsarAgent.exe, run from $(Join-Path $AgentData 'host-programs'); end them in Task Manager)"
+            }
+            else { $games = "its service was not running: $games" }
             Stop-Service $AgentService -ErrorAction SilentlyContinue
+            if ((Get-Service $AgentService).Status -eq 'Stopped') { Remove-Item -LiteralPath $AgentStopServersMarker -Force -ErrorAction SilentlyContinue }
             $deleted = Invoke-Native $Sc delete $AgentService
-            if ($deleted.ExitCode -ne 0) { throw "The agent's service could not be removed (sc.exe delete: $($deleted.Output.Trim()))." }
         }
+        else { $games = "its service was gone already: $games" }
+        Write-Warning "The agent's program cannot run: this machine lacks $($missing -join ', ') (removed before Pulsar?). Its service is stopped and removed; $games. Its program stays in $AgentDir, with its node key, configuration and game servers' Windows accounts: install the .NET 10 runtime again (https://dotnet.microsoft.com/download/dotnet/10.0), run & '$exe' unenroll in an elevated PowerShell, then delete $AgentDir. Until then the node stays in the panel, and its key keeps working until you delete the node in the panel: delete it there (docs/guides/install.md, Uninstalling)."
+        if ($deleted -and $deleted.ExitCode -ne 0) { throw "The agent's service could not be removed (sc.exe delete: $($deleted.Output.Trim()))." }
         return
     }
     if (Test-Path $exe) {
@@ -2972,7 +2997,9 @@ $main = {
         if (Test-Service $PanelService) { Uninstall-Panel }
         # What -Mode Agent -TrustCertificate or -Mode AllInOne trusted (an agent from the MSI may need it: then it stays).
         if (-not $agentPackage) { Remove-TrustedCertificates }
-        $removed = if ($agentPackage) { 'The panel is removed (not the agent: see above).' } else { 'Pulsar is removed.' }
+        $removed = if ($agentPackage) { 'The panel is removed (not the agent: see above).' }
+        elseif (Test-Path -LiteralPath (Join-Path $AgentDir 'PulsarAgent.exe')) { 'Pulsar is removed, but for the agent''s program and data (see the warning above).' }
+        else { 'Pulsar is removed.' }
         Write-Host "$removed Kept: the database (and PostgreSQL), the .NET runtimes, $DataRoot (the panel's keys, needed to read its database's secrets, and logs) and the game servers' folders." -ForegroundColor Green
         return
     }
