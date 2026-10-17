@@ -13,6 +13,7 @@ using Microsoft.Extensions.Options;
 using Pulsar.Api.Access;
 using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
+using Pulsar.Api.Certificates;
 using Pulsar.Api.Http;
 using Pulsar.Api.Nodes;
 using Pulsar.Api.Realtime;
@@ -76,15 +77,18 @@ internal static class ApiServiceCollectionExtensions
         // Transfers take half of the connections a node may hold, so that its hub and rotation always find a place.
         services.AddSingleton(sp => FileTransferLimits.ForNodeConnections(
             sp.GetRequiredService<IOptions<AgentsOptions>>().Value.PerNodeLimit));
+        // The browsers' endpoints choose their certificate per connection: the public IP certificate for the internet.
         services.AddOptions<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>()
-            .Configure<AgentsEndpoint>((options, agents) =>
-                options.Configure(configuration.GetSection("Kestrel"), reloadOnChange: true).Endpoint(AgentsEndpoint.Name, agents.Configure));
+            .Configure<AgentsEndpoint, PublicIpCertificateSelection>((options, agents, publicIp) => publicIp.ConfigureEndpoints(
+                options.Configure(configuration.GetSection("Kestrel"), reloadOnChange: true).Endpoint(AgentsEndpoint.Name, agents.Configure),
+                configuration.GetSection("Kestrel:Endpoints")));
         services.AddValidation();
         services.AddHttpContextAccessor();
         services.AddScoped<HttpRequestContext>();
         // Background work (the scheduler) sets who it acts as before resolving anything that audits.
         services.AddScoped<IRequestContext>(sp => sp.GetRequiredService<RequestContextOverride>().Context ?? sp.GetRequiredService<HttpRequestContext>());
         AddSftp(services, configuration);
+        AddPublicIpCertificate(services, configuration);
         // Phase 18: the node code's address and certificate come from the administrator's request; the agent's setup
         // from the panel's downloads folder.
         services.AddOptions<DownloadsOptions>().Bind(configuration.GetSection(DownloadsOptions.SectionName));
@@ -144,6 +148,21 @@ internal static class ApiServiceCollectionExtensions
         services.AddSingleton<SftpAuthenticator>();
         services.AddSingleton<SftpHost>();
         services.AddHostedService(sp => sp.GetRequiredService<SftpHost>());
+    }
+
+    /// <summary>The public IP certificate (Let's Encrypt): off by default, its settings in the database, its port here.</summary>
+    private static void AddPublicIpCertificate(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<PublicIpCertificateOptions>()
+            .Bind(configuration.GetSection(PublicIpCertificateOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<PublicIpCertificateOptions>, PublicIpCertificateOptionsValidation>();
+        services.AddSingleton<PublicIpCertificateStore>();
+        services.AddSingleton<PublicIpCertificateSelection>();
+        services.AddSingleton<AcmeChallenges>();
+        services.AddSingleton<AcmeChallengeListener>();
+        services.AddSingleton<PublicIpCertificateService>();
+        services.AddHostedService(sp => sp.GetRequiredService<PublicIpCertificateService>());
     }
 
     private static void AddAgentChannel(IServiceCollection services)

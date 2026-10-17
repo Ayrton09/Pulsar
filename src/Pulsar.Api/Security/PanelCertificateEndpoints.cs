@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Microsoft.Net.Http.Headers;
+using Pulsar.Api.Certificates;
 using Pulsar.Api.Http;
 using Pulsar.Contracts;
 
@@ -32,7 +33,9 @@ public sealed record PanelCertificateResponse(
 /// The panel's own TLS certificate, for any signed-in user (docs/architecture/08): what the browser was served on this very
 /// connection, which every TLS client receives anyway, to download and trust once in the browsers of a home network,
 /// checking its fingerprint against the one the installer showed. 404 when the panel cannot tell which certificate its
-/// clients see (<see cref="ServedCertificate"/>).
+/// clients see (<see cref="ServedCertificate"/>), and 404 <see cref="PubliclyTrustedCode"/> when the connection got the
+/// public IP certificate (Let's Encrypt, docs/architecture/08 T40): every browser trusts it already, and a leaf replaced
+/// every few days is nothing to install or trust as a root.
 /// </summary>
 public static class PanelCertificateEndpoints
 {
@@ -41,6 +44,8 @@ public static class PanelCertificateEndpoints
     public const string ContentType = "application/pkix-cert";
 
     public const string UnavailableCode = "panel.certificate_unavailable";
+
+    public const string PubliclyTrustedCode = "panel.certificate_publicly_trusted";
 
     // id-kp-serverAuth: the only use the installer's certificate has.
     private const string ServerAuthentication = "1.3.6.1.5.5.7.3.1";
@@ -58,6 +63,11 @@ public static class PanelCertificateEndpoints
 
     private static Results<Ok<PanelCertificateResponse>, ProblemHttpResult> Describe(HttpContext http)
     {
+        if (ServedCertificate.IsPublicIpCertificate(http))
+        {
+            return PubliclyTrusted();
+        }
+
         if (ServedCertificate.Der(http) is not { } der)
         {
             return Unavailable();
@@ -69,6 +79,11 @@ public static class PanelCertificateEndpoints
 
     private static Results<FileContentHttpResult, ProblemHttpResult> Download(HttpContext http)
     {
+        if (ServedCertificate.IsPublicIpCertificate(http))
+        {
+            return PubliclyTrusted();
+        }
+
         if (ServedCertificate.Der(http) is not { } der)
         {
             return Unavailable();
@@ -119,6 +134,11 @@ public static class PanelCertificateEndpoints
             && uses.EnhancedKeyUsages.Count == 1 && uses.EnhancedKeyUsages[0].Value == ServerAuthentication;
     }
 
+    private static ProblemHttpResult PubliclyTrusted() =>
+        ApiProblems.Create(StatusCodes.Status404NotFound, PubliclyTrustedCode,
+            "This connection uses the panel's Let's Encrypt certificate, which every browser trusts already: there is nothing to download or install.",
+            "On the local network the panel serves its own certificate: open it there to download that one.");
+
     private static ProblemHttpResult Unavailable() =>
         ApiProblems.Create(StatusCodes.Status404NotFound, UnavailableCode,
             "This connection did not reach the panel's own HTTPS: there is no certificate of the panel's to give.",
@@ -129,7 +149,8 @@ public static class PanelCertificateEndpoints
 /// The certificate Kestrel presented in this connection's TLS handshake (for the host the client asked for), when the
 /// client saw it: none over plain HTTP, over HTTP/3 (Kestrel does not expose QUIC's), and when a proxy forwarded the
 /// request, which may terminate TLS with a certificate of its own. A proxy that re-encrypts without saying so gets
-/// Kestrel's certificate, which is then not the one its clients see.
+/// Kestrel's certificate, which is then not the one its clients see. None either when the handshake served the public
+/// IP certificate (Let's Encrypt): it is never pinned nor offered as the panel's own (docs/architecture/08, T40).
 /// </summary>
 internal static class ServedCertificate
 {
@@ -152,11 +173,18 @@ internal static class ServedCertificate
     public static byte[]? Der(HttpContext http)
     {
         ArgumentNullException.ThrowIfNull(http);
-        if (s_proxyHeaders.Any(http.Request.Headers.ContainsKey))
+        if (s_proxyHeaders.Any(http.Request.Headers.ContainsKey) || IsPublicIpCertificate(http))
         {
             return null;
         }
 
         return http.Features.Get<ISslStreamFeature>()?.SslStream.LocalCertificate?.GetRawCertData();
+    }
+
+    /// <summary>The handshake served the public IP certificate (<see cref="PublicIpCertificateSelection"/>).</summary>
+    public static bool IsPublicIpCertificate(HttpContext http)
+    {
+        ArgumentNullException.ThrowIfNull(http);
+        return http.Features.Get<PublicIpCertificateFeature>() is not null;
     }
 }

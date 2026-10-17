@@ -25,7 +25,8 @@ export function PanelCertificateSection() {
       {certificate.isPending && <Spinner label={t('common.loading')} />}
       {certificate.isError && <Alert>{errorMessage(t, certificate.error)}</Alert>}
       {data === null && <p className="text-sm text-muted">{t('panelCertificate.unavailable')}</p>}
-      {data && <Details certificate={data} />}
+      {data === 'publiclyTrusted' && <p className="text-sm text-muted">{t('panelCertificate.publiclyTrusted')}</p>}
+      {data && data !== 'publiclyTrusted' && <Details certificate={data} />}
     </Card>
   );
 }

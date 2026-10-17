@@ -633,6 +633,67 @@ until you update them).
   } }
   ```
 
+### Access from the internet with your public IP
+
+With a **static** public IP address (one your internet provider gives you for good; ask them if unsure: a dynamic one
+changes, and the certificate with it), the panel gets a free certificate for that address from **Let's Encrypt**, the
+non-profit certificate authority every browser trusts. A friend then opens `https://<your public IP>:8443` in any
+browser and gets the panel, with no warning and nothing to install.
+
+1. Turn it on, when you install or later:
+   - in `PulsarSetup.exe`: **Show advanced settings**, then the page **Advanced: access from the internet**: your
+     public IP;
+   - with the script: `.\Install-Pulsar.ps1 -PublicIp 203.0.113.10` (with `-Mode AllInOne` or `-Mode Panel`; with
+     `-RestoreFrom` it only opens port 80, since the setting comes with the backup's database);
+   - later, in the panel: **Nodes → Public IP certificate (Let's Encrypt)**: tick **Use a Let's Encrypt certificate for
+     my public IP**, type the address and **Save**. The installer opens port 80 in Windows Firewall only for
+     `-PublicIp`, so open it once yourself, in an elevated PowerShell (`-Profile Any` if you installed with
+     `-FirewallPublic`; `-Uninstall` removes this rule with the others):
+
+     ```powershell
+     New-NetFirewallRule -Name 'Pulsar-Panel-ACME' -DisplayName "Pulsar Panel (Let's Encrypt check)" -Direction Inbound -Protocol TCP -LocalPort 80 -Program "$env:ProgramFiles\Pulsar\Panel\Pulsar.Api.exe" -Action Allow -Profile Domain,Private
+     ```
+
+   Turning it on accepts Let's Encrypt's [Subscriber Agreement](https://letsencrypt.org/repository/). The email is
+   optional (Let's Encrypt may write about the account; it sends no expiry reminders).
+2. On your router, forward **TCP 80** and **TCP 8443** (the panel's port) to this PC, and **TCP 2022** if friends use
+   SFTP (and the game servers' ports for players). Port 80 is where Let's Encrypt checks that the address is yours (its
+   *http-01* check): the panel answers that check there and nothing else, and listens there only while this is on. The
+   firewall rules are for Domain and Private networks: if Windows treats your home network as Public, set it to Private
+   (**Settings → Network & internet → Properties**) or install with `-FirewallPublic`.
+3. The panel asks for the certificate at once. The section shows **Certificate in use**, until when it is valid, the last
+   renewal, the next attempt and, when one failed, what Let's Encrypt said.
+
+What to know:
+
+- An IP address certificate lasts 160 hours, a little over 6 days (Let's Encrypt's `shortlived` profile, the only one
+  for IP addresses). The panel renews it at half its lifetime (about every 3 and a half days), or earlier when Let's
+  Encrypt asks (ARI), without a restart; **Renew now** asks at once.
+- It is served only to connections from the internet to that address. On your local network, and by a name
+  (`https://localhost:8443`, `https://my-pc:8443`), the panel keeps its own certificate, as before. At home, open the
+  panel by its local address: a browser at home that opens the public IP usually comes back through the router (hairpin
+  NAT) as a local one and gets the panel's own certificate, with its warning.
+- When a renewal fails (port 80 closed or not forwarded, another public IP, Let's Encrypt unreachable), the panel tries
+  again after 15 minutes, then less and less often, up to once a day, and never more than 3 times an hour (**Renew now**
+  included), so Let's Encrypt never blocks the address. Add the event **Public IP certificate** to a channel in
+  **Admin → Notifications** to be told when it fails and when the certificate is about to expire. If no new one comes,
+  once the current one expires visitors from the internet see a security warning again; nothing else stops working.
+- **Let's Encrypt environment → Staging** tries the whole flow against Let's Encrypt's test environment: browsers do
+  not trust its certificates. Switch back to **Production** for the real one. In production the panel keeps a certificate
+  only if it leads to a root this PC trusts (ISRG Root X1; Windows installs it by itself when it first opens a site that
+  uses it): the section shows the error otherwise.
+- Nodes on your local network, or that reach the panel by a name, are not affected. A node that reaches the panel by
+  the public IP from the internet sees the Let's Encrypt certificate there: add it with a node code made while you
+  reach the panel by that public IP (the code then names no certificate, and the node checks Let's Encrypt's as any
+  website's: its Windows needs Let's Encrypt's root, ISRG Root X1, which it has once it opened a site that uses Let's
+  Encrypt). A node pinned to the panel's own certificate at the public IP refuses the Let's Encrypt one (it fails
+  closed): enroll it again that way, or let it use an agents' port it already moved to, which keeps the panel's own
+  certificate ([Changing the panel's certificate](#changing-the-panels-certificate)).
+- Port 80 taken by another program (IIS, another web server) keeps the check from working: the section says so, and
+  `-PublicIp` refuses to install until that program is stopped. The port can be changed with
+  `"PublicIpCertificate": { "ChallengePort": 8080 }` in the panel's `appsettings.Production.json` only when the router
+  forwards its own port 80 to that port: Let's Encrypt always connects to port 80.
+
 ### Many nodes at once
 
 To enroll many machines with one command, for example with Intune or a group policy, create a reusable token in the
@@ -955,7 +1016,8 @@ powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Uninstall
 ```
 
 It removes the services, the programs (`Backup-Pulsar.ps1` in the panel's folder too), the firewall rules
-(`Pulsar-Panel-HTTPS`, `Pulsar-Panel-Agents` for the agents' port and `Pulsar-Panel-SFTP` for SFTP) and the trust the script gave the panel's
+(`Pulsar-Panel-HTTPS`, `Pulsar-Panel-Agents` for the agents' port, `Pulsar-Panel-SFTP` for SFTP and `Pulsar-Panel-ACME`
+for Let's Encrypt's check) and the trust the script gave the panel's
 certificate (in all-in-one mode, or with `-TrustCertificate`; a certificate this machine trusted already stays
 trusted). It removes only certificates it marked as its own when it trusted them: one that an install made before
 that mark only noted in the panel's data folder is named in a warning instead, for you to remove in `certlm.msc`

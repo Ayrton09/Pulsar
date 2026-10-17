@@ -113,6 +113,41 @@ public static class NotificationTexts
             NotificationSeverity.Warning, fields, link);
     }
 
+    public static NotificationMessage PublicIpCertificateFailed(string language, string ip, string error, DateTimeOffset? expiresAt, string? link)
+    {
+        var es = IsSpanish(language);
+        var fields = new List<NotificationField> { new(es ? "Dirección" : "Address", ip), new("Error", Clip(error)) };
+        if (expiresAt is { } at)
+        {
+            fields.Add(new(es ? "El certificado actual vence" : "The current certificate expires", Moment(at)));
+        }
+
+        return new NotificationMessage(
+            es ? "No se pudo renovar el certificado de la IP pública" : "The public IP certificate could not be renewed",
+            es ? "Let's Encrypt no emitió el certificado del panel. Pulsar vuelve a intentar solo, cada vez más espaciado. Revisá que el router reenvíe los puertos 80 y 8443 a esta PC."
+                : "Let's Encrypt did not issue the panel's certificate. Pulsar tries again on its own, less and less often. Check that the router forwards ports 80 and 8443 to this PC.",
+            NotificationSeverity.Error, fields, link);
+    }
+
+    public static NotificationMessage PublicIpCertificateExpiring(string language, string ip, DateTimeOffset expiresAt, string? link)
+    {
+        var es = IsSpanish(language);
+        return new NotificationMessage(
+            es ? "El certificado de la IP pública está por vencer" : "The public IP certificate is about to expire",
+            es ? "Todavía no llegó uno nuevo. Cuando venza, quienes entren desde internet van a ver un aviso de seguridad hasta que se renueve."
+                : "No new one has come yet. Once it expires, visitors from the internet see a security warning until it is renewed.",
+            NotificationSeverity.Warning, [new(es ? "Dirección" : "Address", ip), new(es ? "Vence" : "Expires", Moment(expiresAt))], link);
+    }
+
+    public static NotificationMessage PublicIpCertificateRenewed(string language, string ip, DateTimeOffset expiresAt, string? link)
+    {
+        var es = IsSpanish(language);
+        return new NotificationMessage(
+            es ? "Se renovó el certificado de la IP pública" : "The public IP certificate was renewed",
+            es ? "Let's Encrypt volvió a emitir el certificado del panel." : "Let's Encrypt issued the panel's certificate again.",
+            NotificationSeverity.Recovered, [new(es ? "Dirección" : "Address", ip), new(es ? "Vence" : "Expires", Moment(expiresAt))], link);
+    }
+
     public static NotificationMessage Test(string language, string? link)
     {
         var es = IsSpanish(language);
@@ -138,6 +173,8 @@ public static class NotificationTexts
     }
 
     private static bool IsSpanish(string language) => language == "es";
+
+    private static string Moment(DateTimeOffset at) => at.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
 
     private static CultureInfo Culture(string language) => IsSpanish(language) ? CultureInfo.GetCultureInfo("es") : CultureInfo.InvariantCulture;
 

@@ -23,6 +23,27 @@ const sftpOff = {
   userName: 'admin',
 };
 
+/** The public IP certificate, turned off: what tests about something else get. */
+export const publicIpCertificateOff: Schemas['PublicIpCertificateResponse'] = {
+  enabled: false,
+  publicIp: null,
+  email: null,
+  directory: 'production',
+  termsOfServiceUrl: 'https://letsencrypt.org/repository/',
+  challengePort: 80,
+  listening: false,
+  listenError: null,
+  certificate: null,
+  serving: false,
+  renewing: false,
+  lastRenewalAt: null,
+  lastAttemptAt: null,
+  nextAttemptAt: null,
+  attemptsLeft: 3,
+  lastError: null,
+  lastErrorAt: null,
+};
+
 export const adminUser: Schemas['CurrentUserResponse'] = {
   id: '0192f1a0-0000-7000-8000-000000000001',
   userName: 'admin',
@@ -56,9 +77,11 @@ export function fakeApi(routes: Record<string, Handler>) {
             ? () => json(sftpOff)
             : key === 'GET /api/v1/sftp/settings'
               ? () => json({ ...sftpOff, publicHost: null, listening: false })
-              : key === 'GET /api/v1/panel/certificate'
-                ? () => problem(404, 'panel.certificate_unavailable')
-                : undefined);
+              : key === 'GET /api/v1/public-ip-certificate'
+                ? () => json(publicIpCertificateOff)
+                : key === 'GET /api/v1/panel/certificate'
+                  ? () => problem(404, 'panel.certificate_unavailable')
+                  : undefined);
     if (!handler) {
       throw new Error(`Unexpected request in test: ${key}`);
     }

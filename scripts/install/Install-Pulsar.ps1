@@ -112,6 +112,13 @@ param(
     [switch] $NoFirewall,
     # Opens the panel's ports on Public networks too.
     [switch] $FirewallPublic,
+    # The panel's static public IP address (IPv4 or IPv6, one the internet reaches): the panel asks Let's Encrypt for a
+    # free certificate for it and keeps it renewed, so browsers on the internet open https://<that address>:<Port> with no
+    # warning (docs/guides/install.md, "Access from the internet with your public IP"). Opens port 80 for the panel's
+    # program (Let's Encrypt checks the address there); on the router, forward TCP ports 80 and -Port to this PC. Giving it
+    # accepts Let's Encrypt's Subscriber Agreement (https://letsencrypt.org/repository/). With -RestoreFrom it only opens
+    # port 80: the setting comes with the backup's database.
+    [Parameter(ParameterSetName = 'Install')] [string] $PublicIp,
 
     # --- Agent ---
     # The code the panel's Add node dialog shows (pulsar-node-1....): the panel's address, an enrollment token, the panel
@@ -1729,6 +1736,51 @@ function Test-PortFree([int] $port) {
     finally { if ($listener) { $listener.Stop() } }
 }
 
+# Whether $text is a public, globally routable unicast IP address written as the panel takes it (PublicAddresses in
+# src/Pulsar.Domain/Certificates, which checks again): IPv4 as four decimal numbers without leading zeros, IPv6 without
+# brackets, zone or prefix; not private, loopback, link-local, shared (carrier-grade NAT), documentation, benchmarking,
+# multicast or reserved, and for IPv6 inside 2000::/3 but not in 2001::/23, 2001:db8::/32, 2002::/16 or 3fff::/20.
+function Test-PublicIpAddress([string] $text) {
+    if (-not $text -or $text.Length -gt 45 -or $text -cnotmatch '^[0-9A-Fa-f:.]+\z') { return $false }
+    $address = $null
+    if (-not [Net.IPAddress]::TryParse($text, [ref] $address)) { return $false }
+    $bytes = $address.GetAddressBytes()
+    if ($text.Contains(':')) {
+        if ($address.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetworkV6 -or $address.IsIPv4MappedToIPv6 -or $address.ScopeId -ne 0) { return $false }
+        $first = $bytes[0] * 256 + $bytes[1]
+        $second = $bytes[2] * 256 + $bytes[3]
+        return ($bytes[0] -band 0xE0) -eq 0x20 -and -not ($first -eq 0x2001 -and $second -lt 0x0200) -and
+            -not ($first -eq 0x2001 -and $second -eq 0x0DB8) -and $first -ne 0x2002 -and -not ($first -eq 0x3FFF -and $second -lt 0x1000)
+    }
+    if ($text -cnotmatch '^(0|[1-9][0-9]{0,2})(\.(0|[1-9][0-9]{0,2})){3}\z') { return $false }
+    $value = [double]$bytes[0] * 16777216 + $bytes[1] * 65536 + $bytes[2] * 256 + $bytes[3]
+    foreach ($range in '0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16', '172.16.0.0/12', '192.0.0.0/24', '192.0.2.0/24',
+        '192.88.99.0/24', '192.168.0.0/16', '198.18.0.0/15', '198.51.100.0/24', '203.0.113.0/24', '224.0.0.0/4', '240.0.0.0/4') {
+        $network, $prefix = $range -split '/'
+        $start = ([Net.IPAddress]::Parse($network)).GetAddressBytes()
+        $low = [double]$start[0] * 16777216 + $start[1] * 65536 + $start[2] * 256 + $start[3]
+        if ($value -ge $low -and $value -lt $low + [math]::Pow(2, 32 - [int]$prefix)) { return $false }
+    }
+    return $true
+}
+
+# -PublicIp's checks before anything changes: a panel's, a public address, and port 80 free for Let's Encrypt's check.
+function Assert-PublicIpInstallable {
+    if (-not $PublicIp) { return }
+    if (-not (Test-PublicIpAddress $PublicIp)) {
+        throw (New-SetupError $ExitUsage "-PublicIp must be this panel's public IP address on the internet (such as 203.0.113.10), not a private, local or reserved one, without a port: $(ConvertTo-PrintableText $PublicIp). Nothing was changed.")
+    }
+    if (-not (Test-PortFree 80)) {
+        throw (New-SetupError $ExitUnsupported "Port 80, where Let's Encrypt checks -PublicIp, is taken: another program listens on it (IIS, or another web server). Stop that program, or leave -PublicIp out. Nothing was changed.")
+    }
+}
+
+# What the router needs for -PublicIp, once the panel was told.
+function Write-PublicIpSummary([int] $port) {
+    Write-Host "Public IP certificate: the panel asks Let's Encrypt for a certificate for $PublicIp and renews it on its own (Nodes > Public IP certificate shows how it goes)."
+    Write-Host "On your router, forward TCP ports 80 and $port to this PC; then anyone opens https://$(if ($PublicIp.Contains(':')) { "[$PublicIp]" } else { $PublicIp }):$port with no warning."
+}
+
 # What keeps a PFX file from being the panel's certificate, fit to print: it does not open with $password, or holds no
 # private key. $null when it can be. Its key is read without being stored anywhere.
 function Test-PfxFile([string] $path, [string] $password) {
@@ -1792,6 +1844,7 @@ function Assert-PanelInstallable {
             throw (New-SetupError $ExitUnsupported "The panel would listen on port $($port[1]) ($($port[0])), which is taken: another program listens on it, or Windows keeps it (netsh interface ipv4 show excludedportrange protocol=tcp). Stop that program, or choose another port. Nothing was changed.")
         }
     }
+    Assert-PublicIpInstallable
     if ($RestoreFrom) { return }
     if (-not $AdminPassword) {
         $script:AdminPassword = Read-Secret "Password for the panel's first administrator, '$AdminUserName' (at least 12 characters)" 'adminPassword'
@@ -1812,7 +1865,7 @@ function Undo-PanelInstall([bool] $service, [bool] $database) {
         Start-Sleep -Seconds 2
     }
     if (-not $NoFirewall) {
-        foreach ($rule in 'Pulsar-Panel-HTTPS', 'Pulsar-Panel-Agents', 'Pulsar-Panel-SFTP') {
+        foreach ($rule in 'Pulsar-Panel-HTTPS', 'Pulsar-Panel-Agents', 'Pulsar-Panel-SFTP', 'Pulsar-Panel-ACME') {
             try { Get-NetFirewallRule -Name $rule -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction Stop }
             catch { $left += "the firewall rule $rule" }
         }
@@ -1930,6 +1983,13 @@ function Install-Panel {
             Get-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
             $null = New-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -DisplayName 'Pulsar Panel (SFTP)' -Direction Inbound `
                 -Protocol TCP -LocalPort $SftpPort -Program $exe -Action Allow -Profile $profiles
+            # Port 80, only for -PublicIp: Let's Encrypt's http-01 check (the panel answers nothing else there).
+            Get-NetFirewallRule -Name 'Pulsar-Panel-ACME' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+            if ($PublicIp) {
+                Write-Step "Allowing port 80 for Let's Encrypt's check in Windows Firewall ($($profiles -join ', ') networks)"
+                $null = New-NetFirewallRule -Name 'Pulsar-Panel-ACME' -DisplayName 'Pulsar Panel (Let''s Encrypt check)' -Direction Inbound `
+                    -Protocol TCP -LocalPort 80 -Program $exe -Action Allow -Profile $profiles
+            }
         }
 
         Invoke-PanelMigrations
@@ -1966,6 +2026,12 @@ function Install-Panel {
                 $null = Invoke-Panel $client PUT '/api/v1/sftp/settings' @{ enabled = $true; port = $SftpPort; publicHost = $null }
             }
             $sftp = Invoke-Panel $client GET '/api/v1/sftp'
+            if ($PublicIp) {
+                Write-Step "Turning on the public IP certificate for $PublicIp (Let's Encrypt)"
+                $null = Invoke-Panel $client GET '/api/v1/auth/session'
+                $null = Invoke-Panel $client PUT '/api/v1/public-ip-certificate' @{ enabled = $true; publicIp = $PublicIp; email = $null; directory = 'production' }
+                Write-PublicIpSummary $Port
+            }
         }
         finally {
             $client.Dispose()
@@ -2008,6 +2074,7 @@ function Uninstall-Panel {
     Get-NetFirewallRule -Name 'Pulsar-Panel-HTTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     Get-NetFirewallRule -Name 'Pulsar-Panel-Agents' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     Get-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    Get-NetFirewallRule -Name 'Pulsar-Panel-ACME' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     Start-Sleep -Seconds 2
     Remove-Item $PanelDir -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -3180,6 +3247,7 @@ function Get-StepPlan {
 # An agent's values: from a node code (-NodeCode, PULSAR_NODE_CODE or the secrets file's), or -PanelUrl, -Token and
 # -PanelKey. The code as read ($null without one) and the panel's address.
 function Resolve-AgentInputs {
+    if ($PublicIp) { throw (New-SetupError $ExitUsage '-PublicIp is the panel''s: give it with -Mode AllInOne or -Mode Panel. Nothing was changed.') }
     $code = $null
     if ($NodeCode) {
         if ($Token -or $PanelKey -or $TrustCertificate) {

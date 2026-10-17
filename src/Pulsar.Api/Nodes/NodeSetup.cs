@@ -128,7 +128,8 @@ internal sealed class HttpNodeSetup(IHttpContextAccessor accessor, AgentSetupDow
     /// The hash of the certificate Kestrel presented in this connection's TLS handshake, when the client saw it
     /// (<see cref="ServedCertificate"/>): none over plain HTTP, over HTTP/3, or through a proxy that says so. A proxy that
     /// re-encrypts without saying so gives Kestrel's certificate, which the node's setup then finds is not the one it is
-    /// served, and refuses.
+    /// served, and refuses. None either for the public IP certificate (Let's Encrypt): publicly trusted and replaced every
+    /// few days, it is checked as any site's is, never pinned (docs/architecture/08, T40).
     /// </summary>
     private static string? ServedCertificateHash(HttpContext http) =>
         ServedCertificate.Der(http) is { } der ? NodeCode.CertificateHash(der) : null;

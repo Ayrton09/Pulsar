@@ -83,6 +83,18 @@ en.DatabaseSubCaption=Create an empty database and a user that owns it, and past
 es.DatabaseSubCaption=Creá una base de datos vacía y un usuario que sea su dueño, y pegá su cadena de conexión (Host=...;Port=5432;Database=...;Username=...;Password=...). Dejala vacía para usar PostgreSQL en esta PC (el instalador instala PostgreSQL 18 si no hay ninguno).
 en.ConnectionString=Connection &string:
 es.ConnectionString=Cadena de co&nexión:
+en.PublicIpCaption=Advanced: access from the internet
+es.PublicIpCaption=Avanzado: acceso desde internet
+en.PublicIpDescription=A free Let's Encrypt certificate for your public IP address.
+es.PublicIpDescription=Un certificado gratuito de Let's Encrypt para tu IP pública.
+en.PublicIpSubCaption=With a static public IP, anyone opens https://<that IP>:<the panel's port> from the internet with no warning and nothing to install. Leave it empty if you do not need it. On your router, forward TCP ports 80 (Let's Encrypt checks it) and the panel's port to this PC. Filling it in accepts Let's Encrypt's Subscriber Agreement (letsencrypt.org/repository).
+es.PublicIpSubCaption=Con una IP pública fija, cualquiera abre https://<esa IP>:<el puerto del panel> desde internet sin avisos y sin instalar nada. Dejalo vacío si no lo necesitás. En tu router, reenviá a esta PC los puertos TCP 80 (Let's Encrypt lo comprueba) y el del panel. Completarlo acepta el acuerdo de suscriptor de Let's Encrypt (letsencrypt.org/repository).
+en.PublicIp=Public IP for a free Let's Encrypt certificate (optional):
+es.PublicIp=IP pública para un certificado gratuito de Let's Encrypt (opcional):
+en.ErrorPublicIp=Give the public IPv4 or IPv6 address your router has on the internet (such as 203.0.113.10), not a local one (192.168..., 10..., 172.16-31...), and without a port.
+es.ErrorPublicIp=Escribí la dirección IPv4 o IPv6 pública que tiene tu router en internet (como 203.0.113.10), no una local (192.168..., 10..., 172.16-31...), y sin puerto.
+en.MemoPublicIp=Let's Encrypt certificate for %1 (port 80 opened for its check)
+es.MemoPublicIp=Certificado de Let's Encrypt para %1 (se abre el puerto 80 para su comprobación)
 en.ErrorMode=/MODE= takes AllInOne, Panel or Agent.
 es.ErrorMode=/MODE= acepta AllInOne, Panel o Agent.
 en.ErrorAdminName=The user name takes 1 to 64 letters, digits, or the characters - . _ @ +.
@@ -161,6 +173,7 @@ var
   CertificatePasswordLabel: TNewStaticText;
   CertificatePasswordEdit: TPasswordEdit;
   DatabasePage: TInputQueryWizardPage;
+  PublicIpPage: TInputQueryWizardPage;
 
 // --- The choices -------------------------------------------------------------------------------------------------
 
@@ -230,6 +243,14 @@ begin
   Result := '';
   if UsesAdvanced then
     Result := Trim(CertificatePage.Values[0]);
+end;
+
+// -PublicIp: the panel's public address for a Let's Encrypt certificate, or nothing.
+function PublicIpValue: String;
+begin
+  Result := '';
+  if UsesAdvanced then
+    Result := Trim(PublicIpPage.Values[0]);
 end;
 
 function AdminUserName: String;
@@ -420,6 +441,95 @@ begin
       Result := True;
       Exit;
     end;
+end;
+
+// The value of a hexadecimal group of an IPv6 address (1 to 4 digits), or -1.
+function HexGroup(const Text: String): Integer;
+var
+  I, Digit: Integer;
+begin
+  Result := -1;
+  if (Length(Text) < 1) or (Length(Text) > 4) then
+    Exit;
+  Result := 0;
+  for I := 1 to Length(Text) do begin
+    Digit := Pos(Lowercase(Text[I]), '0123456789abcdef') - 1;
+    if Digit < 0 then begin
+      Result := -1;
+      Exit;
+    end;
+    Result := Result * 16 + Digit;
+  end;
+end;
+
+// A public IP address as -PublicIp takes it (Install-Pulsar.ps1 and the panel check again): IPv4 as four numbers without
+// leading zeros outside the private, local, shared, documentation, multicast and reserved ranges; IPv6 in 2000::/3 but
+// not in 2001::/23, 2001:db8::/32, 2002::/16 or 3fff::/20.
+function IsPublicIp(Text: String): Boolean;
+var
+  Parts: array[0..3] of Integer;
+  Count, I, Value, First, Second, Colons: Integer;
+  Part: String;
+begin
+  Result := False;
+  if (Text = '') or (Length(Text) > 45) then
+    Exit;
+  if Pos(':', Text) > 0 then begin
+    Colons := 0;
+    for I := 1 to Length(Text) do
+      if Text[I] = ':' then
+        Colons := Colons + 1
+      else if HexGroup(Copy(Text, I, 1)) < 0 then
+        Exit;
+    if (Colons < 2) or (Colons > 7) or (Text[1] = ':') or (Pos(':::', Text) > 0) then
+      Exit;
+    if (Pos('::', Text) > 0) and (Pos('::', Copy(Text, Pos('::', Text) + 2, Length(Text))) > 0) then
+      Exit;
+    First := HexGroup(Copy(Text, 1, Pos(':', Text) - 1));
+    Part := Copy(Text, Pos(':', Text) + 1, Length(Text));
+    if Pos(':', Part) > 0 then
+      Part := Copy(Part, 1, Pos(':', Part) - 1);
+    if Part = '' then
+      Second := 0
+    else
+      Second := HexGroup(Part);
+    Result := (First >= $2000) and (First <= $3FFF) and (Second >= 0) and not ((First = $2001) and (Second < $200)) and
+      not ((First = $2001) and (Second = $DB8)) and (First <> $2002) and not ((First = $3FFF) and (Second < $1000));
+    Exit;
+  end;
+  Count := 0;
+  Text := Text + '.';
+  while Text <> '' do begin
+    Part := Copy(Text, 1, Pos('.', Text) - 1);
+    Text := Copy(Text, Pos('.', Text) + 1, Length(Text));
+    if (Count = 4) or (Part = '') or (Length(Part) > 3) or ((Length(Part) > 1) and (Part[1] = '0')) then
+      Exit;
+    Value := 0;
+    for I := 1 to Length(Part) do begin
+      if (Part[I] < '0') or (Part[I] > '9') then
+        Exit;
+      Value := Value * 10 + Ord(Part[I]) - Ord('0');
+    end;
+    if Value > 255 then
+      Exit;
+    Parts[Count] := Value;
+    Count := Count + 1;
+  end;
+  if Count <> 4 then
+    Exit;
+  Result := not ((Parts[0] = 0) or (Parts[0] = 10) or (Parts[0] = 127) or (Parts[0] >= 224) or
+    ((Parts[0] = 100) and (Parts[1] >= 64) and (Parts[1] <= 127)) or ((Parts[0] = 169) and (Parts[1] = 254)) or
+    ((Parts[0] = 172) and (Parts[1] >= 16) and (Parts[1] <= 31)) or ((Parts[0] = 192) and (Parts[1] = 168)) or
+    ((Parts[0] = 192) and (Parts[1] = 0) and ((Parts[2] = 0) or (Parts[2] = 2))) or ((Parts[0] = 192) and (Parts[1] = 88) and (Parts[2] = 99)) or
+    ((Parts[0] = 198) and ((Parts[1] = 18) or (Parts[1] = 19))) or ((Parts[0] = 198) and (Parts[1] = 51) and (Parts[2] = 100)) or
+    ((Parts[0] = 203) and (Parts[1] = 0) and (Parts[2] = 113)));
+end;
+
+function CheckPublicIpPage: Boolean;
+begin
+  Result := (PublicIpValue = '') or IsPublicIp(PublicIpValue);
+  if not Result then
+    Result := Refuse(CustomMessage('ErrorPublicIp'));
 end;
 
 function IsPort(const Port: Integer): Boolean;
@@ -622,6 +732,14 @@ begin
   DatabasePage := CreateInputQueryPage(CertificatePage.ID, CustomMessage('DatabaseCaption'),
     CustomMessage('DatabaseDescription'), CustomMessage('DatabaseSubCaption'));
   DatabasePage.Add(CustomMessage('ConnectionString'), True);
+
+  // Right after the network page.
+  PublicIpPage := CreateInputQueryPage(NetworkPage.ID, CustomMessage('PublicIpCaption'), CustomMessage('PublicIpDescription'),
+    CustomMessage('PublicIpSubCaption'));
+  PublicIpPage.Add(CustomMessage('PublicIp'), False);
+  PublicIpPage.Values[0] := ExpandConstant('{param:PUBLICIP|}');
+  if PublicIpPage.Values[0] <> '' then
+    ModePage.Values[3] := True;
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
@@ -642,6 +760,8 @@ begin
     else if PageID <> ModePage.ID then
       Result := not InstallsPanel or not UsesAdvanced;
   end;
+  if PageID = PublicIpPage.ID then
+    Result := UpdateMode or not InstallsPanel or not UsesAdvanced;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -659,6 +779,8 @@ begin
     Result := CheckCertificatePage
   else if CurPageID = DatabasePage.ID then
     Result := CheckDatabasePage;
+  if CurPageID = PublicIpPage.ID then
+    Result := CheckPublicIpPage;
 end;
 
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo,
@@ -692,6 +814,8 @@ begin
         Result := Result + Space + CustomMessage('MemoFirewallPublic') + NewLine
       else
         Result := Result + Space + CustomMessage('MemoFirewall') + NewLine;
+      if PublicIpValue <> '' then
+        Result := Result + Space + FmtMessage(CustomMessage('MemoPublicIp'), [PublicIpValue]) + NewLine;
       if HasConnectionString then
         Result := Result + Space + CustomMessage('MemoDatabaseElsewhere') + NewLine
       else begin
@@ -734,6 +858,8 @@ begin
         Result := Result + NamedArgument('CertificatePath', CertificateFile);
       if UsesAdvanced and FirewallPublicCheck.Checked then
         Result := Result + ' -FirewallPublic';
+      if PublicIpValue <> '' then
+        Result := Result + NamedArgument('PublicIp', PublicIpValue);
       if OfflinePostgresInstaller <> '' then
         Result := Result + NamedArgument('PostgresInstaller', OfflinePostgresInstaller);
     end;

@@ -5021,6 +5021,221 @@
         }
       }
     },
+    "/api/v1/public-ip-certificate": {
+      "get": {
+        "tags": [
+          "Public IP certificate"
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicIpCertificateResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Public IP certificate"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePublicIpCertificateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicIpCertificateResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public-ip-certificate/renew": {
+      "post": {
+        "tags": [
+          "Public IP certificate"
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicIpCertificateResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/servers": {
       "get": {
         "tags": [
@@ -11608,6 +11823,12 @@
           "invalidSignature"
         ]
       },
+      "AcmeDirectoryKind": {
+        "enum": [
+          "production",
+          "staging"
+        ]
+      },
       "AddonView": {
         "required": [
           "key",
@@ -14032,7 +14253,8 @@
           "backupFailed",
           "scheduledTaskFailed",
           "nodeOffline",
-          "nodeDiskLow"
+          "nodeDiskLow",
+          "publicIpCertificate"
         ]
       },
       "NotificationKind": {
@@ -14491,6 +14713,147 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "PublicIpCertificateInfo": {
+        "required": [
+          "ip",
+          "notBefore",
+          "notAfter",
+          "sha256",
+          "staging"
+        ],
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "notBefore": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notAfter": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "staging": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PublicIpCertificateResponse": {
+        "required": [
+          "enabled",
+          "publicIp",
+          "email",
+          "directory",
+          "termsOfServiceUrl",
+          "challengePort",
+          "listening",
+          "listenError",
+          "certificate",
+          "serving",
+          "renewing",
+          "lastRenewalAt",
+          "lastAttemptAt",
+          "nextAttemptAt",
+          "attemptsLeft",
+          "lastError",
+          "lastErrorAt"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "publicIp": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "directory": {
+            "$ref": "#/components/schemas/AcmeDirectoryKind"
+          },
+          "termsOfServiceUrl": {
+            "type": "string"
+          },
+          "challengePort": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "listening": {
+            "type": "boolean"
+          },
+          "listenError": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "certificate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PublicIpCertificateInfo"
+              }
+            ]
+          },
+          "serving": {
+            "type": "boolean"
+          },
+          "renewing": {
+            "type": "boolean"
+          },
+          "lastRenewalAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "lastAttemptAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "nextAttemptAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "attemptsLeft": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lastError": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastErrorAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -16302,6 +16665,38 @@
           }
         }
       },
+      "UpdatePublicIpCertificateRequest": {
+        "required": [
+          "enabled",
+          "publicIp",
+          "email"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "publicIp": {
+            "maxLength": 45,
+            "minLength": 0,
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "maxLength": 254,
+            "minLength": 0,
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "directory": {
+            "$ref": "#/components/schemas/AcmeDirectoryKind"
+          }
+        }
+      },
       "UpdateRoleRequest": {
         "required": [
           "name",
@@ -16624,6 +17019,9 @@
     },
     {
       "name": "Agent transport"
+    },
+    {
+      "name": "Public IP certificate"
     },
     {
       "name": "Templates"

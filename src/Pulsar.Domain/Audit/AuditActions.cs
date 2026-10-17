@@ -122,6 +122,13 @@ public static class AuditActions
         public const string SettingsChanged = "sftp.settings_changed";
     }
 
+    public static class PublicIpCertificate
+    {
+        public const string SettingsChanged = "public_ip_certificate.settings_changed";
+        public const string RenewalRequested = "public_ip_certificate.renewal_requested";
+        public const string AccountKeyReplaced = "public_ip_certificate.account_key_replaced";
+    }
+
     public static class BackupStorage
     {
         public const string Created = "backup_storage.created";

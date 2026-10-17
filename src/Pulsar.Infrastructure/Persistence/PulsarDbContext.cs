@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Audit;
+using Pulsar.Domain.Certificates;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Databases;
 using Pulsar.Domain.Metrics;
@@ -46,6 +47,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
     public DbSet<AgentTransportSettings> AgentTransportSettings => Set<AgentTransportSettings>();
 
     public DbSet<SftpSettings> SftpSettings => Set<SftpSettings>();
+
+    public DbSet<PublicIpCertificateSettings> PublicIpCertificateSettings => Set<PublicIpCertificateSettings>();
 
     public DbSet<GameTemplate> GameTemplates => Set<GameTemplate>();
 

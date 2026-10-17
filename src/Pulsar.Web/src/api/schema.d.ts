@@ -4963,6 +4963,234 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public-ip-certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PublicIpCertificateResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdatePublicIpCertificateRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PublicIpCertificateResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public-ip-certificate/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PublicIpCertificateResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/servers": {
         parameters: {
             query?: never;
@@ -11283,6 +11511,8 @@ export interface components {
         };
         /** @enum {unknown} */
         AckStatus: "accepted" | "alreadyInState" | "rejected" | "busy" | "unsupportedCommand" | "invalidSignature";
+        /** @enum {unknown} */
+        AcmeDirectoryKind: "production" | "staging";
         AddonView: {
             key: string;
             name: string;
@@ -11855,7 +12085,7 @@ export interface components {
             nextAttemptAt: null | string;
         };
         /** @enum {unknown} */
-        NotificationEvent: "serverCrashed" | "serverStartFailed" | "backupFailed" | "scheduledTaskFailed" | "nodeOffline" | "nodeDiskLow";
+        NotificationEvent: "serverCrashed" | "serverStartFailed" | "backupFailed" | "scheduledTaskFailed" | "nodeOffline" | "nodeDiskLow" | "publicIpCertificate";
         /** @enum {unknown} */
         NotificationKind: "discord" | "email";
         NotificationSettingsRequest: {
@@ -11965,6 +12195,40 @@ export interface components {
             status?: null | number;
             detail?: null | string;
             instance?: null | string;
+        };
+        PublicIpCertificateInfo: {
+            ip: string;
+            /** Format: date-time */
+            notBefore: string;
+            /** Format: date-time */
+            notAfter: string;
+            sha256: string;
+            staging: boolean;
+        };
+        PublicIpCertificateResponse: {
+            enabled: boolean;
+            publicIp: null | string;
+            email: null | string;
+            directory: components["schemas"]["AcmeDirectoryKind"];
+            termsOfServiceUrl: string;
+            /** Format: int32 */
+            challengePort: number;
+            listening: boolean;
+            listenError: null | string;
+            certificate: null | components["schemas"]["PublicIpCertificateInfo"];
+            serving: boolean;
+            renewing: boolean;
+            /** Format: date-time */
+            lastRenewalAt: null | string;
+            /** Format: date-time */
+            lastAttemptAt: null | string;
+            /** Format: date-time */
+            nextAttemptAt: null | string;
+            /** Format: int32 */
+            attemptsLeft: number;
+            lastError: null | string;
+            /** Format: date-time */
+            lastErrorAt: null | string;
         };
         RecoveryCodesResponse: {
             recoveryCodes: string[];
@@ -12394,6 +12658,12 @@ export interface components {
         UpdateProfileRequest: {
             displayName: null | string;
             email: null | string;
+        };
+        UpdatePublicIpCertificateRequest: {
+            enabled: boolean;
+            publicIp: null | string;
+            email: null | string;
+            directory?: components["schemas"]["AcmeDirectoryKind"];
         };
         UpdateRoleRequest: {
             name: string;

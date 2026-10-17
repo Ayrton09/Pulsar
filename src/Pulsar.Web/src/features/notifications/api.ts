@@ -18,6 +18,7 @@ export const notificationEvents: NotificationEvent[] = [
   'scheduledTaskFailed',
   'nodeOffline',
   'nodeDiskLow',
+  'publicIpCertificate',
 ];
 
 export const notificationKeys = {

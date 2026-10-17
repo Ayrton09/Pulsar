@@ -7,6 +7,7 @@ using Pulsar.Api;
 using Pulsar.Api.Access;
 using Pulsar.Api.Agents;
 using Pulsar.Api.Auth;
+using Pulsar.Api.Certificates;
 using Pulsar.Api.Databases;
 using Pulsar.Api.Nodes;
 using Pulsar.Api.Notifications;
@@ -135,6 +136,7 @@ try
     api.MapRoleEndpoints();
     api.MapAuditEndpoints();
     api.MapNodeEndpoints();
+    api.MapPublicIpCertificateEndpoints();
     api.MapServerEndpoints();
     api.MapServerFileEndpoints();
     api.MapServerBackupEndpoints();

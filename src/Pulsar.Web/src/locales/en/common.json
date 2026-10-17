@@ -397,6 +397,11 @@
         "created": "Created a reusable enrollment token",
         "revoked": "Revoked a reusable enrollment token"
       },
+      "public_ip_certificate": {
+        "settings_changed": "Changed the public IP certificate settings",
+        "renewal_requested": "Asked for a new public IP certificate",
+        "account_key_replaced": "Replaced the unreadable Let's Encrypt account key"
+      },
       "agent_transport": {
         "changed": "Changed how agents connect"
       },
@@ -753,6 +758,16 @@
       "lifetime_invalid": "A token is valid for 1 hour to 90 days.",
       "too_many": "The panel already has 50 tokens that can be used: revoke one first.",
       "not_found": "That token does not exist any more."
+    },
+    "public_ip_certificate": {
+      "ip_required": "Enter the panel's public IP address to turn this on.",
+      "ip_invalid": "Enter an IPv4 address (such as 203.0.113.10) or an IPv6 address, without a port or brackets.",
+      "ip_not_public": "That is not a public internet address (it is private, local, shared by your provider or reserved). Use the address your router has on the internet.",
+      "email_invalid": "The email must be a plain address, such as admin@example.com.",
+      "invalid_directory": "Choose production or staging.",
+      "disabled": "Turn the public IP certificate on first.",
+      "too_many_attempts": "Let's Encrypt was already asked 3 times this hour: try again later.",
+      "renewing": "A certificate is being asked for right now."
     },
     "agent_transport": {
       "no_agents_endpoint": "The panel has no agents' address: agents would have nowhere to go. Add the Kestrel endpoint \"Agents\" first."
@@ -1578,7 +1593,8 @@
       "backupFailed": "Backup failed",
       "scheduledTaskFailed": "Scheduled task failed",
       "nodeOffline": "Node offline (and back online)",
-      "nodeDiskLow": "Node low on disk"
+      "nodeDiskLow": "Node low on disk",
+      "publicIpCertificate": "Public IP certificate not renewed or about to expire"
     },
     "servers": "Servers",
     "allServers": "All servers",
@@ -1851,6 +1867,40 @@
     "copyServer": "Copy the server's SFTP address",
     "serverHint": "Connect with SFTP:"
   },
+  "publicIpCertificate": {
+    "title": "Public IP certificate (Let's Encrypt)",
+    "description": "A free Let's Encrypt certificate for this panel's static public IP address: whoever opens https://<your IP>:<port> from the internet gets the panel with no security warning and nothing to install. It lasts about 6 days and is renewed on its own.",
+    "enabled": "Use a Let's Encrypt certificate for my public IP",
+    "publicIp": "Public IP address",
+    "publicIpHint": "Your router's address on the internet, which must not change (a static IP). Not this PC's local address.",
+    "email": "Email (optional)",
+    "emailHint": "Where Let's Encrypt may write about the account.",
+    "directory": "Let's Encrypt environment",
+    "directoryHint": "Staging is for trying it out: browsers do not trust its certificates.",
+    "directories": {
+      "production": "Production",
+      "staging": "Staging (test certificates)"
+    },
+    "terms": "Turning this on means you accept Let's Encrypt's terms:",
+    "termsLink": "Subscriber Agreement",
+    "ports": "On your router, forward TCP ports 80 and {{port}} to this PC. Let's Encrypt checks port 80; visitors use {{port}}.",
+    "enableConfirm": "Ask Let's Encrypt for a certificate for {{ip}}? You accept Let's Encrypt's Subscriber Agreement, and Let's Encrypt will connect to port 80 of that address to check it. A remote node pinned to the panel's own certificate that reaches the panel at that address on the main port will refuse the new certificate: enroll it again with a node code made while you reach the panel at the public IP.",
+    "save": "Save",
+    "serving": "Certificate in use",
+    "notServing": "No valid certificate yet",
+    "staging": "Staging",
+    "renewing": "Asking Let's Encrypt…",
+    "listening": "Port {{port}} open for the check",
+    "notListening": "Port {{port}} not open",
+    "validUntil": "Valid until",
+    "lastRenewal": "Last renewal",
+    "nextAttempt": "Next attempt",
+    "none": "None yet",
+    "lastError": "The last attempt failed ({{when}}): {{error}}",
+    "attemptsLeft_one": "{{count}} more attempt allowed this hour.",
+    "attemptsLeft_other": "{{count}} more attempts allowed this hour.",
+    "renewNow": "Renew now"
+  },
   "sftpSettings": {
     "title": "SFTP",
     "description": "The panel hosts an SFTP server so users can reach their servers' files with an SFTP client. Remember to open its port in the firewall.",
@@ -1887,6 +1937,7 @@
     "after": "Then open the panel at the same address: the warning is gone. It stays at an address the certificate does not list.",
     "issued": "An authority issued this certificate: browsers that trust that authority need nothing installed.",
     "notTrustable": "This certificate could issue certificates for other sites, or serve more than a web server: do not install it as trusted. Ask your administrator to use one like the installer's.",
-    "unavailable": "This page did not reach the panel over its own HTTPS (plain HTTP, or a proxy in front of the panel), so there is no certificate of the panel's to show."
+    "unavailable": "This page did not reach the panel over its own HTTPS (plain HTTP, or a proxy in front of the panel), so there is no certificate of the panel's to show.",
+    "publiclyTrusted": "This page reached the panel from the internet with its Let's Encrypt certificate, which every browser trusts already: there is nothing to download or install. On the local network the panel serves its own certificate."
   }
 }

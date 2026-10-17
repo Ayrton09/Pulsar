@@ -111,6 +111,15 @@ describe('the panel certificate on the account page', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it("says there is nothing to install over the public IP certificate (Let's Encrypt)", async () => {
+    fakeApi({ 'GET /api/v1/panel/certificate': () => problem(404, 'panel.certificate_publicly_trusted') });
+    renderWithClient(<PanelCertificateSection />);
+
+    expect(await screen.findByText(/which every browser trusts already/)).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('shows any other failure as an error', async () => {
     fakeApi({ 'GET /api/v1/panel/certificate': () => problem(500, 'http.500', 'boom') });
     renderWithClient(<PanelCertificateSection />);
