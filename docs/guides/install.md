@@ -152,10 +152,14 @@ Windows' network settings, or install with `-FirewallPublic`).
   addresses. Add those you use with `-HostName` (`-HostName 203.0.113.7, panel.example.com`), or one with the setup's
   Advanced page.
 - **Reserve the address** in your router (a *DHCP reservation* or *static lease* for the PC's network adapter), so it
-  never changes: the certificate lists the addresses the PC had when Pulsar was installed
+  never changes: the certificate lists the addresses the PC had when Pulsar was installed, and the installer warns
+  (in its output and its log) about each one a DHCP server gave
   ([If the panel's address changes](#if-the-panels-address-changes)).
-- **SFTP**: the same address and port 2022 (`sftp://<user>@192.168.1.20:2022/`); check the host key's fingerprint the
-  Account page shows at the first connection ([SFTP](sftp.md)). SFTP does not use the HTTPS certificate.
+- **SFTP**: the same address and port 2022 (`sftp://<user>@192.168.1.20:2022/`); at the first connection, check the
+  host key's fingerprint against the one the installer printed on the panel's PC (`The SFTP host key, to check at the
+  first connection: …`, in its output and its log), or the Account page's once this PC trusts the panel's certificate
+  ([Trusting the panel's certificate](#trusting-the-panels-certificate)): before that, a machine in the middle could
+  change what the page says ([SFTP](sftp.md)). SFTP does not use the HTTPS certificate.
 - **More nodes**: open **Nodes → Add node** at the address the new node will use (the PC's IP address, say): the node
   code carries that address, which the certificate lists, and `PulsarAgentSetup.exe` pins the certificate there.
 
@@ -458,17 +462,21 @@ the panel with `-HostName` for the name nodes use. A trusted certificate vouches
 it allows, so it also refuses, unless told:
 
 - one that lists names other than the host of `-PanelUrl`, `localhost` and machine names (a name without a dot, such as
-  the panel machine's own, which the installer's certificate always lists), or addresses other than that host, the
-  loopback ones (`127.x`, `::1`) and private IPv4 ones (`10.x`, `172.16.x` to `172.31.x`, `192.168.x`: a machine on a
-  local network, never an internet site, which the installer's certificate lists for the panel's PC): another site's
-  name, a wildcard, a public or IPv6 address. Nodes that use one name of a panel known by several (its machine's full
-  name in a domain, a `-HostName`) meet the others here: add `-TrustCertificateWithOtherNames` if every name it lists
-  is yours;
+  the panel machine's own, which the installer's certificate always lists, but not a number such as `3232235777`, which
+  some programs read as an IPv4 address), or addresses other than that host and the loopback ones (`127.x`, `::1`):
+  another site's name, a wildcard, any other address, private ones included (`10.x`, `172.16.x` to `172.31.x`,
+  `192.168.x`: trusted, the certificate would vouch for your router or NAS too). The installer's certificate lists the
+  panel PC's private addresses, so a node whose `-PanelUrl` uses the one it has on that network takes it as it is when
+  the PC has no other; a node that uses the PC's name, or one name of a panel known by several (its machine's full name
+  in a domain, a `-HostName`), meets the others here: use the address in `-PanelUrl`, or add
+  `-TrustCertificateWithOtherNames` if every name it lists is yours;
 - one that may be used for more than a web server's identity: an Extended Key Usage beyond server authentication, or
   none at all (which allows every use, code signing included). Installers before this check also listed client
   authentication; add `-TrustCertificateWithOtherUses` if you know it is the panel's own.
 
-A name with characters a DNS name cannot have (a line break, an escape, a space) is refused outright. The node trusts
+A name with characters a DNS name cannot have (a line break, an escape, a space) is refused outright. A certificate
+valid for longer than 5 years (and a day: the installer's own is valid for 5) is trusted with a warning, since a leaked
+key would vouch for its names until it expires: make a new one like the installer's when you can. The node trusts
 the certificate exactly as it was read and checked, and the installer prints its subject, thumbprint and names (with
 any control character shown as `?`): whoever holds its key can pass for those names to this machine. `-Uninstall`
 removes the trust it gave: only certificates it marked as its own when it trusted them.

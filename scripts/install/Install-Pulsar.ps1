@@ -1152,9 +1152,13 @@ function New-PanelCertificate {
         $password = ''
         if ($CertificatePassword) { $password = ConvertFrom-Secure $CertificatePassword }
         Copy-Item $CertificatePath $pfx -Force
-        $certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2($pfx, $password)
-        [IO.File]::WriteAllBytes($cer, $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-        return @{ Path = $pfx; Password = $password; Thumbprint = $certificate.Thumbprint; Cer = $cer; SelfSigned = $false; Sha256 = (Get-CertificateHash $certificate) }
+        # An ephemeral key: none is written to a key container (the profile's, by default) to read the certificate.
+        $certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @([IO.File]::ReadAllBytes($pfx), $password, [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+        try {
+            [IO.File]::WriteAllBytes($cer, $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+            return @{ Path = $pfx; Password = $password; Thumbprint = $certificate.Thumbprint; Cer = $cer; SelfSigned = $false; Sha256 = (Get-CertificateHash $certificate) }
+        }
+        finally { $certificate.Dispose() }
     }
 
     $machine = @('localhost', $env:COMPUTERNAME)
@@ -1165,6 +1169,11 @@ function New-PanelCertificate {
     Write-Step "Creating a self-signed HTTPS certificate for $(@(Get-ListedNames $names) -join ', ')"
     if ($lan.Count -eq 0) {
         Write-Warning 'This PC has no private IPv4 address on a network with a router, so the certificate lists none: other computers must use its name (or pass -HostName with the address they use).'
+    }
+    $dhcp = @(Get-DhcpAddresses)
+    $leased = @($names.Ips | Where-Object { "$_" -in $dhcp } | ForEach-Object { "$_" })
+    if ($leased.Count -gt 0) {
+        Write-Warning "The router's DHCP server gave this PC $($leased -join ', '), which the certificate lists and which may change: reserve it for this PC in the router (a DHCP reservation), or the certificate stops matching the address other computers use."
     }
     $certificate = New-SelfSignedPanelCertificate $names
     try {
@@ -1292,6 +1301,15 @@ function Get-LanAddresses {
     $adapters = @(Get-NetAdapter -ErrorAction SilentlyContinue)
     $routes = @(Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue)
     Select-LanAddresses $addresses $adapters $routes
+}
+
+# This machine's IPv4 addresses that a DHCP server gave it (Get-NetIPAddress PrefixOrigin Dhcp), as text: they may
+# change unless the router reserves them.
+function Get-DhcpAddresses {
+    foreach ($entry in @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue)) {
+        $address = $null
+        if ("$($entry.PrefixOrigin)" -eq 'Dhcp' -and [Net.IPAddress]::TryParse("$($entry.IPAddress)", [ref] $address)) { "$address" }
+    }
 }
 
 # Of this machine's IPv4 addresses ($addresses, Get-NetIPAddress), those other computers on its networks can reach it by,
@@ -1479,20 +1497,21 @@ function Get-CertificateNames([Security.Cryptography.X509Certificates.X509Certif
 
 # The names a certificate lists besides the panel's, as they would be printed: those in $panelNames (the -PanelUrl
 # host on a node; on the panel's own machine, the names and addresses its certificate was made for), localhost and the
-# loopback addresses (this machine itself), and single-label names and private-use IPv4 addresses (RFC 1918: a machine
-# on the local network, never an internet site; the installer's certificate always lists the panel machine's own) are
-# the panel's. A wildcard stands for every name under it, so it never is, unless the panel's own certificate was made
-# for it (-HostName); neither are other addresses (public ones, 169.254 ones, IPv6 ones but ::1) or other kinds of names.
+# loopback addresses (127.x and ::1: this machine itself), and single-label names (a machine's name on the local network,
+# never an internet site's: the installer's certificate always lists the panel machine's own) are the panel's. A single
+# label that is a number (decimal, or hexadecimal with 0x) is not: some resolvers read 3232235777 as 192.168.1.1. A
+# wildcard stands for every name under it, so it never is, unless the panel's own certificate was made for it
+# (-HostName); neither are other addresses (private ones too: the router, a NAS) or other kinds of names.
 function Get-ForeignCertificateNames($names, [string[]] $panelNames) {
     $panel = @($panelNames | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('.').ToLowerInvariant() })
     foreach ($listed in $names.Dns) {
         $name = $listed.TrimEnd('.').ToLowerInvariant()
         if ($name -in $panel) { continue }
-        if (-not $name.StartsWith('*.') -and ($name -eq 'localhost' -or -not $name.Contains('.'))) { continue }
+        if (-not $name.StartsWith('*.') -and $name -notmatch '^(0x[0-9a-f]*|[0-9]+)\z' -and ($name -eq 'localhost' -or -not $name.Contains('.'))) { continue }
         ConvertTo-PrintableText $listed
     }
     foreach ($address in $names.Ips) {
-        if ([Net.IPAddress]::IsLoopback($address) -or (Test-PrivateAddress $address)) { continue }
+        if ([Net.IPAddress]::IsLoopback($address)) { continue }
         $isPanel = $false
         foreach ($panelName in $panel) {
             $parsed = $null
@@ -1549,7 +1568,7 @@ function Assert-TrustableCertificate([Security.Cryptography.X509Certificates.X50
     }
     $foreign = @(Get-ForeignCertificateNames $names (@($hostName) + $panelNames))
     if ($foreign.Count -gt 0) {
-        $message = "$cer also names $($foreign -join ', '), which this check cannot tell are the panel's (only $hostName, localhost, machine names, the loopback addresses and private IPv4 addresses are): trusted by this machine, whoever holds its key could pass for them to it. Make the panel's certificate for the names nodes use and no others (-HostName when the panel is installed)"
+        $message = "$cer also names $($foreign -join ', '), which this check cannot tell are the panel's (only $hostName, localhost, machine names and the loopback addresses are): trusted by this machine, whoever holds its key could pass for them to it. Make the panel's certificate for the names nodes use and no others (-HostName when the panel is installed)"
         if (-not $TrustCertificateWithOtherNames) {
             throw "$message, or pass -TrustCertificateWithOtherNames if every name it lists is yours."
         }
@@ -1564,6 +1583,19 @@ function Assert-TrustableCertificate([Security.Cryptography.X509Certificates.X50
             throw "$message, or pass -TrustCertificateWithOtherUses if you know it is the panel's own."
         }
         Write-Warning "$message. Trusted anyway, as -TrustCertificateWithOtherUses says."
+    }
+    # The installer's own is valid for 5 years (from 10 minutes before it was made); a longer one keeps vouching, if
+    # its key leaks, for longer than that.
+    if ($certificate.NotAfter -gt $certificate.NotBefore.AddYears(5).AddDays(1)) {
+        Write-Warning "$cer is valid for longer than 5 years (from $($certificate.NotBefore.ToString('yyyy-MM-dd')) to $($certificate.NotAfter.ToString('yyyy-MM-dd'))): trusted by this machine, it vouches for its names until then, even if its key leaks. The installer's own self-signed certificate is valid for 5 years; make a new one like it when you can."
+    }
+}
+
+# Checks that $certificate, read from $cer, is the one whose SHA-256 is $sha256 (Get-CertificateHash), when one is
+# given: the file may have changed since that certificate was made.
+function Assert-SameCertificate([Security.Cryptography.X509Certificates.X509Certificate2] $certificate, [string] $cer, [string] $sha256) {
+    if ($sha256 -and (Get-CertificateHash $certificate) -cne $sha256) {
+        throw "$cer is not the certificate this install made (its SHA-256 is not $sha256): something changed it, and it is not trusted."
     }
 }
 
@@ -1601,9 +1633,11 @@ function Get-ListedNames($names) {
 # Trusts a panel's certificate machine-wide (the agent runs as SYSTEM) for the panel at $hostName, marked so -Uninstall
 # removes it again. One that was already trusted is left unmarked: something else trusted it, and -Uninstall leaves it.
 # Only for -TrustCertificate and the all-in-one panel's own certificate: a node code never comes here (its certificate
-# is pinned in the agent, Assert-PinnableCertificate).
-function Add-TrustedCertificate([string] $cer, [string] $hostName, [string[]] $panelNames = @()) {
+# is pinned in the agent, Assert-PinnableCertificate). For the latter, $sha256 is the SHA-256 of the certificate the
+# install made: the panel's service account may change tls\panel.cer while the panel runs.
+function Add-TrustedCertificate([string] $cer, [string] $hostName, [string[]] $panelNames = @(), [string] $sha256 = '') {
     $certificate = Read-Certificate $cer
+    Assert-SameCertificate $certificate $cer $sha256
     Assert-TrustableCertificate $certificate $cer $hostName $panelNames
     $names = Get-CertificateNames $certificate
     Write-Host "    $(ConvertTo-PrintableText $certificate.Subject), thumbprint $($certificate.Thumbprint), for $(@(Get-ListedNames $names) -join ', ')"
@@ -3305,7 +3339,7 @@ $main = {
             Write-SetupStep 'agent' 'Adding this PC as a node'
             if ($certificate.SelfSigned) {
                 Write-Step "Trusting the panel's certificate on this machine (the agent and this PC's browsers check it)"
-                Add-TrustedCertificate $certificate.Cer 'localhost' $certificate.Names
+                Add-TrustedCertificate $certificate.Cer 'localhost' $certificate.Names $certificate.Sha256
             }
             $enrollment = $installed.Node.enrollment
             Install-Agent "https://localhost:$($installed.Port)" $enrollment.token $enrollment.panelKeyFingerprint
