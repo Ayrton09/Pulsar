@@ -155,14 +155,100 @@ describe('nodes page', () => {
 
     renderAt('/nodes');
 
-    const table = await screen.findByRole('table', { name: 'Nodes' });
-    const rows = within(table).getAllByRole('row');
-    expect(rows[1]).toHaveTextContent('Buenos Aires 1');
-    expect(rows[1]).toHaveTextContent('Online');
-    expect(rows[1]).toHaveTextContent('12.5 % CPU');
-    expect(rows[2]).toHaveTextContent('Offline');
-    expect(rows[3]).toHaveTextContent('Awaiting enrollment');
+    const list = await screen.findByRole('list', { name: 'Nodes' });
+    const cards = within(list).getAllByRole('listitem');
+    expect(cards[0]).toHaveTextContent('Buenos Aires 1');
+    expect(cards[0]).toHaveTextContent('Online');
+    expect(cards[0]).toHaveTextContent('CPU12.5 %');
+    // The disk with the game servers, and how full each resource is.
+    expect(cards[0]).toHaveTextContent('Disk D:\\750 GB of 1,000 GB');
+    const bars = [...(cards[0] as HTMLElement).querySelectorAll<HTMLElement>('div[aria-hidden="true"] > div')];
+    expect(bars.map((bar) => bar.style.width)).toEqual(['12.5%', '25%', '75%']);
+    expect(cards[1]).toHaveTextContent('Offline');
+    expect(cards[1]).toHaveTextContent('No usage while its agent is not connected.');
+    expect(cards[2]).toHaveTextContent('Awaiting enrollment');
+    expect(cards[2]).toHaveTextContent('No agent has enrolled yet');
     expect(screen.getByRole('link', { name: 'Nodes' })).toBeInTheDocument();
+  });
+
+  it('picks the disk with the game servers, and shows usage only while a node is online and reporting', async () => {
+    const backupsFirst = {
+      ...online,
+      metrics: {
+        ...(online.metrics as NonNullable<Schemas['NodeSummary']['metrics']>),
+        disks: [
+          { root: 'E:\\', totalBytes: 100 * 1024 ** 3, freeBytes: 90 * 1024 ** 3, uses: ['backups'] },
+          { root: 'D:\\', totalBytes: 1000 * 1024 ** 3, freeBytes: 250 * 1024 ** 3, uses: ['servers'] },
+        ],
+      },
+    };
+    const empty = {
+      ...online,
+      id: '0192f1a0-0000-7000-8000-0000000000b1',
+      name: 'Empty',
+      metrics: {
+        ...(online.metrics as NonNullable<Schemas['NodeSummary']['metrics']>),
+        memoryUsedBytes: 0,
+        memoryTotalBytes: 0,
+        disks: null,
+      },
+    };
+    const disabled = {
+      ...online,
+      id: '0192f1a0-0000-7000-8000-0000000000b2',
+      name: 'Off duty',
+      status: 'disabled' as const,
+    };
+    const fresh = { ...online, id: '0192f1a0-0000-7000-8000-0000000000b3', name: 'Fresh', metrics: null };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/nodes': () => json([backupsFirst, empty, disabled, fresh]),
+    });
+
+    renderAt('/nodes');
+
+    const cards = within(await screen.findByRole('list', { name: 'Nodes' })).getAllByRole('listitem');
+    const widths = (card: HTMLElement) =>
+      [...card.querySelectorAll<HTMLElement>('div[aria-hidden="true"] > div')].map((bar) => bar.style.width);
+    expect(cards[0]).toHaveTextContent('Disk D:');
+    expect(cards[0]).not.toHaveTextContent('Disk E:');
+    // Nothing reported for memory and no disks: empty bars, no disk row.
+    expect(widths(cards[1] as HTMLElement)).toEqual(['12.5%', '0%']);
+    expect(cards[1]).not.toHaveTextContent('Disk');
+    // A disabled node is not online, even while its agent is still connected.
+    expect(cards[2]).toHaveTextContent('No usage while its agent is not connected.');
+    expect(widths(cards[2] as HTMLElement)).toEqual([]);
+    expect(cards[3]).toHaveTextContent('Waiting for its first usage report.');
+  });
+
+  it('shows only the nodes whose machine the user may see, not those they may only create servers on', async () => {
+    const slim = {
+      ...offline,
+      connected: true,
+      description: null,
+      publicHost: null,
+      lastSeenAt: null,
+      inventory: null,
+      metrics: null,
+      credentialFingerprint: null,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...adminUser,
+        permissions: [],
+        nodePermissions: [
+          { id: online.id, permissions: ['node.view'] },
+          { id: slim.id, permissions: ['server.create'] },
+        ],
+      }),
+      'GET /api/v1/nodes': () => json([online, slim]),
+    });
+
+    renderAt('/nodes');
+
+    const cards = within(await screen.findByRole('list', { name: 'Nodes' })).getAllByRole('listitem');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toHaveTextContent('Buenos Aires 1');
   });
 
   it('creates a node and shows its one-time enrollment command', async () => {
@@ -302,7 +388,7 @@ describe('nodes page', () => {
 
     renderAt('/nodes');
 
-    expect(await screen.findByRole('table', { name: 'Nodes' })).toBeInTheDocument();
+    expect(await screen.findByRole('list', { name: 'Nodes' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add node' })).not.toBeInTheDocument();
   });
 });
@@ -409,7 +495,7 @@ describe('who reaches the nodes page', () => {
 
     expect(await screen.findByRole('heading', { name: 'Agent connections' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Nodes' })).toBeInTheDocument();
-    expect(screen.queryByRole('table', { name: 'Nodes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Nodes' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add node' })).not.toBeInTheDocument();
     expect(requested(api)).not.toContain('/api/v1/nodes');
   });
@@ -422,7 +508,7 @@ describe('who reaches the nodes page', () => {
 
     expect(await screen.findByRole('button', { name: 'Create token' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Nodes' })).toBeInTheDocument();
-    expect(screen.queryByRole('table', { name: 'Nodes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Nodes' })).not.toBeInTheDocument();
     expect(requested(api)).not.toContain('/api/v1/nodes');
   });
 });
@@ -442,7 +528,7 @@ describe('bulk enrollment', () => {
     const user = userEvent.setup();
 
     const card = await screen.findByRole('region', { name: '2 nodes wait for approval' });
-    expect(within(screen.getByRole('table', { name: 'Nodes' })).getAllByText('Awaiting approval')).toHaveLength(2);
+    expect(within(screen.getByRole('list', { name: 'Nodes' })).getAllByText('Awaiting approval')).toHaveLength(2);
     const first = within(card).getByRole('checkbox', { name: /^FLEET-01/ });
     expect(first).not.toBeChecked();
     expect(within(card).getByRole('checkbox', { name: /^FLEET-02/ })).not.toBeChecked();
@@ -652,7 +738,7 @@ describe('bulk enrollment', () => {
 
     renderAt('/nodes');
 
-    expect(await screen.findByRole('table', { name: 'Nodes' })).toBeInTheDocument();
+    expect(await screen.findByRole('list', { name: 'Nodes' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create token' })).not.toBeInTheDocument();
   });
 

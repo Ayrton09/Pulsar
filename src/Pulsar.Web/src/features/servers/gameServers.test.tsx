@@ -682,7 +682,7 @@ describe('game templates', () => {
     renderAt('/templates');
     const user = userEvent.setup();
 
-    expect(await screen.findByRole('table', { name: 'Games' })).toHaveTextContent('Counter-Strike: Source');
+    expect(await screen.findByRole('list', { name: 'Games' })).toHaveTextContent('Counter-Strike: Source');
     await user.click(screen.getByRole('button', { name: 'Import a template' }));
     await user.click(screen.getByLabelText('Manifest (JSON)'));
     await user.paste('{"key": "css-community"}');
@@ -694,6 +694,56 @@ describe('game templates', () => {
 
     expect(await screen.findByText('Template imported.')).toBeInTheDocument();
     expect(imported).toHaveBeenCalledOnce();
+  });
+
+  it("starts creating a server with the game chosen from its card, and shows the game's artwork", async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/templates': () => json([template]),
+      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      [`GET /api/v1/templates/${templateId}`]: () => json(templateDetails),
+    });
+    renderAt('/templates');
+    const user = userEvent.setup();
+
+    const card = within(await screen.findByRole('list', { name: 'Games' })).getByRole('listitem');
+    expect(card.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/240/header.jpg',
+    );
+    await user.click(within(card).getByRole('button', { name: 'Create server for Counter-Strike: Source 1.0.0' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Create server' });
+    expect(within(dialog).getByLabelText(/^Game/)).toHaveValue(templateId);
+  });
+
+  it('offers server creation to whoever may create servers on one node only', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...adminUser,
+        permissions: ['template.view'],
+        nodePermissions: [{ id: nodeId, permissions: ['server.create'] }],
+      }),
+      'GET /api/v1/templates': () => json([template]),
+    });
+    renderAt('/templates');
+
+    const card = within(await screen.findByRole('list', { name: 'Games' })).getByRole('listitem');
+    expect(
+      within(card).getByRole('button', { name: 'Create server for Counter-Strike: Source 1.0.0' }),
+    ).toBeInTheDocument();
+  });
+
+  it('offers no server creation to whoever may only view the games', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['template.view'] }),
+      'GET /api/v1/templates': () => json([template]),
+    });
+    renderAt('/templates');
+
+    const card = within(await screen.findByRole('list', { name: 'Games' })).getByRole('listitem');
+    expect(card).toHaveTextContent('Counter-Strike: Source');
+    expect(within(card).queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('shows why a manifest is refused', async () => {

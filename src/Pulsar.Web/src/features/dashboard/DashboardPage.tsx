@@ -9,7 +9,7 @@ import { useRecentActivity, type AuditEntry } from '../admin/api';
 import { useCurrentUser } from '../auth/api';
 import { useWatchNodes, useWatchServers } from '../live/hooks';
 import { useNodes, type NodeSummary } from '../nodes/api';
-import { nodeState } from '../nodes/nodeStatus';
+import { nodeState, seesNodeDetails } from '../nodes/nodeStatus';
 import { useServers, type ServerSummary } from '../servers/api';
 import { ServerCard } from '../servers/ServerCard';
 
@@ -25,7 +25,8 @@ export function DashboardPage() {
   const canNodes = canAnywhere(me, Permission.NodeView, Permission.NodeManage);
   const canAudit = can(me, Permission.AuditView);
   const servers = useServersIf(canServers);
-  const nodes = useNodesIf(canNodes);
+  // Only the nodes whose machine and usage they see: the list also carries those they may only create servers on.
+  const nodes = useNodesIf(canNodes)?.filter((node) => seesNodeDetails(me, node)) ?? null;
   const activity = useRecentActivity(8, canAudit);
 
   return (

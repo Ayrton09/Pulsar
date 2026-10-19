@@ -1,19 +1,22 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
-import { Alert, Card, PageHeader, Table, Td, Th } from '../../components/ui/Display';
+import { Alert, Card, PageHeader } from '../../components/ui/Display';
 import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage, fieldErrors } from '../../lib/errors';
-import { useFormatDate, useFormatGigabytes } from '../../lib/format';
+import { useFormatDate } from '../../lib/format';
 import { can, canAnywhere, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useWatchNodes } from '../live/hooks';
 import { useApproveNodes, useCreateNode, useNodes, type CreatedNode, type NodeSummary } from './api';
-import { EnrollmentCommand, NodeStateBadge } from './components';
+import { EnrollmentCommand } from './components';
+import { NodeCard } from './NodeCard';
+import { seesNodeDetails } from './nodeStatus';
 import { EnrollmentTokensSection } from './EnrollmentTokensSection';
 import { nodeSchema, type NodeFormValues } from './nodeForm';
 import { AgentTransportSection } from './AgentTransportSection';
@@ -27,9 +30,8 @@ export function NodesPage() {
   // The page also serves those who only manage reusable tokens or settings: the node list is for node.view/node.manage.
   const canList = canAnywhere(me, Permission.NodeView, Permission.NodeManage);
   const nodes = useNodes(canList);
+  const shown = nodes.data?.filter((node) => seesNodeDetails(me, node));
   useWatchNodes(canList);
-  const formatDate = useFormatDate();
-  const formatGigabytes = useFormatGigabytes();
   const [creating, setCreating] = useState(false);
   const canManage = can(me, Permission.NodeManage);
 
@@ -38,75 +40,30 @@ export function NodesPage() {
       <PageHeader
         title={t('nodes.title')}
         description={t('nodes.description')}
-        actions={canManage && <Button onClick={() => setCreating(true)}>{t('nodes.create')}</Button>}
+        actions={
+          canManage && (
+            <Button icon={Plus} onClick={() => setCreating(true)}>
+              {t('nodes.create')}
+            </Button>
+          )
+        }
       />
       {canList && nodes.isPending && <Spinner label={t('common.loading')} />}
       {nodes.isError && <Alert>{errorMessage(t, nodes.error)}</Alert>}
       {canManage && nodes.data && <ApprovalCard nodes={nodes.data.filter((n) => n.status === 'pendingApproval')} />}
-      {nodes.data?.length === 0 && (
+      {shown?.length === 0 && (
         <Card className="p-6">
           <p className="text-sm text-muted">{canManage ? t('nodes.emptyManage') : t('nodes.empty')}</p>
         </Card>
       )}
-      {nodes.data && nodes.data.length > 0 && (
-        <Table label={t('nodes.title')}>
-          <thead>
-            <tr>
-              <Th>{t('nodes.node')}</Th>
-              <Th>{t('nodes.status')}</Th>
-              <Th>{t('nodes.machine')}</Th>
-              <Th>{t('nodes.usage')}</Th>
-              <Th>{t('nodes.lastSeen')}</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {nodes.data.map((node) => (
-              <tr key={node.id}>
-                <Td>
-                  <Link to={`/nodes/${node.id}`} className="font-medium hover:text-accent hover:underline">
-                    {node.name}
-                  </Link>
-                  {node.description && <p className="text-xs text-muted">{node.description}</p>}
-                </Td>
-                <Td>
-                  <NodeStateBadge node={node} />
-                </Td>
-                <Td>
-                  {node.inventory ? (
-                    <>
-                      <p>{node.inventory.hostname}</p>
-                      <p className="text-xs text-muted">{node.inventory.osDescription}</p>
-                    </>
-                  ) : (
-                    <span className="text-muted">{t('common.none')}</span>
-                  )}
-                </Td>
-                <Td>
-                  {node.connected && node.metrics ? (
-                    <>
-                      <p>{t('nodes.cpuValue', { value: node.metrics.cpuPercent })}</p>
-                      <p className="text-xs text-muted">
-                        {t('nodes.memoryValue', {
-                          used: formatGigabytes(node.metrics.memoryUsedBytes),
-                          total: formatGigabytes(node.metrics.memoryTotalBytes),
-                        })}
-                      </p>
-                    </>
-                  ) : (
-                    <span className="text-muted">—</span>
-                  )}
-                </Td>
-                <Td>
-                  {node.lastSeenAt ? (
-                    formatDate(node.lastSeenAt)
-                  ) : (
-                    <span className="text-muted">{t('common.never')}</span>
-                  )}
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+      {shown && shown.length > 0 && (
+        <ul aria-label={t('nodes.title')} className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
+          {shown.map((node) => (
+            <li key={node.id} className="flex min-w-0">
+              <NodeCard node={node} />
+            </li>
+          ))}
+        </ul>
       )}
       {can(me, Permission.NodeCredentialsManage) && <EnrollmentTokensSection />}
       {can(me, Permission.SettingsManage) && <PanelKeysSection />}

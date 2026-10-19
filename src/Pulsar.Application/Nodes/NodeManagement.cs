@@ -139,8 +139,26 @@ public sealed class NodeManagement(
             nodes = [.. nodes.Where(n => sees(n.Id))];
         }
 
-        return await SummarizeAsync(nodes, cancellationToken);
+        var summaries = await SummarizeAsync(nodes, cancellationToken);
+        return await visible.NodeDetailsAsync(cancellationToken) is { } detailed
+            ? [.. summaries.Select(s => detailed(new NodeId(s.Id)) ? s : NameAndState(s))]
+            : summaries;
     }
+
+    /// <summary>A node as listed to whoever may only create servers on it: its name and state, nothing of its machine.</summary>
+    private static NodeSummary NameAndState(NodeSummary node) => node with
+    {
+        Description = null,
+        PublicHost = null,
+        LastSeenAt = null,
+        Inventory = null,
+        Metrics = null,
+        PanelKeyTrust = PanelKeyTrust.Unknown,
+        EnrollmentTokenName = null,
+        CredentialFingerprint = null,
+        ConnectedWithCertificate = null,
+        AgentCanUseCertificate = null,
+    };
 
     public async Task<Result<NodeDetails>> GetAsync(NodeId id, CancellationToken cancellationToken)
     {

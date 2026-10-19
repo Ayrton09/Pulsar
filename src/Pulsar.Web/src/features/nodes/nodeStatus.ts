@@ -1,4 +1,14 @@
+import { canOnNode, Permission } from '../../lib/permissions';
+import type { CurrentUser } from '../auth/api';
 import type { NodeSummary } from './api';
+
+/**
+ * Whether the user sees the node's machine, usage and page (node.view or node.manage on it). The list also carries the
+ * nodes they may only create servers on, with their name and state alone: those are for the create dialog.
+ */
+export function seesNodeDetails(user: CurrentUser, node: Pick<NodeSummary, 'id'>): boolean {
+  return canOnNode(user, node.id, Permission.NodeView, Permission.NodeManage);
+}
 
 export type NodeState = 'online' | 'offline' | 'pending' | 'awaiting' | 'disabled';
 

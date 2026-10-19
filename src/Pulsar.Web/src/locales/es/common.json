@@ -801,11 +801,9 @@
     "create": "Agregar nodo",
     "empty": "Todavía no hay nodos.",
     "emptyManage": "Todavía no hay nodos. Agregá uno y ejecutá en la máquina Windows el comando que te da.",
-    "node": "Nodo",
     "status": "Estado",
     "machine": "Máquina",
     "usage": "Uso",
-    "lastSeen": "Última conexión",
     "name": "Nombre",
     "nameHint": "Cómo lo vas a reconocer, por ejemplo \"Buenos Aires 1\".",
     "descriptionLabel": "Descripción",
@@ -920,7 +918,20 @@
     "connectionCertificate": "Certificado de cliente (clave del nodo)",
     "connectionToken": "Solo token de sesión",
     "connectionTokenOldAgent": "Solo token de sesión: actualizá el agente para usar certificado de cliente",
-    "connectionUnknown": "Todavía no lo informó"
+    "connectionUnknown": "Todavía no lo informó",
+    "card": {
+      "cpu": "CPU",
+      "memory": "Memoria",
+      "disk": "Disco {{root}}",
+      "percent": "{{value, number(maximumFractionDigits: 1)}} %",
+      "cores_one": "{{count, number}} núcleo",
+      "cores_other": "{{count, number}} núcleos",
+      "lastSeen": "Última conexión: {{when}}",
+      "neverSeen": "Nunca se conectó",
+      "noMachine": "Todavía no se enroló ningún agente",
+      "noUsage": "Sin datos de uso mientras su agente no está conectado.",
+      "waiting": "Esperando su primer reporte de uso."
+    }
   },
   "servers": {
     "title": "Servidores",
@@ -1251,10 +1262,6 @@
     "description": "Las plantillas de juego desde las que se crean los servidores: las que trae Pulsar y las que importaron los administradores.",
     "import": "Importar una plantilla",
     "importHint": "Una plantilla decide qué ejecuta y qué descarga cada nodo. Revisá qué hace antes de importarla.",
-    "game": "Juego",
-    "key": "Clave",
-    "version": "Versión",
-    "source": "Origen",
     "sources": {
       "bundled": "Pulsar",
       "imported": "Importada"
@@ -1273,7 +1280,10 @@
     "configFiles": "Escribe",
     "ports": "Puertos",
     "variables": "Configuración",
-    "imported": "Plantilla importada."
+    "imported": "Plantilla importada.",
+    "versionValue": "versión {{version}}",
+    "createServer": "Crear servidor",
+    "createServerFor": "Crear servidor de {{name}} {{version}}"
   },
   "live": {
     "reconnecting": "Actualizaciones en vivo en pausa, reconectando…"
