@@ -6,11 +6,13 @@ using Microsoft.DevTunnels.Ssh;
 using Microsoft.DevTunnels.Ssh.Events;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Access;
+using Pulsar.Api.Auth;
 using Pulsar.Api.Sftp;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Access;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Servers;
+using Pulsar.Infrastructure.Identity;
 using Renci.SshNet;
 
 namespace Pulsar.Api.Tests.Sftp;
@@ -68,6 +70,55 @@ internal static class SftpTesting
             }
         };
         return Client(new ConnectionInfo("127.0.0.1", port, login, interactive) { Timeout = SftpApiFactory.Timeout }, fingerprint);
+    }
+
+    /// <summary>An SSH.NET client signing in with these keys only (<c>publickey</c>), offered in this order.</summary>
+    public static SftpClient KeyClient(int port, string login, params TestSshKey[] keys) =>
+        Client(new ConnectionInfo("127.0.0.1", port, login, new PrivateKeyAuthenticationMethod(login, [.. keys.Select(k => k.File)]))
+        {
+            Timeout = SftpApiFactory.Timeout,
+        }, null);
+
+    /// <summary>Turns two-factor authentication on for <paramref name="userName"/>: the authenticator key, and the recovery codes.</summary>
+    public static async Task<(string Key, IReadOnlyList<string> RecoveryCodes)> EnableTwoFactorAsync(AccessScenario scenario, string userName)
+    {
+        using var user = await scenario.SignInAsync(userName);
+        using var setup = await user.PostAsync("/api/v1/auth/two-factor/setup", new PasswordConfirmationRequest(AccessScenario.Password));
+        await AccessScenario.EnsureSuccessAsync(setup);
+        var key = (await setup.Content.ReadFromJsonAsync<TwoFactorSetupResponse>(AccessScenario.Json, Ct))!.SharedKey.Replace(" ", string.Empty, StringComparison.Ordinal);
+
+        // The step before this one: still accepted now, and the sign-in's code (the next step) comes after it.
+        using var enabled = await user.PostAsync("/api/v1/auth/two-factor/enable",
+            new EnableTwoFactorRequest(Totp.Compute(key, DateTimeOffset.UtcNow.AddSeconds(-30)), AccessScenario.Password));
+        await AccessScenario.EnsureSuccessAsync(enabled);
+        return (key, (await enabled.Content.ReadFromJsonAsync<RecoveryCodesResponse>(AccessScenario.Json, Ct))!.RecoveryCodes);
+    }
+
+    /// <summary>A browser session of a two-factor user: the password, then the code of the step <paramref name="offsetSeconds"/> from now.</summary>
+    public static async Task<PanelClient> SignInWithCodeAsync(PulsarApiFactory factory, string userName, string secret, int offsetSeconds = 0)
+    {
+        var client = await PanelClient.CreateAsync(factory);
+        try
+        {
+            using (var login = await client.LoginAsync(userName, AccessScenario.Password))
+            {
+                await AccessScenario.EnsureSuccessAsync(login);
+            }
+
+            using (var code = await client.PostAsync("/api/v1/auth/login/two-factor",
+                       new TwoFactorLoginRequest(Totp.Compute(secret, DateTimeOffset.UtcNow.AddSeconds(offsetSeconds)), null)))
+            {
+                await AccessScenario.EnsureSuccessAsync(code);
+            }
+
+            await client.GetSessionAsync();
+            return client;
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
     }
 
     /// <summary>An SSH.NET client signing in with the "password" method only.</summary>

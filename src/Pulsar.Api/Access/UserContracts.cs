@@ -22,7 +22,8 @@ public sealed record UserResponse(
     DateTimeOffset? LastLoginAt,
     IReadOnlyList<RoleReference> Roles,
     IReadOnlyList<AccessReference> Access,
-    int ApiKeys = 0);
+    int ApiKeys = 0,
+    int SshKeys = 0);
 
 public sealed record CreateUserRequest(
     [property: Required, StringLength(PulsarUser.MaxUserNameLength, MinimumLength = 1)] string UserName,

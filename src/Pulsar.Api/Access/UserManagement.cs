@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Http;
 using Pulsar.Api.Realtime;
+using Pulsar.Api.Sftp;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Access;
 using Pulsar.Application.Audit;
@@ -29,6 +30,8 @@ public sealed class UserManagement(
     IAuditLog audit,
     BrowserConnections connections,
     ApiKeys apiKeys,
+    SshKeys sshKeys,
+    SftpConnections sftp,
     TimeProvider clock)
 {
     public async Task<IReadOnlyList<UserResponse>> ListAsync(CancellationToken ct)
@@ -37,7 +40,8 @@ public sealed class UserManagement(
         var roles = await RoleReferencesAsync(null, ct);
         var access = await AccessReferencesAsync(null, ct);
         var keys = await apiKeys.CountAsync([.. all.Select(u => u.Id)], ct);
-        return [.. all.Select(u => Describe(u, roles, access, keys.GetValueOrDefault(u.Id)))];
+        var ssh = await sshKeys.CountAsync([.. all.Select(u => u.Id)], ct);
+        return [.. all.Select(u => Describe(u, roles, access, keys.GetValueOrDefault(u.Id), ssh.GetValueOrDefault(u.Id)))];
     }
 
     public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> GetAsync(UserId id, CancellationToken ct)
@@ -100,7 +104,7 @@ public sealed class UserManagement(
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
-        var response = Describe(user, roles.Select(r => (user.Id, new RoleReference(r.Id.Value, r.Name))).ToList(), [], apiKeys: 0);
+        var response = Describe(user, roles.Select(r => (user.Id, new RoleReference(r.Id.Value, r.Name))).ToList(), [], apiKeys: 0, sshKeys: 0);
         return TypedResults.Created($"/api/v1/users/{user.Id}", response);
     }
 
@@ -185,6 +189,22 @@ public sealed class UserManagement(
         }
 
         await apiKeys.RevokeAllAsync(user!.Id, ct);
+        return TypedResults.Ok(await DescribeAsync(user, ct));
+    }
+
+    /// <summary>
+    /// Deletes every SSH key of the user (after a leak, say): the SFTP sessions they signed in end. The user can add new ones.
+    /// </summary>
+    public async Task<Results<Ok<UserResponse>, ProblemHttpResult>> DeleteSshKeysAsync(UserId id, CancellationToken ct)
+    {
+        var (user, problem) = await FindManageableAsync(id, ct);
+        if (problem is not null)
+        {
+            return problem;
+        }
+
+        await sshKeys.DeleteAllAsync(user!.Id, ct);
+        sftp.EndKeys(user.Id);
         return TypedResults.Ok(await DescribeAsync(user, ct));
     }
 
@@ -489,10 +509,10 @@ public sealed class UserManagement(
 
     private async Task<UserResponse> DescribeAsync(PulsarUser user, CancellationToken ct) =>
         Describe(user, await RoleReferencesAsync(user.Id, ct), await AccessReferencesAsync(user.Id, ct),
-            (await apiKeys.CountAsync([user.Id], ct)).GetValueOrDefault(user.Id));
+            (await apiKeys.CountAsync([user.Id], ct)).GetValueOrDefault(user.Id), (await sshKeys.CountAsync([user.Id], ct)).GetValueOrDefault(user.Id));
 
     private static UserResponse Describe(PulsarUser user, List<(UserId UserId, RoleReference Role)> roles,
-        List<(UserId UserId, AccessReference Access)> access, int apiKeys) => new(
+        List<(UserId UserId, AccessReference Access)> access, int apiKeys, int sshKeys) => new(
         user.Id.Value,
         user.UserName!,
         user.DisplayName,
@@ -503,7 +523,8 @@ public sealed class UserManagement(
         user.LastLoginAt,
         [.. roles.Where(r => r.UserId == user.Id).Select(r => r.Role)],
         [.. access.Where(a => a.UserId == user.Id).Select(a => a.Access)],
-        apiKeys);
+        apiKeys,
+        sshKeys);
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

@@ -435,20 +435,6 @@ public sealed class SftpServerTests(SftpApiFactory factory) : IClassFixture<Sftp
         Assert.Equal(2, (await AuditAsync(AuditActions.Sftp.SettingsChanged)).Count);
     }
 
-    private static async Task<(string Key, IReadOnlyList<string> RecoveryCodes)> EnableTwoFactorAsync(AccessScenario scenario, string userName)
-    {
-        using var user = await scenario.SignInAsync(userName);
-        using var setup = await user.PostAsync("/api/v1/auth/two-factor/setup", new PasswordConfirmationRequest(AccessScenario.Password));
-        await AccessScenario.EnsureSuccessAsync(setup);
-        var key = (await setup.Content.ReadFromJsonAsync<TwoFactorSetupResponse>(AccessScenario.Json, Ct))!.SharedKey.Replace(" ", string.Empty, StringComparison.Ordinal);
-
-        // The step before this one: still accepted now, and the sign-in's code (the next step) comes after it.
-        using var enabled = await user.PostAsync("/api/v1/auth/two-factor/enable",
-            new EnableTwoFactorRequest(Totp.Compute(key, DateTimeOffset.UtcNow.AddSeconds(-30)), AccessScenario.Password));
-        await AccessScenario.EnsureSuccessAsync(enabled);
-        return (key, (await enabled.Content.ReadFromJsonAsync<RecoveryCodesResponse>(AccessScenario.Json, Ct))!.RecoveryCodes);
-    }
-
     /// <summary>A metadata field as text (jsonb spaces the stored JSON its own way).</summary>
     private static string? Field(AuditEntry entry, string name)
     {

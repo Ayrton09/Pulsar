@@ -23,6 +23,8 @@ public static class UserEndpoints
             m.ResetTwoFactorAsync(new UserId(id), ct)).RequirePermission(Permissions.User.Manage);
         users.MapDelete("/{id:guid}/api-keys", (Guid id, UserManagement m, CancellationToken ct) => m.RevokeApiKeysAsync(new UserId(id), ct))
             .RequirePermission(Permissions.User.Manage);
+        users.MapDelete("/{id:guid}/ssh-keys", (Guid id, UserManagement m, CancellationToken ct) => m.DeleteSshKeysAsync(new UserId(id), ct))
+            .RequirePermission(Permissions.User.Manage);
         users.MapPut("/{id:guid}/roles", (Guid id, SetUserRolesRequest request, UserManagement m, CancellationToken ct) =>
             m.SetRolesAsync(new UserId(id), request, ct)).RequirePermission(Permissions.User.Manage);
         users.MapDelete("/{id:guid}", (Guid id, UserManagement m, CancellationToken ct) => m.DeleteAsync(new UserId(id), ct))
