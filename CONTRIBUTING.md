@@ -87,7 +87,7 @@ cd src/Pulsar.Web; npm run api:generate                                         
 
 CI fails when either file is stale.
 
-End-to-end tests use Playwright (`npm run e2e`) against a published panel; set `PULSAR_E2E_POSTGRES` to a connection string for a disposable database (for example `pulsar_e2e`).
+End-to-end tests use Playwright (`npm run e2e`) against a published panel; set `PULSAR_E2E_POSTGRES` to a connection string for a disposable database (for example `pulsar_e2e`). The tests keep what they create between runs, and the database holds secrets protected by the Data Protection key ring in `artifacts/e2e-panel-keys` of the checkout that first used it: give each checkout its own database, and recreate the database if you delete `artifacts`.
 
 Running an agent against a local panel (Windows): add a node in the UI, then run its enrollment command in development mode, which needs no administrator rights and installs no service:
 
