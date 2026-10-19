@@ -63,7 +63,7 @@ export function ServersPage() {
       {all.length > 0 && (
         <>
           <div className="mb-5 flex flex-wrap items-center gap-3">
-            <label className="relative min-w-0 flex-1 sm:max-w-xs">
+            <label className="relative w-full sm:w-72">
               <span className="sr-only">{t('servers.search')}</span>
               <Search
                 aria-hidden="true"
