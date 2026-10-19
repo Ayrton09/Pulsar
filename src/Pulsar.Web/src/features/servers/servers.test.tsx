@@ -479,6 +479,10 @@ describe('server cards', () => {
     // Listening on every address: the port alone.
     await user.click(within(other).getByRole('button', { name: 'Copy the address Port 28015' }));
     expect(await navigator.clipboard.readText()).toBe('28015');
+    // A browser that refuses the clipboard (plain HTTP, no permission) says so.
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+    await user.click(within(card).getByRole('button', { name: 'Copy the address 192.168.1.50:2456' }));
+    expect(await within(card).findByRole('status')).toHaveTextContent('The browser did not allow copying.');
   });
 });
 

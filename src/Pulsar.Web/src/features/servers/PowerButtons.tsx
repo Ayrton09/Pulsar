@@ -35,6 +35,8 @@ export function PowerButtons({ server, compact = false }: { server: ServerSummar
   }
 
   const refused = command.data && command.data.status !== 'accepted' && command.data.status !== 'alreadyInState';
+  const compactLabel = (name: ServerCommand) =>
+    t('servers.commandFor', { command: t(`servers.commands.${name}`), name: server.name });
   return (
     <section
       {...(compact
@@ -49,12 +51,9 @@ export function PowerButtons({ server, compact = false }: { server: ServerSummar
             icon={icon}
             variant={variant}
             size={compact ? 'icon' : 'md'}
-            aria-label={
-              compact
-                ? t('servers.commandFor', { command: t(`servers.commands.${name}`), name: server.name })
-                : undefined
-            }
-            title={compact ? t(`servers.commands.${name}`) : undefined}
+            // Cards name the server too (a page of cards has many buttons called Start), in the tooltip as well.
+            aria-label={compact ? compactLabel(name) : undefined}
+            title={compact ? compactLabel(name) : undefined}
             disabled={!enabled || command.isPending}
             busy={command.isPending && command.variables.command === name}
             onClick={() =>

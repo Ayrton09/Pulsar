@@ -321,6 +321,9 @@ describe('live updates', () => {
     // With a memory limit the committed memory is what counts.
     expect(usage).toHaveTextContent('512 MB');
     expect(usage).toHaveTextContent('of 1 GB');
+    // Both bars are half full: 25 % of a 50 % limit, 512 MB of 1 GB.
+    const bars = [...usage.querySelectorAll<HTMLElement>('div[aria-hidden="true"] > div')];
+    expect(bars.map((bar) => bar.style.width)).toEqual(['50%', '50%']);
   });
 
   it('shows who is playing, as plain text', async () => {
