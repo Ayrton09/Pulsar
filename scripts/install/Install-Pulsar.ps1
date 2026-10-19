@@ -1192,14 +1192,21 @@ function New-PanelCertificate {
     return New-SelfSignedPanelFiles $names $pfx $cer $password $false
 }
 
+# The DNS domain this machine is joined to, or '' (a workgroup).
+function Get-MachineDomain {
+    $domain = (Get-CimInstance Win32_ComputerSystem).Domain
+    if ($domain -and $domain -ne 'WORKGROUP') { return "$domain" }
+    return ''
+}
+
 # What the panel's self-signed certificate lists (Get-PanelCertificateNames): this machine's names (localhost, its name and
 # DNS name), $extra (-HostName's), 127.0.0.1 and ::1 and this machine's private addresses now (Get-LanAddresses). Says what
 # it will list, and warns about each address a DHCP server gave this PC, which may change. Shared by the install and
 # -RenewCertificate, so that both make the certificate the same way.
 function Get-SelfSignedPanelNames([string[]] $extra) {
     $machine = @('localhost', $env:COMPUTERNAME)
-    $domain = (Get-CimInstance Win32_ComputerSystem).Domain
-    if ($domain -and $domain -ne 'WORKGROUP') { $machine += "$($env:COMPUTERNAME).$domain" }
+    $domain = Get-MachineDomain
+    if ($domain) { $machine += "$($env:COMPUTERNAME).$domain" }
     $lan = @(Get-LanAddresses)
     $names = Get-PanelCertificateNames $machine $lan $extra
     Write-Step "Creating a self-signed HTTPS certificate for $(@(Get-ListedNames $names) -join ', ')"
@@ -2190,12 +2197,16 @@ function Test-PlainItem([string] $path, [bool] $folder) {
 
 # The panel's data folder, the folder of its certificate in it and the two files New-PanelCertificate wrote there are
 # what the install made: folders and files, no links. Checked again once the panel is stopped, before the files are swapped.
-function Assert-PlainCertificateFiles($paths) {
+function Assert-PlainCertificateFiles($paths, [bool] $afterStop = $false) {
+    # Before anything changes it is a refusal; once the panel was stopped it is a failure, which the rollback undoes.
+    $code = $ExitUnsupported
+    $tail = 'Nothing was changed.'
+    if ($afterStop) { $code = $ExitFailed; $tail = 'It changed while the panel was being renewed.' }
     foreach ($folder in $PanelData, $paths.Tls) {
-        if (-not (Test-PlainItem $folder $true)) { throw (New-SetupError $ExitUnsupported "$folder is missing or is a link, not the folder the installer made. Nothing was changed.") }
+        if (-not (Test-PlainItem $folder $true)) { throw (New-SetupError $code "$folder is missing or is a link, not the folder the installer made. $tail") }
     }
     foreach ($file in $paths.Pfx, $paths.Cer) {
-        if (-not (Test-PlainItem $file $false)) { throw (New-SetupError $ExitUnsupported "$file is missing or is a link, not the file the installer made. Nothing was changed.") }
+        if (-not (Test-PlainItem $file $false)) { throw (New-SetupError $code "$file is missing or is a link, not the file the installer made. $tail") }
     }
 }
 
@@ -2264,8 +2275,10 @@ function Get-RenewableCertificate {
     # An ephemeral key: none is written to a key container (the profile's, by default) to read the certificate.
     $old = New-Object Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @([IO.File]::ReadAllBytes($paths.Pfx), $password, [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
     try {
-        if ($old.Subject -cne 'CN=localhost' -or $old.Issuer -cne $old.Subject) {
-            throw (New-SetupError $ExitCertificate "The panel's certificate is not a self-signed one like the installer's (subject $(ConvertTo-PrintableText $old.Subject), issued by $(ConvertTo-PrintableText $old.Issuer)): it comes from a certificate authority or was made by hand, and is renewed where it came from. Nothing was changed.")
+        # What every installer made: CN=localhost, self-signed, the friendly name 'Pulsar panel' (which survives the PFX). A
+        # self-signed localhost certificate of your own (a development certificate) lacks that name.
+        if ($old.Subject -cne 'CN=localhost' -or $old.Issuer -cne $old.Subject -or $old.FriendlyName -cne 'Pulsar panel') {
+            throw (New-SetupError $ExitCertificate "The panel's certificate is not a self-signed one made by the installer (subject $(ConvertTo-PrintableText $old.Subject), issued by $(ConvertTo-PrintableText $old.Issuer), friendly name '$(ConvertTo-PrintableText $old.FriendlyName)', not 'Pulsar panel'): it comes from a certificate authority or was made by hand, and is renewed where it came from. Nothing was changed.")
         }
         $names = $null
         try { $names = Get-CertificateNames $old }
@@ -2281,15 +2294,17 @@ function Get-RenewableCertificate {
 
 # The names and addresses the old certificate lists ($old, as Get-CertificateNames reads them) that the new one ($new,
 # as Get-PanelCertificateNames gives them) does not, fit to print: Stale are those that can be an address or name this PC
-# had (private IPv4 addresses, names of a single label), Other the rest (a DNS name, a public address: what -HostName
-# was given at the install, which is not remembered). Neither can be told from the other for sure.
-function Compare-CertificateNames($old, $new) {
+# had (private IPv4 addresses, names of a single label, names under the DNS domain $domain it is joined to), Other the
+# rest (a DNS name, a public address: what -HostName was given at the install, which is not remembered). Neither can be
+# told from the other for sure.
+function Compare-CertificateNames($old, $new, [string] $domain = '') {
     $stale = @()
     $other = @()
     foreach ($name in $old.Dns) {
         $trimmed = $name.TrimEnd('.')
         if (@($new.Dns | Where-Object { $_.TrimEnd('.') -ieq $trimmed }).Count -gt 0) { continue }
-        if ($trimmed.Contains('.')) { $other += ConvertTo-PrintableText $name } else { $stale += ConvertTo-PrintableText $name }
+        if ($trimmed.Contains('.') -and -not ($domain -and $trimmed.EndsWith(".$domain", [StringComparison]::OrdinalIgnoreCase))) { $other += ConvertTo-PrintableText $name }
+        else { $stale += ConvertTo-PrintableText $name }
     }
     foreach ($address in $old.Ips) {
         if (@($new.Ips | Where-Object { $_.Equals($address) }).Count -gt 0) { continue }
@@ -2430,7 +2445,7 @@ function Invoke-RenewCertificate {
     $until = $renewal.NotAfter.ToString('yyyy-MM-dd')
     Write-Step "The panel's certificate: thumbprint $($renewal.Thumbprint), valid until $until$(if ($renewal.Names) { ", made for $(@(Get-ListedNames $renewal.Names) -join ', ')" })"
     if ($renewal.Trust -ceq 'unmarked') {
-        Write-Warning 'This PC trusts the old certificate, but not as this script''s (something else trusted it, or an install made before the mark did): its trust and the new certificate''s are left as they are. If it is the panel''s, replace it in certlm.msc (Trusted Root Certification Authorities).'
+        Write-Warning 'This PC trusts the old certificate, but not as this script''s (something else trusted it, or an install made before the mark did): its trust and the new certificate''s are left as they are, so the node on this PC and its browsers stop trusting the panel until you trust the new certificate in its place (certlm.msc, Trusted Root Certification Authorities: remove the old one, import the new panel.cer, whose fingerprint is printed at the end).'
     }
     $wasRunning = (Get-Service $PanelService).Status -eq 'Running'
 
@@ -2438,10 +2453,15 @@ function Invoke-RenewCertificate {
     $names = Get-SelfSignedPanelNames $HostName
     $gone = [pscustomobject]@{ Stale = @(); Other = @() }
     if ($renewal.Names) {
-        $gone = Compare-CertificateNames $renewal.Names $names
+        $gone = Compare-CertificateNames $renewal.Names $names (Get-MachineDomain)
         if ($gone.Stale.Count -gt 0) { Write-Host "    The old certificate also listed $($gone.Stale -join ', '), which the new one does not (an address or name this PC no longer has?)." }
+        # The names given to the install with -HostName are not remembered, and a certificate that quietly lost one would
+        # break the browsers and nodes that use it, and need pinning twice: without -HostName at all, it asks for a decision.
+        if ($gone.Other.Count -gt 0 -and $HostName.Count -eq 0) {
+            throw (New-SetupError $ExitUsage "The old certificate also lists $($gone.Other -join ', '), which this PC's names and addresses do not include: they may be names you gave the install with -HostName, which are not remembered. Run this again with -HostName listing the ones that are still yours (-HostName $($gone.Other -join ', ') keeps all of them), or with another -HostName (even -HostName localhost) to leave them out on purpose. Nothing was changed.")
+        }
         if ($gone.Other.Count -gt 0) {
-            Write-Warning "The old certificate also listed $($gone.Other -join ', '), which the new one does not: the names given to the install with -HostName are not remembered. Nodes and browsers that use one of them need the certificate to list it: run this again with -HostName listing the ones that are still yours."
+            Write-Warning "The old certificate also listed $($gone.Other -join ', '), which the new one does not (you gave -HostName without them). Nodes and browsers that use one of them need the certificate to list it: run this again with them in -HostName to keep them."
         }
     }
     # Names nobody can predict, so that nothing planted in the folder (the panel's service account can write it) is written to.
@@ -2450,6 +2470,8 @@ function Invoke-RenewCertificate {
     $backup = @{ Pfx = "$($renewal.Pfx).old-$id"; Cer = "$($renewal.Cer).old-$id" }
     $current = @{ Pfx = $renewal.Pfx; Cer = $renewal.Cer }
     $progress = [pscustomobject]@{ Stopped = $false; Swaps = (New-Object Collections.Generic.List[object]); Trusted = $null }
+    $finished = $false
+    $rolledBack = $false
     try {
         try {
             $made = New-SelfSignedPanelFiles $names $staged.Pfx $staged.Cer $renewal.Password $true
@@ -2467,7 +2489,7 @@ function Invoke-RenewCertificate {
             if ($wasRunning) { Write-Step 'Stopping the panel' }
             $progress.Stopped = $true
             Stop-Panel
-            Assert-PlainCertificateFiles $renewal
+            Assert-PlainCertificateFiles $renewal $true
             foreach ($kind in 'Pfx', 'Cer') {
                 $progress.Swaps.Add(@{ Target = $current[$kind]; Backup = $backup[$kind] })
                 [IO.File]::Replace($staged[$kind], $current[$kind], $backup[$kind])
@@ -2485,6 +2507,7 @@ function Invoke-RenewCertificate {
                 Add-TrustedCertificate $renewal.Cer 'localhost' $made.Names $made.Sha256
             }
             else { Write-Host '    The old certificate was not trusted by the install on this PC: the certificate stores are left as they are.' }
+            $finished = $true
         }
         catch {
             $failure = $_.Exception.Message
@@ -2492,6 +2515,7 @@ function Invoke-RenewCertificate {
                 throw (New-SetupError $ExitFailed "$failure$([Environment]::NewLine)Nothing was changed: the panel keeps its certificate.")
             }
             $left = @(Undo-CertificateRenewal $renewal $progress $wasRunning)
+            $rolledBack = $true
             $undone = "The old certificate is back, and the panel $(if ($wasRunning) { 'runs with it' } else { 'is stopped, as it was' })."
             if ($left.Count -gt 0) {
                 $undone = "Putting the old certificate back left: $($left -join '; '). The old certificate's files are $($backup.Pfx) and $($backup.Cer) if they are still there: copy them over panel.pfx and panel.cer, and start the $PanelService service."
@@ -2500,6 +2524,11 @@ function Invoke-RenewCertificate {
         }
     }
     finally {
+        # An interrupted run (Ctrl+C, a closed window) is neither finished nor caught above: the old certificate comes back
+        # all the same, or the panel would run on a certificate no one trusts and the old key's files would be left behind.
+        if ($progress.Stopped -and -not $finished -and -not $rolledBack) {
+            $null = @(Undo-CertificateRenewal $renewal $progress $wasRunning)
+        }
         # Never swapped in: they hold the new key.
         Remove-Item -LiteralPath $staged.Pfx, $staged.Cer -Force -ErrorAction SilentlyContinue
     }

@@ -208,19 +208,22 @@ powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -RenewCertificate
 
 Add `-HostName` with the names and addresses you gave the install (`-HostName panel.example.com, 203.0.113.7`): the new
 certificate lists this PC's names and addresses as they are now, plus those, and the script does not remember what you
-gave before. It says which names the old certificate listed that the new one does not (an old address of this PC is
-expected there); if one is still yours, run it again with `-HostName`. It takes `-HostName`, `-Unattended` (the
-`PULSAR-STEP`, `PULSAR-LOG` and `PULSAR-CERTIFICATE` lines of [Unattended installs](#unattended-installs)),
-`-InstallRoot` and `-DataRoot`, and refuses every other parameter: it never installs, updates or removes a program, and
-leaves the database, the settings, the firewall and the accounts as they are. It also renews a certificate before the
-5 years it is valid for are over. What it does, in this order:
+gave before. It says which names the old certificate listed that the new one does not (an old address or name of this
+PC is expected there). If the old certificate lists a name of its own (a DNS name, a public address) and you give no
+`-HostName` at all, it stops before changing anything (exit code `2`) and tells you to repeat it with `-HostName`, or to
+give another `-HostName` (even `-HostName localhost`) to leave it out on purpose; with a `-HostName` that leaves one out,
+it only warns. It takes `-HostName`, `-Unattended` (the `PULSAR-STEP`, `PULSAR-LOG` and `PULSAR-CERTIFICATE` lines of
+[Unattended installs](#unattended-installs)), `-InstallRoot` and `-DataRoot`, and refuses every other parameter (it
+cannot be combined with `-Mode`, `-PublicIp`, `-Update` or `-Uninstall`: PowerShell refuses that command line): it never
+installs, updates or removes a program, and leaves the database, the settings, the firewall and the accounts as they
+are. It also renews a certificate before the 5 years it is valid for are over. What it does, in this order:
 
 1. **Checks, before anything changes.** The panel must be an install of this script (its service runs the program in
    `-InstallRoot`, its settings name `panel.pfx` in the panel's data folder, and open with the password they hold), and
-   its certificate a self-signed one like the installer's, not one an authority issued or you brought
-   (`-CertificatePath`: renew that where it came from). Otherwise it stops, changing nothing: exit code `2` (no panel
-   here, or another `-InstallRoot`), `3` (the certificate's folder holds files a stopped renewal left, or a link) or `6`
-   (a certificate it does not renew).
+   its certificate a self-signed one the installer made (`CN=localhost`, issued by itself, friendly name `Pulsar panel`),
+   not one an authority issued or you brought (`-CertificatePath`: renew that where it came from). Otherwise it stops,
+   changing nothing: exit code `2` (no panel here, or another `-InstallRoot`), `3` (the certificate's folder holds files
+   a stopped renewal left, or a link) or `6` (a certificate it does not renew).
 2. **Makes the new certificate the way the install does** (the same names, the same checks: not a certificate
    authority, for a web server's identity only, 5 years, made in memory), with a new key, and writes it beside the old
    one with the old files' permissions and the same PFX password, so the panel's settings need no change. It warns about
@@ -235,9 +238,9 @@ leaves the database, the settings, the firewall and the accounts as they are. It
 5. **Deletes the old files** (they hold the old key) and prints the new certificate's SHA-256 fingerprint
    (`PULSAR-CERTIFICATE`), the addresses to reach the panel by, and what the nodes need (below).
 
-If anything fails after the panel was stopped, the old certificate is put back: its files, the new trust removed, the
-panel started again and checked to answer with the old certificate, and the message says what failed (exit code `1`,
-the log has the rest). If even that fails, the message says where the old files are (`panel.pfx.old-…` and
+If anything fails after the panel was stopped, or you interrupt the script (Ctrl+C, a closed window) then, the old
+certificate is put back: its files, the new trust removed, the panel started again and checked to answer with the old
+certificate, and the message says what failed (exit code `1`, the log has the rest). If even that fails, the message says where the old files are (`panel.pfx.old-…` and
 `panel.cer.old-…` in the `tls` folder): copy them over `panel.pfx` and `panel.cer` and start the `PulsarPanel` service.
 A renewal that was stopped halfway makes the next one refuse until you delete those files (or copy them back, if the
 panel does not start).
@@ -256,8 +259,11 @@ Then:
   address. Nodes added with `-TrustCertificate` trust a copy of `panel.cer`: copy the new one to each and trust it
   there in place of the old.
 - **The node on the panel's own PC** (the all-in-one install) trusts the panel through this PC's Trusted Root store,
-  which step 4 updated, so it reconnects on its own. If it was enrolled again with a node code it is pinned too: the
-  script says so, and its `agent.json` needs the new SHA-256 as above.
+  which step 4 updated if the install had trusted the old certificate, so it reconnects on its own. If the old one was
+  trusted by someone else (not marked as the installer's), nothing was changed there and the node, like this PC's
+  browsers, trusts the panel again once you remove the old certificate and import the new `panel.cer` (`certlm.msc` →
+  Trusted Root Certification Authorities); the script says so. If the node was enrolled again with a node code it is
+  pinned too: the script says so, and its `agent.json` needs the new SHA-256 as above.
 - **Backups** made before the renewal hold the old certificate and its key: restoring one with `-RestoreFrom` brings
   them back, so make a new backup ([backup.md](backup.md)); the old ones keep the old key, so store them as safely.
 - **A Let's Encrypt public IP certificate** ([Access from the internet with your public IP](#access-from-the-internet-with-your-public-ip))
@@ -884,7 +890,7 @@ It ends with one of these exit codes (without `-Unattended`, a failure is a Powe
 |---|---|
 | `0` | Done. |
 | `1` | It failed; the message, and the log, say what failed and what was left (with `-RenewCertificate`, whether the old certificate was put back). |
-| `2` | Wrong or missing parameters, secrets or node code, a PFX its password does not open, or what it would install is installed already (`-Update` updates it; a `pulsar` database in PostgreSQL, or a `pulsar` user that is not the leftover of a failed install, [Starting over](#starting-over)); with `-RenewCertificate`, no panel installed here (or in another folder than `-InstallRoot`'s), or a parameter it does not take. Nothing was changed. |
+| `2` | Wrong or missing parameters, secrets or node code, a PFX its password does not open, or what it would install is installed already (`-Update` updates it; a `pulsar` database in PostgreSQL, or a `pulsar` user that is not the leftover of a failed install, [Starting over](#starting-over)); with `-RenewCertificate`, no panel installed here (or in another folder than `-InstallRoot`'s), a parameter it does not take, or a name of the old certificate's that `-HostName` neither keeps nor drops on purpose. Nothing was changed. |
 | `3` | This machine, the installer's folder or the account cannot install Pulsar as they are: not elevated, a 32-bit PowerShell, a folder others can change, Windows updates missing, an agent from the MSI, a port the panel would listen on taken, a PostgreSQL port, service or folder taken; with `-RenewCertificate`, the panel's certificate folder holds files a stopped renewal left, or a link. Nothing was changed (but for the .NET runtimes, when the Windows updates check fails after they were installed). |
 | `4` | A download, or the panel at a node code's address, could not be reached. Nothing was changed. |
 | `5` | A download or a given installer failed its checks (signature, SHA-512, version), or Microsoft's or postgresql.org's metadata was not as expected. Nothing was changed. |
