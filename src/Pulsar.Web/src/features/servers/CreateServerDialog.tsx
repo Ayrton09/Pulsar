@@ -23,8 +23,8 @@ const AUTOMATIC = 'auto';
 /**
  * Creating a server (docs/architecture/07): name, node and game; then the game's variables; then its ports from the
  * node's free allocations. The panel then provisions and installs it; the server page shows the progress.
+ * `templateId` starts it with that game chosen (the Games page's cards).
  */
-/** Creates a server; `templateId` starts it with that game chosen (the Games page's cards). */
 export function CreateServerDialog({
   onClose,
   templateId: initialTemplate,

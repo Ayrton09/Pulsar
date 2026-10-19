@@ -171,6 +171,56 @@ describe('nodes page', () => {
     expect(screen.getByRole('link', { name: 'Nodes' })).toBeInTheDocument();
   });
 
+  it('picks the disk with the game servers, and shows usage only while a node is online and reporting', async () => {
+    const backupsFirst = {
+      ...online,
+      metrics: {
+        ...(online.metrics as NonNullable<Schemas['NodeSummary']['metrics']>),
+        disks: [
+          { root: 'E:\\', totalBytes: 100 * 1024 ** 3, freeBytes: 90 * 1024 ** 3, uses: ['backups'] },
+          { root: 'D:\\', totalBytes: 1000 * 1024 ** 3, freeBytes: 250 * 1024 ** 3, uses: ['servers'] },
+        ],
+      },
+    };
+    const empty = {
+      ...online,
+      id: '0192f1a0-0000-7000-8000-0000000000b1',
+      name: 'Empty',
+      metrics: {
+        ...(online.metrics as NonNullable<Schemas['NodeSummary']['metrics']>),
+        memoryUsedBytes: 0,
+        memoryTotalBytes: 0,
+        disks: null,
+      },
+    };
+    const disabled = {
+      ...online,
+      id: '0192f1a0-0000-7000-8000-0000000000b2',
+      name: 'Off duty',
+      status: 'disabled' as const,
+    };
+    const fresh = { ...online, id: '0192f1a0-0000-7000-8000-0000000000b3', name: 'Fresh', metrics: null };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/nodes': () => json([backupsFirst, empty, disabled, fresh]),
+    });
+
+    renderAt('/nodes');
+
+    const cards = within(await screen.findByRole('list', { name: 'Nodes' })).getAllByRole('listitem');
+    const widths = (card: HTMLElement) =>
+      [...card.querySelectorAll<HTMLElement>('div[aria-hidden="true"] > div')].map((bar) => bar.style.width);
+    expect(cards[0]).toHaveTextContent('Disk D:');
+    expect(cards[0]).not.toHaveTextContent('Disk E:');
+    // Nothing reported for memory and no disks: empty bars, no disk row.
+    expect(widths(cards[1] as HTMLElement)).toEqual(['12.5%', '0%']);
+    expect(cards[1]).not.toHaveTextContent('Disk');
+    // A disabled node is not online, even while its agent is still connected.
+    expect(cards[2]).toHaveTextContent('No usage while its agent is not connected.');
+    expect(widths(cards[2] as HTMLElement)).toEqual([]);
+    expect(cards[3]).toHaveTextContent('Waiting for its first usage report.');
+  });
+
   it('creates a node and shows its one-time enrollment command', async () => {
     let body: unknown;
     fakeApi({

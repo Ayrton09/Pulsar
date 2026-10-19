@@ -44,7 +44,7 @@ export function GameCard({ template, onCreate }: { template: TemplateView; onCre
               size="sm"
               variant="secondary"
               icon={Plus}
-              aria-label={t('templates.createServerFor', { name: template.name })}
+              aria-label={t('templates.createServerFor', { name: template.name, version: template.version })}
               onClick={onCreate}
             >
               {t('templates.createServer')}

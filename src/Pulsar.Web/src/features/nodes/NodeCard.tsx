@@ -81,7 +81,8 @@ export function NodeCard({ node }: { node: NodeSummary }) {
           )}
         </dl>
       ) : (
-        <p className="text-sm text-muted">{t('nodes.card.noUsage')}</p>
+        // Just connected, its agent has not reported yet (the first report comes within seconds).
+        <p className="text-sm text-muted">{online ? t('nodes.card.waiting') : t('nodes.card.noUsage')}</p>
       )}
       <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border pt-3 text-xs text-muted">
         <span className="min-w-0 truncate">

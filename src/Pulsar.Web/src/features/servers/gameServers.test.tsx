@@ -711,10 +711,27 @@ describe('game templates', () => {
       'src',
       'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/240/header.jpg',
     );
-    await user.click(within(card).getByRole('button', { name: 'Create server for Counter-Strike: Source' }));
+    await user.click(within(card).getByRole('button', { name: 'Create server for Counter-Strike: Source 1.0.0' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Create server' });
     expect(within(dialog).getByLabelText(/^Game/)).toHaveValue(templateId);
+  });
+
+  it('offers server creation to whoever may create servers on one node only', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...adminUser,
+        permissions: ['template.view'],
+        nodePermissions: [{ id: nodeId, permissions: ['server.create'] }],
+      }),
+      'GET /api/v1/templates': () => json([template]),
+    });
+    renderAt('/templates');
+
+    const card = within(await screen.findByRole('list', { name: 'Games' })).getByRole('listitem');
+    expect(
+      within(card).getByRole('button', { name: 'Create server for Counter-Strike: Source 1.0.0' }),
+    ).toBeInTheDocument();
   });
 
   it('offers no server creation to whoever may only view the games', async () => {

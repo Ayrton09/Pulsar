@@ -801,11 +801,9 @@
     "create": "Add node",
     "empty": "There are no nodes yet.",
     "emptyManage": "There are no nodes yet. Add one, then run the command it gives you on the Windows machine.",
-    "node": "Node",
     "status": "Status",
     "machine": "Machine",
     "usage": "Usage",
-    "lastSeen": "Last seen",
     "name": "Name",
     "nameHint": "How you will recognize it, e.g. \"Buenos Aires 1\".",
     "descriptionLabel": "Description",
@@ -931,7 +929,8 @@
       "lastSeen": "Last seen {{when}}",
       "neverSeen": "Never connected",
       "noMachine": "No agent has enrolled yet",
-      "noUsage": "No usage while its agent is not connected."
+      "noUsage": "No usage while its agent is not connected.",
+      "waiting": "Waiting for its first usage report."
     }
   },
   "servers": {
@@ -1263,10 +1262,6 @@
     "description": "The game templates servers are created from: the ones shipped with Pulsar and the ones administrators imported.",
     "import": "Import a template",
     "importHint": "A template decides what every node runs and downloads. Check what it does before importing it.",
-    "game": "Game",
-    "key": "Key",
-    "version": "Version",
-    "source": "Source",
     "sources": {
       "bundled": "Pulsar",
       "imported": "Imported"
@@ -1288,7 +1283,7 @@
     "imported": "Template imported.",
     "versionValue": "version {{version}}",
     "createServer": "Create server",
-    "createServerFor": "Create server for {{name}}"
+    "createServerFor": "Create server for {{name}} {{version}}"
   },
   "live": {
     "reconnecting": "Live updates paused, reconnecting…"

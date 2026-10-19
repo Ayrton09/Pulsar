@@ -801,11 +801,9 @@
     "create": "Agregar nodo",
     "empty": "Todavía no hay nodos.",
     "emptyManage": "Todavía no hay nodos. Agregá uno y ejecutá en la máquina Windows el comando que te da.",
-    "node": "Nodo",
     "status": "Estado",
     "machine": "Máquina",
     "usage": "Uso",
-    "lastSeen": "Última conexión",
     "name": "Nombre",
     "nameHint": "Cómo lo vas a reconocer, por ejemplo \"Buenos Aires 1\".",
     "descriptionLabel": "Descripción",
@@ -931,7 +929,8 @@
       "lastSeen": "Última conexión: {{when}}",
       "neverSeen": "Nunca se conectó",
       "noMachine": "Todavía no se enroló ningún agente",
-      "noUsage": "Sin datos de uso mientras su agente no está conectado."
+      "noUsage": "Sin datos de uso mientras su agente no está conectado.",
+      "waiting": "Esperando su primer reporte de uso."
     }
   },
   "servers": {
@@ -1263,10 +1262,6 @@
     "description": "Las plantillas de juego desde las que se crean los servidores: las que trae Pulsar y las que importaron los administradores.",
     "import": "Importar una plantilla",
     "importHint": "Una plantilla decide qué ejecuta y qué descarga cada nodo. Revisá qué hace antes de importarla.",
-    "game": "Juego",
-    "key": "Clave",
-    "version": "Versión",
-    "source": "Origen",
     "sources": {
       "bundled": "Pulsar",
       "imported": "Importada"
@@ -1288,7 +1283,7 @@
     "imported": "Plantilla importada.",
     "versionValue": "versión {{version}}",
     "createServer": "Crear servidor",
-    "createServerFor": "Crear servidor de {{name}}"
+    "createServerFor": "Crear servidor de {{name}} {{version}}"
   },
   "live": {
     "reconnecting": "Actualizaciones en vivo en pausa, reconectando…"
