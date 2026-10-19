@@ -71,7 +71,12 @@ $installParts = Get-ScriptParts $installScript (@($shared) + @('Read-DerElement'
         'New-Secret', 'New-PanelDatabase', 'Remove-PanelDatabase', 'Undo-PanelInstall', 'Find-PostgresInstallerUrl', 'Get-SignerChain', 'Get-AgentMissingRuntimes',
         # The panel's self-signed certificate: the names and addresses it lists, made in memory.
         'New-PanelCertificate', 'New-SelfSignedPanelCertificate', 'Get-PanelCertificateNames', 'ConvertTo-CertificateAddress', 'Test-PrivateAddress',
-        'Get-LanAddresses', 'Select-LanAddresses', 'Get-DhcpAddresses', 'Format-CertificateLine', 'Format-Fingerprint', 'Write-RemoteAccess', 'Assert-SameCertificate')) `
+        'Get-LanAddresses', 'Select-LanAddresses', 'Get-DhcpAddresses', 'Format-CertificateLine', 'Format-Fingerprint', 'Write-RemoteAccess', 'Assert-SameCertificate',
+        'Get-SelfSignedPanelNames', 'New-SelfSignedPanelFiles', 'Write-ExclusiveFile', 'Assert-HostNames', 'Read-Certificate', 'Test-SamePath',
+        # -RenewCertificate: the checks before anything changes, the swap, the rollback and what it tells the administrator.
+        'Assert-RenewArguments', 'Test-PlainItem', 'Assert-PlainCertificateFiles', 'Get-RenewableCertificate', 'Compare-CertificateNames', 'Get-FileAccess',
+        'Set-SameAccess', 'Assert-NewCertificateFiles', 'Stop-Panel', 'Confirm-PanelCertificate', 'Undo-CertificateRenewal', 'Get-LocalNodePin', 'Write-RepinSteps',
+        'Invoke-RenewCertificate', 'Get-InstallerTrust', 'Remove-InstallerTrust')) `
     (@($sharedVariables) + @('TrustedName', 'ServerAuthentication', 'ExitFailed', 'ExitUsage', 'ExitUnsupported', 'ExitOffline', 'ExitUntrusted',
         'ExitCertificate', 'ExitRestart', 'NodeCodePrefix', 'NodeCodeMaxLength', 'NodeCodeMaxUrlLength', 'ReusableTokenPrefix', 'JsonStringPattern',
         'DotNetChannel', 'DotNetHosts', 'DotNetFrameworks', 'CodeSigning', 'PostgresDownloadsUrl', 'PostgresSigner', 'DotNetSigner', 'StepPlans',
@@ -417,14 +422,19 @@ try {
     Check "self-signed certificate: a node's -TrustCertificate refuses one listing a public address but its host's" ((Assert-Cert $built 'PANEL') -match '203\.0\.113\.7.*TrustCertificateWithOtherNames' -and $null -eq (Assert-Cert $built '203.0.113.7' @('2001:db8::7', 'panel.example.com', 'PANEL.corp.example', '192.168.0.54', '10.0.0.7'))) "$(Assert-Cert $built 'PANEL')"
 }
 finally { $built.Dispose() }
-$certificateFunctions = @($parsed.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in 'New-PanelCertificate', 'New-SelfSignedPanelCertificate' }, $true))
+$certificateFunctions = @($parsed.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in 'New-PanelCertificate', 'Get-SelfSignedPanelNames', 'New-SelfSignedPanelFiles', 'New-SelfSignedPanelCertificate' }, $true))
 $storeUses = @($certificateFunctions | Where-Object { $_.Extent.Text -match '(?i)Cert:\\|New-SelfSignedCertificate|Export-PfxCertificate|Export-Certificate|X509Store|CngKey\]::Create|PersistKeySet|MachineKeySet' })
-Check 'self-signed certificate: made without a certificate store or a stored key' ($certificateFunctions.Count -eq 2 -and $storeUses.Count -eq 0) (@($storeUses | ForEach-Object Name) -join ', ')
+Check 'self-signed certificate: made without a certificate store or a stored key' ($certificateFunctions.Count -eq 4 -and $storeUses.Count -eq 0) (@($storeUses | ForEach-Object Name) -join ', ')
 # -CertificatePath's PFX is opened with an ephemeral key (none written to a key container) and disposed.
 $panelCertificateText = @($certificateFunctions | Where-Object Name -eq 'New-PanelCertificate')[0].Extent.Text
 $pfxOpens = @([regex]::Matches($panelCertificateText, 'X509Certificate2\b[^\r\n]*') | ForEach-Object { $_.Value })
 Check '-CertificatePath: its PFX is opened with EphemeralKeySet, and disposed' ($pfxOpens.Count -eq 1 -and $pfxOpens[0] -match 'EphemeralKeySet' -and
-    ([regex]::Matches($panelCertificateText, '\$certificate\.Dispose\(\)')).Count -eq 2) ($pfxOpens -join ' | ')
+    ([regex]::Matches($panelCertificateText, '\$certificate\.Dispose\(\)')).Count -eq 1) ($pfxOpens -join ' | ')
+# The install and -RenewCertificate make the certificate with the same functions (the renewal's own code only decides where it is written).
+$renewalText = @($parsed.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-RenewCertificate' }, $true))[0].Extent.Text
+Check 'renew: the new certificate is made by the install''s own functions (names, then files), exclusively' (
+    $panelCertificateText -match 'Get-SelfSignedPanelNames \$HostName\s+\$password = New-Secret 32\s+Register-Secret \$password\s+return New-SelfSignedPanelFiles \$names \$pfx \$cer \$password \$false' -and
+    $renewalText -match 'Get-SelfSignedPanelNames \$HostName' -and $renewalText -match 'New-SelfSignedPanelFiles \$names \$staged\.Pfx \$staged\.Cer \$renewal\.Password \$true')
 
 # The install's own: files in the panel's private folder (here a scratch one), what the summary prints.
 $tlsRoot = Join-Path $Scratch ("pulsar-script-tests-" + [Guid]::NewGuid().ToString('N'))
@@ -853,7 +863,8 @@ $storeWriters = @($installAst.FindAll({ param($node) $node -is [Management.Autom
             $node -is [Management.Automation.Language.StringConstantExpressionAst] -or $node -is [Management.Automation.Language.ExpandableStringExpressionAst] }, $true) |
         Where-Object { $_.Extent.Text -match 'X509Store|Import-Certificate|Import-PfxCertificate|certutil|Cert:\\LocalMachine\\(Root|CA|TrustedPeople|AuthRoot|TrustedPublisher)' } |
         ForEach-Object { $function = $_; while ($function -and $function -isnot [Management.Automation.Language.FunctionDefinitionAst]) { $function = $function.Parent }; if ($function) { $function.Name } else { '(script)' } } | Select-Object -Unique)
-Check 'node code: only Add-TrustedCertificate and Remove-TrustedCertificates touch the trusted roots' (@($storeWriters | Where-Object { $_ -notin 'Add-TrustedCertificate', 'Remove-TrustedCertificates' }).Count -eq 0) ($storeWriters -join ', ')
+Check 'node code: only Add-TrustedCertificate, Remove-TrustedCertificates and the two the renewal uses (Get-InstallerTrust, Remove-InstallerTrust) touch the trusted roots' (
+    @($storeWriters | Where-Object { $_ -notin 'Add-TrustedCertificate', 'Remove-TrustedCertificates', 'Get-InstallerTrust', 'Remove-InstallerTrust' }).Count -eq 0) ($storeWriters -join ', ')
 $trustCalls = @($installAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -like 'Add-TrustedCertificate*' }, $true))
 $trustConditions = @(foreach ($trustCall in $trustCalls) {
         $clause = $trustCall.Parent
@@ -861,8 +872,8 @@ $trustConditions = @(foreach ($trustCall in $trustCalls) {
         if (-not $clause) { '(none)'; continue }
         @($clause.Clauses | Where-Object { $_.Item2.Extent.StartOffset -le $trustCall.Extent.StartOffset -and $_.Item2.Extent.EndOffset -ge $trustCall.Extent.EndOffset } | ForEach-Object { $_.Item1.Extent.Text }) -join ''
     })
-Check 'node code: the certificate stores are written for -TrustCertificate and the all-in-one panel''s own certificate only' (
-    $trustCalls.Count -eq 2 -and @($trustConditions | Where-Object { $_ -notin '$TrustCertificate', '$certificate.SelfSigned' }).Count -eq 0 -and
+Check 'node code: the certificate stores are written for -TrustCertificate, the all-in-one panel''s own certificate and the renewal of one this script trusted only' (
+    $trustCalls.Count -eq 3 -and @($trustConditions | Where-Object { $_ -notin '$TrustCertificate', '$certificate.SelfSigned', '$renewal.Trust -ceq ''marked''' }).Count -eq 0 -and
     @($trustCalls | Where-Object { $_.GetCommandName() -cne 'Add-TrustedCertificate' }).Count -eq 0) ($trustConditions -join ' | ')
 $codeFunctions = @('ConvertFrom-NodeCode', 'Read-PanelCertificate', 'Resolve-NodeCertificate', 'Assert-PinnableCertificate', 'Resolve-AgentInputs', 'Install-Agent', 'Get-EnrollArguments')
 $codeTexts = @($installAst.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in $codeFunctions }, $true) | ForEach-Object { $_.Extent.Text })
@@ -1699,6 +1710,429 @@ $used = @(@($allIss | ForEach-Object { [regex]::Matches($_, "CustomMessage\('(\w
 $untranslated = @($used | Where-Object { -not $defined["en.$_"] -or -not $defined["es.$_"] })
 $onlyOne = @($defined.Keys | Where-Object { $other = if ($_ -like 'en.*') { 'es.' + $_.Substring(3) } else { 'en.' + $_.Substring(3) }; -not $defined[$other] })
 Check 'setups: every message the code uses is defined in English and Spanish' ($used.Count -gt 20 -and $untranslated.Count -eq 0 -and $onlyOne.Count -eq 0) "missing: $($untranslated -join ', '); one language only: $($onlyOne -join ', ')"
+
+# --- -RenewCertificate (Phase 18): a new certificate for an address that changed ----------------------------------------
+# Its parameters, what it checks before anything changes, the swap with the old files kept, the rollback, and what it tells
+# the administrator. Folders under -Scratch; no service, certificate store, firewall rule or account of this PC is touched
+# (they are mocked here: the functions that start and stop the panel, trust a certificate and probe its ports).
+
+# Parameter sets, as PowerShell reads the script's param block: -RenewCertificate cannot be combined with another mode.
+$renewCommand = Get-Command -Name (Resolve-Path $installScript).ProviderPath
+$renewSets = @{}
+foreach ($set in $renewCommand.ParameterSets) { $renewSets[$set.Name] = @($set.Parameters | ForEach-Object Name) }
+$renewMandatory = @(@($renewCommand.ParameterSets | Where-Object Name -eq 'RenewCertificate')[0].Parameters | Where-Object IsMandatory | ForEach-Object Name)
+Check 'renew: -RenewCertificate is mandatory in a parameter set of its own, and the install stays the default' (
+    (($renewMandatory -join ',') -ceq 'RenewCertificate') -and @($renewSets.Keys | Where-Object { $renewSets[$_] -contains 'RenewCertificate' }).Count -eq 1 -and
+    @($renewCommand.ParameterSets | Where-Object IsDefault).Name -ceq 'Install')
+foreach ($mode in 'Update', 'Uninstall', 'RenewCertificate') {
+    $holding = @($renewSets.Keys | Where-Object { $renewSets[$_] -contains $mode })
+    Check "renew: -$mode is in one parameter set, its own, so no other mode combines with it" ($holding.Count -eq 1 -and $holding[0] -ceq $mode) ($holding -join ',')
+}
+foreach ($installOnly in 'Mode', 'PublicIp') {
+    Check "renew: -$installOnly (an install's) is in no set with -RenewCertificate, -Update or -Uninstall" (@($renewSets.Keys | Where-Object { $renewSets[$_] -contains $installOnly }).Count -eq 1 -and
+        $renewSets['Install'] -contains $installOnly)
+}
+Check 'renew: -HostName, -Unattended, -InstallRoot and -DataRoot work with it' (@('HostName', 'Unattended', 'InstallRoot', 'DataRoot' | Where-Object { $renewSets['RenewCertificate'] -notcontains $_ }).Count -eq 0)
+$renewSetupCode = (Get-ScriptParts $installScript @('Get-StepPlan'))['Get-StepPlan']
+Check 'renew: its progress steps are the plan''s own (check, certificate, panel, trust)' (((@($StepPlans['RenewCertificate'])) -join ',') -ceq 'check,certificate,panel,trust' -and
+    $renewSetupCode -match "if \(\`$RenewCertificate\) \{ return \`$StepPlans\['RenewCertificate'\] \}")
+
+# Everything else on the command line is refused, not ignored.
+function Test-RenewArguments([string[]] $given) {
+    $SetupParameters = @{}
+    foreach ($name in $given) { $SetupParameters[$name] = $true }
+    Get-Caught { Assert-RenewArguments }
+}
+Check 'renew: -HostName, -Unattended, the folders and the common parameters are taken' ($null -eq (Test-RenewArguments @('RenewCertificate', 'HostName', 'Unattended', 'InstallRoot', 'DataRoot', 'Verbose', 'ErrorAction', 'InformationAction')))
+foreach ($parameter in 'Port', 'CertificatePath', 'CertificatePassword', 'Mode', 'RestoreFrom', 'AgentsPort', 'SecretsFile', 'NodeCode', 'TrustCertificate', 'NoFirewall', 'PublicIp', 'ConnectionString') {
+    $caught = Test-RenewArguments @('RenewCertificate', 'HostName', $parameter)
+    Check "renew: -$parameter is refused (exit code 2, nothing changed)" ($null -ne $caught -and (Get-SetupExitCode $caught) -eq 2 -and $caught.Exception.Message -match [regex]::Escape("-$parameter") -and $caught.Exception.Message -match 'Nothing was changed') "$caught"
+}
+
+# The names the old certificate lists and the new one does not.
+function Names([string[]] $dns, [string[]] $ips) { [pscustomobject]@{ Dns = $dns; Ips = @($ips | ForEach-Object { [Net.IPAddress]::Parse($_) }); Others = @() } }
+$gone = Compare-CertificateNames (Names @('localhost', 'PANEL', 'OLDBOX', 'panel.example.com') @('127.0.0.1', '::1', '192.168.0.54', '10.0.0.7', '203.0.113.7', '2001:db8::7')) (Names @('localhost', 'PANEL', 'NEWBOX') @('127.0.0.1', '::1', '10.0.0.7', '192.168.0.77'))
+Check 'renew names: an address or name this PC may have had (a private address, a single label) is stale; a DNS name, a public address are not' (
+    ($gone.Stale -join ',') -ceq 'OLDBOX,192.168.0.54' -and ($gone.Other -join ',') -ceq 'panel.example.com,203.0.113.7,2001:db8::7') "$($gone.Stale -join ',') | $($gone.Other -join ',')"
+$gone = Compare-CertificateNames (Names @('Panel', 'panel.example.com.') @('127.0.0.1')) (Names @('PANEL', 'PANEL.EXAMPLE.COM') @('127.0.0.1'))
+Check 'renew names: compared ignoring case and a trailing dot; nothing gone is nothing said' ($gone.Stale.Count -eq 0 -and $gone.Other.Count -eq 0)
+$gone = Compare-CertificateNames (Names @("evil$esc[1A.example.com") @()) (Names @() @())
+Check 'renew names: what the old certificate lists is printed without control characters' (@($gone.Other).Count -eq 1 -and $gone.Other[0] -notmatch '[\x00-\x1F\x7F]')
+
+# Whose trust the old certificate has (the mark Add-TrustedCertificate gives), and what is removed.
+$trustLog = New-Object Collections.Generic.List[string]
+function Test-InstallerTrust([string] $state, [scriptblock] $block) {
+    & {
+        function Test-Path { param($LiteralPath) $state -ne 'none' }
+        function Get-Item { param($LiteralPath) [pscustomobject]@{ FriendlyName = $(if ($state -eq 'marked') { $TrustedName } elseif ($state -eq 'unmarked') { 'Some friendly name' } else { '' }) } }
+        function Remove-Item { param($LiteralPath) $trustLog.Add($LiteralPath) }
+        & $block
+    }
+}
+$thumbprint = 'ABCDEF0123456789ABCDEF0123456789ABCDEF01'
+foreach ($state in 'none', 'marked', 'unmarked') {
+    Check "renew trust: a root certificate that is $state is $state" ((Test-InstallerTrust $state { Get-InstallerTrust $thumbprint }) -ceq $state)
+}
+$trustLog.Clear()
+Test-InstallerTrust 'marked' { Remove-InstallerTrust $thumbprint }
+Check 'renew trust: the one this script trusted (marked) is removed, by its thumbprint' ($trustLog.Count -eq 1 -and $trustLog[0] -ceq "Cert:\LocalMachine\Root\$thumbprint")
+$trustLog.Clear()
+Test-InstallerTrust 'unmarked' { Remove-InstallerTrust $thumbprint }
+Test-InstallerTrust 'none' { Remove-InstallerTrust $thumbprint }
+Test-InstallerTrust 'none' { Remove-InstallerTrust $thumbprint $true }
+Check 'renew trust: one someone else trusted, or none, is never removed' ($trustLog.Count -eq 0)
+Test-InstallerTrust 'unmarked' { Remove-InstallerTrust $thumbprint $true }
+Check 'renew trust: one this run has just added and not marked yet is removed when it is undone' ($trustLog.Count -eq 1)
+foreach ($bad in '*', '', "$thumbprint*", 'Cert:\LocalMachine\Root\*', ('A' * 39)) {
+    Check "renew trust: '$bad' is not a thumbprint, so nothing is looked up or removed" ($null -ne (Get-Thrown { Test-InstallerTrust 'marked' { Get-InstallerTrust $bad } }) -and $null -ne (Get-Thrown { Test-InstallerTrust 'marked' { Remove-InstallerTrust $bad } }))
+}
+
+# A panel installed in a scratch folder: its service's program, its settings, its certificate (as -Mode AllInOne made it).
+$rnRoot = Join-Path $Scratch ('pulsar-renew-tests-' + [Guid]::NewGuid().ToString('N'))
+$null = New-Item -ItemType Directory $rnRoot
+$rnPassword = 'the-old-pfx-password-0123456789'
+$rnAgentLock = $null
+try {
+    function New-IssuedPfx([string] $path, [string] $password) {
+        $authorityKey = [Security.Cryptography.RSACng]::new(2048)
+        $leafKey = [Security.Cryptography.RSACng]::new(2048)
+        try {
+            $authorityRequest = [Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=Test Authority', $authorityKey, [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+            $authorityRequest.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true, $false, 0, $true))
+            $authority = $authorityRequest.CreateSelfSigned([DateTimeOffset]::Now.AddDays(-1), [DateTimeOffset]::Now.AddDays(30))
+            $leafRequest = [Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=localhost', $leafKey, [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+            $issued = $leafRequest.Create($authority, [DateTimeOffset]::Now.AddDays(-1), [DateTimeOffset]::Now.AddDays(10), [byte[]](1, 2, 3, 4, 5, 6, 7, 8))
+            $withKey = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::CopyWithPrivateKey($issued, $leafKey)
+            [IO.File]::WriteAllBytes($path, $withKey.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx, $password))
+        }
+        finally { $authorityKey.Dispose(); $leafKey.Dispose() }
+    }
+    # -Subject: another subject than the install's; -Issued: a certificate an authority issued; -Settings: the settings' text,
+    # whatever it is; -Password: the one in the settings; -CertificateFile: where the settings say the PFX is.
+    function New-RenewInstall([string] $name, [hashtable] $options = @{}) {
+        $base = Join-Path $rnRoot $name
+        $panelDir = Join-Path $base 'pf\Panel'
+        $panelData = Join-Path $base 'data\Panel'
+        $tls = Join-Path $panelData 'tls'
+        $null = New-Item -ItemType Directory -Force $panelDir, $tls, (Join-Path $base 'AgentData\config')
+        Set-Content -LiteralPath (Join-Path $panelDir 'Pulsar.Api.exe') 'x'
+        $pfx = Join-Path $tls 'panel.pfx'
+        $cer = Join-Path $tls 'panel.cer'
+        if ($options['Issued']) { New-IssuedPfx $pfx $rnPassword; $certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @([IO.File]::ReadAllBytes($pfx), $rnPassword, [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet) }
+        else {
+            $listed = Get-PanelCertificateNames @('localhost', 'OLDBOX') @([Net.IPAddress]::Parse('192.168.0.54'), [Net.IPAddress]::Parse('10.0.0.7')) @('panel.example.com')
+            $certificate = New-SelfSignedPanelCertificate $listed
+            if ($options['Subject']) {
+                $rsa = [Security.Cryptography.RSACng]::new(2048)
+                $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new($options['Subject'], $rsa, [Security.Cryptography.HashAlgorithmName]::SHA256, [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+                $certificate = $request.CreateSelfSigned([DateTimeOffset]::Now.AddDays(-1), [DateTimeOffset]::Now.AddDays(30))
+            }
+            [IO.File]::WriteAllBytes($pfx, $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx, $rnPassword))
+        }
+        [IO.File]::WriteAllBytes($cer, $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+        $thumbprint = $certificate.Thumbprint
+        $sha256 = Get-CertificateHash $certificate
+        $certificate.Dispose()
+        $password = $rnPassword
+        if ($options.ContainsKey('Password')) { $password = $options['Password'] }
+        $file = $pfx
+        if ($options['CertificateFile']) { $file = $options['CertificateFile'] }
+        $endpoints = @{ Https = @{ Url = 'https://*:8443'; Certificate = @{ Path = $file; Password = $password } } }
+        if ($options['Agents']) { $endpoints.Agents = $options['Agents'] }
+        $config = Join-Path $panelDir 'appsettings.Production.json'
+        if ($options.ContainsKey('Settings')) { Set-Content -LiteralPath $config -Value $options['Settings'] -Encoding UTF8 }
+        elseif (-not $options['NoSettings']) {
+            @{ ConnectionStrings = @{ Pulsar = 'Host=localhost;Database=pulsar;Username=pulsar;Password=a-database-password' }; Kestrel = @{ Endpoints = $endpoints } } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $config -Encoding UTF8
+        }
+        [pscustomobject]@{ Base = $base; PanelDir = $panelDir; PanelData = $panelData; Tls = $tls; Pfx = $pfx; Cer = $cer; Config = $config; Exe = (Join-Path $panelDir 'Pulsar.Api.exe')
+            Thumbprint = $thumbprint; Sha256 = $sha256 }
+    }
+
+    # Runs Invoke-RenewCertificate (or Get-RenewableCertificate with -Only) on an install, with the panel's service, the trust
+    # and the probes of its ports mocked, and keeps what it printed ($rnOutput), the mocked calls ($rnCalls) and its error ($rnError).
+    function Invoke-Renewal($install, [hashtable] $options = @{}, [switch] $Only) {
+        $script:rnCalls = New-Object Collections.Generic.List[string]
+        $script:rnError = $null
+        $script:rnResult = $null
+        $script:rnOutput = @(& {
+                $WarningPreference = 'Continue'
+                $PanelService = 'PulsarPanel'; $AgentService = 'PulsarAgent'; $PanelDir = $install.PanelDir; $PanelData = $install.PanelData
+                $PanelConfig = $install.Config; $AgentDir = Join-Path $install.Base 'Agent'; $AgentData = Join-Path $install.Base 'AgentData'
+                $HostName = @()
+                if ($options.ContainsKey('HostName')) { $HostName = @($options['HostName']) }
+                $Unattended = [bool]$options['Unattended']
+                $SetupParameters = @{ RenewCertificate = $true }
+                $StepPlan = $StepPlans['RenewCertificate']
+                $trustState = 'marked'
+                if ($options.ContainsKey('Trust')) { $trustState = $options['Trust'] }
+                $program = "`"$($install.Exe)`""
+                if ($options['Program']) { $program = $options['Program'] }
+                function Get-CimInstance {
+                    if ($args[0] -eq 'Win32_ComputerSystem') { return [pscustomobject]@{ Domain = 'WORKGROUP' } }
+                    if ($options['NoService']) { return $null }
+                    [pscustomobject]@{ PathName = $program }
+                }
+                function Get-LanAddresses { [Net.IPAddress]::Parse('192.168.0.77'); [Net.IPAddress]::Parse('10.0.0.7') }
+                function Get-DhcpAddresses { '192.168.0.77' }
+                function Get-Service { [pscustomobject]@{ Status = $(if ($options['Stopped']) { 'Stopped' } else { 'Running' }) } }
+                function Get-InstallerTrust([string] $thumbprint) { if ($thumbprint -ceq $install.Thumbprint) { $trustState } else { 'none' } }
+                function Remove-InstallerTrust([string] $thumbprint, [bool] $added = $false) { $script:rnCalls.Add("untrust $thumbprint $added") }
+                function Add-TrustedCertificate([string] $cer, [string] $hostName, [string[]] $panelNames = @(), [string] $sha256 = '') {
+                    $script:rnCalls.Add("trust $cer $hostName $sha256")
+                    if ($options['TrustFails']) { throw 'The certificate store refused it (a test).' }
+                }
+                function Stop-Panel { $script:rnCalls.Add('stop') }
+                function Start-Panel { $script:rnCalls.Add('start') }
+                function Confirm-PanelCertificate([int] $port, [int] $agentsPort, $certificate) {
+                    $script:rnCalls.Add("confirm $($certificate.Thumbprint) $port $agentsPort")
+                    $times = @($script:rnCalls | Where-Object { $_ -like 'confirm *' }).Count
+                    if ($options['ConfirmFails'] -ceq 'always' -or ($options['ConfirmFails'] -ceq 'first' -and $times -eq 1)) { throw 'The panel did not answer on port 8443 (a test).' }
+                }
+                function Get-LocalNodePin { $options['LocalPin'] }
+                function Write-Step([string] $message) { Write-Host "==> $message" }
+                function Write-SetupStep([string] $key, [string] $text) { Write-Host (Format-SetupStep $key $text $StepPlan) }
+                if ($options['StagedCheckFails']) { function Assert-NewCertificateFiles { throw 'The new certificate''s PFX cannot be the panel''s: a test.' } }
+                try {
+                    if ($Only) { $script:rnResult = Get-RenewableCertificate } else { Invoke-RenewCertificate }
+                }
+                catch { $script:rnError = $_ }
+            } 6>&1 3>&1 | ForEach-Object { "$_" })
+    }
+    function Get-FilesIn($install) { @(Get-ChildItem -LiteralPath $install.Tls -Force | ForEach-Object Name | Sort-Object) -join ',' }
+
+    # --- What it checks before anything changes ---
+    $install = New-RenewInstall 'ok'
+    Invoke-Renewal $install @{} -Only
+    $found = $script:rnResult
+    Check 'renew check: an installed panel with its self-signed certificate passes, and says what it needs' (
+        $null -eq $script:rnError -and $found.Port -eq 8443 -and $found.AgentsPort -eq 0 -and $found.Thumbprint -ceq $install.Thumbprint -and $found.Sha256 -ceq $install.Sha256 -and
+        $found.Password -ceq $rnPassword -and $found.Trust -ceq 'marked' -and ($found.Names.Dns -join ',') -ceq 'localhost,OLDBOX,panel.example.com' -and $found.Pfx -ceq $install.Pfx -and $found.Cer -ceq $install.Cer) "$($script:rnError)"
+    Check 'renew check: the certificate''s password is a secret of the run (never in the log)' ((Protect-SetupText "x $rnPassword y") -ceq 'x [secret] y')
+    $SetupSecrets.Clear()
+    $withAgents = New-RenewInstall 'agents' @{ Agents = @{ Url = 'https://*:8444'; Certificate = @{ Path = (Join-Path $rnRoot 'agents\data\Panel\tls\panel.pfx'); Password = $rnPassword } } }
+    Invoke-Renewal $withAgents @{} -Only
+    Check 'renew check: the agents'' port is read, and uses the same certificate' ($null -eq $script:rnError -and $script:rnResult.AgentsPort -eq 8444) "$($script:rnError)"
+    $SetupSecrets.Clear()
+
+    function Test-Refusal([string] $name, [hashtable] $installOptions, [hashtable] $runOptions, [int] $code, [string] $pattern) {
+        $subject = New-RenewInstall $name $installOptions
+        if ($installOptions['Debris']) { Set-Content -LiteralPath (Join-Path $subject.Tls $installOptions['Debris']) 'x' }
+        Invoke-Renewal $subject $runOptions -Only
+        $SetupSecrets.Clear()
+        Check "renew check: $name is refused with exit code $code, nothing changed" ($null -ne $script:rnError -and (Get-SetupExitCode $script:rnError) -eq $code -and $script:rnError.Exception.Message -match $pattern -and
+            $script:rnError.Exception.Message -match 'Nothing was changed') "$($script:rnError)"
+        $subject
+    }
+    $null = Test-Refusal 'no panel service' @{} @{ NoService = $true } 2 'is not installed on this machine'
+    $null = Test-Refusal 'a service that runs another panel' @{} @{ Program = '"C:\Elsewhere\Panel\Pulsar.Api.exe"' } 2 'InstallRoot'
+    $null = Test-Refusal 'no settings' @{ NoSettings = $true } @{} 2 'settings .* are missing'
+    $null = Test-Refusal 'settings that are not a panel''s' @{ Settings = '{ "Logging": { } }' } @{} 2 'not a Pulsar panel'
+    $null = Test-Refusal 'settings that are not JSON' @{ Settings = 'not json' } @{} 2 'not a Pulsar panel'
+    $null = Test-Refusal 'a certificate that is somewhere else than the installer puts it' @{ CertificateFile = 'C:\certs\mine.pfx' } @{} 6 'changed by hand'
+    $null = Test-Refusal 'a certificate without a password' @{ Password = '' } @{} 6 'no password'
+    $null = Test-Refusal 'a PFX the settings'' password does not open' @{ Password = 'another password' } @{} 6 'cannot be read'
+    $null = Test-Refusal 'a certificate an authority issued' @{ Issued = $true } @{} 6 'not a self-signed one'
+    $null = Test-Refusal 'a self-signed certificate for another subject' @{ Subject = 'CN=example.com' } @{} 6 'not a self-signed one'
+    $null = Test-Refusal 'an agents'' port with another certificate' @{ Agents = @{ Url = 'https://*:8444'; Certificate = @{ Path = 'C:\certs\other.pfx'; Password = 'x' } } } @{} 6 'agents'' port uses another certificate'
+    $null = Test-Refusal 'files left by a stopped renewal' @{ Debris = 'panel.pfx.old-0123456789abcdef' } @{} 3 'panel\.pfx\.old-0123456789abcdef.*stopped'
+    $linked = New-RenewInstall 'a link as the tls folder'
+    $realTls = Join-Path $linked.Base 'real-tls'
+    Move-Item -LiteralPath $linked.Tls $realTls
+    $null = New-Item -ItemType Junction -Path $linked.Tls -Target $realTls
+    Invoke-Renewal $linked @{} -Only
+    [IO.Directory]::Delete($linked.Tls)
+    $SetupSecrets.Clear()
+    Check 'renew check: a link (junction) in place of the certificate''s folder is refused (exit code 3)' ($null -ne $script:rnError -and (Get-SetupExitCode $script:rnError) -eq 3 -and $script:rnError.Exception.Message -match 'is a link') "$($script:rnError)"
+
+    # --- The swap: the old files are kept until the new certificate answers; then trust moves, the old files go ---
+    function Get-Pfx($path) { New-Object Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @([IO.File]::ReadAllBytes($path), $rnPassword, [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet) }
+    $swap = New-RenewInstall 'swap'
+    $users = New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-545'
+    $acl = Get-Acl -LiteralPath $swap.Pfx
+    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($users, 'ReadAndExecute', 'Allow')))
+    Set-Acl -LiteralPath $swap.Pfx -AclObject $acl
+    $oldAccess = @{ Pfx = (Get-FileAccess $swap.Pfx); Cer = (Get-FileAccess $swap.Cer) }
+    Invoke-Renewal $swap @{ HostName = @('panel.example.com'); Unattended = $true }
+    $printed = $script:rnOutput -join "`n"
+    $SetupSecrets.Clear()
+    Check 'renew: the happy path ends without an error' ($null -eq $script:rnError) "$($script:rnError) $printed"
+    $newCertificate = Get-Pfx $swap.Pfx
+    $newThumbprint = $newCertificate.Thumbprint
+    try {
+        $newHash = Get-CertificateHash $newCertificate
+        $newNames = Get-CertificateNames $newCertificate
+        $cerCertificate = Read-Certificate $swap.Cer
+        try { $sameCer = (Get-CertificateHash $cerCertificate) -ceq $newHash } finally { $cerCertificate.Dispose() }
+        Check 'renew: panel.pfx is a new certificate (a new key), and opens with the same password, so the settings stay as they are' ($newCertificate.Thumbprint -cne $swap.Thumbprint -and $newCertificate.HasPrivateKey)
+        Check 'renew: panel.cer is that same certificate' $sameCer
+        Check 'renew: it lists this PC''s names and current addresses and -HostName''s, and not the old address' (
+            ($newNames.Dns -join ',') -ceq "localhost,$env:COMPUTERNAME,panel.example.com" -and (@($newNames.Ips | ForEach-Object { "$_" }) -join ',') -ceq '127.0.0.1,::1,192.168.0.77,10.0.0.7') "$($newNames.Dns -join ',') | $($newNames.Ips -join ',')"
+        Check 'renew: it is made like the install''s (CA=false, server authentication alone, 5 years)' ((Get-CertificateAuthority $newCertificate) -eq $false -and (Test-ServerAuthenticationOnly (Get-CertificateUses $newCertificate)) -and
+            [Math]::Abs(($newCertificate.NotAfter - (Get-Date).AddYears(5)).TotalMinutes) -lt 5)
+        Check 'renew: the SHA-256 printed for it (PULSAR-CERTIFICATE) is that of the file now in place' ($printed -match ('(?m)^PULSAR-CERTIFICATE ' + $newHash + '$') -and $printed -match [regex]::Escape((Format-Fingerprint $newHash)))
+    }
+    finally { $newCertificate.Dispose() }
+    Check 'renew: the new files have the old ones'' permissions (explicit entries included)' ((Get-FileAccess $swap.Pfx) -ceq $oldAccess.Pfx -and (Get-FileAccess $swap.Cer) -ceq $oldAccess.Cer) "$(Get-FileAccess $swap.Pfx) vs $($oldAccess.Pfx)"
+    Check 'renew: nothing is left in the folder but the two files (the old files and the staged ones are gone)' ((Get-FilesIn $swap) -ceq 'panel.cer,panel.pfx') (Get-FilesIn $swap)
+    $steps = @($script:rnCalls)
+    Check 'renew: it stops the panel, starts it, and checks it answers with the new certificate (its HTTPS port; the agents'' port 0: none here) before anything else' (
+        $steps.Count -eq 5 -and $steps[0] -ceq 'stop' -and $steps[1] -ceq 'start' -and $steps[2] -ceq "confirm $newThumbprint 8443 0") ($steps -join ' | ')
+    Check 'renew: then it trusts the new certificate as the install does (panel.cer, localhost, the SHA-256 made), and only then stops trusting the old one' (
+        $steps[3] -ceq "trust $($swap.Cer) localhost $newHash" -and $steps[4] -ceq "untrust $($swap.Thumbprint) False" -and $steps.Count -eq 5) ($steps -join ' | ')
+    Check 'renew: it prints a step for each of its plan, in order' (@($script:rnOutput | Where-Object { $_ -like 'PULSAR-STEP *' }).Count -eq 3 -and
+        (@($script:rnOutput | Where-Object { $_ -like 'PULSAR-STEP *' }) -join '|') -match '^PULSAR-STEP 2/4 .*\|PULSAR-STEP 3/4 .*\|PULSAR-STEP 4/4 ') (@($script:rnOutput | Where-Object { $_ -like 'PULSAR-STEP *' }) -join '|')
+    Check 'renew: it prints no password (the PFX''s, nor the database''s)' ($printed -notmatch [regex]::Escape($rnPassword) -and $printed -notmatch 'a-database-password')
+    Check 'renew: it tells what pinned nodes must do, with the new certificate''s SHA-256, as the guide does' (
+        $printed -match 'pin the old certificate and stay offline until each is pinned again' -and $printed -match [regex]::Escape("set ""panelCertificate"" in C:\ProgramData\Pulsar\Agent\config\agent.json to") -and
+        $printed -match ('(?m)^ +' + $newHash + '$') -and $printed -match 'PulsarAgent service stop, then PulsarAgent service start' -and
+        $printed -match [regex]::Escape("PulsarAgent enroll --panel https://192.168.0.77:8443 --token - --panel-key <the panel key's fingerprint> --panel-certificate $newHash") -and
+        $printed -match 'New enrollment command' -and $printed -match 'TrustCertificate')
+    Check 'renew: it says a Let''s Encrypt public IP certificate is not affected' ($printed -match "Let's Encrypt public IP certificate, if you use one, is not affected")
+    Check 'renew: it says which addresses and names are listed now and where to reach the panel' ($printed -match 'https://192\.168\.0\.77:8443 or https://10\.0\.0\.7:8443 or https://' -and $printed -match 'DHCP server gave this PC 192\.168\.0\.77')
+    Check 'renew: a node on this PC that is not pinned is not mentioned' ($printed -notmatch 'The node on this PC is pinned')
+    Check 'renew: names the old certificate had that this PC does not (a stale address) are mentioned, the -HostName one is kept' (
+        $printed -match 'also listed .*192\.168\.0\.54.*OLDBOX|also listed .*OLDBOX.*192\.168\.0\.54' -and $printed -notmatch 'run this again with -HostName')
+
+    # --- The same, with the node on this PC pinned, the panel stopped, and no -HostName ---
+    $local = New-RenewInstall 'local pin'
+    Invoke-Renewal $local @{ Stopped = $true; LocalPin = ('ab' * 32) }
+    $printed = $script:rnOutput -join "`n"
+    $SetupSecrets.Clear()
+    Check 'renew: a node on this PC that is pinned is mentioned, with the file to change' ($null -eq $script:rnError -and $printed -match 'The node on this PC is pinned too' -and $printed -match ('ab' * 32) -and $printed -match 'agent\.json')
+    Check 'renew: a name given with -HostName at the install and not repeated is warned about, and how to keep it' (
+        $printed -match 'also listed panel\.example\.com' -and $printed -match 'run this again with -HostName listing the ones that are still yours' -and $printed -match 'Not in the new certificate: panel\.example\.com')
+
+    # --- Trust: only when the install trusted the old certificate ---
+    foreach ($state in 'none', 'unmarked') {
+        $subject = New-RenewInstall "trust $state"
+        Invoke-Renewal $subject @{ Trust = $state }
+        $printed = $script:rnOutput -join "`n"
+        $SetupSecrets.Clear()
+        Check "renew: an old certificate that is $state (not trusted by the install on this PC) leaves every certificate store alone" ($null -eq $script:rnError -and @($script:rnCalls | Where-Object { $_ -like 'trust *' -or $_ -like 'untrust *' }).Count -eq 0 -and
+            (Get-FilesIn $subject) -ceq 'panel.cer,panel.pfx') ($script:rnCalls -join ' | ')
+        if ($state -eq 'unmarked') { Check 'renew: and says so when someone else trusts it' ($printed -match 'not as this script''s') }
+    }
+
+    # --- Failures: the old certificate comes back ---
+    function Get-Digests($install) { "$((Get-FileHash -LiteralPath $install.Pfx).Hash) $((Get-FileHash -LiteralPath $install.Cer).Hash)" }
+
+    $failing = New-RenewInstall 'confirm fails'
+    $before = Get-Digests $failing
+    Invoke-Renewal $failing @{ ConfirmFails = 'first' }
+    $SetupSecrets.Clear()
+    $calls = @($script:rnCalls)
+    Check 'renew rollback: when the panel does not answer with the new certificate, the old files are back, byte for byte, and nothing else is left' (
+        $null -ne $script:rnError -and (Get-Digests $failing) -ceq $before -and (Get-FilesIn $failing) -ceq 'panel.cer,panel.pfx') "$($script:rnError) | $(Get-FilesIn $failing)"
+    Check 'renew rollback: the panel is stopped, the files put back, the panel started again and it answers with the OLD certificate' (
+        ($calls -join '|') -ceq "stop|start|confirm $($calls[2].Split(' ')[1]) 8443 0|stop|start|confirm $($failing.Thumbprint) 8443 0" -and $calls[2].Split(' ')[1] -cne $failing.Thumbprint) ($calls -join ' | ')
+    Check 'renew rollback: the trust was not touched (not added, the old one not removed), and the exit code is 1 with the reason and the outcome' (
+        @($calls | Where-Object { $_ -like 'trust *' -or $_ -like 'untrust *' }).Count -eq 0 -and (Get-SetupExitCode $script:rnError) -eq 1 -and
+        $script:rnError.Exception.Message -match 'did not answer' -and $script:rnError.Exception.Message -match 'The old certificate is back, and the panel runs with it\.') "$($script:rnError.Exception.Message)"
+
+    $failing = New-RenewInstall 'trust fails'
+    $before = Get-Digests $failing
+    Invoke-Renewal $failing @{ TrustFails = $true }
+    $SetupSecrets.Clear()
+    $calls = @($script:rnCalls)
+    $addedThumbprint = ''
+    if ($calls.Count -gt 2) { $addedThumbprint = $calls[2].Split(' ')[1] }
+    Check 'renew rollback: when trusting the new certificate fails, the new trust is removed (the one just added, even unmarked), the old one is kept, and the files are back' (
+        $null -ne $script:rnError -and (Get-Digests $failing) -ceq $before -and (Get-FilesIn $failing) -ceq 'panel.cer,panel.pfx' -and
+        @($calls | Where-Object { $_ -ceq "untrust $addedThumbprint True" }).Count -eq 1 -and @($calls | Where-Object { $_ -ceq "untrust $($failing.Thumbprint) False" -or $_ -ceq "untrust $($failing.Thumbprint) True" }).Count -eq 0 -and
+        $script:rnError.Exception.Message -match 'store refused') ($calls -join ' | ')
+
+    $failing = New-RenewInstall 'answers never'
+    $before = Get-Digests $failing
+    Invoke-Renewal $failing @{ ConfirmFails = 'always' }
+    $SetupSecrets.Clear()
+    Check 'renew rollback: when the old certificate does not answer either, the files are still back and the message says what is left and where the old files are' (
+        (Get-Digests $failing) -ceq $before -and $script:rnError.Exception.Message -match 'Putting the old certificate back left: the panel does not answer with the old certificate' -and
+        $script:rnError.Exception.Message -match 'copy them over panel\.pfx and panel\.cer' -and (Get-SetupExitCode $script:rnError) -eq 1) "$($script:rnError.Exception.Message)"
+
+    $failing = New-RenewInstall 'staged files wrong'
+    $before = Get-Digests $failing
+    Invoke-Renewal $failing @{ StagedCheckFails = $true }
+    $SetupSecrets.Clear()
+    Check 'renew rollback: a new certificate that does not check out is dropped before the panel is touched: nothing is stopped, nothing is left' (
+        (Get-Digests $failing) -ceq $before -and (Get-FilesIn $failing) -ceq 'panel.cer,panel.pfx' -and $script:rnCalls.Count -eq 0 -and
+        $script:rnError.Exception.Message -match 'Nothing was changed: the panel keeps its certificate\.' -and (Get-SetupExitCode $script:rnError) -eq 1)
+
+    $failing = New-RenewInstall 'was stopped'
+    $before = Get-Digests $failing
+    Invoke-Renewal $failing @{ Stopped = $true; ConfirmFails = 'first' }
+    $SetupSecrets.Clear()
+    Check 'renew rollback: a panel that was stopped is left stopped (not started again) when the renewal is undone' (
+        (Get-Digests $failing) -ceq $before -and @($script:rnCalls | Where-Object { $_ -ceq 'start' }).Count -eq 1 -and $script:rnError.Exception.Message -match 'is stopped, as it was')
+
+    # One file swapped, the other not: panel.cer is held open (a virus scanner, say), so its swap fails after panel.pfx's.
+    $failing = New-RenewInstall 'half swapped'
+    $before = Get-Digests $failing
+    $rnAgentLock = New-Object IO.FileStream($failing.Cer, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+    try { Invoke-Renewal $failing @{} }
+    finally { $rnAgentLock.Dispose(); $rnAgentLock = $null }
+    $SetupSecrets.Clear()
+    Check 'renew rollback: a swap that stops halfway (panel.pfx replaced, panel.cer not) puts panel.pfx back too' (
+        $null -ne $script:rnError -and (Get-Digests $failing) -ceq $before -and (Get-FilesIn $failing) -ceq 'panel.cer,panel.pfx' -and
+        $script:rnError.Exception.Message -match 'The old certificate is back') "$($script:rnError.Exception.Message) | $(Get-FilesIn $failing)"
+}
+finally {
+    if ($null -ne $rnAgentLock) { $rnAgentLock.Dispose() }
+    Remove-Item -LiteralPath $rnRoot -Recurse -Force
+    $SetupSecrets.Clear()
+}
+
+# What the script says it does (read from it, never run): the order, the rollback, the allow-list of what touches a store, and
+# no secret in anything printed.
+$renewFunctions = @($installAst.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in
+            'Invoke-RenewCertificate', 'Get-RenewableCertificate', 'Undo-CertificateRenewal', 'Confirm-PanelCertificate', 'Write-RepinSteps', 'Assert-NewCertificateFiles',
+            'Assert-PlainCertificateFiles', 'Assert-RenewArguments', 'Compare-CertificateNames', 'Set-SameAccess', 'Get-LocalNodePin', 'Stop-Panel' }, $true))
+$renewalText = @($renewFunctions | Where-Object Name -eq 'Invoke-RenewCertificate')[0].Extent.Text
+$undoText = @($renewFunctions | Where-Object Name -eq 'Undo-CertificateRenewal')[0].Extent.Text
+Check 'renew: every function of the renewal is in the script' ($renewFunctions.Count -eq 12) "$($renewFunctions.Count)"
+$renewIndexes = @('Get-RenewableCertificate', 'Get-SelfSignedPanelNames', 'New-SelfSignedPanelFiles', 'Assert-NewCertificateFiles', 'Stop-Panel', 'Assert-PlainCertificateFiles', '[IO.File]::Replace($staged[$kind]',
+    'Start-Panel', 'Confirm-PanelCertificate', 'Add-TrustedCertificate $renewal.Cer', 'Remove-InstallerTrust $renewal.Thumbprint', 'Remove-Item -LiteralPath $file -Force' | ForEach-Object { $renewalText.IndexOf($_) })
+Check 'renew order: checks, the new certificate made and checked beside the old, then stop, swap, start, answer, trust, and only then the old trust and the old files go' (
+    @($renewIndexes | Where-Object { $_ -lt 0 }).Count -eq 0 -and ($renewIndexes -join ',') -ceq (@($renewIndexes | Sort-Object) -join ',')) ($renewIndexes -join ',')
+Check 'renew rollback: any failure goes through Undo-CertificateRenewal, which puts the files back (Replace, or Move for a swap that stopped halfway), removes the new trust and starts the panel again' (
+    $renewalText -match '(?s)catch \{\s+\$failure = \$_\.Exception\.Message.*?Undo-CertificateRenewal \$renewal \$progress \$wasRunning' -and
+    $undoText -match [regex]::Escape('[IO.File]::Replace($swap.Backup, $swap.Target, [NullString]::Value)') -and $undoText -match [regex]::Escape('[IO.File]::Move($swap.Backup, $swap.Target)') -and
+    $undoText -match [regex]::Escape('Remove-InstallerTrust $progress.Trusted $true') -and $undoText -match 'if \(\$wasRunning\)' -and
+    $renewalText.IndexOf('$progress.Trusted = $made.Thumbprint') -lt $renewalText.IndexOf('Add-TrustedCertificate $renewal.Cer') -and $renewalText.IndexOf('$progress.Swaps.Add') -lt $renewalText.IndexOf('[IO.File]::Replace'))
+Check 'renew rollback: the old certificate''s trust is never touched by the rollback (it is removed only once all is done)' ($undoText -notmatch 'Remove-InstallerTrust \$renewal')
+$renewCalls = @($renewFunctions | ForEach-Object { $_.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] }, $true) } | ForEach-Object { $_.GetCommandName() } | Where-Object { $_ } | Select-Object -Unique)
+$renewForbidden = @($renewCalls | Where-Object { $_ -in 'Install-Panel', 'Update-Panel', 'Uninstall-Panel', 'Copy-Program', 'Write-PanelConfig', 'New-PanelDatabase', 'Remove-PanelDatabase', 'Invoke-Native', 'Invoke-NativeWithInput',
+        'Invoke-Psql', 'Set-PrivateAcl', 'New-NetFirewallRule', 'Remove-NetFirewallRule', 'Restart-Service', 'Start-Process', 'New-KeyRingCertificate', 'Install-Agent', 'Uninstall-Agent', 'Update-Agent', 'Remove-TrustedCertificates', 'Invoke-PanelMigrations' })
+Check 'renew: it never installs, updates or removes a program, nor changes the settings, the database, the firewall or an account' ($renewForbidden.Count -eq 0) ($renewForbidden -join ', ')
+$renewStores = @($renewFunctions | Where-Object { $_.Extent.Text -match 'X509Store|Import-Certificate|certutil|Cert:\\' } | ForEach-Object Name)
+Check 'renew: its functions reach a certificate store only through Add-TrustedCertificate and Remove-InstallerTrust (and only read it, in Get-InstallerTrust)' ($renewStores.Count -eq 0) ($renewStores -join ', ')
+Check 'renew: it trusts only when the install trusted the old certificate (marked), and Add-TrustedCertificate''s checks apply to the new one' (
+    $renewalText -match "(?s)if \(\`$renewal\.Trust -ceq 'marked'\) \{\s+Write-Step [^\n]+\s+if \(\(Get-InstallerTrust \`$made\.Thumbprint\) -cne 'none'\).*?Add-TrustedCertificate \`$renewal\.Cer 'localhost' \`$made\.Names \`$made\.Sha256" -and
+    $renewalText -match "(?s)if \(\`$renewal\.Trust -ceq 'marked'\) \{\s+\`$listed = Read-Certificate \`$staged\.Cer.*?Assert-TrustableCertificate \`$listed \`$staged\.Cer 'localhost' \`$made\.Names")
+# Where a password is an argument (`New-SelfSignedPanelFiles ... $renewal.Password`), the command it goes to.
+$passwordUses = @($renewFunctions | ForEach-Object { $_.FindAll({ param($node) $node -is [Management.Automation.Language.MemberExpressionAst] -and $node.Member.Extent.Text -eq 'Password' }, $true) } | ForEach-Object {
+        $command = $_.Parent; while ($command -and $command -isnot [Management.Automation.Language.CommandAst]) { $command = $command.Parent }
+        if ($command) { $command.GetCommandName() }
+    })
+Check 'renew: the PFX''s password is only ever handed to the functions that make or open the PFX, never printed' ($passwordUses.Count -eq 2 -and @($passwordUses | Where-Object { $_ -notin 'New-SelfSignedPanelFiles', 'Assert-NewCertificateFiles' }).Count -eq 0) ($passwordUses -join ', ')
+$printedPasswords = @($renewFunctions | ForEach-Object { $_.FindAll({ param($node) $node -is [Management.Automation.Language.ExpandableStringExpressionAst] }, $true) } |
+        Where-Object { @($_.NestedExpressions | Where-Object { $_.Extent.Text -match '(?i)password' }).Count -gt 0 } | ForEach-Object { $_.Extent.Text })
+Check 'renew: no message interpolates a password' ($printedPasswords.Count -eq 0) ($printedPasswords -join ' | ')
+Check 'renew: the PFX''s password is registered as a secret as soon as it is read' ((@($renewFunctions | Where-Object Name -eq 'Get-RenewableCertificate')[0].Extent.Text) -match 'Register-Secret \$password')
+Check 'renew: it takes the files'' permissions from the old ones, and checks them' (
+    (@($renewFunctions | Where-Object Name -eq 'Set-SameAccess')[0].Extent.Text) -match 'Get-FileAccess \$target\) -cne \$wanted\) \{ throw' -and $renewalText -match 'Set-SameAccess \$current\.Pfx \$staged\.Pfx' -and
+    $renewalText -match 'Set-SameAccess \$backup\[\$kind\] \$current\[\$kind\]')
+$mainBlockText = $mainText
+Check 'renew: it runs before the checks of an agent package and of the other modes, with no download or runtime check' (
+    $mainBlockText.IndexOf('if ($RenewCertificate)') -ge 0 -and $mainBlockText.IndexOf('if ($RenewCertificate)') -lt $mainBlockText.IndexOf('Get-AgentPackage') -and
+    $mainBlockText.IndexOf('if ($RenewCertificate)') -lt $mainBlockText.IndexOf('if ($Uninstall)') -and $mainBlockText.IndexOf('Assert-TrustedLocation') -lt $mainBlockText.IndexOf('if ($RenewCertificate)') -and
+    $renewalText -notmatch 'Get-RuntimeRequirements|New-SetupDownloads|Get-DotNetInstallers')
+Check 'renew: the install checks -HostName the same way (Assert-HostNames)' ($installParts['Assert-PanelInstallable'] -match 'Assert-HostNames' -and $renewalText -match 'Assert-HostNames')
+$guide = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\docs\guides\install.md')
+Check 'renew: install.md documents it, the stale-address steps, the pin steps and that Let''s Encrypt is unaffected' (
+    $guide.Contains('-RenewCertificate') -and $guide.Contains("Your server's IP changed") -and $guide.Contains('"panelCertificate"') -and $guide.Contains('PulsarAgent enroll') -and
+    $guide -match "(?s)Your server's IP changed.*Let's Encrypt.*(not affected|unaffected|unchanged)")
+$roadmap = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\docs\architecture\09-roadmap.md')
+Check 'renew: the roadmap''s Phase 18 mentions it' ($roadmap -match '(?s)## Phase 18.*-RenewCertificate.*## Post-v1')
 
 if ($script:failures -gt 0) {
     Write-Host "$($script:failures) check(s) failed." -ForegroundColor Red

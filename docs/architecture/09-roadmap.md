@@ -371,6 +371,10 @@ Installing Pulsar should be as easy as AMP's: download one program, click throug
   - **Add node** shows a code and a link to `PulsarAgentSetup.exe`.
   - The code carries the enrollment token, the panel key's fingerprint and the SHA-256 of the panel's TLS certificate.
   - The agent setup asks for the panel's address and the code. It reads the certificate the panel presents, checks it against that hash (not a CA, server authentication only, the host is in its names), and the agent pins it: it accepts that certificate and no other, and the machine's certificate stores are not changed. Nobody copies `panel.cer` by hand anymore.
+- *Address changes.*
+  - **`Install-Pulsar.ps1 -RenewCertificate`** (elevated, on the panel's PC) makes the self-signed certificate again for the PC's names and current addresses, with the install's own functions, and swaps it in. The old files are kept until the panel answers with the new certificate on its ports; the trust the install gave the old certificate on that PC moves to the new one (a certificate the install did not trust is left alone); any failure puts the old certificate back.
+  - It refuses a panel that is not an install of the script, and a certificate that is not the installer's own self-signed one (exit codes 2, 3, 6).
+  - Nodes that pinned the old certificate stay offline until pinned again, and the script prints the steps. A Let's Encrypt public IP certificate is unaffected: the panel serves it per connection to the internet only, and the installer's certificate stays what the loopback, the local network and the agents' port get (doc 08, T40).
 - *Not yet:* code signing for the setups. Until it is in place, SmartScreen asks for **Run anyway**.
 
 **Done when:**
@@ -383,6 +387,7 @@ Installing Pulsar should be as easy as AMP's: download one program, click throug
 4. Without internet, the setup says so and changes nothing (or uses an existing PostgreSQL when given one).
 5. Uninstalling from *Apps* removes Pulsar's services, firewall rules and trust, and keeps the data unless asked.
 6. A tampered or wrongly signed download is refused.
+7. After the panel's PC gets a new address, `-RenewCertificate` makes a certificate that lists it, the panel answers with it, and a failure at any point leaves the old certificate in place and answering.
 
 ## Post-v1 (tentative order)
 
