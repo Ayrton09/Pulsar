@@ -350,7 +350,7 @@ function ServerUsage({ metrics, limits }: { metrics: ServerMetrics; limits: Serv
       icon: Users,
       label: t('servers.usage.players'),
       value: query.bots > 0 ? `${players} ${t('servers.usage.bots', { count: query.bots })}` : players,
-      detail: query.map ?? undefined,
+      detail: query.map ? t('servers.usage.mapDetail', { map: query.map }) : undefined,
       percent: query.maxPlayers > 0 ? (query.players / query.maxPlayers) * 100 : undefined,
     });
   }

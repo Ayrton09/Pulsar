@@ -268,9 +268,19 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         var allocations = await AllocateAsync(admin, agent.Config.NodeId, "0.0.0.0", "27100");
         var first = await CreateAsync(admin, new CreateServerRequest(agent.Config.NodeId, template.Template.Id, "First", null));
         Assert.Equal(27100, first.Ports.Single(p => p.Name == "game").Port);
-        // The list shows where players connect and which game it is (for its artwork).
+        // The list shows where players connect and which game it is (for its artwork); a game without a "game" port
+        // (the test game has no ports) shows no address.
         Assert.Equal(new ServerAddressView("0.0.0.0", 27100), first.Server.GameAddress);
         Assert.Equal(template.Template.Key, first.Server.TemplateKey);
+        var testGame = await ServerApi.TestTemplateAsync(admin);
+        var portless = await CreateAsync(admin, new CreateServerRequest(agent.Config.NodeId, testGame.Id, "Portless", null));
+        var list = await admin.Http.GetFromJsonAsync<List<ServerSummary>>(new Uri("/api/v1/servers", UriKind.Relative), AccessScenario.Json, Ct);
+        var listed = list!.Single(s => s.Id == first.Server.Id);
+        Assert.Equal(new ServerAddressView("0.0.0.0", 27100), listed.GameAddress);
+        Assert.Equal("css", listed.TemplateKey);
+        var withoutPort = list!.Single(s => s.Id == portless.Server.Id);
+        Assert.Null(withoutPort.GameAddress);
+        Assert.Equal(testGame.Key, withoutPort.TemplateKey);
 
         using (var second = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(agent.Config.NodeId, template.Template.Id, "Second", null,
                    Ports: new Dictionary<string, Guid?> { ["game"] = allocations[0].Id })))

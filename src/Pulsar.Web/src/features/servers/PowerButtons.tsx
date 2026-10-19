@@ -36,7 +36,12 @@ export function PowerButtons({ server, compact = false }: { server: ServerSummar
 
   const refused = command.data && command.data.status !== 'accepted' && command.data.status !== 'alreadyInState';
   return (
-    <section aria-label={t('servers.actions')} className={compact ? 'flex flex-col items-end gap-1' : 'space-y-2'}>
+    <section
+      {...(compact
+        ? { role: 'group', 'aria-label': t('servers.actionsFor', { name: server.name }) }
+        : { 'aria-label': t('servers.actions') })}
+      className={compact ? 'flex flex-col items-end gap-1' : 'space-y-2'}
+    >
       <div className="flex flex-wrap gap-2">
         {visible.map(([name, , enabled, icon, variant]) => (
           <Button
@@ -44,7 +49,11 @@ export function PowerButtons({ server, compact = false }: { server: ServerSummar
             icon={icon}
             variant={variant}
             size={compact ? 'icon' : 'md'}
-            aria-label={compact ? t(`servers.commands.${name}`) : undefined}
+            aria-label={
+              compact
+                ? t('servers.commandFor', { command: t(`servers.commands.${name}`), name: server.name })
+                : undefined
+            }
             title={compact ? t(`servers.commands.${name}`) : undefined}
             disabled={!enabled || command.isPending}
             busy={command.isPending && command.variables.command === name}

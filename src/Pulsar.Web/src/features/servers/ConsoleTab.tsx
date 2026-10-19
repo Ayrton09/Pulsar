@@ -133,7 +133,9 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
             {t('servers.console.clear')}
           </Button>
         </div>
-        <div ref={container} data-testid="console-output" className="h-[30rem] overflow-hidden bg-[#07090d] p-3" />
+        <div className="h-[30rem] bg-[#07090d] p-3">
+          <div ref={container} data-testid="console-output" className="size-full overflow-hidden" />
+        </div>
         {canOnServer(me, server, Permission.ServerConsoleWrite) && (
           <div className="border-t border-border bg-surface/60 p-2">
             <CommandInput serverId={server.id} running={running} connected={server.nodeConnected} />

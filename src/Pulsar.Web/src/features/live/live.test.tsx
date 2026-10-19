@@ -300,6 +300,29 @@ describe('live updates', () => {
     expect(header).toHaveTextContent('1 h 5 min');
   });
 
+  it("draws the usage against the server's limits", async () => {
+    serverApi(operator, { ...details, limits: { cpuPercent: 50, memoryMb: 1024, databases: 2 } });
+    const live = await renderAt(`/servers/${server.id}`);
+    await waitFor(() => expect(live.calls('WatchServer')).toHaveLength(1));
+
+    live.emit('ServerMetrics', {
+      serverId: server.id,
+      at: '2026-10-02T12:06:00Z',
+      cpuPercent: 25,
+      memoryBytes: 256 * 1024 * 1024,
+      committedBytes: 512 * 1024 * 1024,
+      processCount: 1,
+      uptimeSeconds: 600,
+    });
+
+    const usage = await screen.findByLabelText('Usage');
+    await waitFor(() => expect(usage).toHaveTextContent('25 %'));
+    expect(usage).toHaveTextContent('of 50 %');
+    // With a memory limit the committed memory is what counts.
+    expect(usage).toHaveTextContent('512 MB');
+    expect(usage).toHaveTextContent('of 1 GB');
+  });
+
   it('shows who is playing, as plain text', async () => {
     serverApi();
     const live = await renderAt(`/servers/${server.id}`);

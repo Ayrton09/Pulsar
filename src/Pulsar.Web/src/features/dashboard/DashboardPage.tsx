@@ -236,7 +236,7 @@ function ServerCards({ servers }: { servers: ServerSummary[] }) {
       <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {shown.map((server) => (
           <li key={server.id} className="flex min-w-0">
-            <ServerCard server={server} />
+            <ServerCard server={server} headingLevel={3} />
           </li>
         ))}
       </ul>

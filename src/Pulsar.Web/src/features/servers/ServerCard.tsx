@@ -15,10 +15,11 @@ import { PowerButtons } from './PowerButtons';
  * One server in the list: its game's picture with its status, its live usage while it runs, where players connect and
  * the power buttons. The whole card opens the server; the address and the buttons sit above that link.
  */
-export function ServerCard({ server }: { server: ServerSummary }) {
+export function ServerCard({ server, headingLevel = 2 }: { server: ServerSummary; headingLevel?: 2 | 3 }) {
   const { t } = useTranslation();
   const formatDate = useFormatDate();
   const alive = server.runtimeState === 'running' || server.runtimeState === 'starting';
+  const Heading = headingLevel === 3 ? 'h3' : 'h2';
   return (
     <article
       aria-labelledby={`server-card-${server.id}`}
@@ -33,25 +34,32 @@ export function ServerCard({ server }: { server: ServerSummary }) {
         <div className="absolute inset-x-0 bottom-0 h-1/3 bg-linear-to-t from-surface to-transparent" />
         <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
           <ServerStatusPill server={server} />
-          {!server.nodeConnected && <NodeDisconnectedBadge />}
+          {!server.nodeConnected && (
+            <span className="rounded-full bg-black/70 backdrop-blur-sm">
+              <NodeDisconnectedBadge />
+            </span>
+          )}
         </div>
       </div>
       <div className="flex flex-1 flex-col gap-3 px-4 pb-4">
         <div className="min-w-0">
-          <h2 id={`server-card-${server.id}`} className="truncate text-base font-semibold">
+          <Heading id={`server-card-${server.id}`} className="truncate text-base font-semibold">
             <Link
               to={`/servers/${server.id}`}
               className="after:absolute after:inset-0 after:rounded-2xl hover:text-accent focus-visible:outline-none"
             >
               {server.name}
             </Link>
-          </h2>
+          </Heading>
           <p className="truncate text-xs text-muted">
             {server.templateName} · {server.nodeName}
           </p>
         </div>
         {alive && server.nodeConnected ? (
-          <CardUsage serverId={server.id} />
+          <div className="space-y-2">
+            <CardUsage serverId={server.id} />
+            <StateReason server={server} />
+          </div>
         ) : (
           <div className="text-xs text-muted">
             <p>
@@ -89,7 +97,9 @@ function CardUsage({ serverId }: { serverId: string }) {
         <dd className="mt-0.5 truncate font-medium tabular-nums">
           {metrics ? t('servers.usage.cpuValue', { value: metrics.cpuPercent }) : '—'}
         </dd>
-        <Meter percent={metrics?.cpuPercent ?? 0} className="mt-1.5" />
+        <dd className="mt-1.5">
+          <Meter percent={metrics?.cpuPercent ?? 0} />
+        </dd>
       </div>
       <div className="min-w-0">
         <dt className="flex items-center gap-1 text-muted">
@@ -107,7 +117,9 @@ function CardUsage({ serverId }: { serverId: string }) {
           {query ? t('servers.usage.playersValue', { players: query.players, max: query.maxPlayers }) : '—'}
         </dd>
         {query && query.maxPlayers > 0 && (
-          <Meter percent={(query.players / query.maxPlayers) * 100} className="mt-1.5" />
+          <dd className="mt-1.5">
+            <Meter percent={(query.players / query.maxPlayers) * 100} />
+          </dd>
         )}
       </div>
     </dl>
@@ -129,24 +141,31 @@ export function AddressChip({ address }: { address: ServerSummary['gameAddress']
   const text = everywhere ? String(address.port) : `${address.ipAddress}:${address.port}`;
   const shown = everywhere ? t('servers.card.port', { port: address.port }) : text;
   return (
-    <button
-      type="button"
-      onClick={() => void copyText(text).then(setCopied)}
-      aria-label={t('servers.card.copyAddress', { address: shown })}
-      title={copied === false ? t('servers.card.copyFailed') : t('servers.card.copyAddress', { address: shown })}
-      className="relative z-10 inline-flex min-w-0 items-center gap-1.5 rounded-md bg-surface-raised px-2 py-1 font-mono text-xs text-muted transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-accent"
-    >
-      {copied ? (
-        <Check aria-hidden="true" className="size-3.5 shrink-0 text-success" />
-      ) : (
-        <Copy aria-hidden="true" className="size-3.5 shrink-0" />
-      )}
-      <span className="truncate">{shown}</span>
-      {copied !== null && (
+    <span className="relative z-10 inline-flex min-w-0 items-center gap-2">
+      <button
+        type="button"
+        onClick={() => void copyText(text).then(setCopied)}
+        aria-label={t('servers.card.copyAddress', { address: shown })}
+        title={t('servers.card.copyAddress', { address: shown })}
+        className="inline-flex min-w-0 items-center gap-1.5 rounded-md bg-surface-raised px-2 py-1 font-mono text-xs text-muted transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        {copied ? (
+          <Check aria-hidden="true" className="size-3.5 shrink-0 text-success" />
+        ) : (
+          <Copy aria-hidden="true" className="size-3.5 shrink-0" />
+        )}
+        <span className="truncate">{shown}</span>
+      </button>
+      {copied === true && (
         <span role="status" className="sr-only">
-          {copied ? t('servers.card.copied') : t('servers.card.copyFailed')}
+          {t('servers.card.copied')}
         </span>
       )}
-    </button>
+      {copied === false && (
+        <span role="status" className="text-xs text-danger">
+          {t('servers.card.copyFailed')}
+        </span>
+      )}
+    </span>
   );
 }

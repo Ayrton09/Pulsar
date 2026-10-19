@@ -104,7 +104,7 @@
     "activity": "Recent activity",
     "allActivity": "All activity",
     "yourServers": "Your servers",
-    "allServers": "See all {{count}}"
+    "allServers": "All servers ({{count}})"
   },
   "users": {
     "title": "Users",
@@ -928,7 +928,6 @@
     "create": "Create server",
     "empty": "There are no servers you can see yet.",
     "emptyCreate": "No servers yet. Create one on a connected node.",
-    "server": "Server",
     "status": "Status",
     "node": "Node",
     "nodeHint": "Only connected nodes are listed: the server is set up on its machine right away.",
@@ -1165,10 +1164,9 @@
       "playersValue": "{{players, number}} / {{max, number}}",
       "bots_one": "({{count, number}} bot)",
       "bots_other": "({{count, number}} bots)",
-      "map": "Map",
-      "ofLimit": "{{value}} of {{limit}}",
       "cpuLimit": "{{value, number}} %",
-      "limit": "of {{limit}}"
+      "limit": "of {{limit}}",
+      "mapDetail": "Map: {{map}}"
     },
     "players": {
       "title": "Players",
@@ -1208,7 +1206,9 @@
       "copyFailed": "The browser did not allow copying.",
       "lastStarted": "Last started {{when}}",
       "neverStarted": "Never started"
-    }
+    },
+    "actionsFor": "Actions for {{name}}",
+    "commandFor": "{{command}} {{name}}"
   },
   "panelKeys": {
     "title": "Panel signing key",

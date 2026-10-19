@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Schemas } from '../../api/client';
@@ -111,6 +111,23 @@ describe('dashboard', () => {
     expect(screen.getByRole('link', { name: 'Node Córdoba is offline' })).toBeInTheDocument();
     await waitFor(() => expect(live.calls('WatchServers')).toHaveLength(1));
     expect(live.calls('WatchNodes')).toHaveLength(1);
+  });
+
+  it('shows up to six servers as cards, the running ones first', async () => {
+    const stopped = Array.from({ length: 6 }, (_, i) =>
+      server(`0192f1a0-0000-7000-8000-00000000010${i}`, `Stopped ${i + 1}`, { runtimeState: 'offline' }),
+    );
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['server.view'] }),
+      'GET /api/v1/servers': () => json([...stopped, server('0192f1a0-0000-7000-8000-0000000000e1', 'Surf')]),
+    });
+    render(<App router={createMemoryRouter(routes, { initialEntries: ['/'] })} queryClient={new QueryClient()} />);
+
+    const section = await screen.findByRole('region', { name: 'Your servers' });
+    const cards = within(section).getAllByRole('listitem');
+    expect(cards).toHaveLength(6);
+    expect(within(cards[0] as HTMLElement).getByRole('heading', { level: 3 })).toHaveTextContent('Surf');
+    expect(within(section).getByRole('link', { name: 'All servers (7)' })).toHaveAttribute('href', '/servers');
   });
 
   it('counts a disabled node apart from the offline ones', async () => {

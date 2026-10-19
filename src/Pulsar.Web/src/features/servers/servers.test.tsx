@@ -462,8 +462,8 @@ describe('server cards', () => {
     const card = cards[0] as HTMLElement;
     const other = cards[1] as HTMLElement;
     // Only what applies now, as icons named by their action.
-    expect(within(card).queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
-    await user.click(within(card).getByRole('button', { name: 'Start' }));
+    expect(within(card).queryByRole('button', { name: 'Stop Retakes' })).not.toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'Start Retakes' }));
     expect(start).toHaveBeenCalledOnce();
 
     // Steam's artwork for the game, asked for without a referrer.
@@ -479,6 +479,51 @@ describe('server cards', () => {
     // Listening on every address: the port alone.
     await user.click(within(other).getByRole('button', { name: 'Copy the address Port 28015' }));
     expect(await navigator.clipboard.readText()).toBe('28015');
+  });
+});
+
+describe('server card buttons', () => {
+  it('offers restart and stop on a running card, never kill, and says why a running server is odd', async () => {
+    const odd = { ...running, lastStateReason: 'readinessTimedOut' as const };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([odd]),
+    });
+    renderAt('/servers');
+
+    const card = within(await screen.findByRole('list', { name: 'Servers' })).getByRole('listitem');
+    const actions = within(card).getByRole('group', { name: 'Actions for Surf' });
+    expect(
+      within(actions)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual(['Restart Surf', 'Stop Surf']);
+    expect(card).toHaveTextContent('Running, but it never reported it was ready.');
+  });
+
+  it('shows no buttons to a user who may only view the server', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(viewer),
+      'GET /api/v1/servers': () => json([running, installedOffline]),
+    });
+    renderAt('/servers');
+
+    const list = await screen.findByRole('list', { name: 'Servers' });
+    expect(within(list).queryAllByRole('button', { name: /Start|Stop|Restart|Kill/ })).toHaveLength(0);
+    expect(within(list).queryByRole('group')).not.toBeInTheDocument();
+  });
+
+  it('shows where players connect at the top of the server page', async () => {
+    const addressed = { ...installedOffline, gameAddress: { ipAddress: '192.168.1.50', port: 2456 } };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${addressed.id}`]: () => json(details(addressed)),
+    });
+    renderAt(`/servers/${addressed.id}`);
+
+    const title = await screen.findByRole('heading', { level: 1, name: 'Retakes' });
+    const hero = title.closest('header') as HTMLElement;
+    expect(within(hero).getByRole('button', { name: 'Copy the address 192.168.1.50:2456' })).toBeInTheDocument();
   });
 });
 

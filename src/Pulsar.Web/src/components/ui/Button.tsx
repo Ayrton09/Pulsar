@@ -8,7 +8,7 @@ const variants: Record<Variant, string> = {
   secondary: 'border border-border bg-surface hover:bg-surface-raised',
   success: 'bg-success text-accent-contrast shadow-sm shadow-success/20 hover:bg-success/90',
   danger: 'bg-danger text-white hover:bg-danger/90',
-  dangerSubtle: 'border border-danger/40 text-danger hover:bg-danger/10',
+  dangerSubtle: 'border border-danger/40 bg-surface text-danger hover:bg-danger/10',
   ghost: 'hover:bg-surface-raised',
 };
 
@@ -18,7 +18,7 @@ const unavailable: Record<Variant, string> = {
   secondary: 'border border-border bg-surface text-muted',
   success: 'bg-surface-raised text-muted',
   danger: 'bg-surface-raised text-muted',
-  dangerSubtle: 'border border-border text-muted',
+  dangerSubtle: 'border border-border bg-surface text-muted',
   ghost: 'text-muted',
 };
 
