@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.SignalR.Client;
 using Pulsar.Api.Access;
@@ -133,6 +134,65 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task AnApiKeyLimitedToCreatingServersGetsTheNodesNameAndStateOnly()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(scenario.Admin, "key-slim");
+        var node = agent.Config!.NodeId;
+        using (var described = await scenario.Admin.PutAsync($"/api/v1/nodes/{node}", new UpdateNodeRequest("scoped-key-slim", "Rack 4", "play.example.com")))
+        {
+            await AccessScenario.EnsureSuccessAsync(described);
+        }
+
+        using (var allocated = await scenario.Admin.PostAsync($"/api/v1/nodes/{node}/allocations",
+                   new CreateAllocationsRequest("0.0.0.0", "27300-27301", "Forwarded on the rack 4 router")))
+        {
+            await AccessScenario.EnsureSuccessAsync(allocated);
+        }
+
+        // The user holds node.view and server.create on the node.
+        var role = await CreateRoleAsync(scenario, "key-host", PermissionScope.Node, Permissions.Node.View, Permissions.Server.Create);
+        var user = await scenario.CreateUserAsync("key-host-user");
+        await GrantAsync(scenario.Admin, user.Id, "nodes", node, role.Id);
+        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(scenario.Admin, node)).Node.Metrics is not null, "usage reported");
+        using var client = await scenario.SignInAsync("key-host-user");
+        var everything = await CreateKeyAsync(client, "Everything I have", null);
+        var creating = await CreateKeyAsync(client, "Servers only", [Permissions.Server.Create]);
+        using var unlimited = Bearer(everything.Value);
+        using var limited = Bearer(creating.Value);
+
+        // Signed in, or with a key that keeps node.view, they see all of the node and its notes.
+        foreach (var http in new[] { client.Http, unlimited })
+        {
+            var full = (await ListAsync<NodeSummary>(http, "/api/v1/nodes")).Single(n => n.Id == node);
+            Assert.Equal(("Rack 4", "play.example.com"), (full.Description, full.PublicHost));
+            Assert.NotNull(full.Inventory);
+            Assert.NotNull(full.Metrics);
+            Assert.NotNull(full.CredentialFingerprint);
+            Assert.Equal(PanelKeyTrust.Current, full.PanelKeyTrust);
+            Assert.All(await ListAsync<AllocationView>(http, $"/api/v1/nodes/{node}/allocations"),
+                a => Assert.Equal("Forwarded on the rack 4 router", a.Notes));
+        }
+
+        // A key limited to creating servers acts with that permission alone: the node's name and state, no more than
+        // the create dialog needs, and the ports without the administrators' notes.
+        var listed = await ListAsync<NodeSummary>(limited, "/api/v1/nodes");
+        var slim = listed.Single(n => n.Id == node);
+        Assert.Equal(("scoped-key-slim", NodeStatus.Active, true), (slim.Name, slim.Status, slim.Connected));
+        Assert.All(listed, n => Assert.Equal(PanelKeyTrust.Unknown, n.PanelKeyTrust));
+        Assert.All(listed, n => Assert.Equal((null, null, null, null, null, null, null, null, null),
+            (n.Description, n.PublicHost, n.LastSeenAt, n.Inventory, n.Metrics, n.EnrollmentTokenName, n.CredentialFingerprint,
+                n.ConnectedWithCertificate, n.AgentCanUseCertificate)));
+        var ports = await ListAsync<AllocationView>(limited, $"/api/v1/nodes/{node}/allocations");
+        Assert.Equal(2, ports.Count);
+        Assert.All(ports, a => Assert.Null(a.Notes));
+        using (var details = await limited.GetAsync(new Uri($"/api/v1/nodes/{node}", UriKind.Relative), Ct))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, details.StatusCode);
+        }
+    }
+
+    [DatabaseFact]
     public async Task NodeUsageIsPushedOnlyToWhoSeesTheNode()
     {
         var scenario = await AccessScenario.CreateAsync(factory);
@@ -251,6 +311,63 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
         // With no server left to see, server routes are closed to them altogether (whether the server exists or not).
         await AssertStatusAsync(client.GetAsync($"/api/v1/servers/{mine}"), HttpStatusCode.Forbidden);
         await AssertStatusAsync(client.GetAsync("/api/v1/servers"), HttpStatusCode.Forbidden);
+    }
+
+    [DatabaseFact]
+    public async Task ChangingANodeRoleClosesTheLiveChannelAndTheReconnectionJoinsTheGroupsTheUserNowHas()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(scenario.Admin, "regroup");
+        var node = agent.Config!.NodeId;
+        var role = await CreateRoleAsync(scenario, "regroup-host", PermissionScope.Node, Permissions.Node.View, Permissions.Server.Create);
+        var host = await scenario.CreateUserAsync("regroup-user");
+        await GrantAsync(scenario.Admin, host.Id, "nodes", node, role.Id);
+        using var client = await scenario.SignInAsync("regroup-user");
+
+        // With node.view on the node, the usage arrives.
+        await using var seeing = await BrowserHub.ConnectAsync(factory, client);
+        Assert.True(await seeing.Connection.InvokeAsync<bool>("WatchNodes", Ct));
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(seeing.NodeMetrics.Any(m => m.NodeId == node)), "usage of the node they see");
+
+        // The role loses node.view: their connection ends, and the browser's reconnection watches again with what is
+        // left, creating servers: the node's notices, not its usage.
+        var closed = ClosedAsync(seeing.Connection);
+        await UpdateRoleAsync(scenario, role, Permissions.Server.Create);
+        await closed.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await using var creating = await BrowserHub.ConnectAsync(factory, client);
+        Assert.True(await creating.Connection.InvokeAsync<bool>("WatchNodes", Ct));
+        // An administrator sees the usage whatever the role says (their connection ended with the role's change too):
+        // once it has been pushed to them twice since the user watched, it would have reached the user if they saw it.
+        await using var adminHub = await BrowserHub.ConnectAsync(factory, scenario.Admin);
+        Assert.True(await adminHub.Connection.InvokeAsync<bool>("WatchNodes", Ct));
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(adminHub.NodeMetrics.Count(m => m.NodeId == node) >= 2),
+            "usage pushed after the reconnection");
+        using (var renamed = await scenario.Admin.PutAsync($"/api/v1/nodes/{node}", new UpdateNodeRequest("scoped-regroup-renamed", null, null)))
+        {
+            await AccessScenario.EnsureSuccessAsync(renamed);
+        }
+
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(creating.NodesChanged.Contains(node)), "change of the node they create on");
+        Assert.Empty(creating.NodeMetrics);
+
+        // Given node.view again, the next reconnection gets the usage back.
+        closed = ClosedAsync(creating.Connection);
+        await UpdateRoleAsync(scenario, role, Permissions.Node.View, Permissions.Server.Create);
+        await closed.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await using var seeingAgain = await BrowserHub.ConnectAsync(factory, client);
+        Assert.True(await seeingAgain.Connection.InvokeAsync<bool>("WatchNodes", Ct));
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(seeingAgain.NodeMetrics.Any(m => m.NodeId == node)), "usage of the node they see again");
+
+        // Taking the role away leaves nothing to watch.
+        closed = ClosedAsync(seeingAgain.Connection);
+        using (var revoked = await scenario.Admin.DeleteAsync($"/api/v1/users/{host.Id}/nodes/{node}/roles/{role.Id}"))
+        {
+            await AccessScenario.EnsureSuccessAsync(revoked);
+        }
+
+        await closed.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await using var none = await BrowserHub.ConnectAsync(factory, client);
+        Assert.False(await none.Connection.InvokeAsync<bool>("WatchNodes", Ct));
     }
 
     [DatabaseFact]
@@ -441,9 +558,44 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
         return (await response.Content.ReadFromJsonAsync<UserResponse>(AccessScenario.Json, Ct))!;
     }
 
-    private static async Task<IReadOnlyList<T>> ListAsync<T>(PanelClient client, string path)
+    private static async Task UpdateRoleAsync(AccessScenario scenario, RoleSummary role, params string[] permissions)
     {
-        using var response = await client.GetAsync(path);
+        using var response = await scenario.Admin.PutAsync($"/api/v1/roles/{role.Id}", new UpdateRoleRequest(role.Name, null, permissions));
+        await AccessScenario.EnsureSuccessAsync(response);
+    }
+
+    /// <summary>Creates a key for the user <paramref name="client"/> is signed in as; null permissions: all of theirs.</summary>
+    private static async Task<CreatedApiKey> CreateKeyAsync(PanelClient client, string name, List<string>? permissions)
+    {
+        using var response = await client.PostAsync("/api/v1/account/api-keys", new CreateApiKeyRequest(name, permissions, null));
+        await AccessScenario.EnsureSuccessAsync(response);
+        return (await response.Content.ReadFromJsonAsync<CreatedApiKey>(AccessScenario.Json, Ct))!;
+    }
+
+    /// <summary>A script's client: no cookies, only the key.</summary>
+    private HttpClient Bearer(string key)
+    {
+        var http = factory.CreateDefaultClient(new Uri("https://localhost"));
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        return http;
+    }
+
+    private static Task ClosedAsync(HubConnection connection)
+    {
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        connection.Closed += _ =>
+        {
+            closed.TrySetResult();
+            return Task.CompletedTask;
+        };
+        return closed.Task;
+    }
+
+    private static Task<IReadOnlyList<T>> ListAsync<T>(PanelClient client, string path) => ListAsync<T>(client.Http, path);
+
+    private static async Task<IReadOnlyList<T>> ListAsync<T>(HttpClient http, string path)
+    {
+        using var response = await http.GetAsync(new Uri(path, UriKind.Relative), Ct);
         await AccessScenario.EnsureSuccessAsync(response);
         return (await response.Content.ReadFromJsonAsync<IReadOnlyList<T>>(AccessScenario.Json, Ct))!;
     }
