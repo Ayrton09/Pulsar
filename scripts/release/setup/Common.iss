@@ -73,6 +73,15 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern dynamic
 ShowLanguageDialog=auto
+#ifdef SignSetups
+; Code signing (Build-Release.ps1 -SigningThumbprint or -TrustedSigningMetadata). Inno Setup signs the setup, and with
+; SignedUninstaller the uninstaller too (the one Setup writes to {app}, and its temporary self-copies), by running the
+; command Build-Release.ps1 defines on ISCC's command line under this name: signtool.exe with the release's signing
+; arguments. Signing the finished setup afterwards would leave the uninstaller unsigned. The tool's name is fixed here,
+; never a "$p" one that takes whatever command line a script gives it (Inno Setup's own warning).
+SignTool=pulsarsign
+SignedUninstaller=yes
+#endif
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
