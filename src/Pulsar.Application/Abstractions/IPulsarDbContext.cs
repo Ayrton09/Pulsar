@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Pulsar.Domain.Access;
+using Pulsar.Domain.Appearance;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Certificates;
 using Pulsar.Domain.Databases;
@@ -47,6 +48,8 @@ public interface IPulsarDbContext
     DbSet<SftpSettings> SftpSettings { get; }
 
     DbSet<PublicIpCertificateSettings> PublicIpCertificateSettings { get; }
+
+    DbSet<AppearanceSettings> AppearanceSettings { get; }
 
     DbSet<GameTemplate> GameTemplates { get; }
 

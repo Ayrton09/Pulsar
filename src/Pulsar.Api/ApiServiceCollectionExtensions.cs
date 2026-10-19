@@ -124,6 +124,9 @@ internal static class ApiServiceCollectionExtensions
         var cookies = new PanelCookies(secure: !security.AllowInsecureHttp);
         services.AddSingleton(security);
         services.AddSingleton(cookies);
+        // The CSP names Steam's CDN only while the game artwork is on: read before the first page is served.
+        services.AddSingleton<SteamArtworkPolicy>();
+        services.AddHostedService<SteamArtworkLoader>();
         services.Configure<ForwardedHeadersOptions>(options => TransportSecurity.ConfigureForwardedHeaders(options, security));
 
         AddAuthentication(services, cookies);

@@ -467,6 +467,7 @@ describe('server cards', () => {
     expect(start).toHaveBeenCalledOnce();
 
     // Steam's artwork for the game, asked for without a referrer.
+    await vi.waitFor(() => expect(card.querySelector('img')).not.toBeNull());
     const art = card.querySelector('img');
     expect(art).toHaveAttribute(
       'src',

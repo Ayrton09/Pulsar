@@ -52,6 +52,8 @@ public sealed class AuthorizationMatrixTests(PulsarApiFactory factory) : IClassF
         { "GET", "/api/v1/sftp", [NoPermissions, UserViewer, RoleManager, Administrator] },
         { "GET", "/api/v1/sftp/settings", [Administrator] },
         { "PUT", "/api/v1/sftp/settings", [Administrator] },
+        { "GET", "/api/v1/appearance", [NoPermissions, UserViewer, RoleManager, Administrator] },
+        { "PUT", "/api/v1/appearance", [Administrator] },
         { "GET", "/api/v1/public-ip-certificate", [Administrator] },
         { "PUT", "/api/v1/public-ip-certificate", [Administrator] },
         { "POST", "/api/v1/public-ip-certificate/renew", [Administrator] },

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Pulsar.Api;
 using Pulsar.Api.Access;
 using Pulsar.Api.Agents;
+using Pulsar.Api.Appearance;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Certificates;
 using Pulsar.Api.Databases;
@@ -146,6 +147,7 @@ try
     api.MapServerScheduleEndpoints();
     api.MapNotificationEndpoints();
     api.MapSftpEndpoints();
+    api.MapAppearanceEndpoints();
     api.MapPanelCertificateEndpoints();
 
     // Agent protocol: its own authentication, never the browser's (docs/architecture/03).
