@@ -391,9 +391,42 @@ Linux agent. (Server hosts and bulk enrollment: Phase 14; backups of running gam
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).
-- Code signing for the installer and the programs (SignPath Foundation or Azure Trusted Signing), so SmartScreen does not warn.
+- Code signing for the installer and the programs, so SmartScreen does not warn: built into `Build-Release.ps1` and off until the project has a certificate (next section).
 - A reporting contact in `CODE_OF_CONDUCT.md`; branch protection for `main`; CodeQL on (skipped while the repository is private).
 - Tag `v1.0.0` (the release workflow builds, attests and drafts the release). The version is 1.0.0 until then.
+
+### Code signing
+
+`Build-Release.ps1` builds an unsigned release unless it is given a signing option. With one, it Authenticode-signs, with `signtool.exe` from the Windows SDK (SHA-256 digests, an RFC 3161 timestamp on every signature):
+
+- the panel's and the agent's programs (`Pulsar*.exe` and `Pulsar*.dll` of the three published folders), *before* they are packed into the ZIP, the MSI and the setups, so the packed copies are signed;
+- the agent MSI, after it is built;
+- both setups, which Inno Setup signs through its `SignTool` directive with `SignedUninstaller=yes` (`scripts/release/setup/Common.iss`): signing the finished setup afterwards would leave the uninstaller unsigned. A signed uninstaller keeps its messages in `unins000.msg` beside it.
+
+Not signed: the ZIP (it has its SHA-256 and, from CI, a provenance attestation), the third-party libraries (they keep their publishers' signatures), and the PowerShell scripts (they run with `-ExecutionPolicy Bypass`, so a signature would never be checked).
+
+**Getting a certificate.** Any of these:
+
+- *SignPath Foundation*: free for open-source projects (apply at signpath.org; it asks for an OSI-approved license, which the AGPL v3 is, a project that is public and built by CI, and a code signing policy published in the repository). Its key stays in SignPath's HSM and it signs the files it is sent, so it is **not** a parameter of this script: it needs release workflow stages that send the programs, build the MSI and the setups from the signed ones, and send those too. Not built; decide when the application is approved.
+- *Azure Trusted Signing*: an Azure subscription, a Trusted Signing account, an identity validation and a *Public Trust* certificate profile (check which countries and legal forms Microsoft validates: it began with organizations in the USA, Canada, the EU and the UK, and individuals in the USA and Canada). Install Microsoft's Trusted Signing client tools, and sign in to Azure the usual ways (`az login`, `AZURE_*` environment variables, a managed identity); the account needs the *Trusted Signing Certificate Profile Signer* role. Its certificates last a few days, which is why every signature is timestamped: use Microsoft's timestamp authority with it.
+- *A certificate from a certificate authority*: since 2023 the private key of a publicly trusted code-signing certificate lives on hardware (a USB token, or the authority's cloud HSM). Install the token's software so the certificate shows up under `Cert:\CurrentUser\My`; signtool asks for the token's PIN for each run (a few times per release).
+
+**Running it.** Needs the Windows SDK's *Signing Tools for Desktop Apps* (signtool.exe; 10.0.22621 or later for Trusted Signing) and, for the setups, Inno Setup 7 as before.
+
+```powershell
+# A certificate, or the one on a hardware token, in the current user's Personal store, by its thumbprint
+Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert | Format-List Subject, Thumbprint, NotAfter
+.\scripts\release\Build-Release.ps1 -Version 1.0.0 -RequireSetups -SigningThumbprint 0123456789ABCDEF0123456789ABCDEF01234567
+
+# Azure Trusted Signing
+.\scripts\release\Build-Release.ps1 -Version 1.0.0 -RequireSetups -TrustedSigningMetadata C:\signing\metadata.json -TimestampUrl http://timestamp.acs.microsoft.com
+```
+
+`metadata.json` is the one signtool's `/dlib` reads (no secret in it): `{ "Endpoint": "https://eus.codesigning.azure.net", "CodeSigningAccountName": "<account>", "CertificateProfileName": "<profile>" }`. The other options: `-TrustedSigningDlib` (the client's `Azure.CodeSigning.Dlib.dll`; by default the client tools' per-user install folder), `-SignTool` (another `signtool.exe`; by default the newest in `Windows Kits\10\bin\<version>\x64`) and `-TimestampUrl` (default `http://timestamp.digicert.com`). The two ways exclude each other, and a signing option without one of them is refused rather than ignored.
+
+**What the script checks.** Before the long builds: that signtool exists and is validly signed by Microsoft Corporation (it runs a private copy, checked there, so no DLL left beside the SDK's is loaded and nothing is swapped between check and run); for a thumbprint, that the certificate is in the store with its key, valid now and for code signing; for Trusted Signing, that the metadata has its three fields and that every program beside the client's DLL is signed by Microsoft. After each signing step, that every file passes `signtool verify /pa`, has a valid embedded signature with a timestamp, comes from the one certificate (one subject for the whole release), or the build fails; so does any signtool warning. `release.json` then records `signing` (`signed` and the signer's subject). No secret goes through the script or onto a command line (Inno Setup echoes the sign command in its verbose log). Check a result by hand: `signtool verify /pa /v <file>`, or `Get-AuthenticodeSignature <file>`.
+
+**CI.** `release.yml` does not sign: its build job runs the repository's npm and dotnet code and must hold no signing identity. Signing there needs a job of its own (SignPath's, or Azure with a federated credential in a job that runs no repository code) and the programs signed before the MSI and the setups are built. Until then a release is signed on the maintainer's machine, where it has no provenance attestation: publish its SHA-256 files with it.
 
 ## Cross-cutting testing strategy
 
