@@ -155,13 +155,19 @@ describe('nodes page', () => {
 
     renderAt('/nodes');
 
-    const table = await screen.findByRole('table', { name: 'Nodes' });
-    const rows = within(table).getAllByRole('row');
-    expect(rows[1]).toHaveTextContent('Buenos Aires 1');
-    expect(rows[1]).toHaveTextContent('Online');
-    expect(rows[1]).toHaveTextContent('12.5 % CPU');
-    expect(rows[2]).toHaveTextContent('Offline');
-    expect(rows[3]).toHaveTextContent('Awaiting enrollment');
+    const list = await screen.findByRole('list', { name: 'Nodes' });
+    const cards = within(list).getAllByRole('listitem');
+    expect(cards[0]).toHaveTextContent('Buenos Aires 1');
+    expect(cards[0]).toHaveTextContent('Online');
+    expect(cards[0]).toHaveTextContent('CPU12.5 %');
+    // The disk with the game servers, and how full each resource is.
+    expect(cards[0]).toHaveTextContent('Disk D:\\750 GB of 1,000 GB');
+    const bars = [...(cards[0] as HTMLElement).querySelectorAll<HTMLElement>('div[aria-hidden="true"] > div')];
+    expect(bars.map((bar) => bar.style.width)).toEqual(['12.5%', '25%', '75%']);
+    expect(cards[1]).toHaveTextContent('Offline');
+    expect(cards[1]).toHaveTextContent('No usage while its agent is not connected.');
+    expect(cards[2]).toHaveTextContent('Awaiting enrollment');
+    expect(cards[2]).toHaveTextContent('No agent has enrolled yet');
     expect(screen.getByRole('link', { name: 'Nodes' })).toBeInTheDocument();
   });
 
@@ -302,7 +308,7 @@ describe('nodes page', () => {
 
     renderAt('/nodes');
 
-    expect(await screen.findByRole('table', { name: 'Nodes' })).toBeInTheDocument();
+    expect(await screen.findByRole('list', { name: 'Nodes' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add node' })).not.toBeInTheDocument();
   });
 });
@@ -409,7 +415,7 @@ describe('who reaches the nodes page', () => {
 
     expect(await screen.findByRole('heading', { name: 'Agent connections' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Nodes' })).toBeInTheDocument();
-    expect(screen.queryByRole('table', { name: 'Nodes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Nodes' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add node' })).not.toBeInTheDocument();
     expect(requested(api)).not.toContain('/api/v1/nodes');
   });
@@ -422,7 +428,7 @@ describe('who reaches the nodes page', () => {
 
     expect(await screen.findByRole('button', { name: 'Create token' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Nodes' })).toBeInTheDocument();
-    expect(screen.queryByRole('table', { name: 'Nodes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Nodes' })).not.toBeInTheDocument();
     expect(requested(api)).not.toContain('/api/v1/nodes');
   });
 });
@@ -442,7 +448,7 @@ describe('bulk enrollment', () => {
     const user = userEvent.setup();
 
     const card = await screen.findByRole('region', { name: '2 nodes wait for approval' });
-    expect(within(screen.getByRole('table', { name: 'Nodes' })).getAllByText('Awaiting approval')).toHaveLength(2);
+    expect(within(screen.getByRole('list', { name: 'Nodes' })).getAllByText('Awaiting approval')).toHaveLength(2);
     const first = within(card).getByRole('checkbox', { name: /^FLEET-01/ });
     expect(first).not.toBeChecked();
     expect(within(card).getByRole('checkbox', { name: /^FLEET-02/ })).not.toBeChecked();
@@ -652,7 +658,7 @@ describe('bulk enrollment', () => {
 
     renderAt('/nodes');
 
-    expect(await screen.findByRole('table', { name: 'Nodes' })).toBeInTheDocument();
+    expect(await screen.findByRole('list', { name: 'Nodes' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create token' })).not.toBeInTheDocument();
   });
 

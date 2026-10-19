@@ -1,13 +1,16 @@
+import { Upload } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
-import { Alert, Badge, Card, PageHeader, Table, Td, Th } from '../../components/ui/Display';
+import { Alert, Card, PageHeader } from '../../components/ui/Display';
 import { Field } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
-import { can, Permission } from '../../lib/permissions';
+import { can, canAnywhere, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useImportTemplate, useTemplatePreview, useTemplates } from './api';
+import { CreateServerDialog } from './CreateServerDialog';
+import { GameCard } from './GameCard';
 
 /** Game templates (docs/architecture/04): the ones shipped with Pulsar and the ones administrators imported. */
 export function TemplatesPage() {
@@ -16,48 +19,42 @@ export function TemplatesPage() {
   const templates = useTemplates();
   const [importing, setImporting] = useState(false);
   const canImport = can(me, Permission.TemplateManage);
+  const canCreateServer = canAnywhere(me, Permission.ServerCreate);
+  // The game a server is being created with, from its card.
+  const [creatingWith, setCreatingWith] = useState<string | null>(null);
 
   return (
     <>
       <PageHeader
         title={t('templates.title')}
         description={t('templates.description')}
-        actions={canImport && <Button onClick={() => setImporting(true)}>{t('templates.import')}</Button>}
+        actions={
+          canImport && (
+            <Button icon={Upload} onClick={() => setImporting(true)}>
+              {t('templates.import')}
+            </Button>
+          )
+        }
       />
       {templates.isPending && <Spinner label={t('common.loading')} />}
       {templates.isError && <Alert>{errorMessage(t, templates.error)}</Alert>}
       {templates.data && (
-        <Table label={t('templates.title')}>
-          <thead>
-            <tr>
-              <Th>{t('templates.game')}</Th>
-              <Th>{t('templates.key')}</Th>
-              <Th>{t('templates.version')}</Th>
-              <Th>{t('templates.source')}</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {templates.data.map((template) => (
-              <tr key={template.id}>
-                <Td>
-                  <span className="font-medium">{template.name}</span>
-                  {template.description && <p className="text-xs text-muted">{template.description}</p>}
-                </Td>
-                <Td>
-                  <code>{template.key}</code>
-                </Td>
-                <Td>{template.version}</Td>
-                <Td>
-                  <Badge tone={template.source === 'bundled' ? 'neutral' : 'accent'}>
-                    {t(`templates.sources.${template.source}`)}
-                  </Badge>
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+        <ul
+          aria-label={t('templates.title')}
+          className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+        >
+          {templates.data.map((template) => (
+            <li key={template.id} className="flex min-w-0">
+              <GameCard
+                template={template}
+                onCreate={canCreateServer ? () => setCreatingWith(template.id) : undefined}
+              />
+            </li>
+          ))}
+        </ul>
       )}
       {importing && <ImportDialog onClose={() => setImporting(false)} />}
+      {creatingWith && <CreateServerDialog templateId={creatingWith} onClose={() => setCreatingWith(null)} />}
     </>
   );
 }
