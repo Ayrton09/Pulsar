@@ -58,16 +58,19 @@ export function useRecentActivity(limit: number, enabled: boolean) {
 /**
  * Access changes touch several views: lists, assignment counts, the audit log, and possibly the signed-in user's
  * own permissions (a role they hold was edited).
+ *
+ * A request still in flight for one of them asked before the change, so its answer would not show it. When the view
+ * already has data, invalidating starts a new request; when it has none yet (its first request is still running), the
+ * invalidation would join the old one. Those requests are cancelled first, so every view is fetched again after the
+ * change.
  */
 function useAccessChanged() {
   const queryClient = useQueryClient();
-  return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: adminKeys.users }),
-      queryClient.invalidateQueries({ queryKey: adminKeys.roles }),
-      queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
-      queryClient.invalidateQueries({ queryKey: sessionKey }),
-    ]);
+  const keys = [adminKeys.users, adminKeys.roles, adminKeys.audit, sessionKey];
+  return async () => {
+    await Promise.all(keys.map((queryKey) => queryClient.cancelQueries({ queryKey })));
+    await Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+  };
 }
 
 export function useCreateUser() {

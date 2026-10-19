@@ -123,4 +123,40 @@ describe('users', () => {
     expect(within(dialog).queryByText('Two-factor authentication is on.')).not.toBeInTheDocument();
     expect(reset).toHaveBeenCalledOnce();
   });
+
+  it('lists a user created while the list was still loading', async () => {
+    // The page's first request read the users before the new one existed, and its answer arrives after the creation.
+    let answerFirst: (response: Response) => void = () => {};
+    const first = new Promise<Response>((resolve) => (answerFirst = resolve));
+    const newcomer: Schemas['UserResponse'] = {
+      ...friend,
+      id: '0192f1a0-0000-7000-8000-000000000003',
+      userName: 'newbie',
+    };
+    let existing = [friend];
+    let lists = 0;
+    const create = vi.fn(() => {
+      existing = [friend, newcomer];
+      return json(newcomer, 201);
+    });
+    fakeApi({
+      'GET /api/v1/auth/session': session(adminUser),
+      'GET /api/v1/users': () => (lists++ === 0 ? first : json(existing)),
+      'GET /api/v1/roles': () => json([]),
+      'POST /api/v1/users': create,
+    });
+    renderAt('/admin/users');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Add user' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add user' });
+    await user.type(within(dialog).getByLabelText('User name'), 'newbie');
+    await user.type(within(dialog).getByLabelText('Password'), 'a long enough password');
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
+    answerFirst(json([friend])); // late, and without the new user
+
+    expect(await screen.findByRole('row', { name: /newbie/ })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
 });
