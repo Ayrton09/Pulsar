@@ -17,6 +17,8 @@ public sealed class BrowserHub : IAsyncDisposable
     private readonly List<ConsoleEntry> _console = [];
     private readonly List<Guid> _serversChanged = [];
     private readonly List<ServerMetricsView> _metrics = [];
+    private readonly List<Guid> _nodesChanged = [];
+    private readonly List<NodeMetricsUpdate> _nodeMetrics = [];
 
     private BrowserHub(HubConnection connection)
     {
@@ -40,6 +42,20 @@ public sealed class BrowserHub : IAsyncDisposable
             lock (_metrics)
             {
                 _metrics.Add(metrics);
+            }
+        });
+        connection.On<IReadOnlyCollection<Guid>>(nameof(IPanelClient.NodesChanged), nodes =>
+        {
+            lock (_nodesChanged)
+            {
+                _nodesChanged.AddRange(nodes);
+            }
+        });
+        connection.On<NodeMetricsUpdate>(nameof(IPanelClient.NodeMetrics), update =>
+        {
+            lock (_nodeMetrics)
+            {
+                _nodeMetrics.Add(update);
             }
         });
     }
@@ -76,6 +92,28 @@ public sealed class BrowserHub : IAsyncDisposable
             lock (_metrics)
             {
                 return [.. _metrics];
+            }
+        }
+    }
+
+    public IReadOnlyList<Guid> NodesChanged
+    {
+        get
+        {
+            lock (_nodesChanged)
+            {
+                return [.. _nodesChanged];
+            }
+        }
+    }
+
+    public IReadOnlyList<NodeMetricsUpdate> NodeMetrics
+    {
+        get
+        {
+            lock (_nodeMetrics)
+            {
+                return [.. _nodeMetrics];
             }
         }
     }

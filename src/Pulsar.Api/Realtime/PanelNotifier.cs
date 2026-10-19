@@ -28,10 +28,11 @@ internal sealed partial class PanelNotifier(
 
     public void NodesChanged(IReadOnlyCollection<NodeId> nodes)
     {
-        Send(hub.Clients.Group(PanelHub.NodesGroup).NodesChanged([.. nodes.Select(n => n.Value)]));
+        Send(hub.Clients.Groups(PanelHub.NodesGroup, PanelHub.NodesListGroup).NodesChanged([.. nodes.Select(n => n.Value)]));
         if (connections.AnyScopedWatcher)
         {
-            Send(Task.WhenAll(nodes.Select(node => hub.Clients.Group(PanelHub.NodeGroup(node)).NodesChanged([node.Value]))));
+            Send(Task.WhenAll(nodes.Select(node =>
+                hub.Clients.Groups(PanelHub.NodeGroup(node), PanelHub.NodeListGroup(node)).NodesChanged([node.Value]))));
         }
     }
 

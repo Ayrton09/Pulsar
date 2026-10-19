@@ -8,6 +8,12 @@ public static class ResourceVisibility
 {
     public static IReadOnlyList<string> Server { get; } = [Permissions.Server.View];
 
-    /// <summary>A node's own permissions, or creating servers on it (the create dialog lists it).</summary>
-    public static IReadOnlyList<string> Node { get; } = [Permissions.Node.View, Permissions.Node.Manage, Permissions.Server.Create];
+    /// <summary>What lets a user see a node's details (its machine, usage and credentials), not just its name and state.</summary>
+    public static IReadOnlyList<string> NodeDetails { get; } = [Permissions.Node.View, Permissions.Node.Manage];
+
+    /// <summary>
+    /// A node's own permissions, or creating servers on it: the create dialog lists it, with its name and state only
+    /// (<see cref="NodeDetails"/>).
+    /// </summary>
+    public static IReadOnlyList<string> Node { get; } = [.. NodeDetails, Permissions.Server.Create];
 }

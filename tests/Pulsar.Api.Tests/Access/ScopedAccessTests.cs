@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.SignalR.Client;
 using Pulsar.Api.Access;
 using Pulsar.Api.Auth;
+using Pulsar.Api.Nodes;
 using Pulsar.Api.Realtime;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
@@ -11,6 +12,7 @@ using Pulsar.Application.Access;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
+using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Servers;
 
 namespace Pulsar.Api.Tests.Access;
@@ -82,6 +84,89 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
         var template = await ServerApi.TestTemplateAsync(client);
         await AssertCodeAsync(client.PostAsync("/api/v1/servers", new CreateServerRequest(other.Config.NodeId, template.Id, "Not there", null)),
             HttpStatusCode.NotFound, "node.not_found");
+    }
+
+    [DatabaseFact]
+    public async Task CreatingServersOnANodeShowsItsNameAndStateOnly()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(scenario.Admin, "slim");
+        var node = agent.Config!.NodeId;
+        using (var described = await scenario.Admin.PutAsync($"/api/v1/nodes/{node}", new UpdateNodeRequest("scoped-slim", "Rack 4", "play.example.com")))
+        {
+            await AccessScenario.EnsureSuccessAsync(described);
+        }
+
+        var creatorRole = await CreateRoleAsync(scenario, "slim-creator", PermissionScope.Node, Permissions.Server.Create);
+        var viewerRole = await CreateRoleAsync(scenario, "slim-viewer", PermissionScope.Node, Permissions.Node.View);
+        var creator = await scenario.CreateUserAsync("slim-creator-user");
+        var viewer = await scenario.CreateUserAsync("slim-viewer-user");
+        await GrantAsync(scenario.Admin, creator.Id, "nodes", node, creatorRole.Id);
+        await GrantAsync(scenario.Admin, viewer.Id, "nodes", node, viewerRole.Id);
+        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(scenario.Admin, node)).Node.Metrics is not null, "usage reported");
+        using var creatorClient = await scenario.SignInAsync("slim-creator-user");
+        using var viewerClient = await scenario.SignInAsync("slim-viewer-user");
+        using var everywhere = await scenario.SignedInWithAsync("slim-global-creator", Permissions.Server.Create);
+
+        // Whoever sees the node gets all of it; creating servers there (on it or everywhere) gets its name and state.
+        foreach (var client in new[] { scenario.Admin, viewerClient })
+        {
+            var full = (await ListAsync<NodeSummary>(client, "/api/v1/nodes")).Single(n => n.Id == node);
+            Assert.Equal(("Rack 4", "play.example.com"), (full.Description, full.PublicHost));
+            Assert.NotNull(full.Inventory);
+            Assert.NotNull(full.Metrics);
+            Assert.NotNull(full.LastSeenAt);
+            Assert.NotNull(full.CredentialFingerprint);
+        }
+
+        foreach (var client in new[] { creatorClient, everywhere })
+        {
+            var listed = await ListAsync<NodeSummary>(client, "/api/v1/nodes");
+            var slim = listed.Single(n => n.Id == node);
+            Assert.Equal(("scoped-slim", NodeStatus.Active, true), (slim.Name, slim.Status, slim.Connected));
+            Assert.All(listed, n => Assert.Equal((null, null, null, null, null, null, null, null, null),
+                (n.Description, n.PublicHost, n.LastSeenAt, n.Inventory, n.Metrics, n.EnrollmentTokenName, n.CredentialFingerprint,
+                    n.ConnectedWithCertificate, n.AgentCanUseCertificate)));
+        }
+    }
+
+    [DatabaseFact]
+    public async Task NodeUsageIsPushedOnlyToWhoSeesTheNode()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(scenario.Admin, "live-slim");
+        var node = agent.Config!.NodeId;
+        var creatorRole = await CreateRoleAsync(scenario, "live-creator", PermissionScope.Node, Permissions.Server.Create);
+        var viewerRole = await CreateRoleAsync(scenario, "live-viewer", PermissionScope.Node, Permissions.Node.View);
+        var creator = await scenario.CreateUserAsync("live-creator-user");
+        var viewer = await scenario.CreateUserAsync("live-viewer-user");
+        await GrantAsync(scenario.Admin, creator.Id, "nodes", node, creatorRole.Id);
+        await GrantAsync(scenario.Admin, viewer.Id, "nodes", node, viewerRole.Id);
+        using var creatorClient = await scenario.SignInAsync("live-creator-user");
+        using var viewerClient = await scenario.SignInAsync("live-viewer-user");
+        using var everywhereClient = await scenario.SignedInWithAsync("live-global-creator", Permissions.Server.Create);
+        await using var creatorHub = await BrowserHub.ConnectAsync(factory, creatorClient);
+        await using var everywhereHub = await BrowserHub.ConnectAsync(factory, everywhereClient);
+        await using var viewerHub = await BrowserHub.ConnectAsync(factory, viewerClient);
+        await using var adminHub = await BrowserHub.ConnectAsync(factory, scenario.Admin);
+        // The creators watch first: usage the others get after this was sent while they watched too.
+        Assert.True(await creatorHub.Connection.InvokeAsync<bool>("WatchNodes", Ct));
+        Assert.True(await everywhereHub.Connection.InvokeAsync<bool>("WatchNodes", Ct));
+        Assert.True(await viewerHub.Connection.InvokeAsync<bool>("WatchNodes", Ct));
+        Assert.True(await adminHub.Connection.InvokeAsync<bool>("WatchNodes", Ct));
+
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(viewerHub.NodeMetrics.Any(m => m.NodeId == node)
+            && adminHub.NodeMetrics.Any(m => m.NodeId == node)), "usage pushed to who sees the node");
+        using (var renamed = await scenario.Admin.PutAsync($"/api/v1/nodes/{node}", new UpdateNodeRequest("scoped-live-renamed", null, null)))
+        {
+            await AccessScenario.EnsureSuccessAsync(renamed);
+        }
+
+        // A change is told to everyone who lists the node, after the usage they would have got (one connection keeps its order).
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(new[] { creatorHub, everywhereHub, viewerHub, adminHub }
+            .All(h => h.NodesChanged.Contains(node))), "change pushed to who lists the node");
+        Assert.Empty(creatorHub.NodeMetrics);
+        Assert.Empty(everywhereHub.NodeMetrics);
     }
 
     [DatabaseFact]

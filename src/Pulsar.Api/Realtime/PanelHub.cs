@@ -32,8 +32,14 @@ internal sealed class PanelHub(
     /// <summary>Notices about every server, for users who see every server (a global role).</summary>
     public const string ServersGroup = "servers";
 
-    /// <summary>Notices and usage of every node, for users who see every node.</summary>
+    /// <summary>Notices and usage of every node, for users who see every node's details.</summary>
     public const string NodesGroup = "nodes";
+
+    /// <summary>
+    /// Notices about every node, without their usage, for users who may create servers on every node but not see
+    /// their details.
+    /// </summary>
+    public const string NodesListGroup = "nodes-list";
 
     /// <summary>Usage and operation progress of one server (its page).</summary>
     public static string ServerGroup(ServerId server) => $"server:{server.Value}";
@@ -44,8 +50,11 @@ internal sealed class PanelHub(
     /// <summary>Notices about the servers of one node, for users who see them through a role on the node.</summary>
     public static string NodeServersGroup(NodeId node) => $"node-servers:{node.Value}";
 
-    /// <summary>Notices and usage of one node, for users who see it through a role on it.</summary>
+    /// <summary>Notices and usage of one node, for users who see its details through a role on it.</summary>
     public static string NodeGroup(NodeId node) => $"node:{node.Value}";
+
+    /// <summary>Notices about one node, without its usage, for users who may only create servers on it through a role on it.</summary>
+    public static string NodeListGroup(NodeId node) => $"node-list:{node.Value}";
 
     /// <summary>
     /// Notices when servers change (lists, the dashboard, server pages): about every server with a global role, else
@@ -72,7 +81,8 @@ internal sealed class PanelHub(
 
     /// <summary>
     /// Notices and usage of nodes (lists, node pages, the dashboard): every node with a global role, else the nodes the
-    /// user's node roles let them see. False when they see none.
+    /// user's node roles let them see. Whoever may only create servers on a node (the create dialog lists it, with its
+    /// name and state) gets its notices but not its usage. False when they see none.
     /// </summary>
     public async Task<bool> WatchNodes()
     {
@@ -81,13 +91,23 @@ internal sealed class PanelHub(
             return false;
         }
 
-        if (ResourceVisibility.Node.Any(granted.HasGlobal))
+        if (ResourceVisibility.NodeDetails.Any(granted.HasGlobal))
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, NodesGroup);
             return true;
         }
 
-        return await JoinScopedAsync([.. ResourceVisibility.Node.SelectMany(granted.NodesWith).Distinct().Select(NodeGroup)]);
+        var detailed = ResourceVisibility.NodeDetails.SelectMany(granted.NodesWith).Distinct().ToList();
+        var groups = detailed.Select(NodeGroup).ToList();
+        if (granted.HasGlobal(Permissions.Server.Create))
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, NodesListGroup);
+            await JoinScopedAsync(groups);
+            return true;
+        }
+
+        groups.AddRange(granted.NodesWith(Permissions.Server.Create).Except(detailed).Select(NodeListGroup));
+        return await JoinScopedAsync(groups);
     }
 
     /// <summary>

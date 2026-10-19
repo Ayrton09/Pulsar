@@ -38,4 +38,21 @@ public sealed class VisibleResources(IRequestContext request, IPermissionEvaluat
             ? null
             : node => ResourceVisibility.Node.Any(p => permissions.Has(p, AccessTarget.ForNode(node)));
     }
+
+    /// <summary>
+    /// Whether the user sees a node's details, not just its name and state (creating servers there lists it too);
+    /// null when they see every node's.
+    /// </summary>
+    public async Task<Func<NodeId, bool>?> NodeDetailsAsync(CancellationToken cancellationToken)
+    {
+        if (request.UserId is not { } user)
+        {
+            return null;
+        }
+
+        var permissions = await evaluator.GetAsync(user, cancellationToken);
+        return ResourceVisibility.NodeDetails.Any(permissions.HasGlobal)
+            ? null
+            : node => ResourceVisibility.NodeDetails.Any(p => permissions.Has(p, AccessTarget.ForNode(node)));
+    }
 }
