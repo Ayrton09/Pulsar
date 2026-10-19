@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IAuditLog, AuditLog>();
         services.AddScoped<RoleManagement>();
         services.AddScoped<ApiKeys>();
+        services.AddScoped<SshKeys>();
         services.AddScoped<AuditQueries>();
         services.AddSingleton<AgentSessionStore>();
         services.AddSingleton<AgentTransportPolicy>();

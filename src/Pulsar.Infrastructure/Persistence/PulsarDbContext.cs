@@ -31,6 +31,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
 
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
 
+    public DbSet<SshKey> SshKeys => Set<SshKey>();
+
     public DbSet<ServerAddon> ServerAddons => Set<ServerAddon>();
 
     public DbSet<AuditEntry> AuditLog => Set<AuditEntry>();
@@ -99,6 +101,7 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
         configurationBuilder.Properties<ScheduledRunId>().HaveConversion<ScheduledRunIdConverter>();
         configurationBuilder.Properties<BackupStorageId>().HaveConversion<BackupStorageIdConverter>();
         configurationBuilder.Properties<ApiKeyId>().HaveConversion<ApiKeyIdConverter>();
+        configurationBuilder.Properties<SshKeyId>().HaveConversion<SshKeyIdConverter>();
         configurationBuilder.Properties<SteamAccountId>().HaveConversion<SteamAccountIdConverter>();
         configurationBuilder.Properties<DatabaseHostId>().HaveConversion<DatabaseHostIdConverter>();
         configurationBuilder.Properties<ServerDatabaseId>().HaveConversion<ServerDatabaseIdConverter>();

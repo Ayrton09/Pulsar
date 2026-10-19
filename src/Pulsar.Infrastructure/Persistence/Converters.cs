@@ -27,6 +27,8 @@ internal sealed class ScheduledRunIdConverter() : ValueConverter<ScheduledRunId,
 
 internal sealed class ApiKeyIdConverter() : ValueConverter<ApiKeyId, Guid>(id => id.Value, value => new ApiKeyId(value));
 
+internal sealed class SshKeyIdConverter() : ValueConverter<SshKeyId, Guid>(id => id.Value, value => new SshKeyId(value));
+
 internal sealed class BackupStorageIdConverter() : ValueConverter<BackupStorageId, Guid>(id => id.Value, value => new BackupStorageId(value));
 
 internal sealed class SteamAccountIdConverter() : ValueConverter<SteamAccountId, Guid>(id => id.Value, value => new SteamAccountId(value));

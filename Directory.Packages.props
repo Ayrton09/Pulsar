@@ -39,6 +39,8 @@
   <ItemGroup Label="SFTP">
     <!-- The panel's SFTP server: SSH2 transport and authentication over our own listener; the SFTP v3 handler is Pulsar's own (MIT, no dependencies; Phase 17, spike 0003). -->
     <PackageVersion Include="Microsoft.DevTunnels.Ssh" Version="3.12.42" />
+    <!-- SSH public keys: Ed25519 (which neither .NET nor the SSH library has) and the curve checks of pasted keys (MIT; Phase 17). -->
+    <PackageVersion Include="BouncyCastle.Cryptography" Version="2.7.0" />
   </ItemGroup>
 
   <ItemGroup Label="Persistence and identity">

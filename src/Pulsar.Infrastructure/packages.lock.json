@@ -64,11 +64,6 @@
           "Npgsql": "10.0.3"
         }
       },
-      "BouncyCastle.Cryptography": {
-        "type": "Transitive",
-        "resolved": "2.7.0",
-        "contentHash": "U+12df8UEWHgBi04YVf/Lgi2dy3SItlIYvHjjEVa/BngCQIzDCDRBk50DDByCfDvSbe5pRNFr3b7UrVK2kMcLw=="
-      },
       "Humanizer.Core": {
         "type": "Transitive",
         "resolved": "2.14.1",
@@ -262,11 +257,18 @@
       "pulsar.domain": {
         "type": "Project",
         "dependencies": {
+          "BouncyCastle.Cryptography": "[2.7.0, )",
           "Cronos": "[0.13.0, )"
         }
       },
       "pulsar.manifests": {
         "type": "Project"
+      },
+      "BouncyCastle.Cryptography": {
+        "type": "CentralTransitive",
+        "requested": "[2.7.0, )",
+        "resolved": "2.7.0",
+        "contentHash": "U+12df8UEWHgBi04YVf/Lgi2dy3SItlIYvHjjEVa/BngCQIzDCDRBk50DDByCfDvSbe5pRNFr3b7UrVK2kMcLw=="
       },
       "Cronos": {
         "type": "CentralTransitive",

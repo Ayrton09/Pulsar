@@ -322,6 +322,58 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Access.SshKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("fingerprint");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_used_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("name");
+
+                    b.Property<byte[]>("PublicKey")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("bytea")
+                        .HasColumnName("public_key");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(19)
+                        .HasColumnType("character varying(19)")
+                        .HasColumnName("type");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ssh_keys");
+
+                    b.HasIndex("UserId", "Fingerprint")
+                        .IsUnique()
+                        .HasDatabaseName("ix_ssh_keys_user_id_fingerprint");
+
+                    b.ToTable("ssh_keys", (string)null);
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Access.UserRoleAssignment", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -2679,6 +2731,16 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_server_access_roles_role_id_role_scope");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Access.SshKey", b =>
+                {
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ssh_keys_users_user_id");
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Access.UserRoleAssignment", b =>

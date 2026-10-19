@@ -53,11 +53,6 @@
         "resolved": "4.0.102.10",
         "contentHash": "ngedi+19mHnszODbUrZLtpU6JeIXVbR/MxslGZPJIcC5YVZcJSZxasnde3+0iboQj9V9bKri7b8D+TXTrOW6Aw=="
       },
-      "BouncyCastle.Cryptography": {
-        "type": "Transitive",
-        "resolved": "2.7.0",
-        "contentHash": "U+12df8UEWHgBi04YVf/Lgi2dy3SItlIYvHjjEVa/BngCQIzDCDRBk50DDByCfDvSbe5pRNFr3b7UrVK2kMcLw=="
-      },
       "Microsoft.ApplicationInsights": {
         "type": "Transitive",
         "resolved": "2.23.0",
@@ -632,6 +627,7 @@
       "pulsar.api": {
         "type": "Project",
         "dependencies": {
+          "BouncyCastle.Cryptography": "[2.7.0, )",
           "Microsoft.AspNetCore.OpenApi": "[10.0.13, )",
           "Microsoft.DevTunnels.Ssh": "[3.12.42, )",
           "Microsoft.Extensions.Hosting.WindowsServices": "[10.0.13, )",
@@ -658,6 +654,7 @@
       "pulsar.domain": {
         "type": "Project",
         "dependencies": {
+          "BouncyCastle.Cryptography": "[2.7.0, )",
           "Cronos": "[0.13.0, )"
         }
       },
@@ -684,6 +681,12 @@
         "dependencies": {
           "AWSSDK.Core": "[4.0.102.10, 5.0.0)"
         }
+      },
+      "BouncyCastle.Cryptography": {
+        "type": "CentralTransitive",
+        "requested": "[2.7.0, )",
+        "resolved": "2.7.0",
+        "contentHash": "U+12df8UEWHgBi04YVf/Lgi2dy3SItlIYvHjjEVa/BngCQIzDCDRBk50DDByCfDvSbe5pRNFr3b7UrVK2kMcLw=="
       },
       "Cronos": {
         "type": "CentralTransitive",
