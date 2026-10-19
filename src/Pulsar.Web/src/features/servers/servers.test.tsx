@@ -45,6 +45,8 @@ const installedOffline: Schemas['ServerSummary'] = {
   nodeConnected: true,
   templateId: '0192f1a0-0000-7000-8000-0000000000f1',
   templateName: 'Pulsar test server',
+  templateKey: 'pulsar-test',
+  gameAddress: null,
   installState: 'installed',
   runtimeState: 'offline',
   desiredState: 'stopped',
@@ -175,14 +177,14 @@ describe('servers page', () => {
 
     renderAt('/servers');
 
-    const table = await screen.findByRole('table', { name: 'Servers' });
-    const rows = within(table).getAllByRole('row');
-    expect(rows[1]).toHaveTextContent('Surf');
-    expect(rows[1]).toHaveTextContent('Online');
-    expect(rows[2]).toHaveTextContent('Last known: Crashed');
-    expect(rows[2]).toHaveTextContent('Node disconnected');
-    expect(rows[2]).toHaveTextContent('Crashed too many times in a row');
-    expect(rows[3]).toHaveTextContent('Installing');
+    const list = await screen.findByRole('list', { name: 'Servers' });
+    const cards = within(list).getAllByRole('listitem');
+    expect(cards[0]).toHaveTextContent('Surf');
+    expect(cards[0]).toHaveTextContent('Online');
+    expect(cards[1]).toHaveTextContent('Last known: Crashed');
+    expect(cards[1]).toHaveTextContent('Node disconnected');
+    expect(cards[1]).toHaveTextContent('Crashed too many times in a row');
+    expect(cards[2]).toHaveTextContent('Installing');
     expect(screen.getByRole('link', { name: 'Servers' })).toBeInTheDocument();
   });
 
@@ -409,8 +411,74 @@ describe('servers page', () => {
 
     renderAt('/servers');
 
-    expect(await screen.findByRole('table', { name: 'Servers' })).toBeInTheDocument();
+    expect(await screen.findByRole('list', { name: 'Servers' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create server' })).not.toBeInTheDocument();
+  });
+});
+
+describe('server cards', () => {
+  it('filters the cards by name and by whether the server runs', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([running, installedOffline]),
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    const list = await screen.findByRole('list', { name: 'Servers' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    await user.type(screen.getByRole('searchbox', { name: 'Search servers' }), 'ret');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(list).toHaveTextContent('Retakes');
+
+    await user.clear(screen.getByRole('searchbox', { name: 'Search servers' }));
+    const runningOnly = screen.getByRole('button', { name: 'Running 1' });
+    await user.click(runningOnly);
+    expect(runningOnly).toHaveAttribute('aria-pressed', 'true');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(list).toHaveTextContent('Surf');
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search servers' }), 'nothing like it');
+    expect(screen.getByText('No server matches.')).toBeInTheDocument();
+  });
+
+  it('starts a server from its card, shows its game and copies where players connect', async () => {
+    const start = vi.fn(() => json({ status: 'accepted', errorCode: null }));
+    const valheim = {
+      ...installedOffline,
+      templateKey: 'valheim',
+      gameAddress: { ipAddress: '192.168.1.50', port: 2456 },
+    };
+    const everywhere = { ...running, gameAddress: { ipAddress: '0.0.0.0', port: 28015 } };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([valheim, everywhere]),
+      [`POST /api/v1/servers/${valheim.id}/start`]: start,
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    const cards = within(await screen.findByRole('list', { name: 'Servers' })).getAllByRole('listitem');
+    const card = cards[0] as HTMLElement;
+    const other = cards[1] as HTMLElement;
+    // Only what applies now, as icons named by their action.
+    expect(within(card).queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'Start' }));
+    expect(start).toHaveBeenCalledOnce();
+
+    // Steam's artwork for the game, asked for without a referrer.
+    const art = card.querySelector('img');
+    expect(art).toHaveAttribute(
+      'src',
+      'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/892970/header.jpg',
+    );
+    expect(art).toHaveAttribute('referrerpolicy', 'no-referrer');
+
+    await user.click(within(card).getByRole('button', { name: 'Copy the address 192.168.1.50:2456' }));
+    expect(await navigator.clipboard.readText()).toBe('192.168.1.50:2456');
+    // Listening on every address: the port alone.
+    await user.click(within(other).getByRole('button', { name: 'Copy the address Port 28015' }));
+    expect(await navigator.clipboard.readText()).toBe('28015');
   });
 });
 

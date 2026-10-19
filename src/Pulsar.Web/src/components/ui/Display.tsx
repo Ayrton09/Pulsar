@@ -27,7 +27,27 @@ export function PageHeader({
 }
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <section className={`min-w-0 rounded-xl border border-border bg-surface ${className}`}>{children}</section>;
+  return (
+    <section
+      className={`min-w-0 rounded-2xl border border-border bg-surface/90 shadow-lg shadow-black/20 ${className}`}
+    >
+      {children}
+    </section>
+  );
+}
+
+/**
+ * How full a resource is. The value is written next to it, so the bar adds no text of its own; it turns amber and then
+ * red as the resource runs out.
+ */
+export function Meter({ percent, className = '' }: { percent: number; className?: string }) {
+  const width = Math.min(100, Math.max(0, percent));
+  const tone = width >= 90 ? 'bg-danger' : width >= 75 ? 'bg-warning' : 'bg-linear-to-r from-accent-strong to-accent';
+  return (
+    <div aria-hidden="true" className={`h-1.5 overflow-hidden rounded-full bg-surface-raised ${className}`}>
+      <div className={`h-full rounded-full transition-[width] duration-500 ${tone}`} style={{ width: `${width}%` }} />
+    </div>
+  );
 }
 
 type Tone = 'neutral' | 'accent' | 'success' | 'danger';
@@ -58,7 +78,7 @@ export function Alert({ children }: { children: ReactNode }) {
 
 export function Table({ children, label }: { children: ReactNode; label: string }) {
   return (
-    <div className="relative overflow-x-auto rounded-xl border border-border bg-surface">
+    <div className="relative overflow-x-auto rounded-2xl border border-border bg-surface/90 shadow-lg shadow-black/20">
       <table aria-label={label} className="w-full text-left text-sm">
         {children}
       </table>

@@ -22,6 +22,8 @@ const server = (
   nodeConnected: true,
   templateId: '0192f1a0-0000-7000-8000-0000000000f1',
   templateName: 'Pulsar test server',
+  templateKey: 'pulsar-test',
+  gameAddress: null,
   installState: 'installed',
   runtimeState: 'running',
   desiredState: 'running',

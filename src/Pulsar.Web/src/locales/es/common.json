@@ -102,7 +102,9 @@
       "nodeOffline": "El nodo {{name}} está desconectado"
     },
     "activity": "Actividad reciente",
-    "allActivity": "Toda la actividad"
+    "allActivity": "Toda la actividad",
+    "yourServers": "Tus servidores",
+    "allServers": "Ver los {{count}}"
   },
   "users": {
     "title": "Usuarios",
@@ -1165,7 +1167,8 @@
       "bots_other": "({{count, number}} bots)",
       "map": "Mapa",
       "ofLimit": "{{value}} de {{limit}}",
-      "cpuLimit": "{{value, number}} %"
+      "cpuLimit": "{{value, number}} %",
+      "limit": "de {{limit}}"
     },
     "players": {
       "title": "Jugadores",
@@ -1189,6 +1192,22 @@
       "guardCode": "Código de Steam Guard",
       "retryInstall": "Instalar de nuevo con el código",
       "retryUpdate": "Actualizar de nuevo con el código"
+    },
+    "search": "Buscar servidores",
+    "filters": {
+      "label": "Mostrar",
+      "all": "Todos",
+      "online": "Encendidos",
+      "offline": "Apagados"
+    },
+    "noMatch": "Ningún servidor coincide.",
+    "card": {
+      "port": "Puerto {{port}}",
+      "copyAddress": "Copiar la dirección {{address}}",
+      "copied": "Copiado.",
+      "copyFailed": "El navegador no dejó copiar.",
+      "lastStarted": "Último inicio: {{when}}",
+      "neverStarted": "Nunca se inició"
     }
   },
   "panelKeys": {

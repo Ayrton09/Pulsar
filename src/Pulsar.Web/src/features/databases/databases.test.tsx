@@ -25,6 +25,8 @@ const details: Schemas['ServerDetails'] = {
     nodeConnected: true,
     templateId: '0192f1a0-0000-7000-8000-0000000000f1',
     templateName: 'Rust',
+    templateKey: 'rust',
+    gameAddress: null,
     installState: 'installed',
     runtimeState: 'offline',
     desiredState: 'stopped',

@@ -102,7 +102,9 @@
       "nodeOffline": "Node {{name}} is offline"
     },
     "activity": "Recent activity",
-    "allActivity": "All activity"
+    "allActivity": "All activity",
+    "yourServers": "Your servers",
+    "allServers": "See all {{count}}"
   },
   "users": {
     "title": "Users",
@@ -1165,7 +1167,8 @@
       "bots_other": "({{count, number}} bots)",
       "map": "Map",
       "ofLimit": "{{value}} of {{limit}}",
-      "cpuLimit": "{{value, number}} %"
+      "cpuLimit": "{{value, number}} %",
+      "limit": "of {{limit}}"
     },
     "players": {
       "title": "Players",
@@ -1189,6 +1192,22 @@
       "guardCode": "Steam Guard code",
       "retryInstall": "Install again with the code",
       "retryUpdate": "Update again with the code"
+    },
+    "search": "Search servers",
+    "filters": {
+      "label": "Show",
+      "all": "All",
+      "online": "Running",
+      "offline": "Stopped"
+    },
+    "noMatch": "No server matches.",
+    "card": {
+      "port": "Port {{port}}",
+      "copyAddress": "Copy the address {{address}}",
+      "copied": "Copied.",
+      "copyFailed": "The browser did not allow copying.",
+      "lastStarted": "Last started {{when}}",
+      "neverStarted": "Never started"
     }
   },
   "panelKeys": {

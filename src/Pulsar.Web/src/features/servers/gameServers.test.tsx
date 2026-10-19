@@ -145,6 +145,8 @@ const summary: Schemas['ServerSummary'] = {
   nodeConnected: true,
   templateId,
   templateName: 'Counter-Strike: Source',
+  templateKey: 'css',
+  gameAddress: null,
   installState: 'installed',
   runtimeState: 'offline',
   desiredState: 'stopped',

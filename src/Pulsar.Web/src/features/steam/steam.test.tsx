@@ -43,6 +43,8 @@ function details(
       nodeConnected: true,
       templateId: '0192f1a0-0000-7000-8000-0000000000f1',
       templateName: 'DayZ',
+      templateKey: 'dayz',
+      gameAddress: null,
       installState: 'failed',
       runtimeState: 'offline',
       desiredState: 'stopped',

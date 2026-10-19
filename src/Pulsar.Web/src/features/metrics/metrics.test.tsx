@@ -23,6 +23,8 @@ const details: Schemas['ServerDetails'] = {
     nodeConnected: true,
     templateId: '0192f1a0-0000-7000-8000-0000000000f1',
     templateName: 'Counter-Strike 2',
+    templateKey: 'cs2',
+    gameAddress: null,
     installState: 'installed',
     runtimeState: 'offline',
     desiredState: 'stopped',

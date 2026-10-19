@@ -34,6 +34,36 @@ export function ServerStateBadge({
   );
 }
 
+const dots: Record<ServerDisplayState, string> = {
+  installing: 'bg-accent motion-safe:animate-pulse',
+  restoring: 'bg-accent motion-safe:animate-pulse',
+  deleting: 'bg-accent motion-safe:animate-pulse',
+  installFailed: 'bg-danger',
+  notInstalled: 'bg-muted',
+  starting: 'bg-warning motion-safe:animate-pulse',
+  online: 'bg-success shadow-[0_0_8px] shadow-success',
+  stopping: 'bg-warning motion-safe:animate-pulse',
+  offline: 'bg-muted',
+  crashed: 'bg-danger',
+};
+
+/** The server's status over its game's picture: a colored dot and the same words as {@link ServerStateBadge}. */
+export function ServerStatusPill({
+  server,
+}: {
+  server: Pick<ServerSummary, 'installState' | 'runtimeState' | 'activeOperation' | 'nodeConnected'>;
+}) {
+  const { t } = useTranslation();
+  const display = serverDisplayState(server);
+  const state = t(`servers.states.${display}`);
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-sm">
+      <span aria-hidden="true" className={`size-2 rounded-full ${server.nodeConnected ? dots[display] : 'bg-muted'}`} />
+      {server.nodeConnected ? state : t('servers.lastKnown', { state })}
+    </span>
+  );
+}
+
 /** Shown when the panel cannot reach the node: the state above is the last one it heard. */
 export function NodeDisconnectedBadge() {
   const { t } = useTranslation();
