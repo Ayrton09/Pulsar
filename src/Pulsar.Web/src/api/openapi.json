@@ -15256,6 +15256,22 @@
           }
         }
       },
+      "ServerAddressView": {
+        "required": [
+          "ipAddress",
+          "port"
+        ],
+        "type": "object",
+        "properties": {
+          "ipAddress": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "ServerDatabaseCredentials": {
         "required": [
           "database",
@@ -15742,7 +15758,9 @@
           "lastStartedAt",
           "lastStoppedAt",
           "activeOperation",
-          "createdAt"
+          "createdAt",
+          "templateKey",
+          "gameAddress"
         ],
         "type": "object",
         "properties": {
@@ -15826,6 +15844,19 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "templateKey": {
+            "type": "string"
+          },
+          "gameAddress": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ServerAddressView"
+              }
+            ]
           }
         }
       },

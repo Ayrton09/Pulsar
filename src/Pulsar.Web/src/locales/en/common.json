@@ -102,7 +102,9 @@
       "nodeOffline": "Node {{name}} is offline"
     },
     "activity": "Recent activity",
-    "allActivity": "All activity"
+    "allActivity": "All activity",
+    "yourServers": "Your servers",
+    "allServers": "All servers ({{count}})"
   },
   "users": {
     "title": "Users",
@@ -926,7 +928,6 @@
     "create": "Create server",
     "empty": "There are no servers you can see yet.",
     "emptyCreate": "No servers yet. Create one on a connected node.",
-    "server": "Server",
     "status": "Status",
     "node": "Node",
     "nodeHint": "Only connected nodes are listed: the server is set up on its machine right away.",
@@ -1163,9 +1164,9 @@
       "playersValue": "{{players, number}} / {{max, number}}",
       "bots_one": "({{count, number}} bot)",
       "bots_other": "({{count, number}} bots)",
-      "map": "Map",
-      "ofLimit": "{{value}} of {{limit}}",
-      "cpuLimit": "{{value, number}} %"
+      "cpuLimit": "{{value, number}} %",
+      "limit": "of {{limit}}",
+      "mapDetail": "Map: {{map}}"
     },
     "players": {
       "title": "Players",
@@ -1189,7 +1190,25 @@
       "guardCode": "Steam Guard code",
       "retryInstall": "Install again with the code",
       "retryUpdate": "Update again with the code"
-    }
+    },
+    "search": "Search servers",
+    "filters": {
+      "label": "Show",
+      "all": "All",
+      "online": "Running",
+      "offline": "Stopped"
+    },
+    "noMatch": "No server matches.",
+    "card": {
+      "port": "Port {{port}}",
+      "copyAddress": "Copy the address {{address}}",
+      "copied": "Copied.",
+      "copyFailed": "The browser did not allow copying.",
+      "lastStarted": "Last started {{when}}",
+      "neverStarted": "Never started"
+    },
+    "actionsFor": "Actions for {{name}}",
+    "commandFor": "{{command}} {{name}}"
   },
   "panelKeys": {
     "title": "Panel signing key",

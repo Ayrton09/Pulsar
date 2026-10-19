@@ -36,6 +36,8 @@ const server: Schemas['ServerSummary'] = {
   nodeConnected: true,
   templateId: '0192f1a0-0000-7000-8000-0000000000f1',
   templateName: 'Pulsar test server',
+  templateKey: 'pulsar-test',
+  gameAddress: null,
   installState: 'installed',
   runtimeState: 'running',
   desiredState: 'running',
@@ -298,6 +300,32 @@ describe('live updates', () => {
     expect(header).toHaveTextContent('1 h 5 min');
   });
 
+  it("draws the usage against the server's limits", async () => {
+    serverApi(operator, { ...details, limits: { cpuPercent: 50, memoryMb: 1024, databases: 2 } });
+    const live = await renderAt(`/servers/${server.id}`);
+    await waitFor(() => expect(live.calls('WatchServer')).toHaveLength(1));
+
+    live.emit('ServerMetrics', {
+      serverId: server.id,
+      at: '2026-10-02T12:06:00Z',
+      cpuPercent: 25,
+      memoryBytes: 256 * 1024 * 1024,
+      committedBytes: 512 * 1024 * 1024,
+      processCount: 1,
+      uptimeSeconds: 600,
+    });
+
+    const usage = await screen.findByLabelText('Usage');
+    await waitFor(() => expect(usage).toHaveTextContent('25 %'));
+    expect(usage).toHaveTextContent('of 50 %');
+    // With a memory limit the committed memory is what counts.
+    expect(usage).toHaveTextContent('512 MB');
+    expect(usage).toHaveTextContent('of 1 GB');
+    // Both bars are half full: 25 % of a 50 % limit, 512 MB of 1 GB.
+    const bars = [...usage.querySelectorAll<HTMLElement>('div[aria-hidden="true"] > div')];
+    expect(bars.map((bar) => bar.style.width)).toEqual(['50%', '50%']);
+  });
+
   it('shows who is playing, as plain text', async () => {
     serverApi();
     const live = await renderAt(`/servers/${server.id}`);
@@ -367,7 +395,7 @@ describe('live updates', () => {
   it('fetches the servers again when the panel says they changed, instead of polling', async () => {
     const api = serverApi();
     const live = await renderAt('/servers');
-    await screen.findByRole('table', { name: 'Servers' });
+    await screen.findByRole('list', { name: 'Servers' });
     await waitFor(() => expect(live.calls('WatchServers')).toHaveLength(1));
     const fetches = () => api.mock.calls.filter(([input]) => (input as Request).url.endsWith('/api/v1/servers')).length;
     const before = fetches();
@@ -383,7 +411,7 @@ describe('live updates', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<App router={createMemoryRouter(routes, { initialEntries: ['/servers'] })} queryClient={queryClient} />);
     const live = await openedConnection(before);
-    await screen.findByRole('table', { name: 'Servers' });
+    await screen.findByRole('list', { name: 'Servers' });
     queryClient.setQueryData(serverKeys.settings(server.id), { variables: [] });
     queryClient.setQueryData(serverKeys.templates, []);
 
@@ -452,14 +480,14 @@ describe('live channel and session', () => {
   it('reads the session again while it cannot reconnect, and signs out a session that ended', async () => {
     const { state, sessionReads } = sessionApi();
     const { live, router } = await renderServers();
-    await screen.findByRole('table', { name: 'Servers' });
+    await screen.findByRole('list', { name: 'Servers' });
     const before = sessionReads();
 
     live.drop();
     live.failReconnect();
 
     await waitFor(() => expect(sessionReads()).toBe(before + 2));
-    expect(screen.getByRole('table', { name: 'Servers' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Servers' })).toBeInTheDocument();
     // Signed out in another tab, or the cookie expired while the laptop slept.
     state.signedIn = false;
     live.failReconnect();
@@ -472,7 +500,7 @@ describe('live channel and session', () => {
     const { sessionReads } = sessionApi();
     refuseNext();
     await renderServers();
-    await screen.findByRole('table', { name: 'Servers' });
+    await screen.findByRole('list', { name: 'Servers' });
 
     expect(await screen.findByText('Live updates paused, reconnecting…')).toBeInTheDocument();
     await waitFor(() => expect(sessionReads()).toBeGreaterThan(1));
@@ -481,13 +509,13 @@ describe('live channel and session', () => {
   it('keeps the page when reading the session again fails', async () => {
     const { state } = sessionApi();
     const { queryClient } = await renderServers();
-    await screen.findByRole('table', { name: 'Servers' });
+    await screen.findByRole('list', { name: 'Servers' });
 
     state.sessionDown = true;
     await queryClient.invalidateQueries({ queryKey: sessionKey });
 
     expect(await screen.findByText(/Could not refresh/)).toBeInTheDocument();
-    expect(screen.getByRole('table', { name: 'Servers' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Servers' })).toBeInTheDocument();
     state.sessionDown = false;
     await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(screen.queryByText(/Could not refresh/)).not.toBeInTheDocument());

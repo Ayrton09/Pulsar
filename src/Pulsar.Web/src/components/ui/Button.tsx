@@ -1,13 +1,14 @@
 import type { LucideIcon } from 'lucide-react';
 import type { ButtonHTMLAttributes } from 'react';
 
-type Variant = 'primary' | 'secondary' | 'danger' | 'dangerSubtle' | 'ghost';
+type Variant = 'primary' | 'secondary' | 'success' | 'danger' | 'dangerSubtle' | 'ghost';
 
 const variants: Record<Variant, string> = {
-  primary: 'bg-accent text-accent-contrast hover:bg-accent/90',
+  primary: 'bg-accent text-accent-contrast shadow-sm shadow-accent/20 hover:bg-accent/90',
   secondary: 'border border-border bg-surface hover:bg-surface-raised',
+  success: 'bg-success text-accent-contrast shadow-sm shadow-success/20 hover:bg-success/90',
   danger: 'bg-danger text-white hover:bg-danger/90',
-  dangerSubtle: 'border border-danger/40 text-danger hover:bg-danger/10',
+  dangerSubtle: 'border border-danger/40 bg-surface text-danger hover:bg-danger/10',
   ghost: 'hover:bg-surface-raised',
 };
 
@@ -15,14 +16,22 @@ const variants: Record<Variant, string> = {
 const unavailable: Record<Variant, string> = {
   primary: 'bg-surface-raised text-muted',
   secondary: 'border border-border bg-surface text-muted',
+  success: 'bg-surface-raised text-muted',
   danger: 'bg-surface-raised text-muted',
-  dangerSubtle: 'border border-border text-muted',
+  dangerSubtle: 'border border-border bg-surface text-muted',
   ghost: 'text-muted',
 };
 
+const sizes = {
+  sm: 'h-8 px-3 text-sm',
+  md: 'h-10 px-4 text-sm',
+  icon: 'size-8 text-sm',
+} as const;
+
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
-  size?: 'sm' | 'md';
+  /** icon: a square button with only its icon; give it an aria-label. */
+  size?: 'sm' | 'md' | 'icon';
   /** Disables the button and shows that the action is running. */
   busy?: boolean;
   /** Shown before the label; the label stays the button's name. */
@@ -48,10 +57,10 @@ export function Button({
       disabled={disabled === true || busy}
       aria-busy={busy || undefined}
       className={[
-        'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors',
+        'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
         busy ? 'cursor-wait' : 'disabled:cursor-not-allowed',
-        size === 'sm' ? 'h-8 px-3 text-sm' : 'h-10 px-4 text-sm',
+        sizes[size],
         inactive ? unavailable[variant] : variants[variant],
         className,
       ].join(' ')}

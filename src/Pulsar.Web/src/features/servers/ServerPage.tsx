@@ -6,17 +6,14 @@ import {
   Database,
   Download,
   FolderOpen,
+  Gamepad2,
+  HardDrive,
   LayoutDashboard,
-  Map as MapIcon,
   MemoryStick,
   Network,
-  OctagonX,
-  Play,
   Puzzle,
   RotateCcw,
-  RotateCw,
   Settings,
-  Square,
   Terminal,
   Trash2,
   Users,
@@ -27,7 +24,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ApiError } from '../../api/client';
 import { Button, Spinner } from '../../components/ui/Button';
-import { Alert, Badge, Card, PageHeader, Table, Td, Th } from '../../components/ui/Display';
+import { Alert, Badge, Card, Meter, Table, Td, Th } from '../../components/ui/Display';
 import { Checkbox } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatBytes, useFormatDate, useFormatDuration } from '../../lib/format';
@@ -36,6 +33,7 @@ import { useCurrentUser } from '../auth/api';
 import { AddonsTab } from '../addons/AddonsTab';
 import { BackupsTab } from '../backups/BackupsTab';
 import { DatabasesTab } from '../databases/DatabasesTab';
+import { GameArt } from '../games/GameArt';
 import { SteamGuardPrompt } from '../steam/SteamServerCards';
 import { FilesTab } from '../files/FilesTab';
 import { SchedulesTab } from '../schedules/SchedulesTab';
@@ -46,17 +44,17 @@ import {
   useDeleteServer,
   useReinstallServer,
   useServer,
-  useServerCommand,
   useUpdateGame,
   useUpgradeTemplate,
   type OperationView,
-  type ServerCommand,
   type ServerDetails,
 } from './api';
 import { NodeDisconnectedBadge, ServerStateBadge, StateReason } from './components';
 import { ConsoleTab } from './ConsoleTab';
+import { PowerButtons } from './PowerButtons';
+import { AddressChip } from './ServerCard';
 import { NetworkTab, OperationProgress, SettingsTab } from './ServerTabs';
-import { commandRefusal, failureReason, serverActions } from './serverStatus';
+import { failureReason, serverActions } from './serverStatus';
 
 const allTabs = [
   'overview',
@@ -146,30 +144,15 @@ export function ServerPage() {
   const { server } = details.data;
   return (
     <>
-      <p className="mb-2 text-sm">
-        <Link to="/servers" className="text-muted hover:text-text">
-          ← {t('servers.title')}
-        </Link>
-      </p>
       {details.isError && (
         <div className="mb-4">
           <Alert>{t('servers.stale', { error: errorMessage(t, details.error) })}</Alert>
         </div>
       )}
-      <PageHeader
-        title={server.name}
-        description={details.data.description ?? undefined}
-        status={
-          <>
-            <ServerStateBadge server={server} />
-            {!server.nodeConnected && <NodeDisconnectedBadge />}
-          </>
-        }
-      />
+      <ServerHero details={details.data} />
       {(server.runtimeState === 'starting' || server.runtimeState === 'running') && metrics && (
         <ServerUsage metrics={metrics} limits={details.data.limits} />
       )}
-      <LifecycleActions details={details.data} />
       {server.activeOperation && (
         <div className="mt-4">
           <OperationProgress server={server} operation={server.activeOperation} />
@@ -259,7 +242,7 @@ function SectionTabs({ tabs, current, onOpen }: { tabs: Tab[]; current: Tab; onO
       role="tablist"
       aria-label={t('servers.tabs.label')}
       onKeyDown={onKeyDown}
-      className="relative mt-6 flex gap-1 overflow-x-auto shadow-[inset_0_-1px_0_var(--color-border)] [scrollbar-width:thin]"
+      className="relative mt-6 flex gap-1 overflow-x-auto rounded-xl border border-border bg-surface/80 p-1 [scrollbar-width:thin]"
     >
       {tabs.map((name) => {
         const Icon = tabIcons[name];
@@ -274,7 +257,7 @@ function SectionTabs({ tabs, current, onOpen }: { tabs: Tab[]; current: Tab; onO
             aria-controls="server-section"
             tabIndex={selected ? 0 : -1}
             onClick={() => onOpen(name)}
-            className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-sm whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent sm:px-4 ${selected ? 'border-accent font-medium text-accent' : 'border-transparent text-muted hover:text-text'}`}
+            className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent sm:px-4 ${selected ? 'bg-accent/15 font-medium text-accent' : 'text-muted hover:bg-surface-raised hover:text-text'}`}
           >
             <Icon className="size-4" />
             {t(`servers.tabs.${name}`)}
@@ -285,109 +268,126 @@ function SectionTabs({ tabs, current, onOpen }: { tabs: Tab[]; current: Tab; onO
   );
 }
 
+/**
+ * The top of the server's page: its game's banner behind its name and status, the game, the node and where players
+ * connect, and the power buttons.
+ */
+function ServerHero({ details }: { details: ServerDetails }) {
+  const { t } = useTranslation();
+  const { server } = details;
+  return (
+    <header className="relative mb-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-xl shadow-black/30">
+      <GameArt templateKey={details.templateKey} kind="hero" className="absolute inset-0 size-full opacity-60" />
+      <div aria-hidden="true" className="absolute inset-0 bg-linear-to-r from-bg via-bg/85 to-bg/30" />
+      <div aria-hidden="true" className="absolute inset-0 bg-linear-to-t from-bg/90 via-transparent to-transparent" />
+      <div className="relative flex flex-col gap-6 p-5 sm:p-7 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <Link to="/servers" className="text-sm text-muted hover:text-text">
+            ← {t('servers.title')}
+          </Link>
+          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className="text-2xl font-bold tracking-tight break-words sm:text-3xl">{server.name}</h1>
+            <ServerStateBadge server={server} />
+            {!server.nodeConnected && <NodeDisconnectedBadge />}
+          </div>
+          {details.description && <p className="mt-1 text-sm text-muted">{details.description}</p>}
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <Gamepad2 aria-hidden="true" className="size-4" />
+              {server.templateName}
+            </span>
+            <Link to={`/nodes/${server.nodeId}`} className="inline-flex items-center gap-1.5 hover:text-text">
+              <HardDrive aria-hidden="true" className="size-4" />
+              {server.nodeName}
+            </Link>
+            <AddressChip address={server.gameAddress} />
+          </div>
+        </div>
+        <PowerButtons server={server} />
+      </div>
+    </header>
+  );
+}
+
 /** CPU, memory and uptime of the running server, and its players when it answers queries, pushed every few seconds. */
 function ServerUsage({ metrics, limits }: { metrics: ServerMetrics; limits: ServerDetails['limits'] }) {
   const { t } = useTranslation();
   const formatBytes = useFormatBytes();
   const formatDuration = useFormatDuration();
   const { query } = metrics;
-  const cpu = t('servers.usage.cpuValue', { value: metrics.cpuPercent });
-  // With a memory limit, what it counts (committed memory) next to it; otherwise the working set, as Task Manager shows.
+  // With a memory limit, what it counts (committed memory) against it; otherwise the working set, as Task Manager shows.
   const memoryLimit = limits.memoryMb == null ? null : limits.memoryMb * 1024 * 1024;
-  const items: [LucideIcon, string, string][] = [
-    [
-      Cpu,
-      t('servers.usage.cpu'),
-      limits.cpuPercent == null
-        ? cpu
-        : t('servers.usage.ofLimit', { value: cpu, limit: t('servers.usage.cpuLimit', { value: limits.cpuPercent }) }),
-    ],
-    [
-      MemoryStick,
-      t('servers.usage.memory'),
-      memoryLimit == null
-        ? formatBytes(metrics.memoryBytes)
-        : t('servers.usage.ofLimit', {
-            value: formatBytes(metrics.committedBytes ?? metrics.memoryBytes),
-            limit: formatBytes(memoryLimit),
-          }),
-    ],
-    [Clock, t('servers.usage.uptime'), formatDuration(metrics.uptimeSeconds)],
+  const memory = memoryLimit == null ? metrics.memoryBytes : (metrics.committedBytes ?? metrics.memoryBytes);
+  const tiles: UsageTile[] = [
+    limits.cpuPercent == null
+      ? {
+          icon: Cpu,
+          label: t('servers.usage.cpu'),
+          value: t('servers.usage.cpuValue', { value: metrics.cpuPercent }),
+          percent: metrics.cpuPercent,
+        }
+      : {
+          icon: Cpu,
+          label: t('servers.usage.cpu'),
+          value: t('servers.usage.cpuValue', { value: metrics.cpuPercent }),
+          detail: t('servers.usage.limit', { limit: t('servers.usage.cpuLimit', { value: limits.cpuPercent }) }),
+          percent: (metrics.cpuPercent / limits.cpuPercent) * 100,
+        },
+    memoryLimit == null
+      ? { icon: MemoryStick, label: t('servers.usage.memory'), value: formatBytes(memory) }
+      : {
+          icon: MemoryStick,
+          label: t('servers.usage.memory'),
+          value: formatBytes(memory),
+          detail: t('servers.usage.limit', { limit: formatBytes(memoryLimit) }),
+          percent: (memory / memoryLimit) * 100,
+        },
+    { icon: Clock, label: t('servers.usage.uptime'), value: formatDuration(metrics.uptimeSeconds) },
   ];
   if (query) {
     const players = t('servers.usage.playersValue', { players: query.players, max: query.maxPlayers });
-    items.push([
-      Users,
-      t('servers.usage.players'),
-      query.bots > 0 ? `${players} ${t('servers.usage.bots', { count: query.bots })}` : players,
-    ]);
-    if (query.map) {
-      items.push([MapIcon, t('servers.usage.map'), query.map]);
-    }
+    tiles.push({
+      icon: Users,
+      label: t('servers.usage.players'),
+      value: query.bots > 0 ? `${players} ${t('servers.usage.bots', { count: query.bots })}` : players,
+      detail: query.map ? t('servers.usage.mapDetail', { map: query.map }) : undefined,
+      percent: query.maxPlayers > 0 ? (query.players / query.maxPlayers) * 100 : undefined,
+    });
   }
   return (
-    <dl aria-label={t('servers.usage.label')} className="mb-4 grid grid-cols-2 gap-2 text-sm sm:flex sm:flex-wrap">
-      {items.map(([Icon, label, value]) => (
-        <div key={label} className="min-w-0 rounded-lg border border-border bg-surface px-3 py-2 sm:min-w-32">
-          <dt className="flex items-center gap-1.5 text-xs text-muted">
-            <Icon className="size-3.5 shrink-0" />
+    <dl aria-label={t('servers.usage.label')} className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {tiles.map(({ icon: Icon, label, value, detail, percent }) => (
+        <div
+          key={label}
+          className="min-w-0 rounded-2xl border border-border bg-surface/90 p-4 shadow-lg shadow-black/20"
+        >
+          <dt className="flex items-center gap-2 text-xs text-muted">
+            <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-accent/15 text-accent">
+              <Icon aria-hidden="true" className="size-4" />
+            </span>
             {label}
           </dt>
-          <dd className="mt-0.5 truncate font-medium tabular-nums" title={value}>
+          <dd className="mt-3 truncate text-xl font-semibold tabular-nums" title={value}>
             {value}
           </dd>
+          {detail && <dd className="truncate text-xs text-muted">{detail}</dd>}
+          {percent !== undefined && (
+            <dd className="mt-3">
+              <Meter percent={percent} />
+            </dd>
+          )}
         </div>
       ))}
     </dl>
   );
 }
 
-function LifecycleActions({ details }: { details: ServerDetails }) {
-  const { t } = useTranslation();
-  const me = useCurrentUser();
-  const command = useServerCommand();
-  const { server } = details;
-  const available = serverActions(server);
-  const run = (name: ServerCommand) => command.mutate({ id: server.id, command: name });
-  const buttons: [ServerCommand, string, boolean, LucideIcon][] = [
-    ['start', Permission.ServerStart, available.start, Play],
-    ['stop', Permission.ServerStop, available.stop, Square],
-    ['restart', Permission.ServerRestart, available.restart, RotateCw],
-    ['kill', Permission.ServerKill, available.kill, OctagonX],
-  ];
-  const visible = buttons.filter(([, permission]) => canOnServer(me, server, permission));
-  if (visible.length === 0) {
-    return null;
-  }
-
-  const refused = command.data && command.data.status !== 'accepted' && command.data.status !== 'alreadyInState';
-  return (
-    <section aria-label={t('servers.actions')} className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        {visible.map(([name, , enabled, icon]) => (
-          <Button
-            key={name}
-            icon={icon}
-            // Killing loses unsaved progress: it looks dangerous, without outshouting the everyday actions.
-            variant={name === 'kill' ? 'dangerSubtle' : name === 'start' ? 'primary' : 'secondary'}
-            disabled={!enabled || command.isPending}
-            busy={command.isPending && command.variables.command === name}
-            onClick={() =>
-              (name !== 'kill' || window.confirm(t('servers.killConfirm', { name: server.name }))) && run(name)
-            }
-          >
-            {t(`servers.commands.${name}`)}
-          </Button>
-        ))}
-      </div>
-      {command.isError && <Alert>{errorMessage(t, command.error)}</Alert>}
-      {refused && (
-        <p role="status" className="text-sm text-danger">
-          {commandRefusal(t, command.data.status, command.data.errorCode)}
-        </p>
-      )}
-    </section>
-  );
+interface UsageTile {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  detail?: string | undefined;
+  percent?: number | undefined;
 }
 
 function Facts({ items }: { items: [string, ReactNode][] }) {

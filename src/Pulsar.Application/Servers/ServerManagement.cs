@@ -44,7 +44,12 @@ public sealed record ServerSummary(
     DateTimeOffset? LastStartedAt,
     DateTimeOffset? LastStoppedAt,
     OperationView? ActiveOperation,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string TemplateKey,
+    ServerAddressView? GameAddress);
+
+/// <summary>Where players connect: the allocation of the server's <c>game</c> port (0.0.0.0 when it listens on every address).</summary>
+public sealed record ServerAddressView(string IpAddress, int Port);
 
 /// <summary>A manifest port of the server and the allocation it has (none for an unassigned optional port).</summary>
 /// <param name="Follows">The port this one comes with: it is not chosen on its own.</param>
@@ -107,6 +112,9 @@ public sealed partial class ServerManagement(
     ILogger<ServerManagement> logger)
 {
     private const int RecentOperations = 10;
+
+    /// <summary>The manifest port players connect to, by the manifests' convention.</summary>
+    private const string GamePortName = "game";
 
     public async Task<IReadOnlyList<ServerSummary>> ListAsync(Guid? nodeId, CancellationToken cancellationToken)
     {
@@ -911,13 +919,18 @@ public sealed partial class ServerManagement(
         var templateIds = servers.Select(s => s.TemplateId).Distinct().ToList();
         var operationIds = servers.Where(s => s.ActiveOperationId is not null).Select(s => s.ActiveOperationId!.Value).ToList();
         var nodes = await db.Nodes.AsNoTracking().Where(n => nodeIds.Contains(n.Id)).ToDictionaryAsync(n => n.Id, n => n.Name, cancellationToken);
-        var templateNames = await db.GameTemplates.AsNoTracking().Where(t => templateIds.Contains(t.Id))
-            .ToDictionaryAsync(t => t.Id, t => t.Name, cancellationToken);
+        var templates = await db.GameTemplates.AsNoTracking().Where(t => templateIds.Contains(t.Id))
+            .ToDictionaryAsync(t => t.Id, t => new { t.Name, t.Key }, cancellationToken);
+        var serverIds = servers.Select(s => s.Id).ToList();
+        var gamePorts = await db.NodeAllocations.AsNoTracking()
+            .Where(a => a.ServerId != null && serverIds.Contains(a.ServerId.Value) && a.PortName == GamePortName)
+            .ToDictionaryAsync(a => a.ServerId!.Value, a => new ServerAddressView(a.IpAddress, a.Port), cancellationToken);
         var operations = await db.Operations.AsNoTracking().Where(o => operationIds.Contains(o.Id)).ToDictionaryAsync(o => o.Id, cancellationToken);
         return [.. servers.Select(s => new ServerSummary(s.Id.Value, s.ShortId, s.Name, s.NodeId.Value, nodes.GetValueOrDefault(s.NodeId) ?? "",
-            Connection(s.NodeId) is not null, s.TemplateId.Value, templateNames.GetValueOrDefault(s.TemplateId) ?? "", s.InstallState, s.RuntimeState,
+            Connection(s.NodeId) is not null, s.TemplateId.Value, templates.GetValueOrDefault(s.TemplateId)?.Name ?? "", s.InstallState, s.RuntimeState,
             s.DesiredState, s.LastStateReason, s.LastExitCode, s.LastStartedAt, s.LastStoppedAt,
-            s.ActiveOperationId is { } op && operations.TryGetValue(op, out var operation) ? View(operation) : null, s.CreatedAt))];
+            s.ActiveOperationId is { } op && operations.TryGetValue(op, out var operation) ? View(operation) : null, s.CreatedAt,
+            templates.GetValueOrDefault(s.TemplateId)?.Key ?? "", gamePorts.GetValueOrDefault(s.Id)))];
     }
 
     /// <summary>The operation with its live progress (the database only gets it now and then).</summary>

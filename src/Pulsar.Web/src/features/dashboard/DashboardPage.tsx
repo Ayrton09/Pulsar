@@ -2,7 +2,7 @@ import { CircleCheck, Cpu, HardDrive, MemoryStick, Server, TriangleAlert, type L
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { Card, PageHeader } from '../../components/ui/Display';
+import { Card, Meter, PageHeader } from '../../components/ui/Display';
 import { useFormatDate, useFormatGigabytes } from '../../lib/format';
 import { can, canAnywhere, Permission } from '../../lib/permissions';
 import { useRecentActivity, type AuditEntry } from '../admin/api';
@@ -11,6 +11,7 @@ import { useWatchNodes, useWatchServers } from '../live/hooks';
 import { useNodes, type NodeSummary } from '../nodes/api';
 import { nodeState } from '../nodes/nodeStatus';
 import { useServers, type ServerSummary } from '../servers/api';
+import { ServerCard } from '../servers/ServerCard';
 
 /**
  * Dashboard v1 (docs/architecture/07): servers and nodes at a glance, the nodes' combined usage, what needs attention
@@ -44,6 +45,7 @@ export function DashboardPage() {
         {nodes && <UsageCards nodes={nodes} />}
       </div>
       {(servers || nodes) && <Alerts servers={servers ?? []} nodes={nodes ?? []} />}
+      {servers && servers.length > 0 && <ServerCards servers={servers} />}
       {canAudit && activity.data && <RecentActivity entries={activity.data.entries} />}
     </>
   );
@@ -82,35 +84,21 @@ function Stat({
     <Card className="h-full p-5">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm text-muted">{title}</p>
-        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent">
-          <Icon className="size-4" />
+        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent/15 text-accent ring-1 ring-accent/20">
+          <Icon className="size-4.5" />
         </span>
       </div>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-      {usage != null && <UsageBar percent={usage} />}
+      {usage != null && <Meter percent={usage} className="mt-3" />}
       {detail && <p className="mt-2 text-xs text-muted">{detail}</p>}
     </Card>
   );
   return to ? (
-    <Link to={to} className="block rounded-xl hover:ring-1 hover:ring-accent">
+    <Link to={to} className="block rounded-2xl transition hover:ring-1 hover:ring-accent/60">
       {body}
     </Link>
   ) : (
     body
-  );
-}
-
-/**
- * How full a resource is. The value is written next to it, so the bar adds no text of its own; it turns amber and then
- * red as the resource runs out.
- */
-function UsageBar({ percent }: { percent: number }) {
-  const width = Math.min(100, Math.max(0, percent));
-  const tone = width >= 90 ? 'bg-danger' : width >= 75 ? 'bg-warning' : 'bg-accent';
-  return (
-    <div aria-hidden="true" className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-raised">
-      <div className={`h-full rounded-full transition-[width] duration-500 ${tone}`} style={{ width: `${width}%` }} />
-    </div>
   );
 }
 
@@ -230,11 +218,37 @@ function Alerts({ servers, nodes }: { servers: ServerSummary[]; nodes: NodeSumma
   );
 }
 
+/** The servers as cards, the running ones first, up to six; the Servers page has them all. */
+function ServerCards({ servers }: { servers: ServerSummary[] }) {
+  const { t } = useTranslation();
+  const alive = (server: ServerSummary) => server.runtimeState === 'running' || server.runtimeState === 'starting';
+  const shown = [...servers].sort((a, b) => Number(alive(b)) - Number(alive(a))).slice(0, 6);
+  return (
+    <section aria-labelledby="dashboard-servers" className="mt-8">
+      <div className="mb-4 flex items-baseline justify-between gap-3">
+        <h2 id="dashboard-servers" className="text-lg font-semibold">
+          {t('dashboard.yourServers')}
+        </h2>
+        <Link to="/servers" className="text-sm text-accent hover:underline">
+          {t('dashboard.allServers', { count: servers.length })}
+        </Link>
+      </div>
+      <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        {shown.map((server) => (
+          <li key={server.id} className="flex min-w-0">
+            <ServerCard server={server} headingLevel={3} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function RecentActivity({ entries }: { entries: AuditEntry[] }) {
   const { t } = useTranslation();
   const formatDate = useFormatDate();
   return (
-    <Card className="mt-6 p-6">
+    <Card className="mt-8 p-6">
       <div className="mb-3 flex items-baseline justify-between">
         <h2 className="text-lg font-semibold">{t('dashboard.activity')}</h2>
         <Link to="/admin/audit" className="text-sm text-accent hover:underline">

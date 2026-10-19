@@ -7,13 +7,14 @@
  */
 :root {
   color-scheme: dark;
-  --pulsar-bg: #0b0d12;
-  --pulsar-surface: #141821;
-  --pulsar-surface-raised: #1c2130;
-  --pulsar-border: #262c3a;
-  --pulsar-text: #e6e9ef;
-  --pulsar-muted: #9aa3b5;
+  --pulsar-bg: #090b10;
+  --pulsar-surface: #11141c;
+  --pulsar-surface-raised: #1a1e2a;
+  --pulsar-border: #222838;
+  --pulsar-text: #e8ebf2;
+  --pulsar-muted: #8f98ab;
   --pulsar-accent: #a08cff;
+  --pulsar-accent-strong: #7c63ff;
   --pulsar-accent-contrast: #0b0d12;
   --pulsar-danger: #f26d6d;
   --pulsar-success: #4cc38a;
@@ -28,6 +29,7 @@
   --color-text: var(--pulsar-text);
   --color-muted: var(--pulsar-muted);
   --color-accent: var(--pulsar-accent);
+  --color-accent-strong: var(--pulsar-accent-strong);
   --color-accent-contrast: var(--pulsar-accent-contrast);
   --color-danger: var(--pulsar-danger);
   --color-success: var(--pulsar-success);
@@ -36,6 +38,11 @@
 
 body {
   @apply bg-bg text-text antialiased;
+  /* A faint glow of the accent behind the top of every page. */
+  background-image:
+    radial-gradient(60rem 30rem at 85% -10%, rgb(160 140 255 / 0.07), transparent 70%),
+    radial-gradient(50rem 25rem at -10% -5%, rgb(94 200 255 / 0.04), transparent 70%);
+  background-attachment: fixed;
 }
 
 /* The menu panel on small screens slides in from the left, unless the user asked for less motion. */
@@ -49,4 +56,17 @@ body {
   from {
     opacity: 0;
   }
+}
+
+/* Behind the sign-in pages: a faint grid that fades out around the card, under a glow of the accent. */
+.pulsar-auth-backdrop {
+  background-image:
+    radial-gradient(36rem 28rem at 50% 45%, rgb(160 140 255 / 0.14), transparent 70%),
+    linear-gradient(to right, rgb(255 255 255 / 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+  background-size:
+    auto,
+    48px 48px,
+    48px 48px;
+  mask-image: radial-gradient(ellipse at 50% 45%, black 25%, transparent 75%);
 }

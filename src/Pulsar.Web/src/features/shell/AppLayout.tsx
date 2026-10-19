@@ -61,10 +61,10 @@ function NavSection({
           end={to === '/'}
           onClick={onNavigate}
           className={({ isActive }) =>
-            `flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${isActive ? 'bg-accent/10 font-medium text-accent' : 'text-muted hover:bg-surface-raised hover:text-text'}`
+            `group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${isActive ? 'bg-linear-to-r from-accent/20 to-accent/5 font-medium text-text before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-accent' : 'text-muted hover:bg-surface-raised hover:text-text'}`
           }
         >
-          <Icon className="size-4 shrink-0" />
+          <Icon className="size-4 shrink-0 group-aria-[current=page]:text-accent" />
           <span className="truncate">{label}</span>
         </NavLink>
       ))}
@@ -236,7 +236,7 @@ function Shell() {
 
   return (
     <div className="min-h-dvh md:flex">
-      <aside className="hidden border-r border-border bg-surface md:sticky md:top-0 md:flex md:h-dvh md:w-72 md:shrink-0 md:flex-col">
+      <aside className="hidden border-r border-border bg-surface/70 backdrop-blur md:sticky md:top-0 md:flex md:h-dvh md:w-72 md:shrink-0 md:flex-col">
         <Sidebar />
       </aside>
       <RadixDialog.Root open={menuOpen} onOpenChange={setMenuOpen}>

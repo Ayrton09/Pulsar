@@ -54,7 +54,9 @@ Then:
    shows the items by name.
 5. **Ports**: each with the protocols players use. Pulsar opens firewall rules only for these. A port the game always
    opens at another port's number plus one (or more) says so with `"follows": { "port": "game", "offset": 1 }`. A
-   port only the agent uses (a telnet console) is `"internal": true` and never opened.
+   port only the agent uses (a telnet console) is `"internal": true` and never opened. Name the port players connect
+   to `game`: the server cards and the server's page show its address as the one to connect to (a manifest without a
+   `game` port shows none).
 6. **Console**: `pty` (the game writes to a console), `pipes` (standard output) or `logfile+rcon` (Source servers:
    output from a log file, commands over RCON). `pty` and `pipes` can take an `rcon` too, for games that print to their
    console but read commands only over RCON (`"protocol": "source"`) or telnet (`"protocol": "telnet"`, 7 Days to Die).

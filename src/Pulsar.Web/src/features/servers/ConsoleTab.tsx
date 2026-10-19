@@ -3,6 +3,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
+import { Terminal as TerminalIcon } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
@@ -47,7 +48,7 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
       cursorInactiveStyle: 'none',
       fontFamily: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace',
       fontSize: 13,
-      theme: { background: '#0b0f14', foreground: '#d6dde6' },
+      theme: { background: '#07090d', foreground: '#d6dde6' },
     });
     const fit = new FitAddon();
     const finder = new SearchAddon();
@@ -98,43 +99,49 @@ export function ConsoleTab({ details }: { details: ServerDetails }) {
       {stream.refused && <Alert>{t('servers.console.refused')}</Alert>}
       {stream.failed && <Alert>{t('servers.console.failed')}</Alert>}
       {!server.nodeConnected && <p className="text-sm text-muted">{t('servers.console.nodeOffline')}</p>}
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          type="search"
-          aria-label={t('servers.console.search')}
-          placeholder={t('servers.console.search')}
-          className="max-w-xs"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && query) {
-              e.preventDefault();
-              if (e.shiftKey) {
-                search.current?.findPrevious(query);
-              } else {
-                search.current?.findNext(query);
+      <div className="overflow-hidden rounded-2xl border border-border bg-[#07090d] shadow-xl shadow-black/30">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface/80 px-3 py-2">
+          <span className="mr-auto flex items-center gap-2 text-sm font-medium">
+            <TerminalIcon aria-hidden="true" className="size-4 text-accent" />
+            {t('servers.console.title')}
+          </span>
+          <Input
+            type="search"
+            aria-label={t('servers.console.search')}
+            placeholder={t('servers.console.search')}
+            className="max-w-xs"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && query) {
+                e.preventDefault();
+                if (e.shiftKey) {
+                  search.current?.findPrevious(query);
+                } else {
+                  search.current?.findNext(query);
+                }
               }
-            }
-          }}
-        />
-        <Button variant="secondary" size="sm" disabled={!query} onClick={() => search.current?.findPrevious(query)}>
-          {t('servers.console.previous')}
-        </Button>
-        <Button variant="secondary" size="sm" disabled={!query} onClick={() => search.current?.findNext(query)}>
-          {t('servers.console.next')}
-        </Button>
-        <Button variant="secondary" size="sm" className="ml-auto" onClick={() => terminal.current?.clear()}>
-          {t('servers.console.clear')}
-        </Button>
+            }}
+          />
+          <Button variant="secondary" size="sm" disabled={!query} onClick={() => search.current?.findPrevious(query)}>
+            {t('servers.console.previous')}
+          </Button>
+          <Button variant="secondary" size="sm" disabled={!query} onClick={() => search.current?.findNext(query)}>
+            {t('servers.console.next')}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => terminal.current?.clear()}>
+            {t('servers.console.clear')}
+          </Button>
+        </div>
+        <div className="h-[30rem] bg-[#07090d] p-3">
+          <div ref={container} data-testid="console-output" className="size-full overflow-hidden" />
+        </div>
+        {canOnServer(me, server, Permission.ServerConsoleWrite) && (
+          <div className="border-t border-border bg-surface/60 p-2">
+            <CommandInput serverId={server.id} running={running} connected={server.nodeConnected} />
+          </div>
+        )}
       </div>
-      <div
-        ref={container}
-        data-testid="console-output"
-        className="h-[28rem] overflow-hidden rounded-md border border-border bg-[#0b0f14] p-2"
-      />
-      {canOnServer(me, server, Permission.ServerConsoleWrite) && (
-        <CommandInput serverId={server.id} running={running} connected={server.nodeConnected} />
-      )}
     </section>
   );
 }

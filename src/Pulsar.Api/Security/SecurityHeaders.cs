@@ -5,12 +5,17 @@ namespace Pulsar.Api.Security;
 /// CDNs or external fonts, so a strict same-origin policy applies. One narrow exception: inline &lt;style&gt; elements
 /// (style-src-elem), which the dialog's scroll lock injects at runtime with content that varies (scrollbar width), so
 /// neither a hash nor a nonce on the static index.html can cover it. Inline style attributes stay blocked and scripts
-/// stay strict; exploiting it would first require HTML injection, which React prevents.
+/// stay strict; exploiting it would first require HTML injection, which React prevents. Images may also come from
+/// Steam's store CDN: the game artwork on server cards and pages. The browser asks Steam for them with no referrer, and
+/// the SPA only builds those addresses from a fixed table of app numbers, never from data a user typed.
 /// </summary>
 internal static class SecurityHeaders
 {
+    /// <summary>Steam's store CDN, where the game artwork comes from.</summary>
+    public const string SteamArtworkOrigin = "https://shared.akamai.steamstatic.com";
+
     public const string ContentSecurityPolicy =
-        "default-src 'self'; script-src 'self'; style-src 'self'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' data:; " +
+        "default-src 'self'; script-src 'self'; style-src 'self'; style-src-elem 'self' 'unsafe-inline'; img-src 'self' data: " + SteamArtworkOrigin + "; " +
         "font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
     // Set when the response starts, not before the rest of the pipeline runs: the exception handler clears the headers
