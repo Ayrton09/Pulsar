@@ -215,8 +215,8 @@ give another `-HostName` (even `-HostName localhost`) to leave it out on purpose
 it only warns. It takes `-HostName`, `-Unattended` (the `PULSAR-STEP`, `PULSAR-LOG` and `PULSAR-CERTIFICATE` lines of
 [Unattended installs](#unattended-installs)), `-InstallRoot` and `-DataRoot`, and refuses every other parameter (it
 cannot be combined with `-Mode`, `-PublicIp`, `-Update` or `-Uninstall`: PowerShell refuses that command line): it never
-installs, updates or removes a program, and leaves the database, the settings, the firewall and the accounts as they
-are. It also renews a certificate before the 5 years it is valid for are over. What it does, in this order:
+installs, updates or removes a program, reads no secrets file, and leaves the database, the settings, the firewall and
+the accounts as they are. It also renews a certificate before the 5 years it is valid for are over. What it does, in this order:
 
 1. **Checks, before anything changes.** The panel must be an install of this script (its service runs the program in
    `-InstallRoot`, its settings name `panel.pfx` in the panel's data folder, and open with the password they hold), and

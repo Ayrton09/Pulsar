@@ -3759,7 +3759,10 @@ $main = {
     Write-SetupStep 'check' 'Checking this machine and what it needs'
     Clear-DotNetEnvironment
     Clear-PostgresEnvironment
-    Use-SetupInputs (Read-SetupInputs)
+    # -RenewCertificate takes no secret: its parameters are checked first, and the secrets file (-SecretsFile, or
+    # PULSAR_SECRETS_FILE left in the session) meant for an install is neither read nor deleted by it.
+    if ($RenewCertificate) { Assert-RenewArguments }
+    else { Use-SetupInputs (Read-SetupInputs) }
     Assert-TrustedLocation
     # Only the panel's certificate: an agent from the MSI beside it is none of its business, and no download is needed.
     if ($RenewCertificate) {

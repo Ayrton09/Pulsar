@@ -2201,9 +2201,14 @@ Check 'renew: it takes the files'' permissions from the old ones, and checks the
     $renewalText -match 'Set-SameAccess \$backup\[\$kind\] \$current\[\$kind\]')
 $mainBlockText = $mainText
 Check 'renew: it runs before the checks of an agent package and of the other modes, with no download or runtime check' (
-    $mainBlockText.IndexOf('if ($RenewCertificate)') -ge 0 -and $mainBlockText.IndexOf('if ($RenewCertificate)') -lt $mainBlockText.IndexOf('Get-AgentPackage') -and
-    $mainBlockText.IndexOf('if ($RenewCertificate)') -lt $mainBlockText.IndexOf('if ($Uninstall)') -and $mainBlockText.IndexOf('Assert-TrustedLocation') -lt $mainBlockText.IndexOf('if ($RenewCertificate)') -and
+    $mainBlockText.IndexOf('Invoke-RenewCertificate') -ge 0 -and $mainBlockText.IndexOf('Invoke-RenewCertificate') -lt $mainBlockText.IndexOf('Get-AgentPackage') -and
+    $mainBlockText.IndexOf('Invoke-RenewCertificate') -lt $mainBlockText.IndexOf('if ($Uninstall)') -and $mainBlockText.IndexOf('Assert-TrustedLocation') -lt $mainBlockText.IndexOf('Invoke-RenewCertificate') -and
     $renewalText -notmatch 'Get-RuntimeRequirements|New-SetupDownloads|Get-DotNetInstallers')
+Check 'renew: its parameters are checked first and it reads no secrets file (an install''s one is not read and deleted by it)' (
+    $mainBlockText.IndexOf('if ($RenewCertificate) { Assert-RenewArguments }') -ge 0 -and
+    $mainBlockText.IndexOf('if ($RenewCertificate) { Assert-RenewArguments }') -lt $mainBlockText.IndexOf('Use-SetupInputs (Read-SetupInputs)') -and
+    $mainBlockText -match '(?s)if \(\$RenewCertificate\) \{ Assert-RenewArguments \}\s+else \{ Use-SetupInputs \(Read-SetupInputs\) \}' -and
+    $renewalText -notmatch 'Read-SetupInputs|Use-SetupInputs|Read-SecretsFile')
 Check 'renew: the install checks -HostName the same way (Assert-HostNames)' ($installParts['Assert-PanelInstallable'] -match 'Assert-HostNames' -and $renewalText -match 'Assert-HostNames')
 $guide = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\docs\guides\install.md')
 Check 'renew: install.md documents it, the stale-address steps, the pin steps and that Let''s Encrypt is unaffected' (
