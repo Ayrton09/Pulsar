@@ -43,6 +43,15 @@ internal static class SecurityHeaders
                 headers["Referrer-Policy"] = "no-referrer";
                 headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()";
                 headers["Cross-Origin-Opener-Policy"] = "same-origin";
+
+                // A page keeps the policy it was served with, and the artwork setting changes it: browsers may keep a page
+                // only to ask again with its ETag (the SPA's fallback sends no Cache-Control, and MapStaticAssets would
+                // let them keep index.html's fingerprinted copy for a year).
+                if (context.Response.ContentType?.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    headers.CacheControl = "no-cache";
+                }
+
                 return Task.CompletedTask;
             });
             await next(context);

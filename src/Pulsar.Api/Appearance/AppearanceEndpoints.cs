@@ -46,38 +46,43 @@ public static class AppearanceEndpoints
     private static async Task<Ok<AppearanceSettingsResponse>> UpdateAsync(UpdateAppearanceSettingsRequest request, IPulsarDbContext db,
         SteamArtworkPolicy policy, IAuditLog audit, IRealtimeNotifier notifier, TimeProvider clock, CancellationToken ct)
     {
-        var before = policy.SteamArtwork;
+        // Decided under the lock, from what this change stored or put in effect; a spare notice only costs pages a read.
+        var notify = false;
         await policy.Changing.WaitAsync(ct);
         try
         {
+            var before = policy.SteamArtwork;
             try
             {
-                await SaveAsync(request, db, audit, clock, ct);
+                notify = await SaveAsync(request, db, audit, clock, ct);
             }
             catch
             {
                 // The change may have committed before the call failed (cancelled as the answer came back): the policy
-                // follows what is stored, read again; when even that fails, it is off until it is read again.
+                // follows what is stored, read again; when even that fails, it is off until it is read again. Pages are
+                // told either way.
+                notify = true;
                 await ApplyStoredAsync(db, policy);
                 throw;
             }
 
             policy.Set(request.SteamArtwork);
+            notify |= policy.SteamArtwork != before;
         }
         finally
         {
             policy.Changing.Release();
-        }
-
-        if (policy.SteamArtwork != before)
-        {
-            notifier.AppearanceChanged();
+            if (notify)
+            {
+                notifier.AppearanceChanged();
+            }
         }
 
         return TypedResults.Ok(new AppearanceSettingsResponse(policy.SteamArtwork));
     }
 
-    private static async Task SaveAsync(UpdateAppearanceSettingsRequest request, IPulsarDbContext db, IAuditLog audit, TimeProvider clock,
+    /// <summary>Whether the stored value changed.</summary>
+    private static async Task<bool> SaveAsync(UpdateAppearanceSettingsRequest request, IPulsarDbContext db, IAuditLog audit, TimeProvider clock,
         CancellationToken ct)
     {
         for (var attempt = 0; ; attempt++)
@@ -94,7 +99,7 @@ public static class AppearanceEndpoints
             if (!settings.ChangeSteamArtwork(request.SteamArtwork, now))
             {
                 db.ChangeTracker.Clear();
-                return;
+                return false;
             }
 
             audit.Record(AuditActions.Appearance.SettingsChanged, metadata: new { steamArtwork = request.SteamArtwork, previousSteamArtwork = previous })
@@ -102,7 +107,7 @@ public static class AppearanceEndpoints
             try
             {
                 await db.SaveChangesAsync(ct);
-                return;
+                return true;
             }
             catch (DbUpdateException) when (attempt < 2)
             {

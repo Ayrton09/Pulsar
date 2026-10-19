@@ -176,7 +176,7 @@ The server page's Administration section says when a newer version of the server
 
 - Cookie authentication `HttpOnly; Secure; SameSite=Strict`. **No tokens in localStorage.**
 - CSRF protection: ASP.NET Core antiforgery with a header on mutations.
-- Strict CSP served by the backend: `default-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'`. Implies: no inline scripts, no CDNs, bundled fonts. Images alone may also come from `https://shared.akamai.steamstatic.com` while the game artwork is on (below).
+- Strict CSP served by the backend: `default-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'`. Implies: no inline scripts, no CDNs, bundled fonts. Images alone may also come from `https://shared.akamai.steamstatic.com` while the game artwork is on (below). Pages (`text/html`: the SPA's `index.html`, however it is reached) carry `Cache-Control: no-cache`, so browsers ask again with the ETag every time and never reuse a page with the policy of an earlier artwork setting.
 - Never `dangerouslySetInnerHTML`. File contents are shown in the editor, never as HTML.
 - The UI hides actions without permission, but **the backend is the only authority**.
 - One-time secrets (passwords sent, enrollment tokens and database passwords shown) do not stay in the query client's mutation cache: finished mutations leave it once no component shows them, and pages that stay open reset theirs once the value is shown or sent.
