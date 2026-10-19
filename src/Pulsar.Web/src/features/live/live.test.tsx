@@ -326,6 +326,26 @@ describe('live updates', () => {
     expect(bars.map((bar) => bar.style.width)).toEqual(['50%', '50%']);
   });
 
+  it('reads the artwork setting again when the panel says it changed, and stops showing Steam artwork', async () => {
+    let reads = 0;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([{ ...server, templateKey: 'rust' }]),
+      'GET /api/v1/appearance': () => {
+        reads += 1;
+        return json({ steamArtwork: reads === 1 });
+      },
+    });
+    const live = await renderAt('/servers');
+    const list = await screen.findByRole('list', { name: 'Servers' });
+    await waitFor(() => expect(list.querySelector('img')).not.toBeNull());
+
+    live.emit('AppearanceChanged');
+
+    await waitFor(() => expect(reads).toBe(2));
+    await waitFor(() => expect(list.querySelector('img')).toBeNull());
+  });
+
   it('shows who is playing, as plain text', async () => {
     serverApi();
     const live = await renderAt(`/servers/${server.id}`);

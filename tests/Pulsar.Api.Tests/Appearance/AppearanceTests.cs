@@ -55,7 +55,8 @@ public sealed class AppearanceTests(PulsarApiFactory factory) : IClassFixture<Pu
         Assert.Equal(SecurityHeaders.ContentSecurityPolicyWithSteamArtwork, await PolicyAsync(visitor));
         Assert.True((await ReadAsync(user)).SteamArtwork);
 
-        // Off: the answer and every response after it, anyone's, name no Steam origin.
+        // Off: the answer and every response after it, anyone's, name no Steam origin, and open pages hear of it.
+        await using var page = await BrowserHub.ConnectAsync(factory, user);
         using (var off = await admin.PutAsync("/api/v1/appearance", new UpdateAppearanceSettingsRequest(false)))
         {
             await AccessScenario.EnsureSuccessAsync(off);
@@ -67,11 +68,15 @@ public sealed class AppearanceTests(PulsarApiFactory factory) : IClassFixture<Pu
         Assert.False((await ReadAsync(user)).SteamArtwork);
         Assert.Equal(SecurityHeaders.ContentSecurityPolicyWithoutSteamArtwork, await PolicyAfterRestartAsync());
 
-        // The same value again changes nothing and is not audited.
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(page.AppearanceChanged == 1), "the open page hears of the change");
+
+        // The same value again changes nothing, is not audited and tells no page.
         using (var same = await admin.PutAsync("/api/v1/appearance", new UpdateAppearanceSettingsRequest(false)))
         {
             await AccessScenario.EnsureSuccessAsync(same);
         }
+
+        Assert.Equal(1, page.AppearanceChanged);
 
         using (var on = await admin.PutAsync("/api/v1/appearance", new UpdateAppearanceSettingsRequest(true)))
         {

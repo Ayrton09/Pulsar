@@ -1977,6 +1977,6 @@
     "hint": "Server and game cards show each game's official artwork, which every visitor's browser downloads from Steam: Steam sees their address and which games the panel runs. Turned off, each game gets a drawn tile and nobody's browser contacts Steam.",
     "steamArtwork": "Show the game artwork from Steam",
     "turnedOn": "Artwork turned on. Pages opened from now on show it.",
-    "turnedOff": "Artwork turned off. No browser asks Steam for it any more."
+    "turnedOff": "Artwork turned off. Open pages stop asking Steam for it at once."
   }
 }

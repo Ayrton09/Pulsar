@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Security;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
+using Pulsar.Application.Realtime;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Appearance;
 using Pulsar.Domain.Audit;
@@ -39,11 +40,13 @@ public static class AppearanceEndpoints
 
     /// <summary>
     /// The CSP of the next responses follows the change; a page already open keeps the policy it was served with until
-    /// it is reloaded.
+    /// it is reloaded, but the live channel tells every browser to read the setting again, so open pages stop asking
+    /// Steam for artwork at once.
     /// </summary>
     private static async Task<Ok<AppearanceSettingsResponse>> UpdateAsync(UpdateAppearanceSettingsRequest request, IPulsarDbContext db,
-        SteamArtworkPolicy policy, IAuditLog audit, TimeProvider clock, CancellationToken ct)
+        SteamArtworkPolicy policy, IAuditLog audit, IRealtimeNotifier notifier, TimeProvider clock, CancellationToken ct)
     {
+        var before = policy.SteamArtwork;
         await policy.Changing.WaitAsync(ct);
         try
         {
@@ -64,6 +67,11 @@ public static class AppearanceEndpoints
         finally
         {
             policy.Changing.Release();
+        }
+
+        if (policy.SteamArtwork != before)
+        {
+            notifier.AppearanceChanged();
         }
 
         return TypedResults.Ok(new AppearanceSettingsResponse(policy.SteamArtwork));

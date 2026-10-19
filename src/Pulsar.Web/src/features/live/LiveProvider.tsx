@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { adminKeys } from '../admin/api';
 import { sessionKey } from '../auth/api';
 import { fileKeys } from '../files/api';
+import { appearanceKeys } from '../games/api';
 import { nodeKeys, panelKeysKey, type NodeDetails, type NodeSummary } from '../nodes/api';
 import { serverKeys, type ServerDetails, type ServerSummary } from '../servers/api';
 import { LiveChannel } from './channel';
@@ -35,6 +36,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         for (const id of serverIds) {
           void queryClient.invalidateQueries({ queryKey: fileKeys.all(id) });
         }
+      }),
+      live.on('AppearanceChanged', () => {
+        void queryClient.invalidateQueries({ queryKey: appearanceKeys.settings });
       }),
       live.on<[string[]]>('NodesChanged', () => {
         void queryClient.invalidateQueries({ queryKey: nodeKeys.all });
