@@ -16,6 +16,7 @@ import { useWatchNodes } from '../live/hooks';
 import { useApproveNodes, useCreateNode, useNodes, type CreatedNode, type NodeSummary } from './api';
 import { EnrollmentCommand } from './components';
 import { NodeCard } from './NodeCard';
+import { seesNodeDetails } from './nodeStatus';
 import { EnrollmentTokensSection } from './EnrollmentTokensSection';
 import { nodeSchema, type NodeFormValues } from './nodeForm';
 import { AgentTransportSection } from './AgentTransportSection';
@@ -29,6 +30,7 @@ export function NodesPage() {
   // The page also serves those who only manage reusable tokens or settings: the node list is for node.view/node.manage.
   const canList = canAnywhere(me, Permission.NodeView, Permission.NodeManage);
   const nodes = useNodes(canList);
+  const shown = nodes.data?.filter((node) => seesNodeDetails(me, node));
   useWatchNodes(canList);
   const [creating, setCreating] = useState(false);
   const canManage = can(me, Permission.NodeManage);
@@ -49,14 +51,14 @@ export function NodesPage() {
       {canList && nodes.isPending && <Spinner label={t('common.loading')} />}
       {nodes.isError && <Alert>{errorMessage(t, nodes.error)}</Alert>}
       {canManage && nodes.data && <ApprovalCard nodes={nodes.data.filter((n) => n.status === 'pendingApproval')} />}
-      {nodes.data?.length === 0 && (
+      {shown?.length === 0 && (
         <Card className="p-6">
           <p className="text-sm text-muted">{canManage ? t('nodes.emptyManage') : t('nodes.empty')}</p>
         </Card>
       )}
-      {nodes.data && nodes.data.length > 0 && (
+      {shown && shown.length > 0 && (
         <ul aria-label={t('nodes.title')} className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
-          {nodes.data.map((node) => (
+          {shown.map((node) => (
             <li key={node.id} className="flex min-w-0">
               <NodeCard node={node} />
             </li>

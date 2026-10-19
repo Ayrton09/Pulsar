@@ -221,6 +221,36 @@ describe('nodes page', () => {
     expect(cards[3]).toHaveTextContent('Waiting for its first usage report.');
   });
 
+  it('shows only the nodes whose machine the user may see, not those they may only create servers on', async () => {
+    const slim = {
+      ...offline,
+      connected: true,
+      description: null,
+      publicHost: null,
+      lastSeenAt: null,
+      inventory: null,
+      metrics: null,
+      credentialFingerprint: null,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...adminUser,
+        permissions: [],
+        nodePermissions: [
+          { id: online.id, permissions: ['node.view'] },
+          { id: slim.id, permissions: ['server.create'] },
+        ],
+      }),
+      'GET /api/v1/nodes': () => json([online, slim]),
+    });
+
+    renderAt('/nodes');
+
+    const cards = within(await screen.findByRole('list', { name: 'Nodes' })).getAllByRole('listitem');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toHaveTextContent('Buenos Aires 1');
+  });
+
   it('creates a node and shows its one-time enrollment command', async () => {
     let body: unknown;
     fakeApi({
