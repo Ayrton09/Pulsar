@@ -125,6 +125,8 @@ public sealed class SecurityHeadersTests(NoDatabaseApiFactory factory) : IClassF
         Assert.Contains("default-src 'self'", csp, StringComparison.Ordinal);
         Assert.Contains("frame-ancestors 'none'", csp, StringComparison.Ordinal);
         Assert.Contains("script-src 'self';", csp, StringComparison.Ordinal);
+        // Images: the panel's own, and the game artwork from Steam's store CDN only.
+        Assert.Contains("img-src 'self' data: https://shared.akamai.steamstatic.com;", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("unsafe-eval", csp, StringComparison.Ordinal);
         Assert.Equal(1, csp.Split("unsafe-inline").Length - 1); // only style-src-elem (see SecurityHeaders)
         Assert.Equal("nosniff", Assert.Single(response.Headers.GetValues("X-Content-Type-Options")));

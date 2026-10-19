@@ -12328,6 +12328,11 @@ export interface components {
             id: string;
             permissions: string[];
         };
+        ServerAddressView: {
+            ipAddress: string;
+            /** Format: int32 */
+            port: number;
+        };
         ServerDatabaseCredentials: {
             database: components["schemas"]["ServerDatabaseView"];
             password: string;
@@ -12470,6 +12475,8 @@ export interface components {
             activeOperation: null | components["schemas"]["OperationView"];
             /** Format: date-time */
             createdAt: string;
+            templateKey: string;
+            gameAddress: null | components["schemas"]["ServerAddressView"];
         };
         ServerVariableView: {
             definition: components["schemas"]["TemplateVariable"];
