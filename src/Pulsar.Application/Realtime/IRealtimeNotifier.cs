@@ -17,6 +17,9 @@ public interface IRealtimeNotifier
 
     /// <summary>Live progress of an operation (stored only now and then, so it is pushed as is).</summary>
     void OperationProgress(ServerId server, Guid operationId, string stage, decimal? percent);
+
+    /// <summary>The panel's appearance settings changed (the Steam artwork switch): every browser reads them again.</summary>
+    void AppearanceChanged();
 }
 
 /// <summary>For hosts without browsers (tests of the application layer, the migration command).</summary>
@@ -31,6 +34,10 @@ internal sealed class NoRealtimeNotifier : IRealtimeNotifier
     }
 
     public void OperationProgress(ServerId server, Guid operationId, string stage, decimal? percent)
+    {
+    }
+
+    public void AppearanceChanged()
     {
     }
 }

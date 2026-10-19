@@ -11,6 +11,7 @@ import { useCurrentUser } from '../auth/api';
 import { useImportTemplate, useTemplatePreview, useTemplates } from './api';
 import { CreateServerDialog } from './CreateServerDialog';
 import { GameCard } from './GameCard';
+import { ArtworkSetting } from '../games/ArtworkSetting';
 
 /** Game templates (docs/architecture/04): the ones shipped with Pulsar and the ones administrators imported. */
 export function TemplatesPage() {
@@ -36,6 +37,7 @@ export function TemplatesPage() {
           )
         }
       />
+      {can(me, Permission.SettingsManage) && <ArtworkSetting />}
       {templates.isPending && <Spinner label={t('common.loading')} />}
       {templates.isError && <Alert>{errorMessage(t, templates.error)}</Alert>}
       {templates.data && (

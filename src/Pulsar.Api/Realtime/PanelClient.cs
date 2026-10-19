@@ -19,6 +19,9 @@ public interface IPanelClient
     Task NodeMetrics(NodeMetricsUpdate update);
 
     Task ConsoleOutput(ConsoleOutputView output);
+
+    /// <summary>The appearance settings changed: fetch them again. Sent to every browser; it carries nothing.</summary>
+    Task AppearanceChanged();
 }
 
 public sealed record OperationProgressView(Guid ServerId, Guid OperationId, string Stage, decimal? Percent);

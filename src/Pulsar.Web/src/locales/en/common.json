@@ -409,6 +409,9 @@
       },
       "sftp": {
         "settings_changed": "Changed the SFTP settings"
+      },
+      "appearance": {
+        "settings_changed": "Changed the game artwork setting"
       }
     }
   },
@@ -1281,7 +1284,7 @@
     "ports": "Ports",
     "variables": "Settings",
     "imported": "Template imported.",
-    "versionValue": "version {{version}}",
+    "versionValue": "template {{version}}",
     "createServer": "Create server",
     "createServerFor": "Create server for {{name}} {{version}}"
   },
@@ -1968,5 +1971,12 @@
     "notTrustable": "This certificate could issue certificates for other sites, or serve more than a web server: do not install it as trusted. Ask your administrator to use one like the installer's.",
     "unavailable": "This page did not reach the panel over its own HTTPS (plain HTTP, or a proxy in front of the panel), so there is no certificate of the panel's to show.",
     "publiclyTrusted": "This page reached the panel from the internet with its Let's Encrypt certificate, which every browser trusts already: there is nothing to download or install. On the local network the panel serves its own certificate."
+  },
+  "appearance": {
+    "title": "Game artwork",
+    "hint": "Server and game cards show each game's official artwork, which every visitor's browser downloads from Steam: Steam sees their address and which games the panel runs. Turned off, each game gets a drawn tile and nobody's browser contacts Steam.",
+    "steamArtwork": "Show the game artwork from Steam",
+    "turnedOn": "Artwork turned on. Pages opened from now on show it.",
+    "turnedOff": "Artwork turned off. Open pages stop asking Steam for it at once."
   }
 }

@@ -59,6 +59,9 @@ internal sealed partial class PanelNotifier(
     public void OperationProgress(ServerId server, Guid operationId, string stage, decimal? percent) =>
         Send(hub.Clients.Group(PanelHub.ServerGroup(server)).OperationProgress(new OperationProgressView(server.Value, operationId, stage, percent)));
 
+    // Every signed-in browser reads the settings; the notice itself says nothing about them.
+    public void AppearanceChanged() => Send(hub.Clients.All.AppearanceChanged());
+
     private void Send(Task sending) => _ = sending.ContinueWith(t => LogSendFailed(t.Exception!.GetBaseException()), CancellationToken.None,
         TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 

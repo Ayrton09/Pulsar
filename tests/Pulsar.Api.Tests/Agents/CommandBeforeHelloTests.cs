@@ -118,6 +118,8 @@ public sealed class CommandBeforeHelloTests(CommandBeforeHelloTests.Factory fact
 
             public void OperationProgress(ServerId server, Guid operationId, string stage, decimal? percent) =>
                 inner.OperationProgress(server, operationId, stage, percent);
+
+            public void AppearanceChanged() => inner.AppearanceChanged();
         }
     }
 }

@@ -19,6 +19,7 @@ public sealed class BrowserHub : IAsyncDisposable
     private readonly List<ServerMetricsView> _metrics = [];
     private readonly List<Guid> _nodesChanged = [];
     private readonly List<NodeMetricsUpdate> _nodeMetrics = [];
+    private int _appearanceChanged;
 
     private BrowserHub(HubConnection connection)
     {
@@ -58,6 +59,7 @@ public sealed class BrowserHub : IAsyncDisposable
                 _nodeMetrics.Add(update);
             }
         });
+        connection.On(nameof(IPanelClient.AppearanceChanged), () => Interlocked.Increment(ref _appearanceChanged));
     }
 
     public HubConnection Connection { get; }
@@ -106,6 +108,9 @@ public sealed class BrowserHub : IAsyncDisposable
             }
         }
     }
+
+    /// <summary>How many appearance notices arrived.</summary>
+    public int AppearanceChanged => Volatile.Read(ref _appearanceChanged);
 
     public IReadOnlyList<NodeMetricsUpdate> NodeMetrics
     {

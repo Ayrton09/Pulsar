@@ -66,7 +66,8 @@ export function fakeApi(routes: Record<string, Handler>) {
     const url = new URL(request.url);
     const key = `${request.method} ${url.pathname}`;
     // Server and node pages show a usage history, and the nodes page the reusable enrollment tokens; tests about
-    // something else get empty ones (and the account page no panel certificate, as over plain HTTP).
+    // something else get empty ones (and the account page no panel certificate, as over plain HTTP, and the game
+    // artwork on, the panel's default).
     const handler =
       routes[key] ??
       (request.method === 'GET' && /^\/api\/v1\/(servers|nodes)\/[^/]+\/metrics$/.test(url.pathname)
@@ -81,7 +82,9 @@ export function fakeApi(routes: Record<string, Handler>) {
                 ? () => json(publicIpCertificateOff)
                 : key === 'GET /api/v1/panel/certificate'
                   ? () => problem(404, 'panel.certificate_unavailable')
-                  : undefined);
+                  : key === 'GET /api/v1/appearance'
+                    ? () => json({ steamArtwork: true })
+                    : undefined);
     if (!handler) {
       throw new Error(`Unexpected request in test: ${key}`);
     }

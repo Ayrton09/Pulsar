@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Auth;
+using Pulsar.Api.Security;
 using Pulsar.Api.Tests.Infrastructure;
 
 namespace Pulsar.Api.Tests.Auth;
@@ -125,12 +126,24 @@ public sealed class SecurityHeadersTests(NoDatabaseApiFactory factory) : IClassF
         Assert.Contains("default-src 'self'", csp, StringComparison.Ordinal);
         Assert.Contains("frame-ancestors 'none'", csp, StringComparison.Ordinal);
         Assert.Contains("script-src 'self';", csp, StringComparison.Ordinal);
-        // Images: the panel's own, and the game artwork from Steam's store CDN only.
-        Assert.Contains("img-src 'self' data: https://shared.akamai.steamstatic.com;", csp, StringComparison.Ordinal);
+        // Images: the panel's own only. This panel has no database, so the Steam artwork setting was never read, and
+        // until it is no Steam origin is allowed (fail closed; AppearanceTests covers the artwork on and off).
+        Assert.Equal(SecurityHeaders.ContentSecurityPolicyWithoutSteamArtwork, csp);
+        Assert.Contains("img-src 'self' data:;", csp, StringComparison.Ordinal);
+        Assert.DoesNotContain("steamstatic", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("unsafe-eval", csp, StringComparison.Ordinal);
         Assert.Equal(1, csp.Split("unsafe-inline").Length - 1); // only style-src-elem (see SecurityHeaders)
         Assert.Equal("nosniff", Assert.Single(response.Headers.GetValues("X-Content-Type-Options")));
         Assert.Equal("DENY", Assert.Single(response.Headers.GetValues("X-Frame-Options")));
         Assert.Equal("no-referrer", Assert.Single(response.Headers.GetValues("Referrer-Policy")));
+    }
+
+    [Fact]
+    public void TheArtworkAddsSteamsCdnToImagesAndNothingElse()
+    {
+        Assert.Contains("img-src 'self' data: https://shared.akamai.steamstatic.com;", SecurityHeaders.ContentSecurityPolicyWithSteamArtwork,
+            StringComparison.Ordinal);
+        Assert.Equal(SecurityHeaders.ContentSecurityPolicyWithoutSteamArtwork,
+            SecurityHeaders.ContentSecurityPolicyWithSteamArtwork.Replace(" " + SecurityHeaders.SteamArtworkOrigin, string.Empty, StringComparison.Ordinal));
     }
 }

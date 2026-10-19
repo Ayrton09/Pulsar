@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
 using Pulsar.Domain.Access;
+using Pulsar.Domain.Appearance;
 using Pulsar.Domain.Audit;
 using Pulsar.Domain.Certificates;
 using Pulsar.Domain.Common;
@@ -49,6 +50,8 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
     public DbSet<SftpSettings> SftpSettings => Set<SftpSettings>();
 
     public DbSet<PublicIpCertificateSettings> PublicIpCertificateSettings => Set<PublicIpCertificateSettings>();
+
+    public DbSet<AppearanceSettings> AppearanceSettings => Set<AppearanceSettings>();
 
     public DbSet<GameTemplate> GameTemplates => Set<GameTemplate>();
 

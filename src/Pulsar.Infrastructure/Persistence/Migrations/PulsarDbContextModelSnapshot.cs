@@ -360,6 +360,35 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Appearance.AppearanceSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("SteamArtwork")
+                        .HasColumnType("boolean")
+                        .HasColumnName("steam_artwork");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_appearance_settings");
+
+                    b.ToTable("appearance_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_appearance_settings_singleton", "id = 1");
+                        });
+                });
+
             modelBuilder.Entity("Pulsar.Domain.Audit.AuditEntry", b =>
                 {
                     b.Property<Guid>("Id")

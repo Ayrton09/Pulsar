@@ -707,9 +707,11 @@ describe('game templates', () => {
     const user = userEvent.setup();
 
     const card = within(await screen.findByRole('list', { name: 'Games' })).getByRole('listitem');
-    expect(card.querySelector('img')).toHaveAttribute(
-      'src',
-      'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/240/header.jpg',
+    await vi.waitFor(() =>
+      expect(card.querySelector('img')).toHaveAttribute(
+        'src',
+        'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/240/header.jpg',
+      ),
     );
     await user.click(within(card).getByRole('button', { name: 'Create server for Counter-Strike: Source 1.0.0' }));
 
@@ -732,6 +734,40 @@ describe('game templates', () => {
     expect(
       within(card).getByRole('button', { name: 'Create server for Counter-Strike: Source 1.0.0' }),
     ).toBeInTheDocument();
+  });
+
+  it('lets an administrator turn the Steam artwork off, and the cards then ask nothing of Steam', async () => {
+    let sent: unknown;
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['template.view', 'settings.manage'] }),
+      'GET /api/v1/templates': () => json([template]),
+      'PUT /api/v1/appearance': async (request) => {
+        sent = await request.json();
+        return json({ steamArtwork: false });
+      },
+    });
+    renderAt('/templates');
+    const user = userEvent.setup();
+
+    const card = within(await screen.findByRole('list', { name: 'Games' })).getByRole('listitem');
+    await vi.waitFor(() => expect(card.querySelector('img')).not.toBeNull());
+    await user.click(await screen.findByLabelText('Show the game artwork from Steam'));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Artwork turned off.');
+    expect(sent).toEqual({ steamArtwork: false });
+    expect(screen.getByLabelText('Show the game artwork from Steam')).not.toBeChecked();
+    expect(card.querySelector('img')).toBeNull();
+  });
+
+  it('shows the artwork setting only to whoever manages the settings', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['template.view'] }),
+      'GET /api/v1/templates': () => json([template]),
+    });
+    renderAt('/templates');
+
+    expect(await screen.findByRole('list', { name: 'Games' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Show the game artwork from Steam')).not.toBeInTheDocument();
   });
 
   it('offers no server creation to whoever may only view the games', async () => {

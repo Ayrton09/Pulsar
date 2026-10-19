@@ -129,6 +129,11 @@ public static class AuditActions
         public const string AccountKeyReplaced = "public_ip_certificate.account_key_replaced";
     }
 
+    public static class Appearance
+    {
+        public const string SettingsChanged = "appearance.settings_changed";
+    }
+
     public static class BackupStorage
     {
         public const string Created = "backup_storage.created";
