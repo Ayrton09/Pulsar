@@ -11,7 +11,8 @@ namespace Pulsar.Application.Nodes;
 
 /// <summary>
 /// An allocation. <see cref="InUse"/> says a server holds it; <see cref="ServerId"/>, <see cref="ServerName"/> and
-/// <see cref="PortName"/> are left out when the caller cannot see that server.
+/// <see cref="PortName"/> are left out when the caller cannot see that server, and <see cref="Notes"/> when they cannot
+/// see the node's details (they only create servers there).
 /// </summary>
 public sealed record AllocationView(Guid Id, string IpAddress, int Port, Guid? ServerId, string? ServerName, string? PortName, string? Notes,
     bool InUse);
@@ -26,7 +27,8 @@ public sealed class NodeAllocations(IPulsarDbContext db, IRowLocks locks, Visibl
 
     /// <summary>
     /// Every allocation of the node, so the ports in use are known to whoever adds or removes some. One held by a server
-    /// the user cannot see says only that it is taken: its holder is that server's business.
+    /// the user cannot see says only that it is taken: its holder is that server's business. The administrators' notes go
+    /// only to whoever sees the node's details.
     /// </summary>
     public async Task<Result<IReadOnlyList<AllocationView>>> ListAsync(NodeId nodeId, CancellationToken cancellationToken)
     {
@@ -41,9 +43,11 @@ public sealed class NodeAllocations(IPulsarDbContext db, IRowLocks locks, Visibl
         var serverIds = allocations.Where(a => a.ServerId is { } server && (sees is null || sees(server, nodeId))).Select(a => a.ServerId!.Value)
             .Distinct().ToList();
         var names = await db.Servers.AsNoTracking().Where(s => serverIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, cancellationToken);
+        var notes = await visible.NodeDetailsAsync(cancellationToken) is not { } detailed || detailed(nodeId);
         return allocations.Select(a => a.ServerId is not { } id ? View(a, null)
                 : names.TryGetValue(id, out var name) ? View(a, name)
                 : View(a, null) with { ServerId = null, PortName = null })
+            .Select(a => notes ? a : a with { Notes = null })
             .ToList();
     }
 

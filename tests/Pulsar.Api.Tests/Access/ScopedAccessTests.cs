@@ -117,6 +117,7 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
             Assert.NotNull(full.Metrics);
             Assert.NotNull(full.LastSeenAt);
             Assert.NotNull(full.CredentialFingerprint);
+            Assert.Equal(PanelKeyTrust.Current, full.PanelKeyTrust);
         }
 
         foreach (var client in new[] { creatorClient, everywhere })
@@ -124,6 +125,7 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
             var listed = await ListAsync<NodeSummary>(client, "/api/v1/nodes");
             var slim = listed.Single(n => n.Id == node);
             Assert.Equal(("scoped-slim", NodeStatus.Active, true), (slim.Name, slim.Status, slim.Connected));
+            Assert.All(listed, n => Assert.Equal(PanelKeyTrust.Unknown, n.PanelKeyTrust));
             Assert.All(listed, n => Assert.Equal((null, null, null, null, null, null, null, null, null),
                 (n.Description, n.PublicHost, n.LastSeenAt, n.Inventory, n.Metrics, n.EnrollmentTokenName, n.CredentialFingerprint,
                     n.ConnectedWithCertificate, n.AgentCanUseCertificate)));
@@ -167,6 +169,46 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
             .All(h => h.NodesChanged.Contains(node))), "change pushed to who lists the node");
         Assert.Empty(creatorHub.NodeMetrics);
         Assert.Empty(everywhereHub.NodeMetrics);
+    }
+
+    [DatabaseFact]
+    public async Task SeeingOneNodeAndCreatingServersOnAnotherShowsEachAsItsRoleSays()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var seen = await ConnectedAgentAsync(scenario.Admin, "mixed-seen");
+        await using var created = await ConnectedAgentAsync(scenario.Admin, "mixed-created");
+        var seenNode = seen.Config!.NodeId;
+        var createdNode = created.Config!.NodeId;
+        var viewerRole = await CreateRoleAsync(scenario, "mixed-viewer", PermissionScope.Node, Permissions.Node.View);
+        var creatorRole = await CreateRoleAsync(scenario, "mixed-creator", PermissionScope.Node, Permissions.Server.Create);
+        var user = await scenario.CreateUserAsync("mixed-user");
+        await GrantAsync(scenario.Admin, user.Id, "nodes", seenNode, viewerRole.Id);
+        await GrantAsync(scenario.Admin, user.Id, "nodes", createdNode, creatorRole.Id);
+        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(scenario.Admin, seenNode)).Node.Metrics is not null
+            && (await NodeApi.GetAsync(scenario.Admin, createdNode)).Node.Metrics is not null, "usage reported");
+        using var client = await scenario.SignInAsync("mixed-user");
+
+        var listed = await ListAsync<NodeSummary>(client, "/api/v1/nodes");
+        Assert.Equal([createdNode, seenNode], listed.Select(n => n.Id)); // by name: "scoped-mixed-created" first
+        var full = listed.Single(n => n.Id == seenNode);
+        Assert.NotNull(full.Inventory);
+        Assert.NotNull(full.Metrics);
+        Assert.NotNull(full.CredentialFingerprint);
+        var slim = listed.Single(n => n.Id == createdNode);
+        Assert.Equal((null, null, null, PanelKeyTrust.Unknown), (slim.Inventory, slim.Metrics, slim.CredentialFingerprint, slim.PanelKeyTrust));
+
+        await using var browser = await BrowserHub.ConnectAsync(factory, client);
+        Assert.True(await browser.Connection.InvokeAsync<bool>("WatchNodes", Ct));
+        // Usage of the node they see arrives; the other node reports as often, and its change is told after it.
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(browser.NodeMetrics.Count(m => m.NodeId == seenNode) >= 2),
+            "usage of the node they see");
+        using (var renamed = await scenario.Admin.PutAsync($"/api/v1/nodes/{createdNode}", new UpdateNodeRequest("scoped-mixed-renamed", null, null)))
+        {
+            await AccessScenario.EnsureSuccessAsync(renamed);
+        }
+
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(browser.NodesChanged.Contains(createdNode)), "change of the node they create on");
+        Assert.All(browser.NodeMetrics, m => Assert.Equal(seenNode, m.NodeId));
     }
 
     [DatabaseFact]
@@ -330,7 +372,12 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
         await using var agent = await ConnectedAgentAsync(scenario.Admin, "ports");
         var node = agent.Config!.NodeId;
         var template = await GameServerTests.TemplateAsync(scenario.Admin, "css");
-        await GameServerTests.AllocateAsync(scenario.Admin, node, "0.0.0.0", "27200-27202");
+        using (var allocated = await scenario.Admin.PostAsync($"/api/v1/nodes/{node}/allocations",
+                   new CreateAllocationsRequest("0.0.0.0", "27200-27202", "Forwarded on the rack 4 router")))
+        {
+            await AccessScenario.EnsureSuccessAsync(allocated);
+        }
+
         var hidden = await CreatedAsync(scenario.Admin, new CreateServerRequest(node, template.Template.Id, "Hidden", null));
         var shown = await CreatedAsync(scenario.Admin, new CreateServerRequest(node, template.Template.Id, "Shown", null));
         var creator = await CreateRoleAsync(scenario, "node-creator", PermissionScope.Node, Permissions.Server.Create);
@@ -351,10 +398,18 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
         Assert.Equal((null, null, null, true),
             listed.Where(a => a.Port == hiddenPort).Select(a => (a.ServerId, a.ServerName, a.PortName, a.InUse)).Single());
         Assert.Equal((null, false), listed.Where(a => a.Port != shownPort && a.Port != hiddenPort).Select(a => (a.ServerId, a.InUse)).Single());
+        Assert.All(listed, a => Assert.Null(a.Notes)); // the administrators' notes are the node's details
 
-        // Whoever sees every server sees every holder.
+        // Whoever sees every server sees every holder; whoever sees the node, its notes.
         var all = await ListAsync<AllocationView>(scenario.Admin, $"/api/v1/nodes/{node}/allocations");
         Assert.Contains(all, a => a.ServerId == hidden.Server.Id && a.ServerName == "Hidden" && a.InUse);
+        Assert.All(all, a => Assert.Equal("Forwarded on the rack 4 router", a.Notes));
+        var nodeViewer = await CreateRoleAsync(scenario, "ports-node-viewer", PermissionScope.Node, Permissions.Node.View);
+        var watcher = await scenario.CreateUserAsync("ports-node-watcher");
+        await GrantAsync(scenario.Admin, watcher.Id, "nodes", node, nodeViewer.Id);
+        using var watcherClient = await scenario.SignInAsync("ports-node-watcher");
+        Assert.All(await ListAsync<AllocationView>(watcherClient, $"/api/v1/nodes/{node}/allocations"),
+            a => Assert.Equal("Forwarded on the rack 4 router", a.Notes));
     }
 
     private static async Task<ServerDetails> CreatedAsync(PanelClient client, CreateServerRequest request)

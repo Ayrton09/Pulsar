@@ -153,6 +153,7 @@ public sealed class NodeManagement(
         LastSeenAt = null,
         Inventory = null,
         Metrics = null,
+        PanelKeyTrust = PanelKeyTrust.Unknown,
         EnrollmentTokenName = null,
         CredentialFingerprint = null,
         ConnectedWithCertificate = null,
