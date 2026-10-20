@@ -147,7 +147,7 @@ public sealed class SshKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audi
     /// with <paramref name="anyAccount"/> (only once the password and code were given), on no other account either. A key
     /// belongs to one account: someone who added another person's public key (public by nature) to their own account
     /// would have that person's client sign in there, to their files, without a prompt. "Added already" then tells only
-    /// that the key is on the panel, which a sign-in's question about the key tells too (docs/architecture/08, T42).
+    /// that the key is on the panel, which a sign-in's question about the key tells too (docs/architecture/08, T43).
     /// </summary>
     private async Task<Result> RoomForAsync(UserId user, SshPublicKey key, bool anyAccount, CancellationToken cancellationToken)
     {
