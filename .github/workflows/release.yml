@@ -56,6 +56,11 @@ jobs:
           $process = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/ALLUSERS', "/LOG=$(Join-Path $env:RUNNER_TEMP 'innosetup.log')" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "The Inno Setup installer failed (exit code $($process.ExitCode))." }
 
+      # Unsigned on purpose. Build-Release.ps1 Authenticode-signs everything when it is given -SigningThumbprint or
+      # -TrustedSigningMetadata (docs/architecture/09-roadmap.md, "Code signing"), but this job runs the repository's npm
+      # and dotnet code, so it must not hold a signing identity, a secret or a token that can get one. Signing in CI
+      # needs a job of its own that runs no repository code, with the programs signed before the MSI and the setups are
+      # built from them. Until then, sign on the maintainer's machine.
       - name: Build the release ZIP, the agent MSI and the setups
         shell: pwsh
         run: ./scripts/release/Build-Release.ps1 -Version $env:GITHUB_REF_NAME.Substring(1) -RequireSetups -InnoSetupCompiler (Join-Path $env:ProgramFiles 'Inno Setup 7\ISCC.exe')
