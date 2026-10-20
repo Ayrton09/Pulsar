@@ -174,7 +174,9 @@ path* can. To move to another bucket, add a storage for it and choose it in the 
 3. Make the address nodes use for the panel (the `-PanelUrl` they were installed with) lead to the new machine, for
    example by pointing its DNS name there. Nodes then reconnect on their own: the panel has the same signing key and
    the same certificate, and the certificate already carries that name. A node that reached the panel by the old
-   machine's own name needs that name to resolve to the new machine; otherwise enroll it again.
+   machine's own name needs that name to resolve to the new machine; otherwise enroll it again. If the new machine
+   has another IP address, the restored certificate does not list it: `Install-Pulsar.ps1 -RenewCertificate` makes
+   one that does ([Your server's IP changed](install.md#your-servers-ip-changed)).
 
 If the panel and an agent shared the machine that was lost, install the agent again on the new one from the panel:
 delete the old node and add it again (**Nodes → Add node**), as its key was in that machine's key store. Its servers'
