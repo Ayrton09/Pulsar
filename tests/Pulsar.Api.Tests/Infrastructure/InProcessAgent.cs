@@ -15,6 +15,7 @@ using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Agent.Core.Servers;
 using Pulsar.Agent.Core.Steam;
+using Pulsar.Agent.Core.Updates;
 using Pulsar.Contracts;
 using Pulsar.Manifests;
 
@@ -58,6 +59,11 @@ public sealed class InProcessAgent : IAsyncDisposable
     }
 
     public AgentConfig? Config { get; private set; }
+
+    /// <summary>Makes the agent's updater (Phase 19) when set before <see cref="StartAsync"/>; none otherwise.</summary>
+    public Func<PanelChannel, AgentPaths, AgentUpdater>? UpdaterFactory { get; set; }
+
+    public AgentUpdater? Updater { get; private set; }
 
     public Guid? CurrentSessionId => _connection?.CurrentSessionId;
 
@@ -143,7 +149,8 @@ public sealed class InProcessAgent : IAsyncDisposable
             new FileCommands(new DirectServerFileManager(), channel, FileOptions, NullLogger<FileCommands>.Instance),
             new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance, RemoteBackups), install, channel, new SupervisorOptions(), new ServerHostOptions { ShutdownBudget = TimeSpan.FromSeconds(5), MetricsInterval = TimeSpan.FromMilliseconds(200) }, _clock, NullLoggerFactory.Instance, Query);
         _connection = new AgentConnection(Configs, Keys, _system, _transport, new PanelAuthenticator(_transport, _clock),
-            new CredentialRotationClient(_transport), new CommandDispatcher(NullLogger<CommandDispatcher>.Instance, _servers, SteamLogins), Options,
+            new CredentialRotationClient(_transport),
+            new CommandDispatcher(NullLogger<CommandDispatcher>.Instance, _servers, SteamLogins, Updater = UpdaterFactory?.Invoke(channel, Configs.Paths)), Options,
             _clock, new StubLifetime(), NullLoggerFactory.Instance, channel, _servers, SteamLogins);
 
         // As the agent host orders them: the connection waits for the servers to load; the servers stop first.
@@ -161,6 +168,9 @@ public sealed class InProcessAgent : IAsyncDisposable
             _connection.Dispose();
             _connection = null;
         }
+
+        Updater?.Dispose();
+        Updater = null;
     }
 
     /// <summary>Polls until <paramref name="condition"/> holds (the agent works in the background).</summary>

@@ -38,6 +38,9 @@ public sealed record AgentUpdaterOptions
     /// <summary>The longest an update may take before this agent takes another (the installer stops the agent long before).</summary>
     public TimeSpan Deadline { get; init; } = TimeSpan.FromHours(1);
 
+    /// <summary>Where releases are unpacked and the installer writes its result; null: beside the agent's state folder.</summary>
+    public string? UpdatesRoot { get; init; }
+
     /// <summary>Tests: sees every report of a running update, whether or not the panel is connected.</summary>
     internal Func<UpdateReport, Task>? OnReport { get; init; }
 }
@@ -72,7 +75,7 @@ public sealed partial class AgentUpdater : IDisposable
         _clock = clock;
         _logger = logger;
         _options = options ?? new AgentUpdaterOptions();
-        UpdatesRoot = Path.Combine(Path.GetDirectoryName(paths.Root) ?? paths.Root, "Updates");
+        UpdatesRoot = _options.UpdatesRoot ?? Path.Combine(Path.GetDirectoryName(paths.Root) ?? paths.Root, "Updates");
         channel.OnConnected(ct => ReportResultAsync(always: true, ct));
         _poll = clock.CreateTimer(_ => _ = ReportResultAsync(always: false, CancellationToken.None), null, _options.ResultPoll, _options.ResultPoll);
     }

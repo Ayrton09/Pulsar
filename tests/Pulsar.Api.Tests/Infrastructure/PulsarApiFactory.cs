@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Auth;
 using Pulsar.Api.Sftp;
 using Pulsar.Application.Servers;
+using Pulsar.Application.Updates;
 using Pulsar.Infrastructure.Persistence;
 
 namespace Pulsar.Api.Tests.Infrastructure;
@@ -98,8 +99,13 @@ public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("DataProtection:KeysPath", KeysDirectory);
         builder.UseSetting("Pulsar:EnableTestGame", "true");
 
-        // The SFTP server listens only in the tests that drive it (SftpApiFactory), on the loopback.
-        builder.ConfigureTestServices(services => services.PostConfigure<SftpOptions>(options => options.Listen = false));
+        // The SFTP server listens only in the tests that drive it (SftpApiFactory), on the loopback; GitHub is never asked
+        // for releases (PanelUpdateTests gives its own).
+        builder.ConfigureTestServices(services =>
+        {
+            services.PostConfigure<SftpOptions>(options => options.Listen = false);
+            services.AddScoped<IUpdateSource, OfflineUpdateSource>();
+        });
     }
 }
 
@@ -122,6 +128,7 @@ public sealed class NoDatabaseApiFactory : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.PostConfigure<SftpOptions>(options => options.Listen = false);
+            services.AddScoped<IUpdateSource, OfflineUpdateSource>();
             services.AddScoped<IDatabaseInitializer, NoOpDatabaseInitializer>();
             services.AddScoped<IBundledTemplates, NoBundledTemplates>();
         });

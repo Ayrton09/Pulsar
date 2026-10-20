@@ -12103,6 +12103,305 @@
         }
       }
     },
+    "/api/v1/updates": {
+      "get": {
+        "tags": [
+          "Updates"
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatesView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/updates/settings": {
+      "put": {
+        "tags": [
+          "Updates"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatesView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/updates/check": {
+      "post": {
+        "tags": [
+          "Updates"
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatesView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/updates/apply": {
+      "post": {
+        "tags": [
+          "Updates"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UpdateRequestResult"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/panel/certificate": {
       "get": {
         "tags": [
@@ -12549,6 +12848,32 @@
           }
         }
       },
+      "ApplyUpdateRequest": {
+        "required": [
+          "nodeIds",
+          "password",
+          "code"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "password": {
+            "type": "string"
+          },
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "ApproveNodesRequest": {
         "required": [
           "nodeIds"
@@ -12671,6 +12996,33 @@
               "string"
             ],
             "format": "uuid"
+          }
+        }
+      },
+      "AvailableUpdate": {
+        "required": [
+          "version",
+          "published",
+          "notes",
+          "newerThanPanel"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "published": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notes": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "newerThanPanel": {
+            "type": "boolean"
           }
         }
       },
@@ -14483,6 +14835,109 @@
             "type": [
               "null",
               "boolean"
+            ]
+          }
+        }
+      },
+      "NodeUpdateStatusView": {
+        "required": [
+          "status",
+          "from",
+          "to",
+          "error",
+          "requestedAt",
+          "updatedAt",
+          "underWay"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "from": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "to": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "underWay": {
+            "type": "boolean"
+          }
+        }
+      },
+      "NodeUpdateView": {
+        "required": [
+          "nodeId",
+          "name",
+          "connected",
+          "agentVersion",
+          "hostsPanel",
+          "canUpdate",
+          "updateAvailable",
+          "blocked",
+          "last"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "agentVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hostsPanel": {
+            "type": "boolean"
+          },
+          "canUpdate": {
+            "type": "boolean"
+          },
+          "updateAvailable": {
+            "type": "boolean"
+          },
+          "blocked": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "last": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NodeUpdateStatusView"
+              }
             ]
           }
         }
@@ -17277,6 +17732,36 @@
           }
         }
       },
+      "UpdateRequestResult": {
+        "required": [
+          "nodeId",
+          "sent",
+          "errorCode",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sent": {
+            "type": "boolean"
+          },
+          "errorCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "UpdateRoleRequest": {
         "required": [
           "name",
@@ -17353,6 +17838,17 @@
           }
         }
       },
+      "UpdateSettingsRequest": {
+        "required": [
+          "checkAutomatically"
+        ],
+        "type": "object",
+        "properties": {
+          "checkAutomatically": {
+            "type": "boolean"
+          }
+        }
+      },
       "UpdateSftpSettingsRequest": {
         "required": [
           "enabled",
@@ -17375,6 +17871,58 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "UpdatesView": {
+        "required": [
+          "panelVersion",
+          "hasKeys",
+          "checkAutomatically",
+          "checkedAt",
+          "checkError",
+          "available",
+          "nodes"
+        ],
+        "type": "object",
+        "properties": {
+          "panelVersion": {
+            "type": "string"
+          },
+          "hasKeys": {
+            "type": "boolean"
+          },
+          "checkAutomatically": {
+            "type": "boolean"
+          },
+          "checkedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "checkError": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "available": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AvailableUpdate"
+              }
+            ]
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeUpdateView"
+            }
           }
         }
       },
@@ -17634,6 +18182,9 @@
     },
     {
       "name": "Appearance"
+    },
+    {
+      "name": "Updates"
     },
     {
       "name": "Panel"

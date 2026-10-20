@@ -10,6 +10,7 @@ using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Notifications;
 using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
+using Pulsar.Domain.Updates;
 
 namespace Pulsar.Application.Abstractions;
 
@@ -52,6 +53,10 @@ public interface IPulsarDbContext
     DbSet<PublicIpCertificateSettings> PublicIpCertificateSettings { get; }
 
     DbSet<AppearanceSettings> AppearanceSettings { get; }
+
+    DbSet<UpdateState> UpdateState { get; }
+
+    DbSet<NodeUpdate> NodeUpdates { get; }
 
     DbSet<GameTemplate> GameTemplates { get; }
 

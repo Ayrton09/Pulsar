@@ -10,6 +10,8 @@ using Pulsar.Application.Notifications;
 using Pulsar.Application.Realtime;
 using Pulsar.Application.Scheduling;
 using Pulsar.Application.Servers;
+using Pulsar.Application.Updates;
+using Pulsar.Contracts;
 
 namespace Pulsar.Application;
 
@@ -25,6 +27,9 @@ public static class DependencyInjection
         services.AddScoped<RoleManagement>();
         services.AddScoped<ApiKeys>();
         services.AddScoped<SshKeys>();
+        services.AddScoped<PanelUpdates>();
+        // The update keys this build trusts (Phase 19); tests give their own.
+        services.TryAddSingleton(UpdateVerifier.Default);
         services.AddScoped<AuditQueries>();
         services.AddSingleton<AgentSessionStore>();
         services.AddSingleton<AgentTransportPolicy>();

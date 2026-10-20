@@ -2511,6 +2511,113 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.ToTable("steam_accounts", (string)null);
                 });
 
+            modelBuilder.Entity("Pulsar.Domain.Updates.NodeUpdate", b =>
+                {
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error");
+
+                    b.Property<string>("FromVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("from_version");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<Guid?>("RequestedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("ToVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("to_version");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("NodeId")
+                        .HasName("pk_node_updates");
+
+                    b.HasIndex("RequestedBy")
+                        .HasDatabaseName("ix_node_updates_requested_by");
+
+                    b.ToTable("node_updates", (string)null);
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Updates.UpdateState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("CheckAutomatically")
+                        .HasColumnType("boolean")
+                        .HasColumnName("check_automatically");
+
+                    b.Property<string>("CheckError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("check_error");
+
+                    b.Property<DateTimeOffset?>("CheckedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("checked_at");
+
+                    b.Property<string>("LatestManifest")
+                        .HasMaxLength(65536)
+                        .HasColumnType("character varying(65536)")
+                        .HasColumnName("latest_manifest");
+
+                    b.Property<string>("LatestManifestSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("latest_manifest_sha256");
+
+                    b.Property<string>("LatestVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("latest_version");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_update_state");
+
+                    b.ToTable("update_state", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_update_state_singleton", "id = 1");
+                        });
+                });
+
             modelBuilder.Entity("Pulsar.Infrastructure.Identity.PulsarUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3100,6 +3207,22 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UpdatedBy")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_server_variables_users_updated_by");
+                });
+
+            modelBuilder.Entity("Pulsar.Domain.Updates.NodeUpdate", b =>
+                {
+                    b.HasOne("Pulsar.Domain.Nodes.Node", null)
+                        .WithOne()
+                        .HasForeignKey("Pulsar.Domain.Updates.NodeUpdate", "NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_updates_nodes_node_id");
+
+                    b.HasOne("Pulsar.Infrastructure.Identity.PulsarUser", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_node_updates_users_requested_by");
                 });
 
             modelBuilder.Entity("Pulsar.Domain.Servers.Server", b =>

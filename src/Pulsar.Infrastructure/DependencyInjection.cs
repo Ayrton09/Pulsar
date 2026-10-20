@@ -9,6 +9,8 @@ using Pulsar.Application.Nodes;
 using Pulsar.Application.Notifications;
 using Pulsar.Application.Scheduling;
 using Pulsar.Application.Servers;
+using Pulsar.Application.Updates;
+using Pulsar.Contracts;
 using Pulsar.Infrastructure.Databases;
 using Pulsar.Infrastructure.Identity;
 using Pulsar.Infrastructure.Metrics;
@@ -18,6 +20,7 @@ using Pulsar.Infrastructure.Persistence;
 using Pulsar.Infrastructure.Scheduling;
 using Pulsar.Infrastructure.Servers;
 using Pulsar.Infrastructure.Steam;
+using Pulsar.Infrastructure.Updates;
 
 namespace Pulsar.Infrastructure;
 
@@ -82,6 +85,16 @@ public static class DependencyInjection
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false })
             .RemoveAllLoggers();
         services.AddHostedService<NodeWatchService>();
+        // Pulsar's releases on GitHub (Phase 19): two small files a day, no redirects but to GitHub's release storage.
+        services.AddScoped<IUpdateSource, GitHubUpdateSource>();
+        services.AddHttpClient(GitHubUpdateSource.ClientName, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(60);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd($"Pulsar-Panel/{PanelUpdates.PanelVersionText}");
+            })
+            .ConfigurePrimaryHttpMessageHandler(UpdateDownloads.CreateHandler)
+            .RemoveAllLoggers();
+        services.AddHostedService<UpdateCheckService>();
         services.AddOptions<MetricHistoryOptions>().Bind(configuration.GetSection(MetricHistoryOptions.SectionName))
             .Validate(o => o.MinuteRetention >= TimeSpan.FromDays(1) && o.HourRetention >= TimeSpan.FromDays(1),
                 "MetricHistory: MinuteRetention and HourRetention must be at least a day (the 24-hour chart reads minutes).")

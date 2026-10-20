@@ -13,6 +13,7 @@ using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Notifications;
 using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
+using Pulsar.Domain.Updates;
 using Pulsar.Infrastructure.Identity;
 
 namespace Pulsar.Infrastructure.Persistence;
@@ -54,6 +55,10 @@ public sealed class PulsarDbContext(DbContextOptions<PulsarDbContext> options)
     public DbSet<PublicIpCertificateSettings> PublicIpCertificateSettings => Set<PublicIpCertificateSettings>();
 
     public DbSet<AppearanceSettings> AppearanceSettings => Set<AppearanceSettings>();
+
+    public DbSet<UpdateState> UpdateState => Set<UpdateState>();
+
+    public DbSet<NodeUpdate> NodeUpdates => Set<NodeUpdate>();
 
     public DbSet<GameTemplate> GameTemplates => Set<GameTemplate>();
 

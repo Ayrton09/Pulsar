@@ -137,6 +137,18 @@ public static class AuditActions
         public const string SettingsChanged = "appearance.settings_changed";
     }
 
+    /// <summary>Updates of Pulsar from its releases (Phase 19).</summary>
+    public static class Updates
+    {
+        public const string SettingsChanged = "updates.settings_changed";
+
+        /// <summary>An administrator asked a node to update (its target: the node).</summary>
+        public const string Requested = "updates.requested";
+
+        /// <summary>How an update ended, as the node reported it (an actor-less entry: the node's agent reported it).</summary>
+        public const string Finished = "updates.finished";
+    }
+
     public static class BackupStorage
     {
         public const string Created = "backup_storage.created";

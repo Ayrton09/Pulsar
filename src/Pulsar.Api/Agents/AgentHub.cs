@@ -7,6 +7,7 @@ using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Realtime;
 using Pulsar.Application.Servers;
+using Pulsar.Application.Updates;
 using Pulsar.Contracts;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
@@ -282,16 +283,18 @@ internal sealed partial class AgentHub(
         return Task.CompletedTask;
     }
 
-    /// <summary>How an update of Pulsar on the node goes (Phase 19): logged until the panel keeps it.</summary>
-    public Task UpdateReport(UpdateReport report)
+    /// <summary>How an update of Pulsar on the node goes (Phase 19): kept on the node's row, its end audited.</summary>
+    public async Task UpdateReport(UpdateReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
-        if (RegisteredNode() is { } nodeId && UpdateStatuses.All.Contains(report.Status ?? string.Empty))
+        if (RegisteredNode() is not { } nodeId || !UpdateStatuses.All.Contains(report.Status ?? string.Empty))
         {
-            LogUpdateReport(nodeId, report.Status!);
+            return;
         }
 
-        return Task.CompletedTask;
+        LogUpdateReport(nodeId, report.Status!);
+        await using var scope = scopes.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<PanelUpdates>().ReportAsync(nodeId, report, CancellationToken.None);
     }
 
     /// <summary>Usage of the node's running servers: kept for pages that open later, and pushed to the ones watching.</summary>
