@@ -63,33 +63,40 @@ public sealed partial class ServerOperations(IPulsarDbContext db, IAgentConnecti
         }
 
         var now = clock.GetUtcNow();
-        string? refused = null;
-        if (ack?.Status is not (AckStatus.Accepted or AckStatus.AlreadyInState))
+        if (ack?.Status is AckStatus.Accepted or AckStatus.AlreadyInState)
         {
-            refused = ack?.ErrorCode ?? (ack is null ? NodeErrors.NotConnected.Code : ServerErrors.CommandRejected.Code);
-            LogOperationRefused(operation.Id, operation.Type, server.Id, refused);
+            await StartedAsync(operation, now);
+            return operation;
         }
 
+        var refused = ack?.ErrorCode ?? (ack is null ? NodeErrors.NotConnected.Code : ServerErrors.CommandRejected.Code);
+        LogOperationRefused(operation.Id, operation.Type, server.Id, refused);
         await SaveOutcomeAsync(server, operation, () =>
         {
-            if (refused is null)
-            {
-                operation.Started(now);
-            }
-            else
-            {
-                operation.Complete(OperationStatus.Failed, refused, ack?.Message, now);
-                server.OperationCompleted(operation, now);
-            }
+            operation.Complete(OperationStatus.Failed, refused, ack?.Message, now);
+            server.OperationCompleted(operation, now);
         });
 
         return operation;
     }
 
     /// <summary>
-    /// Applies what the node's answer means and saves it. When the agent changed the server meanwhile (a state event) or
-    /// reported the operation's result already (a quick operation: it wins over "started"), both rows are read again and
-    /// the outcome is applied on them, unless the operation has ended (a deleted row becomes detached).
+    /// The node accepted: the operation is running (<see cref="Operation.Started"/>), unless it is no longer queued (the
+    /// agent reported its result already: a quick operation's result wins over "started"). One statement on its row, so
+    /// the agent's reports on it meanwhile (each new stage of a backup changes the row) can neither make it fail nor be
+    /// overwritten; the operation is then read back as it is.
+    /// </summary>
+    private async Task StartedAsync(Operation operation, DateTimeOffset now)
+    {
+        await db.Operations.Where(o => o.Id == operation.Id && o.Status == OperationStatus.Queued)
+            .ExecuteUpdateAsync(s => s.SetProperty(o => o.Status, OperationStatus.Running).SetProperty(o => o.StartedAt, now), CancellationToken.None);
+        await db.Entry(operation).ReloadAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Applies a failure (the node did not take the command, or it could not be sent) and saves it. When the agent changed
+    /// the server meanwhile (a state event) or the operation ended otherwise, both rows are read again and the outcome is
+    /// applied on them, unless the operation has ended (a deleted row becomes detached).
     /// </summary>
     private async Task SaveOutcomeAsync(Server server, Operation operation, Action apply)
     {
