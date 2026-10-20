@@ -1495,14 +1495,31 @@ Check 'release: an Inno Setup warning fails the build' ($buildRelease -match "'-
 
 # --- Code signing in the release (optional; Build-Release.ps1's functions run on files of this test's own, nothing is signed) ---
 
-$signingParts = Get-ScriptParts (Join-Path $PSScriptRoot '..\release\Build-Release.ps1') @('Get-SignatureProblem', 'Assert-InnoSetupSigned', 'Get-WindowsKitsRoots', 'Find-SignTool',
-    'Assert-SignToolSigned', 'Assert-SigningCertificate', 'Read-TrustedSigningMetadata', 'Find-TrustedSigningClient', 'Assert-TrustedSigningClient', 'Initialize-Signing',
-    'Get-PulsarPrograms', 'Format-InnoToolWord', 'Get-InnoSignCommand') @('InnoSetupSigner', 'SignToolSigner', 'SignToolLibraries', 'CodeSigningUsage', 'SignedDescription', 'SignedInformationUrl')
+$buildReleasePath = Join-Path $PSScriptRoot '..\release\Build-Release.ps1'
+$signingParts = Get-ScriptParts $buildReleasePath @('Get-SignatureProblem', 'Assert-InnoSetupSigned', 'Get-AccountName', 'Find-UntrustedWriter', 'Find-UntrustedWriters', 'Find-UntrustedAncestors',
+    'Assert-AdministratorsOnly', 'Test-CurrentUserOnly', 'New-SigningFolder', 'Hide-AzureCredentials', 'Set-AzureCredentials', 'Remove-AzureCredentials', 'Restore-AzureCredentials',
+    'Get-WindowsKitsRoots', 'Find-SignTool', 'Assert-SignToolSigned', 'Assert-SigningCertificate', 'Read-TrustedSigningMetadata', 'New-SigningMetadata', 'Find-TrustedSigningClient',
+    'Assert-TrustedSigningClient', 'Assert-SigningTools', 'Initialize-Signing', 'Invoke-SignTool', 'Assert-Signed', 'Invoke-Signing', 'Get-PulsarAssemblies', 'Get-PulsarPrograms',
+    'Assert-ProgramsSigned', 'Format-InnoToolWord', 'Get-InnoSignCommand', 'Publish-Release', 'Remove-BuildWork') `
+    @('TrustedWriters', 'ModifyRights', 'ReplaceRights', 'InnoSetupSigner', 'SignToolSigner', 'SignToolLibraries', 'CodeSigningUsage', 'SignedDescription', 'SignedInformationUrl', 'HiddenEnvironment')
+# Who may change what signs is the install script's rule, with the same functions.
+$differentFromInstall = @(@('Get-AccountName', 'Find-UntrustedWriter', 'Find-UntrustedWriters', 'Find-UntrustedAncestors', '$TrustedWriters', '$ModifyRights', '$ReplaceRights') | Where-Object { $installParts[$_] -cne $signingParts[$_] })
+Check 'signing: the folder rule for what signs is Install-Pulsar.ps1''s, the same functions' ($differentFromInstall.Count -eq 0) ($differentFromInstall -join ', ')
 foreach ($part in $signingParts.Values) { . ([scriptblock]::Create($part)) }
 $SignTool = $null; $SigningThumbprint = $null; $TrustedSigningMetadata = $null; $TrustedSigningDlib = $null; $TimestampUrl = 'http://timestamp.digicert.com'; $GivenSigningOptions = @()
-$Signing = $null
+$RequireSigning = $false; $Signing = $null; $Work = $null; $ProgramSets = @()
+$realFunctions = @{}
+foreach ($function in 'Invoke-SignTool', 'Assert-Signed', 'Assert-SigningTools', 'Assert-AdministratorsOnly') { $realFunctions[$function] = (Get-Item "function:$function").ScriptBlock }
+# Dot-sourced (. $restoreReal), so the functions it puts back are the script's own again.
+$restoreReal = { foreach ($function in $realFunctions.Keys) { Set-Item "function:$function" $realFunctions[$function] } }
+function Sort-Ordinal([string[]] $names) { $sorted = [string[]]@($names); [Array]::Sort($sorted, [StringComparer]::Ordinal); return $sorted }
+function New-TestFile([string] $path, [string] $text = 'x') { $null = New-Item -ItemType Directory -Force (Split-Path -Parent $path); Set-Content -LiteralPath $path -Value $text; return $path }
+function Get-SigningFolders { @(Get-ChildItem ([IO.Path]::GetTempPath()) -Directory -Filter 'pulsar-signing-*' -ErrorAction SilentlyContinue) }
 
 Check 'signing: off unless asked (no signing option, no signing)' ($null -eq (Initialize-Signing))
+$RequireSigning = $true
+Check 'signing: -RequireSigning fails a build that would be unsigned' ((Get-Thrown { Initialize-Signing }) -match '-RequireSigning: this release would be unsigned')
+$RequireSigning = $false
 foreach ($lonely in 'TimestampUrl', 'SignTool', 'TrustedSigningDlib') {
     $GivenSigningOptions = @($lonely)
     Check "signing: -$lonely without a signing way is refused, not ignored" ((Get-Thrown { Initialize-Signing }) -match "These options only apply to a signed release \(-$lonely\)")
@@ -1515,6 +1532,12 @@ $GivenSigningOptions = @()
 
 $signRoot = Join-Path $Scratch ("pulsar-script-tests-" + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $signRoot | Out-Null
+# This test's own temp folder, so the folders it counts are its own (a release being built meanwhile has its own).
+$tempBefore = @($env:TEMP, $env:TMP)
+$testTemp = Join-Path $signRoot 'temp'
+$null = New-Item -ItemType Directory $testTemp
+$env:TEMP = $testTemp; $env:TMP = $testTemp
+$signingFoldersBefore = @(Get-SigningFolders).Count
 try {
     # signtool.exe: the newest SDK's x64 one, found by version number; checked to be Microsoft's.
     $kits = Join-Path $signRoot 'Windows Kits\10'
@@ -1541,19 +1564,16 @@ try {
     if ($realTool) {
         Check 'signing: the installed SDK''s signtool.exe is validly signed by Microsoft' ($null -eq (Get-Thrown { Assert-SignToolSigned $realTool })) $realTool
         Check 'signing: another organization''s name is not Microsoft''s' ($null -ne (Get-SignatureProblem $realTool 'Microsoft') -and $null -ne (Get-SignatureProblem $realTool 'Pyrsys B.V.'))
-        # A copy of signtool.exe takes the DLLs it imports from beside it: a swapped one is refused.
+        # signtool.exe takes the DLLs it imports from beside it: a swapped one is refused.
         $copyFolder = Join-Path $signRoot 'signtool-copy'; New-Item -ItemType Directory $copyFolder | Out-Null
         Copy-Item $realTool (Join-Path $copyFolder 'signtool.exe')
-        Check 'signing: a signtool.exe copied alone is taken' ($null -eq (Get-Thrown { Assert-SignToolSigned (Join-Path $copyFolder 'signtool.exe') }))
+        Check 'signing: a signtool.exe copied alone is taken (by signature)' ($null -eq (Get-Thrown { Assert-SignToolSigned (Join-Path $copyFolder 'signtool.exe') }))
         if (Test-Path (Join-Path (Split-Path $realTool) 'mssign32.dll')) {
             Copy-Item (Join-Path (Split-Path $realTool) 'mssign32.dll') $copyFolder
             Check 'signing: with the SDK''s own mssign32.dll beside it' ($null -eq (Get-Thrown { Assert-SignToolSigned (Join-Path $copyFolder 'signtool.exe') }))
         }
         Set-Content (Join-Path $copyFolder 'wintrust.dll') 'not Microsoft''s'
         Check 'signing: a wintrust.dll beside signtool.exe that is not validly signed by Microsoft is refused' ((Get-Thrown { Assert-SignToolSigned (Join-Path $copyFolder 'signtool.exe') }) -match 'wintrust\.dll is not validly signed by Microsoft Corporation')
-        $GivenSigningOptions = @('SigningThumbprint'); $SigningThumbprint = '0123456789ABCDEF0123456789ABCDEF01234567'
-        Check 'signing: a thumbprint that is not in the store is refused before any build' ((Get-Thrown { Initialize-Signing }) -match "is in the current user's Personal store")
-        $GivenSigningOptions = @(); $SigningThumbprint = $null
     }
     Check 'signing: a catalog-signed Windows file is not an embedded Authenticode signature' ($null -ne (Get-SignatureProblem (Join-Path $env:windir 'System32\notepad.exe') 'Microsoft Corporation'))
     # The same check ISCC gets: an unsigned compiler, or a folder that is no Inno Setup install, is refused.
@@ -1562,6 +1582,35 @@ try {
     Check 'signing: a folder with no ISCmplr.dll is not an Inno Setup install' ((Get-Thrown { Assert-InnoSetupSigned (Join-Path $fakeInno 'ISCC.exe') }) -match 'has no ISCmplr\.dll')
     Set-Content (Join-Path $fakeInno 'ISCmplr.dll') 'x'
     Check 'signing: an unsigned ISCC.exe is refused as before' ((Get-Thrown { Assert-InnoSetupSigned (Join-Path $fakeInno 'ISCC.exe') }) -match "is not validly signed by Pyrsys B\.V\., Inno Setup's publisher")
+
+    # What signs runs in place, so its folder must be one only administrators can change (a copy in the user's temp folder
+    # is refused, however well signed); the SDK's own folder in Program Files is.
+    $writableFolder = Join-Path $signRoot 'writable-sdk'
+    $null = New-TestFile (Join-Path $writableFolder 'signtool.exe')
+    $refused = Get-Thrown { Assert-AdministratorsOnly $writableFolder 'The folder of signtool.exe' }
+    Check 'signing: a folder the current user can write in is refused' ($refused -match 'The folder of signtool\.exe .* could be changed by accounts other than SYSTEM, Administrators and TrustedInstaller') $refused
+    Check 'signing: a path that does not exist is not taken for safe' ($null -ne (Get-Thrown { Assert-AdministratorsOnly (Join-Path $signRoot 'nope') 'x' }))
+    if ($realTool) {
+        Check 'signing: the SDK''s folder in Program Files is one only administrators can change' ($null -eq (Get-Thrown { Assert-AdministratorsOnly (Split-Path -Parent $realTool) 'The folder of signtool.exe' })) $realTool
+        Copy-Item $realTool (Join-Path $writableFolder 'signtool.exe') -Force
+        $SignTool = Join-Path $writableFolder 'signtool.exe'
+        $GivenSigningOptions = @('SigningThumbprint', 'SignTool'); $SigningThumbprint = '0123456789ABCDEF0123456789ABCDEF01234567'
+        Check 'signing: a validly signed signtool.exe in a folder the user can write in is refused before any build' ((Get-Thrown { Initialize-Signing }) -match 'The folder of signtool\.exe')
+        $SignTool = $null
+        $Signing = [pscustomobject]@{ SignTool = (Join-Path $writableFolder 'signtool.exe'); Dlib = $null }
+        Check 'signing: a signed signtool.exe in a folder the user can write in is refused again when the tools are checked before each use' ((Get-Thrown { Assert-SigningTools }) -match 'The folder of signtool\.exe')
+        function Assert-AdministratorsOnly { }
+        try {
+            $Signing = [pscustomobject]@{ SignTool = $unsignedTool; Dlib = $null }
+            Check 'signing: a signtool.exe that is not Microsoft''s is refused when the tools are checked before each use, whatever its folder' ((Get-Thrown { Assert-SigningTools }) -match 'is not validly signed by Microsoft Corporation')
+            $Signing = [pscustomobject]@{ SignTool = $realTool; Dlib = $null }
+            Check 'signing: ...and the SDK''s is taken' ($null -eq (Get-Thrown { Assert-SigningTools }))
+        }
+        finally { . $restoreReal; $Signing = $null }
+        $GivenSigningOptions = @('SigningThumbprint'); $SigningThumbprint = '0123456789ABCDEF0123456789ABCDEF01234567'
+        Check 'signing: a thumbprint that is not in the store is refused before any build' ((Get-Thrown { Initialize-Signing }) -match "is in the current user's Personal store")
+        $GivenSigningOptions = @(); $SigningThumbprint = $null
+    }
 
     # The certificate in the store: its key, its dates, its purpose (made in memory).
     function New-CodeSigningTestCertificate([string] $subject, [double] $fromDays, [double] $toDays, [string[]] $usages) {
@@ -1583,10 +1632,12 @@ try {
     $publicOnly = [Security.Cryptography.X509Certificates.X509Certificate2]::new($goodSigner.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
     Check 'signing: a certificate without its private key (a token that is not plugged in) is refused' ((Get-Thrown { Assert-SigningCertificate $publicOnly }) -match 'has no private key')
 
-    # Azure Trusted Signing's metadata and client.
-    function Write-SigningFile([string] $name, [string] $text) { $path = Join-Path $signRoot $name; Set-Content $path $text -Encoding UTF8; return $path }
+    # Azure Trusted Signing's metadata: the endpoint is the service's own, only the three values are used, and signtool is
+    # given a fresh file in a folder of the current user alone.
+    function Write-SigningFile([string] $name, [string] $text) { return New-TestFile (Join-Path $signRoot $name) $text }
     $goodMetadata = Write-SigningFile 'metadata.json' '{ "Endpoint": "https://eus.codesigning.azure.net", "CodeSigningAccountName": "account", "CertificateProfileName": "profile", "CorrelationId": "x" }'
-    Check 'signing: Trusted Signing metadata with its three fields is taken' ((Read-TrustedSigningMetadata $goodMetadata) -eq (Resolve-Path $goodMetadata).Path)
+    $values = Read-TrustedSigningMetadata $goodMetadata
+    Check 'signing: Trusted Signing metadata gives its three values, and only them' (($values.Keys -join ',') -ceq 'Endpoint,CodeSigningAccountName,CertificateProfileName' -and $values['Endpoint'] -ceq 'https://eus.codesigning.azure.net' -and $values['CodeSigningAccountName'] -ceq 'account')
     Check 'signing: a metadata file that is not there is refused' ((Get-Thrown { Read-TrustedSigningMetadata (Join-Path $signRoot 'nope.json') }) -match 'existing JSON file')
     Check 'signing: metadata that is not JSON is refused' ((Get-Thrown { Read-TrustedSigningMetadata (Write-SigningFile 'bad.json' '{ nope') }) -match 'is not JSON')
     $badMetadata = [ordered]@{
@@ -1594,8 +1645,16 @@ try {
         'a name in another case' = '{ "endpoint": "https://x.codesigning.azure.net", "CodeSigningAccountName": "a", "CertificateProfileName": "p" }'
         'an empty field' = '{ "Endpoint": "https://x.codesigning.azure.net", "CodeSigningAccountName": " ", "CertificateProfileName": "p" }'
         'a field that is not text' = '{ "Endpoint": "https://x.codesigning.azure.net", "CodeSigningAccountName": 5, "CertificateProfileName": "p" }'
+        'a control character in a field' = '{ "Endpoint": "https://x.codesigning.azure.net", "CodeSigningAccountName": "a\nb", "CertificateProfileName": "p" }'
         'an http endpoint' = '{ "Endpoint": "http://x.codesigning.azure.net", "CodeSigningAccountName": "a", "CertificateProfileName": "p" }'
-        'an endpoint with a space' = '{ "Endpoint": "https://x.net/a b", "CodeSigningAccountName": "a", "CertificateProfileName": "p" }'
+        'an endpoint of another service' = '{ "Endpoint": "https://signing.example.com", "CodeSigningAccountName": "a", "CertificateProfileName": "p" }'
+        'an endpoint that only ends like the service''s' = '{ "Endpoint": "https://x.codesigning.azure.net.example.com", "CodeSigningAccountName": "a", "CertificateProfileName": "p" }'
+        'an endpoint that only contains the service''s' = '{ "Endpoint": "https://example.com/x.codesigning.azure.net", "CodeSigningAccountName": "a", "CertificateProfileName": "p" }'
+        'an endpoint with a user' = '{ "Endpoint": "https://user@x.codesigning.azure.net", "CodeSigningAccountName": "a", "CertificateProfileName": "p" }'
+        'an endpoint with a port' = '{ "Endpoint": "https://x.codesigning.azure.net:8443", "CodeSigningAccountName": "a", "CertificateProfileName": "p" }'
+        'an endpoint with a path' = '{ "Endpoint": "https://x.codesigning.azure.net/a", "CodeSigningAccountName": "a", "CertificateProfileName": "p" }'
+        'an endpoint with a space' = '{ "Endpoint": "https://x.codesigning.azure.net /a", "CodeSigningAccountName": "a", "CertificateProfileName": "p" }'
+        'an endpoint in capitals' = '{ "Endpoint": "https://X.CODESIGNING.AZURE.NET", "CodeSigningAccountName": "a", "CertificateProfileName": "p" }'
         'a JSON string' = '"hello"'
     }
     $index = 0
@@ -1603,9 +1662,29 @@ try {
         $index++
         Check "signing: metadata with $case is refused" ($null -ne (Get-Thrown { Read-TrustedSigningMetadata (Write-SigningFile "bad$index.json" $badMetadata[$case]) }))
     }
+    Check 'signing: a regional endpoint with a trailing slash is taken' ($null -eq (Get-Thrown { Read-TrustedSigningMetadata (Write-SigningFile 'slash.json' '{ "Endpoint": "https://weu.codesigning.azure.net/", "CodeSigningAccountName": "a", "CertificateProfileName": "p" }') }))
+    $made = New-SigningMetadata $values
+    try {
+        $written = Get-Content -LiteralPath $made.Path -Raw | ConvertFrom-Json
+        Check 'signing: signtool gets a fresh metadata file with the three values and nothing else' (@($written.PSObject.Properties).Count -eq 3 -and $written.Endpoint -ceq $values['Endpoint'] -and $written.CertificateProfileName -ceq 'profile' -and $made.Path -ne $goodMetadata -and $made.Text -ceq [IO.File]::ReadAllText($made.Path))
+        Check 'signing: that file''s folder is the current user''s alone' ((Test-CurrentUserOnly $made.Folder) -and (Split-Path -Leaf $made.Folder) -like 'pulsar-signing-*')
+        $madeDirectory = Get-Item -LiteralPath $made.Folder
+        $acl = $madeDirectory.GetAccessControl([Security.AccessControl.AccessControlSections]::Access)
+        $everyone = [Security.Principal.SecurityIdentifier]'S-1-1-0'
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($everyone, 'Read', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+        $madeDirectory.SetAccessControl($acl)
+        Check 'signing: a folder anyone else was let into is not the current user''s alone' (-not (Test-CurrentUserOnly $made.Folder))
+    }
+    finally { Remove-Item -LiteralPath $made.Folder -Recurse -Force }
+    Check 'signing: an ordinary folder (permissions inherited) is not the current user''s alone' (-not (Test-CurrentUserOnly $signRoot))
+    Check 'signing: a file is not a folder of the current user''s alone' (-not (Test-CurrentUserOnly $goodMetadata))
+
+    # The Trusted Signing client: named by -TrustedSigningDlib (no default, since the per-user install folder is the user's to
+    # write), signed by Microsoft with the libraries beside it, in a folder only administrators can change.
+    Check 'signing: Trusted Signing needs the client''s path' ((Get-Thrown { Find-TrustedSigningClient }) -match '-TrustedSigningDlib is required')
     $TrustedSigningDlib = Join-Path $signRoot 'client\Azure.CodeSigning.Dlib.dll'
     Check 'signing: a Trusted Signing client that is not there is refused' ((Get-Thrown { Find-TrustedSigningClient }) -match 'Azure\.CodeSigning\.Dlib\.dll was not found')
-    New-Item -ItemType Directory (Split-Path $TrustedSigningDlib) | Out-Null; Set-Content $TrustedSigningDlib 'x'
+    $null = New-TestFile $TrustedSigningDlib
     Check 'signing: the Trusted Signing client is found by its file name' ((Find-TrustedSigningClient) -eq (Resolve-Path $TrustedSigningDlib).Path)
     Check 'signing: an unsigned Trusted Signing client is refused' ((Get-Thrown { Assert-TrustedSigningClient (Resolve-Path $TrustedSigningDlib).Path }) -match 'is not validly signed by Microsoft Corporation')
     $TrustedSigningDlib = Join-Path $signRoot 'client\other.dll'; Set-Content $TrustedSigningDlib 'x'
@@ -1614,51 +1693,319 @@ try {
     if ($realTool) {
         $client = Join-Path $signRoot 'client2'; New-Item -ItemType Directory $client | Out-Null
         Copy-Item (Join-Path (Split-Path $realTool) 'mssign32.dll') (Join-Path $client 'Azure.CodeSigning.Dlib.dll')
-        Check 'signing: a client signed by Microsoft is taken' ($null -eq (Get-Thrown { Assert-TrustedSigningClient (Join-Path $client 'Azure.CodeSigning.Dlib.dll') }))
+        Check 'signing: a client signed by Microsoft is taken (by signature)' ($null -eq (Get-Thrown { Assert-TrustedSigningClient (Join-Path $client 'Azure.CodeSigning.Dlib.dll') }))
+        # In a folder the user can write in, however well signed, it is refused before anything is hidden or made.
+        $GivenSigningOptions = @('TrustedSigningMetadata', 'TrustedSigningDlib'); $TrustedSigningMetadata = $goodMetadata; $TrustedSigningDlib = Join-Path $client 'Azure.CodeSigning.Dlib.dll'
+        $env:AZURE_PULSAR_TEST_SECRET = 'secret-value'
+        $refused = Get-Thrown { Initialize-Signing }
+        Check 'signing: a Trusted Signing client in a folder the user can write in is refused' ($refused -match 'The folder of the Trusted Signing client') $refused
+        Check 'signing: ...and then nothing was hidden or made (no credentials taken from the environment, no folder of metadata left)' (
+            $HiddenEnvironment.Count -eq 0 -and [Environment]::GetEnvironmentVariable('AZURE_PULSAR_TEST_SECRET') -ceq 'secret-value' -and @(Get-SigningFolders).Count -eq $signingFoldersBefore)
+        Remove-Item Env:\AZURE_PULSAR_TEST_SECRET
         Set-Content (Join-Path $client 'Azure.Core.dll') 'unsigned'
         Check 'signing: an unsigned library beside the client is refused' ((Get-Thrown { Assert-TrustedSigningClient (Join-Path $client 'Azure.CodeSigning.Dlib.dll') }) -match 'Azure\.Core\.dll is not validly signed')
+        Remove-Item (Join-Path $client 'Azure.Core.dll')
+        # The whole Trusted Signing set-up, with the folder rule stubbed (it cannot be satisfied without administrator rights
+        # here, and is tested above): signtool is given the fresh file, and the credentials leave the environment.
+        function Assert-AdministratorsOnly { }
+        $env:AZURE_PULSAR_TEST_SECRET = 'secret-value'
+        $started = $null
+        try {
+            $started = Initialize-Signing
+            Check 'signing: Trusted Signing is set up with signtool, the client and a fresh metadata file' (
+                $started.SignTool -eq $realTool -and $started.Dlib -eq (Resolve-Path (Join-Path $client 'Azure.CodeSigning.Dlib.dll')).Path -and
+                $started.Arguments[($started.Arguments.IndexOf('/dmdf') + 1)] -eq $started.MetadataPath -and $started.MetadataPath -ne $goodMetadata -and
+                $started.Arguments -contains '/dlib' -and (Test-Path -LiteralPath $started.MetadataPath) -and (Test-CurrentUserOnly $started.MetadataFolder) -and
+                (Split-Path -Parent $started.MetadataPath) -eq $started.MetadataFolder)
+            Check 'signing: the credentials are out of this process''s environment, kept for signtool' ($null -eq [Environment]::GetEnvironmentVariable('AZURE_PULSAR_TEST_SECRET') -and $HiddenEnvironment['AZURE_PULSAR_TEST_SECRET'] -ceq 'secret-value')
+            $Signing = $started
+            Check 'signing: the set-up passes the tools check' ($null -eq (Get-Thrown { Assert-SigningTools }))
+            Add-Content -LiteralPath $started.MetadataPath -Value ' '
+            Check 'signing: a metadata file changed since it was written is refused before signtool is run' ((Get-Thrown { Assert-SigningTools }) -match 'is not as this script wrote it')
+            Set-Content -LiteralPath $started.MetadataPath -Value $started.MetadataText -NoNewline
+            Check 'signing: ...and restored, it passes again' ($null -eq (Get-Thrown { Assert-SigningTools }))
+            $startedFolder = Get-Item -LiteralPath $started.MetadataFolder
+            $startedAcl = $startedFolder.GetAccessControl([Security.AccessControl.AccessControlSections]::Access)
+            $startedAcl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule([Security.Principal.SecurityIdentifier]'S-1-1-0', 'Read', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+            $startedFolder.SetAccessControl($startedAcl)
+            Check 'signing: a metadata folder anyone else was let into is refused before signtool is run' ((Get-Thrown { Assert-SigningTools }) -match 'no longer the current user')
+            $Signing = $null
+        }
+        finally {
+            . $restoreReal
+            Remove-BuildWork $null $started
+            Restore-AzureCredentials
+            if ($null -ne [Environment]::GetEnvironmentVariable('AZURE_PULSAR_TEST_SECRET')) { Remove-Item Env:\AZURE_PULSAR_TEST_SECRET }
+            $GivenSigningOptions = @(); $TrustedSigningMetadata = $null; $TrustedSigningDlib = $null
+        }
+        Check 'signing: the end of the build removes the metadata folder' ($null -ne $started -and -not (Test-Path -LiteralPath $started.MetadataFolder) -and @(Get-SigningFolders).Count -eq $signingFoldersBefore)
     }
 
-    # The programs to sign, and the command Inno Setup runs.
+    # The Azure credentials: out of the environment the builds inherit, in only for signtool (and the Inno Setup compiler
+    # that runs it), and back in the shell at the end.
+    $env:AZURE_PULSAR_TEST_CREDENTIAL = 'abc'
+    $cmd = $env:ComSpec
+    try {
+        Hide-AzureCredentials
+        $seenByChild = (& $cmd /c 'echo [%AZURE_PULSAR_TEST_CREDENTIAL%]') -join ''
+        Check 'signing: Azure''s credentials are taken out of the environment the builds inherit' ($seenByChild -ceq '[%AZURE_PULSAR_TEST_CREDENTIAL%]' -and $HiddenEnvironment['AZURE_PULSAR_TEST_CREDENTIAL'] -ceq 'abc')
+        Check 'signing: without them, a program that needs them does not get them' ((Get-Thrown { Invoke-SignTool $cmd @('/c', 'if defined AZURE_PULSAR_TEST_CREDENTIAL (exit 0) else (exit 7)') 'The probe failed.' }) -match 'exit code 7')
+        Check 'signing: -WithCredentials gives signtool them for its run' ($null -eq (Get-Thrown { Invoke-SignTool $cmd @('/c', 'if defined AZURE_PULSAR_TEST_CREDENTIAL (exit 0) else (exit 7)') 'The probe failed.' -WithCredentials }))
+        Check 'signing: ...and takes them out again' ($null -eq [Environment]::GetEnvironmentVariable('AZURE_PULSAR_TEST_CREDENTIAL'))
+        $thrownWithCredentials = Get-Thrown { Invoke-SignTool $cmd @('/c', 'exit 9') 'The probe failed.' -WithCredentials }
+        Check 'signing: ...even when signtool fails' ($thrownWithCredentials -match 'exit code 9' -and $null -eq [Environment]::GetEnvironmentVariable('AZURE_PULSAR_TEST_CREDENTIAL'))
+    }
+    finally {
+        Restore-AzureCredentials
+    }
+    Check 'signing: at the end, they are back in the shell the script was run from' ([Environment]::GetEnvironmentVariable('AZURE_PULSAR_TEST_CREDENTIAL') -ceq 'abc' -and $HiddenEnvironment.Count -eq 0)
+    Remove-Item Env:\AZURE_PULSAR_TEST_CREDENTIAL
+
+    # signtool's exit code and output.
+    Check 'signing: signtool exiting with 0 passes' ($null -eq (Get-Thrown { Invoke-SignTool $cmd @('/c', 'exit 0') 'It failed.' }))
+    $failed = Get-Thrown { Invoke-SignTool $cmd @('/c', 'echo the output of the tool& exit 3') 'Signing the test files failed.' }
+    Check 'signing: a failing signtool stops the build, with its message, exit code and output' ($failed -match 'Signing the test files failed\.' -and $failed -match 'exit code 3' -and $failed -match 'the output of the tool') $failed
+    Check 'signing: signtool''s warning exit code (2, a timestamp it could not get) fails the build too' ((Get-Thrown { Invoke-SignTool $cmd @('/c', 'exit 2') 'Signing failed.' }) -match 'exit code 2')
+
+    # Verifying what was signed, on real files: signtool.exe itself is signed by Microsoft with a timestamp.
+    if ($realTool) {
+        $signedFile = Join-Path $signRoot 'verify\signtool.exe'
+        $null = New-Item -ItemType Directory (Split-Path $signedFile); Copy-Item $realTool $signedFile
+        $microsoftSignature = Get-AuthenticodeSignature -LiteralPath $signedFile
+        $Signing = [pscustomobject]@{ SignTool = $realTool; Thumbprint = $null; Subject = $null; Arguments = [string[]]@('sign') }
+        Check 'signing: a signed, timestamped file verifies, and its signer becomes the release''s' ($null -eq (Get-Thrown { Assert-Signed @($signedFile) }) -and $Signing.Subject -ceq $microsoftSignature.SignerCertificate.Subject)
+        $Signing.Thumbprint = $microsoftSignature.SignerCertificate.Thumbprint
+        Check 'signing: ...with the certificate that was asked to sign' ($null -eq (Get-Thrown { Assert-Signed @($signedFile) }))
+        $Signing.Thumbprint = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+        Check 'signing: a file signed with another certificate than the one asked is refused' ((Get-Thrown { Assert-Signed @($signedFile) }) -match 'is signed with certificate')
+        $Signing.Thumbprint = $null
+        $Signing.Subject = 'CN=Someone Else, O=Other'
+        Check 'signing: a file of another signer than the rest of the release is refused' ((Get-Thrown { Assert-Signed @($signedFile) }) -match 'not by CN=Someone Else')
+        $Signing.Subject = $null
+        $unsignedFile = New-TestFile (Join-Path $signRoot 'verify\unsigned.dll') 'MZ not signed'
+        Check 'signing: an unsigned file is refused' ((Get-Thrown { Assert-Signed @($unsignedFile) }) -match 'does not verify after signing')
+        $altered = Join-Path $signRoot 'verify\altered.exe'
+        $bytes = [IO.File]::ReadAllBytes($signedFile); $bytes[1024] = $bytes[1024] -bxor 0xFF; [IO.File]::WriteAllBytes($altered, $bytes)
+        Check 'signing: a signed file that was changed afterwards is refused' ((Get-Thrown { Assert-Signed @($altered) }) -match 'does not verify after signing')
+        $selfSigned = Join-Path $signRoot 'verify\selfsigned.ps1'
+        Set-Content -LiteralPath $selfSigned -Value 'Write-Host hi'
+        try { $null = Set-AuthenticodeSignature -FilePath $selfSigned -Certificate $goodSigner -ErrorAction Stop } catch { }
+        if ((Get-AuthenticodeSignature -LiteralPath $selfSigned).SignerCertificate) {
+            Check 'signing: a signature that does not chain to a root this PC trusts (a self-signed certificate) is refused' ((Get-Thrown { Assert-Signed @($selfSigned) }) -match 'does not verify after signing')
+        }
+        Check 'signing: a list of files is all checked (the second, unsigned, is found)' ((Get-Thrown { Assert-Signed @($signedFile, $unsignedFile) }) -match 'unsigned\.dll does not verify')
+        $Signing = $null
+    }
+
+    # Assert-Signed's decisions on what Windows reports about a file (signtool's own verification stubbed to pass, and
+    # Get-AuthenticodeSignature to say what the case needs): each way a signature can be wrong is refused on its own.
+    function Invoke-SignTool { }
+    function Get-AuthenticodeSignature { param([string] $LiteralPath) $fakeSignature }
+    try {
+        $Signing = [pscustomobject]@{ SignTool = 'x'; Thumbprint = $null; Subject = $null; Arguments = [string[]]@('sign') }
+        function New-FakeSignature($status = 'Valid', $type = 'Authenticode', $subject = 'CN=Signer, O=Test', $thumbprint = 'ABCDEF0123456789ABCDEF0123456789ABCDEF01', $timestamped = $true, $signed = $true) {
+            [pscustomobject]@{
+                Status = $status; SignatureType = $type
+                SignerCertificate = $(if ($signed) { [pscustomobject]@{ Subject = $subject; Thumbprint = $thumbprint } })
+                TimeStamperCertificate = $(if ($timestamped) { [pscustomobject]@{ Subject = 'CN=Timestamp' } })
+            }
+        }
+        $fakeSignature = New-FakeSignature
+        Check 'signing: a valid, timestamped, embedded signature is taken, and its signer becomes the release''s' ($null -eq (Get-Thrown { Assert-Signed @('C:\a.dll') }) -and $Signing.Subject -ceq 'CN=Signer, O=Test')
+        $badSignatures = [ordered]@{
+                'a signature that is not valid (changed afterwards)' = (New-FakeSignature -status 'HashMismatch')
+                'a file that is not signed' = (New-FakeSignature -status 'NotSigned' -signed $false -timestamped $false)
+                'a signature that is not trusted' = (New-FakeSignature -status 'UnknownError')
+                'a catalog signature, not one in the file' = (New-FakeSignature -type 'Catalog')
+                'a signature with no signer' = (New-FakeSignature -signed $false)
+                'a signature with no timestamp' = (New-FakeSignature -timestamped $false)
+                'a signer other than the release''s' = (New-FakeSignature -subject 'CN=Other, O=Other')
+        }
+        foreach ($case in $badSignatures.GetEnumerator()) {
+            $fakeSignature = $case.Value
+            Check "signing: $($case.Key) is refused" ($null -ne (Get-Thrown { Assert-Signed @('C:\a.dll') })) 
+        }
+        $fakeSignature = New-FakeSignature
+        $Signing.Thumbprint = 'ABCDEF0123456789ABCDEF0123456789ABCDEF01'
+        Check 'signing: ...the thumbprint asked for is the one that signed' ($null -eq (Get-Thrown { Assert-Signed @('C:\a.dll') }))
+        $Signing.Thumbprint = '0000000000000000000000000000000000000000'
+        Check 'signing: ...and another certificate''s is refused' ((Get-Thrown { Assert-Signed @('C:\a.dll') }) -match 'is signed with certificate')
+    }
+    finally { Remove-Item function:Get-AuthenticodeSignature; Remove-Item function:New-FakeSignature -ErrorAction SilentlyContinue; . $restoreReal; $Signing = $null }
+
+    # Signing in batches: every file goes to signtool once, in order, 40 at a time, then they are all verified.
+    $calls = New-Object Collections.Generic.List[object]
+    function Invoke-SignTool([string] $tool, [string[]] $arguments, [string] $failure, [switch] $WithCredentials) { $calls.Add([pscustomobject]@{ Tool = $tool; Arguments = $arguments; Credentials = [bool]$WithCredentials; Failure = $failure }) }
+    function Assert-Signed([string[]] $files) { $calls.Add([pscustomobject]@{ Verified = @($files) }) }
+    function Assert-SigningTools { $calls.Add([pscustomobject]@{ Checked = $true }) }
+    try {
+        $Signing = [pscustomobject]@{ SignTool = 'C:\sdk\signtool.exe'; Arguments = [string[]]@('sign', '/fd', 'sha256'); Thumbprint = $null; Subject = 'CN=Test, O=Test' }
+        foreach ($count in 1, 40, 41, 80, 81) {
+            $files = @(1..$count | ForEach-Object { "C:\out\file$_.dll" })
+            $calls.Clear()
+            Invoke-Signing $files 'the test files' | Out-Null
+            $signCalls = @($calls | Where-Object { $_.PSObject.Properties['Tool'] })
+            $sent = @($signCalls | ForEach-Object { $_.Arguments[3..($_.Arguments.Count - 1)] })
+            $expectedBatches = [Math]::Ceiling($count / 40)
+            Check "signing: $count file(s) go to signtool in $expectedBatches run(s), each once and in order" (
+                $signCalls.Count -eq $expectedBatches -and ($sent -join '|') -ceq ($files -join '|') -and @($signCalls | Where-Object { $_.Arguments.Count -gt 43 }).Count -eq 0 -and
+                @($signCalls | Where-Object { $_.Tool -ne 'C:\sdk\signtool.exe' -or -not $_.Credentials -or ($_.Arguments[0..2] -join ' ') -cne 'sign /fd sha256' }).Count -eq 0) "$($signCalls.Count) runs; sent $($sent.Count)"
+            Check "signing: ...the tools are checked first and all $count file(s) verified afterwards, once" (
+                $calls[0].PSObject.Properties['Checked'] -and $calls[$calls.Count - 1].PSObject.Properties['Verified'] -and @($calls | Where-Object { $_.PSObject.Properties['Verified'] }).Count -eq 1 -and
+                ($calls[$calls.Count - 1].Verified -join '|') -ceq ($files -join '|'))
+        }
+        $calls.Clear()
+        Check 'signing: nothing to sign is an error, not a signed release' ((Get-Thrown { Invoke-Signing @() 'the test files' }) -match 'There is nothing to sign for the test files' -and $calls.Count -eq 0)
+        $Signing = $null
+    }
+    finally { . $restoreReal }
+
+    # The programs to sign: an explicit list from the project files (here a project and its reference), nothing else.
+    $panelAssemblies = Sort-Ordinal @(Get-PulsarAssemblies (Join-Path $PSScriptRoot '..\..\src\Pulsar.Api\Pulsar.Api.csproj'))
+    $agentAssemblies = Sort-Ordinal @(Get-PulsarAssemblies (Join-Path $PSScriptRoot '..\..\src\Pulsar.Agent\Pulsar.Agent.csproj'))
+    Check 'signing: the panel''s assemblies, from the project files, are the project and everything it references' (($panelAssemblies -join ',') -ceq 'Pulsar.Api,Pulsar.Application,Pulsar.Contracts,Pulsar.Domain,Pulsar.Infrastructure,Pulsar.Manifests') ($panelAssemblies -join ',')
+    Check 'signing: the agent''s are PulsarAgent (its AssemblyName) and what it references' (($agentAssemblies -join ',') -ceq 'Pulsar.Agent.Core,Pulsar.Agent.Windows,Pulsar.Contracts,Pulsar.Manifests,PulsarAgent') ($agentAssemblies -join ',')
+    $projects = Join-Path $signRoot 'src'
+    $null = New-TestFile (Join-Path $projects 'Pulsar.Fake.Api\Pulsar.Fake.Api.csproj') '<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup><AssemblyName>PulsarFake</AssemblyName></PropertyGroup><ItemGroup><ProjectReference Include="..\Pulsar.Fake.Core\Pulsar.Fake.Core.csproj" /><ProjectReference Include="..\Pulsar.Fake.Shared\Pulsar.Fake.Shared.csproj" /></ItemGroup></Project>'
+    $null = New-TestFile (Join-Path $projects 'Pulsar.Fake.Core\Pulsar.Fake.Core.csproj') '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="..\Pulsar.Fake.Shared\Pulsar.Fake.Shared.csproj" /></ItemGroup></Project>'
+    $null = New-TestFile (Join-Path $projects 'Pulsar.Fake.Shared\Pulsar.Fake.Shared.csproj') '<Project Sdk="Microsoft.NET.Sdk"></Project>'
+    $fakeProject = Join-Path $projects 'Pulsar.Fake.Api\Pulsar.Fake.Api.csproj'
+    Check 'signing: a project''s assemblies are found through its references once each, its AssemblyName first' ((@(Get-PulsarAssemblies $fakeProject) -join ',') -ceq 'PulsarFake,Pulsar.Fake.Core,Pulsar.Fake.Shared')
     $published = Join-Path $signRoot 'published'
-    New-Item -ItemType Directory $published, (Join-Path $published 'es'), (Join-Path $published 'wwwroot') | Out-Null
-    foreach ($file in 'Pulsar.Api.exe', 'Pulsar.Api.dll', 'Pulsar.Domain.dll', 'PulsarAgent.dll', 'Npgsql.dll', 'Serilog.dll', 'Pulsar.Api.pdb', 'es\Pulsar.Api.resources.dll', 'wwwroot\app.js') { Set-Content (Join-Path $published $file) 'x' }
-    $programs = @(Get-PulsarPrograms $published @('Pulsar.Api.exe', 'Pulsar.Api.dll') | ForEach-Object { $_.Substring($published.Length + 1) } | Sort-Object)
-    Check 'signing: the programs are Pulsar''s own .exe and .dll, never the libraries or other files' (($programs -join ',') -eq 'es\Pulsar.Api.resources.dll,Pulsar.Api.dll,Pulsar.Api.exe,Pulsar.Domain.dll,PulsarAgent.dll') ($programs -join ',')
-    Check 'signing: a program that should be there and is not fails the build (a filter that matched nothing would sign nothing)' ((Get-Thrown { Get-PulsarPrograms $published @('PulsarAgent.exe') }) -match 'has no PulsarAgent\.exe to sign')
-    Check 'signing: Inno Setup''s command words are quoted with $q when they have a space, and $ is doubled' ((Format-InnoToolWord 'sha256') -ceq 'sha256' -and (Format-InnoToolWord 'C:\Program Files\x.exe') -ceq '$qC:\Program Files\x.exe$q' -and
-        (Format-InnoToolWord 'C:\a$b') -ceq 'C:\a$$b' -and (Format-InnoToolWord 'C:\a b\$c') -ceq '$qC:\a b\$$c$q' -and $null -ne (Get-Thrown { Format-InnoToolWord 'a"b' }))
-    $Signing = [pscustomobject]@{ Arguments = [string[]]@('sign', '/fd', 'sha256', '/tr', 'http://t.example', '/dlib', 'C:\My Tools\d.dll') }
-    $innoCommand = Get-InnoSignCommand 'C:\Users\Jo Do\signtool.exe'
-    Check 'signing: Inno Setup runs signtool with the release''s arguments on $f' ($innoCommand -ceq '$qC:\Users\Jo Do\signtool.exe$q sign /fd sha256 /tr http://t.example /dlib $qC:\My Tools\d.dll$q $f') $innoCommand
-    $Signing = $null
+    foreach ($file in 'PulsarFake.exe', 'PulsarFake.dll', 'Pulsar.Fake.Core.dll', 'Pulsar.Fake.Shared.dll', 'Npgsql.dll', 'Serilog.dll', 'PulsarFake.pdb', 'wwwroot\app.js', 'es\PulsarFake.resources.dll', 'es\Pulsar.Fake.Core.resources.dll') { $null = New-TestFile (Join-Path $published $file) }
+    $listed = Sort-Ordinal @(Get-PulsarPrograms $published $fakeProject | ForEach-Object { $_.Substring($published.Length + 1) })
+    Check 'signing: the programs are the listed assemblies, the apphost and their satellites, never the libraries or other files' (($listed -join ',') -ceq 'Pulsar.Fake.Core.dll,Pulsar.Fake.Shared.dll,PulsarFake.dll,PulsarFake.exe,es\Pulsar.Fake.Core.resources.dll,es\PulsarFake.resources.dll') ($listed -join ',')
+    $unexpectedPrograms = [ordered]@{
+            'a Pulsar assembly no project lists' = 'Pulsar.Evil.dll'
+            'a Pulsar program no project lists' = 'PulsarEvil.exe'
+            'another apphost (a project that is no entry has none)' = 'Pulsar.Fake.Core.exe'
+            'a Pulsar assembly in a subfolder' = 'tools\Pulsar.Fake.Core.dll'
+            'a satellite of an assembly no project lists' = 'es\Pulsar.Evil.resources.dll'
+            'a satellite two folders down' = 'es\x\PulsarFake.resources.dll'
+            'a Pulsar program in the downloads folder that is not the agent''s setup' = 'downloads\PulsarEvil.exe'
+    }
+    foreach ($case in $unexpectedPrograms.GetEnumerator()) {
+        $path = New-TestFile (Join-Path $published $case.Value)
+        $refused = Get-Thrown { Get-PulsarPrograms $published $fakeProject }
+        Check "signing: $($case.Key) fails the build instead of being signed or skipped" ($refused -match 'has a program Pulsar does not list for signing' -and $refused -match [regex]::Escape($case.Value)) $refused
+        Remove-Item -LiteralPath $path
+    }
+    Check 'signing: Pulsar-looking names with other extensions, and other names, are not programs' ($null -eq (Get-Thrown { $null = New-TestFile (Join-Path $published 'Pulsar.Notes.txt'); $null = New-TestFile (Join-Path $published 'NotPulsar.dll'); Get-PulsarPrograms $published $fakeProject }))
+    Remove-Item (Join-Path $published 'PulsarFake.dll')
+    Check 'signing: a listed program that is missing fails the build' ((Get-Thrown { Get-PulsarPrograms $published $fakeProject }) -match 'has no PulsarFake\.dll to sign')
+    $null = New-TestFile (Join-Path $published 'PulsarFake.dll')
+    $null = New-TestFile (Join-Path $published 'downloads\PulsarAgentSetup.exe')
+    Check 'signing: the agent''s setup in the downloads folder is expected, and returned to be verified, when it is there' (
+        (@(Get-PulsarPrograms $published $fakeProject @('downloads\PulsarAgentSetup.exe')) -contains (Join-Path (Resolve-Path $published).Path 'downloads\PulsarAgentSetup.exe')) -and
+        $null -ne (Get-Thrown { Get-PulsarPrograms $published $fakeProject }))
+    Remove-Item (Join-Path $published 'downloads') -Recurse -Force
+    Check 'signing: ...and not required when it is not' ($null -eq (Get-Thrown { Get-PulsarPrograms $published $fakeProject @('downloads\PulsarAgentSetup.exe') }))
+
+    # The programs are re-read and verified again right before each package is made of them.
+    $calls = New-Object Collections.Generic.List[object]
+    function Assert-Signed([string[]] $files) { $calls.Add([pscustomobject]@{ Verified = @($files) }) }
+    function Assert-SigningTools { $calls.Add([pscustomobject]@{ Checked = $true }) }
+    try {
+        $ProgramSets = @(@{ Folder = $published; Project = $fakeProject; Extra = @('downloads\PulsarAgentSetup.exe') })
+        $Signing = $null
+        Assert-ProgramsSigned
+        Check 'signing: an unsigned build verifies nothing' ($calls.Count -eq 0)
+        $Signing = [pscustomobject]@{ SignTool = 'x'; Arguments = [string[]]@('sign') }
+        Assert-ProgramsSigned
+        $verified = @($calls | Where-Object { $_.PSObject.Properties['Verified'] } | ForEach-Object { $_.Verified })
+        Check 'signing: a signed build checks the tools, then every program of every set' ($calls.Count -gt 0 -and $calls[0].PSObject.Properties['Checked'] -and $verified.Count -eq 6)
+        $null = New-TestFile (Join-Path $published 'downloads\PulsarAgentSetup.exe')
+        $calls.Clear(); Assert-ProgramsSigned
+        $verified = @($calls | Where-Object { $_.PSObject.Properties['Verified'] } | ForEach-Object { $_.Verified })
+        Check 'signing: ...the agent''s setup in the downloads folder too, once it is there' ($verified.Count -eq 7 -and @($verified | Where-Object { $_ -like '*downloads\PulsarAgentSetup.exe' }).Count -eq 1)
+        $null = New-TestFile (Join-Path $published 'Pulsar.Left.Behind.dll')
+        $calls.Clear()
+        Check 'signing: a program that appeared since fails the build before anything is verified as good' ((Get-Thrown { Assert-ProgramsSigned }) -match 'Pulsar.Left.Behind.dll' -and @($calls | Where-Object { $_.PSObject.Properties['Verified'] }).Count -eq 0)
+        Remove-Item (Join-Path $published 'Pulsar.Left.Behind.dll')
+        $ProgramSets = @(@{ Folder = (Join-Path $signRoot 'gone'); Project = $fakeProject; Extra = @() })
+        Check 'signing: a folder that is not there fails the build, it is not skipped' ($null -ne (Get-Thrown { Assert-ProgramsSigned }))
+    }
+    finally { . $restoreReal; $Signing = $null; $ProgramSets = @() }
+
+    # The work folder: what the build made moves into the output folder only when it is all there, replacing the same names;
+    # a build that fails leaves the output as it was, and the work folder is removed.
+    $outputFolder = Join-Path $signRoot 'out'; $workFolder = Join-Path $outputFolder '.build-0123abcd'
+    $null = New-TestFile (Join-Path $outputFolder 'old-release.zip') 'old release of another version'
+    $null = New-TestFile (Join-Path $outputFolder 'a.zip') 'old'
+    $null = New-TestFile (Join-Path $outputFolder 'staged\old.txt') 'old'
+    $null = New-TestFile (Join-Path $workFolder 'a.zip') 'new'
+    $null = New-TestFile (Join-Path $workFolder 'a.zip.sha256') 'hash'
+    $null = New-TestFile (Join-Path $workFolder 'staged\new.txt') 'new'
+    Check 'signing: nothing is published unless everything is there' ((Get-Thrown { Publish-Release $workFolder $outputFolder @('a.zip', 'staged', 'b.msi') }) -match 'did not make b\.msi' -and (Get-Content (Join-Path $outputFolder 'a.zip')) -ceq 'old' -and (Test-Path (Join-Path $workFolder 'a.zip')))
+    $published = Get-Thrown { Publish-Release $workFolder $outputFolder @('a.zip', 'a.zip.sha256', 'staged') }
+    Check 'signing: what a finished build made replaces the same names in the output folder, folders too' (
+        $null -eq $published -and (Get-Content (Join-Path $outputFolder 'a.zip')) -ceq 'new' -and (Test-Path (Join-Path $outputFolder 'a.zip.sha256')) -and (Test-Path (Join-Path $outputFolder 'staged\new.txt')) -and
+        -not (Test-Path (Join-Path $outputFolder 'staged\old.txt')) -and (Get-Content (Join-Path $outputFolder 'old-release.zip')) -ceq 'old release of another version')
+    $otherFolder = Join-Path $outputFolder 'keep-me'; $null = New-TestFile (Join-Path $otherFolder 'f.txt')
+    $madeFolder = New-SigningFolder
+    $keptSigning = [pscustomobject]@{ MetadataFolder = $madeFolder }
+    Remove-BuildWork $otherFolder ([pscustomobject]@{ MetadataFolder = $otherFolder })
+    Check 'signing: only a work folder of this script''s name (and its metadata folder) is ever removed' ((Test-Path $otherFolder) -and (Test-Path $madeFolder))
+    Remove-BuildWork $workFolder $keptSigning
+    Check 'signing: however the build ended, its work folder and its metadata folder are removed' (-not (Test-Path $workFolder) -and -not (Test-Path $madeFolder) -and (Test-Path (Join-Path $outputFolder 'a.zip')))
+    Remove-BuildWork $workFolder $null
+    Remove-BuildWork $null $null
+    Check 'signing: ...and removing what is already gone is no error' $true
 }
-finally { Remove-Item -LiteralPath $signRoot -Recurse -Force }
+finally { $env:TEMP = $tempBefore[0]; $env:TMP = $tempBefore[1]; Remove-Item -LiteralPath $signRoot -Recurse -Force; . $restoreReal }
 
 # The order and the options, read from the scripts: programs first, then the MSI that holds them, then the setups.
+$publishText = $buildRelease.IndexOf('dotnet publish (Join-Path $repo ''src\Pulsar.Agent'') @common --self-contained')
 $signedPrograms = $buildRelease.IndexOf('Invoke-Signing $programs')
 $msiBuilt = $buildRelease.IndexOf("'Build-AgentMsi.ps1'")
+$msiSigned = $buildRelease.IndexOf("Invoke-Signing @(`$msi) 'the agent MSI'")
 $msiChecksum = $buildRelease.IndexOf('$msiHash = Write-Checksum $msi')
-Check 'signing: the programs are signed after they are published and before the MSI, release.json and the setups pack them' (
-    $signedPrograms -gt $buildRelease.IndexOf('dotnet publish (Join-Path $repo ''src\Pulsar.Agent'') @common --self-contained') -and $signedPrograms -lt $msiBuilt -and
-    $signedPrograms -lt $buildRelease.IndexOf("Join-Path `$staging 'release.json'") -and $signedPrograms -lt $buildRelease.IndexOf("Build-Setup `$iscc 'PulsarAgentSetup.iss'") -and
-    $buildRelease -match "Get-PulsarPrograms \(Join-Path \`$staging 'panel'\) @\('Pulsar\.Api\.exe', 'Pulsar\.Api\.dll'\)" -and $buildRelease -match "Get-PulsarPrograms \`$msiAgent @\('PulsarAgent\.exe', 'PulsarAgent\.dll'\)")
-Check 'signing: the MSI is signed after it is built and before its checksum is written' (
-    $buildRelease.IndexOf("Invoke-Signing @(`$msi) 'the agent MSI'") -gt $msiBuilt -and $buildRelease.IndexOf("Invoke-Signing @(`$msi) 'the agent MSI'") -lt $msiChecksum)
+$releaseJson = $buildRelease.IndexOf("Join-Path `$staging 'release.json'")
+$recheck = @([regex]::Matches($buildRelease, '(?m)^\s*Assert-ProgramsSigned\s*$') | ForEach-Object { $_.Index })
+Check 'signing: the programs are signed after they are published and before the MSI and the setups pack them' (
+    $signedPrograms -gt $publishText -and $signedPrograms -lt $msiBuilt -and $signedPrograms -lt $buildRelease.IndexOf("Build-Setup `$iscc 'PulsarAgentSetup.iss'") -and
+    $buildRelease -match "foreach \(\`$set in \`$ProgramSets\) \{ \`$programs \+= Get-PulsarPrograms" -and $buildRelease -match "Project = \`$panelProject" -and $buildRelease -match "Project = \`$agentProject")
+Check 'signing: the programs are verified again right before the MSI, the agent''s setup, the ZIP and PulsarSetup.exe are made of them' (
+    $recheck.Count -ge 5 -and @($recheck | Where-Object { $_ -lt $msiBuilt -and $_ -gt $signedPrograms }).Count -ge 1 -and
+    @($recheck | Where-Object { $_ -gt $buildRelease.IndexOf('Compress-Archive') - 400 -and $_ -lt $buildRelease.IndexOf('Compress-Archive') }).Count -ge 1 -and
+    $buildRelease -match "Assert-ProgramsSigned\s+\`$agentSetup = Build-Setup" -and $buildRelease -match "Assert-ProgramsSigned\s+\`$setup = Build-Setup")
+Check 'signing: the MSI is signed after it is built and before its checksum is written' ($msiSigned -gt $msiBuilt -and $msiSigned -lt $msiChecksum)
+Check 'signing: release.json says it is signed only after the programs and the MSI are signed and verified again' (
+    $releaseJson -gt $msiSigned -and $buildRelease.LastIndexOf('Assert-ProgramsSigned', $releaseJson) -gt $msiSigned)
 Check 'signing: always SHA-256 file and timestamp digests and an RFC 3161 timestamp, verified with /pa' (
     $buildRelease -match "'sign', '/fd', 'sha256', '/tr', \`$TimestampUrl, '/td', 'sha256'" -and $buildRelease -match "'verify', '/pa'" -and $buildRelease -match '-not \$signature\.TimeStamperCertificate')
 Check 'signing: the certificate is chosen by thumbprint from the user''s store, or by Trusted Signing''s client; no PFX and no password option' (
-    $buildRelease -match "'/sha1', \`$thumbprint, '/s', 'My'" -and $buildRelease -match "'/dlib', \`$dlib, '/dmdf', \`$metadata" -and $buildRelease -notmatch "'/f'" -and $buildRelease -notmatch "'/p'" -and $buildRelease -notmatch '(?i)\[string\] \$\w*(password|pfx)')
-Check 'signing: the setups are signed by Inno Setup (so the uninstaller is) with the one named sign tool, on a checked copy of signtool, and verified' (
-    $buildRelease -match "'/DSignSetups', '/NI', `"/Spulsarsign=" -and $buildRelease -match 'Assert-Signed @\(\$setup\) \$signTool' -and $buildRelease -match 'Remove-SignToolCopy \$signTool')
-$commonText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\release\setup\Common.iss')
-$signedBlock = [regex]::Match($commonText, '(?s)#ifdef SignSetups(.*?)#endif')
-$unsignedPart = $commonText.Replace($signedBlock.Value, '')
+    $buildRelease -match "'/sha1', \`$thumbprint, '/s', 'My'" -and $buildRelease -match "'/dlib', \`$dlib, '/dmdf', \`$metadata\.Path" -and $buildRelease -notmatch "'/f'" -and $buildRelease -notmatch "'/p'" -and $buildRelease -notmatch '(?i)\[string\] \$\w*(password|pfx)')
+Check 'signing: signtool runs in place, never from a copy in a folder the user can write in' ($buildRelease -notmatch 'Copy-SignTool|Remove-SignToolCopy|pulsar-signtool' -and $buildRelease -match 'Assert-AdministratorsOnly \(Split-Path -Parent \$Signing\.SignTool\)')
+Check 'signing: the setups are signed by Inno Setup (so the uninstaller is) with the one named sign tool, signtool in place, and verified' (
+    $buildRelease -match "'/DSignSetups', '/NI', `"/Spulsarsign=\`$\(Get-InnoSignCommand \`$Signing\.SignTool\)`"" -and $buildRelease -match 'Assert-Signed @\(\$setup\)')
+$signedBlock = [regex]::Match((Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\release\setup\Common.iss')), '(?s)#ifdef SignSetups(.*?)#endif')
+$unsignedPart = (Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\release\setup\Common.iss')).Replace($signedBlock.Value, '')
 $signedLines = @($signedBlock.Groups[1].Value -split "`r?`n" | Where-Object { $_.Trim() -and $_ -notmatch '^\s*;' })
 Check 'signing: Common.iss names the sign tool, and a signed uninstaller, only when the setups are to be signed' (
     $signedBlock.Success -and ($signedLines -join ',') -ceq 'SignTool=pulsarsign,SignedUninstaller=yes' -and $unsignedPart -notmatch '(?m)^\s*(SignTool|SignedUninstaller)=') ($signedLines -join ',')
 Check 'signing: release.json records the signer of a signed build and is unchanged for an unsigned one' (
     $buildRelease -match "if \(\`$Signing\) \{ \`$releaseInfo\['signing'\] = \[ordered\]@\{ signed = \`$true; signer = \`$Signing\.Subject \} \}")
+$tryAt = [regex]::Match($buildRelease, '(?m)^try \{\s*\r?\n\s+# Before the long builds').Index
+Check 'signing: the build runs in a work folder inside the output folder, and ends however it ends by removing it and giving the credentials back' (
+    $tryAt -gt 0 -and $buildRelease -match "\`$Work = Join-Path \`$Output \('\.build-'" -and $buildRelease -match '(?s)\nfinally \{\s+Remove-BuildWork \$Work \$Signing\s+Restore-AzureCredentials\s+\}\s*\z' -and
+    $buildRelease.IndexOf('Initialize-Signing', $tryAt) -gt $tryAt -and $buildRelease -match '"/O\$Work"' -and $buildRelease -notmatch '"/O\$Output"' -and $buildRelease -match '-Output \$Work')
+Check 'signing: the release is published into the output folder last, after every signature was verified' (
+    $buildRelease.LastIndexOf('Publish-Release $Work $Output') -gt $buildRelease.LastIndexOf('Build-Setup $iscc ''PulsarSetup.iss''') -and
+    $buildRelease.LastIndexOf('Publish-Release $Work $Output') -gt $buildRelease.IndexOf('Compress-Archive') -and $buildRelease -notmatch 'Compress-Archive[^\n]*\$Output')
+Check 'signing: the builds do not carry on past the signing: no install scripts, no resident MSBuild or compiler server, Azure''s credentials taken out first' (
+    $buildRelease -match 'npm ci --ignore-scripts' -and $buildRelease -notmatch 'npm ci\s*\r?\n' -and $buildRelease -match "-nodeReuse:false', '-p:UseSharedCompilation=false" -and $buildRelease -match 'dotnet build-server shutdown' -and
+    $buildRelease.IndexOf('dotnet build-server shutdown') -lt $signedPrograms -and $buildRelease.IndexOf('$Signing = Initialize-Signing') -lt $buildRelease.IndexOf('npm ci --ignore-scripts') -and
+    $buildRelease -match 'Hide-AzureCredentials\s+Write-Host "Signing with Azure')
+# (Windows PowerShell's ConvertFrom-Json refuses this file: it has names that differ only in case.) Each package of the
+# lock file starts at its own line, four spaces in.
+$webLock = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\src\Pulsar.Web\package-lock.json')
+$lockEntries = @([regex]::Matches($webLock, '(?m)^    "(node_modules/[^"]+)": \{'))
+$withScripts = @(for ($i = 0; $i -lt $lockEntries.Count; $i++) {
+        $end = if ($i + 1 -lt $lockEntries.Count) { $lockEntries[$i + 1].Index } else { $webLock.Length }
+        if ($webLock.Substring($lockEntries[$i].Index, $end - $lockEntries[$i].Index) -match '"hasInstallScript": true') { $lockEntries[$i].Groups[1].Value }
+    })
+Check 'signing: no package of the web app needs an install script on Windows (npm ci --ignore-scripts changes nothing there)' (($withScripts -join ',') -ceq 'node_modules/fsevents') ($withScripts -join ',')
 
 # --- The setup wizards (scripts\release\setup, Inno Setup 7; read here, never compiled or run) --------------------------
 
