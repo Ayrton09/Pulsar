@@ -226,8 +226,10 @@ the accounts as they are. It also renews a certificate before the 5 years it is 
    a stopped renewal left, or a link) or `6` (a certificate it does not renew).
 2. **Makes the new certificate the way the install does** (the same names, the same checks: not a certificate
    authority, for a web server's identity only, 5 years, made in memory), with a new key, and writes it beside the old
-   one with the old files' permissions and the same PFX password, so the panel's settings need no change. It warns about
-   each address a DHCP server gave this PC (a [reservation](#connecting-from-another-pc) keeps it).
+   one with the old files' permissions and the same PFX password, so the panel's settings need no change. The `tls`
+   folder is held open until the end, so that nothing (the panel's own account can write there) can rename it or put a
+   link in its place, and every file it makes is checked to be in it. It warns about each address a DHCP server gave
+   this PC (a [reservation](#connecting-from-another-pc) keeps it).
 3. **Swaps the files with the old ones kept**: it stops the panel (it is unavailable for a few seconds; game servers on
    the nodes keep running), swaps `panel.pfx` and `panel.cer`, keeps the old files beside them, starts the panel and
    waits until it answers over HTTPS on its port (and the agents' port, if it has one) with the new certificate.

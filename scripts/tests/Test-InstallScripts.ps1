@@ -76,7 +76,7 @@ $installParts = Get-ScriptParts $installScript (@($shared) + @('Read-DerElement'
         # -RenewCertificate: the checks before anything changes, the swap, the rollback and what it tells the administrator.
         'Assert-RenewArguments', 'Test-PlainItem', 'Assert-PlainCertificateFiles', 'Get-RenewableCertificate', 'Compare-CertificateNames', 'Get-FileAccess',
         'Set-SameAccess', 'Assert-NewCertificateFiles', 'Stop-Panel', 'Confirm-PanelCertificate', 'Undo-CertificateRenewal', 'Get-LocalNodePin', 'Write-RepinSteps',
-        'Invoke-RenewCertificate', 'Get-InstallerTrust', 'Remove-InstallerTrust')) `
+        'Invoke-RenewCertificate', 'Get-InstallerTrust', 'Remove-InstallerTrust', 'Initialize-FolderHold', 'Open-CertificateFolder', 'Assert-InFolder', 'Get-PfxHash')) `
     (@($sharedVariables) + @('TrustedName', 'ServerAuthentication', 'ExitFailed', 'ExitUsage', 'ExitUnsupported', 'ExitOffline', 'ExitUntrusted',
         'ExitCertificate', 'ExitRestart', 'NodeCodePrefix', 'NodeCodeMaxLength', 'NodeCodeMaxUrlLength', 'ReusableTokenPrefix', 'JsonStringPattern',
         'DotNetChannel', 'DotNetHosts', 'DotNetFrameworks', 'CodeSigning', 'PostgresDownloadsUrl', 'PostgresSigner', 'DotNetSigner', 'StepPlans',
@@ -1886,10 +1886,15 @@ try {
                 }
                 function Stop-Panel {
                     $script:rnCalls.Add('stop')
-                    # The certificate's folder becomes a link (a junction) as the panel stops, after the first check.
-                    if ($options['LinkAfterStop'] -and -not (Test-Path -LiteralPath "$($install.Tls)-real")) {
-                        Move-Item -LiteralPath $install.Tls "$($install.Tls)-real"
-                        $null = New-Item -ItemType Junction -Path $install.Tls -Target "$($install.Tls)-real"
+                    # The panel's service account would swap the certificate's folder for a link as the panel stops: it cannot, the
+                    # folder is held (the same process opens it here, and the hold refuses to share it for deleting).
+                    if ($options['RenameWhileStopped']) {
+                        try {
+                            Move-Item -LiteralPath $install.Tls "$($install.Tls)-real"
+                            $script:rnCalls.Add('renamed')
+                            Move-Item -LiteralPath "$($install.Tls)-real" $install.Tls
+                        }
+                        catch { $script:rnCalls.Add('rename-blocked') }
                     }
                 }
                 function Start-Panel { $script:rnCalls.Add('start') }
@@ -2076,15 +2081,84 @@ try {
         (Get-Digests $failing) -ceq $before -and (Get-FilesIn $failing) -ceq 'panel.cer,panel.pfx' -and $script:rnCalls.Count -eq 0 -and
         $script:rnError.Exception.Message -match 'Nothing was changed: the panel keeps its certificate\.' -and (Get-SetupExitCode $script:rnError) -eq 1)
 
-    $failing = New-RenewInstall 'link after stop'
-    $before = Get-Digests $failing
-    Invoke-Renewal $failing @{ LinkAfterStop = $true }
-    [IO.Directory]::Delete($failing.Tls)
-    Move-Item -LiteralPath "$($failing.Tls)-real" $failing.Tls
+    # The certificate's folder is held from the first check to the end: while the panel is stopped nobody can rename it (to put a
+    # junction in its place), and the renewal still goes through.
+    $holding = New-RenewInstall 'held while stopped'
+    Invoke-Renewal $holding @{ RenameWhileStopped = $true; Trust = 'none' }
     $SetupSecrets.Clear()
-    Check 'renew rollback: a certificate folder that becomes a link once the panel is stopped is a failure that is undone (exit code 1, no swap, nothing left), not "nothing was changed"' (
-        $null -ne $script:rnError -and (Get-SetupExitCode $script:rnError) -eq 1 -and $script:rnError.Exception.Message -match 'is missing or is a link' -and $script:rnError.Exception.Message -match 'while the panel was being renewed' -and
-        $script:rnError.Exception.Message -notmatch 'Nothing was changed' -and $script:rnError.Exception.Message -match 'The old certificate is back' -and (Get-Digests $failing) -ceq $before -and (Get-FilesIn $failing) -ceq 'panel.cer,panel.pfx') "$($script:rnError)"
+    Check 'renew: the certificate folder cannot be renamed while the renewal holds it (the panel stopped, the swap not yet done)' (
+        $null -eq $script:rnError -and $script:rnCalls -contains 'rename-blocked' -and $script:rnCalls -notcontains 'renamed' -and (Get-FilesIn $holding) -ceq 'panel.cer,panel.pfx') "$($script:rnError) | $($script:rnCalls -join ' | ')"
+    Check 'renew: and the hold is gone when it ends (the folder can be renamed again)' ($null -eq (Get-Thrown { Move-Item -LiteralPath $holding.Tls "$($holding.Tls)-moved"; Move-Item -LiteralPath "$($holding.Tls)-moved" $holding.Tls }))
+
+    # Once the panel is stopped, a file or folder that has become a link is a failure to undo (exit code 1), not a refusal.
+    $afterStop = New-RenewInstall 'plain after stop'
+    $cerReal = Join-Path $afterStop.Base 'elsewhere'
+    $null = New-Item -ItemType Directory $cerReal
+    Remove-Item -LiteralPath $afterStop.Cer
+    $null = New-Item -ItemType Junction -Path $afterStop.Cer -Target $cerReal
+    $paths = [pscustomobject]@{ Tls = $afterStop.Tls; Pfx = $afterStop.Pfx; Cer = $afterStop.Cer }
+    $refusal = & { $PanelData = $afterStop.PanelData; Get-Caught { Assert-PlainCertificateFiles $paths } }
+    $failure = & { $PanelData = $afterStop.PanelData; Get-Caught { Assert-PlainCertificateFiles $paths $true } }
+    [IO.Directory]::Delete($afterStop.Cer)
+    Check 'renew: a file that is a link is a refusal before anything changes (exit code 3, nothing changed), and a failure after the panel stopped (exit code 1, it changed meanwhile)' (
+        (Get-SetupExitCode $refusal) -eq 3 -and $refusal.Exception.Message -match 'is missing or is a link' -and $refusal.Exception.Message -match 'Nothing was changed' -and
+        (Get-SetupExitCode $failure) -eq 1 -and $failure.Exception.Message -match 'is missing or is a link' -and $failure.Exception.Message -match 'while the panel was being renewed' -and $failure.Exception.Message -notmatch 'Nothing was changed') "$refusal | $failure"
+
+    # The hold itself, on folders of its own.
+    $holdRoot = Join-Path $rnRoot 'hold'
+    $heldFolder = Join-Path $holdRoot 'held'
+    $otherFolder = Join-Path $holdRoot 'other'
+    $null = New-Item -ItemType Directory $heldFolder, $otherFolder
+    $linkToOther = Join-Path $holdRoot 'link-to-other'
+    $null = New-Item -ItemType Junction -Path $linkToOther -Target $otherFolder
+    $linkToHeld = Join-Path $holdRoot 'link-to-held'
+    $null = New-Item -ItemType Junction -Path $linkToHeld -Target $heldFolder
+    function Test-Renamable([string] $path) {
+        $moved = $null -eq (Get-Thrown { Move-Item -LiteralPath $path "$path-moved" })
+        if ($moved) { Move-Item -LiteralPath "$path-moved" $path }
+        return $moved
+    }
+    $hold = Open-CertificateFolder $heldFolder
+    try {
+        Check 'hold: the real path of a folder it holds is the folder''s own' ($hold.Path -eq [IO.Path]::GetFullPath($heldFolder).TrimEnd('\')) "$($hold.Path)"
+        Check 'hold: a held folder cannot be renamed, deleted or replaced' (-not (Test-Renamable $heldFolder) -and $null -ne (Get-Thrown { [IO.Directory]::Delete($heldFolder) }) -and (Test-Path -LiteralPath $heldFolder))
+        Check 'hold: nor a folder above it' (-not (Test-Renamable $holdRoot) -and (Test-Path -LiteralPath $heldFolder))
+        $inside = Join-Path $heldFolder 'x.txt'
+        $replacement = Join-Path $heldFolder 'x.new'
+        [IO.File]::WriteAllText($inside, 'old')
+        [IO.File]::WriteAllText($replacement, 'new')
+        [IO.File]::Replace($replacement, $inside, (Join-Path $heldFolder 'x.old'))
+        Remove-Item -LiteralPath (Join-Path $heldFolder 'x.old'), $inside
+        Check 'hold: the files in it can still be made, replaced and deleted' (@(Get-ChildItem -LiteralPath $heldFolder -Force).Count -eq 0)
+
+        # What is made through a link into another folder is found out by handle, and deleted again.
+        Write-ExclusiveFile (Join-Path $heldFolder 'made.new') ([byte[]](1, 2, 3)) $hold.Path
+        Check 'hold: a new file made in the held folder is written' ([IO.File]::ReadAllBytes((Join-Path $heldFolder 'made.new')).Length -eq 3)
+        $thrown = Get-Thrown { Write-ExclusiveFile (Join-Path $linkToOther 'stray.new') ([byte[]](1, 2, 3)) $hold.Path }
+        Check 'hold: a new file that lands in another folder through a link is refused, nothing written, and removed again' (
+            $thrown -match 'outside the folder held for it' -and @(Get-ChildItem -LiteralPath $otherFolder -Force).Count -eq 0) "$thrown | $(@(Get-ChildItem -LiteralPath $otherFolder -Force | ForEach-Object Name) -join ',')"
+        Write-ExclusiveFile (Join-Path $linkToHeld 'via-link.new') ([byte[]](1)) $hold.Path
+        Check 'hold: a file made through a link that leads into the held folder is in it, so it is accepted' (Test-Path -LiteralPath (Join-Path $heldFolder 'via-link.new'))
+        $thrown = Get-Thrown { Write-ExclusiveFile (Join-Path $heldFolder 'made.new') ([byte[]](1)) $hold.Path }
+        Check 'hold: a new file is never made over one that is there' ($null -ne $thrown)
+
+        [IO.File]::WriteAllText((Join-Path $otherFolder 'panel.pfx'), 'not ours')
+        [IO.File]::WriteAllText((Join-Path $heldFolder 'panel.pfx'), 'ours')
+        Check 'hold: a file of the held folder is checked by handle to be one' ($null -eq (Get-Thrown { Assert-InFolder (Join-Path $heldFolder 'panel.pfx') $hold }))
+        Check 'hold: a file reached through a link to another folder is not in it' ((Get-Thrown { Assert-InFolder (Join-Path $linkToOther 'panel.pfx') $hold }) -match 'not a file of the folder held for it')
+        Remove-Item -LiteralPath (Join-Path $otherFolder 'panel.pfx')
+    }
+    finally { $hold.Dispose() }
+    Check 'hold: once released, the folder can be renamed again' (Test-Renamable $heldFolder)
+    $thrown = Get-Caught { Open-CertificateFolder $linkToHeld }
+    Check 'hold: a folder that is a link is not held (exit code 3, nothing changed)' ($null -ne $thrown -and (Get-SetupExitCode $thrown) -eq 3 -and $thrown.Exception.Message -match 'is a link' -and $thrown.Exception.Message -match 'Nothing was changed') "$thrown"
+    $nested = Join-Path $heldFolder 'nested'
+    $null = New-Item -ItemType Directory $nested
+    $thrown = Get-Caught { Open-CertificateFolder (Join-Path $linkToHeld 'nested') }
+    Check 'hold: a folder reached through a link on the way is not the folder the installer made (exit code 3, nothing changed)' (
+        $null -ne $thrown -and (Get-SetupExitCode $thrown) -eq 3 -and $thrown.Exception.Message -match 'once the links on its way are followed' -and $thrown.Exception.Message -match 'Nothing was changed') "$thrown"
+    [IO.Directory]::Delete($linkToOther)
+    [IO.Directory]::Delete($linkToHeld)
 
     $failing = New-RenewInstall 'was stopped'
     $before = Get-Digests $failing
@@ -2165,10 +2239,15 @@ $renewFunctions = @($installAst.FindAll({ param($node) $node -is [Management.Aut
 $renewalText = @($renewFunctions | Where-Object Name -eq 'Invoke-RenewCertificate')[0].Extent.Text
 $undoText = @($renewFunctions | Where-Object Name -eq 'Undo-CertificateRenewal')[0].Extent.Text
 Check 'renew: every function of the renewal is in the script' ($renewFunctions.Count -eq 12) "$($renewFunctions.Count)"
-$renewIndexes = @('Get-RenewableCertificate', 'Get-SelfSignedPanelNames', 'New-SelfSignedPanelFiles', 'Assert-NewCertificateFiles', 'Stop-Panel', 'Assert-PlainCertificateFiles', '[IO.File]::Replace($staged[$kind]',
+$renewIndexes = @('Get-RenewableCertificate', 'Open-CertificateFolder', 'Get-PfxHash $renewal.Pfx', 'Get-SelfSignedPanelNames', 'New-SelfSignedPanelFiles', 'Assert-NewCertificateFiles', 'Stop-Panel', 'Assert-PlainCertificateFiles $renewal $true',
+    'Assert-InFolder $current[$kind] $hold', '[IO.File]::Replace($staged[$kind]',
     'Start-Panel', 'Confirm-PanelCertificate', 'Add-TrustedCertificate $renewal.Cer', 'Remove-InstallerTrust $renewal.Thumbprint', 'Remove-Item -LiteralPath $file -Force' | ForEach-Object { $renewalText.IndexOf($_) })
 Check 'renew order: checks, the new certificate made and checked beside the old, then stop, swap, start, answer, trust, and only then the old trust and the old files go' (
     @($renewIndexes | Where-Object { $_ -lt 0 }).Count -eq 0 -and ($renewIndexes -join ',') -ceq (@($renewIndexes | Sort-Object) -join ',')) ($renewIndexes -join ',')
+Check 'renew hold: the certificate folder is held right after the first checks, until the swap and the cleanup end, and every file made goes through the hold''s check' (
+    $renewalText -match '(?s)\$renewal = Get-RenewableCertificate.*?\$hold = Open-CertificateFolder \$renewal\.Tls\s+try \{.*New-SelfSignedPanelFiles \$names \$staged\.Pfx \$staged\.Cer \$renewal\.Password \$true \$hold\.Path.*Remove-Item -LiteralPath \$file -Force.*\}\s+finally \{ \$hold\.Dispose\(\) \}\s+# The new certificate where it is now' -and
+    $installParts['Write-ExclusiveFile'] -match 'FinalPath\(\$stream\.SafeFileHandle\)' -and $installParts['Open-CertificateFolder'] -match 'GetFullPath' -and
+    $installText -match '(?s)CreateFile\(path, access, share, IntPtr\.Zero, 3, 0x02000000 \| 0x00200000, IntPtr\.Zero\)' -and $installText -match 'OpenItem\(path, 0x81, 3\)')
 Check 'renew rollback: any failure goes through Undo-CertificateRenewal, which puts the files back (Replace, or Move for a swap that stopped halfway), removes the new trust and starts the panel again' (
     $renewalText -match '(?s)catch \{\s+\$failure = \$_\.Exception\.Message.*?Undo-CertificateRenewal \$renewal \$progress \$wasRunning' -and
     $undoText -match [regex]::Escape('[IO.File]::Replace($swap.Backup, $swap.Target, [NullString]::Value)') -and $undoText -match [regex]::Escape('[IO.File]::Move($swap.Backup, $swap.Target)') -and
@@ -2191,7 +2270,7 @@ $passwordUses = @($renewFunctions | ForEach-Object { $_.FindAll({ param($node) $
         $command = $_.Parent; while ($command -and $command -isnot [Management.Automation.Language.CommandAst]) { $command = $command.Parent }
         if ($command) { $command.GetCommandName() }
     })
-Check 'renew: the PFX''s password is only ever handed to the functions that make or open the PFX, never printed' ($passwordUses.Count -eq 2 -and @($passwordUses | Where-Object { $_ -notin 'New-SelfSignedPanelFiles', 'Assert-NewCertificateFiles' }).Count -eq 0) ($passwordUses -join ', ')
+Check 'renew: the PFX''s password is only ever handed to the functions that make or open the PFX, never printed' ($passwordUses.Count -eq 3 -and @($passwordUses | Where-Object { $_ -notin 'New-SelfSignedPanelFiles', 'Assert-NewCertificateFiles', 'Get-PfxHash' }).Count -eq 0) ($passwordUses -join ', ')
 $printedPasswords = @($renewFunctions | ForEach-Object { $_.FindAll({ param($node) $node -is [Management.Automation.Language.ExpandableStringExpressionAst] }, $true) } |
         Where-Object { @($_.NestedExpressions | Where-Object { $_.Extent.Text -match '(?i)password' }).Count -gt 0 } | ForEach-Object { $_.Extent.Text })
 Check 'renew: no message interpolates a password' ($printedPasswords.Count -eq 0) ($printedPasswords -join ' | ')

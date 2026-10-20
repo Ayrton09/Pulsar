@@ -1224,8 +1224,9 @@ function Get-SelfSignedPanelNames([string[]] $extra) {
 # Makes the self-signed certificate for $names (Get-SelfSignedPanelNames) and writes it to $pfx, a PFX that opens with
 # $password (a secret of the run: registered by the caller), and to $cer. $exclusive: only files that are not there yet
 # (never one that is, or a link left there), for a folder the panel's service account can write; the files take the
-# permissions of the folder. Returns what New-PanelCertificate returns.
-function New-SelfSignedPanelFiles($names, [string] $pfx, [string] $cer, [string] $password, [bool] $exclusive) {
+# permissions of the folder. $held: the path of that folder as Open-CertificateFolder holds it, which each file made
+# must be in (Write-ExclusiveFile). Returns what New-PanelCertificate returns.
+function New-SelfSignedPanelFiles($names, [string] $pfx, [string] $cer, [string] $password, [bool] $exclusive, [string] $held = '') {
     $certificate = New-SelfSignedPanelCertificate $names
     try {
         # Trusted machine-wide (here, and on nodes with -TrustCertificate), so it must not be able to issue
@@ -1240,8 +1241,8 @@ function New-SelfSignedPanelFiles($names, [string] $pfx, [string] $cer, [string]
         $pfxBytes = $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx, (ConvertTo-Secure $password))
         $cerBytes = $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)
         if ($exclusive) {
-            Write-ExclusiveFile $pfx $pfxBytes
-            Write-ExclusiveFile $cer $cerBytes
+            Write-ExclusiveFile $pfx $pfxBytes $held
+            Write-ExclusiveFile $cer $cerBytes $held
         }
         else {
             [IO.File]::WriteAllBytes($pfx, $pfxBytes)
@@ -1258,11 +1259,25 @@ function New-SelfSignedPanelFiles($names, [string] $pfx, [string] $cer, [string]
 }
 
 # Writes a new file, never over one that is there already or a link left there (CreateNew), which no one else can open
-# while it is written.
-function Write-ExclusiveFile([string] $path, [byte[]] $bytes) {
+# while it is written. $folder, when given (the path of a folder held with Open-CertificateFolder): the file the handle
+# opened must be in it, whatever links $path goes through; if it is somewhere else, it is deleted (this call made it) and
+# nothing is written.
+function Write-ExclusiveFile([string] $path, [byte[]] $bytes, [string] $folder = '') {
     $stream = New-Object IO.FileStream($path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
-    try { $stream.Write($bytes, 0, $bytes.Length) }
+    $stray = $null
+    try {
+        if ($folder) {
+            Initialize-FolderHold
+            $final = [PulsarFolderHold]::FinalPath($stream.SafeFileHandle)
+            if ($final -ne (Join-Path $folder (Split-Path -Leaf $path))) { $stray = $final }
+        }
+        if (-not $stray) { $stream.Write($bytes, 0, $bytes.Length) }
+    }
     finally { $stream.Dispose() }
+    if ($stray) {
+        Remove-Item -LiteralPath $stray -Force -ErrorAction SilentlyContinue
+        throw "$path was created at $stray, outside the folder held for it: a link is in its way."
+    }
 }
 
 # A self-signed certificate for the panel, made in memory: no certificate store and no key container is touched, and
@@ -2167,8 +2182,10 @@ function Uninstall-Panel {
 # Why this exists: the install's self-signed certificate lists the addresses this PC had when it was made, so a new
 # address (a DHCP lease that changed, a new router) or name leaves browsers and nodes at the new one with a certificate
 # that does not match. -RenewCertificate makes the certificate again, with the install's own functions, and swaps it in:
-# 1. everything that can be checked is, before anything changes (Get-RenewableCertificate), and the new certificate is
-#    made and checked beside the old one under names the panel's service account cannot predict;
+# 1. everything that can be checked is, before anything changes (Get-RenewableCertificate); then the certificate's
+#    folder is held (Open-CertificateFolder: nobody can rename or replace it until the end, so no link can take its
+#    place) and the new certificate is made and checked beside the old one under names the panel's service account
+#    cannot predict, each file checked by handle to be in the held folder;
 # 2. the panel stops, the two files are swapped with the old ones kept (File.Replace: the old file is never missing),
 #    the panel starts and must present the new certificate on its ports;
 # 3. the new certificate is trusted on this PC, if the install trusted the old one;
@@ -2208,6 +2225,146 @@ function Assert-PlainCertificateFiles($paths, [bool] $afterStop = $false) {
     foreach ($file in $paths.Pfx, $paths.Cer) {
         if (-not (Test-PlainItem $file $false)) { throw (New-SetupError $code "$file is missing or is a link, not the file the installer made. $tail") }
     }
+}
+
+# Holding a folder, and asking by handle where a file really is: the checks above look at paths, and the panel's service
+# account can swap its folder for a junction in between. A handle opened on the folder itself (never following a link,
+# shared for reading and writing but not for deleting, so that nobody can rename or replace it, nor a folder above it,
+# while it is held) says what the folder is, with every link resolved (GetFinalPathNameByHandle).
+function Initialize-FolderHold {
+    if ('PulsarFolderHold' -as [type]) { return }
+    $source = @'
+using System;
+using System.ComponentModel;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+public sealed class PulsarFolderHold : IDisposable
+{
+    private SafeFileHandle _handle;
+    public string Path;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HandleInformation
+    {
+        public uint FileAttributes;
+        public uint CreationTimeLow;
+        public uint CreationTimeHigh;
+        public uint LastAccessTimeLow;
+        public uint LastAccessTimeHigh;
+        public uint LastWriteTimeLow;
+        public uint LastWriteTimeHigh;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetFileInformationByHandle(SafeFileHandle handle, out HandleInformation information);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path, uint size, uint flags);
+
+    // OPEN_EXISTING; FILE_FLAG_BACKUP_SEMANTICS (a folder can be opened) and FILE_FLAG_OPEN_REPARSE_POINT (a link is opened itself, not
+    // what it points to). Access: FILE_READ_ATTRIBUTES (0x80), plus FILE_LIST_DIRECTORY (0x1) to hold a folder: Windows checks sharing only
+    // between opens that read, write or delete, so a handle that only reads attributes would not stop anyone from renaming the folder.
+    private static SafeFileHandle OpenItem(string path, uint access, uint share)
+    {
+        SafeFileHandle handle = CreateFile(path, access, share, IntPtr.Zero, 3, 0x02000000 | 0x00200000, IntPtr.Zero);
+        if (handle.IsInvalid) { throw new Win32Exception(Marshal.GetLastWin32Error(), "cannot open " + path); }
+        return handle;
+    }
+
+    // The real path of what a handle is open on (\\?\C:\... as C:\...), links resolved.
+    public static string FinalPath(SafeFileHandle handle)
+    {
+        StringBuilder text = new StringBuilder(1024);
+        uint length = GetFinalPathNameByHandle(handle, text, (uint)text.Capacity, 0);
+        if (length == 0 || length >= text.Capacity) { throw new Win32Exception(Marshal.GetLastWin32Error(), "cannot tell where the file is"); }
+        string result = text.ToString();
+        if (result.StartsWith(@"\\?\UNC\", StringComparison.Ordinal)) { return @"\\" + result.Substring(8); }
+        if (result.StartsWith(@"\\?\", StringComparison.Ordinal)) { return result.Substring(4); }
+        return result;
+    }
+
+    // The real path of a file or folder (as asked), which must be one and not a link itself.
+    private static string Inspect(SafeFileHandle handle, string path, bool folder)
+    {
+        HandleInformation information;
+        if (!GetFileInformationByHandle(handle, out information)) { throw new Win32Exception(Marshal.GetLastWin32Error()); }
+        if ((information.FileAttributes & 0x400) != 0) { throw new IOException(path + " is a link"); }
+        if (((information.FileAttributes & 0x10) != 0) != folder) { throw new IOException(path + (folder ? " is not a folder" : " is not a file")); }
+        return FinalPath(handle);
+    }
+
+    // The real path of a file that is not a link, without holding it.
+    public static string FinalPathOfFile(string path)
+    {
+        using (SafeFileHandle handle = OpenItem(path, 0x80, 7)) { return Inspect(handle, path, false); }
+    }
+
+    // Holds a folder that is not a link: others can open it to read and write in it, never to delete or rename it.
+    public static PulsarFolderHold Open(string path)
+    {
+        SafeFileHandle handle = OpenItem(path, 0x81, 3);
+        try
+        {
+            PulsarFolderHold hold = new PulsarFolderHold();
+            hold.Path = Inspect(handle, path, true);
+            hold._handle = handle;
+            handle = null;
+            return hold;
+        }
+        finally { if (handle != null) { handle.Dispose(); } }
+    }
+
+    public void Dispose()
+    {
+        if (_handle != null) { _handle.Dispose(); _handle = null; }
+    }
+}
+'@
+    Add-Type -TypeDefinition $source
+}
+
+# Holds the panel's certificate folder ($path, which Get-RenewableCertificate found to be a folder, not a link) until the
+# returned hold is disposed, and checks by handle that it is that folder: the real path of what was opened must be $path
+# itself, so no link is anywhere on the way. A folder swapped for a junction after the checks by path, whichever comes
+# first, is refused here; one swapped afterwards cannot be: renaming or replacing it fails while it is held.
+function Open-CertificateFolder([string] $path) {
+    Initialize-FolderHold
+    try { $hold = [PulsarFolderHold]::Open($path) }
+    catch { throw (New-SetupError $ExitUnsupported "The panel's certificate folder $path cannot be held as the folder the installer made ($($_.Exception.GetBaseException().Message)). Nothing was changed.") }
+    $expected = [IO.Path]::GetFullPath($path).TrimEnd('\')
+    if ($hold.Path -ne $expected) {
+        $real = $hold.Path
+        $hold.Dispose()
+        throw (New-SetupError $ExitUnsupported "The panel's certificate folder $path is $real once the links on its way are followed, not the folder the installer made. Nothing was changed.")
+    }
+    return $hold
+}
+
+# Checks by handle that $file, a file in the folder $hold holds, is a file of that folder and not a link out of it (or a
+# link itself).
+function Assert-InFolder([string] $file, $hold) {
+    try { $final = [PulsarFolderHold]::FinalPathOfFile($file) }
+    catch { throw "$file cannot be checked ($($_.Exception.GetBaseException().Message))." }
+    if ($final -ne (Join-Path $hold.Path (Split-Path -Leaf $file))) { throw "$file is $final once links are followed, not a file of the folder held for it ($($hold.Path))." }
+}
+
+# The SHA-256 (Get-CertificateHash) of the certificate in a PFX, opened with $password and an ephemeral key.
+function Get-PfxHash([string] $path, [string] $password) {
+    $certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @([IO.File]::ReadAllBytes($path), $password, [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+    try { return Get-CertificateHash $certificate }
+    finally { $certificate.Dispose() }
 }
 
 # What -RenewCertificate renews, checked before anything changes; an error ($ExitUsage: no panel here, or settings that are
@@ -2335,11 +2492,7 @@ function Set-SameAccess([string] $reference, [string] $target) {
 function Assert-NewCertificateFiles($staged, [string] $password, $made) {
     $problem = Test-PfxFile $staged.Pfx $password
     if ($problem) { throw "The new certificate's PFX cannot be the panel's: $problem." }
-    $certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2 -ArgumentList @([IO.File]::ReadAllBytes($staged.Pfx), $password, [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
-    try {
-        if ((Get-CertificateHash $certificate) -cne $made.Sha256) { throw "The new certificate's PFX is not the certificate this run made (its SHA-256 is not $($made.Sha256))." }
-    }
-    finally { $certificate.Dispose() }
+    if ((Get-PfxHash $staged.Pfx $password) -cne $made.Sha256) { throw "The new certificate's PFX is not the certificate this run made (its SHA-256 is not $($made.Sha256))." }
     $listed = Read-Certificate $staged.Cer
     try { Assert-SameCertificate $listed $staged.Cer $made.Sha256 }
     finally { $listed.Dispose() }
@@ -2442,114 +2595,126 @@ function Invoke-RenewCertificate {
     Assert-RenewArguments
     Assert-HostNames
     $renewal = Get-RenewableCertificate
-    $until = $renewal.NotAfter.ToString('yyyy-MM-dd')
-    Write-Step "The panel's certificate: thumbprint $($renewal.Thumbprint), valid until $until$(if ($renewal.Names) { ", made for $(@(Get-ListedNames $renewal.Names) -join ', ')" })"
-    if ($renewal.Trust -ceq 'unmarked') {
-        Write-Warning 'This PC trusts the old certificate, but not as this script''s (something else trusted it, or an install made before the mark did): its trust and the new certificate''s are left as they are, so the node on this PC and its browsers stop trusting the panel until you trust the new certificate in its place (certlm.msc, Trusted Root Certification Authorities: remove the old one, import the new panel.cer, whose fingerprint is printed at the end).'
-    }
-    $wasRunning = (Get-Service $PanelService).Status -eq 'Running'
-
-    Write-SetupStep 'certificate' 'Making the new certificate'
-    $names = Get-SelfSignedPanelNames $HostName
-    $gone = [pscustomobject]@{ Stale = @(); Other = @() }
-    if ($renewal.Names) {
-        $gone = Compare-CertificateNames $renewal.Names $names (Get-MachineDomain)
-        if ($gone.Stale.Count -gt 0) { Write-Host "    The old certificate also listed $($gone.Stale -join ', '), which the new one does not (an address or name this PC no longer has?)." }
-        # The names given to the install with -HostName are not remembered, and a certificate that quietly lost one would
-        # break the browsers and nodes that use it, and need pinning twice: without -HostName at all, it asks for a decision.
-        if ($gone.Other.Count -gt 0 -and $HostName.Count -eq 0) {
-            throw (New-SetupError $ExitUsage "The old certificate also lists $($gone.Other -join ', '), which this PC's names and addresses do not include: they may be names you gave the install with -HostName, which are not remembered. Run this again with -HostName listing the ones that are still yours (-HostName $($gone.Other -join ', ') keeps all of them), or with another -HostName (even -HostName localhost) to leave them out on purpose. Nothing was changed.")
-        }
-        if ($gone.Other.Count -gt 0) {
-            Write-Warning "The old certificate also listed $($gone.Other -join ', '), which the new one does not (you gave -HostName without them). Nodes and browsers that use one of them need the certificate to list it: run this again with them in -HostName to keep them."
-        }
-    }
-    # Names nobody can predict, so that nothing planted in the folder (the panel's service account can write it) is written to.
-    $id = [Guid]::NewGuid().ToString('N').Substring(0, 16)
-    $staged = @{ Pfx = "$($renewal.Pfx).new-$id"; Cer = "$($renewal.Cer).new-$id" }
-    $backup = @{ Pfx = "$($renewal.Pfx).old-$id"; Cer = "$($renewal.Cer).old-$id" }
-    $current = @{ Pfx = $renewal.Pfx; Cer = $renewal.Cer }
-    $progress = [pscustomobject]@{ Stopped = $false; Swaps = (New-Object Collections.Generic.List[object]); Trusted = $null }
-    $finished = $false
-    $rolledBack = $false
+    # Held from here to the end (Open-CertificateFolder): the checks above looked at paths, and the panel's service account
+    # can swap its folder for a link in between. What was read of the old certificate is read again through the hold.
+    $hold = Open-CertificateFolder $renewal.Tls
     try {
+        Assert-PlainCertificateFiles $renewal
+        if ((Get-PfxHash $renewal.Pfx $renewal.Password) -cne $renewal.Sha256) {
+            throw (New-SetupError $ExitCertificate "The panel's certificate changed while this script was checking it. Nothing was changed.")
+        }
+        $until = $renewal.NotAfter.ToString('yyyy-MM-dd')
+        Write-Step "The panel's certificate: thumbprint $($renewal.Thumbprint), valid until $until$(if ($renewal.Names) { ", made for $(@(Get-ListedNames $renewal.Names) -join ', ')" })"
+        if ($renewal.Trust -ceq 'unmarked') {
+            Write-Warning 'This PC trusts the old certificate, but not as this script''s (something else trusted it, or an install made before the mark did): its trust and the new certificate''s are left as they are, so the node on this PC and its browsers stop trusting the panel until you trust the new certificate in its place (certlm.msc, Trusted Root Certification Authorities: remove the old one, import the new panel.cer, whose fingerprint is printed at the end).'
+        }
+        $wasRunning = (Get-Service $PanelService).Status -eq 'Running'
+
+        Write-SetupStep 'certificate' 'Making the new certificate'
+        $names = Get-SelfSignedPanelNames $HostName
+        $gone = [pscustomobject]@{ Stale = @(); Other = @() }
+        if ($renewal.Names) {
+            $gone = Compare-CertificateNames $renewal.Names $names (Get-MachineDomain)
+            if ($gone.Stale.Count -gt 0) { Write-Host "    The old certificate also listed $($gone.Stale -join ', '), which the new one does not (an address or name this PC no longer has?)." }
+            # The names given to the install with -HostName are not remembered, and a certificate that quietly lost one would
+            # break the browsers and nodes that use it, and need pinning twice: without -HostName at all, it asks for a decision.
+            if ($gone.Other.Count -gt 0 -and $HostName.Count -eq 0) {
+                throw (New-SetupError $ExitUsage "The old certificate also lists $($gone.Other -join ', '), which this PC's names and addresses do not include: they may be names you gave the install with -HostName, which are not remembered. Run this again with -HostName listing the ones that are still yours (-HostName $($gone.Other -join ', ') keeps all of them), or with another -HostName (even -HostName localhost) to leave them out on purpose. Nothing was changed.")
+            }
+            if ($gone.Other.Count -gt 0) {
+                Write-Warning "The old certificate also listed $($gone.Other -join ', '), which the new one does not (you gave -HostName without them). Nodes and browsers that use one of them need the certificate to list it: run this again with them in -HostName to keep them."
+            }
+        }
+        # Names nobody can predict, so that nothing planted in the folder (the panel's service account can write it) is written to.
+        $id = [Guid]::NewGuid().ToString('N').Substring(0, 16)
+        $staged = @{ Pfx = "$($renewal.Pfx).new-$id"; Cer = "$($renewal.Cer).new-$id" }
+        $backup = @{ Pfx = "$($renewal.Pfx).old-$id"; Cer = "$($renewal.Cer).old-$id" }
+        $current = @{ Pfx = $renewal.Pfx; Cer = $renewal.Cer }
+        $progress = [pscustomobject]@{ Stopped = $false; Swaps = (New-Object Collections.Generic.List[object]); Trusted = $null }
+        $finished = $false
+        $rolledBack = $false
         try {
-            $made = New-SelfSignedPanelFiles $names $staged.Pfx $staged.Cer $renewal.Password $true
-            Set-SameAccess $current.Pfx $staged.Pfx
-            Set-SameAccess $current.Cer $staged.Cer
-            Assert-NewCertificateFiles $staged $renewal.Password $made
-            # Checked now, before anything changes, as the trust below will check it (Add-TrustedCertificate).
-            if ($renewal.Trust -ceq 'marked') {
-                $listed = Read-Certificate $staged.Cer
-                try { Assert-TrustableCertificate $listed $staged.Cer 'localhost' $made.Names }
-                finally { $listed.Dispose() }
-            }
+            try {
+                $made = New-SelfSignedPanelFiles $names $staged.Pfx $staged.Cer $renewal.Password $true $hold.Path
+                Set-SameAccess $current.Pfx $staged.Pfx
+                Set-SameAccess $current.Cer $staged.Cer
+                Assert-NewCertificateFiles $staged $renewal.Password $made
+                # Checked now, before anything changes, as the trust below will check it (Add-TrustedCertificate).
+                if ($renewal.Trust -ceq 'marked') {
+                    $listed = Read-Certificate $staged.Cer
+                    try { Assert-TrustableCertificate $listed $staged.Cer 'localhost' $made.Names }
+                    finally { $listed.Dispose() }
+                }
 
-            Write-SetupStep 'panel' 'Replacing the panel''s certificate and restarting the panel (it is unavailable for a few seconds)'
-            if ($wasRunning) { Write-Step 'Stopping the panel' }
-            $progress.Stopped = $true
-            Stop-Panel
-            Assert-PlainCertificateFiles $renewal $true
-            foreach ($kind in 'Pfx', 'Cer') {
-                $progress.Swaps.Add(@{ Target = $current[$kind]; Backup = $backup[$kind] })
-                [IO.File]::Replace($staged[$kind], $current[$kind], $backup[$kind])
-                Set-SameAccess $backup[$kind] $current[$kind]
-            }
-            Write-Step "Starting the panel with the new certificate$(if (-not $wasRunning) { ' (it was not running: it stays running if all goes well)' })"
-            Start-Panel
-            Confirm-PanelCertificate $renewal.Port $renewal.AgentsPort $made
+                Write-SetupStep 'panel' 'Replacing the panel''s certificate and restarting the panel (it is unavailable for a few seconds)'
+                if ($wasRunning) { Write-Step 'Stopping the panel' }
+                $progress.Stopped = $true
+                Stop-Panel
+                Assert-PlainCertificateFiles $renewal $true
+                foreach ($kind in 'Pfx', 'Cer') {
+                    Assert-InFolder $current[$kind] $hold
+                    $progress.Swaps.Add(@{ Target = $current[$kind]; Backup = $backup[$kind] })
+                    [IO.File]::Replace($staged[$kind], $current[$kind], $backup[$kind])
+                    Set-SameAccess $backup[$kind] $current[$kind]
+                }
+                Write-Step "Starting the panel with the new certificate$(if (-not $wasRunning) { ' (it was not running: it stays running if all goes well)' })"
+                Start-Panel
+                Confirm-PanelCertificate $renewal.Port $renewal.AgentsPort $made
 
-            Write-SetupStep 'trust' 'Updating the trust of this PC'
-            if ($renewal.Trust -ceq 'marked') {
-                Write-Step "Trusting the new certificate on this PC, as the install trusted the old one (the old one is removed once all is done)"
-                if ((Get-InstallerTrust $made.Thumbprint) -cne 'none') { throw 'This PC trusts the new certificate already, which cannot be: it was just made.' }
-                $progress.Trusted = $made.Thumbprint
-                Add-TrustedCertificate $renewal.Cer 'localhost' $made.Names $made.Sha256
+                Write-SetupStep 'trust' 'Updating the trust of this PC'
+                if ($renewal.Trust -ceq 'marked') {
+                    Write-Step "Trusting the new certificate on this PC, as the install trusted the old one (the old one is removed once all is done)"
+                    if ((Get-InstallerTrust $made.Thumbprint) -cne 'none') { throw 'This PC trusts the new certificate already, which cannot be: it was just made.' }
+                    $progress.Trusted = $made.Thumbprint
+                    Add-TrustedCertificate $renewal.Cer 'localhost' $made.Names $made.Sha256
+                }
+                else { Write-Host '    The old certificate was not trusted by the install on this PC: the certificate stores are left as they are.' }
+                $finished = $true
             }
-            else { Write-Host '    The old certificate was not trusted by the install on this PC: the certificate stores are left as they are.' }
-            $finished = $true
-        }
-        catch {
-            $failure = $_.Exception.Message
-            if (-not $progress.Stopped) {
-                throw (New-SetupError $ExitFailed "$failure$([Environment]::NewLine)Nothing was changed: the panel keeps its certificate.")
+            catch {
+                $failure = $_.Exception.Message
+                if (-not $progress.Stopped) {
+                    throw (New-SetupError $ExitFailed "$failure$([Environment]::NewLine)Nothing was changed: the panel keeps its certificate.")
+                }
+                $left = @(Undo-CertificateRenewal $renewal $progress $wasRunning)
+                $rolledBack = $true
+                $undone = "The old certificate is back, and the panel $(if ($wasRunning) { 'runs with it' } else { 'is stopped, as it was' })."
+                if ($left.Count -gt 0) {
+                    $undone = "Putting the old certificate back left: $($left -join '; '). The old certificate's files are $($backup.Pfx) and $($backup.Cer) if they are still there: copy them over panel.pfx and panel.cer, and start the $PanelService service."
+                }
+                throw (New-SetupError $ExitFailed "$failure$([Environment]::NewLine)$undone")
             }
-            $left = @(Undo-CertificateRenewal $renewal $progress $wasRunning)
-            $rolledBack = $true
-            $undone = "The old certificate is back, and the panel $(if ($wasRunning) { 'runs with it' } else { 'is stopped, as it was' })."
-            if ($left.Count -gt 0) {
-                $undone = "Putting the old certificate back left: $($left -join '; '). The old certificate's files are $($backup.Pfx) and $($backup.Cer) if they are still there: copy them over panel.pfx and panel.cer, and start the $PanelService service."
+        }
+        finally {
+            # An interrupted run (Ctrl+C, a closed window) is neither finished nor caught above: the old certificate comes back
+            # all the same, or the panel would run on a certificate no one trusts and the old key's files would be left behind.
+            if ($progress.Stopped -and -not $finished -and -not $rolledBack) {
+                $null = @(Undo-CertificateRenewal $renewal $progress $wasRunning)
             }
-            throw (New-SetupError $ExitFailed "$failure$([Environment]::NewLine)$undone")
+            # Never swapped in: they hold the new key.
+            Remove-Item -LiteralPath $staged.Pfx, $staged.Cer -Force -ErrorAction SilentlyContinue
         }
-    }
-    finally {
-        # An interrupted run (Ctrl+C, a closed window) is neither finished nor caught above: the old certificate comes back
-        # all the same, or the panel would run on a certificate no one trusts and the old key's files would be left behind.
-        if ($progress.Stopped -and -not $finished -and -not $rolledBack) {
-            $null = @(Undo-CertificateRenewal $renewal $progress $wasRunning)
-        }
-        # Never swapped in: they hold the new key.
-        Remove-Item -LiteralPath $staged.Pfx, $staged.Cer -Force -ErrorAction SilentlyContinue
-    }
 
-    # All is well: the old certificate's trust, and its files with its key, go.
-    if ($renewal.Trust -ceq 'marked') {
-        try {
-            Remove-InstallerTrust $renewal.Thumbprint
-            Write-Host "    The old certificate (thumbprint $($renewal.Thumbprint)) is no longer trusted on this PC."
+        # All is well: the old certificate's trust, and its files with its key, go.
+        if ($renewal.Trust -ceq 'marked') {
+            try {
+                Remove-InstallerTrust $renewal.Thumbprint
+                Write-Host "    The old certificate (thumbprint $($renewal.Thumbprint)) is no longer trusted on this PC."
+            }
+            catch { Write-Warning "The old certificate is still trusted on this PC ($($_.Exception.Message)): remove it in certlm.msc (Trusted Root Certification Authorities, thumbprint $($renewal.Thumbprint))." }
         }
-        catch { Write-Warning "The old certificate is still trusted on this PC ($($_.Exception.Message)): remove it in certlm.msc (Trusted Root Certification Authorities, thumbprint $($renewal.Thumbprint))." }
-    }
-    $deleted = $true
-    foreach ($file in $backup.Pfx, $backup.Cer) {
-        try { Remove-Item -LiteralPath $file -Force }
-        catch {
-            $deleted = $false
-            Write-Warning "$file holds the old certificate$(if ($file -like '*.pfx.*') { '''s key' }): delete it yourself ($($_.Exception.Message))."
+        $deleted = $true
+        foreach ($file in $backup.Pfx, $backup.Cer) {
+            try { Remove-Item -LiteralPath $file -Force }
+            catch {
+                $deleted = $false
+                Write-Warning "$file holds the old certificate$(if ($file -like '*.pfx.*') { '''s key' }): delete it yourself ($($_.Exception.Message))."
+            }
         }
+        if ($deleted) { Write-Host "    The old certificate's files, with its key, are deleted." }
     }
-    if ($deleted) { Write-Host "    The old certificate's files, with its key, are deleted." }
+    finally { $hold.Dispose() }
+
     # The new certificate where it is now (New-SelfSignedPanelFiles wrote it beside the old one).
     $installed = $made.Clone()
     $installed.Path = $renewal.Pfx
