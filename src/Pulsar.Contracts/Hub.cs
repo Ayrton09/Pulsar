@@ -25,6 +25,12 @@ public interface IAgentHub
 
     /// <summary>The end of a transfer the agent received (<see cref="ReceiveFileCommand"/>).</summary>
     Task TransferCompleted(TransferResult result);
+
+    /// <summary>
+    /// How an update of Pulsar on the node goes (<see cref="UpdatePulsarCommand"/>): each step, then its end, which the
+    /// installer wrote and the agent sends again after each Hello until a newer one replaces it.
+    /// </summary>
+    Task UpdateReport(UpdateReport report);
 }
 
 /// <summary>Methods the panel calls on a connected agent (SignalR client results).</summary>
@@ -82,3 +88,26 @@ public static class DiskUses
 /// <param name="Disks">The drives of the servers and backups folders; null from agents older than Phase 10.</param>
 public sealed record NodeMetrics(DateTimeOffset At, double CpuPercent, long MemoryUsedBytes, long MemoryTotalBytes, TimeSpan Uptime,
     IReadOnlyList<DiskUsage>? Disks = null);
+
+/// <summary>An update of Pulsar on a node, as far as it went (<see cref="IAgentHub.UpdateReport"/>).</summary>
+/// <param name="Status">One of <see cref="UpdateStatuses"/>.</param>
+/// <param name="Parts">What the installer updated: <c>agent</c>, <c>panel</c>.</param>
+/// <param name="Error">Why it failed or was put back, for the administrator (plain text).</param>
+public sealed record UpdateReport(string Status, string? From, string? To, IReadOnlyList<string>? Parts, string? Error, DateTimeOffset At)
+{
+    public const int MaxErrorLength = 2000;
+}
+
+public static class UpdateStatuses
+{
+    public const string Downloading = "downloading";
+    public const string Installing = "installing";
+    public const string Succeeded = "succeeded";
+    public const string RolledBack = "rolled_back";
+    public const string Failed = "failed";
+
+    public static IReadOnlySet<string> All { get; } = new HashSet<string>([Downloading, Installing, Succeeded, RolledBack, Failed], StringComparer.Ordinal);
+
+    /// <summary>Whether the update ended (the installer's result, or a failure before it ran).</summary>
+    public static bool IsFinal(string status) => status is Succeeded or RolledBack or Failed;
+}

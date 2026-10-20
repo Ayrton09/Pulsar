@@ -260,3 +260,155 @@ public sealed record UpdateCheck(UpdateManifest? Manifest, string? KeyId, string
 
     public static UpdateCheck Refused(string code, string why) => new(null, null, code, why);
 }
+
+/// <summary>
+/// Downloads from a release (<see cref="UpdateRelease"/>), for the panel and the agents alike: over HTTPS, following
+/// GitHub's redirects by hand to the hosts <see cref="UpdateRelease.DownloadHosts"/> allows and nowhere else, never more
+/// than the caller expects. The client must not follow redirects itself (<see cref="CreateHandler"/>).
+/// </summary>
+public static class UpdateDownloads
+{
+    private const int MaxRedirects = 5;
+
+    /// <summary>A handler for these downloads: no redirects of its own, no cookies, a bounded connection time.</summary>
+    public static SocketsHttpHandler CreateHandler() => new()
+    {
+        AllowAutoRedirect = false,
+        UseCookies = false,
+        ConnectTimeout = TimeSpan.FromSeconds(30),
+        AutomaticDecompression = System.Net.DecompressionMethods.None,
+    };
+
+    /// <summary>The whole answer at <paramref name="uri"/>, at most <paramref name="maxBytes"/>.</summary>
+    public static async Task<byte[]> GetBytesAsync(HttpClient client, Uri uri, int maxBytes, CancellationToken cancellationToken)
+    {
+        using var response = await GetAsync(client, uri, cancellationToken);
+        if (response.Content.Headers.ContentLength > maxBytes)
+        {
+            throw new UpdateDownloadException($"{uri.AbsolutePath} is larger than {maxBytes} bytes.");
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[16 * 1024];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            if (buffer.Length + read > maxBytes)
+            {
+                throw new UpdateDownloadException($"{uri.AbsolutePath} is larger than {maxBytes} bytes.");
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return buffer.ToArray();
+    }
+
+    /// <summary>
+    /// Writes the file at <paramref name="uri"/> to <paramref name="path"/> (a new file), which must be exactly
+    /// <see cref="UpdateFile.Size"/> bytes with its <see cref="UpdateFile.Sha256"/>: anything else is deleted and throws.
+    /// </summary>
+    public static async Task DownloadAsync(HttpClient client, Uri uri, UpdateFile file, string path, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        try
+        {
+            using var response = await GetAsync(client, uri, cancellationToken);
+            if (response.Content.Headers.ContentLength is { } length && length != file.Size)
+            {
+                throw new UpdateDownloadException($"{file.Name} is {length} bytes, not the {file.Size} its release says.");
+            }
+
+            using var hash = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
+            await using (var stream = await response.Content.ReadAsStreamAsync(cancellationToken))
+            await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+            {
+                var chunk = new byte[81920];
+                long total = 0;
+                int read;
+                while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+                {
+                    total += read;
+                    if (total > file.Size)
+                    {
+                        throw new UpdateDownloadException($"{file.Name} is larger than the {file.Size} bytes its release says.");
+                    }
+
+                    hash.AppendData(chunk, 0, read);
+                    await output.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
+                }
+
+                if (total != file.Size)
+                {
+                    throw new UpdateDownloadException($"{file.Name} is {total} bytes, not the {file.Size} its release says.");
+                }
+            }
+
+            if (!string.Equals(Convert.ToHexStringLower(hash.GetHashAndReset()), file.Sha256, StringComparison.Ordinal))
+            {
+                throw new UpdateDownloadException($"{file.Name} does not have the SHA-256 its release says.");
+            }
+        }
+        catch
+        {
+            File.Delete(path);
+            throw;
+        }
+    }
+
+    private static async Task<HttpResponseMessage> GetAsync(HttpClient client, Uri uri, CancellationToken cancellationToken)
+    {
+        for (var hop = 0; ; hop++)
+        {
+            if (!UpdateRelease.IsAllowedDownload(uri))
+            {
+                throw new UpdateDownloadException($"Refused to download from {uri.GetLeftPart(UriPartial.Authority)}: updates come from GitHub only.");
+            }
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if ((int)response.StatusCode is 301 or 302 or 303 or 307 or 308)
+            {
+                var location = response.Headers.Location;
+                response.Dispose();
+                if (location is null || hop >= MaxRedirects)
+                {
+                    throw new UpdateDownloadException($"GitHub redirected {uri.AbsolutePath} too often or nowhere.");
+                }
+
+                uri = location.IsAbsoluteUri ? location : new Uri(uri, location);
+                continue;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var status = (int)response.StatusCode;
+                response.Dispose();
+                throw new UpdateDownloadException(status == 404
+                    ? $"{uri.AbsolutePath} is not on GitHub (no release, or the repository is private)."
+                    : $"GitHub answered {status} for {uri.AbsolutePath}.");
+            }
+
+            return response;
+        }
+    }
+}
+
+/// <summary>A download from a release that failed or was refused; its message says why, for the administrator.</summary>
+public sealed class UpdateDownloadException : Exception
+{
+    public UpdateDownloadException(string message)
+        : base(message)
+    {
+    }
+
+    public UpdateDownloadException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
+    public UpdateDownloadException()
+    {
+    }
+}

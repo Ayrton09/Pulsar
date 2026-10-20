@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Agent.Core.Servers;
 using Pulsar.Agent.Core.Steam;
+using Pulsar.Agent.Core.Updates;
 using Pulsar.Contracts;
 
 namespace Pulsar.Agent.Core.Commands;
@@ -29,7 +30,9 @@ public interface IAgentControl
 /// through events.
 /// </summary>
 /// <param name="steamLogins">The cached Steam logins (<see cref="ForgetSteamLoginCommand"/>); null: an agent without servers.</param>
-public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger, ServerHost? servers = null, SteamLoginStore? steamLogins = null)
+/// <param name="updater">Updates Pulsar on this machine (<see cref="UpdatePulsarCommand"/>); null: an agent that never does.</param>
+public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger, ServerHost? servers = null, SteamLoginStore? steamLogins = null,
+    AgentUpdater? updater = null)
 {
     /// <summary>Command types this agent handles (and features it has), announced as capabilities in its Hello.</summary>
     public IReadOnlySet<string> SupportedCommands { get; } = new HashSet<string>(
@@ -37,6 +40,7 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger,
             AgentCapabilities.Ping, AgentCapabilities.RotateCredential, AgentCapabilities.UpdatePanelKeys, AgentCapabilities.UseAgentsAddress,
             .. servers?.Capabilities ?? [],
             .. steamLogins is null ? [] : new[] { AgentCapabilities.ForgetSteamLogin },
+            .. updater?.Capabilities ?? [],
         ],
         StringComparer.Ordinal);
 
@@ -60,6 +64,9 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger,
             case RotateCredentialCommand:
                 LogRotationRequested(envelope.CommandId, envelope.ActorUserId);
                 return Ack(envelope, control.RequestCredentialRotation() ? AckStatus.Accepted : AckStatus.AlreadyInState);
+            case UpdatePulsarCommand update when SupportedCommands.Contains(AgentCapabilities.UpdatePulsar):
+                LogUpdateRequested(envelope.CommandId, update.Version, envelope.ActorUserId);
+                return updater!.Start(envelope.CommandId, update);
             case ForgetSteamLoginCommand forget when steamLogins is not null:
                 var forgotten = steamLogins.Forget(forget.AccountId);
                 LogSteamLoginForgotten(envelope.CommandId, forget.AccountId, forgotten);
@@ -131,6 +138,9 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger,
     }
 
     private static CommandAck Ack(CommandEnvelope envelope, AckStatus status) => new(envelope.CommandId, status, null, null);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Update of Pulsar to {Version} requested by the panel ({CommandId}, user {ActorUserId})")]
+    private partial void LogUpdateRequested(Guid commandId, string version, Guid? actorUserId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Refused command {CommandId}: {Status} ({ErrorCode})")]
     private partial void LogRefused(Guid commandId, AckStatus status, string? errorCode);

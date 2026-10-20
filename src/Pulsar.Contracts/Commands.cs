@@ -55,6 +55,7 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(RemoveAddonCommand), RemoveAddonCommand.Type)]
 [JsonDerivedType(typeof(ForgetSteamLoginCommand), ForgetSteamLoginCommand.Type)]
 [JsonDerivedType(typeof(UseAgentsAddressCommand), UseAgentsAddressCommand.Type)]
+[JsonDerivedType(typeof(UpdatePulsarCommand), UpdatePulsarCommand.Type)]
 public abstract record AgentCommand;
 
 /// <summary>Round-trip check of the signed command path (the UI's "test connection").</summary>
@@ -91,6 +92,19 @@ public sealed record UpdatePanelKeysCommand(IReadOnlyList<PanelKey> Keys) : Agen
 public sealed record UseAgentsAddressCommand(int Port, string? Url = null) : AgentCommand
 {
     public const string Type = "node.use_agents_address";
+}
+
+/// <summary>
+/// Updates Pulsar on the node to <paramref name="Version"/> (Phase 19): the agent, and the panel too where it runs on the
+/// same machine. The agent takes nothing else from the panel: it downloads the release from GitHub itself, checks its
+/// manifest against the update keys it trusts (<see cref="UpdateKeys"/>) and that it is the manifest whose SHA-256 is
+/// <paramref name="ManifestSha256"/> (the one the panel checked and the administrator chose), refuses a version that is
+/// not newer than its own, and then runs the release's installer, which backs up, updates, checks and, when the new
+/// version does not come up, puts the old one back. Its progress and its end come as <see cref="UpdateReport"/>s.
+/// </summary>
+public sealed record UpdatePulsarCommand(string Version, string ManifestSha256) : AgentCommand
+{
+    public const string Type = "node.update_pulsar";
 }
 
 /// <summary>
@@ -583,6 +597,15 @@ public static class AgentCapabilities
     /// <inheritdoc cref="StatFile"/>
     public const string SetFileModified = SetFileModifiedCommand.Type;
 
+    /// <summary>
+    /// The agent updates Pulsar on its machine when told (<see cref="UpdatePulsarCommand"/>, Phase 19): announced only by
+    /// an agent the installer or the setups installed as a service, not by one the agent MSI maintains.
+    /// </summary>
+    public const string UpdatePulsar = UpdatePulsarCommand.Type;
+
+    /// <summary>Not a command: the panel runs on this agent's machine, so an update of the agent there updates the panel too.</summary>
+    public const string PanelHost = "node.panel_host";
+
     /// <summary>The capability an agent must announce to receive <paramref name="command"/>.</summary>
     public static string Of(AgentCommand command) => command switch
     {
@@ -618,6 +641,7 @@ public static class AgentCapabilities
         RemoveAddonCommand => RemoveAddon,
         ForgetSteamLoginCommand => ForgetSteamLogin,
         UseAgentsAddressCommand => UseAgentsAddress,
+        UpdatePulsarCommand => UpdatePulsar,
         null => throw new ArgumentNullException(nameof(command)),
         _ => throw new ArgumentOutOfRangeException(nameof(command), command.GetType().Name, "Command without a capability."),
     };

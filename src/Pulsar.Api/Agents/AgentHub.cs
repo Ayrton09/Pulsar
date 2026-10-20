@@ -282,6 +282,18 @@ internal sealed partial class AgentHub(
         return Task.CompletedTask;
     }
 
+    /// <summary>How an update of Pulsar on the node goes (Phase 19): logged until the panel keeps it.</summary>
+    public Task UpdateReport(UpdateReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        if (RegisteredNode() is { } nodeId && UpdateStatuses.All.Contains(report.Status ?? string.Empty))
+        {
+            LogUpdateReport(nodeId, report.Status!);
+        }
+
+        return Task.CompletedTask;
+    }
+
     /// <summary>Usage of the node's running servers: kept for pages that open later, and pushed to the ones watching.</summary>
     public async Task Metrics(MetricsBatch batch)
     {
@@ -372,6 +384,9 @@ internal sealed partial class AgentHub(
 
         return base.OnDisconnectedAsync(exception);
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Node {NodeId} reports an update of Pulsar: {Status}")]
+    private partial void LogUpdateReport(NodeId nodeId, string status);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Agent connection rejected for node {NodeId}: {Reason}")]
     private partial void LogConnectionRejected(NodeId nodeId, string reason);

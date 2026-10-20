@@ -10,6 +10,7 @@ using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Security;
 using Pulsar.Agent.Core.Servers;
 using Pulsar.Agent.Core.Steam;
+using Pulsar.Agent.Core.Updates;
 using Pulsar.Agent.Windows;
 using Pulsar.Agent.Windows.Backups;
 using Pulsar.Agent.Windows.Processes;
@@ -73,6 +74,9 @@ internal static class AgentHost
             builder.Services.AddSingleton<PanelAuthenticator>();
             builder.Services.AddSingleton<CredentialRotationClient>();
             builder.Services.AddSingleton<CommandDispatcher>();
+            // Updates of Pulsar on this machine from the project's releases, when the panel asks (Phase 19).
+            builder.Services.AddSingleton<IUpdatePlatform>(services => new WindowsUpdatePlatform(() => IsDevelopment(services)));
+            builder.Services.AddSingleton<AgentUpdater>();
             builder.Services.AddSingleton(new AgentConnectionOptions());
             builder.Services.AddSingleton<PanelChannel>();
 
