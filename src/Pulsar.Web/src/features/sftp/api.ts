@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap, type Schemas } from '../../api/client';
+import { invalidateAfterChange } from '../../lib/queries';
 import { adminKeys } from '../admin/api';
 
 export type SftpConnection = Schemas['SftpConnectionResponse'];
@@ -33,10 +34,7 @@ export function useUpdateSftpSettings() {
     mutationFn: (body: Schemas['UpdateSftpSettingsRequest']) => unwrap(api.PUT('/api/v1/sftp/settings', { body })),
     onSuccess: async (settings) => {
       queryClient.setQueryData(sftpKeys.settings, settings);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: sftpKeys.connection }),
-        queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
-      ]);
+      await invalidateAfterChange(queryClient, { queryKey: sftpKeys.connection }, { queryKey: adminKeys.audit });
     },
   });
 }
@@ -48,11 +46,7 @@ export function useSshKeys() {
 
 function useSshKeysChanged() {
   const queryClient = useQueryClient();
-  return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: sftpKeys.sshKeys }),
-      queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
-    ]);
+  return () => invalidateAfterChange(queryClient, { queryKey: sftpKeys.sshKeys }, { queryKey: adminKeys.audit });
 }
 
 /** Adds a key: the password, and the code from the app when two-factor authentication is on. */
