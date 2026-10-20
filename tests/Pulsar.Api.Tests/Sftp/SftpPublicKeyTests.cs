@@ -153,7 +153,12 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
 
         // The same key named "ssh-rsa" (the SHA-1 algorithm): unknown to the server, whatever the signature, and refused
         // as such: the connection stays, for the client's other keys or its password.
-        Assert.Equal((false, true), await SignsInAsync(port, "keys-nora", pair, new Algorithms.Rsa(Algorithms.Rsa.KeyAlgorithmName, "SHA2-256")));
+        var sha1 = new Algorithms.Rsa(Algorithms.Rsa.KeyAlgorithmName, "SHA2-256");
+        Assert.Equal((false, true), await SignsInAsync(port, "keys-nora", pair, sha1));
+
+        // Each such refusal counts as a question about a key: past the connection's bound, it ends.
+        Assert.Equal((false, true), await SignsInAsync(port, "keys-nora", pair, sha1, attempts: 6));
+        Assert.Equal((false, false), await SignsInAsync(port, "keys-nora", pair, sha1, attempts: 7));
     }
 
     [DatabaseFact]
@@ -300,10 +305,11 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
     }
 
     /// <summary>
-    /// Whether a raw session signs in with <paramref name="pair"/> under the name of <paramref name="algorithm"/>, and is
-    /// still connected afterwards.
+    /// Whether a raw session signs in with <paramref name="pair"/> under the name of <paramref name="algorithm"/> (trying
+    /// up to <paramref name="attempts"/> times), and is still connected afterwards.
     /// </summary>
-    private static async Task<(bool SignedIn, bool Connected)> SignsInAsync(int port, string login, Algorithms.IKeyPair pair, Algorithms.PublicKeyAlgorithm algorithm)
+    private static async Task<(bool SignedIn, bool Connected)> SignsInAsync(int port, string login, Algorithms.IKeyPair pair,
+        Algorithms.PublicKeyAlgorithm algorithm, int attempts = 1)
     {
         var configuration = new SshSessionConfiguration();
         configuration.PublicKeyAlgorithms.Clear();
@@ -322,7 +328,12 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
         await session.ConnectAsync(tcp.GetStream(), Ct).WaitAsync(SftpApiFactory.Timeout, Ct);
         try
         {
-            var signedIn = await session.AuthenticateAsync(new SshClientCredentials(login, pair)).WaitAsync(SftpApiFactory.Timeout, Ct);
+            var signedIn = false;
+            for (var i = 0; i < attempts && !signedIn; i++)
+            {
+                signedIn = await session.AuthenticateAsync(new SshClientCredentials(login, pair)).WaitAsync(SftpApiFactory.Timeout, Ct);
+            }
+
             return (signedIn, !session.IsClosed);
         }
         catch (SshConnectionException)

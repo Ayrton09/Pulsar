@@ -47,7 +47,10 @@ internal sealed class SftpConnection : IDisposable
 
     public int PasswordChecks { get; set; }
 
-    /// <summary>Questions whether a key would do (<c>publickey</c> without a signature).</summary>
+    /// <summary>
+    /// Questions whether a key would do (<c>publickey</c> without a signature), and <c>publickey</c> requests for an
+    /// algorithm the server does not take.
+    /// </summary>
     public int KeyQuestions { get; set; }
 
     /// <summary>Signed public key attempts checked.</summary>

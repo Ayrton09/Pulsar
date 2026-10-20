@@ -382,7 +382,10 @@ internal sealed partial class SftpHost(
         {
             socket.NoDelay = true;
             await using var network = new NetworkStream(socket, ownsSocket: true);
-            session = new SftpServerSession(CreateConfiguration(), s_trace) { Credentials = new SshServerCredentials(key.Pair) };
+            session = new SftpServerSession(CreateConfiguration(), s_trace, connection, _options.MaxKeyAttemptsPerConnection)
+            {
+                Credentials = new SshServerCredentials(key.Pair),
+            };
             var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             session.Closed += (_, _) => closed.TrySetResult();
             session.Authenticating += (_, e) => authenticator.Handle(connection, e);
@@ -592,8 +595,11 @@ internal sealed partial class SftpHost(
 /// The server's SSH session, refusing a <c>publickey</c> request for an algorithm it does not take (<c>ssh-rsa</c>, which
 /// is SHA-1; <c>ssh-dss</c>; security keys; certificates) as the protocol says (RFC 4252, 7): the library would end the
 /// connection instead, before the client tried its other keys or its password (SSH.NET asks with <c>ssh-rsa</c> first).
+/// Each counts as a question about a key (<see cref="SftpOptions.MaxKeyAttemptsPerConnection"/>): past them, the
+/// connection ends.
 /// </summary>
-internal sealed class SftpServerSession(SshSessionConfiguration configuration, TraceSource trace) : SshServerSession(configuration, trace)
+internal sealed class SftpServerSession(SshSessionConfiguration configuration, TraceSource trace, SftpConnection connection, int maxKeyQuestions)
+    : SshServerSession(configuration, trace)
 {
     /// <summary>A method no configuration offers: the library answers it with a refusal of its own, counted nowhere.</summary>
     internal const string RefusedMethod = "publickey-algorithm-refused";
@@ -604,6 +610,12 @@ internal sealed class SftpServerSession(SshSessionConfiguration configuration, T
             && request.ConvertTo<PublicKeyRequestMessage>().KeyAlgorithmName is var algorithm
             && !Config.PublicKeyAlgorithms.Any(a => a is not null && a.Name == algorithm))
         {
+            if (++connection.KeyQuestions > maxKeyQuestions)
+            {
+                connection.Close(SshDisconnectReason.NoMoreAuthMethodsAvailable, "Too many sign-in attempts.");
+                return Task.CompletedTask;
+            }
+
             message = new AuthenticationRequestMessage(request.ServiceName ?? string.Empty, RefusedMethod, request.Username ?? string.Empty);
         }
 
