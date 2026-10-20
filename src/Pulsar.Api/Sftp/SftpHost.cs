@@ -601,7 +601,10 @@ internal sealed partial class SftpHost(
 internal sealed class SftpServerSession(SshSessionConfiguration configuration, TraceSource trace, SftpConnection connection, int maxKeyQuestions)
     : SshServerSession(configuration, trace)
 {
-    /// <summary>A method no configuration offers: the library answers it with a refusal of its own, counted nowhere.</summary>
+    /// <summary>
+    /// A method no configuration offers: the library answers it with a refusal of its own, which it does not count (this
+    /// session counts the request as a question about a key before it is replaced).
+    /// </summary>
     internal const string RefusedMethod = "publickey-algorithm-refused";
 
     protected override Task HandleMessageAsync(SshMessage message, CancellationToken cancellation)

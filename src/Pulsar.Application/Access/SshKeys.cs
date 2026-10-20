@@ -85,7 +85,9 @@ public sealed class SshKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audi
     /// <summary>Deletes every key of <paramref name="user"/> (an administrator's response to a leak); returns how many.</summary>
     public async Task<int> DeleteAllAsync(UserId user, CancellationToken cancellationToken)
     {
+        // With the user's row locked, as adding takes it: a key added meanwhile is in the entry or stays.
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await locks.LockUserAsync(user, cancellationToken);
         var fingerprints = await db.SshKeys.Where(k => k.UserId == user).Select(k => k.Fingerprint).ToListAsync(cancellationToken);
         var count = await db.SshKeys.Where(k => k.UserId == user).ExecuteDeleteAsync(cancellationToken);
         audit.Record(AuditActions.User.SshKeysDeleted, metadata: new { user = user.Value, count, fingerprints })

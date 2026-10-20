@@ -31,6 +31,9 @@ namespace Pulsar.Api.Tests.Sftp;
 /// </summary>
 public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<SftpApiFactory>
 {
+    // Sftp:MaxKeyAttemptsPerConnection's default.
+    private static readonly int s_keyLimit = new SftpOptions().MaxKeyAttemptsPerConnection;
+
     [DatabaseFact]
     public async Task KeysOfEveryAcceptedTypeSignInAndTheHostKeyStaysTheSame()
     {
@@ -157,8 +160,40 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
         Assert.Equal((false, true), await SignsInAsync(port, "keys-nora", pair, sha1));
 
         // Each such refusal counts as a question about a key: past the connection's bound, it ends.
-        Assert.Equal((false, true), await SignsInAsync(port, "keys-nora", pair, sha1, attempts: 6));
-        Assert.Equal((false, false), await SignsInAsync(port, "keys-nora", pair, sha1, attempts: 7));
+        Assert.Equal((false, true), await SignsInAsync(port, "keys-nora", pair, sha1, attempts: s_keyLimit));
+        Assert.Equal((false, false), await SignsInAsync(port, "keys-nora", pair, sha1, attempts: s_keyLimit + 1));
+    }
+
+    [DatabaseFact]
+    public async Task AConnectionOffersAFewKeysAtMost()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await scenario.CreateUserAsync("keys-uli");
+        using var account = await scenario.SignInAsync("keys-uli");
+        using var added = TestSshKey.Ed25519Key();
+        await added.AddAsync(account);
+        var others = Enumerable.Range(0, s_keyLimit).Select(_ => TestSshKey.Ed25519Key()).ToList();
+        var port = await factory.PortAsync();
+        try
+        {
+            // Her key asked about sixth: yes. Seventh: past the connection's bound, no without a look.
+            using (var client = KeyClient(port, "keys-uli", [.. others.Take(s_keyLimit - 1), added]))
+            {
+                await client.ConnectAsync(Ct).WaitAsync(SftpApiFactory.Timeout, Ct);
+            }
+
+            await FailsAsync(KeyClient(port, "keys-uli", [.. others, added]));
+        }
+        finally
+        {
+            others.ForEach(k => k.Dispose());
+        }
+
+        // Signed attempts with a key that is not hers: six are refused, the seventh ends the connection.
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP384);
+        var pair = new Algorithms.ECDsa.KeyPair(ecdsa);
+        Assert.Equal((false, true), await SignsInAsync(port, "keys-uli", pair, SshAlgorithms.PublicKey.ECDsaSha2Nistp384, attempts: s_keyLimit));
+        Assert.Equal((false, false), await SignsInAsync(port, "keys-uli", pair, SshAlgorithms.PublicKey.ECDsaSha2Nistp384, attempts: s_keyLimit + 1));
     }
 
     [DatabaseFact]

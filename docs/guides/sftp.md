@@ -113,7 +113,10 @@ root).
   and failed sign-ins are audited with `publickey` and the key's fingerprint.
 - A key that is not yours never counts towards the account's lockout (only passwords and codes do), and signing in with a
   key does not clear the count of wrong passwords. Key attempts take turns of the per-address limit
-  (`RateLimiting:Auth`), and one connection may offer at most `Sftp:MaxKeyAttemptsPerConnection` keys (6).
+  (`RateLimiting:Auth`), and one connection may offer at most `Sftp:MaxKeyAttemptsPerConnection` keys (6): past them,
+  the next question is answered no and the next signed attempt ends the connection. A request with an algorithm the
+  panel does not take (`ssh-rsa`, which SSH.NET tries first, DSA, security keys, certificates) is refused and counts as
+  one of them; one past them ends the connection.
 - Whether a key would do: clients ask before they sign with it, and the panel answers yes only for a key the user named
   has added, as OpenSSH does. Someone who has one of your public keys (they are public by nature, for example on GitHub)
   and guesses your user name can learn that the key is yours on this panel; they still cannot sign in without the private
@@ -164,7 +167,7 @@ Limits, in the `Sftp` section of the panel's settings (the defaults suit most pa
 | `MaxConnectionsPerAddress` | 8 | From one address (an IPv4 address, an IPv6 /64, the panel's own machine as one) |
 | `MaxSessionsPerUser` | 4 | Signed-in sessions of one user; one more is refused with a message |
 | `MaxPasswordAttemptsPerConnection` | 3 | Password checks before the connection is closed |
-| `MaxKeyAttemptsPerConnection` | 6 | SSH keys one connection may offer (questions and signed attempts each) |
+| `MaxKeyAttemptsPerConnection` | 6 | SSH keys one connection may offer (questions, refused algorithms included, and signed attempts each) |
 | `AuthenticationTimeout` | 00:00:30 | From the connection to a completed sign-in |
 | `IdleTimeout` | 00:15:00 | A session with no request for this long is closed |
 | `MaxHandlesPerSession` | 32 | Open files and folders of one session |
