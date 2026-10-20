@@ -286,7 +286,8 @@ Like AMP, TCAdmin or Pterodactyl, every server's files can be reached with an SF
 - The SFTP server in the panel (`src/Pulsar.Api/Sftp`, docs/guides/sftp.md): password and two-factor sign-in with the browser's rules, own servers only, audit, limits, the host key kept encrypted in the database, settings (on or off, port, public host) at runtime.
 - The web: an SFTP access section on the account page (address, copy buttons, host key fingerprint, two-factor note), a connect hint in a server's Files tab, and the administrator's settings in Nodes → SFTP (confirmation before turning it off or changing the port).
 - The installer: `-SftpPort` (2022 by default) with its own firewall rule `Pulsar-Panel-SFTP`, removed at an uninstall; it prints the host key fingerprint at the end.
-- Still to do: SSH public keys (a later phase, as decided), the SSH.NET tests against the real agent and the Sandbox run with the SFTP port open (Done when 4 to 9 are verified by them).
+- SSH public keys (2026-10-19, the user's decisions: a key alone signs in, a two-factor user too, the key being the second factor; adding one takes the password and the code; Ed25519 through BouncyCastle, ECDSA and RSA with SHA-2 only): added and deleted on the account page, deleted all at once by an administrator, audited; the SFTP server takes the `publickey` method with the password's account checks, never counting wrong keys towards the lockout (docs/guides/sftp.md, "SSH keys"; doc 08, T42).
+- Still to do: the SSH.NET tests against the real agent and the Sandbox run with the SFTP port open (Done when 4 to 9 are verified by them), and WinSCP and FileZilla with keys.
 
 **Design** (the spike, docs/spikes/0003-sftp-server.md, confirmed `Microsoft.DevTunnels.Ssh` with an SFTP v3 handler of our own: Windows `sftp`, OpenSSH and SSH.NET sign in by keyboard-interactive, one prompt per round, password then the two-factor code; shell, exec and forwarding are refused):
 - *Where it runs: the panel, one port for every node.*
@@ -295,8 +296,8 @@ Like AMP, TCAdmin or Pterodactyl, every server's files can be reached with an SF
   - Port 2022 by default (22 is usually the machine's own SSH), configurable, with its own firewall rule from the installer (`-SftpPort`) and a switch to turn SFTP off.
   - A direct per-node SFTP, as Pterodactyl's Wings does, is left for later, for heavy traffic.
 - *Sign-in.*
-  - User name and password go through the same checks as the browser sign-in: Identity's lockout, disabled users, the per-address rate limit, and the "failed sign-in" audit. A user who must use two-factor authentication (their own choice or a role's) is asked for the code with keyboard-interactive authentication after the password; WinSCP, FileZilla and OpenSSH support it. SFTP must never be a way around two-factor authentication.
-  - Optional later in the phase: SSH public keys added on the account page, like API keys.
+  - User name and password go through the same checks as the browser sign-in: Identity's lockout, disabled users, the per-address rate limit, and the "failed sign-in" audit. A user who must use two-factor authentication (their own choice or a role's) is asked for the code with keyboard-interactive authentication after the password; WinSCP, FileZilla and OpenSSH support it. SFTP must never be a way around two-factor authentication (2026-10-19: an SSH key the user added is the second factor itself, and adding one takes the password and the code).
+  - SSH public keys added on the account page, like API keys (done: a key alone signs in, also for a two-factor user, and adding one takes the password and the code).
   - User name `name` shows every server of the user; `name.<shortId>` opens that one server as the root, which is handy for a bookmark per server.
 - *What the user sees.*
   - The root lists one folder per server the user may see, named after the server (made safe for a file name) with its short id.
