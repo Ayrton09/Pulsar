@@ -336,8 +336,9 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
         await closed.WaitAsync(TimeSpan.FromSeconds(10), Ct);
         await using var creating = await BrowserHub.ConnectAsync(factory, client);
         Assert.True(await creating.Connection.InvokeAsync<bool>("WatchNodes", Ct));
-        // An administrator sees the usage whatever the role says (their connection ended with the role's change too):
-        // once it has been pushed to them twice since the user watched, it would have reached the user if they saw it.
+        // An administrator sees the usage whatever the role says (connected only now: a role's change ends every
+        // connection, theirs too): once it has been pushed to them twice since the user watched, it would have
+        // reached the user if they saw it.
         await using var adminHub = await BrowserHub.ConnectAsync(factory, scenario.Admin);
         Assert.True(await adminHub.Connection.InvokeAsync<bool>("WatchNodes", Ct));
         await InProcessAgent.EventuallyAsync(() => Task.FromResult(adminHub.NodeMetrics.Count(m => m.NodeId == node) >= 2),
