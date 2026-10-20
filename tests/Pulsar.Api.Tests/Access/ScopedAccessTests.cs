@@ -432,6 +432,7 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
                 HttpStatusCode.Forbidden, "access.escalation");
             await AssertCodeAsync(manager.PostAsync($"/api/v1/users/{target}/two-factor/reset"), HttpStatusCode.Forbidden, "access.escalation");
             await AssertCodeAsync(manager.DeleteAsync($"/api/v1/users/{target}/api-keys"), HttpStatusCode.Forbidden, "access.escalation");
+            await AssertCodeAsync(manager.DeleteAsync($"/api/v1/users/{target}/ssh-keys"), HttpStatusCode.Forbidden, "access.escalation");
         }
 
         // Nor can they strip such a user of roles they hold themselves, globally or on a server.

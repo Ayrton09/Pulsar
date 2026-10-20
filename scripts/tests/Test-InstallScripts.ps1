@@ -1973,6 +1973,23 @@ try {
             (Get-Content (Join-Path $workFolder 'c.zip')) -ceq 'new c' -and (Get-Content (Join-Path $workFolder 'd.zip')) -ceq 'new d' -and
             @(Get-ChildItem -LiteralPath $outputFolder -Force -Filter '.replaced-*').Count -eq 0) $notPublished
     }
+    # A new folder that cannot move back out stays, and the earlier one of that name stays aside: moved onto it, it would go
+    # inside it with no error. The error says where each is.
+    $null = New-TestFile (Join-Path $outputFolder 'staged2\old.txt') 'old'; $null = New-TestFile (Join-Path $outputFolder 'e.zip') 'old e'
+    $null = New-TestFile (Join-Path $workFolder 'staged2\new.txt') 'new'; $null = New-TestFile (Join-Path $workFolder 'e.zip') 'new e'
+    $stuckFolder = Join-Path $outputFolder 'staged2'
+    function Move-Item([string] $LiteralPath, [string] $Destination) {
+        if ($LiteralPath -eq $stuckFolder -and $Destination -like '*.build-*') { throw 'held' }
+        Microsoft.PowerShell.Management\Move-Item -LiteralPath $LiteralPath -Destination $Destination
+    }
+    $held = [IO.File]::Open((Join-Path $workFolder 'e.zip'), 'Open', 'Read', 'None')
+    try { $notPublished = Get-Thrown { Publish-Release $workFolder $outputFolder @('staged2', 'e.zip') } }
+    finally { $held.Dispose(); Remove-Item function:Move-Item }
+    $asideLeft = @(Get-ChildItem -LiteralPath $outputFolder -Force -Directory -Filter '.replaced-*')
+    Check 'signing: a folder that cannot move back out keeps the earlier one aside, not inside it, and the error says where each is' (
+        $notPublished -match 'staged2 \(new, in .*staged2 \(earlier, in .*\.replaced-' -and $asideLeft.Count -eq 1 -and (Test-Path (Join-Path $asideLeft[0].FullName 'staged2\old.txt')) -and
+        -not (Test-Path (Join-Path $stuckFolder 'staged2')) -and (Test-Path (Join-Path $stuckFolder 'new.txt')) -and (Get-Content (Join-Path $outputFolder 'e.zip')) -ceq 'old e') $notPublished
+    foreach ($left in $asideLeft) { Remove-Item -LiteralPath $left.FullName -Recurse -Force }
     $otherFolder = Join-Path $outputFolder 'keep-me'; $null = New-TestFile (Join-Path $otherFolder 'f.txt')
     $madeFolder = New-SigningFolder
     $keptSigning = [pscustomobject]@{ MetadataFolder = $madeFolder }

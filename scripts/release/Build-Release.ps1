@@ -19,7 +19,8 @@
 # its SignTool directive (the uninstaller too). Third-party libraries and the PowerShell scripts are not signed.
 # Everything is built in a work folder of its own and moves into the output folder only when it is all there and every
 # signature verified, replacing an earlier build's files all or nothing; a build that fails leaves the output folder as it was.
-# When signing, the Inno Setup compiler too must be in a folder only administrators can change (Program Files).
+# When signing, the Inno Setup compiler too must be in a folder only administrators can change (Program Files: a per-user
+# install of Inno Setup is refused then; install it for all users, or name one with -InnoSetupCompiler).
 # docs\architecture\09-roadmap.md ("Code signing") says how to get a certificate and how to run this.
 param(
     [string] $Version = '0.0.0-dev',
@@ -662,6 +663,8 @@ function Publish-Release([string] $work, [string] $output, [string[]] $names) {
             }
         }
         foreach ($item in $names) {
+            # Never onto a name that is there: a folder moved onto a folder goes inside it, with no error.
+            if (Test-Path -LiteralPath (Join-Path $output $item)) { throw "$item appeared in $output during the move." }
             Move-Item -LiteralPath (Join-Path $work $item) -Destination (Join-Path $output $item)
             $movedIn += $item
         }
@@ -670,10 +673,19 @@ function Publish-Release([string] $work, [string] $output, [string[]] $names) {
         $failure = $_.Exception.Message
         $stuck = @()
         foreach ($item in $movedIn) {
-            try { Move-Item -LiteralPath (Join-Path $output $item) -Destination (Join-Path $work $item) } catch { $stuck += "$item (new, in $output)" }
+            try {
+                if (Test-Path -LiteralPath (Join-Path $work $item)) { throw 'taken' }
+                Move-Item -LiteralPath (Join-Path $output $item) -Destination (Join-Path $work $item)
+            }
+            catch { $stuck += "$item (new, in $output)" }
         }
         foreach ($item in $setAside) {
-            try { Move-Item -LiteralPath (Join-Path $aside $item) -Destination (Join-Path $output $item) } catch { $stuck += "$item (earlier, in $aside)" }
+            try {
+                # The new one still there (it could not move out): the earlier one stays aside rather than go inside it.
+                if (Test-Path -LiteralPath (Join-Path $output $item)) { throw 'taken' }
+                Move-Item -LiteralPath (Join-Path $aside $item) -Destination (Join-Path $output $item)
+            }
+            catch { $stuck += "$item (earlier, in $aside)" }
         }
         if ($stuck.Count -eq 0) {
             Remove-FolderPatiently $aside
