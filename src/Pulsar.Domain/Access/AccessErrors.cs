@@ -48,6 +48,34 @@ public static class AccessErrors
 
     public static DomainError ApiKeyNotFound { get; } = new("api_key.not_found", "The API key does not exist.");
 
+    public static DomainError SshKeyInvalid { get; } =
+        new("ssh_key.invalid", "This is not an SSH public key in OpenSSH format: one line with the key's type, the key and an optional comment.");
+
+    public static DomainError SshKeyPrivate { get; } =
+        new("ssh_key.private_key", "This is a private key: never give it to anyone. Paste the public key (the .pub file) instead.");
+
+    public static DomainError SshKeyWrongFormat { get; } =
+        new("ssh_key.wrong_format",
+            "This public key is in the SSH2 (RFC 4716) format: paste it in OpenSSH format, as PuTTYgen shows it in \"Public key for pasting into OpenSSH authorized_keys file\".");
+
+    public static DomainError SshKeyUnsupported { get; } =
+        new("ssh_key.unsupported_type",
+            "Only Ed25519, ECDSA (P-256, P-384, P-521) and RSA keys are accepted: not DSA, security keys (sk-…) or certificates.");
+
+    public static DomainError SshKeyRsaTooShort { get; } =
+        new("ssh_key.rsa_too_short", $"An RSA key must have at least {SshPublicKey.MinRsaBits} bits.");
+
+    public static DomainError SshKeyNameInvalid { get; } =
+        new("ssh_key.name_invalid", $"An SSH key's name is one line of 1 to {SshKey.MaxNameLength} characters.");
+
+    public static DomainError SshKeyTooMany { get; } =
+        new("ssh_key.too_many", $"A user can have at most {SshKey.MaxPerUser} SSH keys; delete one first.");
+
+    public static DomainError SshKeyDuplicate { get; } =
+        new("ssh_key.duplicate", "This SSH key has been added already, to your account or another one: use another key.");
+
+    public static DomainError SshKeyNotFound { get; } = new("ssh_key.not_found", "The SSH key does not exist.");
+
     public static DomainError RoleNameTaken { get; } = new("role.name_taken", "Another role already has this name.");
 
     public static DomainError RoleInUse { get; } =

@@ -32,6 +32,12 @@ public sealed class SftpOptions
     /// <summary>Password checks one connection may make before it is closed (the per-address limit still applies).</summary>
     public int MaxPasswordAttemptsPerConnection { get; set; } = 3;
 
+    /// <summary>
+    /// SSH keys one connection may offer: as many questions whether a key would do, and as many signed attempts, before
+    /// the next question is answered no and the next attempt closes the connection (the per-address limits still apply).
+    /// </summary>
+    public int MaxKeyAttemptsPerConnection { get; set; } = 6;
+
     /// <summary>Time from the connection to a completed sign-in.</summary>
     public TimeSpan AuthenticationTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
@@ -79,6 +85,7 @@ public sealed class SftpOptions
             "Sftp:MaxConnectionsPerAddress must be at least 1 and at most Sftp:MaxConnections.",
         { MaxSessionsPerUser: < 1 } => "Sftp:MaxSessionsPerUser must be at least 1.",
         { MaxPasswordAttemptsPerConnection: < 1 or > 10 } => "Sftp:MaxPasswordAttemptsPerConnection must be between 1 and 10.",
+        { MaxKeyAttemptsPerConnection: < 1 or > 10 } => "Sftp:MaxKeyAttemptsPerConnection must be between 1 and 10.",
         _ when AuthenticationTimeout <= TimeSpan.Zero || AuthenticationTimeout > TimeSpan.FromMinutes(10) =>
             "Sftp:AuthenticationTimeout must be more than zero and at most 10 minutes.",
         _ when IdleTimeout <= TimeSpan.Zero => "Sftp:IdleTimeout must be more than zero.",

@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <PackageReference Include="Cronos" />
+    <!-- SSH public keys as users paste them: Ed25519 and elliptic curve points checked (SshPublicKey). -->
+    <PackageReference Include="BouncyCastle.Cryptography" />
   </ItemGroup>
 
 </Project>

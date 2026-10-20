@@ -20,7 +20,8 @@ namespace Pulsar.Api.Sftp;
 /// <summary>
 /// The panel's SFTP server (Phase 17, docs/guides/sftp.md): SSH on its own port (2022 by default), one listener for every
 /// node, with <c>Microsoft.DevTunnels.Ssh</c> for the transport and sign-in and Pulsar's own SFTP version 3 handler. Only
-/// modern algorithms are offered (ECDH key exchange, an ECDSA P-256 host key, AES-GCM or AES-CTR with encrypt-then-MAC);
+/// modern algorithms are offered (ECDH key exchange, an ECDSA P-256 host key, AES-GCM or AES-CTR with encrypt-then-MAC,
+/// clients' keys of Ed25519, ECDSA or RSA with SHA-2);
 /// only <c>session</c> channels with the <c>sftp</c> subsystem are accepted: no shell, exec, terminal, environment, X11,
 /// agent or port forwarding. Started after the panel's HTTP endpoints, and again when an administrator turns it on or off
 /// or changes its port (<see cref="Reload"/>), which ends every connection.
@@ -65,7 +66,17 @@ internal sealed partial class SftpHost(
     {
         var configuration = new SshSessionConfiguration(useSecurity: true, enableCompression: false, enableReconnect: false);
         Keep(configuration.KeyExchangeAlgorithms, "ecdh-sha2-nistp384", "ecdh-sha2-nistp256");
-        Keep(configuration.PublicKeyAlgorithms, "ecdsa-sha2-nistp256");
+
+        // The host key's algorithm and those of the keys clients sign in with (docs/guides/sftp.md, "SSH keys"). The
+        // library offers as host key algorithms only those of the keys it holds (the ECDSA P-256 one) and lists all of
+        // them to clients (server-sig-algs). RSA only with SHA-2: "ssh-rsa" (SHA-1) is not among them, so it is refused.
+        configuration.PublicKeyAlgorithms.Clear();
+        configuration.PublicKeyAlgorithms.Add(SshAlgorithms.PublicKey.ECDsaSha2Nistp256);
+        configuration.PublicKeyAlgorithms.Add(SshAlgorithms.PublicKey.ECDsaSha2Nistp384);
+        configuration.PublicKeyAlgorithms.Add(SshAlgorithms.PublicKey.ECDsaSha2Nistp521);
+        configuration.PublicKeyAlgorithms.Add(new SftpEd25519());
+        configuration.PublicKeyAlgorithms.Add(SshAlgorithms.PublicKey.RsaWithSha512);
+        configuration.PublicKeyAlgorithms.Add(SshAlgorithms.PublicKey.RsaWithSha256);
         Keep(configuration.EncryptionAlgorithms, "aes256-gcm@openssh.com", SftpAesCtr.AlgorithmName);
 
         // The same CTR with its keystream made many blocks at a time (SftpAesCtr), still offered after GCM.
@@ -74,13 +85,16 @@ internal sealed partial class SftpHost(
         configuration.EncryptionAlgorithms.Add(new SftpAesCtr());
         Keep(configuration.HmacAlgorithms, "hmac-sha2-512-etm@openssh.com", "hmac-sha2-256-etm@openssh.com");
         configuration.AuthenticationMethods.Clear();
+        configuration.AuthenticationMethods.Add(AuthenticationMethods.PublicKey);
         configuration.AuthenticationMethods.Add(AuthenticationMethods.KeyboardInteractive);
         configuration.AuthenticationMethods.Add(AuthenticationMethods.Password);
         configuration.ProtocolExtensions.Remove(SshProtocolExtensionNames.OpenChannelRequest);
         configuration.ProtocolExtensions.Remove(SshProtocolExtensionNames.SessionReconnect);
         configuration.ProtocolExtensions.Remove(SshProtocolExtensionNames.SessionLatency);
 
-        // "none" counts as one; the password checks are bounded apart (SftpOptions.MaxPasswordAttemptsPerConnection).
+        // Refusals the library counts, in all (each key that is not the user's, each wrong password or code; a method it
+        // does not offer, "none" among them, is refused uncounted within the sign-in deadline). Password checks and keys are
+        // bounded apart (SftpOptions.MaxPasswordAttemptsPerConnection, MaxKeyAttemptsPerConnection).
         configuration.MaxClientAuthenticationAttempts = 10;
         return configuration;
     }
@@ -369,7 +383,10 @@ internal sealed partial class SftpHost(
         {
             socket.NoDelay = true;
             await using var network = new NetworkStream(socket, ownsSocket: true);
-            session = new SshServerSession(CreateConfiguration(), s_trace) { Credentials = new SshServerCredentials(key.Pair) };
+            session = new SftpServerSession(CreateConfiguration(), s_trace, connection, _options.MaxKeyAttemptsPerConnection)
+            {
+                Credentials = new SshServerCredentials(key.Pair),
+            };
             var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             session.Closed += (_, _) => closed.TrySetResult();
             session.Authenticating += (_, e) => authenticator.Handle(connection, e);
@@ -573,6 +590,41 @@ internal sealed partial class SftpHost(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "SFTP closed {Count} connection(s) on arrival: a connection limit was reached (Sftp:Max…)")]
     private static partial void LogRefused(ILogger logger, int count);
+}
+
+/// <summary>
+/// The server's SSH session, refusing a <c>publickey</c> request for an algorithm it does not take (<c>ssh-rsa</c>, which
+/// is SHA-1; <c>ssh-dss</c>; security keys; certificates) as the protocol says (RFC 4252, 7): the library would end the
+/// connection instead, before the client tried its other keys or its password (SSH.NET asks with <c>ssh-rsa</c> first).
+/// Each counts as a question about a key (<see cref="SftpOptions.MaxKeyAttemptsPerConnection"/>): past them, the
+/// connection ends.
+/// </summary>
+internal sealed class SftpServerSession(SshSessionConfiguration configuration, TraceSource trace, SftpConnection connection, int maxKeyQuestions)
+    : SshServerSession(configuration, trace)
+{
+    /// <summary>
+    /// A method no configuration offers: the library answers it with a refusal of its own, which it does not count (this
+    /// session counts the request as a question about a key before it is replaced).
+    /// </summary>
+    internal const string RefusedMethod = "publickey-algorithm-refused";
+
+    protected override Task HandleMessageAsync(SshMessage message, CancellationToken cancellation)
+    {
+        if (message is AuthenticationRequestMessage { MethodName: AuthenticationMethods.PublicKey } request
+            && request.ConvertTo<PublicKeyRequestMessage>().KeyAlgorithmName is var algorithm
+            && !Config.PublicKeyAlgorithms.Any(a => a is not null && a.Name == algorithm))
+        {
+            if (++connection.KeyQuestions > maxKeyQuestions)
+            {
+                connection.Close(SshDisconnectReason.NoMoreAuthMethodsAvailable, "Too many sign-in attempts.");
+                return Task.CompletedTask;
+            }
+
+            message = new AuthenticationRequestMessage(request.ServiceName ?? string.Empty, RefusedMethod, request.Username ?? string.Empty);
+        }
+
+        return base.HandleMessageAsync(message, cancellation);
+    }
 }
 
 /// <summary>The "subsystem" channel request (RFC 4254, 6.5): the SSH library has no message type for it.</summary>

@@ -70,6 +70,7 @@ describe('one-time secrets', () => {
       roles: [],
       access: [],
       apiKeys: 0,
+      sshKeys: 0,
     };
     fakeApi({
       'GET /api/v1/auth/session': session(adminUser),
@@ -89,6 +90,39 @@ describe('one-time secrets', () => {
 
     expect(await within(dialog).findByText(/Password changed/)).toBeInTheDocument();
     await vi.waitFor(() => expect(cacheHolds(queryClient, 'the friend password')).toBe(false));
+  });
+
+  it('drops the password and the code that added an SSH key', async () => {
+    const key: Schemas['SshKeyView'] = {
+      id: '0192f1a0-0000-7000-8000-0000000000s1',
+      name: 'Laptop',
+      type: 'ssh-ed25519',
+      bits: 256,
+      fingerprint: 'SHA256:vkk7w82HhKLd8llWk4tSM08y8S4OwpU/+lEv9zJ9m8s',
+      createdAt: '2026-10-19T12:00:00Z',
+      lastUsedAt: null,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, twoFactorEnabled: true }),
+      'GET /api/v1/auth/two-factor': () => json({ enabled: true, required: false, recoveryCodesLeft: 8 }),
+      'GET /api/v1/account/api-keys': () => json([]),
+      'POST /api/v1/account/ssh-keys': () => json(key, 201),
+    });
+    const queryClient = renderAt('/account');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Add key' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByLabelText('Public key'));
+    await user.paste('ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJODCRrRZ4j1+iszm3o/GYD74tq7eiRucOOuCWPu2UAF');
+    await user.type(within(dialog).getByLabelText('Name'), 'Laptop');
+    await user.type(within(dialog).getByLabelText('Current password'), 'the account password');
+    await user.type(within(dialog).getByLabelText('Code from the app'), '424242');
+    await user.click(within(dialog).getByRole('button', { name: 'Add key' }));
+
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await vi.waitFor(() => expect(cacheHolds(queryClient, 'the account password')).toBe(false));
+    expect(cacheHolds(queryClient, '424242')).toBe(false);
   });
 
   it('drops the SMTP password once saved', async () => {

@@ -138,6 +138,11 @@
     "revokeApiKeys": "Revocar todas",
     "revokeApiKeysConfirm": "¿Revocar todas las API keys de {{name}}? Lo que las use deja de funcionar ya.",
     "apiKeysRevoked": "API keys revocadas.",
+    "sshKeys_one": "{{count}} clave SSH",
+    "sshKeys_other": "{{count}} claves SSH",
+    "deleteSshKeys": "Borrar todas",
+    "deleteSshKeysConfirm": "¿Borrar todas las claves SSH de {{name}}? Las sesiones SFTP que abrieron se cierran ya.",
+    "sshKeysDeleted": "Claves SSH borradas.",
     "access": {
       "title": "Acceso a nodos y servidores",
       "hint": "Un rol de nodo o de servidor vale solo ahí: el usuario ve y administra ese nodo (con sus servidores) o ese servidor, y nada más.",
@@ -289,7 +294,9 @@
         "recovery_code_used": "Entró con un código de recuperación",
         "recovery_codes_renewed": "Generó nuevos códigos de recuperación",
         "api_key_created": "Creó una API key",
-        "api_key_revoked": "Revocó una API key"
+        "api_key_revoked": "Revocó una API key",
+        "ssh_key_added": "Agregó una clave SSH",
+        "ssh_key_deleted": "Borró una clave SSH"
       },
       "user": {
         "created": "Creó un usuario",
@@ -297,7 +304,8 @@
         "deleted": "Eliminó un usuario",
         "password_reset": "Cambió la contraseña de un usuario",
         "two_factor_reset": "Desactivó la verificación en dos pasos de un usuario",
-        "api_keys_revoked": "Revocó las API keys de un usuario"
+        "api_keys_revoked": "Revocó las API keys de un usuario",
+        "ssh_keys_deleted": "Borró las claves SSH de un usuario"
       },
       "role": {
         "created": "Creó un rol",
@@ -446,6 +454,17 @@
       "expiry_invalid": "Elegí cuándo vence la key.",
       "too_many": "Tenés demasiadas API keys: revocá una primero.",
       "not_found": "Esa key ya no existe."
+    },
+    "ssh_key": {
+      "invalid": "Esto no es una clave pública SSH en formato OpenSSH: una línea con el tipo de la clave, la clave y quizás un comentario.",
+      "private_key": "Esto es una clave privada: no se la des nunca a nadie. Pegá la clave pública (el archivo .pub, o el recuadro de PuTTYgen).",
+      "wrong_format": "Esta clave pública está en formato SSH2. En PuTTYgen, copiá el recuadro \"Public key for pasting into OpenSSH authorized_keys file\".",
+      "unsupported_type": "Solo se aceptan claves Ed25519, ECDSA y RSA: no DSA, llaves de seguridad (sk-…) ni certificados.",
+      "rsa_too_short": "Una clave RSA necesita al menos 2048 bits. Creá una clave nueva, mejor Ed25519.",
+      "name_invalid": "Poné un nombre de una línea, de hasta 64 caracteres.",
+      "too_many": "Ya tenés 10 claves SSH: borrá una primero.",
+      "duplicate": "Esta clave ya fue agregada, a tu cuenta o a otra: usá otra clave.",
+      "not_found": "Esa clave ya no existe."
     },
     "unexpected": "Algo salió mal. Probá de nuevo.",
     "auth": {
@@ -784,7 +803,7 @@
   },
   "account": {
     "title": "Mi cuenta",
-    "description": "Tu perfil, tu contraseña, la verificación en dos pasos, el acceso por SFTP, el certificado del panel y tus API keys.",
+    "description": "Tu perfil, tu contraseña, la verificación en dos pasos, el acceso por SFTP y tus claves SSH, el certificado del panel y tus API keys.",
     "profile": "Perfil",
     "userNameFixed": "El usuario no se puede cambiar.",
     "emailHint": "Opcional. No lo ven otros usuarios.",
@@ -1888,16 +1907,37 @@
   },
   "sftp": {
     "title": "Acceso por SFTP",
-    "hint": "Llegá a los archivos de tus servidores con un cliente SFTP (WinSCP, FileZilla, sftp), con tu usuario y contraseña del panel.",
+    "hint": "Llegá a los archivos de tus servidores con un cliente SFTP (WinSCP, FileZilla, sftp), con tu usuario y contraseña del panel o una clave SSH.",
     "disabled": "SFTP está apagado en este panel. Un administrador puede encenderlo.",
     "address": "Dirección",
     "fingerprint": "Huella de la clave del servidor (SHA256)",
     "fingerprintHint": "La primera vez que te conectás, tu cliente muestra la huella del servidor: conectate solo si es exactamente esta.",
-    "twoFactor": "Con la autenticación en dos pasos activada, el cliente pide el código de tu app de autenticación después de la contraseña. Los códigos de recuperación no sirven por SFTP.",
+    "twoFactor": "Con la autenticación en dos pasos activada, el cliente pide el código de tu app de autenticación después de la contraseña (con una clave SSH entrás sin más). Los códigos de recuperación no sirven por SFTP.",
     "serverRoot": "Agregá un punto y el id corto de un servidor a tu usuario para que la carpeta de ese servidor sea la raíz.",
     "copy": "Copiar {{what}}",
     "copyServer": "Copiar la dirección SFTP del servidor",
     "serverHint": "Conectate por SFTP:"
+  },
+  "sshKeys": {
+    "title": "Claves SSH",
+    "hint": "Entrá por SFTP con una clave en vez de tu contraseña. Con una clave entrás sin más, también con la autenticación en dos pasos activada: guardá su parte privada solo para vos, protegida con una frase de contraseña.",
+    "add": "Agregar clave",
+    "empty": "No tenés claves SSH.",
+    "howTo": "Para crear una:",
+    "puttygen": "PuTTYgen (con WinSCP o PuTTY): elegí EdDSA (Ed25519), Generate, poné una frase de contraseña, guardá la clave privada y pegá acá el recuadro \"Public key for pasting into OpenSSH authorized_keys file\".",
+    "sshKeygen": "OpenSSH (Windows también lo trae): ejecutá esto y pegá acá el contenido del archivo .pub que crea:",
+    "name": "Nombre",
+    "nameHint": "Dónde está la clave, por ejemplo \"Notebook del trabajo\". Dejalo vacío para usar el comentario de la clave.",
+    "publicKey": "Clave pública",
+    "publicKeyHint": "Una línea que empieza con ssh-ed25519, ecdsa-sha2-… o ssh-rsa (2048 bits o más). Nunca pegues la clave privada.",
+    "confirmHint": "Con una clave entrás por SFTP sin más, así que agregarla pide tu contraseña y, con la autenticación en dos pasos activada, el código de tu app.",
+    "codeHint": "El código que muestra ahora tu app de autenticación. Los códigos de recuperación no sirven acá.",
+    "fingerprint": "Huella SHA256",
+    "added": "agregada {{when}}",
+    "lastUsed": "último uso {{when}}",
+    "neverUsed": "sin usar",
+    "delete": "Borrar",
+    "deleteConfirm": "¿Borrar la clave {{name}}? Las sesiones SFTP que abrió se cierran ya."
   },
   "publicIpCertificate": {
     "title": "Certificado de la IP pública (Let's Encrypt)",

@@ -21,6 +21,7 @@ const friend: Schemas['UserResponse'] = {
   roles: [],
   access: [],
   apiKeys: 0,
+  sshKeys: 0,
 };
 const operatorRole: Schemas['RoleSummary'] = {
   id: '0192f1a0-0000-7000-8000-0000000000c1',
@@ -159,5 +160,31 @@ describe('users', () => {
     // A shorter wait than the default: the assertion fails with its message before the test itself times out.
     await waitFor(() => expect(screen.queryByText('newbie')).toBeInTheDocument(), { timeout: 2000 });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), { timeout: 2000 });
+  });
+
+  it("deletes all of a user's SSH keys and says how many are left", async () => {
+    const remove = vi.fn(() => json({ ...friend, sshKeys: 0 }));
+    fakeApi({
+      'GET /api/v1/auth/session': session(adminUser),
+      'GET /api/v1/users': () => json([{ ...friend, sshKeys: 2 }]),
+      'GET /api/v1/roles': () => json([]),
+      'GET /api/v1/servers': () => json([]),
+      'GET /api/v1/nodes': () => json([]),
+      [`DELETE /api/v1/users/${friend.id}/ssh-keys`]: remove,
+    });
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirm);
+    renderAt('/admin/users');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Edit friend' });
+    expect(within(dialog).getByText('2 SSH keys')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Delete all' }));
+
+    expect(await within(dialog).findByText('SSH keys deleted.')).toBeInTheDocument();
+    expect(within(dialog).queryByText('2 SSH keys')).not.toBeInTheDocument();
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('friend'));
+    expect(remove).toHaveBeenCalledOnce();
   });
 });

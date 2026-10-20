@@ -107,7 +107,7 @@ Effective permissions(user, server S on node N) =
 3. Holders of `role.manage`/`user.manage` **can only grant permissions they hold themselves** in that scope.
 4. Nobody can change their own assignments.
 5. Every role/access change is audited with the permission diff.
-6. `user.manage` can only change users (edit, disable, delete, reset the password or two-factor, revoke API keys, change their global, node or server roles) who hold no permission the actor lacks where they hold it: every global one globally, every node one on that node, every server one on that server (with its node), and never themselves. A user manager can neither lock out an administrator nor reset the password of someone with a role on a node or server and sign in as them; nor strip such a user of a role both of them hold.
+6. `user.manage` can only change users (edit, disable, delete, reset the password or two-factor, revoke API keys, delete SSH keys, change their global, node or server roles) who hold no permission the actor lacks where they hold it: every global one globally, every node one on that node, every server one on that server (with its node), and never themselves. A user manager can neither lock out an administrator nor reset the password of someone with a role on a node or server and sign in as them; nor strip such a user of a role both of them hold.
 
 There is no `Admin = true`: "administrator" is just a role.
 
@@ -120,6 +120,22 @@ A user creates keys for scripts and tools from their account (`/api/v1/account/a
 - Authentication: a policy scheme sends requests with `Bearer pulsar_…` to the key handler and all others to the cookie; the two are never merged (a cookie sent with a key is ignored). Only endpoints guarded by a permission accept keys; sign-in, the account, two-factor, the keys themselves (`RequireSignedInUser`) and the live hub take the cookie only, so a key never creates keys or changes its user's password. A key from a user who is disabled or deleted stops at once; keys of a user whose role requires two-factor authentication work only while the user has it on.
 - No antiforgery token for key requests (no cookie a browser adds by itself), a rate limit per key (600 requests a minute, `RateLimiting:Auth:ApiKeyPermitLimit`; counted before authorization, so refused requests count too, and requests whose key does not work share one budget per client address), audited with the actor type `api_key` (the user's id, "user · key name").
 - Revoked by their user, or all at once by an administrator (`DELETE /api/v1/users/{id}/api-keys`, `user.manage`).
+
+### SSH keys (Phase 17)
+
+A user adds public keys for SFTP on their account (`/api/v1/account/ssh-keys`, session cookie only, like API keys;
+docs/guides/sftp.md, "SSH keys").
+
+- A key alone signs its user in to SFTP, a two-factor user too (the key is the second factor), so adding one takes the
+  current password and, with two-factor authentication on, the authenticator code (not a recovery code). Wrong ones count
+  towards the lockout; the key itself is checked first.
+- Stored as its blob in SSH's wire format, its type and its SHA-256 fingerprint as OpenSSH prints it, with a name (the
+  key's comment when none is given), when it was added and when it last signed in. At most 10 per user, and a key on one account only (its fingerprint is unique: someone who added
+  another person's public key to their own account would have that person's client sign in there). Ed25519, ECDSA
+  P-256/384/521 and RSA of 2048 bits or more (signed with SHA-2); read strictly (`SshPublicKey`).
+- Deleted by their user (the SFTP sessions the key signed in end) or all at once by an administrator
+  (`DELETE /api/v1/users/{id}/ssh-keys`, `user.manage`), and with their user. A new password or a two-factor reset keeps
+  them, as with API keys; a disabled user's keys do not sign in.
 
 ### Template upgrades (Phase 12)
 
@@ -397,6 +413,18 @@ CREATE TABLE api_keys (  -- Phase 12
     last_used_at  timestamptz,
     revoked_at    timestamptz
 );
+
+CREATE TABLE ssh_keys (  -- Phase 17
+    id            uuid PRIMARY KEY,
+    user_id       uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name          varchar(64) NOT NULL,
+    type          varchar(19) NOT NULL,         -- ssh-ed25519, ecdsa-sha2-nistp256/384/521, ssh-rsa
+    public_key    bytea NOT NULL,               -- the key's blob, SSH wire format (at most 4096 bytes)
+    fingerprint   varchar(50) NOT NULL UNIQUE,  -- SHA256:… as OpenSSH prints it; a key on one account only
+    created_at    timestamptz NOT NULL,
+    last_used_at  timestamptz
+);
+CREATE INDEX ON ssh_keys (user_id);
 
 -- ===================== Operations =====================
 CREATE TABLE operations (

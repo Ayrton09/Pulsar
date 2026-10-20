@@ -117,3 +117,23 @@ internal sealed class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKey>
         builder.HasOne<PulsarUser>().WithMany().HasForeignKey(k => k.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }
+
+internal sealed class SshKeyConfiguration : IEntityTypeConfiguration<SshKey>
+{
+    public void Configure(EntityTypeBuilder<SshKey> builder)
+    {
+        builder.ToTable("ssh_keys");
+        builder.HasKey(k => k.Id);
+        builder.Property(k => k.Id).ValueGeneratedNever();
+        builder.Property(k => k.Name).HasMaxLength(SshKey.MaxNameLength);
+        builder.Property(k => k.Type).HasMaxLength(SshPublicKey.MaxTypeLength);
+        builder.Property(k => k.PublicKey).HasMaxLength(SshPublicKey.MaxBlobLength);
+        builder.Property(k => k.Fingerprint).HasMaxLength(SshKey.FingerprintLength);
+
+        // A key belongs to one account (the sign-in finds it by its fingerprint): nobody can add someone else's public key
+        // to their own account and have that person's client sign in there without a word.
+        builder.HasIndex(k => k.Fingerprint).IsUnique();
+        builder.HasIndex(k => k.UserId);
+        builder.HasOne<PulsarUser>().WithMany().HasForeignKey(k => k.UserId).OnDelete(DeleteBehavior.Cascade);
+    }
+}

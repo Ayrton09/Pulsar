@@ -18,6 +18,8 @@ public static class AuditActions
         public const string RecoveryCodesRenewed = "auth.recovery_codes_renewed";
         public const string ApiKeyCreated = "auth.api_key_created";
         public const string ApiKeyRevoked = "auth.api_key_revoked";
+        public const string SshKeyAdded = "auth.ssh_key_added";
+        public const string SshKeyDeleted = "auth.ssh_key_deleted";
     }
 
     public static class User
@@ -28,6 +30,7 @@ public static class AuditActions
         public const string PasswordReset = "user.password_reset";
         public const string TwoFactorReset = "user.two_factor_reset";
         public const string ApiKeysRevoked = "user.api_keys_revoked";
+        public const string SshKeysDeleted = "user.ssh_keys_deleted";
     }
 
     public static class Node

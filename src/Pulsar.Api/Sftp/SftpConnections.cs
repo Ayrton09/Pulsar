@@ -47,6 +47,15 @@ internal sealed class SftpConnection : IDisposable
 
     public int PasswordChecks { get; set; }
 
+    /// <summary>
+    /// Questions whether a key would do (<c>publickey</c> without a signature), and <c>publickey</c> requests for an
+    /// algorithm the server does not take.
+    /// </summary>
+    public int KeyQuestions { get; set; }
+
+    /// <summary>Signed public key attempts checked.</summary>
+    public int KeyChecks { get; set; }
+
     /// <summary>Sftp subsystems started on the connection's channels.</summary>
     public int Subsystems { get; set; }
 
@@ -142,8 +151,11 @@ internal sealed class SftpConnection : IDisposable
     }
 }
 
-/// <summary>Who signed in on a connection, and as which root (<see cref="ServerShortId"/>: one server's folder).</summary>
-internal sealed record SftpIdentity(UserId UserId, string UserName, string? SecurityStamp, string? ServerShortId);
+/// <summary>
+/// Who signed in on a connection, and as which root (<see cref="ServerShortId"/>: one server's folder); <see cref="Key"/>:
+/// the SSH key it signed in with (null: the password).
+/// </summary>
+internal sealed record SftpIdentity(UserId UserId, string UserName, string? SecurityStamp, string? ServerShortId, SshKeyId? Key = null);
 
 /// <summary>Keyboard-interactive sign-in: the password was right, the code is asked next.</summary>
 internal sealed record SftpInteractiveState(string Login, UserId? AwaitingCodeFor, string? ServerShortId);
@@ -179,6 +191,14 @@ public sealed class SftpConnections(Microsoft.Extensions.Options.IOptions<SftpOp
 
     /// <summary>A role changed: any user's permissions may have.</summary>
     public void EndAll() => End(c => c.Identity is not null, "Panel roles changed. Sign in again.");
+
+    /// <summary>The key was deleted: the sessions it signed in end (the user's others stay).</summary>
+    public void EndKey(UserId user, SshKeyId key) =>
+        End(c => c.Identity is { } identity && identity.UserId == user && identity.Key == key, "The SSH key you signed in with was deleted.");
+
+    /// <summary>All of the user's keys were deleted: every session one of them signed in ends.</summary>
+    public void EndKeys(UserId user) =>
+        End(c => c.Identity is { Key: not null } identity && identity.UserId == user, "The SSH key you signed in with was deleted.");
 
     /// <summary>The server stops or moves: every connection ends.</summary>
     internal void CloseEverything(string message) => End(_ => true, message, SshDisconnectReason.ServiceNotAvailable);

@@ -266,6 +266,48 @@ public static class TwoFactorEndpoints
         return TypedResults.Ok(new RecoveryCodesResponse([.. codes ?? []]));
     }
 
+    /// <summary>
+    /// Confirms a code from the authenticator app of a signed-in user who has two-factor authentication on (adding an SSH
+    /// key): recovery codes are not accepted. Under the account's lock, as the sign-ins: a wrong code counts towards the
+    /// lockout, as at sign-in, so a stolen session and a known password cannot be used to guess it; while locked out,
+    /// every answer is "wrong". A code works once (the replay guard), here too.
+    /// </summary>
+    internal static async Task<ProblemHttpResult?> WrongCodeAsync(PulsarUser user, string? code, UserManager<PulsarUser> users, PulsarDbContext db,
+        SignInLocks locks, IAuditLog audit, string action, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(users);
+        ArgumentNullException.ThrowIfNull(audit);
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            // No answer, no guess: nothing counts.
+            return InvalidCode();
+        }
+
+        using var turn = await locks.AcquireAsync(user.NormalizedUserName!, ct);
+        await db.Entry(user).ReloadAsync(ct);
+        var lockedOut = await users.IsLockedOutAsync(user);
+        var normalized = PulsarAuthenticatorTokenProvider.Normalize(code);
+        if (!lockedOut && normalized is not null && await users.VerifyTwoFactorTokenAsync(user, users.Options.Tokens.AuthenticatorTokenProvider, normalized))
+        {
+            return null;
+        }
+
+        if (!lockedOut)
+        {
+            await SignInLocks.CountFailureAsync(users, db, user);
+        }
+
+        // A refused save of the code's replay guard (another request saved the user meanwhile) is not the entry's.
+        await SignInLocks.DiscardUnsavedAsync(db);
+        audit.Record(action, AuditOutcome.Failure, new { reason = lockedOut ? "locked_out" : "invalid_code" }).WithTarget("user", user.Id.ToString());
+        await db.SaveChangesAsync(CancellationToken.None);
+        return InvalidCode();
+
+        static ProblemHttpResult InvalidCode() => ApiProblems.Create(StatusCodes.Status400BadRequest, "auth.invalid_code",
+            "The code is not valid.", "Type the code your authenticator app shows now (recovery codes do not work here).");
+    }
+
     // The security stamp changed: other sessions end, live channels too (this browser's reconnects with the new cookie).
     private static async Task RenewSessionAsync(HttpContext http, SignInManager<PulsarUser> signIn, PulsarUser user)
     {

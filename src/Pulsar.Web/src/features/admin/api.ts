@@ -192,6 +192,15 @@ export function useRevokeUserApiKeys() {
   });
 }
 
+/** Deletes every SSH key of a user (after a leak): the SFTP sessions they signed in end; answers the user as they are now. */
+export function useDeleteUserSshKeys() {
+  const changed = useAccessChanged();
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.DELETE('/api/v1/users/{id}/ssh-keys', { params: { path: { id } } })),
+    onSuccess: changed,
+  });
+}
+
 export function useRequireTwoFactor() {
   const queryClient = useQueryClient();
   const changed = useAccessChanged();

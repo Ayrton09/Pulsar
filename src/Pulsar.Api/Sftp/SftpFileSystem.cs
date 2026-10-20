@@ -66,7 +66,10 @@ internal sealed class SftpOperation(AsyncServiceScope scope, EffectivePermission
 /// </summary>
 internal sealed class SftpFileSystem(SftpConnection connection, IServiceScopeFactory scopes, TimeProvider clock)
 {
-    /// <summary>How often the user is read again (disabled, deleted, a new security stamp): the session ends then.</summary>
+    /// <summary>
+    /// How often the user is read again (disabled, deleted, a new security stamp, the SSH key it signed in with deleted):
+    /// the session ends then.
+    /// </summary>
     private static readonly TimeSpan s_revalidation = TimeSpan.FromSeconds(15);
 
     private const int MaxFolderNameLength = 64;
@@ -278,7 +281,8 @@ internal sealed class SftpFileSystem(SftpConnection connection, IServiceScopeFac
         var user = await users.FindByIdAsync(identity.UserId.Value.ToString());
         var stillValid = user is { IsDisabled: false } && string.Equals(user.SecurityStamp, identity.SecurityStamp, StringComparison.Ordinal)
             && (user.TwoFactorEnabled
-                || !(await services.GetRequiredService<IPermissionEvaluator>().GetAsync(user.Id, CancellationToken.None)).RequiresTwoFactor);
+                || !(await services.GetRequiredService<IPermissionEvaluator>().GetAsync(user.Id, CancellationToken.None)).RequiresTwoFactor)
+            && (identity.Key is not { } key || await services.GetRequiredService<SshKeys>().ExistsAsync(identity.UserId, key, CancellationToken.None));
         if (!stillValid)
         {
             connection.Close(SshDisconnectReason.ByApplication, "Your panel session ended. Sign in again.");

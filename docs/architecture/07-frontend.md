@@ -57,7 +57,7 @@ Each `feature` holds `api.ts` (TanStack Query hooks), its pages/components and t
 /nodes                             list; new nodes are created in a dialog (also open to node.credentials.manage and settings.manage, for their sections)
 /nodes/:id                         one page: usage, drives, allocations, credentials, administration
 /admin/{users|roles|audit|notifications|backup-storage}
-/account                           profile, password, 2FA, SFTP access, panel certificate, API keys
+/account                           profile, password, 2FA, SFTP access and SSH keys, panel certificate, API keys
 ```
 
 The server page has a fixed header (name, status, power actions, live CPU/RAM) and tabs (`?tab=`); tabs without permission are hidden. Why an operation failed (Recent operations) and why the node refused a power action are shown in the user's language from their codes (`errors.*`), the code itself only as a tooltip, and the agent's own words when a code has no translation. The node page is one page of sections. There is no settings page: the panel's own settings are in its `appsettings.Production.json` (docs/guides/install.md), notification settings in `/admin/notifications`.
@@ -171,6 +171,18 @@ The server page's Administration section says when a newer version of the server
 - `/admin/users`: how many keys a user has, and Revoke all (asked first).
 - The audit log shows key actions as "API key: user · key".
 - API: `GET`/`POST /api/v1/account/api-keys`, `DELETE /api/v1/account/api-keys/{id}`, `DELETE /api/v1/users/{id}/api-keys`.
+
+## SSH keys
+
+- `/account`, after SFTP access: the user's SSH keys (name, type such as "Ed25519" or "RSA 4096", the SHA256 fingerprint,
+  when added, last use) with Delete (asked first); with none, how to make one (PuTTYgen's EdDSA key and its "Public key
+  for pasting into OpenSSH authorized_keys file" box, `ssh-keygen -t ed25519`). Add key: the public key's line (a
+  textarea; its comment is shown as the name it gets), an optional name, the current password and, for a two-factor user,
+  the code from the app. The password and the code are dropped from the cache once the key is added.
+- `/admin/users`: how many SSH keys a user has, and Delete all (asked first).
+- API: `GET`/`POST /api/v1/account/ssh-keys`, `DELETE /api/v1/account/ssh-keys/{id}`, `DELETE /api/v1/users/{id}/ssh-keys`;
+  errors `ssh_key.invalid`, `.private_key`, `.wrong_format`, `.unsupported_type`, `.rsa_too_short`, `.name_invalid` (400),
+  `.duplicate`, `.too_many` (409), `.not_found` (404), and `auth.wrong_current_password`, `auth.invalid_code` (400).
 
 ## Client-side security
 

@@ -138,6 +138,11 @@
     "revokeApiKeys": "Revoke all",
     "revokeApiKeysConfirm": "Revoke every API key of {{name}}? Whatever uses them stops working now.",
     "apiKeysRevoked": "API keys revoked.",
+    "sshKeys_one": "{{count}} SSH key",
+    "sshKeys_other": "{{count}} SSH keys",
+    "deleteSshKeys": "Delete all",
+    "deleteSshKeysConfirm": "Delete every SSH key of {{name}}? The SFTP sessions they signed in end now.",
+    "sshKeysDeleted": "SSH keys deleted.",
     "access": {
       "title": "Access to nodes and servers",
       "hint": "A node or server role applies there only: the user sees and manages that node (with its servers) or that server, and nothing else.",
@@ -289,7 +294,9 @@
         "recovery_code_used": "Signed in with a recovery code",
         "recovery_codes_renewed": "Got new recovery codes",
         "api_key_created": "Created an API key",
-        "api_key_revoked": "Revoked an API key"
+        "api_key_revoked": "Revoked an API key",
+        "ssh_key_added": "Added an SSH key",
+        "ssh_key_deleted": "Deleted an SSH key"
       },
       "user": {
         "created": "Created a user",
@@ -297,7 +304,8 @@
         "deleted": "Deleted a user",
         "password_reset": "Set a user's password",
         "two_factor_reset": "Turned off a user's two-factor authentication",
-        "api_keys_revoked": "Revoked a user's API keys"
+        "api_keys_revoked": "Revoked a user's API keys",
+        "ssh_keys_deleted": "Deleted a user's SSH keys"
       },
       "role": {
         "created": "Created a role",
@@ -445,6 +453,17 @@
       "permissions_invalid": "Choose at least one permission.",
       "expiry_invalid": "Choose when the key expires.",
       "too_many": "You have too many API keys: revoke one first.",
+      "not_found": "That key does not exist any more."
+    },
+    "ssh_key": {
+      "invalid": "This is not an SSH public key in OpenSSH format: one line with the key's type, the key and maybe a comment.",
+      "private_key": "This is a private key: never give it to anyone. Paste the public key instead (the .pub file, or PuTTYgen's box).",
+      "wrong_format": "This public key is in the SSH2 format. In PuTTYgen, copy the box \"Public key for pasting into OpenSSH authorized_keys file\" instead.",
+      "unsupported_type": "Only Ed25519, ECDSA and RSA keys are accepted: not DSA, security keys (sk-…) or certificates.",
+      "rsa_too_short": "An RSA key needs at least 2048 bits. Make a new key, preferably Ed25519.",
+      "name_invalid": "Give the key a name of one line, up to 64 characters.",
+      "too_many": "You have 10 SSH keys: delete one first.",
+      "duplicate": "This key has been added already, to your account or another one: use another key.",
       "not_found": "That key does not exist any more."
     },
     "unexpected": "Something went wrong. Try again.",
@@ -784,7 +803,7 @@
   },
   "account": {
     "title": "My account",
-    "description": "Your profile, password, two-factor authentication, SFTP access, the panel's certificate and API keys.",
+    "description": "Your profile, password, two-factor authentication, SFTP access and SSH keys, the panel's certificate and API keys.",
     "profile": "Profile",
     "userNameFixed": "The user name cannot be changed.",
     "emailHint": "Optional. Not shown to other users.",
@@ -1888,16 +1907,37 @@
   },
   "sftp": {
     "title": "SFTP access",
-    "hint": "Reach the files of your servers with an SFTP client (WinSCP, FileZilla, sftp), with your panel user name and password.",
+    "hint": "Reach the files of your servers with an SFTP client (WinSCP, FileZilla, sftp), with your panel user name and password or an SSH key.",
     "disabled": "SFTP is turned off on this panel. An administrator can turn it on.",
     "address": "Address",
     "fingerprint": "Host key fingerprint (SHA256)",
     "fingerprintHint": "The first time you connect, your client shows the server's fingerprint: connect only if it is exactly this one.",
-    "twoFactor": "With two-factor authentication on, the client asks for the code from your authenticator app after the password. Recovery codes do not work over SFTP.",
+    "twoFactor": "With two-factor authentication on, the client asks for the code from your authenticator app after the password (an SSH key signs you in on its own). Recovery codes do not work over SFTP.",
     "serverRoot": "Add a dot and a server's short id to your user name to make that server's folder the root.",
     "copy": "Copy {{what}}",
     "copyServer": "Copy the server's SFTP address",
     "serverHint": "Connect with SFTP:"
+  },
+  "sshKeys": {
+    "title": "SSH keys",
+    "hint": "Sign in to SFTP with a key instead of your password. A key signs you in on its own, also with two-factor authentication on: keep its private part to yourself, protected by a passphrase.",
+    "add": "Add key",
+    "empty": "You have no SSH keys.",
+    "howTo": "To make one:",
+    "puttygen": "PuTTYgen (with WinSCP or PuTTY): choose EdDSA (Ed25519), Generate, give it a passphrase, save the private key, and paste here the box \"Public key for pasting into OpenSSH authorized_keys file\".",
+    "sshKeygen": "OpenSSH (Windows has it too): run this and paste here the contents of the .pub file it makes:",
+    "name": "Name",
+    "nameHint": "Where the key is, e.g. \"Work laptop\". Leave it empty to use the key's comment.",
+    "publicKey": "Public key",
+    "publicKeyHint": "One line starting with ssh-ed25519, ecdsa-sha2-… or ssh-rsa (2048 bits or more). Never paste the private key.",
+    "confirmHint": "A key signs you in to SFTP on its own, so adding one takes your password and, with two-factor authentication on, the code from your app.",
+    "codeHint": "The code your authenticator app shows now. Recovery codes do not work here.",
+    "fingerprint": "SHA256 fingerprint",
+    "added": "added {{when}}",
+    "lastUsed": "last used {{when}}",
+    "neverUsed": "never used",
+    "delete": "Delete",
+    "deleteConfirm": "Delete the key {{name}}? The SFTP sessions it signed in end now."
   },
   "publicIpCertificate": {
     "title": "Public IP certificate (Let's Encrypt)",

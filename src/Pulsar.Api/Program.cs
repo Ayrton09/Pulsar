@@ -133,6 +133,7 @@ try
         .ProducesProblem(StatusCodes.Status409Conflict);
     api.MapGroup("/auth").WithTags("Auth").MapAuthEndpoints();
     api.MapApiKeyEndpoints();
+    api.MapSshKeyEndpoints();
     api.MapUserEndpoints();
     api.MapRoleEndpoints();
     api.MapAuditEndpoints();
