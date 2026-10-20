@@ -36,14 +36,15 @@ public sealed class SshKeyApiTests(PulsarApiFactory factory) : IClassFixture<Pul
         using var account = await scenario.SignInAsync("ssh-uma");
         using var key = TestSshKey.Ed25519Key("uma@laptop");
 
-        // A wrong password: refused, counted towards the lockout, audited.
+        // A wrong password: refused, counted towards the lockout, audited with the key it was for.
         using (var wrong = await account.PostAsync("/api/v1/account/ssh-keys", new AddSshKeyRequest(null, key.Line, "not my password", null)))
         {
             await SetupTests.AssertProblemAsync(wrong, HttpStatusCode.BadRequest, "auth.wrong_current_password");
         }
 
         Assert.Equal(1, (await UserAsync("ssh-uma")).AccessFailedCount);
-        Assert.Contains(await AuditAsync(AuditActions.Auth.SshKeyAdded), e => e.Outcome == AuditOutcome.Failure && e.TargetId == uma.Id.ToString());
+        Assert.Contains(await AuditAsync(AuditActions.Auth.SshKeyAdded), e => e.Outcome == AuditOutcome.Failure && e.TargetId == uma.Id.ToString()
+            && e.Metadata!.Contains(key.Fingerprint, StringComparison.Ordinal));
 
         // Without a name, the key's comment names it.
         var added = await key.AddAsync(account);
@@ -109,7 +110,7 @@ public sealed class SshKeyApiTests(PulsarApiFactory factory) : IClassFixture<Pul
 
         Assert.Equal(2, (await UserAsync("ssh-vera")).AccessFailedCount);
         Assert.Contains(await AuditAsync(AuditActions.Auth.SshKeyAdded), e => e.Outcome == AuditOutcome.Failure && e.TargetId == vera.Id.ToString()
-            && e.Metadata!.Contains("invalid_code", StringComparison.Ordinal));
+            && e.Metadata!.Contains("invalid_code", StringComparison.Ordinal) && e.Metadata.Contains(key.Fingerprint, StringComparison.Ordinal));
         Assert.Empty((await account.Http.GetFromJsonAsync<List<SshKeyView>>("/api/v1/account/ssh-keys", AccessScenario.Json, Ct))!);
 
         // The code of the app: added; the same code again is not taken a second time.
@@ -127,7 +128,7 @@ public sealed class SshKeyApiTests(PulsarApiFactory factory) : IClassFixture<Pul
     {
         var scenario = await AccessScenario.CreateAsync(factory);
         var walt = await scenario.CreateUserAsync("ssh-walt");
-        await scenario.CreateUserAsync("ssh-xena");
+        var xena = await scenario.CreateUserAsync("ssh-xena");
         using var account = await scenario.SignInAsync("ssh-walt");
         using var other = await scenario.SignInAsync("ssh-xena");
         var keys = Enumerable.Range(0, SshKey.MaxPerUser + 1).Select(i => TestSshKey.Ed25519Key($"key-{i}")).ToList();
@@ -161,6 +162,10 @@ public sealed class SshKeyApiTests(PulsarApiFactory factory) : IClassFixture<Pul
             {
                 await SetupTests.AssertProblemAsync(hers, HttpStatusCode.Conflict, "ssh_key.duplicate");
             }
+
+            // That try is audited, with the key, on their account.
+            Assert.Contains(await AuditAsync(AuditActions.Auth.SshKeyAdded), e => e.Outcome == AuditOutcome.Failure && e.TargetId == xena.Id.ToString()
+                && e.Metadata!.Contains("ssh_key.duplicate", StringComparison.Ordinal) && e.Metadata.Contains(keys[0].Fingerprint, StringComparison.Ordinal));
 
             // Deleted by its owner: audited, gone, and room for another.
             using (var deleted = await account.DeleteAsync($"/api/v1/account/ssh-keys/{added[0].Id}"))

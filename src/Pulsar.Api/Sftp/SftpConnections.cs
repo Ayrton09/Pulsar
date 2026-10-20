@@ -56,6 +56,9 @@ internal sealed class SftpConnection : IDisposable
     /// <summary>Signed public key attempts checked.</summary>
     public int KeyChecks { get; set; }
 
+    /// <summary>Sign-in requests of any method (<see cref="SftpServerSession.MaxAuthenticationRequests"/>).</summary>
+    public int AuthenticationRequests { get; set; }
+
     /// <summary>Sftp subsystems started on the connection's channels.</summary>
     public int Subsystems { get; set; }
 

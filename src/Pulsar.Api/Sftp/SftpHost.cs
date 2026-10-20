@@ -93,8 +93,8 @@ internal sealed partial class SftpHost(
         configuration.ProtocolExtensions.Remove(SshProtocolExtensionNames.SessionLatency);
 
         // Refusals the library counts, in all (each key that is not the user's, each wrong password or code; a method it
-        // does not offer, "none" among them, is refused uncounted within the sign-in deadline). Password checks and keys are
-        // bounded apart (SftpOptions.MaxPasswordAttemptsPerConnection, MaxKeyAttemptsPerConnection).
+        // does not offer, "none" among them, it refuses uncounted, so SftpServerSession bounds requests of every method).
+        // Password checks and keys are bounded apart (SftpOptions.MaxPasswordAttemptsPerConnection, MaxKeyAttemptsPerConnection).
         configuration.MaxClientAuthenticationAttempts = 10;
         return configuration;
     }
@@ -597,7 +597,7 @@ internal sealed partial class SftpHost(
 /// is SHA-1; <c>ssh-dss</c>; security keys; certificates) as the protocol says (RFC 4252, 7): the library would end the
 /// connection instead, before the client tried its other keys or its password (SSH.NET asks with <c>ssh-rsa</c> first).
 /// Each counts as a question about a key (<see cref="SftpOptions.MaxKeyAttemptsPerConnection"/>): past them, the
-/// connection ends.
+/// connection ends. Sign-in requests of every method are bounded too (<see cref="MaxAuthenticationRequests"/>).
 /// </summary>
 internal sealed class SftpServerSession(SshSessionConfiguration configuration, TraceSource trace, SftpConnection connection, int maxKeyQuestions)
     : SshServerSession(configuration, trace)
@@ -608,8 +608,22 @@ internal sealed class SftpServerSession(SshSessionConfiguration configuration, T
     /// </summary>
     internal const string RefusedMethod = "publickey-algorithm-refused";
 
+    /// <summary>
+    /// Sign-in requests one connection may make, of any method. The library counts only refused keys, passwords and codes:
+    /// <c>none</c>, a method nobody offers or a keyboard-interactive start would otherwise cost nothing, as many as the
+    /// sign-in deadline lets through, each still work for the panel. Far more than a client that tries all it may needs
+    /// (<c>none</c>, its keys asked about and signed, passwords and codes).
+    /// </summary>
+    internal const int MaxAuthenticationRequests = 64;
+
     protected override Task HandleMessageAsync(SshMessage message, CancellationToken cancellation)
     {
+        if (message is AuthenticationRequestMessage && ++connection.AuthenticationRequests > MaxAuthenticationRequests)
+        {
+            connection.Close(SshDisconnectReason.NoMoreAuthMethodsAvailable, "Too many sign-in attempts.");
+            return Task.CompletedTask;
+        }
+
         if (message is AuthenticationRequestMessage { MethodName: AuthenticationMethods.PublicKey } request
             && request.ConvertTo<PublicKeyRequestMessage>().KeyAlgorithmName is var algorithm
             && !Config.PublicKeyAlgorithms.Any(a => a is not null && a.Name == algorithm))

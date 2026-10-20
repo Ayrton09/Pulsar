@@ -273,7 +273,7 @@ public static class TwoFactorEndpoints
     /// every answer is "wrong". A code works once (the replay guard), here too.
     /// </summary>
     internal static async Task<ProblemHttpResult?> WrongCodeAsync(PulsarUser user, string? code, UserManager<PulsarUser> users, PulsarDbContext db,
-        SignInLocks locks, IAuditLog audit, string action, CancellationToken ct)
+        SignInLocks locks, IAuditLog audit, string action, CancellationToken ct, string? fingerprint = null)
     {
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(users);
@@ -300,7 +300,8 @@ public static class TwoFactorEndpoints
 
         // A refused save of the code's replay guard (another request saved the user meanwhile) is not the entry's.
         await SignInLocks.DiscardUnsavedAsync(db);
-        audit.Record(action, AuditOutcome.Failure, new { reason = lockedOut ? "locked_out" : "invalid_code" }).WithTarget("user", user.Id.ToString());
+        var reason = lockedOut ? "locked_out" : "invalid_code";
+        audit.Record(action, AuditOutcome.Failure, fingerprint is null ? new { reason } : new { reason, fingerprint }).WithTarget("user", user.Id.ToString());
         await db.SaveChangesAsync(CancellationToken.None);
         return InvalidCode();
 

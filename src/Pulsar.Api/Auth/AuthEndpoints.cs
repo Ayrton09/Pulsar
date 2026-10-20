@@ -276,8 +276,9 @@ public static class AuthEndpoints
     /// guesses count towards the lockout like failed sign-ins, so a stolen session cannot be used to guess the password;
     /// while locked out, every answer is "wrong".
     /// </summary>
+    /// <param name="fingerprint">The SSH key being added, recorded with a refusal so the audit log says which key it was.</param>
     internal static async Task<ProblemHttpResult?> WrongPasswordAsync(PulsarUser user, string password, UserManager<PulsarUser> users,
-        PulsarDbContext db, SignInLocks locks, IAuditLog audit, string action, CancellationToken ct)
+        PulsarDbContext db, SignInLocks locks, IAuditLog audit, string action, CancellationToken ct, string? fingerprint = null)
     {
         // Under the account's lock, as the sign-ins: parallel guesses each count.
         using var turn = await locks.AcquireAsync(user.NormalizedUserName!, ct);
@@ -294,7 +295,8 @@ public static class AuthEndpoints
         }
 
         await SignInLocks.DiscardUnsavedAsync(db);
-        audit.Record(action, AuditOutcome.Failure, new { reason = lockedOut ? "locked_out" : "wrong_current_password" })
+        var reason = lockedOut ? "locked_out" : "wrong_current_password";
+        audit.Record(action, AuditOutcome.Failure, fingerprint is null ? new { reason } : new { reason, fingerprint })
             .WithTarget("user", user.Id.ToString());
         await db.SaveChangesAsync(CancellationToken.None);
         return ApiProblems.Create(StatusCodes.Status400BadRequest, "auth.wrong_current_password", "The current password is not correct.");

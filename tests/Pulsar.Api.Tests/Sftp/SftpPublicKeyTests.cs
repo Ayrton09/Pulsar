@@ -2,12 +2,14 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.DevTunnels.Ssh;
 using Microsoft.DevTunnels.Ssh.Events;
+using Microsoft.DevTunnels.Ssh.Messages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Access;
@@ -197,6 +199,42 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
     }
 
     [DatabaseFact]
+    public async Task SignInRequestsOfAnyMethodAreBoundedPerConnection()
+    {
+        _ = await AccessScenario.CreateAsync(factory);
+        var port = await factory.PortAsync();
+        using var tcp = new TcpClient();
+        await tcp.ConnectAsync("127.0.0.1", port, Ct);
+        using var session = new RawClientSession();
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        session.Closed += (_, _) => closed.TrySetResult();
+        session.Authenticating += (_, e) =>
+        {
+            if (e.AuthenticationType == SshAuthenticationType.ServerPublicKey)
+            {
+                e.AuthenticationTask = Task.FromResult<ClaimsPrincipal?>(new ClaimsPrincipal());
+            }
+        };
+        await session.ConnectAsync(tcp.GetStream(), Ct).WaitAsync(SftpApiFactory.Timeout, Ct);
+
+        // A wrong password (the client starts the sign-in service with it), then requests the library refuses uncounted:
+        // "none" and a method nobody offers.
+        var wrong = new SshClientCredentials("flood-nobody", "not the password");
+        Assert.False(await session.AuthenticateAsync(wrong).WaitAsync(SftpApiFactory.Timeout, Ct));
+        for (var i = 2; i < SftpServerSession.MaxAuthenticationRequests; i++)
+        {
+            await session.SendAsync(new AuthenticationRequestMessage("ssh-connection", i % 2 == 0 ? "none" : "no-such-method", "flood-nobody"));
+        }
+
+        // The last one allowed is answered, and the connection stays; one more ends it at once (well before the sign-in
+        // deadline, 30 seconds from the connection, would).
+        Assert.False(await session.AuthenticateAsync(wrong).WaitAsync(SftpApiFactory.Timeout, Ct));
+        Assert.False(session.IsClosed);
+        await session.SendAsync(new AuthenticationRequestMessage("ssh-connection", "none", "flood-nobody"));
+        await closed.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+    }
+
+    [DatabaseFact]
     public async Task DisabledLockedOutAndUnpreparedUsersAreRefusedTheirKeys()
     {
         var scenario = await AccessScenario.CreateAsync(factory);
@@ -343,6 +381,16 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
     /// Whether a raw session signs in with <paramref name="pair"/> under the name of <paramref name="algorithm"/> (trying
     /// up to <paramref name="attempts"/> times), and is still connected afterwards.
     /// </summary>
+    /// <summary>A client session that sends any message, as a client of someone else's might: the library keeps that to itself.</summary>
+    private sealed class RawClientSession() : SshClientSession(new SshSessionConfiguration(), new TraceSource("sftp-raw-tests", SourceLevels.Off))
+    {
+        private static readonly MethodInfo s_send = typeof(SshSession).GetMethod("SendMessageAsync",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, [typeof(SshMessage), typeof(CancellationToken)], null)
+            ?? throw new MissingMethodException(nameof(SshSession), "SendMessageAsync");
+
+        public Task SendAsync(SshMessage message) => (Task)s_send.Invoke(this, [message, Ct])!;
+    }
+
     private static async Task<(bool SignedIn, bool Connected)> SignsInAsync(int port, string login, Algorithms.IKeyPair pair,
         Algorithms.PublicKeyAlgorithm algorithm, int attempts = 1)
     {

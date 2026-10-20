@@ -66,21 +66,33 @@ public static class SshKeyEndpoints
             return ApiProblems.FromDomainError(valid.Error!);
         }
 
-        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, locks, audit, AuditActions.Auth.SshKeyAdded, ct) is { } wrong)
+        // From here on a refusal is audited with the key's fingerprint: whoever tried had the session at least.
+        var fingerprint = parsed.Value.Fingerprint;
+        if (await AuthEndpoints.WrongPasswordAsync(user, request.Password, users, db, locks, audit, AuditActions.Auth.SshKeyAdded, ct, fingerprint)
+            is { } wrong)
         {
             return wrong;
         }
 
         if (user.TwoFactorEnabled
-            && await TwoFactorEndpoints.WrongCodeAsync(user, request.Code, users, db, locks, audit, AuditActions.Auth.SshKeyAdded, ct) is { } wrongCode)
+            && await TwoFactorEndpoints.WrongCodeAsync(user, request.Code, users, db, locks, audit, AuditActions.Auth.SshKeyAdded, ct, fingerprint)
+            is { } wrongCode)
         {
             return wrongCode;
         }
 
         var added = await keys.AddAsync(user.Id, request.Name, parsed.Value, ct);
-        return added.IsSuccess
-            ? TypedResults.Created($"/api/v1/account/ssh-keys/{added.Value.Id}", added.Value)
-            : ApiProblems.FromDomainError(added.Error!);
+        if (added.IsSuccess)
+        {
+            return TypedResults.Created($"/api/v1/account/ssh-keys/{added.Value.Id}", added.Value);
+        }
+
+        // Another account has the key, or the last place went meanwhile: what was not saved goes, the refusal is recorded.
+        await SignInLocks.DiscardUnsavedAsync(db);
+        audit.Record(AuditActions.Auth.SshKeyAdded, AuditOutcome.Failure, new { reason = added.Error!.Code, fingerprint })
+            .WithTarget("user", user.Id.ToString());
+        await db.SaveChangesAsync(CancellationToken.None);
+        return ApiProblems.FromDomainError(added.Error!);
     }
 
     /// <summary>The SFTP sessions the key signed in end with it.</summary>
