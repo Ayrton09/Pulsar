@@ -203,25 +203,9 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
     {
         _ = await AccessScenario.CreateAsync(factory);
         var port = await factory.PortAsync();
-        using var tcp = new TcpClient();
-        await tcp.ConnectAsync("127.0.0.1", port, Ct);
-        using var session = new RawClientSession();
-        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        session.Closed += (_, _) => closed.TrySetResult();
-        session.Authenticating += (_, e) =>
-        {
-            if (e.AuthenticationType == SshAuthenticationType.ServerPublicKey)
-            {
-                e.AuthenticationTask = Task.FromResult<ClaimsPrincipal?>(new ClaimsPrincipal());
-            }
-        };
-        await session.ConnectAsync(tcp.GetStream(), Ct).WaitAsync(SftpApiFactory.Timeout, Ct);
 
-        // A wrong password (the client starts the sign-in service with it), then requests the library refuses uncounted:
-        // "none" and a method nobody offers.
-        var wrong = new SshClientCredentials("flood-nobody", "not the password");
-        Assert.False(await session.AuthenticateAsync(wrong).WaitAsync(SftpApiFactory.Timeout, Ct));
-        session.Raw = true;
+        // A wrong password, then requests the library refuses uncounted: "none" and a method nobody offers.
+        using var session = await RawClientSession.PastAWrongPasswordAsync(port);
         for (var i = 1; i < SftpServerSession.MaxAuthenticationRequests; i++)
         {
             await session.SendAsync(new AuthenticationRequestMessage("ssh-connection", i % 2 == 0 ? "none" : "no-such-method", "flood-nobody"));
@@ -233,7 +217,32 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
             "every request answered");
         Assert.False(session.IsClosed);
         await session.SendAsync(new AuthenticationRequestMessage("ssh-connection", "none", "flood-nobody"));
-        await closed.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await session.Ended.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+    }
+
+    [DatabaseFact]
+    public async Task TheServersOwnSignInMessagesFromAClientEndItsConnection()
+    {
+        _ = await AccessScenario.CreateAsync(factory);
+        var port = await factory.PortAsync();
+        var stayed = new List<string>();
+
+        // (Message 60, a server's PK_OK or INFO_REQUEST, never reaches the session: the library answers it as unimplemented.)
+        foreach (var message in new SshMessage[] { new AuthenticationSuccessMessage(), new AuthenticationFailureMessage { MethodNames = ["password"] } })
+        {
+            using var session = await RawClientSession.PastAWrongPasswordAsync(port);
+            await session.SendAsync(message);
+            if (await Task.WhenAny(session.Ended, Task.Delay(TimeSpan.FromSeconds(5), Ct)) != session.Ended)
+            {
+                stayed.Add(message.GetType().Name);
+            }
+        }
+
+        Assert.Empty(stayed);
+
+        // The server goes on: the next client gets its answer.
+        using var after = await RawClientSession.PastAWrongPasswordAsync(port);
+        Assert.False(after.IsClosed);
     }
 
     [DatabaseFact]
@@ -384,33 +393,76 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
     /// up to <paramref name="attempts"/> times), and is still connected afterwards.
     /// </summary>
     /// <summary>A client session that sends any message, as a client of someone else's might: the library keeps that to itself.</summary>
-    private sealed class RawClientSession() : SshClientSession(new SshSessionConfiguration(), new TraceSource("sftp-raw-tests", SourceLevels.Off))
+    private sealed class RawClientSession : SshClientSession
     {
         private static readonly MethodInfo s_send = typeof(SshSession).GetMethod("SendMessageAsync",
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, [typeof(SshMessage), typeof(CancellationToken)], null)
             ?? throw new MissingMethodException(nameof(SshSession), "SendMessageAsync");
 
+        private readonly TcpClient _tcp = new();
+        private readonly TaskCompletionSource _ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _refusals;
+        private bool _raw;
 
-        /// <summary>
-        /// Once set, the server's refusals are counted here and kept from the library, which would take them for answers to
-        /// sign-ins of its own.
-        /// </summary>
-        public bool Raw { get; set; }
+        private RawClientSession()
+            : base(new SshSessionConfiguration(), new TraceSource("sftp-raw-tests", SourceLevels.Off))
+        {
+            Closed += (_, _) => _ended.TrySetResult();
+            Authenticating += (_, e) =>
+            {
+                if (e.AuthenticationType == SshAuthenticationType.ServerPublicKey)
+                {
+                    e.AuthenticationTask = Task.FromResult<ClaimsPrincipal?>(new ClaimsPrincipal());
+                }
+            };
+        }
 
+        /// <summary>When the connection ended, by either side.</summary>
+        public Task Ended => _ended.Task;
+
+        /// <summary>The server's refusals of what was sent raw: kept from the library, which would take them for its own.</summary>
         public int Refusals => Volatile.Read(ref _refusals);
+
+        /// <summary>Connected and past a wrong password (the client starts the sign-in service with it); raw from then on.</summary>
+        public static async Task<RawClientSession> PastAWrongPasswordAsync(int port)
+        {
+            var session = new RawClientSession();
+            try
+            {
+                await session._tcp.ConnectAsync("127.0.0.1", port, Ct);
+                await session.ConnectAsync(session._tcp.GetStream(), Ct).WaitAsync(SftpApiFactory.Timeout, Ct);
+                var wrong = new SshClientCredentials("flood-nobody", "not the password");
+                Assert.False(await session.AuthenticateAsync(wrong).WaitAsync(SftpApiFactory.Timeout, Ct));
+                session._raw = true;
+                return session;
+            }
+            catch
+            {
+                session.Dispose();
+                throw;
+            }
+        }
 
         public Task SendAsync(SshMessage message) => (Task)s_send.Invoke(this, [message, Ct])!;
 
         protected override Task HandleMessageAsync(SshMessage message, CancellationToken cancellation)
         {
-            if (Raw && message is AuthenticationFailureMessage)
+            if (_raw && message is AuthenticationFailureMessage)
             {
                 Interlocked.Increment(ref _refusals);
                 return Task.CompletedTask;
             }
 
             return base.HandleMessageAsync(message, cancellation);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing)
+            {
+                _tcp.Dispose();
+            }
         }
     }
 

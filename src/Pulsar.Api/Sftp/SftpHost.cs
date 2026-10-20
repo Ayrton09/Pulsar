@@ -597,7 +597,8 @@ internal sealed partial class SftpHost(
 /// is SHA-1; <c>ssh-dss</c>; security keys; certificates) as the protocol says (RFC 4252, 7): the library would end the
 /// connection instead, before the client tried its other keys or its password (SSH.NET asks with <c>ssh-rsa</c> first).
 /// Each counts as a question about a key (<see cref="SftpOptions.MaxKeyAttemptsPerConnection"/>): past them, the
-/// connection ends. Sign-in requests of every method are bounded too (<see cref="MaxAuthenticationRequests"/>).
+/// connection ends. Sign-in requests of every method are bounded too (<see cref="MaxAuthenticationRequests"/>), and the
+/// sign-in messages only a server sends end the connection.
 /// </summary>
 internal sealed class SftpServerSession(SshSessionConfiguration configuration, TraceSource trace, SftpConnection connection, int maxKeyQuestions)
     : SshServerSession(configuration, trace)
@@ -618,6 +619,14 @@ internal sealed class SftpServerSession(SshSessionConfiguration configuration, T
 
     protected override Task HandleMessageAsync(SshMessage message, CancellationToken cancellation)
     {
+        // The server's side of the sign-in (RFC 4252): no client sends these, and the library would run its client code on
+        // them, on a server session.
+        if (message is AuthenticationSuccessMessage or AuthenticationFailureMessage or AuthenticationInfoRequestMessage or PublicKeyOkMessage)
+        {
+            connection.Close(SshDisconnectReason.ProtocolError, "Unexpected message.");
+            return Task.CompletedTask;
+        }
+
         if (message is AuthenticationRequestMessage && ++connection.AuthenticationRequests > MaxAuthenticationRequests)
         {
             connection.Close(SshDisconnectReason.NoMoreAuthMethodsAvailable, "Too many sign-in attempts.");
