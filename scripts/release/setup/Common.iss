@@ -166,6 +166,8 @@ en.OutcomeCertificate=The certificate the panel presents is not the one the node
 es.OutcomeCertificate=El certificado que presenta el panel no es el que nombra el código del nodo (otra máquina, o un proxy delante del panel que sirve el suyo), o no se puede fijar. Comprobá que la dirección lleve a tu panel y creá un código nuevo en Nodos > Agregar nodo, abierto desde la dirección que usan los nodos.
 en.OutcomeUnknown=The installer ended unexpectedly (exit code %1).
 es.OutcomeUnknown=El instalador terminó de forma inesperada (código de salida %1).
+en.OutcomeRolledBack=The new version did not start correctly, so the installer put back the version this PC had, which works, with its data as it was. The log says why; nothing else needs to be done.
+es.OutcomeRolledBack=La versión nueva no arrancó bien, así que el instalador volvió a poner la versión que tenía esta PC, que funciona, con sus datos como estaban. El log dice por qué; no hace falta hacer nada más.
 en.OutcomeNotStarted=Windows PowerShell could not be started: %1
 es.OutcomeNotStarted=No se pudo iniciar Windows PowerShell: %1
 en.OutcomeDetails=Details: %1
@@ -220,6 +222,8 @@ const
   ExitOffline = 4;
   ExitUntrusted = 5;
   ExitCertificate = 6;
+  // -Update: the updated Pulsar did not work and the previous version is back, and works (docs/guides/update.md).
+  ExitRolledBack = 7;
   ExitRestart = 3010;
   // This setup's own exit code when Install-Pulsar.ps1 failed after changing something (GetCustomSetupExitCode).
   SetupExitPartial = 100;
@@ -757,6 +761,7 @@ begin
         ExitOffline: Result := CustomMessage('OutcomeOffline');
         ExitUntrusted: Result := CustomMessage('OutcomeUntrusted');
         ExitCertificate: Result := CustomMessage('OutcomeCertificate');
+        ExitRolledBack: Result := CustomMessage('OutcomeRolledBack');
       else
         Result := FmtMessage(CustomMessage('OutcomeUnknown'), [IntToStr(Code)]);
       end;
@@ -784,8 +789,8 @@ end;
 
 // Runs the install (from the payload's last file, AfterInstall) and decides what the setup does next. Done: on to the
 // Finished page. Done with changes left (exit code 1, or one it does not know): the same, saying so, the entry in Apps
-// kept. Nothing changed (2 to 6), or PowerShell did not start: the setup rolls back its own files and says why (an
-// error that stops a silent setup, or a message and a silent stop).
+// kept. Nothing changed (2 to 6), an update put back as it was (7), or PowerShell did not start: the setup rolls back its
+// own files and says why (an error that stops a silent setup, or a message and a silent stop).
 procedure RunInstallStep(const Arguments: String);
 var
   Code: Integer;
@@ -796,7 +801,7 @@ begin
     RestartNeeded := Code = ExitRestart;
     Exit;
   end;
-  if RunStarted and ((Code < ExitUsage) or (Code > ExitCertificate)) then begin
+  if RunStarted and ((Code < ExitUsage) or ((Code > ExitCertificate) and (Code <> ExitRolledBack))) then begin
     RunKept := True;
     Exit;
   end;

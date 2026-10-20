@@ -110,6 +110,42 @@ public sealed class AgentUpdaterTests : IDisposable
     }
 
     [Fact]
+    public async Task AnInstallerThatEndsWithoutUpdatingIsAFailureWithItsExitCode()
+    {
+        var release = Release();
+        _platform.ExitCode = 3;
+        using var updater = Updater(release.Handler);
+
+        Assert.Equal(AckStatus.Accepted, updater.Start(Guid.NewGuid(), new UpdatePulsarCommand(Version, release.ManifestSha256)).Status);
+
+        var failed = await FailuresAsync(1);
+        Assert.Contains("exit code 3 before updating anything", failed.Error, StringComparison.Ordinal);
+        Assert.Contains(Path.Combine(_root, "Setup", "logs"), failed.Error, StringComparison.Ordinal);
+
+        // Another update may be asked at once (it ends the same way here).
+        Assert.Equal(AckStatus.Accepted, updater.Start(Guid.NewGuid(), new UpdatePulsarCommand(Version, release.ManifestSha256)).Status);
+        await FailuresAsync(2);
+    }
+
+    /// <summary>The first failure reported, once <paramref name="count"/> were.</summary>
+    private async Task<UpdateReport> FailuresAsync(int count)
+    {
+        for (var waited = 0; ; waited += 50)
+        {
+            lock (_reports)
+            {
+                if (_reports.Count(r => r.Status == UpdateStatuses.Failed) >= count)
+                {
+                    return _reports.First(r => r.Status == UpdateStatuses.Failed);
+                }
+            }
+
+            Assert.True(waited < 30_000, "No failure was reported.");
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Fact]
     public void TheInstallersResultIsReadAsItWroteIt()
     {
         using var updater = Updater(Release().Handler);
@@ -228,6 +264,9 @@ public sealed class AgentUpdaterTests : IDisposable
 
         public List<(string Script, string Folder)> Started { get; } = [];
 
+        /// <summary>The installer's exit code when it ends while the agent runs; null: it stops the agent (never ends here).</summary>
+        public int? ExitCode { get; set; }
+
         public (string Code, string Message)? CannotUpdate() => Cannot;
 
         public bool HostsPanel() => false;
@@ -239,6 +278,10 @@ public sealed class AgentUpdaterTests : IDisposable
             return folder;
         }
 
-        public void StartInstaller(string script, string workingDirectory) => Started.Add((script, workingDirectory));
+        public Task<int> StartInstaller(string script, string workingDirectory)
+        {
+            Started.Add((script, workingDirectory));
+            return ExitCode is { } code ? Task.FromResult(code) : new TaskCompletionSource<int>().Task;
+        }
     }
 }

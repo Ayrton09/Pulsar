@@ -2159,7 +2159,11 @@ $cleared = @([regex]::Matches($commonCode['ClearSecretVariables'], "RemoveEnviro
 Check 'setups: ClearSecretVariables removes every variable Install-Pulsar.ps1 takes a secret from' (@(@($SecretInputs.Values) + 'PULSAR_SECRETS_FILE' | Where-Object { $_ -notin $cleared }).Count -eq 0) ($cleared -join ', ')
 Check 'setups: the payload''s folder is C:\Program Files\Pulsar\Setup and no other (/DIR= refused)' ($commonCode['PrepareToInstall'] -match "PathSame\(ExpandConstant\('\{app\}'\), ExpandConstant\('\{commonpf64\}\\Pulsar\\Setup'\)\)")
 Check 'setups: the uninstaller runs Install-Pulsar.ps1 -Uninstall and stops (entry kept) when it fails' ($commonCode['CurUninstallStepChanged'] -match "RunInstallScript\(' -Uninstall'\)" -and $commonCode['CurUninstallStepChanged'] -match 'Abort;')
-Check 'setups: nothing changed (2 to 6) rolls the setup back; otherwise its entry in Apps stays' ($commonCode['RunInstallStep'] -match '\(Code < ExitUsage\) or \(Code > ExitCertificate\)' -and $commonCode['RunInstallStep'] -match 'RunKept := True' -and $commonCode['RunInstallStep'] -match 'Abort;')
+Check 'setups: nothing changed (2 to 6), or an update put back as it was (7), rolls the setup back; otherwise its entry in Apps stays' (
+    $commonCode['RunInstallStep'] -match '\(Code < ExitUsage\) or \(\(Code > ExitCertificate\) and \(Code <> ExitRolledBack\)\)' -and
+    $commonCode['RunInstallStep'] -match 'RunKept := True' -and $commonCode['RunInstallStep'] -match 'Abort;' -and
+    $commonIss -match '(?m)^\s*ExitRolledBack = 7;' -and $commonCode['OutcomeText'] -match "ExitRolledBack: Result := CustomMessage\('OutcomeRolledBack'\)" -and
+    $commonIss -match '(?m)^en\.OutcomeRolledBack=' -and $commonIss -match '(?m)^es\.OutcomeRolledBack=')
 Check 'setups: nothing is opened at the end (started elevated, a browser would run as administrator): the Finished page shows https://localhost:<port>/ from PULSAR-PANEL-URL in a read-only box' (
     $commonCode['ScriptOutput'] -match "if IsLocalPanelUrl\(Copy\(Line, 18, Length\(Line\)\)\) then\s+RunPanelUrl := " -and
     @(@($commonIss) + @($wizardIss.Values) | ForEach-Object { @(Get-IssSection $_ 'Run') }).Count -eq 0 -and

@@ -80,7 +80,7 @@ public sealed class WindowsUpdatePlatform(Func<bool> development) : IUpdatePlatf
         return folder.FullName;
     }
 
-    public void StartInstaller(string script, string workingDirectory)
+    public Task<int> StartInstaller(string script, string workingDirectory)
     {
         var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe"))
         {
@@ -93,8 +93,19 @@ public sealed class WindowsUpdatePlatform(Func<bool> development) : IUpdatePlatf
             start.ArgumentList.Add(argument);
         }
 
-        // Not waited for: it stops this service, and outlives it (the agent's own process is in no job).
-        using var _ = Process.Start(start) ?? throw new InvalidOperationException("The installer did not start.");
+        // It stops this service, and outlives it (the agent's own process is in no job): its end is seen only when it
+        // ends first.
+        var process = Process.Start(start) ?? throw new InvalidOperationException("The installer did not start.");
+        return ExitCodeAsync(process);
+    }
+
+    private static async Task<int> ExitCodeAsync(Process process)
+    {
+        using (process)
+        {
+            await process.WaitForExitAsync();
+            return process.ExitCode;
+        }
     }
 
     /// <summary>The installer's own rule (Test-PrivateFolder): not a link, owned by SYSTEM or Administrators, rules not inherited, allowing them alone.</summary>

@@ -21,8 +21,11 @@ public interface IUpdatePlatform
     /// </summary>
     string PrepareFolder(string updatesRoot, string name);
 
-    /// <summary>Starts the release's installer (<c>Install-Pulsar.ps1 -Update -Unattended</c>), detached: it stops this agent.</summary>
-    void StartInstaller(string script, string workingDirectory);
+    /// <summary>
+    /// Starts the release's installer (<c>Install-Pulsar.ps1 -Update -Unattended</c>), detached: it stops this agent. The task
+    /// ends with its exit code only when it ends while this agent still runs (it refused, or failed before updating).
+    /// </summary>
+    Task<int> StartInstaller(string script, string workingDirectory);
 }
 
 /// <summary>Defaults for production; tests give their own keys and HTTP handler.</summary>
@@ -85,6 +88,9 @@ public sealed partial class AgentUpdater : IDisposable
 
     /// <summary>Where the installer writes how its last update ended (docs/guides/update.md).</summary>
     public string ResultFile => Path.Combine(UpdatesRoot, "last-update.json");
+
+    /// <summary>Where the installer writes its logs: <c>%ProgramData%\Pulsar\Setup\logs</c>.</summary>
+    private string SetupLogs => Path.Combine(Path.GetDirectoryName(UpdatesRoot) ?? UpdatesRoot, "Setup", "logs");
 
     /// <summary>What this agent announces: that it can update Pulsar here, and whether the panel runs here.</summary>
     public IEnumerable<string> Capabilities =>
@@ -176,7 +182,26 @@ public sealed partial class AgentUpdater : IDisposable
 
             await ReportAsync(UpdateStatuses.Installing, from, version, null);
             LogInstalling(version, unpacked);
-            _platform.StartInstaller(script, unpacked);
+            var started = _clock.GetUtcNow();
+            var exitCode = await _platform.StartInstaller(script, unpacked);
+
+            // Still running: the installer ended without updating (another update held its lock, its folder was not
+            // trusted, a check failed). Its result, when it wrote one for this update, says why; otherwise its exit code.
+            LogInstallerEnded(version, exitCode);
+            if (ReadResult() is { } result && result.To == version.ToString() && result.At >= started.AddSeconds(-5))
+            {
+                await ReportResultAsync(always: true, CancellationToken.None);
+            }
+            else
+            {
+                await ReportAsync(UpdateStatuses.Failed, from, version,
+                    $"The installer ended with exit code {exitCode} before updating anything. Its log is in {SetupLogs}.");
+            }
+
+            lock (_lock)
+            {
+                _running = false;
+            }
         }
         catch (Exception ex) when (ex is UpdateDownloadException or HttpRequestException or IOException or UnauthorizedAccessException
                                        or InvalidDataException or TaskCanceledException or InvalidOperationException)
@@ -293,6 +318,9 @@ public sealed partial class AgentUpdater : IDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Update to {To}: the release is verified and unpacked in {Folder}; its installer takes over")]
     private partial void LogInstalling(UpdateVersion to, string folder);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The installer of {To} ended with exit code {ExitCode} while this agent ran: it did not update")]
+    private partial void LogInstallerEnded(UpdateVersion to, int exitCode);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Update to {To} failed: {Reason}")]
     private partial void LogFailed(UpdateVersion to, string reason);

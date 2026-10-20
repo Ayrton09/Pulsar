@@ -206,12 +206,15 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
 
         public string PrepareFolder(string updatesRoot, string name) => Directory.CreateDirectory(Path.Combine(updatesRoot, name)).FullName;
 
-        public void StartInstaller(string script, string workingDirectory)
+        public Task<int> StartInstaller(string script, string workingDirectory)
         {
             Started.Add((script, workingDirectory));
             var updates = Path.GetDirectoryName(workingDirectory.TrimEnd(Path.DirectorySeparatorChar))!;
             File.WriteAllText(Path.Combine(Path.GetDirectoryName(updates)!, "last-update.json"),
                 $$"""{"from":"{{AgentInfo.Version}}","to":"{{Next}}","parts":["agent","panel"],"status":"succeeded","error":null,"finishedAt":"{{DateTimeOffset.UtcNow:O}}"}""");
+
+            // The real one stops the agent: it never ends while the agent runs.
+            return new TaskCompletionSource<int>().Task;
         }
     }
 
