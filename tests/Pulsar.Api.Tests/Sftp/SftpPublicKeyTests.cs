@@ -221,14 +221,16 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
         // "none" and a method nobody offers.
         var wrong = new SshClientCredentials("flood-nobody", "not the password");
         Assert.False(await session.AuthenticateAsync(wrong).WaitAsync(SftpApiFactory.Timeout, Ct));
-        for (var i = 2; i < SftpServerSession.MaxAuthenticationRequests; i++)
+        session.Raw = true;
+        for (var i = 1; i < SftpServerSession.MaxAuthenticationRequests; i++)
         {
             await session.SendAsync(new AuthenticationRequestMessage("ssh-connection", i % 2 == 0 ? "none" : "no-such-method", "flood-nobody"));
         }
 
-        // The last one allowed is answered, and the connection stays; one more ends it at once (well before the sign-in
-        // deadline, 30 seconds from the connection, would).
-        Assert.False(await session.AuthenticateAsync(wrong).WaitAsync(SftpApiFactory.Timeout, Ct));
+        // Each is answered, the last one allowed too, and the connection stays; one more ends it at once (well before the
+        // sign-in deadline, 30 seconds from the connection, would).
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(session.Refusals == SftpServerSession.MaxAuthenticationRequests - 1),
+            "every request answered");
         Assert.False(session.IsClosed);
         await session.SendAsync(new AuthenticationRequestMessage("ssh-connection", "none", "flood-nobody"));
         await closed.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
@@ -388,7 +390,28 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, [typeof(SshMessage), typeof(CancellationToken)], null)
             ?? throw new MissingMethodException(nameof(SshSession), "SendMessageAsync");
 
+        private int _refusals;
+
+        /// <summary>
+        /// Once set, the server's refusals are counted here and kept from the library, which would take them for answers to
+        /// sign-ins of its own.
+        /// </summary>
+        public bool Raw { get; set; }
+
+        public int Refusals => Volatile.Read(ref _refusals);
+
         public Task SendAsync(SshMessage message) => (Task)s_send.Invoke(this, [message, Ct])!;
+
+        protected override Task HandleMessageAsync(SshMessage message, CancellationToken cancellation)
+        {
+            if (Raw && message is AuthenticationFailureMessage)
+            {
+                Interlocked.Increment(ref _refusals);
+                return Task.CompletedTask;
+            }
+
+            return base.HandleMessageAsync(message, cancellation);
+        }
     }
 
     private static async Task<(bool SignedIn, bool Connected)> SignsInAsync(int port, string login, Algorithms.IKeyPair pair,
