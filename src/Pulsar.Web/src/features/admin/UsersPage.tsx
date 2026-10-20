@@ -17,6 +17,7 @@ import { MIN_PASSWORD_LENGTH } from '../auth/SetupPage';
 import {
   useCreateUser,
   useDeleteUser,
+  useDeleteUserSshKeys,
   useResetPassword,
   useResetTwoFactor,
   useRevokeUserApiKeys,
@@ -244,7 +245,9 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
   const remove = useDeleteUser();
   const resetTwoFactor = useResetTwoFactor();
   const revokeKeys = useRevokeUserApiKeys();
+  const deleteSshKeys = useDeleteUserSshKeys();
   const [apiKeys, setApiKeys] = useState(user.apiKeys);
+  const [sshKeys, setSshKeys] = useState(user.sshKeys);
   const [roleIds, setRoleIds] = useState<Set<string>>(new Set(user.roles.map((r) => r.id)));
   const [newPassword, setNewPassword] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
@@ -253,7 +256,13 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
     defaultValues: { displayName: user.displayName ?? '', email: user.email ?? '', isDisabled: user.isDisabled },
   });
   const error =
-    update.error ?? setRoles.error ?? reset.error ?? remove.error ?? resetTwoFactor.error ?? revokeKeys.error;
+    update.error ??
+    setRoles.error ??
+    reset.error ??
+    remove.error ??
+    resetTwoFactor.error ??
+    revokeKeys.error ??
+    deleteSshKeys.error;
 
   const onSaveProfile = handleSubmit(({ displayName, email, isDisabled }) =>
     update.mutate(
@@ -385,6 +394,27 @@ function EditUserDialog({ user, isSelf, onClose }: { user: User; isSelf: boolean
               }
             >
               {t('users.revokeApiKeys')}
+            </Button>
+          </div>
+        )}
+
+        {!isSelf && sshKeys > 0 && (
+          <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+            <p className="text-sm text-muted">{t('users.sshKeys', { count: sshKeys })}</p>
+            <Button
+              variant="secondary"
+              busy={deleteSshKeys.isPending}
+              onClick={() =>
+                window.confirm(t('users.deleteSshKeysConfirm', { name: user.userName })) &&
+                deleteSshKeys.mutate(user.id, {
+                  onSuccess: (updated) => {
+                    setSshKeys(updated.sshKeys);
+                    setNotice(t('users.sshKeysDeleted'));
+                  },
+                })
+              }
+            >
+              {t('users.deleteSshKeys')}
             </Button>
           </div>
         )}
