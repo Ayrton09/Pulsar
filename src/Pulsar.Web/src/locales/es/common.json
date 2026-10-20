@@ -34,7 +34,8 @@
     "databaseHosts": "Servidores de bases de datos",
     "steamAccounts": "Cuentas de Steam",
     "menu": "Menú",
-    "openMenu": "Abrir menú"
+    "openMenu": "Abrir menú",
+    "updates": "Actualizaciones"
   },
   "auth": {
     "userName": "Usuario",
@@ -420,6 +421,11 @@
       },
       "appearance": {
         "settings_changed": "Cambió el ajuste de las portadas de los juegos"
+      },
+      "updates": {
+        "settings_changed": "Cambió la búsqueda diaria de actualizaciones",
+        "requested": "Le pidió a un nodo que actualice Pulsar",
+        "finished": "Un nodo terminó de actualizar Pulsar"
       }
     }
   },
@@ -799,6 +805,19 @@
     "sftp": {
       "invalid_port": "El puerto SFTP tiene que estar entre 1 y 65535.",
       "invalid_host": "Indicá un nombre de host o una dirección IP, sin esquema, puerto ni ruta."
+    },
+    "update": {
+      "node_offline": "El nodo está desconectado.",
+      "node_cannot": "Este nodo no se puede actualizar desde el panel (lo mantiene el MSI del agente, o es un agente de desarrollo): usá los instaladores.",
+      "up_to_date": "Está al día.",
+      "too_old": "Es demasiado viejo para esta versión: actualizalo con los instaladores.",
+      "in_progress": "Hay una actualización en curso.",
+      "panel_first": "Primero actualizá la PC del panel.",
+      "nothing_available": "No se conoce ninguna versión más nueva: primero buscá actualizaciones.",
+      "invalid_nodes": "Elegí los nodos a actualizar.",
+      "not_newer": "El nodo ya tiene esta versión o una más nueva.",
+      "msi_managed": "El MSI del agente mantiene este nodo: actualizalo con un paquete más nuevo.",
+      "refused": "El nodo rechazó la actualización."
     }
   },
   "account": {
@@ -2018,5 +2037,44 @@
     "steamArtwork": "Mostrar las portadas de los juegos desde Steam",
     "turnedOn": "Portadas encendidas. Se ven en las páginas que se abran desde ahora.",
     "turnedOff": "Portadas apagadas. Las páginas abiertas dejan de pedírselas a Steam al instante."
+  },
+  "updates": {
+    "title": "Actualizaciones",
+    "description": "Las versiones nuevas de Pulsar, desde las releases del GitHub del proyecto, firmadas por quien lo mantiene: el panel solo ofrece una release cuya firma comprobó, y cada nodo la vuelve a comprobar antes de instalarla.",
+    "checkNow": "Buscar ahora",
+    "panelVersion": "Este panel usa Pulsar {{version}}.",
+    "noKeys": "Esta versión de Pulsar no confía en ninguna clave de actualización, así que no toma actualizaciones desde el panel: instalá las versiones con los instaladores.",
+    "available": "Pulsar {{version}} está disponible",
+    "published": "Publicada el {{when}}.",
+    "panelFirst": "Primero actualizá la PC del panel: un nodo más nuevo que su panel sería rechazado. Sus servidores de juegos siguen funcionando mientras se actualiza; el panel no responde un minuto mientras se reinicia.",
+    "upToDate": "Pulsar está al día.",
+    "checkedAt": "Última búsqueda: {{when}}.",
+    "neverChecked": "Todavía no se buscaron versiones.",
+    "checkFailed": "La última búsqueda falló: {{error}}",
+    "checkAutomatically": "Buscar versiones nuevas una vez por día",
+    "checkHint": "El panel le pide a GitHub la última versión una vez por día: GitHub ve la dirección del panel. Apagado, solo pregunta cuando tocás Buscar ahora.",
+    "nodes": "Nodos",
+    "node": "Nodo",
+    "version": "Versión",
+    "lastUpdate": "Última actualización",
+    "panelHost": "Panel",
+    "offline": "Desconectado",
+    "update": "Actualizar",
+    "updatePanel": "Actualizar el panel",
+    "updateAll_one": "Actualizar {{count}} nodo",
+    "updateAll_other": "Actualizar {{count}} nodos",
+    "confirmTitle": "Actualizar a Pulsar {{version}}",
+    "confirmHint": "Cada nodo baja la versión desde GitHub, comprueba su firma, hace un backup y se actualiza; si la versión nueva no arranca, vuelve a la que tenía. Los servidores de juegos siguen funcionando. Confirmá con tu contraseña.",
+    "confirm": "Actualizar",
+    "banner": "Pulsar {{version}} está disponible.",
+    "bannerLink": "Ver actualizaciones",
+    "status": {
+      "requested": "Pedida",
+      "downloading": "Descargando",
+      "installing": "Instalando",
+      "succeeded": "Actualizado",
+      "rolled_back": "Se volvió atrás",
+      "failed": "Falló"
+    }
   }
 }

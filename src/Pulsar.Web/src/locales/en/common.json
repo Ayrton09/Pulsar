@@ -34,7 +34,8 @@
     "databaseHosts": "Database hosts",
     "steamAccounts": "Steam accounts",
     "menu": "Menu",
-    "openMenu": "Open menu"
+    "openMenu": "Open menu",
+    "updates": "Updates"
   },
   "auth": {
     "userName": "User name",
@@ -420,6 +421,11 @@
       },
       "appearance": {
         "settings_changed": "Changed the game artwork setting"
+      },
+      "updates": {
+        "settings_changed": "Changed the daily check for updates",
+        "requested": "Asked a node to update Pulsar",
+        "finished": "A node finished updating Pulsar"
       }
     }
   },
@@ -799,6 +805,19 @@
     "sftp": {
       "invalid_port": "The SFTP port must be between 1 and 65535.",
       "invalid_host": "Give a host name or an IP address, without a scheme, port or path."
+    },
+    "update": {
+      "node_offline": "The node is offline.",
+      "node_cannot": "This node cannot update from the panel (its agent MSI maintains it, or it is a development agent): use the setups.",
+      "up_to_date": "Up to date.",
+      "too_old": "Too old for this release: update it with the setups.",
+      "in_progress": "An update is under way.",
+      "panel_first": "Update the panel's machine first.",
+      "nothing_available": "No newer release is known: check for updates first.",
+      "invalid_nodes": "Choose the nodes to update.",
+      "not_newer": "The node already runs this version or a newer one.",
+      "msi_managed": "The agent MSI maintains this node: update it with a newer package.",
+      "refused": "The node refused the update."
     }
   },
   "account": {
@@ -2018,5 +2037,44 @@
     "steamArtwork": "Show the game artwork from Steam",
     "turnedOn": "Artwork turned on. Pages opened from now on show it.",
     "turnedOff": "Artwork turned off. Open pages stop asking Steam for it at once."
+  },
+  "updates": {
+    "title": "Updates",
+    "description": "Pulsar's new versions, from the project's GitHub releases, signed by its maintainer: the panel offers only a release whose signature it checked, and each node checks it again before installing it.",
+    "checkNow": "Check now",
+    "panelVersion": "This panel runs Pulsar {{version}}.",
+    "noKeys": "This build of Pulsar trusts no update key, so it takes no update from the panel: install releases with the setups.",
+    "available": "Pulsar {{version}} is available",
+    "published": "Released {{when}}.",
+    "panelFirst": "Update the panel's machine first: a node newer than its panel would be refused. Its game servers keep running while it updates; the panel is away for a minute while it restarts.",
+    "upToDate": "Pulsar is up to date.",
+    "checkedAt": "Last checked {{when}}.",
+    "neverChecked": "Not checked yet.",
+    "checkFailed": "The last check failed: {{error}}",
+    "checkAutomatically": "Check for new versions once a day",
+    "checkHint": "The panel asks GitHub for the newest release once a day: GitHub sees the panel's address. Turned off, it asks only when you check now.",
+    "nodes": "Nodes",
+    "node": "Node",
+    "version": "Version",
+    "lastUpdate": "Last update",
+    "panelHost": "Panel",
+    "offline": "Offline",
+    "update": "Update",
+    "updatePanel": "Update the panel",
+    "updateAll_one": "Update {{count}} node",
+    "updateAll_other": "Update {{count}} nodes",
+    "confirmTitle": "Update to Pulsar {{version}}",
+    "confirmHint": "Each node downloads the release from GitHub, checks its signature, backs up and updates; if the new version does not start, it goes back to the one it had. Game servers keep running. Confirm with your password.",
+    "confirm": "Update",
+    "banner": "Pulsar {{version}} is available.",
+    "bannerLink": "See updates",
+    "status": {
+      "requested": "Asked",
+      "downloading": "Downloading",
+      "installing": "Installing",
+      "succeeded": "Updated",
+      "rolled_back": "Put back",
+      "failed": "Failed"
+    }
   }
 }

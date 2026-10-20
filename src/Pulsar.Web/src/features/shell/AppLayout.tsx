@@ -3,6 +3,7 @@ import {
   Archive,
   Bell,
   Database,
+  Download,
   Gamepad2,
   HardDrive,
   KeyRound,
@@ -27,6 +28,7 @@ import { useCurrentUser, useLogout } from '../auth/api';
 import { InsecureConnectionBanner } from '../auth/InsecureConnectionBanner';
 import { useLiveStatus } from '../live/hooks';
 import { LiveProvider } from '../live/LiveProvider';
+import { UpdateBanner } from '../updates/UpdateBanner';
 
 interface NavItem {
   to: string;
@@ -166,6 +168,7 @@ function Sidebar({ onNavigate }: { onNavigate?: (() => void) | undefined }) {
       icon: KeyRound,
       anyOf: [Permission.SettingsManage],
     },
+    { to: '/admin/updates', label: t('nav.updates'), icon: Download, anyOf: [Permission.SettingsManage] },
   ]);
 
   return (
@@ -251,6 +254,7 @@ function Shell() {
             <Brand />
           </header>
           <InsecureConnectionBanner />
+          <UpdateBanner />
           <main className="flex-1 px-4 py-6 sm:px-6 md:px-10 md:py-10">
             <div className="mx-auto max-w-7xl">
               <Outlet />

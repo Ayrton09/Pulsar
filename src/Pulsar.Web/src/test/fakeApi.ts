@@ -23,6 +23,17 @@ const sftpOff = {
   userName: 'admin',
 };
 
+/** Pulsar's updates with nothing newer: what tests about something else get. */
+export const noUpdates: Schemas['UpdatesView'] = {
+  panelVersion: '1.0.0',
+  hasKeys: true,
+  checkAutomatically: true,
+  checkedAt: null,
+  checkError: null,
+  available: null,
+  nodes: [],
+};
+
 /** The public IP certificate, turned off: what tests about something else get. */
 export const publicIpCertificateOff: Schemas['PublicIpCertificateResponse'] = {
   enabled: false,
@@ -67,7 +78,7 @@ export function fakeApi(routes: Record<string, Handler>) {
     const key = `${request.method} ${url.pathname}`;
     // Server and node pages show a usage history, and the nodes page the reusable enrollment tokens; tests about
     // something else get empty ones (and the account page no panel certificate, as over plain HTTP, and no SSH keys,
-    // and the game artwork on, the panel's default).
+    // and the game artwork on, the panel's default, and no newer release of Pulsar).
     const handler =
       routes[key] ??
       (request.method === 'GET' && /^\/api\/v1\/(servers|nodes)\/[^/]+\/metrics$/.test(url.pathname)
@@ -86,7 +97,9 @@ export function fakeApi(routes: Record<string, Handler>) {
                     ? () => json({ steamArtwork: true })
                     : key === 'GET /api/v1/account/ssh-keys'
                       ? () => json([])
-                      : undefined);
+                      : key === 'GET /api/v1/updates'
+                        ? () => json(noUpdates)
+                        : undefined);
     if (!handler) {
       throw new Error(`Unexpected request in test: ${key}`);
     }

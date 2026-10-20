@@ -185,6 +185,19 @@ const pages: RouteObject[] = [
               };
             },
           },
+          {
+            path: 'admin/updates',
+            lazy: async () => {
+              const { UpdatesPage } = await import('../features/updates/UpdatesPage');
+              return {
+                element: (
+                  <RequirePermission anyOf={[Permission.SettingsManage]}>
+                    <UpdatesPage />
+                  </RequirePermission>
+                ),
+              };
+            },
+          },
           { path: '*', element: <NotFoundPage /> },
         ],
       },
