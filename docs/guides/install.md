@@ -909,6 +909,7 @@ It ends with one of these exit codes (without `-Unattended`, a failure is a Powe
 | `4` | A download, or the panel at a node code's address, could not be reached. Nothing was changed. |
 | `5` | A download or a given installer failed its checks (signature, SHA-512, version), or Microsoft's or postgresql.org's metadata was not as expected. Nothing was changed. |
 | `6` | The certificate the panel presents is not the node code's (another machine, or a proxy serving its own), or may not be trusted or pinned (it can issue certificates, does not name the panel's address...); with `-RenewCertificate`, the panel's certificate is not a self-signed one the installer made (an authority's, or your own). Nothing was changed. |
+| `7` | `-Update` replaced programs, the updated Pulsar did not work (the panel not ready, the agent not signing in at its panel), and the update was rolled back: the previous version was put back and works, so Pulsar is as it was, and the message says why ([update.md](update.md#backup-checks-and-rollback)). A rollback that fails ends with `1`, saying what state things are in. |
 | `3010` | Done; a .NET installer asks for Windows to be restarted to finish (Pulsar runs meanwhile). |
 
 PowerShell itself ends with 1 when it cannot bind a parameter (a misspelt one).
