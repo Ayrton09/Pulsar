@@ -18,7 +18,8 @@
 # the MSI and the setups, so the packed copies are signed; then the MSI; then both setups, which Inno Setup signs through
 # its SignTool directive (the uninstaller too). Third-party libraries and the PowerShell scripts are not signed.
 # Everything is built in a work folder of its own and moves into the output folder only when it is all there and every
-# signature verified; a build that fails leaves the output folder as it was.
+# signature verified, replacing an earlier build's files all or nothing; a build that fails leaves the output folder as it was.
+# When signing, the Inno Setup compiler too must be in a folder only administrators can change (Program Files).
 # docs\architecture\09-roadmap.md ("Code signing") says how to get a certificate and how to run this.
 param(
     [string] $Version = '0.0.0-dev',
@@ -104,8 +105,16 @@ function Assert-InnoSetupSigned([string] $compiler) {
     }
 }
 
+# When signing, the Inno Setup compiler runs with Azure's credentials in its environment and hands them to signtool, so it is held to
+# the rule signtool is: in a folder only SYSTEM, Administrators and TrustedInstaller can change (Program Files; a per-user install
+# is refused). An unsigned release accepts it, as it always did.
+function Assert-InnoSetupLocation([string] $compiler) {
+    if ($Signing) { Assert-AdministratorsOnly (Split-Path -Parent $compiler) 'The folder of the Inno Setup compiler' }
+}
+
 # Inno Setup 7's ISCC.exe (-InnoSetupCompiler, or an install of it: Program Files first, where only administrators can
-# change it, then a per-user install), signed by its publisher; or $null (with a warning) when there is none.
+# change it, then a per-user install, which a signed release refuses), signed by its publisher; or $null (with a warning) when there
+# is none.
 function Find-InnoSetupCompiler {
     $candidates = @($InnoSetupCompiler)
     if (-not $InnoSetupCompiler) {
@@ -116,6 +125,7 @@ function Find-InnoSetupCompiler {
     foreach ($candidate in $candidates) {
         if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
         Assert-InnoSetupSigned $candidate
+        Assert-InnoSetupLocation $candidate
         $engine = & {
             $ErrorActionPreference = 'Continue'
             (& $candidate --version 2>&1 | ForEach-Object { "$_" }) -join ' '
@@ -258,19 +268,21 @@ function New-SigningFolder {
 # The AZURE_* variables (the credentials Azure's client reads) out of this process's environment, so the builds it starts
 # (npm, dotnet, their plugins and build tasks) do not inherit them. Set-AzureCredentials gives them back around signtool and
 # the Inno Setup compiler that runs it; Restore-AzureCredentials, when the script ends, to the shell it was run from.
+# They are read and set only through .NET, never as a cmdlet's parameter or output (Set-Item Env:, Get-ChildItem Env:): PowerShell's
+# module logging records those.
 function Hide-AzureCredentials {
-    foreach ($variable in @(Get-ChildItem Env: | Where-Object { $_.Name -like 'AZURE_*' })) {
-        $HiddenEnvironment[$variable.Name] = $variable.Value
-        Remove-Item -LiteralPath "Env:$($variable.Name)"
+    foreach ($name in @([Environment]::GetEnvironmentVariables('Process').Keys | Where-Object { $_ -like 'AZURE_*' })) {
+        $HiddenEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        [Environment]::SetEnvironmentVariable($name, $null, 'Process')
     }
 }
 
 function Set-AzureCredentials {
-    foreach ($name in @($HiddenEnvironment.Keys)) { Set-Item -LiteralPath "Env:$name" -Value $HiddenEnvironment[$name] }
+    foreach ($name in @($HiddenEnvironment.Keys)) { [Environment]::SetEnvironmentVariable($name, $HiddenEnvironment[$name], 'Process') }
 }
 
 function Remove-AzureCredentials {
-    foreach ($name in @($HiddenEnvironment.Keys)) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
+    foreach ($name in @($HiddenEnvironment.Keys)) { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
 }
 
 function Restore-AzureCredentials {
@@ -598,6 +610,7 @@ function Build-Setup([string] $compiler, [string] $script, [string] $release, [s
     $arguments = @('--quiet', '--messages-jsonl', "/DVersion=$Version", "/DNumericVersion=$numeric.0", "/DRelease=$release", "/O$Work", (Join-Path $PSScriptRoot "setup\$script"))
     if ($Signing) {
         Assert-SigningTools
+        Assert-InnoSetupLocation $compiler
         $arguments = @('/DSignSetups', '/NI', "/Spulsarsign=$(Get-InnoSignCommand $Signing.SignTool)") + $arguments
     }
     # Checked again right before it runs: the web build (npm ci) ran code from the registry since it was found.
@@ -626,26 +639,66 @@ function Build-Setup([string] $compiler, [string] $script, [string] $release, [s
 }
 
 # Moves what a finished build made from its work folder into the output folder, replacing the same names of an earlier
-# build: only called when everything is there, signed and verified.
+# build, all or nothing: only called when everything is there, signed and verified. The earlier files are moved aside first
+# (a file something holds open cannot be, which fails here, before any new file is in), then the new ones move in, and the
+# earlier ones are deleted last. If anything fails, the new ones that moved in move out again and the earlier ones come back.
+# Only when even that fails (a file taken meanwhile) does the error say where the earlier files are: in a .replaced- folder
+# in the output folder, left for that.
 function Publish-Release([string] $work, [string] $output, [string[]] $names) {
     # Nothing moves unless everything is there.
     foreach ($item in $names) {
         if (-not (Test-Path -LiteralPath (Join-Path $work $item))) { throw "The build did not make $item." }
     }
-    foreach ($item in $names) {
-        $source = Join-Path $work $item
-        $target = Join-Path $output $item
-        if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
-        Move-Item -LiteralPath $source -Destination $target
+    $aside = Join-Path $output ('.replaced-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    $null = New-Item -ItemType Directory $aside
+    $setAside = @()
+    $movedIn = @()
+    try {
+        foreach ($item in $names) {
+            $target = Join-Path $output $item
+            if (Test-Path -LiteralPath $target) {
+                Move-Item -LiteralPath $target -Destination (Join-Path $aside $item)
+                $setAside += $item
+            }
+        }
+        foreach ($item in $names) {
+            Move-Item -LiteralPath (Join-Path $work $item) -Destination (Join-Path $output $item)
+            $movedIn += $item
+        }
+    }
+    catch {
+        $failure = $_.Exception.Message
+        $stuck = @()
+        foreach ($item in $movedIn) {
+            try { Move-Item -LiteralPath (Join-Path $output $item) -Destination (Join-Path $work $item) } catch { $stuck += "$item (new, in $output)" }
+        }
+        foreach ($item in $setAside) {
+            try { Move-Item -LiteralPath (Join-Path $aside $item) -Destination (Join-Path $output $item) } catch { $stuck += "$item (earlier, in $aside)" }
+        }
+        if ($stuck.Count -eq 0) {
+            Remove-FolderPatiently $aside
+            $left = if (Test-Path -LiteralPath $aside) { " (the empty $aside could not be deleted: delete it)" } else { '' }
+            throw "The release was not published ($failure): the earlier build's files in $output are as they were$left."
+        }
+        throw "The release was not published ($failure), and these could not be moved back: $($stuck -join '; '). The earlier build's files are in $aside."
+    }
+    Remove-FolderPatiently $aside
+    if (Test-Path -LiteralPath $aside) { Write-Warning "The earlier build's files could not all be deleted: $aside is theirs, delete it." }
+}
+
+# Deletes a folder, trying again for a moment: right after files are moved out of it or written in it, an antivirus scan or
+# the search indexer can still hold it. What cannot be deleted after that is left, with no error; the callers say so.
+function Remove-FolderPatiently([string] $path) {
+    for ($attempt = 0; $attempt -lt 20 -and (Test-Path -LiteralPath $path); $attempt++) {
+        if ($attempt -gt 0) { Start-Sleep -Milliseconds 100 }
+        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
 # Removes a build's work folder and what it kept in the folder of the current user alone, however the build ended.
 function Remove-BuildWork([string] $work, $signing) {
-    if ($work -and (Split-Path -Leaf $work) -like '.build-*' -and (Test-Path -LiteralPath $work)) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
-    if ($signing -and $signing.MetadataFolder -and (Split-Path -Leaf $signing.MetadataFolder) -like 'pulsar-signing-*' -and (Test-Path -LiteralPath $signing.MetadataFolder)) {
-        Remove-Item -LiteralPath $signing.MetadataFolder -Recurse -Force -ErrorAction SilentlyContinue
-    }
+    if ($work -and (Split-Path -Leaf $work) -like '.build-*') { Remove-FolderPatiently $work }
+    if ($signing -and $signing.MetadataFolder -and (Split-Path -Leaf $signing.MetadataFolder) -like 'pulsar-signing-*') { Remove-FolderPatiently $signing.MetadataFolder }
 }
 
 function Write-Checksum([string] $path) {
@@ -661,8 +714,9 @@ $numeric = ($Version -split '[-+]')[0]
 if ($numeric -notmatch '^\d+\.\d+\.\d+$') { throw "The version must start with major.minor.patch, not '$Version'." }
 New-Item -ItemType Directory -Force $Output | Out-Null
 $Output = (Resolve-Path $Output).Path
-# Everything is built in a work folder of its own, and moves into $Output only when it is all there, signed and verified:
-# a build that fails leaves $Output as it was (an earlier build of the same version included).
+# Everything is built in a work folder of its own, and moves into $Output only when it is all there, signed and verified, and
+# replaces an earlier build's files all or nothing: a build that fails leaves $Output as it was (an earlier build of the same
+# version included).
 $Work = Join-Path $Output ('.build-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 try {
     # Before the long builds: whether the release can be signed if it is to be (Azure's credentials leave the environment here,

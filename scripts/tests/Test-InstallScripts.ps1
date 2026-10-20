@@ -1496,11 +1496,11 @@ Check 'release: an Inno Setup warning fails the build' ($buildRelease -match "'-
 # --- Code signing in the release (optional; Build-Release.ps1's functions run on files of this test's own, nothing is signed) ---
 
 $buildReleasePath = Join-Path $PSScriptRoot '..\release\Build-Release.ps1'
-$signingParts = Get-ScriptParts $buildReleasePath @('Get-SignatureProblem', 'Assert-InnoSetupSigned', 'Get-AccountName', 'Find-UntrustedWriter', 'Find-UntrustedWriters', 'Find-UntrustedAncestors',
+$signingParts = Get-ScriptParts $buildReleasePath @('Get-SignatureProblem', 'Assert-InnoSetupSigned', 'Assert-InnoSetupLocation', 'Get-AccountName', 'Find-UntrustedWriter', 'Find-UntrustedWriters', 'Find-UntrustedAncestors',
     'Assert-AdministratorsOnly', 'Test-CurrentUserOnly', 'New-SigningFolder', 'Hide-AzureCredentials', 'Set-AzureCredentials', 'Remove-AzureCredentials', 'Restore-AzureCredentials',
     'Get-WindowsKitsRoots', 'Find-SignTool', 'Assert-SignToolSigned', 'Assert-SigningCertificate', 'Read-TrustedSigningMetadata', 'New-SigningMetadata', 'Find-TrustedSigningClient',
     'Assert-TrustedSigningClient', 'Assert-SigningTools', 'Initialize-Signing', 'Invoke-SignTool', 'Assert-Signed', 'Invoke-Signing', 'Get-PulsarAssemblies', 'Get-PulsarPrograms',
-    'Assert-ProgramsSigned', 'Format-InnoToolWord', 'Get-InnoSignCommand', 'Publish-Release', 'Remove-BuildWork') `
+    'Assert-ProgramsSigned', 'Format-InnoToolWord', 'Get-InnoSignCommand', 'Publish-Release', 'Remove-FolderPatiently', 'Remove-BuildWork') `
     @('TrustedWriters', 'ModifyRights', 'ReplaceRights', 'InnoSetupSigner', 'SignToolSigner', 'SignToolLibraries', 'CodeSigningUsage', 'SignedDescription', 'SignedInformationUrl', 'HiddenEnvironment')
 # Who may change what signs is the install script's rule, with the same functions.
 $differentFromInstall = @(@('Get-AccountName', 'Find-UntrustedWriter', 'Find-UntrustedWriters', 'Find-UntrustedAncestors', '$TrustedWriters', '$ModifyRights', '$ReplaceRights') | Where-Object { $installParts[$_] -cne $signingParts[$_] })
@@ -1590,6 +1590,12 @@ try {
     $refused = Get-Thrown { Assert-AdministratorsOnly $writableFolder 'The folder of signtool.exe' }
     Check 'signing: a folder the current user can write in is refused' ($refused -match 'The folder of signtool\.exe .* could be changed by accounts other than SYSTEM, Administrators and TrustedInstaller') $refused
     Check 'signing: a path that does not exist is not taken for safe' ($null -ne (Get-Thrown { Assert-AdministratorsOnly (Join-Path $signRoot 'nope') 'x' }))
+    # The Inno Setup compiler runs signtool with Azure's credentials when signing, so its folder is held to the same rule then.
+    $Signing = [pscustomobject]@{ SignTool = 'x'; Dlib = $null }
+    $refused = Get-Thrown { Assert-InnoSetupLocation (Join-Path $fakeInno 'ISCC.exe') }
+    Check 'signing: an Inno Setup compiler in a folder the user can write in is refused for a signed release' ($refused -match 'The folder of the Inno Setup compiler .* could be changed by accounts other than') $refused
+    $Signing = $null
+    Check 'signing: ...and taken for an unsigned release, as before' ($null -eq (Get-Thrown { Assert-InnoSetupLocation (Join-Path $fakeInno 'ISCC.exe') }))
     if ($realTool) {
         Check 'signing: the SDK''s folder in Program Files is one only administrators can change' ($null -eq (Get-Thrown { Assert-AdministratorsOnly (Split-Path -Parent $realTool) 'The folder of signtool.exe' })) $realTool
         Copy-Item $realTool (Join-Path $writableFolder 'signtool.exe') -Force
@@ -1941,6 +1947,19 @@ try {
     Check 'signing: what a finished build made replaces the same names in the output folder, folders too' (
         $null -eq $published -and (Get-Content (Join-Path $outputFolder 'a.zip')) -ceq 'new' -and (Test-Path (Join-Path $outputFolder 'a.zip.sha256')) -and (Test-Path (Join-Path $outputFolder 'staged\new.txt')) -and
         -not (Test-Path (Join-Path $outputFolder 'staged\old.txt')) -and (Get-Content (Join-Path $outputFolder 'old-release.zip')) -ceq 'old release of another version')
+    Check 'signing: ...and nothing of the earlier build is left behind' (@(Get-ChildItem -LiteralPath $outputFolder -Force -Filter '.replaced-*').Count -eq 0)
+    # All or nothing: an earlier file that something holds open (it cannot be moved aside), or a new one that cannot move in,
+    # publishes nothing, and every earlier file is back where it was.
+    foreach ($heldIn in $outputFolder, $workFolder) {
+        $null = New-TestFile (Join-Path $outputFolder 'c.zip') 'old c'; $null = New-TestFile (Join-Path $outputFolder 'd.zip') 'old d'
+        $null = New-TestFile (Join-Path $workFolder 'c.zip') 'new c'; $null = New-TestFile (Join-Path $workFolder 'd.zip') 'new d'
+        $held = [IO.File]::Open((Join-Path $heldIn 'd.zip'), 'Open', 'Read', 'None')
+        try { $notPublished = Get-Thrown { Publish-Release $workFolder $outputFolder @('c.zip', 'd.zip') } } finally { $held.Dispose() }
+        Check "signing: a release that cannot all move in publishes nothing, the earlier files are back ($(Split-Path -Leaf $heldIn) held)" (
+            $notPublished -match 'The release was not published .* are as they were' -and (Get-Content (Join-Path $outputFolder 'c.zip')) -ceq 'old c' -and (Get-Content (Join-Path $outputFolder 'd.zip')) -ceq 'old d' -and
+            (Get-Content (Join-Path $workFolder 'c.zip')) -ceq 'new c' -and (Get-Content (Join-Path $workFolder 'd.zip')) -ceq 'new d' -and
+            @(Get-ChildItem -LiteralPath $outputFolder -Force -Filter '.replaced-*').Count -eq 0) $notPublished
+    }
     $otherFolder = Join-Path $outputFolder 'keep-me'; $null = New-TestFile (Join-Path $otherFolder 'f.txt')
     $madeFolder = New-SigningFolder
     $keptSigning = [pscustomobject]@{ MetadataFolder = $madeFolder }
@@ -1976,6 +1995,10 @@ Check 'signing: always SHA-256 file and timestamp digests and an RFC 3161 timest
     $buildRelease -match "'sign', '/fd', 'sha256', '/tr', \`$TimestampUrl, '/td', 'sha256'" -and $buildRelease -match "'verify', '/pa'" -and $buildRelease -match '-not \$signature\.TimeStamperCertificate')
 Check 'signing: the certificate is chosen by thumbprint from the user''s store, or by Trusted Signing''s client; no PFX and no password option' (
     $buildRelease -match "'/sha1', \`$thumbprint, '/s', 'My'" -and $buildRelease -match "'/dlib', \`$dlib, '/dmdf', \`$metadata\.Path" -and $buildRelease -notmatch "'/f'" -and $buildRelease -notmatch "'/p'" -and $buildRelease -notmatch '(?i)\[string\] \$\w*(password|pfx)')
+Check 'signing: the Inno Setup compiler''s folder is checked when it is found and again before each compile' (
+    $buildRelease -match 'Assert-InnoSetupSigned \$candidate\s+Assert-InnoSetupLocation \$candidate' -and $buildRelease -match 'Assert-SigningTools\s+Assert-InnoSetupLocation \$compiler')
+Check 'signing: Azure''s credentials never go through a cmdlet (module logging records parameters and output), only .NET' (
+    $buildRelease -notmatch '(?m)^[^#\r\n]*(?<![${])Env:' -and $buildRelease -match '\[Environment\]::SetEnvironmentVariable\(\$name, \$HiddenEnvironment\[\$name\], ''Process''\)')
 Check 'signing: signtool runs in place, never from a copy in a folder the user can write in' ($buildRelease -notmatch 'Copy-SignTool|Remove-SignToolCopy|pulsar-signtool' -and $buildRelease -match 'Assert-AdministratorsOnly \(Split-Path -Parent \$Signing\.SignTool\)')
 Check 'signing: the setups are signed by Inno Setup (so the uninstaller is) with the one named sign tool, signtool in place, and verified' (
     $buildRelease -match "'/DSignSetups', '/NI', `"/Spulsarsign=\`$\(Get-InnoSignCommand \`$Signing\.SignTool\)`"" -and $buildRelease -match 'Assert-Signed @\(\$setup\)')
