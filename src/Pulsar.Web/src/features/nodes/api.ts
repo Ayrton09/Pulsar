@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap, type Schemas } from '../../api/client';
+import { invalidateAfterChange } from '../../lib/queries';
 import { adminKeys } from '../admin/api';
 
 export type NodeSummary = Schemas['NodeSummary'];
@@ -73,11 +74,7 @@ export function useNode(id: string) {
 /** Node changes show up in the list, the node page and the audit log. */
 function useNodesChanged() {
   const queryClient = useQueryClient();
-  return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: nodeKeys.all }),
-      queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
-    ]);
+  return () => invalidateAfterChange(queryClient, { queryKey: nodeKeys.all }, { queryKey: adminKeys.audit });
 }
 
 export function useCreateNode() {

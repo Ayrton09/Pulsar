@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap, type Schemas } from '../../api/client';
+import { invalidateAfterChange } from '../../lib/queries';
 import { useServersChanged } from '../servers/api';
 
 export type SteamAccount = Schemas['SteamAccountView'];
@@ -19,7 +20,7 @@ export function useSteamAccounts(enabled = true) {
 export function useSteamAccountsChanged() {
   const queryClient = useQueryClient();
   const serversChanged = useServersChanged();
-  return () => Promise.all([queryClient.invalidateQueries({ queryKey: steamKeys.accounts }), serversChanged()]);
+  return () => Promise.all([invalidateAfterChange(queryClient, { queryKey: steamKeys.accounts }), serversChanged()]);
 }
 
 /** The account the server's SteamCMD signs in with from its next install or update (null: anonymous). */

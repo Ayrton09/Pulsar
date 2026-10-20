@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap, type Schemas } from '../../api/client';
+import { invalidateAfterChange } from '../../lib/queries';
 import { adminKeys } from '../admin/api';
 
 export type NotificationChannel = Schemas['NotificationChannelView'];
@@ -53,11 +54,12 @@ export function useNotificationDeliveries() {
 function useChanged() {
   const queryClient = useQueryClient();
   return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: notificationKeys.channels }),
-      queryClient.invalidateQueries({ queryKey: notificationKeys.deliveries }),
-      queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
-    ]);
+    invalidateAfterChange(
+      queryClient,
+      { queryKey: notificationKeys.channels },
+      { queryKey: notificationKeys.deliveries },
+      { queryKey: adminKeys.audit },
+    );
 }
 
 export function useCreateChannel() {

@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -122,5 +122,42 @@ describe('users', () => {
     expect(within(dialog).queryByRole('button', { name: 'Turn off two-factor' })).not.toBeInTheDocument();
     expect(within(dialog).queryByText('Two-factor authentication is on.')).not.toBeInTheDocument();
     expect(reset).toHaveBeenCalledOnce();
+  });
+
+  it('lists a user created while the list was still loading', async () => {
+    // The page's first request read the users before the new one existed, and its answer arrives after the creation.
+    let answerFirst: (response: Response) => void = () => {};
+    const first = new Promise<Response>((resolve) => (answerFirst = resolve));
+    const newcomer: Schemas['UserResponse'] = {
+      ...friend,
+      id: '0192f1a0-0000-7000-8000-000000000003',
+      userName: 'newbie',
+    };
+    let existing = [friend];
+    let lists = 0;
+    const create = vi.fn(() => {
+      existing = [friend, newcomer];
+      return json(newcomer, 201);
+    });
+    fakeApi({
+      'GET /api/v1/auth/session': session(adminUser),
+      'GET /api/v1/users': () => (lists++ === 0 ? first : json(existing)),
+      'GET /api/v1/roles': () => json([]),
+      'POST /api/v1/users': create,
+    });
+    renderAt('/admin/users');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Add user' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add user' });
+    await user.type(within(dialog).getByLabelText('User name'), 'newbie');
+    await user.type(within(dialog).getByLabelText('Password'), 'a long enough password');
+    await user.click(within(dialog).getByRole('button', { name: 'Create' }));
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
+    answerFirst(json([friend])); // late, and without the new user
+
+    // A shorter wait than the default: the assertion fails with its message before the test itself times out.
+    await waitFor(() => expect(screen.queryByText('newbie')).toBeInTheDocument(), { timeout: 2000 });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), { timeout: 2000 });
   });
 });

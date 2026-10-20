@@ -7,6 +7,7 @@ import { Dialog } from '../../components/ui/Dialog';
 import { Alert, PageHeader, Table, Td, Th } from '../../components/ui/Display';
 import { Checkbox, Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
+import { invalidateAfterChange } from '../../lib/queries';
 import { useServersChanged } from '../servers/api';
 
 type Storage = Schemas['BackupStorageView'];
@@ -22,7 +23,7 @@ function useStorages() {
 function useStorageChanged() {
   const queryClient = useQueryClient();
   const serversChanged = useServersChanged();
-  return () => Promise.all([queryClient.invalidateQueries({ queryKey: storagesKey }), serversChanged()]);
+  return () => Promise.all([invalidateAfterChange(queryClient, { queryKey: storagesKey }), serversChanged()]);
 }
 
 /** S3-compatible storages backups are copied to (settings.manage); servers choose one in their Backups tab. */

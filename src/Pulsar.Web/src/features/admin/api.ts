@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap, type Schemas } from '../../api/client';
+import { invalidateAfterChange } from '../../lib/queries';
 import { sessionKey } from '../auth/api';
 
 export type User = Schemas['UserResponse'];
@@ -62,12 +63,13 @@ export function useRecentActivity(limit: number, enabled: boolean) {
 function useAccessChanged() {
   const queryClient = useQueryClient();
   return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: adminKeys.users }),
-      queryClient.invalidateQueries({ queryKey: adminKeys.roles }),
-      queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
-      queryClient.invalidateQueries({ queryKey: sessionKey }),
-    ]);
+    invalidateAfterChange(
+      queryClient,
+      { queryKey: adminKeys.users },
+      { queryKey: adminKeys.roles },
+      { queryKey: adminKeys.audit },
+      { queryKey: sessionKey },
+    );
 }
 
 export function useCreateUser() {
