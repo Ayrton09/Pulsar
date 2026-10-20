@@ -77,7 +77,9 @@ key to yourself and give it a passphrase; if a computer with one of your keys is
 Accepted: **Ed25519** (the best choice), **ECDSA** (P-256, P-384, P-521) and **RSA** of 2048 bits or more, which signs
 with SHA-2 (`rsa-sha2-256` or `rsa-sha2-512`; never the old SHA-1 `ssh-rsa` signatures, which clients stopped using).
 DSA keys, security keys (`sk-ssh-ed25519@openssh.com` and the like) and certificates are refused. A user has at most 10
-keys, each once.
+keys, and a key can be on one account only: someone who added your public key to their own account would otherwise
+have your client sign in there, to their files, without a prompt. If the panel says a key of yours has been added
+already and it is not on your list, tell an administrator (the audit log says who added it) and use another key.
 
 ### Make a key
 

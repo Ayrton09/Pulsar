@@ -21,7 +21,7 @@ namespace Pulsar.Api.Tests.Auth;
 /// <summary>
 /// SSH keys on the account (docs/guides/sftp.md, "SSH keys"): added with the password and, with two-factor
 /// authentication on, the authenticator code (never a recovery code), checked before either is asked for, at most ten
-/// per user and each once, listed and deleted by their owner only, audited, never reached with an API key, and all
+/// per user and each on one account only, listed and deleted by their owner only, audited, never reached with an API key, and all
 /// deleted at once by an administrator.
 /// </summary>
 public sealed class SshKeyApiTests(PulsarApiFactory factory) : IClassFixture<PulsarApiFactory>
@@ -144,14 +144,23 @@ public sealed class SshKeyApiTests(PulsarApiFactory factory) : IClassFixture<Pul
                 await SetupTests.AssertProblemAsync(tooMany, HttpStatusCode.Conflict, "ssh_key.too_many");
             }
 
-            // Another user sees none of them, cannot delete one, and may add the same key to their own account.
+            // Another user sees none of them and cannot delete one.
             Assert.Empty((await other.Http.GetFromJsonAsync<List<SshKeyView>>("/api/v1/account/ssh-keys", AccessScenario.Json, Ct))!);
             using (var theirs = await other.DeleteAsync($"/api/v1/account/ssh-keys/{added[0].Id}"))
             {
                 await SetupTests.AssertProblemAsync(theirs, HttpStatusCode.NotFound, "ssh_key.not_found");
             }
 
-            Assert.Equal(keys[0].Fingerprint, (await keys[0].AddAsync(other)).Fingerprint);
+            // Nor add one of hers to their own account (her client would sign in there): said only after the password.
+            using (var wrong = await other.PostAsync("/api/v1/account/ssh-keys", new AddSshKeyRequest("Hers", keys[0].Line, "not my password", null)))
+            {
+                await SetupTests.AssertProblemAsync(wrong, HttpStatusCode.BadRequest, "auth.wrong_current_password");
+            }
+
+            using (var hers = await other.PostAsync("/api/v1/account/ssh-keys", new AddSshKeyRequest("Hers", keys[0].Line, AccessScenario.Password, null)))
+            {
+                await SetupTests.AssertProblemAsync(hers, HttpStatusCode.Conflict, "ssh_key.duplicate");
+            }
 
             // Deleted by its owner: audited, gone, and room for another.
             using (var deleted = await account.DeleteAsync($"/api/v1/account/ssh-keys/{added[0].Id}"))

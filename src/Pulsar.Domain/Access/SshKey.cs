@@ -6,7 +6,7 @@ namespace Pulsar.Domain.Access;
 /// A public key a user added to sign in to SFTP with (docs/guides/sftp.md, "SSH keys"). It alone signs its user in, a
 /// user with two-factor authentication too: the key is the second factor, and adding one takes the password and, with
 /// two-factor authentication on, the authenticator code. Kept as its blob (SSH's wire format) and fingerprint; a user has
-/// at most <see cref="MaxPerUser"/> keys, each once.
+/// at most <see cref="MaxPerUser"/> keys, and a key is on one account only.
 /// </summary>
 public sealed class SshKey
 {

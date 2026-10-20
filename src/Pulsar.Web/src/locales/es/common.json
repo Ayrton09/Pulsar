@@ -463,7 +463,7 @@
       "rsa_too_short": "Una clave RSA necesita al menos 2048 bits. Creá una clave nueva, mejor Ed25519.",
       "name_invalid": "Poné un nombre de una línea, de hasta 64 caracteres.",
       "too_many": "Ya tenés 10 claves SSH: borrá una primero.",
-      "duplicate": "Ya agregaste esta clave.",
+      "duplicate": "Esta clave ya fue agregada, a tu cuenta o a otra: usá otra clave.",
       "not_found": "Esa clave ya no existe."
     },
     "unexpected": "Algo salió mal. Probá de nuevo.",

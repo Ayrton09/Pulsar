@@ -36,10 +36,15 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "ix_ssh_keys_user_id_fingerprint",
+                name: "ix_ssh_keys_fingerprint",
                 table: "ssh_keys",
-                columns: new[] { "user_id", "fingerprint" },
+                column: "fingerprint",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "ix_ssh_keys_user_id",
+                table: "ssh_keys",
+                column: "user_id");
         }
 
         /// <inheritdoc />

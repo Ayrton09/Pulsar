@@ -367,9 +367,12 @@ namespace Pulsar.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_ssh_keys");
 
-                    b.HasIndex("UserId", "Fingerprint")
+                    b.HasIndex("Fingerprint")
                         .IsUnique()
-                        .HasDatabaseName("ix_ssh_keys_user_id_fingerprint");
+                        .HasDatabaseName("ix_ssh_keys_fingerprint");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_ssh_keys_user_id");
 
                     b.ToTable("ssh_keys", (string)null);
                 });

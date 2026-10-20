@@ -377,13 +377,6 @@ internal sealed partial class SftpAuthenticator : IDisposable
             return null;
         }
 
-        // Deleted while this attempt waited for its turn: the deletion wins.
-        if (!await services.GetRequiredService<SshKeys>().ExistsAsync(user.Id, added.Id, cancellationToken))
-        {
-            await FailAsync(services, user, "invalid_key", fingerprint);
-            return null;
-        }
-
         return await SignInAsync(connection, services, users, user, shortId, secondFactor: null, key: added);
     }
 
@@ -483,6 +476,15 @@ internal sealed partial class SftpAuthenticator : IDisposable
                     $"You have {_options.MaxSessionsPerUser} SFTP sessions open already. Close one and try again.");
             }
 
+            return null;
+        }
+
+        // A key deleted meanwhile: its deletion commits before it ends the key's sessions (SftpConnections.EndKey), so
+        // either that saw this session counted, or this sees the key gone.
+        if (key is not null && !await services.GetRequiredService<SshKeys>().ExistsAsync(user.Id, key.Id, CancellationToken.None))
+        {
+            connection.Close(SshDisconnectReason.ByApplication, "The SSH key you signed in with was deleted.");
+            await FailAsync(services, user, "invalid_key", key.Fingerprint);
             return null;
         }
 

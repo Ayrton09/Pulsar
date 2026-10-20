@@ -130,8 +130,10 @@ internal sealed class SshKeyConfiguration : IEntityTypeConfiguration<SshKey>
         builder.Property(k => k.PublicKey).HasMaxLength(SshPublicKey.MaxBlobLength);
         builder.Property(k => k.Fingerprint).HasMaxLength(SshKey.FingerprintLength);
 
-        // A key once per user (the sign-in finds it by its user and fingerprint); another user may add the same one.
-        builder.HasIndex(k => new { k.UserId, k.Fingerprint }).IsUnique();
+        // A key belongs to one account (the sign-in finds it by its fingerprint): nobody can add someone else's public key
+        // to their own account and have that person's client sign in there without a word.
+        builder.HasIndex(k => k.Fingerprint).IsUnique();
+        builder.HasIndex(k => k.UserId);
         builder.HasOne<PulsarUser>().WithMany().HasForeignKey(k => k.UserId).OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Audit;
@@ -20,6 +21,9 @@ public sealed record SshKeyView(Guid Id, string Name, string Type, int Bits, str
 /// </summary>
 public sealed class SshKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audit, TimeProvider clock)
 {
+    /// <summary>The SQLSTATE of a unique index violation (PostgreSQL's, the standard one).</summary>
+    private const string UniqueViolation = "23505";
+
     /// <summary>The user's keys, newest first.</summary>
     public async Task<IReadOnlyList<SshKeyView>> ListAsync(UserId user, CancellationToken cancellationToken)
     {
@@ -31,16 +35,20 @@ public sealed class SshKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audi
     }
 
     /// <summary>
-    /// Whether <paramref name="key"/> could be added now (its name, a key not added yet, room for one more): answered
-    /// before the password and code are checked, so a mistake costs neither a password attempt nor the code.
+    /// Whether <paramref name="key"/> could be added now (its name, not one of the user's yet, room for one more):
+    /// answered before the password and code are checked, so a mistake costs neither a password attempt nor the code.
+    /// Whether another account has it is said only after them (<see cref="AddAsync"/>).
     /// </summary>
     public async Task<Result> ValidateAsync(UserId user, string? name, SshPublicKey key, CancellationToken cancellationToken)
     {
         var created = SshKey.Create(user, name, key, clock.GetUtcNow());
-        return created.IsSuccess ? await RoomForAsync(user, key, cancellationToken) : created.Error!;
+        return created.IsSuccess ? await RoomForAsync(user, key, anyAccount: false, cancellationToken) : created.Error!;
     }
 
-    /// <summary>Counted with the user's row locked: requests made at the same moment cannot all take the last place.</summary>
+    /// <summary>
+    /// Counted with the user's row locked: requests made at the same moment cannot all take the last place. A key on
+    /// another account is refused (the unique index too, for one added at the same moment).
+    /// </summary>
     public async Task<Result<SshKeyView>> AddAsync(UserId user, string? name, SshPublicKey key, CancellationToken cancellationToken)
     {
         var created = SshKey.Create(user, name, key, clock.GetUtcNow());
@@ -51,7 +59,7 @@ public sealed class SshKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audi
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await locks.LockUserAsync(user, cancellationToken);
-        if (await RoomForAsync(user, key, cancellationToken) is { IsSuccess: false } refused)
+        if (await RoomForAsync(user, key, anyAccount: true, cancellationToken) is { IsSuccess: false } refused)
         {
             return refused.Error!;
         }
@@ -60,7 +68,16 @@ public sealed class SshKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audi
         db.SshKeys.Add(added);
         audit.Record(AuditActions.Auth.SshKeyAdded, metadata: new { key = added.Id.Value, added.Name, added.Type, key.Bits, added.Fingerprint })
             .WithTarget("user", user.Value.ToString());
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is DbException { SqlState: UniqueViolation })
+        {
+            // Another user added the same key at the same moment (the users' locks are not the same lock).
+            return AccessErrors.SshKeyDuplicate;
+        }
+
         await transaction.CommitAsync(cancellationToken);
         return View(added);
     }
@@ -125,10 +142,18 @@ public sealed class SshKeys(IPulsarDbContext db, IRowLocks locks, IAuditLog audi
         return new SshKeyView(key.Id.Value, key.Name, key.Type, bits, key.Fingerprint, key.CreatedAt, key.LastUsedAt);
     }
 
-    private async Task<Result> RoomForAsync(UserId user, SshPublicKey key, CancellationToken cancellationToken)
+    /// <summary>
+    /// Room for <paramref name="key"/>: not one of the user's already, fewer than <see cref="SshKey.MaxPerUser"/>, and,
+    /// with <paramref name="anyAccount"/> (only once the password and code were given), on no other account either. A key
+    /// belongs to one account: someone who added another person's public key (public by nature) to their own account
+    /// would have that person's client sign in there, to their files, without a prompt. "Added already" then tells only
+    /// that the key is on the panel, which a sign-in's question about the key tells too (docs/architecture/08, T42).
+    /// </summary>
+    private async Task<Result> RoomForAsync(UserId user, SshPublicKey key, bool anyAccount, CancellationToken cancellationToken)
     {
         var fingerprints = await db.SshKeys.Where(k => k.UserId == user).Select(k => k.Fingerprint).ToListAsync(cancellationToken);
-        if (fingerprints.Contains(key.Fingerprint, StringComparer.Ordinal))
+        if (fingerprints.Contains(key.Fingerprint, StringComparer.Ordinal)
+            || (anyAccount && await db.SshKeys.AnyAsync(k => k.Fingerprint == key.Fingerprint, cancellationToken)))
         {
             return AccessErrors.SshKeyDuplicate;
         }

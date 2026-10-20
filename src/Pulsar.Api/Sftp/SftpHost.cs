@@ -92,8 +92,9 @@ internal sealed partial class SftpHost(
         configuration.ProtocolExtensions.Remove(SshProtocolExtensionNames.SessionReconnect);
         configuration.ProtocolExtensions.Remove(SshProtocolExtensionNames.SessionLatency);
 
-        // Refusals in all: "none" counts as one, each key that is not the user's too; password checks and keys are bounded
-        // apart (SftpOptions.MaxPasswordAttemptsPerConnection, MaxKeyAttemptsPerConnection).
+        // Refusals the library counts, in all (each key that is not the user's, each wrong password or code; a method it
+        // does not offer, "none" among them, is refused uncounted within the sign-in deadline). Password checks and keys are
+        // bounded apart (SftpOptions.MaxPasswordAttemptsPerConnection, MaxKeyAttemptsPerConnection).
         configuration.MaxClientAuthenticationAttempts = 10;
         return configuration;
     }

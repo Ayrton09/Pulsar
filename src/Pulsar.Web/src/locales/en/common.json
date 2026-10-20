@@ -463,7 +463,7 @@
       "rsa_too_short": "An RSA key needs at least 2048 bits. Make a new key, preferably Ed25519.",
       "name_invalid": "Give the key a name of one line, up to 64 characters.",
       "too_many": "You have 10 SSH keys: delete one first.",
-      "duplicate": "You have added this key already.",
+      "duplicate": "This key has been added already, to your account or another one: use another key.",
       "not_found": "That key does not exist any more."
     },
     "unexpected": "Something went wrong. Try again.",

@@ -71,7 +71,8 @@ public static class AccessErrors
     public static DomainError SshKeyTooMany { get; } =
         new("ssh_key.too_many", $"A user can have at most {SshKey.MaxPerUser} SSH keys; delete one first.");
 
-    public static DomainError SshKeyDuplicate { get; } = new("ssh_key.duplicate", "You have added this SSH key already.");
+    public static DomainError SshKeyDuplicate { get; } =
+        new("ssh_key.duplicate", "This SSH key has been added already, to your account or another one: use another key.");
 
     public static DomainError SshKeyNotFound { get; } = new("ssh_key.not_found", "The SSH key does not exist.");
 

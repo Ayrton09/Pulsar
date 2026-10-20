@@ -130,9 +130,9 @@ docs/guides/sftp.md, "SSH keys").
   current password and, with two-factor authentication on, the authenticator code (not a recovery code). Wrong ones count
   towards the lockout; the key itself is checked first.
 - Stored as its blob in SSH's wire format, its type and its SHA-256 fingerprint as OpenSSH prints it, with a name (the
-  key's comment when none is given), when it was added and when it last signed in. At most 10 per user, each once (another
-  user may add the same key). Ed25519, ECDSA P-256/384/521 and RSA of 2048 bits or more (signed with SHA-2); read strictly
-  (`SshPublicKey`).
+  key's comment when none is given), when it was added and when it last signed in. At most 10 per user, and a key on one account only (its fingerprint is unique: someone who added
+  another person's public key to their own account would have that person's client sign in there). Ed25519, ECDSA
+  P-256/384/521 and RSA of 2048 bits or more (signed with SHA-2); read strictly (`SshPublicKey`).
 - Deleted by their user (the SFTP sessions the key signed in end) or all at once by an administrator
   (`DELETE /api/v1/users/{id}/ssh-keys`, `user.manage`), and with their user. A new password or a two-factor reset keeps
   them, as with API keys; a disabled user's keys do not sign in.
@@ -420,11 +420,11 @@ CREATE TABLE ssh_keys (  -- Phase 17
     name          varchar(64) NOT NULL,
     type          varchar(19) NOT NULL,         -- ssh-ed25519, ecdsa-sha2-nistp256/384/521, ssh-rsa
     public_key    bytea NOT NULL,               -- the key's blob, SSH wire format (at most 4096 bytes)
-    fingerprint   varchar(50) NOT NULL,         -- SHA256:… as OpenSSH prints it
+    fingerprint   varchar(50) NOT NULL UNIQUE,  -- SHA256:… as OpenSSH prints it; a key on one account only
     created_at    timestamptz NOT NULL,
-    last_used_at  timestamptz,
-    UNIQUE (user_id, fingerprint)
+    last_used_at  timestamptz
 );
+CREATE INDEX ON ssh_keys (user_id);
 
 -- ===================== Operations =====================
 CREATE TABLE operations (
