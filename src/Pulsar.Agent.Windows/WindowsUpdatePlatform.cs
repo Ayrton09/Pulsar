@@ -48,15 +48,15 @@ public sealed class WindowsUpdatePlatform(Func<bool> development) : IUpdatePlatf
     public string PrepareFolder(string updatesRoot, string name)
     {
         var root = new DirectoryInfo(Path.GetFullPath(updatesRoot));
-        if (root.Exists)
+        // Nobody else may replace a folder above it either: renaming one away and putting another in its place would put
+        // whatever they like where this agent unpacks and runs the installer.
+        if (WindowsDirectorySecurity.FindReplaceableAncestors(root.FullName) is { Count: > 0 } replaceable)
         {
-            if (!IsPrivate(root))
-            {
-                throw new InvalidOperationException(
-                    $"{root.FullName} could be changed by accounts other than SYSTEM and Administrators (or is a link): delete it, and update again.");
-            }
+            throw new InvalidOperationException(
+                $"A folder above {root.FullName} could be replaced by accounts other than SYSTEM, Administrators and TrustedInstaller: {string.Join("; ", replaceable.Take(5))}.");
         }
-        else
+
+        if (!root.Exists)
         {
             // Made with its rules, so that nobody else holds it even for a moment.
             var security = new DirectorySecurity();
@@ -67,7 +67,15 @@ public sealed class WindowsUpdatePlatform(Func<bool> development) : IUpdatePlatf
                     InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
             }
 
+            // An account that made it first, in the moment between the look and this, keeps it: the check below refuses it.
             root.Create(security);
+            root.Refresh();
+        }
+
+        if (!IsPrivate(root))
+        {
+            throw new InvalidOperationException(
+                $"{root.FullName} could be changed by accounts other than SYSTEM and Administrators (or is a link): delete it, and update again.");
         }
 
         var folder = new DirectoryInfo(Path.Combine(root.FullName, name));
@@ -77,6 +85,12 @@ public sealed class WindowsUpdatePlatform(Func<bool> development) : IUpdatePlatf
         }
 
         folder.Create();
+        folder.Refresh();
+        if (!IsPrivate(folder, inherited: true))
+        {
+            throw new InvalidOperationException($"{folder.FullName} could be changed by accounts other than SYSTEM and Administrators.");
+        }
+
         return folder.FullName;
     }
 
@@ -108,8 +122,11 @@ public sealed class WindowsUpdatePlatform(Func<bool> development) : IUpdatePlatf
         }
     }
 
-    /// <summary>The installer's own rule (Test-PrivateFolder): not a link, owned by SYSTEM or Administrators, rules not inherited, allowing them alone.</summary>
-    internal static bool IsPrivate(DirectoryInfo folder)
+    /// <summary>
+    /// The installer's own rule (Test-PrivateFolder): not a link, owned by SYSTEM or Administrators, rules not inherited (or,
+    /// with <paramref name="inherited"/>, inherited from such a folder), allowing them alone.
+    /// </summary>
+    internal static bool IsPrivate(DirectoryInfo folder, bool inherited = false)
     {
         if ((folder.Attributes & FileAttributes.ReparsePoint) != 0)
         {
@@ -118,7 +135,7 @@ public sealed class WindowsUpdatePlatform(Func<bool> development) : IUpdatePlatf
 
         var security = folder.GetAccessControl();
         if (security.GetOwner(typeof(SecurityIdentifier)) is not SecurityIdentifier owner || (owner != s_system && owner != s_administrators)
-            || !security.AreAccessRulesProtected)
+            || (!inherited && !security.AreAccessRulesProtected))
         {
             return false;
         }

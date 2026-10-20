@@ -205,7 +205,17 @@ public sealed partial class PanelUpdates(
 
             audit.Record(AuditActions.Updates.Requested, metadata: new { from, to = latest.Manifest.Version, panel = HostsPanel(live) })
                 .WithTarget("node", nodeId.Value.ToString());
-            await db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                // Another request for this node, at the same moment, was first: it is the one under way.
+                db.ChangeTracker.Clear();
+                results.Add(new UpdateRequestResult(nodeId.Value, false, "update.in_progress", null));
+                continue;
+            }
 
             var ack = await connections.SendAsync(nodeId, new UpdatePulsarCommand(latest.Manifest.Version, state.LatestManifestSha256!), request.UserId,
                 CancellationToken.None);
@@ -245,6 +255,9 @@ public sealed partial class PanelUpdates(
         var error = report.Error is null ? null : AgentInput.Text(report.Error, NodeUpdate.MaxErrorLength);
         var now = clock.GetUtcNow();
         var update = await db.NodeUpdates.SingleOrDefaultAsync(u => u.NodeId == nodeId, cancellationToken);
+        // Only the end of an update under way is audited (or a node's first report): a node cannot fill the audit log by
+        // reporting ends over and over.
+        var ended = update is null || !NodeUpdate.IsFinal(update.Status);
         bool changed;
         if (update is null)
         {
@@ -266,7 +279,7 @@ public sealed partial class PanelUpdates(
             return;
         }
 
-        if (UpdateStatuses.IsFinal(status))
+        if (UpdateStatuses.IsFinal(status) && ended)
         {
             audit.Record(AuditActions.Updates.Finished, status == UpdateStatuses.Succeeded ? AuditOutcome.Success : AuditOutcome.Failure,
                     new { status, from, to, error })
@@ -324,7 +337,11 @@ public sealed partial class PanelUpdates(
 
     private AgentConnectionInfo? Live(NodeId node) => connections.Find(node) is { } live && sessions.IsActive(live.SessionId) ? live : null;
 
-    /// <summary>The kept release, verified again (a row someone changed in the database is not taken), or null.</summary>
+    /// <summary>
+    /// The kept release, read again, or null when its text and SHA-256 disagree. Its signature is not checked again: a row
+    /// changed in the database could change what the page shows, never what a node installs (the node checks the release
+    /// on GitHub against the trusted keys itself).
+    /// </summary>
     private static LatestRelease? Latest(UpdateState state)
     {
         if (state.LatestManifest is not { } text || state.LatestManifestSha256 is not { } sha)

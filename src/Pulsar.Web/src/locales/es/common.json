@@ -817,7 +817,10 @@
       "invalid_nodes": "Elegí los nodos a actualizar.",
       "not_newer": "El nodo ya tiene esta versión o una más nueva.",
       "msi_managed": "El MSI del agente mantiene este nodo: actualizalo con un paquete más nuevo.",
-      "refused": "El nodo rechazó la actualización."
+      "refused": "El nodo rechazó la actualización.",
+      "development": "Un agente de desarrollo se actualiza con una compilación nueva, no desde las releases.",
+      "not_service": "Este agente no corre como el servicio PulsarAgent: actualizalo con los instaladores.",
+      "invalid": "El pedido de actualización estaba mal formado."
     }
   },
   "account": {

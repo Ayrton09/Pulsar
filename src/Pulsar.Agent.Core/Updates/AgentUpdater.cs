@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Panel;
 using Pulsar.Contracts;
@@ -58,6 +59,9 @@ public sealed record AgentUpdaterOptions
 public sealed partial class AgentUpdater : IDisposable
 {
     private const string UserAgent = "Pulsar-Agent";
+    private static readonly Regex s_releaseFolder = new(@"\A(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})-[0-9a-f]{8}\z",
+        RegexOptions.CultureInvariant);
+
     private readonly IUpdatePlatform _platform;
     private readonly PanelChannel _channel;
     private readonly TimeProvider _clock;
@@ -140,6 +144,7 @@ public sealed partial class AgentUpdater : IDisposable
         try
         {
             await ReportAsync(UpdateStatuses.Downloading, from, version, null);
+            RemoveEarlierReleases();
             using var client = new HttpClient(_options.Handler(), disposeHandler: true) { Timeout = TimeSpan.FromMinutes(30) };
             client.DefaultRequestHeaders.UserAgent.ParseAdd($"{UserAgent}/{AgentInfo.Version}");
             var manifest = await UpdateDownloads.GetBytesAsync(client, UpdateRelease.File(version, UpdateRelease.ManifestName),
@@ -198,14 +203,16 @@ public sealed partial class AgentUpdater : IDisposable
                     $"The installer ended with exit code {exitCode} before updating anything. Its log is in {SetupLogs}.");
             }
 
+            TryDelete(folder);
             lock (_lock)
             {
                 _running = false;
             }
         }
-        catch (Exception ex) when (ex is UpdateDownloadException or HttpRequestException or IOException or UnauthorizedAccessException
-                                       or InvalidDataException or TaskCanceledException or InvalidOperationException)
+        catch (Exception ex)
         {
+            // Whatever failed (a download, a check, the folder, something unexpected), the update ends here, is reported, and
+            // the next one may be asked at once.
             LogFailed(version, ex.Message);
             if (folder is not null)
             {
@@ -232,12 +239,40 @@ public sealed partial class AgentUpdater : IDisposable
             return;
         }
 
+        // An update this agent runs ends in RunAsync: an older result sent again after a Hello says nothing about it.
         if (await _channel.DeliverAsync(nameof(IAgentHub.UpdateReport), result, cancellationToken))
         {
             _reported = result.At;
-            lock (_lock)
+        }
+    }
+
+    /// <summary>
+    /// Earlier updates' folders (<c>&lt;version&gt;-&lt;random&gt;</c>, each a whole release): deleted when a new update starts,
+    /// unless made within <see cref="AgentUpdaterOptions.Deadline"/>, so that no installer still running loses its files.
+    /// A link is removed, never followed. The installer's own (backups, previous, its result and lock) are not touched.
+    /// </summary>
+    internal void RemoveEarlierReleases()
+    {
+        var root = new DirectoryInfo(UpdatesRoot);
+        if (!root.Exists)
+        {
+            return;
+        }
+
+        foreach (var folder in root.EnumerateDirectories())
+        {
+            if (!s_releaseFolder.IsMatch(folder.Name) || _clock.GetUtcNow() - folder.CreationTimeUtc < _options.Deadline)
             {
-                _running = false;
+                continue;
+            }
+
+            if ((folder.Attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                folder.Delete();
+            }
+            else
+            {
+                TryDelete(folder.FullName);
             }
         }
     }

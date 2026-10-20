@@ -146,6 +146,28 @@ public sealed class AgentUpdaterTests : IDisposable
     }
 
     [Fact]
+    public void EarlierReleasesAreRemovedButNotRecentOnesNorTheInstallers()
+    {
+        using var updater = Updater(Release().Handler);
+        var root = Directory.CreateDirectory(updater.UpdatesRoot).FullName;
+        var old = Directory.CreateDirectory(Path.Combine(root, "1.0.0-0011aabb"));
+        File.WriteAllText(Path.Combine(old.FullName, "Install-Pulsar.ps1"), "old");
+        old.CreationTimeUtc = DateTime.UtcNow.AddHours(-2);
+        var recent = Directory.CreateDirectory(Path.Combine(root, "1.0.1-ccddeeff"));
+        var backups = Directory.CreateDirectory(Path.Combine(root, "backups"));
+        backups.CreationTimeUtc = DateTime.UtcNow.AddDays(-2);
+        var other = Directory.CreateDirectory(Path.Combine(root, "1.0.0-NOTHEX12"));
+        other.CreationTimeUtc = DateTime.UtcNow.AddDays(-2);
+
+        updater.RemoveEarlierReleases();
+
+        Assert.False(old.Exists && Directory.Exists(old.FullName));
+        Assert.True(Directory.Exists(recent.FullName));
+        Assert.True(Directory.Exists(backups.FullName));
+        Assert.True(Directory.Exists(other.FullName));
+    }
+
+    [Fact]
     public void TheInstallersResultIsReadAsItWroteIt()
     {
         using var updater = Updater(Release().Handler);

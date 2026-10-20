@@ -416,7 +416,7 @@ the other nodes, without anyone carrying a setup to each PC, and without breakin
   manifest with a trusted key.
 - *The panel* looks at `releases/latest/download/pulsar-update.json` and its signature (redirects followed by hand, only to
   GitHub's release storage, over HTTPS, both files bounded), keeps the newest release whose signature verifies, as its signed
-  bytes (verified again whenever it is read), and offers it to `settings.manage` (Administration → Updates, and a banner).
+  bytes and their SHA-256, and offers it to `settings.manage` (Administration → Updates, and a banner).
   Updating asks for the password and, with two-factor authentication on, the code; it takes the session cookie only (never an
   API key). The panel's machine (its agent announces `node.panel_host`) goes first: a node newer than its panel is refused.
 - *The node.* The panel sends a signed `UpdatePulsarCommand` with the version and the manifest's SHA-256, nothing else. The

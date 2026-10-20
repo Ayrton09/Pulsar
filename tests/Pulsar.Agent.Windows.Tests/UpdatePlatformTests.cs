@@ -25,7 +25,8 @@ public sealed class UpdatePlatformTests
             Assert.False(WindowsUpdatePlatform.IsPrivate(folder));
             var platform = new WindowsUpdatePlatform(() => false);
             var refused = Assert.Throws<InvalidOperationException>(() => platform.PrepareFolder(folder.FullName, "1.0.1-0000"));
-            Assert.Contains("could be changed by accounts other than SYSTEM and Administrators", refused.Message, StringComparison.Ordinal);
+            // Refused before anything is made: here a folder above it is the user's to replace, and the folder itself theirs.
+            Assert.Matches("could be (changed|replaced) by accounts other than SYSTEM", refused.Message);
             Assert.False(Directory.Exists(Path.Combine(folder.FullName, "1.0.1-0000")));
         }
         finally
