@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Pulsar.Contracts\Pulsar.Contracts.csproj" />
+    <ProjectReference Include="..\..\tools\Pulsar.UpdateSigner\Pulsar.UpdateSigner.csproj" />
   </ItemGroup>
 
   <ItemGroup>

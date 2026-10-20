@@ -129,6 +129,12 @@
           "xunit.v3.runner.common": "[4.0.2]"
         }
       },
+      "pulsar-update-signer": {
+        "type": "Project",
+        "dependencies": {
+          "Pulsar.Contracts": "[1.0.0, )"
+        }
+      },
       "pulsar.contracts": {
         "type": "Project"
       }
