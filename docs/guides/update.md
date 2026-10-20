@@ -11,8 +11,33 @@ Updates replace Pulsar's programs and keep everything else: settings, database, 
 
 ## Order
 
-Update the **panel first, then the nodes**. A panel accepts agents of its own version and of the previous one, so nodes
+Update the **panel first, then the nodes** (from the panel, its page does it in that order). A panel accepts agents of its own version and of the previous one, so nodes
 keep working while you get to each of them; an agent newer than its panel is refused until the panel is updated.
+
+## From the panel
+
+With nothing to download or carry (Phase 19): **Administration → Updates**, for users with *Manage settings*.
+
+- **What is available.** The panel asks the project's GitHub releases for the newest one once a day (and when you click
+  **Check now**), and offers it only when its `pulsar-update.json` is signed by an update key this version of Pulsar
+  trusts: a release changed after it was signed, or signed by any other key, is refused, and the page says why. The
+  page shows the panel's version, the new one with its notes, and every node with its version. While a newer release is
+  available, a banner on every page says so.
+- **Privacy.** Each daily look is two small requests to GitHub, which sees the panel's address. **Check for new versions
+  once a day** turns that off; the panel then asks only when you click **Check now**.
+- **Updating.** **Update the panel** first: it updates the panel's machine (the panel and its agent). Then **Update** on
+  each node, or **Update all**. Each asks for your current password and, with two-factor authentication on, the code
+  from your app (an API key cannot start an update). The panel is away for about a minute while it restarts; game
+  servers keep running throughout, and players stay connected.
+- **What happens on each machine.** The panel tells the node's agent only which release to install. The agent downloads
+  it from GitHub itself, checks its signature against the keys it trusts, that it is newer than what runs there, and the
+  ZIP's SHA-256, unpacks it in `C:\ProgramData\Pulsar\Updates` and runs its `Install-Pulsar.ps1 -Update`, with the backup,
+  checks and rollback [below](#backup-checks-and-rollback). The node's row shows each step (*Downloading*, *Installing*)
+  and how it ended: *Updated*, *Put back* (the new version did not start, so the previous one runs again, with its data
+  as it was) or *Failed*, with why.
+- **Who cannot.** A node whose agent the agent MSI maintains, or a development agent, says so and is updated as before
+  (below). A node too old for the release (its notes say from which version it updates) is updated with the setups.
+- **Repository.** Installations download releases anonymously, so this works once the project's repository is public.
 
 ## With the setups
 
@@ -144,12 +169,11 @@ folder (someone else may have made it) and run the update again.
 
 ### One-click updates
 
-The panel can also tell an administrator that a newer release exists and start the update on the panel's machine and
-on each node from its web interface, after the administrator's password and two-factor code. That update runs the same
-`Install-Pulsar.ps1 -Update -Unattended` from `C:\ProgramData\Pulsar\Updates\<version>-<random>`, with everything
-above, and the agent reports `last-update.json` back to the panel. It takes only releases of this project's GitHub
-repository whose `pulsar-update.json` is signed by an update key Pulsar trusts ([releasing.md](releasing.md) is how
-the maintainer makes them).
+An update started from the panel ([From the panel](#from-the-panel)) runs the same `Install-Pulsar.ps1 -Update
+-Unattended`, from `C:\ProgramData\Pulsar\Updates\<version>-<random>`, with everything above, and the agent reports
+`last-update.json` back to the panel (and, when the installer ends without updating while the agent still runs, its exit
+code and where its log is). It takes only releases of this project's GitHub repository whose `pulsar-update.json` is
+signed by an update key Pulsar trusts ([releasing.md](releasing.md) is how the maintainer makes them).
 
 ## If something goes wrong
 
