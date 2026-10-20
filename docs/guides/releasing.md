@@ -33,7 +33,13 @@ dotnet run --project tools/Pulsar.UpdateSigner -c Release -- new-key D:\keys\pul
 
 It asks for a passphrase twice (typed without echo) and writes the key file, encrypted with it, then prints the
 **public key** and its id. The passphrase is never a command-line argument: the signer asks for it at the console, or
-reads the `PULSAR_UPDATE_KEY_PASSPHRASE` environment variable when there is no console to type in.
+reads the `PULSAR_UPDATE_KEY_PASSPHRASE` environment variable when there is no console to type in. In a terminal where
+typing without echo does not work, `scripts\release\New-UpdateSigningKey.ps1` asks for it with PowerShell's prompt, which
+shows an asterisk for each character, and gives it to the signer through its environment for that one run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release\New-UpdateSigningKey.ps1 -Path D:\keys\pulsar-update.key
+```
 
 - **Keep an offline copy** of the key file and the passphrase (a USB stick in a drawer, a password manager's vault). A
   lost key cannot sign updates, and every installation would need a release built with a new trusted key installed by
