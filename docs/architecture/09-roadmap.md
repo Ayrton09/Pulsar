@@ -390,6 +390,54 @@ Installing Pulsar should be as easy as AMP's: download one program, click throug
 6. A tampered or wrongly signed download is refused.
 7. After the panel's PC gets a new address, `-RenewCertificate` makes a certificate that lists it, the panel answers with it, and a failure at any point leaves the old certificate in place and answering.
 
+## Phase 19 — One-click updates · *in progress* (2026-10-20, at the user's request)
+
+The panel tells its administrators when a new version of Pulsar is out and, with one button, updates the panel's machine and
+the other nodes, without anyone carrying a setup to each PC, and without breaking anything.
+
+**Decided with the user (2026-10-20):**
+- Updates come from the project's own GitHub releases (`github.com/Ayrton09/Pulsar`) and nowhere else: the source is fixed in
+  the code. The repository is made public with the first release, so installations download anonymously (no token in any
+  panel).
+- Each release carries a manifest signed with an update key that lives on the maintainer's PC (never on GitHub); its public
+  key is built into Pulsar. Releases are built and signed there (`Build-Release.ps1 -UpdateSigningKey`) and uploaded with
+  `Publish-GitHubRelease.ps1` (docs/guides/releasing.md): whoever takes the GitHub account cannot publish an update that
+  installations take.
+- Everything updates from the panel: the panel's machine (the panel and its agent), and every other node.
+- The panel looks for a new release once a day, with a switch to turn that off (GitHub sees the panel's address when it
+  looks), and a *Check now* button.
+
+**Design:**
+- *The release.* `pulsar-update.json` names the version, the oldest installed version that may update to it directly, the
+  notes (plain text) and every file with its size and SHA-256; `pulsar-update.json.sig` is an ECDSA P-256 signature of its
+  exact bytes, for its own purpose (`pulsar-update-manifest-v1`), by a key in `UpdateKeys.Trusted`
+  (`src/Pulsar.Contracts/Updates.cs`). The maintainer's tool, `pulsar-update-signer` (`tools/Pulsar.UpdateSigner`), keeps the
+  key in a file encrypted with a passphrase (AES-256, PBKDF2-SHA256, a million iterations) and signs only a well-formed
+  manifest with a trusted key.
+- *The panel* looks at `releases/latest/download/pulsar-update.json` and its signature (redirects followed by hand, only to
+  GitHub's release storage, over HTTPS, both files bounded), keeps the newest release whose signature verifies, as its signed
+  bytes (verified again whenever it is read), and offers it to `settings.manage` (Administration → Updates, and a banner).
+  Updating asks for the password and, with two-factor authentication on, the code; it takes the session cookie only (never an
+  API key). The panel's machine (its agent announces `node.panel_host`) goes first: a node newer than its panel is refused.
+- *The node.* The panel sends a signed `UpdatePulsarCommand` with the version and the manifest's SHA-256, nothing else. The
+  agent (the PulsarAgent service, as SYSTEM; not one the agent MSI maintains, nor a development one) downloads the manifest,
+  its signature and the ZIP from GitHub itself, checks the manifest is that one, signed by a key it trusts, newer than itself
+  and from a version it may update, checks the ZIP's size and SHA-256, unpacks it (every entry inside the folder, bounded)
+  into `%ProgramData%\Pulsar\Updates`, which only SYSTEM and Administrators can change, and starts the release's
+  `Install-Pulsar.ps1 -Update -Unattended` detached.
+- *Without breaking anything.* `Install-Pulsar.ps1 -Update` backs up the database and the programs first, updates, checks
+  that the panel answers and the agent connects, and puts the old version back (programs and database) when they do not;
+  it writes how it ended in `Updates\last-update.json`, which the agent reports after each Hello (docs/guides/update.md).
+  Game servers keep running in their host processes throughout.
+
+**Done when:**
+1. A release built and signed on the maintainer's PC and published on GitHub is offered by an installed panel, with its notes,
+   and refused when it is signed by any other key or changed after signing.
+2. *Update the panel* updates the panel's PC (panel and agent) with its game servers running; the other nodes then update
+   from the panel.
+3. An update whose new version does not start puts the old one back by itself, and the panel says so.
+4. No password, key or token appears on a command line or in a log; an API key cannot start an update.
+
 ## Post-v1 (tentative order)
 
 Linux agent. (Server hosts and bulk enrollment: Phase 14; backups of running games: Phase 15; client certificates for agents: Phase 16; SFTP: Phase 17.)

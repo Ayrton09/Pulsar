@@ -426,6 +426,29 @@ CREATE TABLE ssh_keys (  -- Phase 17
 );
 CREATE INDEX ON ssh_keys (user_id);
 
+-- ===================== Updates (Phase 19) =====================
+CREATE TABLE update_state (   -- one row
+    id                     int PRIMARY KEY CHECK (id = 1),
+    check_automatically    boolean NOT NULL,         -- the daily look at GitHub's releases
+    checked_at             timestamptz,
+    check_error            varchar(500),
+    latest_version         varchar(32),
+    latest_manifest        varchar(65536),            -- the newest release's pulsar-update.json, as signed and verified
+    latest_manifest_sha256 varchar(64),               -- what a node is told to install, and checks GitHub's file against
+    updated_at             timestamptz NOT NULL
+);
+
+CREATE TABLE node_updates (   -- the last update asked of each node, as far as it went
+    node_id       uuid PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
+    status        varchar(16) NOT NULL,   -- requested, downloading, installing, succeeded, rolled_back, failed
+    from_version  varchar(32),
+    to_version    varchar(32),
+    error         varchar(2000),          -- what the node reported (plain text)
+    requested_by  uuid REFERENCES users(id) ON DELETE SET NULL,
+    requested_at  timestamptz NOT NULL,
+    updated_at    timestamptz NOT NULL
+);
+
 -- ===================== Operations =====================
 CREATE TABLE operations (
     id                   uuid PRIMARY KEY,
