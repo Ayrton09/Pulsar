@@ -22,6 +22,15 @@
 # When signing, the Inno Setup compiler too must be in a folder only administrators can change (Program Files: a per-user
 # install of Inno Setup is refused then; install it for all users, or name one with -InnoSetupCompiler).
 # docs\architecture\09-roadmap.md ("Code signing") says how to get a certificate and how to run this.
+#
+# One-click updates (docs\guides\releasing.md): a release whose version is exactly major.minor.patch also gets
+# pulsar-update.json, which names every published file with its size and SHA-256 (and the oldest version that may update to
+# this one, -MinimumUpdateFrom, and the notes of -ReleaseNotes), and with -UpdateSigningKey pulsar-update.json.sig, its
+# signature by the update key (tools\Pulsar.UpdateSigner, built here and run from the work folder: the passphrase is typed
+# at the console, or comes from PULSAR_UPDATE_KEY_PASSPHRASE, which no build this script starts inherits). The manifest is
+# signed last, once every file is built, checksummed and verified, and verified again against the keys the programs trust
+# (UpdateKeys.Trusted): a build that fails never signs. Panels and agents take an update only from a release signed so.
+#   .\scripts\release\Build-Release.ps1 -Version 1.0.1 -RequireSetups -UpdateSigningKey D:\keys\pulsar-update.key -ReleaseNotes notes.txt
 param(
     [string] $Version = '0.0.0-dev',
     [string] $Output = (Join-Path $PSScriptRoot '..\..\artifacts\release'),
@@ -56,7 +65,19 @@ param(
     # Azure Trusted Signing's certificates last days: Microsoft's own, http://timestamp.acs.microsoft.com, goes with them.
     [ValidatePattern('^https?://[A-Za-z0-9.-]+(:\d{1,5})?(/[A-Za-z0-9._~/-]*)?\z')] [string] $TimestampUrl = 'http://timestamp.digicert.com',
     # Fails an unsigned build (no signing option given): for a release that must not go out unsigned.
-    [switch] $RequireSigning)
+    [switch] $RequireSigning,
+    # The oldest installed version that may update to this release directly (an older one first takes the releases in
+    # between, or the setups): major.minor.patch, not newer than -Version.
+    [ValidatePattern('^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\z')] [string] $MinimumUpdateFrom = '1.0.0',
+    # A UTF-8 plain text file (at most 16 KB) with what changed, shown to the administrator who decides to update.
+    [ValidateNotNullOrEmpty()] [string] $ReleaseNotes,
+    # The update signing key made by pulsar-update-signer new-key (docs\guides\releasing.md): signs pulsar-update.json. Its
+    # passphrase is typed when the signer asks, or read from the PULSAR_UPDATE_KEY_PASSPHRASE environment variable; never a
+    # parameter, which other programs can read.
+    [ValidateNotNullOrEmpty()] [string] $UpdateSigningKey,
+    # Fails a build whose update manifest would not be signed (no -UpdateSigningKey, or a version that is not
+    # major.minor.patch): for a release that must be an update.
+    [switch] $RequireUpdateSignature)
 $ErrorActionPreference = 'Stop'
 # The signing options that were given, whatever their value (an empty one is refused above, never taken for "unsigned").
 $GivenSigningOptions = @('SigningThumbprint', 'TrustedSigningMetadata', 'TrustedSigningDlib', 'SignTool', 'TimestampUrl' | Where-Object { $PSBoundParameters.ContainsKey($_) })
@@ -78,6 +99,8 @@ $Signing = $null
 $Work = $null
 # The AZURE_* variables kept out of this process's environment (Hide-AzureCredentials), name -> value.
 $HiddenEnvironment = [ordered]@{}
+# The update key's passphrase from the environment, kept out of it (Hide-UpdatePassphrase), or $null.
+$HiddenUpdatePassphrase = $null
 
 # Why a file is not validly signed by $organization, or $null when it is: a valid Authenticode signature, in the file
 # itself, of a certificate whose subject has exactly that one organization.
@@ -719,11 +742,163 @@ function Write-Checksum([string] $path) {
     return $hash
 }
 
+# --- The update manifest (pulsar-update.json) and its signature ----------------------------------------------------------
+# A release is an update for installed Pulsars only through its manifest: the list of its files with their sizes and SHA-256,
+# the version, the oldest version that may update to it and the notes, signed by an update key. The programs check the
+# signature against the keys built into them (src\Pulsar.Contracts\Updates.cs, UpdateKeys.Trusted) and take only files the
+# signed manifest names. The key never leaves the maintainer's PC: it signs here, last (docs\guides\releasing.md).
+$UpdateManifestName = 'pulsar-update.json'
+$UpdateSignatureName = 'pulsar-update.json.sig'
+# The limits the programs apply when they read a manifest (UpdateRelease in Updates.cs): one over them is never taken.
+$MaxManifestBytes = 64 * 1024
+$MaxManifestNotesBytes = 16 * 1024
+$MaxManifestFiles = 16
+$MaxManifestFileBytes = 1GB
+$UpdateVersionPattern = '^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\z'
+$ManifestFileNamePattern = '^[A-Za-z0-9_-][A-Za-z0-9._-]{0,99}\z'
+
+# Whether $text is a release version exactly: major.minor.patch, no leading zeros, no pre-release or build part (UpdateVersion).
+function Test-UpdateVersion([string] $text) {
+    return $text -cmatch $UpdateVersionPattern
+}
+
+# The text of the release notes file: UTF-8 (a byte order mark is dropped), at most 16 KB, plain text (no control character
+# but tabs and line breaks, which become \n), and something. The programs show it as text and never as markup.
+function Read-ReleaseNotes([string] $path) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "-ReleaseNotes must name an existing text file ($path)." }
+    if ((Get-Item -LiteralPath $path).Length -gt $MaxManifestNotesBytes) { throw "-ReleaseNotes $path is longer than $($MaxManifestNotesBytes / 1KB) KB: the programs refuse longer notes." }
+    try { $text = (New-Object Text.UTF8Encoding($false, $true)).GetString([IO.File]::ReadAllBytes($path)) }
+    catch { throw "-ReleaseNotes $path is not UTF-8 text." }
+    $text = ($text.TrimStart([char]0xFEFF) -replace "`r`n", "`n" -replace "`r", "`n").TrimEnd()
+    if ($text -cmatch '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]') { throw "-ReleaseNotes $path has control characters: it must be plain text." }
+    if (-not $text) { throw "-ReleaseNotes $path is empty." }
+    return $text
+}
+
+# The manifest as JSON text. PowerShell writes the characters < > & ' as the JSON escapes for code points 3C, 3E, 26 and 27
+# (a backslash, u and four hex digits: valid, but six bytes for one, so notes full of them could pass the manifest's size
+# limit); those four are written as themselves, reading the escapes in pairs so that a backslash before "u003c" in the text
+# itself (which JSON writes as two backslashes) is left alone.
+function ConvertTo-ManifestJson($manifest) {
+    $json = $manifest | ConvertTo-Json -Depth 4 -Compress
+    return [regex]::Replace($json, '\\(?:u(?<code>003[cCeE]|0026|0027)|.)', { param($match)
+            if ($match.Groups['code'].Success) { [string][char][Convert]::ToInt32($match.Groups['code'].Value, 16) } else { $match.Value }
+        })
+}
+
+# Writes pulsar-update.json for the release into $folder: every file of $names (in $folder, by name) with its size and
+# lower-case SHA-256, and the release's ZIP must be among them. Everything the programs check is checked here too (the
+# version, -MinimumUpdateFrom not newer than it, file names, sizes, how many files, the size of the manifest), so a release
+# they would refuse is not built; the signer checks it again before it signs. Returns the manifest's path.
+function New-UpdateManifest([string] $folder, [string] $version, [string] $minimumUpdateFrom, [string] $notes, [string[]] $names, [DateTime] $now = (Get-Date)) {
+    if (-not (Test-UpdateVersion $version)) { throw "The version '$version' is not major.minor.patch, which an update manifest needs." }
+    if (-not (Test-UpdateVersion $minimumUpdateFrom) -or [version]$minimumUpdateFrom -gt [version]$version) {
+        throw "-MinimumUpdateFrom '$minimumUpdateFrom' must be major.minor.patch and not newer than the version $version."
+    }
+    if ($notes -and [Text.Encoding]::UTF8.GetByteCount($notes) -gt $MaxManifestNotesBytes) { throw "The release notes are longer than $($MaxManifestNotesBytes / 1KB) KB." }
+    $zip = "pulsar-$version-windows-x64.zip"
+    if ($names -cnotcontains $zip) { throw "The manifest must list the release's ZIP, $zip." }
+    if ($names.Count -gt $MaxManifestFiles) { throw "A manifest lists at most $MaxManifestFiles files ($($names.Count) were published)." }
+    $files = @()
+    foreach ($item in $names) {
+        if ($item -cnotmatch $ManifestFileNamePattern -or $item -clike '*.sha256' -or $item -ceq $UpdateManifestName -or $item -ceq $UpdateSignatureName) { throw "$item cannot be named in an update manifest." }
+        $path = Join-Path $folder $item
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "$item is not in $folder." }
+        $length = (Get-Item -LiteralPath $path).Length
+        if ($length -le 0 -or $length -gt $MaxManifestFileBytes) { throw "$item is $length bytes: a manifest lists files of 1 byte to $($MaxManifestFileBytes / 1GB) GB." }
+        $files += [ordered]@{ name = $item; size = $length; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
+    }
+    $manifest = [ordered]@{
+        product = 'pulsar'
+        version = $version
+        minimumUpdateFrom = $minimumUpdateFrom
+        published = $now.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
+        notes = $(if ($notes) { $notes } else { $null })
+        files = $files
+    }
+    $bytes = (New-Object Text.UTF8Encoding $false).GetBytes((ConvertTo-ManifestJson $manifest))
+    if ($bytes.Length -gt $MaxManifestBytes) { throw "The manifest is $($bytes.Length) bytes: the programs take at most $($MaxManifestBytes / 1KB) KB." }
+    $manifestPath = Join-Path $folder $UpdateManifestName
+    [IO.File]::WriteAllBytes($manifestPath, $bytes)
+    return $manifestPath
+}
+
+# The update signer (tools\Pulsar.UpdateSigner), built from this checkout into $output: its pulsar-update-signer.exe. Built
+# in locked mode like the rest of the release; it is the tool that knows UpdateKeys.Trusted of this very checkout.
+function Build-UpdateSigner([string] $repository, [string] $output) {
+    dotnet publish (Join-Path $repository 'tools\Pulsar.UpdateSigner') -c Release -r win-x64 --no-self-contained -p:DebugType=none -p:RestoreLockedMode=true -o $output | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw 'publish of the update signer failed' }
+    $exe = Join-Path $output 'pulsar-update-signer.exe'
+    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "The update signer was built, but $exe is missing." }
+    return $exe
+}
+
+# Runs the signer with $arguments (paths and words, never a secret) on this console, so that it can ask for the key's
+# passphrase there; the passphrase of PULSAR_UPDATE_KEY_PASSPHRASE is in its environment only for this call.
+function Invoke-UpdateSigner([string] $signer, [string[]] $arguments) {
+    foreach ($argument in $arguments) { if ($argument.Contains('"')) { throw "A quote cannot go into a command for the update signer ($argument)." } }
+    Set-UpdatePassphrase
+    try {
+        $process = Start-Process -FilePath $signer -ArgumentList @($arguments | ForEach-Object { '"' + $_ + '"' }) -NoNewWindow -Wait -PassThru
+    }
+    finally { Remove-UpdatePassphrase }
+    if ($process.ExitCode -ne 0) { throw "pulsar-update-signer $($arguments[0]) failed (exit code $($process.ExitCode))." }
+}
+
+# Signs $manifest with the key file $key (writes $manifest.sig), then checks the signature against the keys the programs
+# trust (verify, without --trust): a signature the programs would refuse fails the build here, not on the first installation.
+function Invoke-UpdateSigning([string] $signer, [string] $key, [string] $manifest) {
+    Remove-Item -LiteralPath "$manifest.sig" -Force -ErrorAction SilentlyContinue
+    Invoke-UpdateSigner $signer @('sign', $key, $manifest)
+    if (-not (Test-Path -LiteralPath "$manifest.sig" -PathType Leaf)) { throw "The update signer did not write $manifest.sig." }
+    Invoke-UpdateSigner $signer @('verify', $manifest)
+}
+
+# The update key's passphrase (PULSAR_UPDATE_KEY_PASSPHRASE), out of this process's environment, so the builds it starts do
+# not inherit it; Set-UpdatePassphrase gives it back around the signer only. Read and set only through .NET, never as a
+# cmdlet's parameter or output (PowerShell's module logging records those).
+function Hide-UpdatePassphrase {
+    $value = [Environment]::GetEnvironmentVariable('PULSAR_UPDATE_KEY_PASSPHRASE', 'Process')
+    if ($null -ne $value) {
+        $script:HiddenUpdatePassphrase = $value
+        [Environment]::SetEnvironmentVariable('PULSAR_UPDATE_KEY_PASSPHRASE', $null, 'Process')
+    }
+}
+
+function Set-UpdatePassphrase {
+    if ($null -ne $script:HiddenUpdatePassphrase) { [Environment]::SetEnvironmentVariable('PULSAR_UPDATE_KEY_PASSPHRASE', $script:HiddenUpdatePassphrase, 'Process') }
+}
+
+function Remove-UpdatePassphrase {
+    if ($null -ne $script:HiddenUpdatePassphrase) { [Environment]::SetEnvironmentVariable('PULSAR_UPDATE_KEY_PASSPHRASE', $null, 'Process') }
+}
+
+# When the script ends, the variable goes back to the shell it was run from.
+function Restore-UpdatePassphrase {
+    Set-UpdatePassphrase
+    $script:HiddenUpdatePassphrase = $null
+}
+
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $name = "pulsar-$Version-windows-x64"
 # The setups' Windows version resource takes numbers only.
 $numeric = ($Version -split '[-+]')[0]
 if ($numeric -notmatch '^\d+\.\d+\.\d+$') { throw "The version must start with major.minor.patch, not '$Version'." }
+# The update manifest only for a release numbered exactly major.minor.patch (a development or pre-release build is no update),
+# with everything it needs checked before the long builds.
+$manifestWanted = Test-UpdateVersion $Version
+$releaseNotesText = $null
+if ($manifestWanted) {
+    if ($RequireUpdateSignature -and -not $UpdateSigningKey) { throw '-RequireUpdateSignature: this release would have no signed update manifest. Give -UpdateSigningKey.' }
+    if ([version]$MinimumUpdateFrom -gt [version]$Version) { throw "-MinimumUpdateFrom $MinimumUpdateFrom is newer than the version $Version." }
+    if ($UpdateSigningKey -and -not (Test-Path -LiteralPath $UpdateSigningKey -PathType Leaf)) { throw "-UpdateSigningKey must name the key file made by pulsar-update-signer new-key ($UpdateSigningKey)." }
+    if ($ReleaseNotes) { $releaseNotesText = Read-ReleaseNotes $ReleaseNotes }
+}
+else {
+    if ($RequireUpdateSignature) { throw "-RequireUpdateSignature: the version '$Version' is not exactly major.minor.patch, so this release has no update manifest to sign." }
+    Write-Warning "The version '$Version' is not exactly major.minor.patch: no update manifest is written (installed Pulsars take updates only from signed releases of such versions)."
+    foreach ($ignored in 'UpdateSigningKey', 'ReleaseNotes' | Where-Object { $PSBoundParameters.ContainsKey($_) }) { Write-Warning "-$ignored is ignored: there is no update manifest." }
+}
 New-Item -ItemType Directory -Force $Output | Out-Null
 $Output = (Resolve-Path $Output).Path
 # Everything is built in a work folder of its own, and moves into $Output only when it is all there, signed and verified, and
@@ -732,10 +907,15 @@ $Output = (Resolve-Path $Output).Path
 $Work = Join-Path $Output ('.build-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 try {
     # Before the long builds: whether the release can be signed if it is to be (Azure's credentials leave the environment here,
-    # before anything is run), and whether the setups can be built.
+    # before anything is run), and whether the setups can be built. The update key's passphrase, if it is in the environment, is
+    # kept from every program this script starts before the signer (the Inno Setup compiler included).
+    Hide-UpdatePassphrase
     $Signing = Initialize-Signing
     $iscc = Find-InnoSetupCompiler
     $null = New-Item -ItemType Directory $Work
+    # The signer is built now, so a problem with it shows before the long builds; it signs only at the very end.
+    $updateSigner = $null
+    if ($manifestWanted -and $UpdateSigningKey) { $updateSigner = Build-UpdateSigner $repo (Join-Path $Work 'update-signer') }
     $staging = Join-Path $Work $name
     $msiAgent = Join-Path $Work "$name-msi-agent"
     # The panel's and the agent's programs, by the project each is published from, in the folders they are published to (what
@@ -872,6 +1052,21 @@ Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas u
     # All there, signed and verified: now it replaces what an earlier build of this version left in the output folder.
     $published = @($name, "$name.zip", "$name.zip.sha256", (Split-Path $msi -Leaf), "$(Split-Path $msi -Leaf).sha256")
     if ($iscc) { $published += @($setup, $agentSetup | ForEach-Object { Split-Path $_ -Leaf; "$(Split-Path $_ -Leaf).sha256" }) }
+    # The update manifest names every file published (not the checksum files, and not itself), and is signed last: only a
+    # build that got here, with everything made, signed and verified, ever uses the update key.
+    $manifestPath = $null
+    $updateSigned = $false
+    if ($manifestWanted) {
+        $manifestFiles = @($published | Where-Object { $_ -notlike '*.sha256' -and (Test-Path -LiteralPath (Join-Path $Work $_) -PathType Leaf) })
+        $manifestPath = New-UpdateManifest $Work $Version $MinimumUpdateFrom $releaseNotesText $manifestFiles
+        $published += $UpdateManifestName
+        if ($UpdateSigningKey) {
+            Invoke-UpdateSigning $updateSigner $UpdateSigningKey $manifestPath
+            $published += $UpdateSignatureName
+            $updateSigned = $true
+        }
+        else { Write-Warning "$UpdateManifestName is not signed (no -UpdateSigningKey): installed Pulsars will not take this release as an update." }
+    }
     Publish-Release $Work $Output $published
     Write-Host "Release: $(Join-Path $Output "$name.zip")"
     Write-Host "SHA-256: $hash"
@@ -883,8 +1078,10 @@ Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas u
         }
     }
     if ($Signing) { Write-Host "Signed by $($Signing.Subject): the programs, the agent MSI$(if ($iscc) { ' and both setups' }). The ZIP itself cannot be signed: its checksum is." }
+    if ($manifestPath) { Write-Host "Update manifest: $(Join-Path $Output $UpdateManifestName) ($(if ($updateSigned) { 'signed, and verified against the keys Pulsar trusts' } else { 'NOT signed' }))" }
 }
 finally {
     Remove-BuildWork $Work $Signing
     Restore-AzureCredentials
+    Restore-UpdatePassphrase
 }

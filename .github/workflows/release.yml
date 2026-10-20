@@ -1,14 +1,24 @@
 name: Release
 
-# A tag v<version> (for example v1.0.0) builds the Windows release ZIP, the agent-only MSI and the setup wizards
-# (PulsarSetup.exe, PulsarAgentSetup.exe, with Inno Setup pinned by its SHA-256) in CI, attests their provenance and
-# creates a draft GitHub release with each of them and its SHA-256 file (docs/architecture/08, "Supply chain and
-# releases"). A maintainer reviews the draft, adds the notes and publishes it. Two jobs: the build runs npm and dotnet
-# (lifecycle scripts included) with a read-only token and no credentials left in the checkout; the publish job holds the
-# write permissions, runs nothing from the repository and only attests and releases what the build uploaded.
+# Run by hand (Actions > Release > Run workflow, with the version, for example 1.0.0): builds the Windows release ZIP, the
+# agent-only MSI and the setup wizards (PulsarSetup.exe, PulsarAgentSetup.exe, with Inno Setup pinned by its SHA-256) in
+# CI, attests their provenance and creates a draft GitHub release with each of them and its SHA-256 file (docs/architecture/08,
+# "Supply chain and releases"). Two jobs: the build runs npm and dotnet (lifecycle scripts included) with a read-only
+# token and no credentials left in the checkout; the publish job holds the write permissions, runs nothing from the
+# repository and only attests and releases what the build uploaded.
+#
+# This is not how a release that installed Pulsars update to is made. Those are built and update-signed on the maintainer's
+# PC (scripts/release/Build-Release.ps1 -UpdateSigningKey, then Publish-GitHubRelease.ps1; docs/guides/releasing.md): the
+# update key never goes to GitHub, and the draft this job makes has no pulsar-update.json.sig, so no installation takes it
+# as an update. Pushing a tag does not start a run: Publish-GitHubRelease.ps1 makes the tag v<version> through
+# `gh release create`, and a run there would only spend the Actions minutes this project has few of.
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The version to build, major.minor.patch (for example 1.0.0)'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -63,7 +73,11 @@ jobs:
       # built from them. Until then, sign on the maintainer's machine.
       - name: Build the release ZIP, the agent MSI and the setups
         shell: pwsh
-        run: ./scripts/release/Build-Release.ps1 -Version $env:GITHUB_REF_NAME.Substring(1) -RequireSetups -InnoSetupCompiler (Join-Path $env:ProgramFiles 'Inno Setup 7\ISCC.exe')
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:VERSION -cnotmatch '^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$') { throw "The version must be major.minor.patch, not '$env:VERSION'." }
+          ./scripts/release/Build-Release.ps1 -Version $env:VERSION -RequireSetups -InnoSetupCompiler (Join-Path $env:ProgramFiles 'Inno Setup 7\ISCC.exe')
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
@@ -101,10 +115,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="$VERSION"
+          [[ "$version" =~ ^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]] || { echo "Not a version: $version"; exit 1; }
           files=()
           for name in "pulsar-$version-windows-x64.zip" "pulsar-agent-$version-windows-x64.msi" "PulsarSetup-$version.exe" "PulsarAgentSetup-$version.exe"; do
             files+=("release/$name" "release/$name.sha256")
           done
-          gh release create "$GITHUB_REF_NAME" "${files[@]}" --draft --title "Pulsar $version" --generate-notes
+          gh release create "v$version" "${files[@]}" --target "$GITHUB_SHA" --draft --title "Pulsar $version" --generate-notes
