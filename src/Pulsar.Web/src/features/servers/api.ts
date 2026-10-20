@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type Query, type QueryClient } from '@tanstack/react-query';
 import { api, unwrap, type Schemas } from '../../api/client';
+import { invalidateAfterChange } from '../../lib/queries';
 import { adminKeys } from '../admin/api';
 
 export type ServerSummary = Schemas['ServerSummary'];
@@ -82,10 +83,11 @@ export function invalidateServer(queryClient: QueryClient, id: string) {
 export function useServersChanged() {
   const queryClient = useQueryClient();
   return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: serverKeys.all, predicate: notSettings }),
-      queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
-    ]);
+    invalidateAfterChange(
+      queryClient,
+      { queryKey: serverKeys.all, predicate: notSettings },
+      { queryKey: adminKeys.audit },
+    );
 }
 
 export function useCreateServer() {

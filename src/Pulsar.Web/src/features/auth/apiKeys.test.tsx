@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -135,5 +135,48 @@ describe('API keys', () => {
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
     finish?.();
     expect(await within(dialog).findByLabelText('API key')).toHaveTextContent(value);
+  });
+
+  it('lists a key created while the list was still loading', async () => {
+    // The page's first request read the keys before the new one existed, and its answer arrives after the creation.
+    let answerFirst: (response: Response) => void = () => {};
+    const first = new Promise<Response>((resolve) => (answerFirst = resolve));
+    const bot: Schemas['ApiKeyView'] = {
+      id: '0192f1a0-0000-7000-8000-0000000000k1',
+      name: 'Bot',
+      prefix: value.slice(0, 13),
+      permissions: null,
+      createdAt: '2026-10-05T12:00:00Z',
+      expiresAt: null,
+      lastUsedAt: null,
+    };
+    let keys: Schemas['ApiKeyView'][] = [];
+    let lists = 0;
+    const create = vi.fn(() => {
+      keys = [bot];
+      return json({ key: bot, value }, 201);
+    });
+    fakeApi({
+      'GET /api/v1/auth/session': session(adminUser),
+      'GET /api/v1/auth/two-factor': () => json({ enabled: false, required: false, recoveryCodesLeft: 0 }),
+      'GET /api/v1/permissions': () => json(catalog),
+      'GET /api/v1/account/api-keys': () => (lists++ === 0 ? first : json(keys)),
+      'POST /api/v1/account/api-keys': create,
+    });
+    renderAt('/account');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Create key' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('Name'), 'Bot');
+    await user.click(within(dialog).getByRole('button', { name: 'Create key' }));
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
+    answerFirst(json([])); // late, and without the new key
+
+    expect(await within(dialog).findByLabelText('API key')).toHaveTextContent(value);
+    await user.click(within(dialog).getByRole('button', { name: 'I copied it' }));
+    // A shorter wait than the default: the assertion fails with its message before the test itself times out.
+    await waitFor(() => expect(screen.queryByText('Bot')).toBeInTheDocument(), { timeout: 2000 });
+    expect(screen.queryByText('You have no API keys.')).not.toBeInTheDocument();
   });
 });

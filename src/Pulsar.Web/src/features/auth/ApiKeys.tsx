@@ -9,6 +9,7 @@ import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { copyText } from '../../lib/clipboard';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
+import { invalidateAfterChange } from '../../lib/queries';
 import { adminKeys, usePermissionCatalog } from '../admin/api';
 import { groupPermissions } from '../admin/permissionGroups';
 import { useCurrentUser } from './api';
@@ -24,11 +25,7 @@ function useApiKeys() {
 
 function useKeysChanged() {
   const queryClient = useQueryClient();
-  return () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: apiKeysKey }),
-      queryClient.invalidateQueries({ queryKey: adminKeys.audit }),
-    ]);
+  return () => invalidateAfterChange(queryClient, { queryKey: apiKeysKey }, { queryKey: adminKeys.audit });
 }
 
 function useCreateApiKey() {

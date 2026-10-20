@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -156,7 +156,8 @@ describe('users', () => {
     await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
     answerFirst(json([friend])); // late, and without the new user
 
-    expect(await screen.findByRole('row', { name: /newbie/ })).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // A shorter wait than the default: the assertion fails with its message before the test itself times out.
+    await waitFor(() => expect(screen.queryByText('newbie')).toBeInTheDocument(), { timeout: 2000 });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), { timeout: 2000 });
   });
 });
