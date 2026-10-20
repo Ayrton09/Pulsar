@@ -76,7 +76,9 @@ $installParts = Get-ScriptParts $installScript (@($shared) + @('Read-DerElement'
         # -RenewCertificate: the checks before anything changes, the swap, the rollback and what it tells the administrator.
         'Assert-RenewArguments', 'Test-PlainItem', 'Assert-PlainCertificateFiles', 'Get-RenewableCertificate', 'Compare-CertificateNames', 'Get-FileAccess',
         'Set-SameAccess', 'Assert-NewCertificateFiles', 'Stop-Panel', 'Confirm-PanelCertificate', 'Undo-CertificateRenewal', 'Get-LocalNodePin', 'Write-RepinSteps',
-        'Invoke-RenewCertificate', 'Get-InstallerTrust', 'Remove-InstallerTrust', 'Initialize-FolderHold', 'Open-CertificateFolder', 'Assert-InFolder', 'Get-PfxHash')) `
+        'Invoke-RenewCertificate', 'Get-InstallerTrust', 'Remove-InstallerTrust', 'Initialize-FolderHold', 'Open-CertificateFolder', 'Assert-InFolder', 'Get-PfxHash',
+        'New-RandomId', 'Get-PanelAccountSid', 'Assert-PrivateCertificateFolder', 'Get-PanelAccountProcesses', 'Assert-NoPanelProcesses', 'Test-FolderDenies', 'Lock-CertificateFolder', 'Unlock-CertificateFolder',
+        'New-SelfSignedPanelBundle', 'Save-PanelBundle')) `
     (@($sharedVariables) + @('TrustedName', 'ServerAuthentication', 'ExitFailed', 'ExitUsage', 'ExitUnsupported', 'ExitOffline', 'ExitUntrusted',
         'ExitCertificate', 'ExitRestart', 'NodeCodePrefix', 'NodeCodeMaxLength', 'NodeCodeMaxUrlLength', 'ReusableTokenPrefix', 'JsonStringPattern',
         'DotNetChannel', 'DotNetHosts', 'DotNetFrameworks', 'CodeSigning', 'PostgresDownloadsUrl', 'PostgresSigner', 'DotNetSigner', 'StepPlans',
@@ -422,9 +424,9 @@ try {
     Check "self-signed certificate: a node's -TrustCertificate refuses one listing a public address but its host's" ((Assert-Cert $built 'PANEL') -match '203\.0\.113\.7.*TrustCertificateWithOtherNames' -and $null -eq (Assert-Cert $built '203.0.113.7' @('2001:db8::7', 'panel.example.com', 'PANEL.corp.example', '192.168.0.54', '10.0.0.7'))) "$(Assert-Cert $built 'PANEL')"
 }
 finally { $built.Dispose() }
-$certificateFunctions = @($parsed.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in 'New-PanelCertificate', 'Get-SelfSignedPanelNames', 'New-SelfSignedPanelFiles', 'New-SelfSignedPanelCertificate' }, $true))
+$certificateFunctions = @($parsed.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in 'New-PanelCertificate', 'Get-SelfSignedPanelNames', 'New-SelfSignedPanelBundle', 'Save-PanelBundle', 'New-SelfSignedPanelFiles', 'New-SelfSignedPanelCertificate' }, $true))
 $storeUses = @($certificateFunctions | Where-Object { $_.Extent.Text -match '(?i)Cert:\\|New-SelfSignedCertificate|Export-PfxCertificate|Export-Certificate|X509Store|CngKey\]::Create|PersistKeySet|MachineKeySet' })
-Check 'self-signed certificate: made without a certificate store or a stored key' ($certificateFunctions.Count -eq 4 -and $storeUses.Count -eq 0) (@($storeUses | ForEach-Object Name) -join ', ')
+Check 'self-signed certificate: made without a certificate store or a stored key' ($certificateFunctions.Count -eq 6 -and $storeUses.Count -eq 0) (@($storeUses | ForEach-Object Name) -join ', ')
 # -CertificatePath's PFX is opened with an ephemeral key (none written to a key container) and disposed.
 $panelCertificateText = @($certificateFunctions | Where-Object Name -eq 'New-PanelCertificate')[0].Extent.Text
 $pfxOpens = @([regex]::Matches($panelCertificateText, 'X509Certificate2\b[^\r\n]*') | ForEach-Object { $_.Value })
@@ -434,7 +436,7 @@ Check '-CertificatePath: its PFX is opened with EphemeralKeySet, and disposed' (
 $renewalText = @($parsed.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-RenewCertificate' }, $true))[0].Extent.Text
 Check 'renew: the new certificate is made by the install''s own functions (names, then files), exclusively' (
     $panelCertificateText -match 'Get-SelfSignedPanelNames \$HostName\s+\$password = New-Secret 32\s+Register-Secret \$password\s+return New-SelfSignedPanelFiles \$names \$pfx \$cer \$password \$false' -and
-    $renewalText -match 'Get-SelfSignedPanelNames \$HostName' -and $renewalText -match 'New-SelfSignedPanelFiles \$names \$staged\.Pfx \$staged\.Cer \$renewal\.Password \$true')
+    $renewalText -match 'Get-SelfSignedPanelNames \$HostName' -and $renewalText -match 'New-SelfSignedPanelBundle \$names \$renewal\.Password' -and $renewalText -match 'Save-PanelBundle \$bundle \$staged\.Pfx \$staged\.Cer \$true \$hold\.Path')
 
 # The install's own: files in the panel's private folder (here a scratch one), what the summary prints.
 $tlsRoot = Join-Path $Scratch ("pulsar-script-tests-" + [Guid]::NewGuid().ToString('N'))
@@ -1791,8 +1793,17 @@ foreach ($bad in '*', '', "$thumbprint*", 'Cert:\LocalMachine\Root\*', ('A' * 39
 }
 
 # A panel installed in a scratch folder: its service's program, its settings, its certificate (as -Mode AllInOne made it).
+# The scratch root is private, as the panel's data folder is (SYSTEM, Administrators and this user, protected; what is made in it
+# inherits only those): the check that a folder lets nobody else in (Assert-PrivateCertificateFolder) would refuse the temporary
+# folder's inherited entries. (Changing a protected folder's permissions with Set-Acl asks for a privilege a user without
+# elevation lacks; the folders under test, like the panel's tls folder, inherit theirs.)
 $rnRoot = Join-Path $Scratch ('pulsar-renew-tests-' + [Guid]::NewGuid().ToString('N'))
-$null = New-Item -ItemType Directory $rnRoot
+$rnRootSecurity = New-Object Security.AccessControl.DirectorySecurity
+$rnRootSecurity.SetAccessRuleProtection($true, $false)
+foreach ($sid in 'S-1-5-18', 'S-1-5-32-544', [Security.Principal.WindowsIdentity]::GetCurrent().User.Value) {
+    $rnRootSecurity.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier $sid), 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+}
+$null = [IO.Directory]::CreateDirectory($rnRoot, $rnRootSecurity)
 $rnPassword = 'the-old-pfx-password-0123456789'
 $rnAgentLock = $null
 try {
@@ -1810,7 +1821,17 @@ try {
         }
         finally { $authorityKey.Dispose(); $leafKey.Dispose() }
     }
-    # -Subject: another subject than the install's; -Issued: a certificate an authority issued; -Settings: the settings' text,
+    # The install's permissions for the panel's folder (Set-PrivateAcl): SYSTEM, Administrators and the panel's account (a stand-in SID
+    # here, Modify), inherited by the files. Here the first two come from the private scratch root; the account is an explicit entry.
+    $rnPanelSid = 'S-1-5-80-1111111111-2222222222-3333333333-1234567890-987654321'
+    $PanelAccount = 'NT SERVICE\PulsarPanel'
+    function Set-PanelLikeAcl([string] $folder, [string[]] $extra = @()) {
+        $acl = Get-Acl -LiteralPath $folder
+        foreach ($sid in @($rnPanelSid) + $extra) {
+            $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier $sid), 'Modify', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+        }
+        Set-Acl -LiteralPath $folder -AclObject $acl
+    }    # -Subject: another subject than the install's; -Issued: a certificate an authority issued; -Settings: the settings' text,
     # whatever it is; -Password: the one in the settings; -CertificateFile: where the settings say the PFX is.
     function New-RenewInstall([string] $name, [hashtable] $options = @{}) {
         $base = Join-Path $rnRoot $name
@@ -1847,6 +1868,7 @@ try {
         elseif (-not $options['NoSettings']) {
             @{ ConnectionStrings = @{ Pulsar = 'Host=localhost;Database=pulsar;Username=pulsar;Password=a-database-password' }; Kestrel = @{ Endpoints = $endpoints } } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $config -Encoding UTF8
         }
+        Set-PanelLikeAcl $tls
         [pscustomobject]@{ Base = $base; PanelDir = $panelDir; PanelData = $panelData; Tls = $tls; Pfx = $pfx; Cer = $cer; Config = $config; Exe = (Join-Path $panelDir 'Pulsar.Api.exe')
             Thumbprint = $thumbprint; Sha256 = $sha256 }
     }
@@ -1859,7 +1881,7 @@ try {
         $script:rnResult = $null
         $script:rnOutput = @(& {
                 $WarningPreference = 'Continue'
-                $PanelService = 'PulsarPanel'; $AgentService = 'PulsarAgent'; $PanelDir = $install.PanelDir; $PanelData = $install.PanelData
+                $PanelService = 'PulsarPanel'; $PanelAccount = 'NT SERVICE\PulsarPanel'; $AgentService = 'PulsarAgent'; $PanelDir = $install.PanelDir; $PanelData = $install.PanelData
                 $PanelConfig = $install.Config; $AgentDir = Join-Path $install.Base 'Agent'; $AgentData = Join-Path $install.Base 'AgentData'
                 $HostName = @()
                 if ($options.ContainsKey('HostName')) { $HostName = @($options['HostName']) }
@@ -1904,6 +1926,10 @@ try {
                     if ($options['ConfirmFails'] -ceq 'always' -or ($options['ConfirmFails'] -ceq 'first' -and $times -eq 1)) { throw 'The panel did not answer on port 8443 (a test).' }
                 }
                 function Get-LocalNodePin { $options['LocalPin'] }
+                # What the folder's permissions are while the files are swapped, and whether a process still runs as the panel's account.
+                function Get-PanelAccountProcesses { $script:rnLockedAcl = Get-FileAccess $install.Tls; if ($options['Lingering']) { 'panel (1234)' } }
+                function Start-Sleep { }
+                function Get-PanelAccountSid { New-Object Security.Principal.SecurityIdentifier $rnPanelSid }
                 function Write-Step([string] $message) { Write-Host "==> $message" }
                 function Write-SetupStep([string] $key, [string] $text) { Write-Host (Format-SetupStep $key $text $StepPlan) }
                 if ($options['StagedCheckFails']) { function Assert-NewCertificateFiles { throw 'The new certificate''s PFX cannot be the panel''s: a test.' } }
@@ -1914,7 +1940,7 @@ try {
             } 6>&1 3>&1 | ForEach-Object { "$_" })
     }
     function Get-FilesIn($install) { @(Get-ChildItem -LiteralPath $install.Tls -Force | ForEach-Object Name | Sort-Object) -join ',' }
-    function Get-Digests($install) { "$((Get-FileHash -LiteralPath $install.Pfx).Hash) $((Get-FileHash -LiteralPath $install.Cer).Hash)" }
+    function Get-Digests($install) { "$((Get-FileHash -LiteralPath $install.Pfx).Hash) $((Get-FileHash -LiteralPath $install.Cer).Hash) $(Get-FileAccess $install.Pfx) $(Get-FileAccess $install.Cer) $(Get-FileAccess $install.Tls)" }
 
     # --- What it checks before anything changes ---
     $install = New-RenewInstall 'ok'
@@ -1969,6 +1995,7 @@ try {
     $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($users, 'ReadAndExecute', 'Allow')))
     Set-Acl -LiteralPath $swap.Pfx -AclObject $acl
     $oldAccess = @{ Pfx = (Get-FileAccess $swap.Pfx); Cer = (Get-FileAccess $swap.Cer) }
+    $tlsBefore = Get-FileAccess $swap.Tls
     Invoke-Renewal $swap @{ HostName = @('panel.example.com'); Unattended = $true }
     $printed = $script:rnOutput -join "`n"
     $SetupSecrets.Clear()
@@ -1991,6 +2018,9 @@ try {
     finally { $newCertificate.Dispose() }
     Check 'renew: the new files have the old ones'' permissions (explicit entries included)' ((Get-FileAccess $swap.Pfx) -ceq $oldAccess.Pfx -and (Get-FileAccess $swap.Cer) -ceq $oldAccess.Cer) "$(Get-FileAccess $swap.Pfx) vs $($oldAccess.Pfx)"
     Check 'renew: nothing is left in the folder but the two files (the old files and the staged ones are gone)' ((Get-FilesIn $swap) -ceq 'panel.cer,panel.pfx') (Get-FilesIn $swap)
+    Check 'renew: while the files are swapped the folder denies the panel''s account everything (and its files inherit that), and its permissions are then put back exactly' (
+        "$script:rnLockedAcl" -match [regex]::Escape("(D;OICI;FA;;;$rnPanelSid)") -and "$tlsBefore" -notmatch '\(D;' -and "$tlsBefore" -match [regex]::Escape("(A;OICI;0x1301bf;;;$rnPanelSid)") -and
+        (Get-FileAccess $swap.Tls) -ceq $tlsBefore) "locked: $script:rnLockedAcl | before: $tlsBefore | after: $(Get-FileAccess $swap.Tls)"
     $steps = @($script:rnCalls)
     Check 'renew: it stops the panel, starts it, and checks it answers with the new certificate (its HTTPS port; the agents'' port 0: none here) before anything else' (
         $steps.Count -eq 5 -and $steps[0] -ceq 'stop' -and $steps[1] -ceq 'start' -and $steps[2] -ceq "confirm $newThumbprint 8443 0") ($steps -join ' | ')
@@ -2077,9 +2107,19 @@ try {
     $before = Get-Digests $failing
     Invoke-Renewal $failing @{ StagedCheckFails = $true }
     $SetupSecrets.Clear()
-    Check 'renew rollback: a new certificate that does not check out is dropped before the panel is touched: nothing is stopped, nothing is left' (
-        (Get-Digests $failing) -ceq $before -and (Get-FilesIn $failing) -ceq 'panel.cer,panel.pfx' -and $script:rnCalls.Count -eq 0 -and
-        $script:rnError.Exception.Message -match 'Nothing was changed: the panel keeps its certificate\.' -and (Get-SetupExitCode $script:rnError) -eq 1)
+    Check 'renew rollback: a new certificate that does not check out (the panel stopped and the folder locked by then) is dropped: the old files, their permissions and the folder''s are as they were, nothing is left, the panel runs again' (
+        (Get-Digests $failing) -ceq $before -and (Get-FilesIn $failing) -ceq 'panel.cer,panel.pfx' -and ($script:rnCalls -join '|') -ceq "stop|stop|start|confirm $($failing.Thumbprint) 8443 0" -and
+        $script:rnError.Exception.Message -match 'The old certificate is back, and the panel runs with it' -and (Get-SetupExitCode $script:rnError) -eq 1) "$($script:rnError) | $($script:rnCalls -join '|')"
+
+    # A process still running as the panel's account once it has stopped could redirect the files being swapped.
+    $failing = New-RenewInstall 'lingering process'
+    $before = Get-Digests $failing
+    Invoke-Renewal $failing @{ Lingering = $true }
+    $SetupSecrets.Clear()
+    Check 'renew: a process still running as the panel''s account after it stopped ends the renewal before anything is written (exit code 3), the certificate untouched, the folder''s permissions and the panel as they were' (
+        $null -ne $script:rnError -and (Get-SetupExitCode $script:rnError) -eq 3 -and $script:rnError.Exception.Message -match 'panel \(1234\) still runs as NT SERVICE\\PulsarPanel' -and $script:rnError.Exception.Message -match 'The certificate was not changed' -and
+        (Get-Digests $failing) -ceq $before -and (Get-FilesIn $failing) -ceq 'panel.cer,panel.pfx' -and ($script:rnCalls -join '|') -ceq "stop|stop|start|confirm $($failing.Thumbprint) 8443 0" -and
+        $script:rnError.Exception.Message -match 'The old certificate is back') "$($script:rnError) | $($script:rnCalls -join '|')"
 
     # The certificate's folder is held from the first check to the end: while the panel is stopped nobody can rename it (to put a
     # junction in its place), and the renewal still goes through.
@@ -2103,6 +2143,85 @@ try {
     Check 'renew: a file that is a link is a refusal before anything changes (exit code 3, nothing changed), and a failure after the panel stopped (exit code 1, it changed meanwhile)' (
         (Get-SetupExitCode $refusal) -eq 3 -and $refusal.Exception.Message -match 'is missing or is a link' -and $refusal.Exception.Message -match 'Nothing was changed' -and
         (Get-SetupExitCode $failure) -eq 1 -and $failure.Exception.Message -match 'is missing or is a link' -and $failure.Exception.Message -match 'while the panel was being renewed' -and $failure.Exception.Message -notmatch 'Nothing was changed') "$refusal | $failure"
+
+    # The lock itself: the panel's account denied while it lasts, the folder's own permissions back exactly, its files' with them.
+    function Use-PanelSid([string] $sid, [scriptblock] $block) {
+        & { function Get-PanelAccountSid { New-Object Security.Principal.SecurityIdentifier $sid }; & $block }
+    }
+    $lockRoot = Join-Path $rnRoot 'lock'
+    $lockFolder = Join-Path $lockRoot 'tls'
+    $null = New-Item -ItemType Directory $lockFolder
+    $lockFile = Join-Path $lockFolder 'panel.pfx'
+    [IO.File]::WriteAllText($lockFile, 'x')
+    Set-PanelLikeAcl $lockFolder
+    $folderBefore = Get-FileAccess $lockFolder
+    $fileBefore = Get-FileAccess $lockFile
+    $lockSid = New-Object Security.Principal.SecurityIdentifier $rnPanelSid
+    $progress = [pscustomobject]@{ Locked = $false; FolderAccess = $null; Denied = $null }
+    Check 'lock: before it, the stand-in for the panel''s account is allowed on the folder and its file, and denied nowhere' (
+        -not (Test-FolderDenies $lockFolder $lockSid) -and $folderBefore -match [regex]::Escape("(A;OICI;0x1301bf;;;$rnPanelSid)") -and $fileBefore -match [regex]::Escape("(A;ID;0x1301bf;;;$rnPanelSid)") -and "$folderBefore$fileBefore" -notmatch '\(D;') "$folderBefore | $fileBefore"
+    Check 'lock: a folder only SYSTEM, Administrators, the running administrator and the panel''s account may use passes the check that denying the account closes it' (
+        $null -eq (Get-Caught { Use-PanelSid $rnPanelSid { Assert-PrivateCertificateFolder $lockFolder } }))
+    $wideFolder = Join-Path $lockRoot 'wide'
+    $null = New-Item -ItemType Directory $wideFolder
+    Set-PanelLikeAcl $wideFolder @('S-1-5-32-545')
+    $thrown = Get-Caught { Use-PanelSid $rnPanelSid { Assert-PrivateCertificateFolder $wideFolder } }
+    Check 'lock: a folder that also lets Users in is refused before anything changes (exit code 3): denying the panel''s account would not close it' (
+        $null -ne $thrown -and (Get-SetupExitCode $thrown) -eq 3 -and $thrown.Exception.Message -match ('lets in ' + [regex]::Escape((New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-545').Translate([Security.Principal.NTAccount]).Value)) -and $thrown.Exception.Message -match 'Nothing was changed') "$thrown"
+    $ownerCheck = & {
+        $fake = New-Object psobject
+        Add-Member -InputObject $fake -MemberType ScriptMethod -Name GetOwner -Value { param($type) New-Object Security.Principal.SecurityIdentifier 'S-1-5-80-1-2-3-4-5' }
+        function Get-Acl { $fake }
+        Get-Caught { Assert-PrivateCertificateFolder 'C:\fake' }
+    }
+    Check 'lock: a folder owned by someone else (the service account, say) is refused (exit code 3, nothing changed): its owner could change the permissions back' (
+        $null -ne $ownerCheck -and (Get-SetupExitCode $ownerCheck) -eq 3 -and $ownerCheck.Exception.Message -match 'is owned by' -and $ownerCheck.Exception.Message -match 'Nothing was changed') "$ownerCheck"
+    Use-PanelSid $rnPanelSid { Lock-CertificateFolder $lockFolder $progress }
+    Check 'lock: locked, the panel''s account is denied everything on the folder, and on its file by inheritance; the rest of the permissions are as they were' (
+        $progress.Locked -and (Test-FolderDenies $lockFolder $lockSid) -and (Get-FileAccess $lockFolder) -match [regex]::Escape("(D;OICI;FA;;;$rnPanelSid)") -and (Get-FileAccess $lockFile) -match [regex]::Escape("(D;ID;FA;;;$rnPanelSid)") -and
+        $progress.FolderAccess -ceq $folderBefore -and ((Get-FileAccess $lockFolder) -replace [regex]::Escape("(D;OICI;FA;;;$rnPanelSid)"), '') -ceq $folderBefore) "$(Get-FileAccess $lockFolder)"
+    Use-PanelSid $rnPanelSid { Unlock-CertificateFolder $lockFolder $progress }
+    Check 'lock: unlocked, the folder''s permissions are exactly as they were, and its file inherits them again' (-not $progress.Locked -and (Get-FileAccess $lockFolder) -ceq $folderBefore -and (Get-FileAccess $lockFile) -ceq $fileBefore) "$(Get-FileAccess $lockFolder) | $folderBefore"
+    Use-PanelSid $rnPanelSid { Lock-CertificateFolder $lockFolder $progress; Unlock-CertificateFolder $lockFolder $progress; Unlock-CertificateFolder $lockFolder $progress }
+    Check 'lock: locking again after an unlock keeps the permissions to put back (the folder''s own, not the lock''s), and unlocking what is not locked changes nothing' (
+        $progress.FolderAccess -ceq $folderBefore -and (Get-FileAccess $lockFolder) -ceq $folderBefore -and (Get-FileAccess $lockFile) -ceq $fileBefore)
+
+    # What the lock is for, with this user standing in for the panel's account: an empty folder, held. The hold does not stop
+    # whoever can write attributes on it from changing it in place (making it a mount point needs that right); denied, they cannot.
+    if (-not ('PulsarTestAccess' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class PulsarTestAccess
+{
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+    public static bool CanOpen(string path, uint access)
+    {
+        using (SafeFileHandle handle = CreateFile(path, access, 7, IntPtr.Zero, 3, 0x02000000 | 0x00200000, IntPtr.Zero)) { return !handle.IsInvalid; }
+    }
+}
+'@
+    }
+    $emptyFolder = Join-Path $lockRoot 'empty'
+    $null = New-Item -ItemType Directory $emptyFolder
+    Set-PanelLikeAcl $emptyFolder
+    $myId = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $emptyHold = Open-CertificateFolder $emptyFolder
+    $emptyProgress = [pscustomobject]@{ Locked = $false; FolderAccess = $null; Denied = $null }
+    try {
+        $writeAttributes = 0x100
+        $canBefore = [PulsarTestAccess]::CanOpen($emptyFolder, $writeAttributes)
+        Use-PanelSid $myId { Lock-CertificateFolder $emptyFolder $emptyProgress }
+        $canLocked = [PulsarTestAccess]::CanOpen($emptyFolder, $writeAttributes)
+        $createdLocked = $null -eq (Get-Thrown { [IO.File]::WriteAllText((Join-Path $emptyFolder 'x'), 'x') })
+        Use-PanelSid $myId { Unlock-CertificateFolder $emptyFolder $emptyProgress }
+        $canAfter = [PulsarTestAccess]::CanOpen($emptyFolder, $writeAttributes)
+    }
+    finally { $emptyHold.Dispose() }
+    Check 'lock: a held empty folder can still be opened for writing attributes (what turning it into a mount point takes) by an account with Modify; denied, that account cannot open it so, nor create a file in it; and can again once unlocked' (
+        $canBefore -and -not $canLocked -and -not $createdLocked -and $canAfter -and -not $emptyProgress.Locked) "before=$canBefore locked=$canLocked created=$createdLocked after=$canAfter"
 
     # The hold itself, on folders of its own.
     $holdRoot = Join-Path $rnRoot 'hold'
@@ -2176,7 +2295,7 @@ try {
     $SetupSecrets.Clear()
     Check 'renew rollback: a swap that stops halfway (panel.pfx replaced, panel.cer not) puts panel.pfx back too' (
         $null -ne $script:rnError -and (Get-Digests $failing) -ceq $before -and (Get-FilesIn $failing) -ceq 'panel.cer,panel.pfx' -and
-        $script:rnError.Exception.Message -match 'The old certificate is back') "$($script:rnError.Exception.Message) | $(Get-FilesIn $failing)"
+        $script:rnError.Exception.Message -match 'The old certificate is back') "$($script:rnError.Exception.Message) | $(Get-FilesIn $failing) | before: $before | after: $(Get-Digests $failing)"
 
     # An interrupted run (Ctrl+C, a closed window): no catch sees it, only finally runs. The run is in a runspace of its own, which
     # is stopped as Ctrl+C stops a pipeline, while the panel is being checked with the new certificate.
@@ -2197,13 +2316,15 @@ function Confirm-PanelCertificate([int] $port, [int] $agentsPort, $certificate) 
     if (-not (Test-Path -LiteralPath $FlagFile)) { Set-Content -LiteralPath $FlagFile 'started'; Start-Sleep -Seconds 120 }
 }
 function Get-LocalNodePin { $null }
+function Get-PanelAccountProcesses { }
+function Get-PanelAccountSid { New-Object Security.Principal.SecurityIdentifier $PanelSid }
 function Write-Step([string] $message) { }
 function Write-SetupStep([string] $key, [string] $text) { }
 '@
     $runspaceScript = @('$ErrorActionPreference = ''Stop''', (@($installParts.Values) -join "`r`n"), $mocks, 'Invoke-RenewCertificate') -join "`r`n"
     $shell = [powershell]::Create()
     try {
-        $variables = @{ PanelService = 'PulsarPanel'; AgentService = 'PulsarAgent'; PanelDir = $interrupted.PanelDir; PanelData = $interrupted.PanelData; PanelConfig = $interrupted.Config
+        $variables = @{ PanelService = 'PulsarPanel'; PanelAccount = 'NT SERVICE\PulsarPanel'; PanelSid = $rnPanelSid; AgentService = 'PulsarAgent'; PanelDir = $interrupted.PanelDir; PanelData = $interrupted.PanelData; PanelConfig = $interrupted.Config
             AgentDir = (Join-Path $interrupted.Base 'Agent'); AgentData = (Join-Path $interrupted.Base 'AgentData'); HostName = [string[]]@('panel.example.com'); Unattended = $false
             SetupParameters = @{ RenewCertificate = $true }; StepPlan = $StepPlans['RenewCertificate']; ExePath = $interrupted.Exe; FlagFile = $flagFile; CallsFile = $callsFile; WarningPreference = 'SilentlyContinue' }
         foreach ($name in $variables.Keys) { $shell.Runspace.SessionStateProxy.SetVariable($name, $variables[$name]) }
@@ -2235,23 +2356,25 @@ finally {
 # no secret in anything printed.
 $renewFunctions = @($installAst.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in
             'Invoke-RenewCertificate', 'Get-RenewableCertificate', 'Undo-CertificateRenewal', 'Confirm-PanelCertificate', 'Write-RepinSteps', 'Assert-NewCertificateFiles',
-            'Assert-PlainCertificateFiles', 'Assert-RenewArguments', 'Compare-CertificateNames', 'Set-SameAccess', 'Get-LocalNodePin', 'Stop-Panel' }, $true))
+            'Assert-PlainCertificateFiles', 'Assert-RenewArguments', 'Compare-CertificateNames', 'Set-SameAccess', 'Get-LocalNodePin', 'Stop-Panel', 'Open-CertificateFolder',
+            'Lock-CertificateFolder', 'Unlock-CertificateFolder', 'Assert-NoPanelProcesses', 'Get-PanelAccountProcesses', 'Assert-PrivateCertificateFolder' }, $true))
 $renewalText = @($renewFunctions | Where-Object Name -eq 'Invoke-RenewCertificate')[0].Extent.Text
 $undoText = @($renewFunctions | Where-Object Name -eq 'Undo-CertificateRenewal')[0].Extent.Text
-Check 'renew: every function of the renewal is in the script' ($renewFunctions.Count -eq 12) "$($renewFunctions.Count)"
-$renewIndexes = @('Get-RenewableCertificate', 'Open-CertificateFolder', 'Get-PfxHash $renewal.Pfx', 'Get-SelfSignedPanelNames', 'New-SelfSignedPanelFiles', 'Assert-NewCertificateFiles', 'Stop-Panel', 'Assert-PlainCertificateFiles $renewal $true',
-    'Assert-InFolder $current[$kind] $hold', '[IO.File]::Replace($staged[$kind]',
-    'Start-Panel', 'Confirm-PanelCertificate', 'Add-TrustedCertificate $renewal.Cer', 'Remove-InstallerTrust $renewal.Thumbprint', 'Remove-Item -LiteralPath $file -Force' | ForEach-Object { $renewalText.IndexOf($_) })
-Check 'renew order: checks, the new certificate made and checked beside the old, then stop, swap, start, answer, trust, and only then the old trust and the old files go' (
+Check 'renew: every function of the renewal is in the script' ($renewFunctions.Count -eq 18) "$($renewFunctions.Count)"
+$renewIndexes = @('Get-RenewableCertificate', 'Open-CertificateFolder', 'Get-PfxHash $renewal.Pfx', 'Get-SelfSignedPanelNames', 'New-SelfSignedPanelBundle', 'Stop-Panel', 'Lock-CertificateFolder $renewal.Tls $progress',
+    'Assert-NoPanelProcesses', 'Assert-PlainCertificateFiles $renewal $true', 'Save-PanelBundle $bundle', 'Assert-NewCertificateFiles', 'Assert-InFolder $current[$kind] $hold', '[IO.File]::Replace($staged[$kind]',
+    'Unlock-CertificateFolder $renewal.Tls $progress', 'Start-Panel', 'Confirm-PanelCertificate', 'Add-TrustedCertificate $renewal.Cer', 'Remove-InstallerTrust $renewal.Thumbprint', 'Remove-Item -LiteralPath $file -Force' | ForEach-Object { $renewalText.IndexOf($_) })
+Check 'renew order: checks, the folder held, the certificate made in memory, then stop, lock, no process of the account, files written and checked, swap, unlock, start, answer, trust, and only then the old trust and the old files go' (
     @($renewIndexes | Where-Object { $_ -lt 0 }).Count -eq 0 -and ($renewIndexes -join ',') -ceq (@($renewIndexes | Sort-Object) -join ',')) ($renewIndexes -join ',')
 Check 'renew hold: the certificate folder is held right after the first checks, until the swap and the cleanup end, and every file made goes through the hold''s check' (
-    $renewalText -match '(?s)\$renewal = Get-RenewableCertificate.*?\$hold = Open-CertificateFolder \$renewal\.Tls\s+try \{.*New-SelfSignedPanelFiles \$names \$staged\.Pfx \$staged\.Cer \$renewal\.Password \$true \$hold\.Path.*Remove-Item -LiteralPath \$file -Force.*\}\s+finally \{ \$hold\.Dispose\(\) \}\s+# The new certificate where it is now' -and
+    $renewalText -match '(?s)\$renewal = Get-RenewableCertificate.*?\$hold = Open-CertificateFolder \$renewal\.Tls\s+\$bundle = \$null\s+try \{.*Save-PanelBundle \$bundle \$staged\.Pfx \$staged\.Cer \$true \$hold\.Path.*Remove-Item -LiteralPath \$file -Force.*\}\s+finally \{\s+\$hold\.Dispose\(\).*# The new certificate where it is now' -and
     $installParts['Write-ExclusiveFile'] -match 'FinalPath\(\$stream\.SafeFileHandle\)' -and $installParts['Open-CertificateFolder'] -match 'GetFullPath' -and
     $installText -match '(?s)CreateFile\(path, access, share, IntPtr\.Zero, 3, 0x02000000 \| 0x00200000, IntPtr\.Zero\)' -and $installText -match 'OpenItem\(path, 0x81, 3\)')
 Check 'renew rollback: any failure goes through Undo-CertificateRenewal, which puts the files back (Replace, or Move for a swap that stopped halfway), removes the new trust and starts the panel again' (
     $renewalText -match '(?s)catch \{\s+\$failure = \$_\.Exception\.Message.*?Undo-CertificateRenewal \$renewal \$progress \$wasRunning' -and
     $undoText -match [regex]::Escape('[IO.File]::Replace($swap.Backup, $swap.Target, [NullString]::Value)') -and $undoText -match [regex]::Escape('[IO.File]::Move($swap.Backup, $swap.Target)') -and
     $undoText -match [regex]::Escape('Remove-InstallerTrust $progress.Trusted $true') -and $undoText -match 'if \(\$wasRunning\)' -and
+    $undoText -match '(?s)Lock-CertificateFolder \$renewal\.Tls \$progress.*Replace\(\$swap\.Backup.*Unlock-CertificateFolder \$renewal\.Tls \$progress.*Start-Panel' -and
     $renewalText -match '(?s)finally \{.*?if \(\$progress\.Stopped -and -not \$finished -and -not \$rolledBack\) \{\s+\$null = @\(Undo-CertificateRenewal \$renewal \$progress \$wasRunning\)' -and
     $renewalText -match 'Assert-PlainCertificateFiles \$renewal \$true' -and
     $renewalText.IndexOf('$progress.Trusted = $made.Thumbprint') -lt $renewalText.IndexOf('Add-TrustedCertificate $renewal.Cer') -and $renewalText.IndexOf('$progress.Swaps.Add') -lt $renewalText.IndexOf('[IO.File]::Replace'))
@@ -2270,7 +2393,7 @@ $passwordUses = @($renewFunctions | ForEach-Object { $_.FindAll({ param($node) $
         $command = $_.Parent; while ($command -and $command -isnot [Management.Automation.Language.CommandAst]) { $command = $command.Parent }
         if ($command) { $command.GetCommandName() }
     })
-Check 'renew: the PFX''s password is only ever handed to the functions that make or open the PFX, never printed' ($passwordUses.Count -eq 3 -and @($passwordUses | Where-Object { $_ -notin 'New-SelfSignedPanelFiles', 'Assert-NewCertificateFiles', 'Get-PfxHash' }).Count -eq 0) ($passwordUses -join ', ')
+Check 'renew: the PFX''s password is only ever handed to the functions that make or open the PFX, never printed' ($passwordUses.Count -eq 3 -and @($passwordUses | Where-Object { $_ -notin 'New-SelfSignedPanelBundle', 'Assert-NewCertificateFiles', 'Get-PfxHash' }).Count -eq 0) ($passwordUses -join ', ')
 $printedPasswords = @($renewFunctions | ForEach-Object { $_.FindAll({ param($node) $node -is [Management.Automation.Language.ExpandableStringExpressionAst] }, $true) } |
         Where-Object { @($_.NestedExpressions | Where-Object { $_.Extent.Text -match '(?i)password' }).Count -gt 0 } | ForEach-Object { $_.Extent.Text })
 Check 'renew: no message interpolates a password' ($printedPasswords.Count -eq 0) ($printedPasswords -join ' | ')

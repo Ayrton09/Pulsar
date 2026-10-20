@@ -223,17 +223,26 @@ the accounts as they are. It also renews a certificate before the 5 years it is 
    its certificate a self-signed one the installer made (`CN=localhost`, issued by itself, friendly name `Pulsar panel`),
    not one an authority issued or you brought (`-CertificatePath`: renew that where it came from). Otherwise it stops,
    changing nothing: exit code `2` (no panel here, or another `-InstallRoot`), `3` (the certificate's folder holds files
-   a stopped renewal left, or a link) or `6` (a certificate it does not renew).
+   a stopped renewal left, or a link; or the folder is not what the install makes, see below) or `6` (a certificate it does
+   not renew).
 2. **Makes the new certificate the way the install does** (the same names, the same checks: not a certificate
-   authority, for a web server's identity only, 5 years, made in memory), with a new key, and writes it beside the old
-   one with the old files' permissions and the same PFX password, so the panel's settings need no change. The `tls`
-   folder is held open until the end, so that nothing (the panel's own account can write there) can rename it or put a
-   link in its place, and every file it makes is checked to be in it. It warns about each address a DHCP server gave
-   this PC (a [reservation](#connecting-from-another-pc) keeps it).
-3. **Swaps the files with the old ones kept**: it stops the panel (it is unavailable for a few seconds; game servers on
-   the nodes keep running), swaps `panel.pfx` and `panel.cer`, keeps the old files beside them, starts the panel and
-   waits until it answers over HTTPS on its port (and the agents' port, if it has one) with the new certificate.
-4. **Moves the trust of this PC, only if the install gave it.** The all-in-one install trusts the panel's certificate on
+   authority, for a web server's identity only, 5 years), with a new key, in memory. It holds the `tls` folder open
+   from here to the end: nobody can rename or delete it, or a folder above it, meanwhile, and a folder that is a link,
+   or sits behind one, is refused. It warns about each address a DHCP server gave this PC (a
+   [reservation](#connecting-from-another-pc) keeps it).
+3. **Swaps the files with the old ones kept.** It stops the panel (it is unavailable for a few seconds; game servers
+   on the nodes keep running) and checks that no process still runs as its account, `NT SERVICE\PulsarPanel`. That
+   account can write the `tls` folder, and holding a folder does not stop whoever can write it from changing it in
+   place (an empty folder can be made a mount point, which would send what is done there elsewhere), so, until the
+   files are swapped, the account is denied every right on the folder (an extra entry, which its files inherit; the
+   folder's other permissions are not touched, and it needs a folder that only SYSTEM, Administrators and that account
+   may use, otherwise it stops before changing anything, exit code `3`). It then writes the new files beside the old
+   ones under random names, each checked to be in the held folder, with the old files' permissions and the same PFX
+   password, so the panel's settings need no change; swaps `panel.pfx` and `panel.cer`, keeping the old files beside
+   them; takes the entry away (the folder's permissions are exactly what they were, which is checked, and so are the
+   files') and starts the panel, which must answer over HTTPS on its port (and the agents' port, if it has one) with
+   the new certificate. A process still running as the panel's account stops it there (exit code `3`: end it, or
+   restart Windows, and run it again); the certificate is untouched and the panel is started again.4. **Moves the trust of this PC, only if the install gave it.** The all-in-one install trusts the panel's certificate on
    its PC (for the agent and the browsers there), marked as its own. If the old certificate is trusted that way, the new
    one is trusted in the same way, with the same checks, and then the old one is no longer trusted. If the old one was
    not (a panel-only install), or someone else trusted it (not marked), no certificate store is changed.
@@ -241,11 +250,14 @@ the accounts as they are. It also renews a certificate before the 5 years it is 
    (`PULSAR-CERTIFICATE`), the addresses to reach the panel by, and what the nodes need (below).
 
 If anything fails after the panel was stopped, or you interrupt the script (Ctrl+C, a closed window) then, the old
-certificate is put back: its files, the new trust removed, the panel started again and checked to answer with the old
-certificate, and the message says what failed (exit code `1`, the log has the rest). If even that fails, the message says where the old files are (`panel.pfx.old-…` and
-`panel.cer.old-…` in the `tls` folder): copy them over `panel.pfx` and `panel.cer` and start the `PulsarPanel` service.
-A renewal that was stopped halfway makes the next one refuse until you delete those files (or copy them back, if the
-panel does not start).
+certificate is put back: its files, the folder's permissions, the new trust removed, the panel started again and checked
+to answer with the old certificate, and the message says what failed (exit code `1`, or `3` for a process left running
+as the panel's account; the log has the rest). If even that fails, the message says what is left: where the old files
+are (`panel.pfx.old-…` and `panel.cer.old-…` in the `tls` folder: copy them over `panel.pfx` and `panel.cer` and start
+the `PulsarPanel` service), and, if the folder's permissions could not be put back, the command that takes the panel's
+account's denied entry away (`icacls "C:\ProgramData\Pulsar\Panel\tls" /remove:d "NT SERVICE\PulsarPanel"`). A renewal
+that was stopped halfway makes the next one refuse until you delete those files (or copy them back, if the panel does not
+start).
 
 Then:
 

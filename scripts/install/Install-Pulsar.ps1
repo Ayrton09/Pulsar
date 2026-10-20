@@ -1221,12 +1221,10 @@ function Get-SelfSignedPanelNames([string[]] $extra) {
     return $names
 }
 
-# Makes the self-signed certificate for $names (Get-SelfSignedPanelNames) and writes it to $pfx, a PFX that opens with
-# $password (a secret of the run: registered by the caller), and to $cer. $exclusive: only files that are not there yet
-# (never one that is, or a link left there), for a folder the panel's service account can write; the files take the
-# permissions of the folder. $held: the path of that folder as Open-CertificateFolder holds it, which each file made
-# must be in (Write-ExclusiveFile). Returns what New-PanelCertificate returns.
-function New-SelfSignedPanelFiles($names, [string] $pfx, [string] $cer, [string] $password, [bool] $exclusive, [string] $held = '') {
+# Makes the self-signed certificate for $names (Get-SelfSignedPanelNames), in memory: its PFX (opening with $password, a secret
+# of the run, registered by the caller) and its .cer as bytes, and what is known of it (what New-PanelCertificate returns,
+# but for the paths). The key is in PfxBytes: Save-PanelBundle writes it, the caller clears it.
+function New-SelfSignedPanelBundle($names, [string] $password) {
     $certificate = New-SelfSignedPanelCertificate $names
     try {
         # Trusted machine-wide (here, and on nodes with -TrustCertificate), so it must not be able to issue
@@ -1237,20 +1235,14 @@ function New-SelfSignedPanelFiles($names, [string] $pfx, [string] $cer, [string]
         if (-not (Test-ServerAuthenticationOnly (Get-CertificateUses $certificate))) {
             throw 'The self-signed certificate came out usable for more than a web server (its Extended Key Usage is not server authentication alone).'
         }
-        # Written into the panel's private folder, whose permissions the files take as they are made.
-        $pfxBytes = $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx, (ConvertTo-Secure $password))
-        $cerBytes = $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)
-        if ($exclusive) {
-            Write-ExclusiveFile $pfx $pfxBytes $held
-            Write-ExclusiveFile $cer $cerBytes $held
-        }
-        else {
-            [IO.File]::WriteAllBytes($pfx, $pfxBytes)
-            [IO.File]::WriteAllBytes($cer, $cerBytes)
-        }
         $listed = @($names.Dns) + @($names.Ips | ForEach-Object { "$_" })
         $addresses = @($names.Ips | Where-Object { -not [Net.IPAddress]::IsLoopback($_) } | ForEach-Object { "$_" })
-        return @{ Path = $pfx; Password = $password; Thumbprint = $certificate.Thumbprint; Cer = $cer; SelfSigned = $true; Names = $listed; Addresses = $addresses; Sha256 = (Get-CertificateHash $certificate); NotAfter = $certificate.NotAfter }
+        return @{
+            PfxBytes = $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx, (ConvertTo-Secure $password))
+            CerBytes = $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)
+            Password = $password; Thumbprint = $certificate.Thumbprint; SelfSigned = $true; Names = $listed; Addresses = $addresses
+            Sha256 = (Get-CertificateHash $certificate); NotAfter = $certificate.NotAfter
+        }
     }
     finally {
         # Its key was never in a store or a key container: it goes with the certificate.
@@ -1258,6 +1250,29 @@ function New-SelfSignedPanelFiles($names, [string] $pfx, [string] $cer, [string]
     }
 }
 
+# Writes a bundle (New-SelfSignedPanelBundle) to $pfx and $cer, in the panel's private folder, whose permissions the files
+# take as they are made. $exclusive: only files that are not there yet (never one that is, or a link left there), for a
+# folder the panel's service account can write. $held: the path of that folder as Open-CertificateFolder holds it, which
+# each file made must be in (Write-ExclusiveFile). Returns what New-PanelCertificate returns.
+function Save-PanelBundle($bundle, [string] $pfx, [string] $cer, [bool] $exclusive, [string] $held = '') {
+    if ($exclusive) {
+        Write-ExclusiveFile $pfx $bundle.PfxBytes $held
+        Write-ExclusiveFile $cer $bundle.CerBytes $held
+    }
+    else {
+        [IO.File]::WriteAllBytes($pfx, $bundle.PfxBytes)
+        [IO.File]::WriteAllBytes($cer, $bundle.CerBytes)
+    }
+    return @{ Path = $pfx; Password = $bundle.Password; Thumbprint = $bundle.Thumbprint; Cer = $cer; SelfSigned = $true; Names = $bundle.Names; Addresses = $bundle.Addresses; Sha256 = $bundle.Sha256; NotAfter = $bundle.NotAfter }
+}
+
+# Makes the self-signed certificate for $names and writes it (Save-PanelBundle). The install's way; -RenewCertificate makes
+# the bundle first and writes it later.
+function New-SelfSignedPanelFiles($names, [string] $pfx, [string] $cer, [string] $password, [bool] $exclusive, [string] $held = '') {
+    $bundle = New-SelfSignedPanelBundle $names $password
+    try { return Save-PanelBundle $bundle $pfx $cer $exclusive $held }
+    finally { [Array]::Clear($bundle.PfxBytes, 0, $bundle.PfxBytes.Length) }
+}
 # Writes a new file, never over one that is there already or a link left there (CreateNew), which no one else can open
 # while it is written. $folder, when given (the path of a folder held with Open-CertificateFolder): the file the handle
 # opened must be in it, whatever links $path goes through; if it is somewhere else, it is deleted (this call made it) and
@@ -2183,16 +2198,18 @@ function Uninstall-Panel {
 # address (a DHCP lease that changed, a new router) or name leaves browsers and nodes at the new one with a certificate
 # that does not match. -RenewCertificate makes the certificate again, with the install's own functions, and swaps it in:
 # 1. everything that can be checked is, before anything changes (Get-RenewableCertificate); then the certificate's
-#    folder is held (Open-CertificateFolder: nobody can rename or replace it until the end, so no link can take its
-#    place) and the new certificate is made and checked beside the old one under names the panel's service account
-#    cannot predict, each file checked by handle to be in the held folder;
-# 2. the panel stops, the two files are swapped with the old ones kept (File.Replace: the old file is never missing),
-#    the panel starts and must present the new certificate on its ports;
+#    folder is held (Open-CertificateFolder: nobody can rename or delete it until the end) and the new certificate is made
+#    in memory;
+# 2. the panel stops and no process may run as its account (which can write the folder); the folder's permissions are
+#    denied to its account (Lock-CertificateFolder), so that nothing can change the folder in place or follow a link made
+#    there; the new files are written beside the old ones under names nobody can predict, each checked by handle
+#    to be in the held folder, and the two files are swapped with the old ones kept (File.Replace: the old file is never
+#    missing); the folder's permissions are put back, the panel starts and must present the new certificate on its ports;
 # 3. the new certificate is trusted on this PC, if the install trusted the old one;
 # 4. only then the old certificate's trust is removed, its files are deleted (they hold its key) and what nodes must do
 #    is printed.
-# A failure in 2 or 3 puts the old files back and removes the new trust (Undo-CertificateRenewal); the old trust has not
-# been touched by then.
+# A failure in 2 or 3, or an interruption, puts the old files back, the folder's permissions as they were and removes the new
+# trust (Undo-CertificateRenewal); the old trust has not been touched by then.
 
 # -RenewCertificate takes -HostName, -Unattended and the two folders; every other parameter is for an install and is
 # refused, not ignored: -CertificatePath, say, would not install the certificate it names here.
@@ -2229,8 +2246,10 @@ function Assert-PlainCertificateFiles($paths, [bool] $afterStop = $false) {
 
 # Holding a folder, and asking by handle where a file really is: the checks above look at paths, and the panel's service
 # account can swap its folder for a junction in between. A handle opened on the folder itself (never following a link,
-# shared for reading and writing but not for deleting, so that nobody can rename or replace it, nor a folder above it,
-# while it is held) says what the folder is, with every link resolved (GetFinalPathNameByHandle).
+# shared for reading and writing but not for deleting) says what the folder is, with every link resolved
+# (GetFinalPathNameByHandle), and stops anyone from renaming or deleting it, or a folder above it, while it is held.
+# It does not stop whoever can write to the folder from changing it in place (an empty folder can be made a mount point):
+# that is what Lock-CertificateFolder is for.
 function Initialize-FolderHold {
     if ('PulsarFolderHold' -as [type]) { return }
     $source = @'
@@ -2337,8 +2356,8 @@ public sealed class PulsarFolderHold : IDisposable
 
 # Holds the panel's certificate folder ($path, which Get-RenewableCertificate found to be a folder, not a link) until the
 # returned hold is disposed, and checks by handle that it is that folder: the real path of what was opened must be $path
-# itself, so no link is anywhere on the way. A folder swapped for a junction after the checks by path, whichever comes
-# first, is refused here; one swapped afterwards cannot be: renaming or replacing it fails while it is held.
+# itself, so no link is anywhere on the way. A folder swapped for a junction after the checks by path is refused here; one
+# renamed or deleted afterwards cannot be (that fails while it is held), but one changed in place can (Lock-CertificateFolder).
 function Open-CertificateFolder([string] $path) {
     Initialize-FolderHold
     try { $hold = [PulsarFolderHold]::Open($path) }
@@ -2498,6 +2517,93 @@ function Assert-NewCertificateFiles($staged, [string] $password, $made) {
     finally { $listed.Dispose() }
 }
 
+# Closing the folder to the panel's account. The hold stops anyone from renaming or deleting the folder, not from changing it
+# in place: whoever can write attributes on an empty folder can make it a mount point, and the panel's service account has
+# Modify on it (and could redirect, that way, what is then done by path in it). So, with the panel stopped and no process
+# left running as its account, the account is denied every right on the folder (an entry that overrides the Modify it has,
+# and reaches the folder's files, which inherit it) while the files are swapped, and the entry is taken away again,
+# leaving the folder's permissions exactly as they were, before the panel starts. Nothing else about the permissions
+# changes: inheritance is never switched, so it needs no privilege and cannot leave the folder half done.
+
+# A random name for a file made beside the panel's certificate.
+function New-RandomId { return [Guid]::NewGuid().ToString('N').Substring(0, 16) }
+
+# The SID of the panel's service account (NT SERVICE\PulsarPanel).
+function Get-PanelAccountSid {
+    return (New-Object Security.Principal.NTAccount($PanelAccount)).Translate([Security.Principal.SecurityIdentifier])
+}
+
+# Checks that denying the panel's account is all it takes to close the folder $path: its owner (who can always change the
+# permissions) is SYSTEM, Administrators or the administrator running this, and nobody but those, the panel's account and
+# the administrator running this is allowed anything on it. Otherwise (a folder someone widened by hand) it stops before
+# anything is changed: exit code 3.
+function Assert-PrivateCertificateFolder([string] $path) {
+    $acl = Get-Acl -LiteralPath $path
+    $me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $trusted = @('S-1-5-18', 'S-1-5-32-544', $me)
+    $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier])
+    if ($null -eq $owner -or $owner.Value -notin $trusted) {
+        throw (New-SetupError $ExitUnsupported "$path is owned by $(if ($null -ne $owner) { Get-AccountName $owner } else { 'nobody' }), who could change its permissions while the files are swapped. Nothing was changed.")
+    }
+    $panel = (Get-PanelAccountSid).Value
+    $others = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -notin ($trusted + $panel) } |
+            ForEach-Object { Get-AccountName $_.IdentityReference } | Select-Object -Unique)
+    if ($others.Count -gt 0) {
+        throw (New-SetupError $ExitUnsupported "$path lets in $($others -join ', ') besides SYSTEM, Administrators and $PanelAccount (the install gives it those alone), so denying the panel's account would not close it while the files are swapped. Nothing was changed.")
+    }
+}
+
+# The processes that run as the panel's service account, fit to print: none once the panel has stopped.
+function Get-PanelAccountProcesses {
+    foreach ($process in @(Get-Process -IncludeUserName -ErrorAction SilentlyContinue)) {
+        if ("$($process.UserName)" -ieq $PanelAccount) { ConvertTo-PrintableText "$($process.ProcessName) ($($process.Id))" }
+    }
+}
+
+# Throws unless no process runs as the panel's service account, which is given a few seconds to end after the panel stopped.
+function Assert-NoPanelProcesses {
+    for ($attempt = 0; ; $attempt++) {
+        $running = @(Get-PanelAccountProcesses)
+        if ($running.Count -eq 0) { return }
+        if ($attempt -ge 20) {
+            throw (New-SetupError $ExitUnsupported "$($running -join ', ') still runs as $PanelAccount after the panel stopped: a process with that account's permissions on the certificate's folder could redirect the files being swapped. The certificate was not changed. End it (or restart Windows) and run this again.")
+        }
+        Start-Sleep -Milliseconds 500
+    }
+}
+
+# Whether the folder's permissions deny the account $sid every right.
+function Test-FolderDenies([string] $path, [Security.Principal.SecurityIdentifier] $sid) {
+    $rules = @((Get-Acl -LiteralPath $path).GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier]) |
+            Where-Object { $_.AccessControlType -eq 'Deny' -and $_.IdentityReference.Value -eq $sid.Value -and ([int]$_.FileSystemRights -band 0x1F01FF) -eq 0x1F01FF })
+    return $rules.Count -gt 0
+}
+
+# Denies the panel's account every right on the folder $path (inherited by what is in it), keeping the folder's permissions
+# as they were in $progress to check against when the entry is taken away (Unlock-CertificateFolder).
+function Lock-CertificateFolder([string] $path, $progress) {
+    $sid = Get-PanelAccountSid
+    if (-not $progress.FolderAccess) { $progress.FolderAccess = Get-FileAccess $path }
+    $progress.Denied = New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Deny')
+    # Set before it is applied: a failure halfway is put back as well.
+    $progress.Locked = $true
+    $acl = Get-Acl -LiteralPath $path
+    $acl.AddAccessRule($progress.Denied)
+    Set-Acl -LiteralPath $path -AclObject $acl
+    if (-not (Test-FolderDenies $path $sid)) { throw "$PanelAccount could not be denied access to $path." }
+}
+
+# Takes the entry Lock-CertificateFolder added away again, and checks that the folder's permissions are exactly what they were
+# (they reach the folder's files again: they inherit them).
+function Unlock-CertificateFolder([string] $path, $progress) {
+    if (-not $progress.Locked) { return }
+    $acl = Get-Acl -LiteralPath $path
+    $null = $acl.RemoveAccessRuleSpecific($progress.Denied)
+    Set-Acl -LiteralPath $path -AclObject $acl
+    if ((Get-FileAccess $path) -cne $progress.FolderAccess) { throw "The permissions of $path are not what they were." }
+    $progress.Locked = $false
+}
+
 # Stops the panel and waits until it has stopped.
 function Stop-Panel {
     if ((Get-Service $PanelService).Status -eq 'Stopped') { return }
@@ -2523,10 +2629,12 @@ function Confirm-PanelCertificate([int] $port, [int] $agentsPort, $certificate) 
     }
 }
 
-# Puts the old certificate back after a renewal failed once it had stopped the panel ($progress: the swaps tried and the
-# new certificate's trust, if added): the new trust goes, the panel stops, each file swapped is put back from its backup
-# (even one whose swap stopped halfway), and the panel starts again if it was running ($wasRunning) and must answer with
-# the old certificate ($renewal's). Each thing that could not be undone, fit to print; nothing when all was.
+# Puts the old certificate back after a renewal failed once it had stopped the panel ($progress: the folder's lock, the files
+# made, the swaps tried and the new certificate's trust, if added): the new trust goes, the panel stops, the folder is closed
+# to the panel's account again if need be, each file swapped is put back from its backup (even one whose swap stopped halfway)
+# and the files made are deleted, the folder's permissions are put back, and the panel starts again if it was running
+# ($wasRunning) and must answer with the old certificate ($renewal's). Each thing that could not be undone, fit to print;
+# nothing when all was.
 function Undo-CertificateRenewal($renewal, $progress, [bool] $wasRunning) {
     $left = @()
     if ($progress.Trusted) {
@@ -2535,6 +2643,11 @@ function Undo-CertificateRenewal($renewal, $progress, [bool] $wasRunning) {
     }
     try { Stop-Panel }
     catch { $left += "the panel service did not stop ($($_.Exception.Message))" }
+    # Files are put back by path: with the folder closed to the panel's account, as when they were swapped (best effort).
+    if ($progress.FolderAccess -and -not $progress.Locked) {
+        try { Lock-CertificateFolder $renewal.Tls $progress }
+        catch { $left += "the certificate folder could not be closed to $PanelAccount while its files were put back ($($_.Exception.Message))" }
+    }
     foreach ($swap in $progress.Swaps) {
         try {
             if (-not (Test-Path -LiteralPath $swap.Backup)) { continue }
@@ -2544,6 +2657,10 @@ function Undo-CertificateRenewal($renewal, $progress, [bool] $wasRunning) {
         }
         catch { $left += "$($swap.Target) could not be put back ($($_.Exception.Message)); the old one is in $($swap.Backup): copy it over $($swap.Target)" }
     }
+    # Never swapped in: they hold the new key.
+    foreach ($file in $progress.Staged) { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }
+    try { Unlock-CertificateFolder $renewal.Tls $progress }
+    catch { $left += "the permissions of $($renewal.Tls) ($($_.Exception.Message)): the panel's account must not stay denied there (icacls ""$($renewal.Tls)"" /remove:d ""$PanelAccount"")" }
     if ($wasRunning) {
         try {
             Start-Panel
@@ -2598,8 +2715,10 @@ function Invoke-RenewCertificate {
     # Held from here to the end (Open-CertificateFolder): the checks above looked at paths, and the panel's service account
     # can swap its folder for a link in between. What was read of the old certificate is read again through the hold.
     $hold = Open-CertificateFolder $renewal.Tls
+    $bundle = $null
     try {
         Assert-PlainCertificateFiles $renewal
+        Assert-PrivateCertificateFolder $renewal.Tls
         if ((Get-PfxHash $renewal.Pfx $renewal.Password) -cne $renewal.Sha256) {
             throw (New-SetupError $ExitCertificate "The panel's certificate changed while this script was checking it. Nothing was changed.")
         }
@@ -2625,37 +2744,59 @@ function Invoke-RenewCertificate {
                 Write-Warning "The old certificate also listed $($gone.Other -join ', '), which the new one does not (you gave -HostName without them). Nodes and browsers that use one of them need the certificate to list it: run this again with them in -HostName to keep them."
             }
         }
-        # Names nobody can predict, so that nothing planted in the folder (the panel's service account can write it) is written to.
-        $id = [Guid]::NewGuid().ToString('N').Substring(0, 16)
-        $staged = @{ Pfx = "$($renewal.Pfx).new-$id"; Cer = "$($renewal.Cer).new-$id" }
-        $backup = @{ Pfx = "$($renewal.Pfx).old-$id"; Cer = "$($renewal.Cer).old-$id" }
+        # Names nobody can predict (one each), as a second line of defence: the folder is closed to the panel's account while they are made and used.
+        $staged = @{ Pfx = "$($renewal.Pfx).new-$(New-RandomId)"; Cer = "$($renewal.Cer).new-$(New-RandomId)" }
+        $backup = @{ Pfx = "$($renewal.Pfx).old-$(New-RandomId)"; Cer = "$($renewal.Cer).old-$(New-RandomId)" }
         $current = @{ Pfx = $renewal.Pfx; Cer = $renewal.Cer }
-        $progress = [pscustomobject]@{ Stopped = $false; Swaps = (New-Object Collections.Generic.List[object]); Trusted = $null }
+        # The old files' permissions, before the folder is closed to the panel's account (they inherit that too): the new ones must end with these.
+        $oldAccess = @{ Pfx = (Get-FileAccess $renewal.Pfx); Cer = (Get-FileAccess $renewal.Cer) }
+        $progress = [pscustomobject]@{
+            Stopped = $false; Locked = $false; FolderAccess = $null; Denied = $null; Staged = (New-Object Collections.Generic.List[string])
+            Swaps = (New-Object Collections.Generic.List[object]); Trusted = $null
+        }
         $finished = $false
         $rolledBack = $false
         try {
             try {
-                $made = New-SelfSignedPanelFiles $names $staged.Pfx $staged.Cer $renewal.Password $true $hold.Path
-                Set-SameAccess $current.Pfx $staged.Pfx
-                Set-SameAccess $current.Cer $staged.Cer
-                Assert-NewCertificateFiles $staged $renewal.Password $made
-                # Checked now, before anything changes, as the trust below will check it (Add-TrustedCertificate).
-                if ($renewal.Trust -ceq 'marked') {
-                    $listed = Read-Certificate $staged.Cer
-                    try { Assert-TrustableCertificate $listed $staged.Cer 'localhost' $made.Names }
-                    finally { $listed.Dispose() }
-                }
+                # In memory, while the panel still runs: its key is written only once the folder is closed to the panel's account.
+                $bundle = New-SelfSignedPanelBundle $names $renewal.Password
 
                 Write-SetupStep 'panel' 'Replacing the panel''s certificate and restarting the panel (it is unavailable for a few seconds)'
                 if ($wasRunning) { Write-Step 'Stopping the panel' }
                 $progress.Stopped = $true
                 Stop-Panel
+                # Its account can write the folder, and the hold does not stop whoever can from changing it in place (an empty
+                # folder can be made a mount point): until the files are swapped the account is denied the folder, and no
+                # process may run as it.
+                Write-Step 'Closing the certificate folder to the panel''s account while the files are swapped (its permissions are put back before the panel starts)'
+                Lock-CertificateFolder $renewal.Tls $progress
+                Assert-NoPanelProcesses
                 Assert-PlainCertificateFiles $renewal $true
+                $progress.Staged.Add($staged.Pfx)
+                $progress.Staged.Add($staged.Cer)
+                $made = Save-PanelBundle $bundle $staged.Pfx $staged.Cer $true $hold.Path
+                Set-SameAccess $current.Pfx $staged.Pfx
+                Set-SameAccess $current.Cer $staged.Cer
+                Assert-NewCertificateFiles $staged $renewal.Password $made
+                # Checked now, before the swap, as the trust below will check it (Add-TrustedCertificate).
+                if ($renewal.Trust -ceq 'marked') {
+                    $listed = Read-Certificate $staged.Cer
+                    try { Assert-TrustableCertificate $listed $staged.Cer 'localhost' $made.Names }
+                    finally { $listed.Dispose() }
+                }
                 foreach ($kind in 'Pfx', 'Cer') {
                     Assert-InFolder $current[$kind] $hold
                     $progress.Swaps.Add(@{ Target = $current[$kind]; Backup = $backup[$kind] })
                     [IO.File]::Replace($staged[$kind], $current[$kind], $backup[$kind])
                     Set-SameAccess $backup[$kind] $current[$kind]
+                }
+                # The panel's account needs its permissions back to read the new files: put back as they were, they reach the
+                # files again (they inherit them), which must give the new files the old ones' permissions.
+                Unlock-CertificateFolder $renewal.Tls $progress
+                foreach ($kind in 'Pfx', 'Cer') {
+                    if ((Get-FileAccess $current[$kind]) -cne $oldAccess[$kind]) {
+                        throw "$($current[$kind]) does not have the permissions the old one had once the folder's were put back."
+                    }
                 }
                 Write-Step "Starting the panel with the new certificate$(if (-not $wasRunning) { ' (it was not running: it stays running if all goes well)' })"
                 Start-Panel
@@ -2673,8 +2814,9 @@ function Invoke-RenewCertificate {
             }
             catch {
                 $failure = $_.Exception.Message
+                $code = Get-SetupExitCode $_
                 if (-not $progress.Stopped) {
-                    throw (New-SetupError $ExitFailed "$failure$([Environment]::NewLine)Nothing was changed: the panel keeps its certificate.")
+                    throw (New-SetupError $code "$failure$([Environment]::NewLine)Nothing was changed: the panel keeps its certificate.")
                 }
                 $left = @(Undo-CertificateRenewal $renewal $progress $wasRunning)
                 $rolledBack = $true
@@ -2682,7 +2824,7 @@ function Invoke-RenewCertificate {
                 if ($left.Count -gt 0) {
                     $undone = "Putting the old certificate back left: $($left -join '; '). The old certificate's files are $($backup.Pfx) and $($backup.Cer) if they are still there: copy them over panel.pfx and panel.cer, and start the $PanelService service."
                 }
-                throw (New-SetupError $ExitFailed "$failure$([Environment]::NewLine)$undone")
+                throw (New-SetupError $code "$failure$([Environment]::NewLine)$undone")
             }
         }
         finally {
@@ -2705,7 +2847,10 @@ function Invoke-RenewCertificate {
         }
         $deleted = $true
         foreach ($file in $backup.Pfx, $backup.Cer) {
-            try { Remove-Item -LiteralPath $file -Force }
+            try {
+                Assert-InFolder $file $hold
+                Remove-Item -LiteralPath $file -Force
+            }
             catch {
                 $deleted = $false
                 Write-Warning "$file holds the old certificate$(if ($file -like '*.pfx.*') { '''s key' }): delete it yourself ($($_.Exception.Message))."
@@ -2713,9 +2858,11 @@ function Invoke-RenewCertificate {
         }
         if ($deleted) { Write-Host "    The old certificate's files, with its key, are deleted." }
     }
-    finally { $hold.Dispose() }
-
-    # The new certificate where it is now (New-SelfSignedPanelFiles wrote it beside the old one).
+    finally {
+        $hold.Dispose()
+        if ($bundle) { [Array]::Clear($bundle.PfxBytes, 0, $bundle.PfxBytes.Length) }
+    }
+    # The new certificate where it is now (Save-PanelBundle wrote it beside the old one).
     $installed = $made.Clone()
     $installed.Path = $renewal.Pfx
     $installed.Cer = $renewal.Cer
