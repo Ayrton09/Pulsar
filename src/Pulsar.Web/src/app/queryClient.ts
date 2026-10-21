@@ -24,11 +24,18 @@ export function createQueryClient(): QueryClient {
   });
 
   function handleUnauthorized(error: unknown) {
-    // Also when a role starts requiring two-factor authentication: the session says so, and the guard asks for it.
-    if (error instanceof ApiError && (error.status === 401 || error.code === 'auth.two_factor_required')) {
+    if (endsSession(error)) {
       void client.invalidateQueries({ queryKey: sessionKey });
     }
   }
 
   return client;
+}
+
+/**
+ * Whether an answer means the session ended, or a role now requires two-factor authentication (the session says so, and
+ * the guard asks for it): for requests made around the query client too (uploads, for their progress).
+ */
+export function endsSession(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 401 || error.code === 'auth.two_factor_required');
 }

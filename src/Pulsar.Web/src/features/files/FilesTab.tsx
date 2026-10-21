@@ -3,6 +3,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { ApiError } from '../../api/client';
+import { endsSession } from '../../app/queryClient';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert, Badge, Card, Table, Td, Th } from '../../components/ui/Display';
@@ -10,7 +11,7 @@ import { Field, Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate, useFormatFileSize } from '../../lib/format';
 import { canOnServer, Permission } from '../../lib/permissions';
-import { useCurrentUser } from '../auth/api';
+import { sessionKey, useCurrentUser } from '../auth/api';
 import type { ServerDetails } from '../servers/api';
 import {
   downloadUrl,
@@ -375,6 +376,9 @@ function NameDialog({ serverId, directory, action, onDone }: NameDialogProps) {
       }
     } catch (caught) {
       setError(caught);
+      if (endsSession(caught)) {
+        void queryClient.invalidateQueries({ queryKey: sessionKey });
+      }
     } finally {
       setCreating(false);
     }
@@ -443,6 +447,9 @@ function useUploads(serverId: string, directory: string) {
           id,
           error instanceof ApiError && error.code === 'files.exists' ? { state: 'exists' } : { state: 'failed', error },
         );
+        if (endsSession(error)) {
+          void queryClient.invalidateQueries({ queryKey: sessionKey });
+        }
       }
     });
   };

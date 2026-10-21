@@ -625,6 +625,27 @@ describe('files tab', () => {
     expect(FakeXhr.sent[2]?.headers['If-None-Match']).toBeUndefined();
   });
 
+  it('asks for the session again when an upload finds it ended', async () => {
+    let sessions = 0;
+    fakeApi({
+      'GET /api/v1/auth/session': () => {
+        sessions++;
+        return json({ setupRequired: false, user: editor, insecureConnection: false });
+      },
+      [`GET /api/v1/servers/${serverId}`]: () => json(details),
+      [`GET /api/v1/servers/${serverId}/files`]: listing,
+    });
+    // Uploads go around the client the rest of the app uses (for their progress): a 401 still sends to the sign-in.
+    FakeXhr.handler = async () => ({ status: 401, body: { status: 401, code: 'auth.required' } });
+    renderAt(`/servers/${serverId}?tab=files`);
+    await screen.findByRole('table', { name: 'Files' });
+    const before = sessions;
+
+    await userEvent.upload(screen.getByLabelText('Upload'), [new File(['map'], 'de_test.bsp')]);
+
+    await waitFor(() => expect(sessions).toBeGreaterThan(before));
+  });
+
   it('asks about a name that exists only in the folder it was uploaded to', async () => {
     fakeApi({
       'GET /api/v1/auth/session': session(editor),
