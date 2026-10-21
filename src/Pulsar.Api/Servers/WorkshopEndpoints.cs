@@ -16,12 +16,16 @@ public sealed record WorkshopLookupRequest(long AppId, [property: Required, MaxL
 /// </summary>
 public static class WorkshopEndpoints
 {
+    /// <summary>The per-user limit of the routes that cost more than a database read (<see cref="AuthRateLimitOptions.LookupPermitLimit"/>).</summary>
+    public const string LookupRateLimitPolicy = "lookups";
+
     public static RouteGroupBuilder MapWorkshopEndpoints(this RouteGroupBuilder api)
     {
         api.MapPost("/workshop/lookup", async (WorkshopLookupRequest request, WorkshopLookup lookup, CancellationToken ct) =>
                 (await lookup.LookupAsync(request.AppId, request.Ids, ct)).ToHttp())
             .WithTags("Servers")
-            .RequirePermissionAnywhere(Permissions.Server.Create, Permissions.Server.StartupEdit);
+            .RequirePermissionAnywhere(Permissions.Server.Create, Permissions.Server.StartupEdit)
+            .RequireRateLimiting(LookupRateLimitPolicy);
         return api;
     }
 }

@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Servers;
+using Pulsar.Domain.Access;
 using Pulsar.Infrastructure.Steam;
 
 namespace Pulsar.Api.Tests.Servers;
@@ -175,6 +176,29 @@ public sealed class WorkshopTests(WorkshopApiFactory factory) : IClassFixture<Wo
         {
             factory.Steam.Failure = null;
         }
+    }
+
+    [DatabaseFact]
+    public async Task EachUserLooksUpSoManyTimesAMinute()
+    {
+        // Each lookup asks Steam (with the panel's address, and key when it has one).
+        var access = await AccessScenario.CreateAsync(factory);
+        using var first = await access.SignedInWithAsync("lookups-first", Permissions.Server.Create);
+        using var second = await access.SignedInWithAsync("lookups-second", Permissions.Server.Create);
+        factory.Steam.Items["3806657187"] = FakeSteam.Item("3806657187", "Hourly", 108600);
+
+        var answers = new List<HttpStatusCode>();
+        for (var i = 0; i <= AuthRateLimitOptions.DefaultLookupPermitLimit; i++)
+        {
+            using var response = await first.PostAsync("/api/v1/workshop/lookup", new WorkshopLookupRequest(108600, ["3806657187"]));
+            answers.Add(response.StatusCode);
+        }
+
+        Assert.Equal(AuthRateLimitOptions.DefaultLookupPermitLimit, answers.Count(a => a == HttpStatusCode.OK));
+        Assert.Equal(HttpStatusCode.TooManyRequests, answers[^1]);
+        // Someone else, from the same address, still may.
+        using var other = await second.PostAsync("/api/v1/workshop/lookup", new WorkshopLookupRequest(108600, ["3806657187"]));
+        Assert.Equal(HttpStatusCode.OK, other.StatusCode);
     }
 
     [DatabaseFact]

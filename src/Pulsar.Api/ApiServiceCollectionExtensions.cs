@@ -19,6 +19,7 @@ using Pulsar.Api.Http;
 using Pulsar.Api.Nodes;
 using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
+using Pulsar.Api.Servers;
 using Pulsar.Api.Sftp;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Nodes;
@@ -48,6 +49,14 @@ public sealed class AuthRateLimitOptions
     /// load makes and readiness (<c>RateLimiting:Auth:AnonymousPermitLimit</c>).
     /// </summary>
     public int AnonymousPermitLimit { get; set; } = 300;
+
+    public const int DefaultLookupPermitLimit = 60;
+
+    /// <summary>
+    /// Requests per minute each user may make to the routes that cost more than a database read: Workshop lookups (each
+    /// asks Steam) and the previews that check a manifest or a schedule (<c>RateLimiting:Auth:LookupPermitLimit</c>).
+    /// </summary>
+    public int LookupPermitLimit { get; set; } = DefaultLookupPermitLimit;
 }
 
 internal static class ApiServiceCollectionExtensions
@@ -263,6 +272,10 @@ internal static class ApiServiceCollectionExtensions
             options.AddPolicy(AuthEndpoints.AnonymousRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
                 ClientAddress.PartitionOf(context.Connection.RemoteIpAddress),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.AnonymousPermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            // Per user (all of a household's browsers share one address), or per address for a request without one.
+            options.AddPolicy(WorkshopEndpoints.LookupRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.User.GetUserId()?.ToString() ?? ClientAddress.PartitionOf(context.Connection.RemoteIpAddress),
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.LookupPermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
             options.AddPolicy(AgentEndpoints.EnrollRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
                 ClientAddress.PartitionOf(context.Connection.RemoteIpAddress),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.EnrollPermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));

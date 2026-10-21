@@ -152,8 +152,9 @@ public static class ServerEndpoints
             .RequirePermissionAnywhere(Permissions.Template.View, Permissions.Server.Create);
         templates.MapPost("/preview", async (TemplateContentRequest request, TemplateCatalog catalog, CancellationToken ct) =>
                 TypedResults.Ok(await catalog.PreviewAsync(request.Content, ct)))
-            .RequirePermission(Permissions.Template.Manage);
-        templates.MapPost("/", ImportTemplateAsync).RequirePermission(Permissions.Template.Manage);
+            .RequirePermission(Permissions.Template.Manage)
+            .RequireRateLimiting(WorkshopEndpoints.LookupRateLimitPolicy);
+        templates.MapPost("/", ImportTemplateAsync).RequirePermission(Permissions.Template.Manage).RequireRateLimiting(WorkshopEndpoints.LookupRateLimitPolicy);
         return api;
     }
 
