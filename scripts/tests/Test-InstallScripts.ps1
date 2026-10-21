@@ -905,11 +905,17 @@ Check "PostgreSQL: the version in EDB's installer name" ($named.Major -eq 18 -an
 foreach ($bad in 'postgresql-18.6-windows-x64.exe', 'PostgreSQL-18.6-1-windows-x64.exe', 'postgresql-18.6-1-windows-x64.exe.lnk', 'postgresql-18.6-1-windows.exe', 'x-postgresql-18.6-1-windows-x64.exe') {
     Check "PostgreSQL: not an installer name: $bad" ($null -eq (Test-PostgresInstallerName $bad))
 }
-$rows = @('host|127.0.0.1|255.255.255.255|', 'host|::1|ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff|', 'local|||', 'hostssl|127.0.0.0|255.0.0.0|', '')
-Check 'PostgreSQL: pg_hba.conf rules for this machine only pass' (@(Find-NonLocalHbaRules $rows).Count -eq 0) (@(Find-NonLocalHbaRules $rows) -join ' | ')
-foreach ($bad in 'host|0.0.0.0|0.0.0.0|', 'host|192.168.1.0|255.255.255.0|', 'hostnossl|::|::|', 'host|samehost||', 'host|127.0.0.1|0.0.0.0|', 'host|::1|ffff:ffff:ffff:ffff::|', 'host|::ffff:127.0.0.1|ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff|', 'host|127.0.0.1|255.255.255.255|invalid', 'garbage') {
+$rows = @('host|127.0.0.1|255.255.255.255|scram-sha-256|', 'host|::1|ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff|scram-sha-256|', 'local|||scram-sha-256|', 'hostssl|127.0.0.0|255.0.0.0|md5|', 'host|127.0.0.1|255.255.255.255|reject|', '')
+Check 'PostgreSQL: pg_hba.conf rules for this machine only, with a password, pass' (@(Find-NonLocalHbaRules $rows).Count -eq 0) (@(Find-NonLocalHbaRules $rows) -join ' | ')
+foreach ($bad in 'host|0.0.0.0|0.0.0.0|scram-sha-256|', 'host|192.168.1.0|255.255.255.0|scram-sha-256|', 'hostnossl|::|::|scram-sha-256|', 'host|samehost||scram-sha-256|', 'host|127.0.0.1|0.0.0.0|scram-sha-256|', 'host|::1|ffff:ffff:ffff:ffff::|scram-sha-256|', 'host|::ffff:127.0.0.1|ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff|scram-sha-256|', 'host|127.0.0.1|255.255.255.255|scram-sha-256|invalid', 'garbage') {
     Check "PostgreSQL: a pg_hba.conf rule that lets in more than this machine: $bad" (@(Find-NonLocalHbaRules @($bad)).Count -eq 1)
 }
+# trust lets any account on this machine in as any database user, a game server's too: refused even on the loopback.
+foreach ($trusting in 'host|127.0.0.1|255.255.255.255|trust|', 'host|::1|ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff|trust|', 'local|||trust|', 'hostssl|127.0.0.0|255.0.0.0|trust|') {
+    $found = @(Find-NonLocalHbaRules @($trusting))
+    Check "PostgreSQL: a pg_hba.conf rule that needs no password is refused: $trusting" ($found.Count -eq 1 -and $found[0] -match 'without a password') "$found"
+}
+Check 'PostgreSQL: the rules are read with their authentication method' ($installText -match "coalesce\(netmask, ''\), coalesce\(auth_method, ''\), coalesce\(error, ''\) FROM pg_hba_file_rules")
 # EDB's newest build of a release: what its server answers for each build (Get-DownloadStatus, mocked), 403 and 404
 # meaning there is none; anything else is a server that could not answer, not a missing build.
 function Find-Build([object[]] $answers) {
@@ -4207,6 +4213,75 @@ Check 'database: a new, empty database (no migrations table: psql fails) passes'
 Check 'database: without the release''s list of migrations nothing can be compared, and nothing is refused' ($null -eq (Test-DatabaseVersion $connection ([pscustomobject]@{ ExitCode = 0; Output = '20270101000000_Future' }) @()))
 Check 'database: a connection string without host, user, database or password is left to the install to refuse' ($null -eq (Test-DatabaseVersion 'Host=db;Database=pulsar' ([pscustomobject]@{ ExitCode = 0; Output = '20270101000000_Future' }) $shippedIds))
 Check 'database: the migrations of the dump a backup holds are checked against the release as well (-RestoreFrom)' ($installText -match 'Get-BackupVersionProblems \$manifest')
+
+# 14. What an uninstall keeps is said in full, in both languages: the update backups hold the database dump, the keys and the settings.
+$commonIss = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $PSScriptRoot '..\release\setup\Common.iss')
+$setupIss = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $PSScriptRoot '..\release\setup\PulsarSetup.iss')
+foreach ($key in 'en.ConfirmUninstall', 'es.ConfirmUninstall', 'en.UninstalledAll', 'es.UninstalledAll') {
+    $line = [regex]::Match($commonIss, "(?m)^$([regex]::Escape($key))=.*$").Value
+    Check "uninstall text: $key says the update backups (Updates\backups: database dumps with the keys and the settings) stay in C:\ProgramData\Pulsar" ($line -match 'Updates\\backups' -and $line -match 'C:\\ProgramData\\Pulsar') $line
+}
+Check 'uninstall text: ...and that the HTTPS certificate''s file stays too' (([regex]::Matches($commonIss, '(?m)^(en|es)\.(ConfirmUninstall|UninstalledAll)=.*$') | Where-Object { $_.Value -match 'PFX|\.pfx' }).Count -eq 4)
+$install = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\docs\guides\install.md')
+Check 'uninstall text: install.md says the update backups, the settings of the backups and the PFX stay, and how to delete them' (
+    $install -match 'Updates\\backups' -and $install -match '(?s)Uninstalling.*Updates\\backups.*(passwords|PFX)')
+
+# 15. A silent setup shows no page, so the ports of its command line are checked before anything is installed.
+Check 'setup: a silent setup checks /PORT, /SFTPPORT and /AGENTSPORT in InitializeSetup (the wizard''s page checks never run), refusing with the same message' (
+    $setupIss -match '(?s)function SilentPortsAreValid: Boolean;.*WizardSilent.*AGENTSPORT.*IsPort\(StrToIntDef\(Trim\(ExpandConstant\(''\{param:PORT\|8443\}''\)\), -1\)\).*SFTPPORT.*Refuse\(CustomMessage\(''ErrorPort''\)\)' -and
+    $setupIss -match '(?s)function InitializeSetup: Boolean;.*Result := SilentPortsAreValid;')
+
+# 12. An installer that does not finish is ended with everything it started, and the .NET installers get a private TEMP.
+foreach ($part in (Get-ScriptParts $installScript @('Stop-ProcessTree', 'Start-Installer', 'Install-DotNetRuntimes', 'ConvertTo-CommandLine')).Values) { . ([scriptblock]::Create($part)) }
+function Start-SleepingTree {
+    $cmd = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
+    $started = Start-Process -FilePath $cmd -ArgumentList '/c', 'ping -n 60 127.0.0.1 > nul' -WindowStyle Hidden -PassThru
+    $child = $null
+    for ($i = 0; $i -lt 50 -and $null -eq $child; $i++) {
+        $child = Get-CimInstance Win32_Process -Filter "ParentProcessId = $($started.Id)" | Select-Object -First 1
+        if ($null -eq $child) { Start-Sleep -Milliseconds 100 }
+    }
+    return [pscustomobject]@{ Parent = $started; ChildId = $(if ($child) { [int]$child.ProcessId } else { 0 }) }
+}
+function Test-Alive([int] $id) { return $id -gt 0 -and $null -ne (Get-Process -Id $id -ErrorAction SilentlyContinue) }
+$tree = Start-SleepingTree
+try {
+    Check 'installer timeout: the test''s process tree is running (a cmd.exe with a ping under it)' ((Test-Alive $tree.Parent.Id) -and (Test-Alive $tree.ChildId)) "child $($tree.ChildId)"
+    Stop-ProcessTree $tree.Parent.Id
+    $tree.Parent.WaitForExit(5000) | Out-Null
+    Check 'installer timeout: Stop-ProcessTree ends the process and everything it started' (-not (Test-Alive $tree.Parent.Id) -and -not (Test-Alive $tree.ChildId))
+}
+finally {
+    foreach ($id in $tree.Parent.Id, $tree.ChildId) { if (Test-Alive $id) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue } }
+}
+$script:killedId = 0
+$realStopTree = (Get-Item function:Stop-ProcessTree).ScriptBlock
+function Stop-ProcessTree([int] $id) { $script:killedId = $id; & $realStopTree $id }
+function Write-SetupLog([string] $text) { }
+$sleeper = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
+$caught = Get-Thrown { Start-Installer $sleeper @('/c', 'ping -n 60 127.0.0.1 > nul') $null 0.03 }
+$killed = $script:killedId
+Start-Sleep -Milliseconds 500
+Check 'installer timeout: an installer that does not finish in time is an error, and its whole process tree is ended' (
+    $caught -match 'did not finish within' -and $killed -gt 0 -and -not (Test-Alive $killed)) "$caught $killed"
+$fast = Start-Installer $sleeper @('/c', 'exit 7') $null 1
+Check 'installer timeout: one that finishes returns its exit code, and nothing is ended' ($fast -eq 7)
+Set-Item function:Stop-ProcessTree $realStopTree
+$SetupDownloads = Join-Path $restoreRoot 'downloads'
+$SetupLogs = Join-Path $restoreRoot 'logs'
+$null = New-Item -ItemType Directory $SetupDownloads, $SetupLogs
+$script:installerTemps = New-Object Collections.Generic.List[string]
+$script:RestartNeeded = $false
+function Write-Step([string] $text) { }
+function Start-Installer([string] $exe, [string[]] $arguments, [string] $temp = $null, [double] $minutes = 30) {
+    $script:installerTemps.Add("$temp")
+    $script:tempExisted = $temp -and (Test-Path -LiteralPath $temp -PathType Container)
+    return 0
+}
+Install-DotNetRuntimes @([pscustomobject]@{ Name = 'dotnet-runtime'; Version = '10.0.1'; Path = 'C:\x\dotnet-runtime.exe' }, [pscustomobject]@{ Name = 'aspnetcore-runtime'; Version = '10.0.1'; Path = 'C:\x\aspnetcore-runtime.exe' })
+Check 'installer temp: the .NET installers unpack and log in a TEMP of the downloads folder (only administrators), not the caller''s' (
+    $script:installerTemps.Count -eq 2 -and $script:installerTemps[0] -like "$SetupDownloads\*" -and $script:tempExisted -and -not (Test-Path -LiteralPath $script:installerTemps[0]))
+Check 'installer temp: the ...and the timeout is a number of minutes that may be fractional' ($installText -match '\[double\] \$minutes = 30' -and $installText -match 'WaitForExit\(\[int\]\(\$minutes \* 60000\)\)')
 
 # 8. -Uninstall says so when the panel's folder, with its settings (the database password), could not be removed.
 foreach ($part in (Get-ScriptParts $installScript @('Remove-ProgramFolder', 'Uninstall-Panel')).Values) { . ([scriptblock]::Create($part)) }

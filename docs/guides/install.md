@@ -119,7 +119,10 @@ Remove-Item Env:PULSAR_ADMIN_PASSWORD
 ```
 
 The choices are parameters, never a secret: `/MODE=AllInOne|Panel|Agent`, `/ADMINUSER=`, `/SERVERSROOT=`, `/PORT=`,
-`/SFTPPORT=`, `/AGENTSPORT=`, `/HOSTNAME=`, `/CERTIFICATE=<pfx>`, `/FIREWALLPUBLIC=yes`, `/PANELURL=`, `/LANG=en|es`,
+`/SFTPPORT=`, `/AGENTSPORT=`, `/HOSTNAME=`, `/CERTIFICATE=<pfx>`, `/FIREWALLPUBLIC=yes`, `/PANELURL=`, `/LANG=en|es`
+(a silent setup checks the ports, each from 1 to 65535, before it installs anything; one that is not stops it
+with Inno Setup's own exit code `1` and a line in its `/LOG`, instead of a script error that would look like an install that
+changed the PC),
 and, offline, `/DOTNETINSTALLERS=<folder>` and `/POSTGRESINSTALLER=<file>` ([Offline installs](#offline-installs)).
 `PulsarAgentSetup-<version>.exe` takes `/SERVERSROOT=`, `/PANELURL=` and `/DOTNETINSTALLERS=`, with the code in
 `PULSAR_NODE_CODE`. Exit codes: `0` done (add `/RESTARTEXITCODE=3010` to get 3010 when a .NET installer asks for a
@@ -305,7 +308,8 @@ PostgreSQL 18 with EDB's installer (the one postgresql.org links for Windows), u
   the service `postgresql-x64-18` on **port 5432** (`-PostgresPort` chooses another; a port in use stops the install
   before anything changes);
 - listening on this machine only (`listen_addresses = 'localhost'`, set with `ALTER SYSTEM`), and the installer checks
-  that `pg_hba.conf` lets in nothing but this machine;
+  that `pg_hba.conf` lets in nothing but this machine, and every rule asks for a password (a `trust` rule would let any
+  account on the machine, a game server's too, in as the database's superuser: the install stops instead);
 - its superuser, `postgres`, gets a random password, handed to EDB's installer in a file only SYSTEM and Administrators
   can read (deleted when the installer ends), changed again to another random one as soon as PostgreSQL runs, used to
   create Pulsar's database and user, and then kept nowhere. Nobody needs it for Pulsar; to use PostgreSQL yourself,
@@ -1097,6 +1101,15 @@ database, `C:\ProgramData\Pulsar` and the game servers' folders, and PostgreSQL 
 programs may use: remove them from **Apps** when nothing else needs them, after Pulsar (the agent's program needs the
 .NET runtime to unenroll; PostgreSQL's data folder stays until you delete it). Delete game servers from the panel
 first: that also removes their Windows accounts.
+
+What stays in `C:\ProgramData\Pulsar` is sensitive, and only administrators can open it: the panel's keys (needed to
+read the database's secrets), its HTTPS certificate's PFX file and the password in the settings, the logs, and
+`Updates\backups`, the update backups, each of which is a full database dump with the keys and the settings
+(`appsettings.Production.json`, with the database and certificate passwords). Delete `C:\ProgramData\Pulsar` yourself
+(and the database, if you keep none of it) when you no longer need any of that; the uninstaller leaves it because the
+keys are the only way to read the database's secrets again. The programs' own folders keep nothing: the panel's
+settings file is deleted first, and a folder that still cannot be removed is reported with exit code `1`. The setups'
+texts say the same, in English and Spanish.
 
 If the .NET runtime the agent needs is gone already, `-Uninstall` cannot run the agent's program: it says so in a
 warning, stops and removes the agent's service (`sc.exe`), and keeps the program in `C:\Program Files\Pulsar\Agent`

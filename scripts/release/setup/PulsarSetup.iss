@@ -636,6 +636,23 @@ end;
 
 // --- The wizard --------------------------------------------------------------------------------------------------
 
+// A silent setup shows no wizard page, so the checks of the pages' buttons never run: the ports of its command line are checked
+// here, before anything is installed. Otherwise a bad one reaches Install-Pulsar.ps1 as a parameter error, whose exit code (1)
+// the setup takes for an install that had changed the PC.
+function SilentPortsAreValid: Boolean;
+var
+  Agents: String;
+begin
+  Result := True;
+  if not WizardSilent or SameText(ExpandConstant('{param:MODE|AllInOne}'), 'Agent') then
+    Exit;
+  Agents := Trim(ExpandConstant('{param:AGENTSPORT|}'));
+  if not IsPort(StrToIntDef(Trim(ExpandConstant('{param:PORT|8443}')), -1)) or
+     not IsPort(StrToIntDef(Trim(ExpandConstant('{param:SFTPPORT|2022}')), -1)) or
+     ((Agents <> '') and not IsPort(StrToIntDef(Agents, -1))) then
+    Result := Refuse(CustomMessage('ErrorPort'));
+end;
+
 function InitializeSetup: Boolean;
 var
   Mode: String;
@@ -643,7 +660,9 @@ begin
   Mode := ExpandConstant('{param:MODE|AllInOne}');
   Result := SameText(Mode, 'AllInOne') or SameText(Mode, 'Panel') or SameText(Mode, 'Agent');
   if not Result then
-    SuppressibleMsgBox(CustomMessage('ErrorMode'), mbError, MB_OK, IDOK);
+    SuppressibleMsgBox(CustomMessage('ErrorMode'), mbError, MB_OK, IDOK)
+  else
+    Result := SilentPortsAreValid;
 end;
 
 procedure InitializeWizard;

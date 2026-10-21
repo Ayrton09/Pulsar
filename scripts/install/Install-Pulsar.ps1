@@ -1201,16 +1201,18 @@ function Get-PostgresInstallerFile($plan) {
     return $file
 }
 
-# The pg_hba.conf rules that let in more than this machine ($rows: "type|address|netmask|error", one per rule, as psql
-# prints pg_hba_file_rules), each fit to print: a rule with an error, or a host rule for anything but a loopback
-# address (127.0.0.0/8 or ::1). Nothing when every rule is local.
+# The pg_hba.conf rules that let in more than this machine ($rows: "type|address|netmask|auth_method|error", one per rule, as
+# psql prints pg_hba_file_rules), each fit to print: a rule with an error, one that lets in without a password (trust: any
+# account on this machine, a game server's included, would be the database's superuser), or a host rule for anything but a
+# loopback address (127.0.0.0/8 or ::1). Nothing when every rule is local and asks for a password.
 function Find-NonLocalHbaRules([string[]] $rows) {
     foreach ($row in $rows) {
         if (-not $row.Trim()) { continue }
         $parts = $row.Split('|')
-        if ($parts.Count -ne 4) { "a rule this script cannot read ($(ConvertTo-PrintableText $row))"; continue }
-        $type, $address, $netmask, $problem = $parts
+        if ($parts.Count -ne 5) { "a rule this script cannot read ($(ConvertTo-PrintableText $row))"; continue }
+        $type, $address, $netmask, $method, $problem = $parts
         if ($problem) { "a rule PostgreSQL cannot use ($(ConvertTo-PrintableText $problem))"; continue }
+        if ($method -ceq 'trust') { ConvertTo-PrintableText "$type $address $netmask lets in without a password (trust)"; continue }
         if ($type -ceq 'local') { continue }
         $ip = $null
         $mask = $null
@@ -1290,10 +1292,10 @@ function Install-PostgresServer([string] $installer, $plan) {
         Wait-PostgresReady $plan.Service $bin $password
         $listen = Invoke-Psql $bin $password @('-c', 'SHOW listen_addresses')
         if ($listen.ExitCode -ne 0 -or $listen.Output.Trim() -cne 'localhost') { throw "It listens on '$(ConvertTo-PrintableText $listen.Output.Trim())', not on localhost only." }
-        $rules = Invoke-Psql $bin $password @('-F', '|', '-c', "SELECT type, coalesce(address, ''), coalesce(netmask, ''), coalesce(error, '') FROM pg_hba_file_rules")
+        $rules = Invoke-Psql $bin $password @('-F', '|', '-c', "SELECT type, coalesce(address, ''), coalesce(netmask, ''), coalesce(auth_method, ''), coalesce(error, '') FROM pg_hba_file_rules")
         if ($rules.ExitCode -ne 0) { throw "pg_hba.conf's rules could not be read: $(ConvertTo-PrintableText $rules.Output.Trim())" }
         $open = @(Find-NonLocalHbaRules ($rules.Output -split "`r?`n"))
-        if ($open.Count -gt 0) { throw "pg_hba.conf in $($plan.Data) lets in more than this machine: $($open -join '; ')." }
+        if ($open.Count -gt 0) { throw "pg_hba.conf in $($plan.Data) lets in more than this machine, or without a password: $($open -join '; ')." }
     }
     catch {
         throw "PostgreSQL $($plan.Major) was installed, but setting it up failed: $($_.Exception.Message) $left"
@@ -4742,10 +4744,16 @@ function ConvertTo-CommandLine([string[]] $arguments) {
     return ($quoted -join ' ')
 }
 
-# Runs an installer from the private downloads folder, after its checks, and waits for it ($minutes at most): its
-# exit code. Its arguments are never secrets (other programs can read a command line): those go in files. $temp, when
-# given, is its TEMP and TMP, where it unpacks and logs.
-function Start-Installer([string] $exe, [string[]] $arguments, [string] $temp = $null, [int] $minutes = 30) {
+# Ends a process and everything it started (taskkill /T): an installer that is stuck has helpers of its own (msiexec, the
+# installer it unpacked), and ending only the first would leave them running as administrator.
+function Stop-ProcessTree([int] $id) {
+    $null = Invoke-Native (Join-Path ([Environment]::SystemDirectory) 'taskkill.exe') /PID "$id" /T /F
+}
+
+# Runs an installer from the private downloads folder, after its checks, and waits for it ($minutes at most, then it and
+# everything it started are ended): its exit code. Its arguments are never secrets (other programs can read a command line):
+# those go in files. $temp, when given, is its TEMP and TMP, where it unpacks and logs.
+function Start-Installer([string] $exe, [string[]] $arguments, [string] $temp = $null, [double] $minutes = 30) {
     $info = New-Object Diagnostics.ProcessStartInfo $exe
     $info.Arguments = ConvertTo-CommandLine $arguments
     $info.UseShellExecute = $false
@@ -4757,7 +4765,11 @@ function Start-Installer([string] $exe, [string[]] $arguments, [string] $temp = 
     Write-SetupLog "Running $exe $($info.Arguments)"
     $process = [Diagnostics.Process]::Start($info)
     try {
-        if (-not $process.WaitForExit($minutes * 60000)) { throw "$exe did not finish within $minutes minutes." }
+        if (-not $process.WaitForExit([int]($minutes * 60000))) {
+            Stop-ProcessTree $process.Id
+            $null = $process.WaitForExit(10000)
+            throw "$exe did not finish within $minutes minutes; it was ended."
+        }
         return $process.ExitCode
     }
     finally { $process.Dispose() }
@@ -4971,7 +4983,12 @@ function Install-DotNetRuntimes([object[]] $installers) {
     foreach ($installer in $installers) {
         Write-Step "Installing $($installer.Name) $($installer.Version)"
         $log = Join-Path $SetupLogs ('{0}-{1:yyyyMMdd-HHmmss}.log' -f [IO.Path]::GetFileNameWithoutExtension($installer.Path), (Get-Date))
-        $code = Start-Installer $installer.Path @('/install', '/quiet', '/norestart', '/log', $log)
+        # The installer unpacks into its TEMP, as administrator (under an update run by the agent that is C:\Windows\Temp, which
+        # other accounts may write): one of this script's private folders instead.
+        $temp = Join-Path $SetupDownloads ('dotnet-temp-' + [Guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory $temp
+        try { $code = Start-Installer $installer.Path @('/install', '/quiet', '/norestart', '/log', $log) $temp }
+        finally { Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue }
         if ($code -in 3010, 1641) { $script:RestartNeeded = $true }
         elseif ($code -ne 0) { throw "The installer of $($installer.Name) $($installer.Version) failed (exit code $code); its log is $log." }
     }
