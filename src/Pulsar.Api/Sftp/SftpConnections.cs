@@ -13,6 +13,7 @@ internal sealed class SftpConnection : IDisposable
     private long _lastActivity;
     private int _closing;
     private int _channels;
+    private int _subsystems;
     private string? _clientVersion;
 
     public SftpConnection(IPAddress? address, ClientAddress? client, long now)
@@ -59,8 +60,6 @@ internal sealed class SftpConnection : IDisposable
     /// <summary>Sign-in requests of any method (<see cref="SftpServerSession.MaxAuthenticationRequests"/>).</summary>
     public int AuthenticationRequests { get; set; }
 
-    /// <summary>Sftp subsystems started on the connection's channels.</summary>
-    public int Subsystems { get; set; }
 
     /// <summary>Cancelled when the connection ends: what it was doing stops.</summary>
     public CancellationToken Ended => _ended.Token;
@@ -109,6 +108,23 @@ internal sealed class SftpConnection : IDisposable
     }
 
     public void ChannelClosed() => Interlocked.Decrement(ref _channels);
+
+    /// <summary>
+    /// An SFTP session starts on one of the channels: false when <see cref="SftpHost.MaxSubsystemsPerConnection"/> run
+    /// already. Each one that started ends with <see cref="SubsystemEnded"/>.
+    /// </summary>
+    public bool TryStartSubsystem()
+    {
+        if (Interlocked.Increment(ref _subsystems) <= SftpHost.MaxSubsystemsPerConnection)
+        {
+            return true;
+        }
+
+        Interlocked.Decrement(ref _subsystems);
+        return false;
+    }
+
+    public void SubsystemEnded() => Interlocked.Decrement(ref _subsystems);
 
     /// <summary>Ends the connection (once): the client is told why, and what it was doing stops.</summary>
     public void Close(SshDisconnectReason reason, string message)

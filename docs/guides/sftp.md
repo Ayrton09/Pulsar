@@ -199,7 +199,8 @@ Limits, in the `Sftp` section of the panel's settings (the defaults suit most pa
 - A listing returns at most 100,000 entries of one folder: each page reads the folder again on the node, which reads
   at most 100,000 entries of it for a page, and the listing stops there (the panel log says so).
 - `mkdir` makes one folder, in a folder that exists (`No such file` otherwise), as on a local disk.
-- A connection holds at most 4 channels at once (one more closes it), and a channel that has not started SFTP within
+- A connection holds at most 4 channels at once (one more closes it) and runs at most 2 SFTP sessions at once
+  (clients that open one per transfer open the next once one closes), and a channel that has not started SFTP within
   10 seconds is closed.
 - Permissions and sizes sent with `chmod` or `setstat` are accepted and ignored (Windows has none to set); times are set.
 - `rmdir` removes empty folders only. The node deletes a folder with what it holds, so the panel lists it first and

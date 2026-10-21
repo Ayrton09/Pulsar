@@ -40,6 +40,9 @@ internal sealed partial class SftpHost(
     /// <summary>Channels a connection may hold open at once (two SFTP sessions and a few being opened or closed).</summary>
     internal const int MaxChannelsPerConnection = 4;
 
+    /// <summary>SFTP sessions a connection runs at once (each holds handles, buffers and its own limits).</summary>
+    internal const int MaxSubsystemsPerConnection = 2;
+
     private static readonly TimeSpan s_retry = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan s_refusalLogInterval = TimeSpan.FromMinutes(1);
 
@@ -459,7 +462,7 @@ internal sealed partial class SftpHost(
         channel.Request += (_, request) =>
         {
             request.IsAuthorized = false;
-            if (started != 0 || request.RequestType != "subsystem" || connection.IsClosing || connection.Subsystems >= 2)
+            if (started != 0 || request.RequestType != "subsystem" || connection.IsClosing)
             {
                 return;
             }
@@ -474,7 +477,8 @@ internal sealed partial class SftpHost(
                 return;
             }
 
-            if (name != "sftp")
+            // Counted while it runs (RunSftpAsync ends it): clients open one per transfer and close it after.
+            if (name != "sftp" || !connection.TryStartSubsystem())
             {
                 return;
             }
@@ -482,7 +486,6 @@ internal sealed partial class SftpHost(
             // The stream exists before the reply, so no SFTP packet arrives before it can be read (spike 0003).
             Volatile.Write(ref started, 1);
             StopDeadline(deadline);
-            connection.Subsystems++;
             var stream = new SshStream(channel);
             request.IsAuthorized = true;
             _ = Task.Run(() => RunSftpAsync(connection, channel, stream), CancellationToken.None);
@@ -539,6 +542,7 @@ internal sealed partial class SftpHost(
         }
         finally
         {
+            connection.SubsystemEnded();
             await session.DisposeAsync();
             try
             {

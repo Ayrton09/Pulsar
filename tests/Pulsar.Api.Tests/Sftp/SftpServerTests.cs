@@ -364,6 +364,43 @@ public sealed class SftpServerTests(SftpApiFactory factory) : IClassFixture<Sftp
     }
 
     [DatabaseFact]
+    public async Task AConnectionRunsTwoSftpSessionsAtOnceAsOftenAsItLikes()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await scenario.CreateUserAsync("sftp-ines");
+        var (session, tcp) = await RawSessionAsync(await factory.PortAsync(), "sftp-ines", AccessScenario.Password);
+        using (tcp)
+        using (session)
+        {
+            var first = await StartSftpAsync(session);
+            var second = await StartSftpAsync(session);
+            var third = await session.OpenChannelAsync(Ct);
+            Assert.False(await third.RequestAsync(new SubsystemRequestMessage { Subsystem = "sftp", WantReply = true }, Ct));
+
+            // Clients open a session per transfer and close it after (FileZilla, WinSCP's background transfers).
+            await first.CloseAsync(Ct);
+            await InProcessAgent.EventuallyAsync(
+                async () => await third.RequestAsync(new SubsystemRequestMessage { Subsystem = "sftp", WantReply = true }, Ct), "a third session");
+            await second.CloseAsync(Ct);
+            await third.CloseAsync(Ct);
+            for (var i = 0; i < 3; i++)
+            {
+                var next = await session.OpenChannelAsync(Ct);
+                await InProcessAgent.EventuallyAsync(
+                    async () => await next.RequestAsync(new SubsystemRequestMessage { Subsystem = "sftp", WantReply = true }, Ct), "one more session");
+                await next.CloseAsync(Ct);
+            }
+        }
+
+        static async Task<SshChannel> StartSftpAsync(SshClientSession session)
+        {
+            var channel = await session.OpenChannelAsync(Ct);
+            Assert.True(await channel.RequestAsync(new SubsystemRequestMessage { Subsystem = "sftp", WantReply = true }, Ct));
+            return channel;
+        }
+    }
+
+    [DatabaseFact]
     public async Task SessionsEndWhenTheUserIsDisabled()
     {
         var scenario = await AccessScenario.CreateAsync(factory);
