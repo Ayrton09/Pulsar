@@ -91,6 +91,28 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
     }
 
     [DatabaseFact]
+    public async Task MalformedKeysAreRefusedNotErrors()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "node-malformed-key");
+        await using var agent = new TestAgent(factory);
+        var key = agent.Key.ExportSubjectPublicKeyInfo();
+        var offCurve = key.ToArray();
+        offCurve[^2] ^= 0x5a;
+
+        // The key is looked at before the token, so anyone can send these: a point off the curve (which Windows takes for
+        // a curve it does not support) and a key with a byte after it (which would be kept, with a fingerprint the agent's
+        // own key does not have).
+        foreach (var malformed in new[] { offCurve, [.. key, 0] })
+        {
+            using var refused = await agent.PostEnrollAsync(created.Enrollment.Token, publicKey: malformed);
+            await AssertAgentErrorAsync(refused, "agent.enrollment_rejected");
+        }
+
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+    }
+
+    [DatabaseFact]
     public async Task ExpiredEnrollmentTokensAreRejected()
     {
         using var admin = await factory.CreateAdminClientAsync();

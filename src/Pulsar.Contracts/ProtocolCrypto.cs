@@ -64,13 +64,32 @@ public static class ProtocolCrypto
     public static string Fingerprint(ReadOnlySpan<byte> subjectPublicKeyInfo) =>
         "sha256:" + Convert.ToBase64String(SHA256.HashData(subjectPublicKeyInfo)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-    /// <summary>Imports a P-256 public key, rejecting any other curve or algorithm.</summary>
+    /// <summary>
+    /// Imports a P-256 public key, rejecting any other curve or algorithm. Every malformed key ends in a
+    /// <see cref="CryptographicException"/>, the one exception callers catch.
+    /// </summary>
     public static ECDsa ImportPublicKey(ReadOnlySpan<byte> subjectPublicKeyInfo)
     {
         var key = ECDsa.Create();
         try
         {
-            key.ImportSubjectPublicKeyInfo(subjectPublicKeyInfo, out _);
+            int read;
+            try
+            {
+                key.ImportSubjectPublicKeyInfo(subjectPublicKeyInfo, out read);
+            }
+            catch (NotSupportedException ex)
+            {
+                // Windows takes a point that is not on the curve for a curve it does not support.
+                throw new CryptographicException("The key's point is not on its curve, or its curve is not supported.", ex);
+            }
+
+            // The bytes are the key: kept as sent, anything after it would give it a fingerprint of its own.
+            if (read != subjectPublicKeyInfo.Length)
+            {
+                throw new CryptographicException("The key is followed by other bytes.");
+            }
+
             var curve = key.ExportParameters(includePrivateParameters: false).Curve;
             if (!curve.IsNamed || curve.Oid.Value != ECCurve.NamedCurves.nistP256.Oid.Value)
             {

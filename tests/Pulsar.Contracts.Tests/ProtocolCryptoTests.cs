@@ -43,6 +43,38 @@ public sealed class ProtocolCryptoTests
     }
 
     [Fact]
+    public void APointOffTheCurveIsAMalformedKey()
+    {
+        // Windows refuses it as an unsupported curve (PlatformNotSupportedException), which callers that catch
+        // CryptographicException would let escape: an enrollment or a rotation would fail with a 500 instead of a refusal.
+        using var p256 = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var offCurve = OffCurve(p256.ExportSubjectPublicKeyInfo());
+        var data = ProtocolCrypto.SignedData("p", [1]);
+
+        Assert.Throws<CryptographicException>(() => ProtocolCrypto.ImportPublicKey(offCurve));
+        Assert.False(ProtocolCrypto.Verify(offCurve, data, ProtocolCrypto.Sign(p256, data)));
+    }
+
+    [Fact]
+    public void AKeyIsItsEncodingAndNothingAfter()
+    {
+        // Kept as sent, a byte after the key would give it a fingerprint of its own that the key itself does not have.
+        using var p256 = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        byte[] trailing = [.. p256.ExportSubjectPublicKeyInfo(), 0];
+
+        Assert.Throws<CryptographicException>(() => ProtocolCrypto.ImportPublicKey(trailing));
+        Assert.Throws<CryptographicException>(() => ProtocolCrypto.ImportPublicKey([]));
+    }
+
+    /// <summary>The key with one byte of its point's Y coordinate changed: the same encoding, a point not on P-256.</summary>
+    internal static byte[] OffCurve(byte[] subjectPublicKeyInfo)
+    {
+        var changed = subjectPublicKeyInfo.ToArray();
+        changed[^2] ^= 0x5a;
+        return changed;
+    }
+
+    [Fact]
     public void FingerprintsAreStableAndUrlSafe()
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);

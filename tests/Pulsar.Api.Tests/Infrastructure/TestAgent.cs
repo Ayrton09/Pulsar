@@ -82,9 +82,10 @@ public sealed class TestAgent : IAsyncDisposable
     public bool AwaitingApproval { get; private set; }
 
     /// <summary>Enrolls and returns the raw response (for rejection tests). <paramref name="proofKey"/> forges the proof.</summary>
-    public Task<HttpResponseMessage> PostEnrollAsync(string token, ECDsa? proofKey = null)
+    /// <param name="publicKey">The key sent instead of this agent's own (signed by it all the same).</param>
+    public Task<HttpResponseMessage> PostEnrollAsync(string token, ECDsa? proofKey = null, byte[]? publicKey = null)
     {
-        var publicKey = Key.ExportSubjectPublicKeyInfo();
+        publicKey ??= Key.ExportSubjectPublicKeyInfo();
         var proof = ProtocolCrypto.Sign(proofKey ?? Key,
             ProtocolCrypto.SignedData(AgentProtocol.Purposes.Enroll, ProtocolCrypto.Utf8(token), publicKey));
         return Http.PostAsJsonAsync(AgentProtocol.EnrollPath,
