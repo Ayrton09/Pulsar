@@ -50,6 +50,27 @@ public sealed class UpdateVerifierTests
         Assert.Equal("update.unknown_key", new UpdateVerifier(["not base64", ""]).Verify(manifest, Sign(key, manifest)).ErrorCode);
     }
 
+    [Fact]
+    public void EveryTrustedKeyIsAWellFormedP256Key()
+    {
+        // The verifier ignores a malformed key: one mistyped here would leave installations taking no update at all.
+        Assert.NotEmpty(UpdateKeys.Trusted);
+        foreach (var text in UpdateKeys.Trusted)
+        {
+            using var key = ECDsa.Create();
+            key.ImportSubjectPublicKeyInfo(Convert.FromBase64String(text), out var read);
+            Assert.Equal(Convert.FromBase64String(text).Length, read);
+            Assert.Equal(ECCurve.NamedCurves.nistP256.Oid.Value, key.ExportParameters(includePrivateParameters: false).Curve.Oid.Value);
+            Assert.True(new UpdateVerifier([text]).HasKeys);
+        }
+
+        Assert.Equal(UpdateKeys.Trusted.Count, UpdateKeys.Trusted.Distinct(StringComparer.Ordinal).Count());
+        Assert.True(UpdateVerifier.Default.HasKeys);
+        // A mistyped one is ignored, not thrown: even a point off the curve.
+        var mistyped = Convert.ToBase64String(ProtocolCryptoTests.OffCurve(Convert.FromBase64String(UpdateKeys.Trusted[0])));
+        Assert.False(new UpdateVerifier([mistyped]).HasKeys);
+    }
+
     [Theory]
     [InlineData("""{"product":"other","version":"1.2.0","minimumUpdateFrom":"1.0.0","published":"2026-10-20T00:00:00Z","files":[F]}""")]
     [InlineData("""{"product":"pulsar","version":"1.2","minimumUpdateFrom":"1.0.0","published":"2026-10-20T00:00:00Z","files":[F]}""")]

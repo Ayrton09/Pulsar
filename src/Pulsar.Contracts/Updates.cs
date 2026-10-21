@@ -134,7 +134,11 @@ public readonly partial record struct UpdateVersion(int Major, int Minor, int Pa
 /// </summary>
 public static class UpdateKeys
 {
-    public static IReadOnlyList<string> Trusted { get; } = [];
+    public static IReadOnlyList<string> Trusted { get; } =
+    [
+        // sha256:NGvHPuvCxo7JLsWzoeIV4RrCBiF9ohi-NbaVVZTb0MM, made 2026-10-21.
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEl1pTve5NYrABuEu/3rd81rP5xsJSGKLUEcyM1vuSfQXrv3xP1w6oYPYkNwtOYbjB1q5O09Hz1hSrP7O0U8K34A==",
+    ];
 }
 
 /// <summary>
