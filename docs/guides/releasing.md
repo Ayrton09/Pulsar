@@ -70,7 +70,8 @@ Pick the version, exactly `major.minor.patch` (for example `1.0.1`), and write t
 not end up with a signed manifest.) **Commit everything first**: before it builds anything, the script reads the commit
 you are on and refuses a checkout with uncommitted changes (modified or untracked files; ignored files such as the built
 web app do not count), because the release would not be what any commit holds. `-AllowDirtyTree` builds anyway, for
-trying things out: the release is marked `dirty` and `Publish-GitHubRelease.ps1` never publishes it. The commit is
+trying things out: the release is marked `dirty`, `Publish-GitHubRelease.ps1` never publishes it, and it cannot be combined with
+`-UpdateSigningKey` or `-RequireUpdateSignature` (such a build never gets the update key's signature). The commit is
 written into `release.json` and into `pulsar-<version>.commit`, which is published with the release and named by the
 signed manifest. The script builds everything in a work folder, as before, and, only when every file is
 built, checksummed and verified:

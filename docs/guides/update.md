@@ -130,12 +130,13 @@ Every `Install-Pulsar.ps1 -Update` (the setups' too, and the panel's one-click u
    deleted by the next update. It also notes the database migrations already applied (`__EFMigrationsHistory`) and
    copies the programs it is about to replace to `C:\ProgramData\Pulsar\Updates\previous\Panel` and `\Agent`. That copy
    is built beside the old one and swapped in, so the last copy is never half deleted; and when the installed Pulsar
-   does not pass its checks (a stopped service, a panel that does not answer) it does **not** replace a copy that is
-   there, so running `-Update` again on a broken Pulsar does not overwrite the last good version with the broken one: a
+   does not pass its checks (a stopped service, a panel that does not answer) it does **not** replace a copy of the same version that is
+   there (a copy of another version is replaced: programs older than the database are no rollback, and the warning says so; `previous\previous.json` records which version the copy is of), so running `-Update` again on a broken Pulsar does not overwrite the last good version with the broken one: a
    failed update then goes back to that good copy. If the backup fails (for example, a panel whose database is on
    another machine needs PostgreSQL's `pg_dump` on this one), the update does not start and nothing is changed. Last,
    it writes `C:\ProgramData\Pulsar\Updates\in-progress.json` (see [A power cut during an update](#a-power-cut-during-an-update)).
-2. It replaces the agent and the panel as described above. Each program is built whole beside the installed one
+2. It replaces the agent and the panel as described above. The settings file is created in the new folder with the old file's own permissions (it holds passwords and is not readable by every user), never with the folder's. The settings file is created in the new folder with the old file's own permissions (it holds passwords), never with the
+   folder's. Each program is built whole beside the installed one
    (`Panel.new`, `Agent.new`) and swapped in with two renames (the old folder to `.old`, the new one into place), then
    the old one is deleted: nothing is deleted from the installed program before the new one is complete, so a failure
    leaves the old program, or the new one, never half of each. If a program has a file open the first rename fails and the
@@ -169,10 +170,15 @@ If the machine loses power (or the update's process is killed) after the program
 same steps as a failed update (item 4 above), and only then goes on with its own. Before that it puts right a program
 folder left between the two renames (`Panel.old` with no `Panel`: the old one is moved back; a half-built `Panel.new`
 is deleted). If that rollback fails, the new update does not start, `in-progress.json` stays for the next try, and the
-message says what is left, where the backup and the previous programs are. `in-progress.json` is deleted when an
-update ends, rolled back or not, and by `-Uninstall`; an update killed in the instant between its last check and the
-deletion would be rolled back by the next run (the safe direction, at the price of the writes since, if the database
-had changed).
+message says what is left, where the backup and the previous programs are, and how to go on: run `-Update` again with
+**`-DiscardInterruptedUpdate`**, which rolls nothing back, keeps Pulsar as it is (check first that it works) and moves the
+journal aside as `Updates\discarded-update-<time>.json`, a record of what was dropped. It is never done without that
+switch. When an update ends, rolled back or not, its journal is first marked `completed` (written beside it, flushed,
+moved over it) and then deleted; a completed journal that could not be deleted (an antivirus holding it) is only
+discarded by the next run, never rolled back. If it can be neither marked nor deleted the update ends with an error that
+says so, to delete it by hand before the next one. `-Uninstall` deletes it too. Only an update killed in the instant
+between its last check and the marking would be rolled back by the next run (at the price of the writes since, if the
+database had changed).
 
 Every update, whatever its end, writes `C:\ProgramData\Pulsar\Updates\last-update.json` (UTF-8):
 

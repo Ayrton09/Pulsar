@@ -766,6 +766,13 @@ function Assert-BuildTreeClean($state, [bool] $allowDirty) {
     throw "The checkout has uncommitted changes, so this release would not be what the commit $($state.Commit) contains:$([Environment]::NewLine)  $($shown -join "$([Environment]::NewLine)  ")$more$([Environment]::NewLine)Commit or stash them and build again, or add -AllowDirtyTree for a build that is only to try things out (it cannot be published)."
 }
 
+# A build made with -AllowDirtyTree is not what any commit holds: it is never signed with the update key (installed Pulsars would
+# take it as an update) and never has to be.
+function Assert-DirtyBuildNotSigned([bool] $allowDirty, [bool] $signingKey, [bool] $requireSignature) {
+    if ($allowDirty -and $signingKey) { throw '-AllowDirtyTree cannot be used with -UpdateSigningKey: a build that is not any commit is never signed with the update key.' }
+    if ($allowDirty -and $requireSignature) { throw '-AllowDirtyTree cannot be used with -RequireUpdateSignature: a build that is not any commit is never signed with the update key.' }
+}
+
 # The text of pulsar-<version>.commit: the commit, and "dirty" after it when the tree had changes (-AllowDirtyTree).
 function Get-CommitRecord($state) {
     $text = "$($state.Commit)"
@@ -918,6 +925,7 @@ function Restore-UpdatePassphrase {
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 # First of all: the commit being built, and that the tree is exactly it (or -AllowDirtyTree says it is a build to try things out).
+Assert-DirtyBuildNotSigned ([bool]$AllowDirtyTree) ([bool]$UpdateSigningKey) ([bool]$RequireUpdateSignature)
 $buildState = Get-BuildState $repo
 Assert-BuildTreeClean $buildState ([bool]$AllowDirtyTree)
 $name = "pulsar-$Version-windows-x64"

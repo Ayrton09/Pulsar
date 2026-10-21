@@ -161,14 +161,36 @@ function Test-PrivateFolder([string] $path) {
 
 # Copies the files and folders of $source into a new folder $target, one by one, and refuses a link (a junction or symbolic
 # link there would make the copy read what is somewhere else, or never end). $target must not exist; it takes the permissions
-# of its parent. The same function as Install-Pulsar.ps1's.
-function Copy-PlainTree([string] $source, [string] $target) {
+# of its parent. Copy-PlainTree is what callers use: it also looks again afterwards. The same functions as the other script's.
+function Copy-TreeLevel([string] $source, [string] $target) {
     $null = New-Item -ItemType Directory -Path $target
     foreach ($child in (New-Object IO.DirectoryInfo $source).GetFileSystemInfos()) {
         if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "$($child.FullName) is a link, not a file or folder. Nothing is copied through links." }
-        if ($child -is [IO.DirectoryInfo]) { Copy-PlainTree $child.FullName (Join-Path $target $child.Name) }
+        if ($child -is [IO.DirectoryInfo]) { Copy-TreeLevel $child.FullName (Join-Path $target $child.Name) }
         else { [IO.File]::Copy($child.FullName, (Join-Path $target $child.Name), $false) }
     }
+}
+
+# The links (junctions, symbolic links) in a tree, by path; none is followed.
+function Find-Links([string] $root) {
+    $pending = New-Object Collections.Generic.Stack[string]
+    $pending.Push($root)
+    while ($pending.Count -gt 0) {
+        foreach ($child in (New-Object IO.DirectoryInfo $pending.Pop()).GetFileSystemInfos()) {
+            if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { $child.FullName }
+            elseif ($child -is [IO.DirectoryInfo]) { $pending.Push($child.FullName) }
+        }
+    }
+}
+
+# Copy-TreeLevel checks each entry and then reads it, and an account that can write the source (the panel's, for its data
+# folder) could swap a folder for a junction between the two. So the source and the copy are searched for links again once
+# the copy is made, and one that appeared fails it: what was read through it is not kept. What this cannot see is a link made
+# and removed again inside that window.
+function Copy-PlainTree([string] $source, [string] $target) {
+    Copy-TreeLevel $source $target
+    $links = @(Find-Links $source) + @(Find-Links $target)
+    if ($links.Count -gt 0) { throw "A link appeared while $source was copied ($($links[0])), so the copy cannot be trusted. Nothing is copied through links." }
 }
 
 # libpq's SSL settings for pg_dump, psql and pg_restore, from the keys of an Npgsql connection string ($parts: lower-case
