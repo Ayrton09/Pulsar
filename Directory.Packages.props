@@ -14,7 +14,7 @@
     <!-- Email notifications over SMTP (MIT; Phase 10). -->
     <PackageVersion Include="MailKit" Version="4.18.1" />
     <!-- Remote backups to S3-compatible storage, used by the agent (Apache-2.0; Phase 10). -->
-    <PackageVersion Include="AWSSDK.S3" Version="4.0.104.3" />
+    <PackageVersion Include="AWSSDK.S3" Version="4.0.104.6" />
     <!-- Game databases: the panel creates MySQL/MariaDB databases and users (MIT; Phase 13). -->
     <PackageVersion Include="MySqlConnector" Version="2.6.2" />
   </ItemGroup>
@@ -52,7 +52,7 @@
   </ItemGroup>
 
   <ItemGroup Label="Windows interop">
-    <PackageVersion Include="Microsoft.Windows.CsWin32" Version="0.3.363" />
+    <PackageVersion Include="Microsoft.Windows.CsWin32" Version="0.3.366" />
   </ItemGroup>
 
   <ItemGroup Label="Transitive">
@@ -62,7 +62,7 @@
 
   <ItemGroup Label="Testing">
     <!-- JSON Schema validation of the published manifest schema (BSD-3-Clause; JsonSchema.Net moved to a commercial EULA). -->
-    <PackageVersion Include="LateApexEarlySpeed.Json.Schema" Version="4.2.1" />
+    <PackageVersion Include="LateApexEarlySpeed.Json.Schema" Version="4.2.2" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
     <!-- SSH and SFTP client that drives the panel's SFTP server in the tests (MIT; Phase 17). -->
