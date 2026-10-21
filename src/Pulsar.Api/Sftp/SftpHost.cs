@@ -322,12 +322,14 @@ internal sealed partial class SftpHost(
 
     private async Task AcceptAsync(TcpListener listener, SftpHostKey.Loaded key, CancellationToken cancellationToken)
     {
+        var failures = 0;
         while (!cancellationToken.IsCancellationRequested)
         {
             Socket socket;
             try
             {
                 socket = await listener.AcceptSocketAsync(cancellationToken);
+                failures = 0;
             }
             catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is OperationCanceledException or SocketException or ObjectDisposedException)
             {
@@ -336,6 +338,18 @@ internal sealed partial class SftpHost(
             catch (SocketException ex)
             {
                 LogAcceptFailed(logger, ex.SocketErrorCode);
+                // An error that lasts (the process out of handles or buffers) would spin a core and fill the log: each one
+                // waits longer, up to 2 s.
+                failures = Math.Min(failures + 1, 6);
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(Math.Min(2000, 50 << (failures - 1))), clock, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
                 continue;
             }
 
