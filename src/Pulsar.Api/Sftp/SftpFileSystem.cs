@@ -236,7 +236,16 @@ internal sealed class SftpFileSystem(SftpConnection connection, IServiceScopeFac
     /// <summary>The root's folders: every server whose files the user may see, by folder name.</summary>
     public static async Task<IReadOnlyList<(SftpServer Server, bool CanEdit)>> RootAsync(SftpOperation operation, CancellationToken cancellationToken)
     {
-        var servers = await operation.Db.Servers.AsNoTracking()
+        var query = operation.Db.Servers.AsNoTracking();
+        if (!operation.Permissions.HasGlobal(Permissions.Server.FilesView))
+        {
+            // Only the servers it may apply to are read (a user with one server on a panel of thousands).
+            var nodes = operation.Permissions.NodesWith(Permissions.Server.FilesView).ToList();
+            var granted = operation.Permissions.ServersWith(Permissions.Server.FilesView).ToList();
+            query = query.Where(s => nodes.Contains(s.NodeId) || granted.Contains(s.Id));
+        }
+
+        var servers = await query
             .Select(s => new { s.Id, s.NodeId, s.ShortId, s.Name, s.CreatedAt })
             .ToListAsync(cancellationToken);
         return [.. servers
