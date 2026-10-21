@@ -120,15 +120,26 @@ scheduled task that runs a `Backup-Pulsar.ps1` other than that copy. Delete old 
 Every `Install-Pulsar.ps1 -Update` (the setups' too, and the panel's one-click update, which is described in
 [One-click updates](#one-click-updates)) protects itself, in this order:
 
-1. **Before it replaces anything**, with the panel on this machine, it backs the panel up with the release's own
-   `Backup-Pulsar.ps1` (the database, the keys and certificates, the settings) into
-   `C:\ProgramData\Pulsar\Updates\backups\<version>-<yyyyMMdd-HHmmss>`, where `<version>` is the one being replaced. The
-   newest three of these backups are kept; older ones are deleted by the next update. It also notes the database
-   migrations already applied (`__EFMigrationsHistory`) and copies the programs it is about to replace to
-   `C:\ProgramData\Pulsar\Updates\previous\Panel` and `\Agent` (what an earlier update left there goes). If the backup
-   fails (for example, a panel whose database is on another machine needs PostgreSQL's `pg_dump` on this one), the update
-   does not start and nothing is changed.
-2. It replaces the agent and the panel as described above.
+1. **Before it replaces anything**, with the panel on this machine, it first checks that the panel's database user can
+   set the schema `public` aside (a rollback needs it; otherwise the update stops, saying how to fix it, before changing
+   anything), then **stops the panel** and backs it up with the release's own `Backup-Pulsar.ps1` (the database, the keys
+   and certificates, the settings) into `C:\ProgramData\Pulsar\Updates\backups\<version>-<yyyyMMdd-HHmmss>`, where
+   `<version>` is the one being replaced. The panel is stopped so that nothing it writes after the dump is lost by a
+   rollback: the panel is unavailable from the backup until the update ends (a few minutes), and if the update is
+   refused before anything is replaced the panel is started again. The newest three of these backups are kept; older ones are
+   deleted by the next update. It also notes the database migrations already applied (`__EFMigrationsHistory`) and
+   copies the programs it is about to replace to `C:\ProgramData\Pulsar\Updates\previous\Panel` and `\Agent`. That copy
+   is built beside the old one and swapped in, so the last copy is never half deleted; and when the installed Pulsar
+   does not pass its checks (a stopped service, a panel that does not answer) it does **not** replace a copy that is
+   there, so running `-Update` again on a broken Pulsar does not overwrite the last good version with the broken one: a
+   failed update then goes back to that good copy. If the backup fails (for example, a panel whose database is on
+   another machine needs PostgreSQL's `pg_dump` on this one), the update does not start and nothing is changed. Last,
+   it writes `C:\ProgramData\Pulsar\Updates\in-progress.json` (see [A power cut during an update](#a-power-cut-during-an-update)).
+2. It replaces the agent and the panel as described above. Each program is built whole beside the installed one
+   (`Panel.new`, `Agent.new`) and swapped in with two renames (the old folder to `.old`, the new one into place), then
+   the old one is deleted: nothing is deleted from the installed program before the new one is complete, so a failure
+   leaves the old program, or the new one, never half of each. If a program has a file open the first rename fails and the
+   old program stays as it was.
 3. **It checks that the result works.** The panel must answer its readiness check (`/health/ready`) within 5 minutes.
    The agent's service must be running, still be running 20 seconds later, and sign in at its panel
    (`PulsarAgent.exe status --check`, retried for up to 2 minutes). A node whose panel cannot be reached therefore
@@ -150,6 +161,18 @@ even the rollback fails, the exit code is `1` and the message says exactly what 
 panel's backup is (restore it as [backup.md](backup.md) says) and where the previous programs are; a service that
 could not be put back stays stopped, and a panel whose database could not be restored stays stopped with the new
 program in place, since an older panel on newer tables is worse than a stopped one.
+
+### A power cut during an update
+
+If the machine loses power (or the update's process is killed) after the programs began to be replaced, the next
+`-Update` run finds `in-progress.json` in the Updates folder and **rolls the interrupted update back first**, with the
+same steps as a failed update (item 4 above), and only then goes on with its own. Before that it puts right a program
+folder left between the two renames (`Panel.old` with no `Panel`: the old one is moved back; a half-built `Panel.new`
+is deleted). If that rollback fails, the new update does not start, `in-progress.json` stays for the next try, and the
+message says what is left, where the backup and the previous programs are. `in-progress.json` is deleted when an
+update ends, rolled back or not, and by `-Uninstall`; an update killed in the instant between its last check and the
+deletion would be rolled back by the next run (the safe direction, at the price of the writes since, if the database
+had changed).
 
 Every update, whatever its end, writes `C:\ProgramData\Pulsar\Updates\last-update.json` (UTF-8):
 

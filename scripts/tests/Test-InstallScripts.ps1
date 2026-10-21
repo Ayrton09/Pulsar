@@ -65,7 +65,7 @@ $installParts = Get-ScriptParts $installScript (@($shared) + @('Read-DerElement'
         'Resolve-NodeCertificate', 'Assert-PinnableCertificate', 'Get-EnrollArguments', 'Test-PostgresInstallerName', 'Select-PostgresVersion', 'Get-PostgresInstallerUrl', 'Find-NonLocalHbaRules',
         'Get-NameAttributes', 'Find-NameMismatches', 'Assert-InstallerSignature', 'Assert-InstallerVersion', 'Read-PostgresMinimum',
         'Assert-PostgresMinimum', 'ConvertTo-Secure', 'ConvertFrom-Secure', 'Assert-NotOlderThanInstalled', 'ConvertTo-CommandLine', 'Add-RuntimeRequirement', 'Read-RuntimeRequirements',
-        'Get-InstalledRuntimes', 'Get-MissingRuntimes', 'Test-DotNetDownloadUrl', 'Get-DotNetInstallerEntries', 'Copy-Program', 'Initialize-SetupNetwork',
+        'Get-InstalledRuntimes', 'Get-MissingRuntimes', 'Test-DotNetDownloadUrl', 'Get-DotNetInstallerEntries', 'Copy-Program', 'Repair-ProgramSwap', 'Move-ProgramFolder', 'Initialize-SetupNetwork',
         # What a panel's install checks first and undoes when it fails; EDB's builds; signers' chains; the agent's runtimes.
         'Test-PortFree', 'Test-PfxFile', 'Get-EndpointPort', 'Assert-PanelInstallable', 'Get-PanelDatabaseState', 'Get-PanelDatabaseMessage',
         'New-Secret', 'New-PanelDatabase', 'Remove-PanelDatabase', 'Undo-PanelInstall', 'Find-PostgresInstallerUrl', 'Get-SignerChain', 'Get-AgentMissingRuntimes',
@@ -1244,6 +1244,63 @@ try {
     Copy-Program $source $target
     $left = @(Get-ChildItem -LiteralPath $target -Recurse -Force | ForEach-Object { $_.FullName.Substring($target.Length + 1) } | Sort-Object)
     Check 'update: the program folder is replaced, keeping only the settings file and the downloads folder' (($left -join ',') -eq 'appsettings.Production.json,downloads,downloads\PulsarAgentSetup.exe,Pulsar.Api.dll,Pulsar.Api.runtimeconfig.json' -and (Get-Content (Join-Path $target 'Pulsar.Api.dll')) -eq 'new' -and (Get-Content (Join-Path $target 'appsettings.Production.json')) -eq 'settings') ($left -join ',')
+    Check 'program swap: nothing is left beside the program folder once it is replaced (no .new, no .old)' (
+        (@(Get-ChildItem -LiteralPath (Split-Path -Parent $target) -Force | ForEach-Object Name) -join ',') -ceq 'panel')
+
+    # The new program is built beside the old one and swapped in by renames: a power cut leaves the old program, or the new one,
+    # or a folder Repair-ProgramSwap puts right, never half of each.
+    function Reset-Program([string] $folder, [string] $text) {
+        if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force }
+        $null = New-Item -ItemType Directory $folder
+        Set-Content -LiteralPath (Join-Path $folder 'Pulsar.Api.dll') $text
+        Set-Content -LiteralPath (Join-Path $folder 'appsettings.Production.json') 'settings'
+    }
+    function Get-ProgramText([string] $folder) { if (Test-Path -LiteralPath (Join-Path $folder 'Pulsar.Api.dll')) { (Get-Content -LiteralPath (Join-Path $folder 'Pulsar.Api.dll')) } else { '<none>' } }
+    Reset-Program $target 'old'
+    Reset-Program "$target.new" 'half copied by a run that was stopped'
+    Set-Content -LiteralPath (Join-Path "$target.new" 'garbage.bin') 'x'
+    Copy-Program $source $target
+    Check 'program swap: a half-built .new left by a run that was stopped is deleted, not merged into the new program' (
+        (Get-ProgramText $target) -ceq 'new' -and -not (Test-Path -LiteralPath (Join-Path $target 'garbage.bin')) -and -not (Test-Path -LiteralPath "$target.new"))
+    Reset-Program $target 'old'
+    $script:moves = New-Object Collections.Generic.List[string]
+    $realMove = (Get-Item function:Move-ProgramFolder).ScriptBlock
+    function Move-ProgramFolder([string] $from, [string] $to) {
+        $script:moves.Add("$(Split-Path -Leaf $from)>$(Split-Path -Leaf $to)")
+        if ($script:failMove -and $script:moves.Count -eq $script:failMove) { throw 'Access to the path is denied (test).' }
+        & $realMove $from $to
+    }
+    $script:failMove = 2
+    $caught = Get-Thrown { Copy-Program $source $target }
+    Check 'program swap: when the new folder cannot be moved into place the old program is put back, and the new one is not left behind' (
+        $caught -match 'denied' -and (Get-ProgramText $target) -ceq 'old' -and -not (Test-Path -LiteralPath "$target.new") -and -not (Test-Path -LiteralPath "$target.old")) "$caught $(Get-ProgramText $target) $($script:moves -join ',')"
+    $script:moves.Clear(); $script:failMove = 1
+    $caught = Get-Thrown { Copy-Program $source $target }
+    Check 'program swap: when the old folder cannot be moved aside (a file in it is open) nothing changed: the old program stays whole' (
+        $caught -match 'denied' -and (Get-ProgramText $target) -ceq 'old' -and -not (Test-Path -LiteralPath "$target.new") -and -not (Test-Path -LiteralPath "$target.old"))
+    $script:failMove = 0; $script:moves.Clear()
+    Copy-Program $source $target
+    Check 'program swap: the old folder is moved aside, the new one moved in, then the old one deleted' (($script:moves -join ',') -ceq 'panel>panel.old,panel.new>panel' -and (Get-ProgramText $target) -ceq 'new')
+    Set-Item function:Move-ProgramFolder $realMove
+
+    # Repair-ProgramSwap: what a run that was stopped between the steps left.
+    Reset-Program "$target.old" 'the old program'
+    Remove-Item -LiteralPath $target -Recurse -Force
+    Reset-Program "$target.new" 'a new program'
+    $said = Repair-ProgramSwap $target
+    Check 'program swap: stopped between the two renames (no program, the old one in .old): the old program is put back' (
+        (Get-ProgramText $target) -ceq 'the old program' -and -not (Test-Path -LiteralPath "$target.old") -and -not (Test-Path -LiteralPath "$target.new") -and "$said" -match 'put back')
+    Reset-Program $target 'the new program'
+    Reset-Program "$target.old" 'the old program'
+    $null = Repair-ProgramSwap $target
+    Check 'program swap: stopped after the swap (the new program in place, .old left): the program stays, .old goes' (
+        (Get-ProgramText $target) -ceq 'the new program' -and -not (Test-Path -LiteralPath "$target.old"))
+    Check 'program swap: with nothing left over there is nothing to repair' ([string]::IsNullOrEmpty("$(Repair-ProgramSwap $target)") -and (Get-ProgramText $target) -ceq 'the new program')
+    Reset-Program "$target.old" 'the old program'
+    Remove-Item -LiteralPath $target -Recurse -Force
+    Copy-Program $source $target
+    Check 'program swap: Copy-Program starts by putting right what an earlier run left, so a program folder that is missing is not replaced from nothing' (
+        (Get-ProgramText $target) -ceq 'new' -and -not (Test-Path -LiteralPath "$target.old"))
 }
 finally {
     if (Test-Path -LiteralPath (Join-Path $root 'private')) {
@@ -3313,8 +3370,8 @@ Check 'workflow: its header says releases are built and update-signed on the mai
 $updateParts = Get-ScriptParts $installScript @('Invoke-Native', 'New-SetupFolder', 'Get-UntrustedWritersMessage', 'Get-ShortVersion', 'Get-UpdateVersions', 'Initialize-UpdateFolder', 'Lock-Update', 'Unlock-Update',
     'Start-UpdateRun', 'Write-UpdateResult', 'New-UpdateBackup', 'Remove-OldUpdateBackups', 'Save-PreviousPrograms', 'Get-PanelConnection', 'Invoke-PanelPsql', 'Get-PanelMigrations',
     'Test-DatabaseChanged', 'Restore-RolledBackDatabase', 'Stop-UpdateService', 'Wait-UpdatedPanelReady', 'Wait-UpdatedAgentHealthy', 'Assert-UpdateHealthy', 'Undo-Update', 'Invoke-Update',
-    'Wait-PanelReady') `
-    @('ExitRolledBack', 'UpdateRoot', 'UpdateBackups', 'UpdateBackupsKept', 'UpdatePrevious', 'UpdateResultFile', 'UpdateLockFile', 'UpdatePanelMinutes', 'UpdateAgentStableSeconds', 'UpdateAgentCheckMinutes', 'UpdateRun', 'UpdateLock')
+    'Wait-PanelReady', 'Test-InstalledHealthy', 'Write-UpdateJournal', 'Read-UpdateJournal', 'Remove-UpdateJournal', 'Resume-InterruptedUpdate', 'Repair-ProgramSwap', 'Move-ProgramFolder', 'Assert-RollbackPossible') `
+    @('ExitRolledBack', 'UpdateRoot', 'UpdateBackups', 'UpdateBackupsKept', 'UpdatePrevious', 'UpdateResultFile', 'UpdateLockFile', 'UpdateJournal', 'UpdatePanelMinutes', 'UpdateAgentStableSeconds', 'UpdateAgentCheckMinutes', 'UpdateRun', 'UpdateLock')
 # The variables built from one another (UpdateRoot, then the paths in it) are loaded in any order: the folder they start from is set first.
 $DataRoot = Join-Path $Scratch 'pulsar-update-data-root'; $UpdateRoot = Join-Path $DataRoot 'Updates'
 foreach ($part in $updateParts.Values) { . ([scriptblock]::Create($part)) }
@@ -3366,6 +3423,10 @@ try {
     $null = New-Item -ItemType Directory -Force (Join-Path $UpdatePrevious 'Panel\old'), (Join-Path $UpdatePrevious 'Agent')
     Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\old\left-over.txt') 'from an earlier update'
     function Initialize-UpdateFolder([string] $path) { $script:upFolders.Add($path) }
+    # Not elevated, the real one makes a folder its owner (this account) fails its own check.
+    $realNewSetupFolder = (Get-Item function:New-SetupFolder).ScriptBlock
+    function New-SetupFolder([string] $path) { $null = New-Item -ItemType Directory $path }
+    function Write-SetupLog([string] $text) { }
     $script:upFolders = New-Object Collections.Generic.List[string]
     Save-PreviousPrograms @('panel', 'agent')
     Check 'update: the programs about to be replaced are copied whole to previous\Panel and previous\Agent (nested files and settings too)' (
@@ -3376,8 +3437,26 @@ try {
         -not (Test-Path (Join-Path $UpdatePrevious 'Panel\old')) -and $script:upFolders -contains $UpdatePrevious)
     Save-PreviousPrograms @('agent')
     Check 'update: an agent-only update keeps no panel copy (an older one is not left to be put back)' (-not (Test-Path (Join-Path $UpdatePrevious 'Panel')) -and (Test-Path (Join-Path $UpdatePrevious 'Agent\PulsarAgent.exe')))
+    Check 'previous: it is built beside the old copy and swapped in: nothing is left beside previous afterwards' (
+        (@(Get-ChildItem -LiteralPath $upRoot -Force | ForEach-Object Name | Where-Object { $_ -like 'previous*' }) -join ',') -ceq 'previous')
+    # The copy of the last good version is never wiped to make room for a broken one.
+    $null = New-Item -ItemType Directory -Force (Join-Path $UpdatePrevious 'Panel'), (Join-Path $UpdatePrevious 'Agent')
+    Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe') 'panel 0.9.0 (the last good one)'
+    Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Agent\PulsarAgent.exe') 'agent 0.9.0 (the last good one)'
+    Set-Content -LiteralPath (Join-Path $PanelDir 'Pulsar.Api.exe') 'panel 1.0.0 (broken)'
+    Save-PreviousPrograms @('panel', 'agent') $false
+    Check 'previous: an installed version that does not pass its checks does not replace the good copy of the one before (the update then rolls back to that)' (
+        (Get-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe')) -ceq 'panel 0.9.0 (the last good one)' -and (Get-Content -LiteralPath (Join-Path $UpdatePrevious 'Agent\PulsarAgent.exe')) -ceq 'agent 0.9.0 (the last good one)')
+    Remove-Item -LiteralPath (Join-Path $UpdatePrevious 'Agent') -Recurse -Force
+    Save-PreviousPrograms @('panel', 'agent') $false
+    Check 'previous: ...but only when it has every part this update replaces; otherwise the installed programs are kept, as nothing better exists' (
+        (Get-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe')) -ceq 'panel 1.0.0 (broken)' -and (Test-Path -LiteralPath (Join-Path $UpdatePrevious 'Agent\PulsarAgent.exe')))
+    Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe') 'panel 0.9.0 (the last good one)'
     Remove-Item (Join-Path $PanelDir 'Pulsar.Api.exe')
     Check 'update: a program that cannot be copied stops the update before it starts' ((Get-SetupExitCode (Get-Caught { Save-PreviousPrograms @('panel') })) -eq 1 -and (Get-Thrown { Save-PreviousPrograms @('panel') }) -match 'nothing was changed')
+    Check 'previous: ...and the copy that was there stays whole, with no half-built one beside it' (
+        (Get-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe')) -ceq 'panel 0.9.0 (the last good one)' -and
+        (@(Get-ChildItem -LiteralPath $upRoot -Force | ForEach-Object Name | Where-Object { $_ -like 'previous*' }) -join ',') -ceq 'previous')
 
     # Remove-OldUpdateBackups: the newest three by the time in the name; other things are not backups and stay.
     $UpdateBackups = Join-Path $upRoot 'backups'
@@ -3494,16 +3573,19 @@ try {
     # are mocks that record what was asked of them.
     function Invoke-UpdateScenario([hashtable] $options = @{}) {
         $PanelDir, $AgentDir = Get-FakePrograms
+        if ($options['SaveFails']) { Remove-Item -LiteralPath (Join-Path $PanelDir 'Pulsar.Api.exe') }
         $UpdateRoot = Join-Path $upRoot 'Updates'
         foreach ($folder in $UpdateRoot) { if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force }; $null = New-Item -ItemType Directory $folder }
         $UpdateBackups = Join-Path $UpdateRoot 'backups'; $UpdatePrevious = Join-Path $UpdateRoot 'previous'
-        $UpdateResultFile = Join-Path $UpdateRoot 'last-update.json'; $UpdateLockFile = Join-Path $UpdateRoot 'update.lock'
+        $UpdateResultFile = Join-Path $UpdateRoot 'last-update.json'; $UpdateLockFile = Join-Path $UpdateRoot 'update.lock'; $UpdateJournal = Join-Path $UpdateRoot 'in-progress.json'
         $null = New-Item -ItemType Directory $UpdateBackups, $UpdatePrevious
         $script:UpdateLock = $null; $script:UpdateRun = $null
         $script:upCalls = New-Object Collections.Generic.List[string]
         $script:upHealth = @{ panel = 0; agent = 0 }
-        $script:upMigrations = @($options['Before'], $options['After'])
+        $script:upMigrations = if ($options['Interrupted']) { @($options['Current'], $options['Before'], $options['After']) } else { @($options['Before'], $options['After']) }
         $script:upMigrationReads = 0
+        $script:upJournalAtReplace = $null
+        $script:upSavedHealthy = $null
         $PanelService = 'PulsarPanel'; $AgentService = 'PulsarAgent'
         $parts = if ($options.ContainsKey('Parts')) { $options['Parts'] } else { @('agent', 'panel') }
         function Get-UpdateVersions { [pscustomobject]@{ From = '1.0.0'; To = '1.0.1' } }
@@ -3514,9 +3596,11 @@ try {
             [pscustomobject]@{ Folder = (Join-Path $UpdateBackups '1.0.0-20261020-101010\pulsar-backup-20261020-101010'); Dump = (Join-Path $UpdateBackups '1.0.0-20261020-101010\pulsar-backup-20261020-101010\pulsar.dump') }
         }
         function Remove-OldUpdateBackups([string] $folder, [int] $keep) { $script:upCalls.Add("prune $keep") }
-        function Get-PanelMigrations { $value = $script:upMigrations[[Math]::Min($script:upMigrationReads, 1)]; $script:upMigrationReads++; $script:upCalls.Add('read migrations'); $value }
-        function Update-Agent { $script:upCalls.Add('update agent'); if ($options['Fail'] -ceq 'agent') { throw 'The agent''s service could not start (test).' } }
-        function Update-Panel { $script:upCalls.Add('update panel'); if ($options['Fail'] -ceq 'panel') { throw 'The panel service did not start (test).' } }
+        function Get-PanelMigrations { $value = $script:upMigrations[[Math]::Min($script:upMigrationReads, $script:upMigrations.Count - 1)]; $script:upMigrationReads++; $script:upCalls.Add('read migrations'); $value }
+        function Test-InstalledHealthy([string[]] $parts) { -not $options['Unhealthy'] }
+        function Assert-RollbackPossible { if ($options['NotOwner']) { throw (New-SetupError $ExitUnsupported 'The panel''s database user does not own the schema public (test). Nothing was changed.') } }
+        function Update-Agent { $script:upJournalAtReplace = Test-Path -LiteralPath $UpdateJournal; $script:upCalls.Add('update agent'); if ($options['Fail'] -ceq 'agent') { throw 'The agent''s service could not start (test).' } }
+        function Update-Panel { if ($null -eq $script:upJournalAtReplace) { $script:upJournalAtReplace = Test-Path -LiteralPath $UpdateJournal }; $script:upCalls.Add('update panel'); if ($options['Fail'] -ceq 'panel') { throw 'The panel service did not start (test).' } }
         function Wait-UpdatedPanelReady {
             $script:upHealth['panel']++; $script:upCalls.Add("health panel $($script:upHealth['panel'])")
             if ($script:upHealth['panel'] -eq 1 -and $options['Fail'] -ceq 'panelHealth') { throw 'The panel did not become ready in 5 minutes (test).' }
@@ -3526,7 +3610,12 @@ try {
             $script:upHealth['agent']++; $script:upCalls.Add("health agent $($script:upHealth['agent'])")
             if ($script:upHealth['agent'] -eq 1 -and $options['Fail'] -ceq 'agentHealth') { throw 'The agent could not sign in at the panel within 2 minutes (test).' }
         }
-        function Stop-UpdateService([string] $name) { $script:upCalls.Add("stop $name"); if ($options['StopFails'] -ceq $name) { throw 'Access denied (test).' } }
+        $script:upStops = @{}
+        function Stop-UpdateService([string] $name) {
+            $script:upCalls.Add("stop $name")
+            $script:upStops[$name] = 1 + $(if ($script:upStops.ContainsKey($name)) { $script:upStops[$name] } else { 0 })
+            if ($options['StopFails'] -ceq $name -or ($options['StopFailsOnRollback'] -ceq $name -and $script:upStops[$name] -ge 2)) { throw 'Access denied (test).' }
+        }
         function Copy-Program([string] $source, [string] $target) {
             $script:upCalls.Add("copy $(Split-Path -Leaf $source) to $(Split-Path -Leaf $target)")
             if ($options['CopyFails'] -ceq (Split-Path -Leaf $target)) { throw 'The file is in use (test).' }
@@ -3534,20 +3623,34 @@ try {
         function Restore-RolledBackDatabase([string] $dump) { $script:upCalls.Add("restore $(Split-Path -Leaf $dump)"); if ($options['RestoreFails']) { throw 'pg_restore failed (test)' } }
         function Start-Panel { $script:upCalls.Add('start panel') }
         function Start-Service { $script:upCalls.Add("start $($args[0])") }
-        Start-UpdateRun
-        $script:UpdateRun.Parts = @()
+        # An update that was stopped half way: its journal, the backup it made and (HalfSwap) a panel folder moved aside and never replaced.
+        if ($options['Interrupted']) {
+            $dumpFolder = Join-Path $UpdateBackups '1.0.0-20261020-101010\pulsar-backup-20261020-101010'
+            $null = New-Item -ItemType Directory $dumpFolder
+            Set-Content -LiteralPath (Join-Path $dumpFolder 'pulsar.dump') 'a dump'
+            $null = New-Item -ItemType Directory -Force (Join-Path $UpdatePrevious 'Panel'), (Join-Path $UpdatePrevious 'Agent')
+            Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe') 'panel 1.0.0'
+            Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Agent\PulsarAgent.exe') 'agent 1.0.0'
+            Write-UpdateJournal ([pscustomobject]@{ From = '1.0.0'; To = '1.0.1'; Parts = @('agent', 'panel'); MigrationsBefore = $options['Before']; Backup = [pscustomobject]@{ Folder = $dumpFolder; Dump = (Join-Path $dumpFolder 'pulsar.dump') } })
+            if ($options['HalfSwap']) { Rename-Item -LiteralPath $PanelDir -NewName 'Panel.old' }
+        }
         $failure = $null
-        try { Invoke-Update $parts } catch { $failure = $_ }
+        try {
+            Start-UpdateRun
+            $script:UpdateRun.Parts = @()
+            Invoke-Update $parts
+        }
+        catch { $failure = $_ }
         $record = $null
         if (Test-Path -LiteralPath $UpdateResultFile) { $record = [IO.File]::ReadAllText($UpdateResultFile) | ConvertFrom-Json }
         Unlock-Update
-        return [pscustomobject]@{ Error = $failure; Calls = @($script:upCalls); Result = $record; Previous = $UpdatePrevious; Panel = $PanelDir; Agent = $AgentDir }
+        return [pscustomobject]@{ Error = $failure; Calls = @($script:upCalls); Result = $record; Previous = $UpdatePrevious; Panel = $PanelDir; Agent = $AgentDir; JournalLeft = (Test-Path -LiteralPath $UpdateJournal); JournalAtReplace = $script:upJournalAtReplace }
     }
     $calls = { param($s) $s.Calls -join ' | ' }
 
     $ok = Invoke-UpdateScenario @{ Before = "m1`nm2"; After = "m1`nm2`nm3" }
     Check 'update: a good update backs the panel up, notes the migrations, keeps the programs, updates the agent then the panel, checks the panel then the agent' (
-        $null -eq $ok.Error -and (& $calls $ok) -ceq 'backup 1.0.0 | prune 3 | read migrations | update agent | update panel | health panel 1 | health agent 1') (& $calls $ok)
+        $null -eq $ok.Error -and (& $calls $ok) -ceq 'stop PulsarPanel | backup 1.0.0 | prune 3 | read migrations | update agent | update panel | health panel 1 | health agent 1') (& $calls $ok)
     Check 'update: ...and the previous programs are in previous\Panel and \Agent' ((Test-Path (Join-Path $ok.Previous 'Panel\Pulsar.Api.exe')) -and (Test-Path (Join-Path $ok.Previous 'Agent\PulsarAgent.exe')))
     Check 'update: ...and last-update.json says succeeded, from 1.0.0 to 1.0.1, agent and panel, no error' (
         $ok.Result.status -ceq 'succeeded' -and $ok.Result.from -ceq '1.0.0' -and $ok.Result.to -ceq '1.0.1' -and (@($ok.Result.parts) -join ',') -ceq 'agent,panel' -and $null -eq $ok.Result.error)
@@ -3555,15 +3658,20 @@ try {
     Check 'update: a node with no panel is backed up for nothing (no backup), updated and checked, and the result lists the agent only' (
         $null -eq $agentOnly.Error -and (& $calls $agentOnly) -ceq 'update agent | health agent 1' -and (@($agentOnly.Result.parts) -join ',') -ceq 'agent' -and -not (Test-Path (Join-Path $agentOnly.Previous 'Panel')))
     $panelOnly = Invoke-UpdateScenario @{ Parts = @('panel'); Before = 'm1'; After = 'm1' }
-    Check 'update: a panel alone: backup, notes, panel update, panel check, no agent check' ((& $calls $panelOnly) -ceq 'backup 1.0.0 | prune 3 | read migrations | update panel | health panel 1')
+    Check 'update: a panel alone: backup, notes, panel update, panel check, no agent check' ((& $calls $panelOnly) -ceq 'stop PulsarPanel | backup 1.0.0 | prune 3 | read migrations | update panel | health panel 1')
 
     $backupFailed = Invoke-UpdateScenario @{ BackupFails = $true }
-    Check 'update: a backup that fails stops the update before anything is replaced: no stop, no copy, no rollback' (
-        (Get-SetupExitCode $backupFailed.Error) -eq 1 -and $backupFailed.Error.Exception.Message -match 'nothing was changed' -and (& $calls $backupFailed) -ceq 'backup 1.0.0')
+    Check 'update: a backup that fails stops the update before anything is replaced: no copy, no rollback, and the panel that was stopped for the dump runs again' (
+        (Get-SetupExitCode $backupFailed.Error) -eq 1 -and $backupFailed.Error.Exception.Message -match 'nothing was changed' -and (& $calls $backupFailed) -ceq 'stop PulsarPanel | backup 1.0.0 | start panel' -and -not $backupFailed.JournalLeft)
+    $saveFailed = Invoke-UpdateScenario @{ SaveFails = $true }
+    Check 'update: programs that cannot be kept for a rollback stop the update before anything is replaced, with the panel running again and no journal' (
+        (Get-SetupExitCode $saveFailed.Error) -eq 1 -and (& $calls $saveFailed) -ceq 'stop PulsarPanel | backup 1.0.0 | prune 3 | read migrations | start panel' -and -not $saveFailed.JournalLeft)
+    Check 'update: the panel is stopped, and the backup waits for it, before the dump is taken (writes made between the dump and the stop would be lost by a rollback)' (
+        $updateParts['Invoke-Update'].IndexOf('Stop-UpdateService $PanelService') -ge 0 -and $updateParts['Invoke-Update'].IndexOf('Stop-UpdateService $PanelService') -lt $updateParts['Invoke-Update'].IndexOf('New-UpdateBackup'))
 
     $bad = Invoke-UpdateScenario @{ Fail = 'panelHealth'; Before = "m1`nm2"; After = "m1`nm2`nm3" }
     Check 'rollback: a panel that does not become ready puts the previous version back: services stopped, database restored from the backup, previous programs copied back, services started, previous version checked' (
-        (& $calls $bad) -ceq 'backup 1.0.0 | prune 3 | read migrations | update agent | update panel | health panel 1 | stop PulsarPanel | read migrations | restore pulsar.dump | copy Panel to Panel | start panel | stop PulsarAgent | copy Agent to Agent | start PulsarAgent | health panel 2 | health agent 1') (& $calls $bad)
+        (& $calls $bad) -ceq 'stop PulsarPanel | backup 1.0.0 | prune 3 | read migrations | update agent | update panel | health panel 1 | stop PulsarPanel | read migrations | restore pulsar.dump | copy Panel to Panel | start panel | stop PulsarAgent | copy Agent to Agent | start PulsarAgent | health panel 2 | health agent 1') (& $calls $bad)
     Check 'rollback: it ends with the exit code for "rolled back" and a message naming both versions and why' (
         (Get-SetupExitCode $bad.Error) -eq 7 -and $bad.Error.Exception.Message -ceq 'The update to 1.0.1 failed and Pulsar was put back to 1.0.0: The panel did not become ready in 5 minutes (test).') $bad.Error.Exception.Message
     Check 'rollback: last-update.json says rolled_back with that message' ($bad.Result.status -ceq 'rolled_back' -and $bad.Result.error -ceq $bad.Error.Exception.Message -and $bad.Result.to -ceq '1.0.1' -and (@($bad.Result.parts) -join ',') -ceq 'agent,panel')
@@ -3577,7 +3685,7 @@ try {
         (Get-SetupExitCode $agentBroke.Error) -eq 7 -and ($agentBroke.Calls -join ' | ') -match 'stop PulsarPanel.*stop PulsarAgent' -and $agentBroke.Error.Exception.Message -match 'could not sign in')
     $agentFailed = Invoke-UpdateScenario @{ Fail = 'agent'; Before = 'm1'; After = 'm1' }
     Check 'rollback: an agent that fails to update rolls back the agent only: the panel was not touched, so no panel is stopped, restored or copied' (
-        (Get-SetupExitCode $agentFailed.Error) -eq 7 -and ($agentFailed.Calls -join ' | ') -ceq 'backup 1.0.0 | prune 3 | read migrations | update agent | stop PulsarAgent | copy Agent to Agent | start PulsarAgent | health agent 1' -and
+        (Get-SetupExitCode $agentFailed.Error) -eq 7 -and ($agentFailed.Calls -join ' | ') -ceq 'stop PulsarPanel | backup 1.0.0 | prune 3 | read migrations | update agent | start panel | stop PulsarAgent | copy Agent to Agent | start PulsarAgent | health agent 1' -and
         $agentFailed.Result.status -ceq 'rolled_back') ($agentFailed.Calls -join ' | ')
     $panelFailed = Invoke-UpdateScenario @{ Fail = 'panel'; Before = 'm1'; After = 'm1' }
     Check 'rollback: a panel that fails to start while it is updated is put back with the agent, whose update was fine' ((Get-SetupExitCode $panelFailed.Error) -eq 7 -and $panelFailed.Calls -contains 'copy Agent to Agent' -and $panelFailed.Calls -contains 'copy Panel to Panel')
@@ -3595,10 +3703,93 @@ try {
     Check 'rollback failure: a database that cannot be restored keeps the new panel program and leaves the panel stopped (an older panel on newer tables is worse)' (
         (Get-SetupExitCode $dbBroken.Error) -eq 1 -and $dbBroken.Error.Exception.Message -match 'database could not be restored from the backup \(pg_restore failed \(test\)\), so the panel keeps the new program and stays stopped' -and
         $dbBroken.Calls -notcontains 'copy Panel to Panel' -and $dbBroken.Calls -notcontains 'start panel' -and $dbBroken.Result.status -ceq 'failed')
-    $stuck = Invoke-UpdateScenario @{ Fail = 'panelHealth'; Before = 'm1'; After = 'm1'; StopFails = 'PulsarPanel' }
+    $stuck = Invoke-UpdateScenario @{ Fail = 'panelHealth'; Before = 'm1'; After = 'm1'; StopFailsOnRollback = 'PulsarPanel' }
     Check 'rollback failure: a service that will not stop is left alone, and nothing is copied over its running program' ($stuck.Error.Exception.Message -match 'service could not be stopped' -and $stuck.Calls -notcontains 'copy Panel to Panel')
+    $noStop = Invoke-UpdateScenario @{ StopFails = 'PulsarPanel' }
+    Check 'update: a panel that will not stop for its backup stops the update before anything is replaced (no dump, no journal)' (
+        $null -ne $noStop.Error -and $noStop.Error.Exception.Message -match 'Access denied' -and (& $calls $noStop) -ceq 'stop PulsarPanel | start panel' -and -not $noStop.JournalLeft)
     $still = Invoke-UpdateScenario @{ Fail = 'panelHealth'; Before = 'm1'; After = 'm1'; StillBroken = $true }
     Check 'rollback failure: a previous version that does not work either is said so' ((Get-SetupExitCode $still.Error) -eq 1 -and $still.Error.Exception.Message -match 'the previous version does not work either \(The panel did not become ready' -and $still.Result.status -ceq 'failed')
+
+    # --- The journal: an update that is stopped half way (a power cut, a killed process) is rolled back by the next run ---
+    Check 'journal: it is written before the first program is replaced, and is gone when the update succeeded' (
+        $ok.JournalAtReplace -eq $true -and -not $ok.JournalLeft -and $agentOnly.JournalAtReplace -eq $true -and -not $agentOnly.JournalLeft)
+    Check 'journal: a rollback that worked removes it; one that did not keeps it, for the next run to try again' (
+        -not $bad.JournalLeft -and -not $agentFailed.JournalLeft -and $broken.JournalLeft -and $dbBroken.JournalLeft -and $still.JournalLeft)
+    $unhealthy = Invoke-UpdateScenario @{ Unhealthy = $true }
+    Check 'previous: whether the installed Pulsar works is looked at before the panel is stopped, and decides whether previous is replaced' (
+        $updateParts['Invoke-Update'].IndexOf('Test-InstalledHealthy') -ge 0 -and $updateParts['Invoke-Update'].IndexOf('Test-InstalledHealthy') -lt $updateParts['Invoke-Update'].IndexOf('Stop-UpdateService $PanelService') -and
+        $updateParts['Invoke-Update'] -match 'Save-PreviousPrograms \$parts \$installedHealthy' -and $null -eq $unhealthy.Error)
+
+    $resumed = Invoke-UpdateScenario @{ Interrupted = $true; Current = "m1`nm2"; Before = 'm1'; After = "m1`nm2" }
+    Check 'resume: a journal found at the start of an update is rolled back first: the database restored (its migrations differ from the journal''s), the previous programs put back, the services started and checked; then this update goes on' (
+        $null -eq $resumed.Error -and (& $calls $resumed) -cmatch '^stop PulsarPanel \| read migrations \| restore pulsar\.dump \| copy Panel to Panel \| start panel \| stop PulsarAgent \| copy Agent to Agent \| start PulsarAgent \| health panel 1 \| health agent 1 \| stop PulsarPanel \| backup 1\.0\.0 .* update agent \| update panel') (& $calls $resumed)
+    Check 'resume: ...and the journal of the interrupted update is gone, this update wrote its own and removed it' (-not $resumed.JournalLeft -and $resumed.Result.status -ceq 'succeeded')
+    $resumedSame = Invoke-UpdateScenario @{ Interrupted = $true; Current = 'm1'; Before = 'm1'; After = 'm1' }
+    Check 'resume: with the same migrations as the journal''s the database is left as it is' (@($resumedSame.Calls | Where-Object { $_ -like 'restore*' }).Count -eq 0 -and $null -eq $resumedSame.Error -and $resumedSame.Calls -contains 'copy Panel to Panel')
+    $halfSwap = Invoke-UpdateScenario @{ Interrupted = $true; HalfSwap = $true; Current = 'm1'; Before = 'm1'; After = 'm1' }
+    Check 'resume: a program folder moved aside and never replaced is put back before anything else' ((Test-Path -LiteralPath $halfSwap.Panel -PathType Container) -and -not (Test-Path -LiteralPath "$($halfSwap.Panel).old") -and $null -eq $halfSwap.Error)
+    $stuckResume = Invoke-UpdateScenario @{ Interrupted = $true; RestoreFails = $true; Current = "m1`nm2"; Before = 'm1'; After = 'm1' }
+    Check 'resume: a rollback that fails stops this update before it changes anything, says what is left, and keeps the journal' (
+        (Get-SetupExitCode $stuckResume.Error) -eq 1 -and $stuckResume.Error.Exception.Message -match 'stopped before it ended' -and $stuckResume.Error.Exception.Message -match 'database could not be restored' -and
+        $stuckResume.JournalLeft -and $stuckResume.Calls -notcontains 'update agent' -and ($stuckResume.Calls -join ' | ') -notmatch 'backup')
+
+    # A rollback sets the failed version's tables aside, which needs the panel's database user to own the schema public.
+    $notOwner = Invoke-UpdateScenario @{ NotOwner = $true }
+    Check 'rollback: a database whose schema public the panel''s user does not own is found before anything changes: exit code 3, no service stopped, no backup' (
+        (Get-SetupExitCode $notOwner.Error) -eq 3 -and $notOwner.Error.Exception.Message -match 'Nothing was changed' -and $notOwner.Calls.Count -eq 0 -and -not $notOwner.JournalLeft)
+    Check 'rollback: ...and it is asked before the panel is stopped' (
+        $updateParts['Invoke-Update'].IndexOf('Assert-RollbackPossible') -ge 0 -and $updateParts['Invoke-Update'].IndexOf('Assert-RollbackPossible') -lt $updateParts['Invoke-Update'].IndexOf('Stop-UpdateService $PanelService'))
+    $agentNotOwner = Invoke-UpdateScenario @{ NotOwner = $true; Parts = @('agent') }
+    Check 'rollback: an agent-only update has no database and is not asked' ($null -eq $agentNotOwner.Error)
+    $script:psqlAnswer = [pscustomobject]@{ ExitCode = 0; Output = '1' }
+    $script:psqlSql = $null
+    $ownerCheck = {
+        function Get-PanelConnection { @{ host = 'localhost'; port = '5432'; username = 'pulsar'; database = 'pulsar'; password = 'x' } }
+        function Invoke-PanelPsql($db, [string[]] $arguments) { $script:psqlSql = $arguments[1]; $script:psqlAnswer }
+        Get-Caught { Assert-RollbackPossible }
+    }
+    $caught = & $ownerCheck
+    Check 'rollback: the owner of the schema public passes, and the question asks for membership of the owning role and CREATE on the database' (
+        $null -eq $caught -and $script:psqlSql -match "pg_has_role\(current_user, nspowner, 'MEMBER'\)" -and $script:psqlSql -match "has_database_privilege\(current_database\(\), 'CREATE'\)")
+    $script:psqlAnswer = [pscustomobject]@{ ExitCode = 0; Output = '0' }
+    $caught = & $ownerCheck
+    Check 'rollback: a user that does not own it is refused, saying how to give it the schema' ((Get-SetupExitCode $caught) -eq 3 -and $caught.Exception.Message -match 'ALTER SCHEMA public OWNER TO pulsar' -and $caught.Exception.Message -match 'Nothing was changed')
+    foreach ($answer in [pscustomobject]@{ ExitCode = 2; Output = 'psql: error' }, [pscustomobject]@{ ExitCode = 0; Output = '' }, [pscustomobject]@{ ExitCode = 0; Output = 'maybe' }) {
+        $script:psqlAnswer = $answer
+        Check "rollback: when the database cannot be asked ($($answer.Output)) the update is not refused, only warned about" ($null -eq (& $ownerCheck))
+    }
+
+    # The journal's file.
+    $UpdateJournal = Join-Path $UpdateRoot 'in-progress.json'
+    $UpdateBackups = Join-Path $UpdateRoot 'backups'
+    $journalDump = Join-Path $UpdateBackups '1.0.0-20261020-101010\pulsar-backup-20261020-101010\pulsar.dump'
+    if (Test-Path -LiteralPath $UpdateJournal) { Remove-Item -LiteralPath $UpdateJournal }
+    Check 'journal: none when no update was interrupted' ($null -eq (Read-UpdateJournal))
+    Write-UpdateJournal ([pscustomobject]@{ From = '1.0.0'; To = '1.0.1'; Parts = @('agent', 'panel'); MigrationsBefore = "m1`nm2"; Backup = [pscustomobject]@{ Folder = (Split-Path -Parent $journalDump); Dump = $journalDump } })
+    $journalBytes = [IO.File]::ReadAllBytes($UpdateJournal)
+    $read = Read-UpdateJournal
+    Check 'journal: it is UTF-8 JSON without a byte order mark and holds the parts, the migrations before, the backup and both versions' (
+        $journalBytes[0] -eq 123 -and (@($read.Parts) -join ',') -ceq 'agent,panel' -and $read.MigrationsBefore -ceq "m1`nm2" -and $read.Dump -ceq $journalDump -and $read.Folder -ceq (Split-Path -Parent $journalDump) -and $read.From -ceq '1.0.0' -and $read.To -ceq '1.0.1')
+    Check 'journal: only the journal is left in the folder (no temporary file)' ((@(Get-ChildItem -LiteralPath $UpdateRoot -Force | ForEach-Object Name | Where-Object { $_ -like '*journal*' -or $_ -like 'in-progress*' -or $_ -like '.in-progress*' }) -join ',') -ceq 'in-progress.json')
+    Write-UpdateJournal ([pscustomobject]@{ From = $null; To = '1.0.1'; Parts = @('agent'); MigrationsBefore = $null; Backup = $null })
+    $read = Read-UpdateJournal
+    Check 'journal: an update with no panel has no backup and no migrations; versions may be unknown' (@($read.Parts).Count -eq 1 -and $null -eq $read.Dump -and $null -eq $read.MigrationsBefore -and $null -eq $read.From)
+    foreach ($case in @(
+            @('text that is not JSON', 'this is not json', 'cannot be read'),
+            @('a format it does not know', '{"format":2,"parts":["panel"]}', 'format'),
+            @('a part that is neither the panel nor the agent', '{"format":1,"parts":["database"]}', 'part'),
+            @('no part at all', '{"format":1,"parts":[]}', 'part'),
+            @('a backup outside the update backups folder', ('{"format":1,"parts":["panel"],"backup":{"folder":"C:\\Windows","dump":"C:\\Windows\\evil.dump"}}'), 'backup'))) {
+        [IO.File]::WriteAllText($UpdateJournal, $case[1])
+        $caught = Get-Thrown { Read-UpdateJournal }
+        Check "journal: $($case[0]) is refused, not guessed at" ($null -ne $caught -and $caught -match $case[2]) "$caught"
+    }
+    Remove-UpdateJournal
+    Check 'journal: it can be removed, also when it is not there' (-not (Test-Path -LiteralPath $UpdateJournal) -and $null -eq (Get-Thrown { Remove-UpdateJournal }))
+    Check 'journal: Uninstall removes it (an update that was stopped must not be rolled back into a new install)' ($installText -match '(?s)if \(\$Uninstall\) \{.*Remove-UpdateJournal.*Kept: the database')
+
+    Set-Item function:New-SetupFolder $realNewSetupFolder
 
     # --- Health checks of the agent ---
     . $restoreUpdateFunctions
@@ -3636,7 +3827,7 @@ try {
         $null -ne $caught -and $caught.Exception.Message -match 'could not sign in at the panel within 0 minutes' -and $caught.Exception.Message -match 'exit code 1' -and $caught.Exception.Message -match 'FAILED, the panel refused this node')
     Check 'agent check: the check is bounded in time, not endless' ($updateParts['Wait-UpdatedAgentHealthy'] -match '\$deadline = \(Get-Date\)\.AddMinutes\(\$UpdateAgentCheckMinutes\)' -and $updateParts['Wait-UpdatedAgentHealthy'] -match '\(Get-Date\) -ge \$deadline\) \{ break \}')
     Check 'update: the updated panel is awaited with a bound, for UpdatePanelMinutes, on its own address with any certificate' (
-        $updateParts['Wait-UpdatedPanelReady'] -match 'Wait-PanelReady \$client \$UpdatePanelMinutes' -and $updateParts['Wait-UpdatedPanelReady'] -match '"https://localhost:\$panelPort", ''''\)' -and
+        $updateParts['Wait-UpdatedPanelReady'] -match 'Wait-PanelReady \$client \$minutes' -and $updateParts['Wait-UpdatedPanelReady'] -match '\[int\] \$minutes = \$UpdatePanelMinutes' -and $updateParts['Wait-UpdatedPanelReady'] -match '"https://localhost:\$panelPort", ''''\)' -and
         $installText -match '\[int\] \$minutes = 3' -and $installText -match 'if \(string\.IsNullOrEmpty\(thumbprint\) && !_base\.IsLoopback\)')
 
     # --- The database restore ---

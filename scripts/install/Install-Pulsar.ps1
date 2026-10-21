@@ -278,6 +278,9 @@ $UpdatePrevious = Join-Path $UpdateRoot 'previous'
 # How the last -Update run ended (Write-UpdateResult), and the file that stops two runs at once.
 $UpdateResultFile = Join-Path $UpdateRoot 'last-update.json'
 $UpdateLockFile = Join-Path $UpdateRoot 'update.lock'
+# Written before an update replaces the first program, removed when it ends: one that is found at the start of the next run
+# means the last update was stopped half way (a power cut), and is rolled back first (Resume-InterruptedUpdate).
+$UpdateJournal = Join-Path $UpdateRoot 'in-progress.json'
 # How long the updated panel may take to answer, how long the agent must keep running before it counts as working, and how
 # long its sign-in at the panel may take to succeed. Bounded: an update that never becomes healthy is rolled back.
 $UpdatePanelMinutes = 5
@@ -789,17 +792,70 @@ function Write-StaleBackupTasks {
     }
 }
 
+# A folder moved to a new name on the same drive: one step that either happens or changes nothing (it fails when a program
+# has a file in the folder open). A function of its own so that the tests can make it fail.
+function Move-ProgramFolder([string] $from, [string] $to) {
+    [IO.Directory]::Move($from, $to)
+}
+
+# What a run that was stopped while it replaced a folder ($target) left. Copy-Program builds the new folder beside it
+# ($target.new), moves the old one aside ($target.old) and the new one into place; a power cut can stop it between any two of
+# those steps. A half-built .new is deleted; an .old with no folder in its place (stopped between the two moves) is moved back;
+# an .old beside a folder in place (the new one is whole: it only gets there by a rename) is deleted. Says what it did, or
+# nothing.
+function Repair-ProgramSwap([string] $target) {
+    $said = @()
+    if (Test-Path -LiteralPath "$target.new") {
+        Remove-Item -LiteralPath "$target.new" -Recurse -Force
+        $said += 'a half-built new copy was deleted'
+    }
+    if (Test-Path -LiteralPath "$target.old") {
+        if (Test-Path -LiteralPath $target) {
+            Remove-Item -LiteralPath "$target.old" -Recurse -Force
+            $said += 'the old copy left beside the new one was deleted'
+        }
+        else {
+            Move-ProgramFolder "$target.old" $target
+            $said += 'the old copy was put back'
+        }
+    }
+    return ($said -join '; ')
+}
+
 # Puts a release folder's program in place of an installed one, keeping the local settings file and the panel's
 # downloads folder (PulsarAgentSetup.exe, which the panel serves to new nodes; a release that has one replaces it).
-# What else was there goes first: a program from a self-contained release left its own copy of the .NET runtime there,
-# which the new framework-dependent program would load instead of the shared runtime that Microsoft Update patches.
+# What else was there goes: a program from a self-contained release left its own copy of the .NET runtime there, which the
+# new framework-dependent program would load instead of the shared runtime that Microsoft Update patches.
+# The new program is built whole beside the old one ($target.new: what stays, then the release), the old folder is moved aside
+# ($target.old) and the new one moved in, then the old one is deleted. Nothing is deleted from the installed program before the
+# new one is complete, so a failure or a power cut leaves the old program, or the new one, never half of each
+# (Repair-ProgramSwap puts right what is left between the two moves).
 function Copy-Program([string] $source, [string] $target) {
     if (-not (Test-Path (Join-Path $source '*'))) { throw "$source is missing: run this script from the extracted release ZIP." }
-    if (Test-Path -LiteralPath $target) {
-        Get-ChildItem -LiteralPath $target -Force | Where-Object { $_.Name -notin 'appsettings.Production.json', 'downloads' } | Remove-Item -Recurse -Force
+    $repaired = Repair-ProgramSwap $target
+    if ($repaired) { Write-Warning "An earlier install or update of $target was stopped half way: $repaired." }
+    $staged = "$target.new"
+    $null = New-Item -ItemType Directory -Force $staged
+    try {
+        foreach ($name in 'appsettings.Production.json', 'downloads') {
+            if (Test-Path -LiteralPath (Join-Path $target $name)) { Copy-Item -LiteralPath (Join-Path $target $name) -Destination $staged -Recurse -Force }
+        }
+        Get-ChildItem $source | Where-Object Name -ne 'appsettings.Production.json' | Copy-Item -Destination $staged -Recurse -Force
+        if (Test-Path -LiteralPath $target) { Move-ProgramFolder $target "$target.old" }
+        try { Move-ProgramFolder $staged $target }
+        catch {
+            if (Test-Path -LiteralPath "$target.old") { Move-ProgramFolder "$target.old" $target }
+            throw
+        }
     }
-    New-Item -ItemType Directory -Force $target | Out-Null
-    Get-ChildItem $source | Where-Object Name -ne 'appsettings.Production.json' | Copy-Item -Destination $target -Recurse -Force
+    catch {
+        if (Test-Path -LiteralPath $staged) { Remove-Item -LiteralPath $staged -Recurse -Force -ErrorAction SilentlyContinue }
+        throw
+    }
+    if (Test-Path -LiteralPath "$target.old") {
+        try { Remove-Item -LiteralPath "$target.old" -Recurse -Force }
+        catch { Write-Warning "The old copy of the program, $target.old, could not be deleted ($($_.Exception.Message)): the next run deletes it." }
+    }
 }
 
 # SYSTEM and Administrators full control, plus the given accounts; nothing inherited.
@@ -3365,15 +3421,128 @@ function Unlock-Update {
     }
 }
 
-# Begins an -Update run: its folder, its lock, and what is known of its versions. Until this has run, a failure writes no result
-# file (there is no folder to trust yet, or another run owns it).
+# Begins an -Update run: its folder, its lock, the rollback of an update that was stopped half way, and what is known of its
+# versions. Until the folder and the lock are done, a failure writes no result file (there is no folder to trust yet, or another
+# run owns it).
 function Start-UpdateRun {
     Initialize-UpdateFolder $UpdateRoot
     Lock-Update
-    $versions = Get-UpdateVersions
     $script:UpdateRun = [pscustomobject]@{
-        From = $versions.From; To = $versions.To; Parts = @(); Touched = @(); Written = $false; MigrationsBefore = $null; Backup = $null
+        From = $null; To = $null; Parts = @(); Touched = @(); Written = $false; MigrationsBefore = $null; Backup = $null
     }
+    # Before the versions are read: the version installed is the one before an update that was stopped, once that is rolled back.
+    $null = Resume-InterruptedUpdate
+    $versions = Get-UpdateVersions
+    $script:UpdateRun.From = $versions.From
+    $script:UpdateRun.To = $versions.To
+}
+
+# Whether the installed Pulsar works now: the services of $parts run, and the panel answers. Quick (the panel gets a minute); a
+# part that is stopped or does not answer is not healthy.
+function Test-InstalledHealthy([string[]] $parts) {
+    foreach ($part in $parts) {
+        $found = Get-Service -Name $(if ($part -ceq 'panel') { $PanelService } else { $AgentService }) -ErrorAction SilentlyContinue
+        if ($null -eq $found -or $found.Status -ne 'Running') { return $false }
+    }
+    if ($parts -contains 'panel') {
+        try { Wait-UpdatedPanelReady 1 } catch { return $false }
+    }
+    return $true
+}
+
+# The journal of an update that has begun to replace programs (it is removed when the update ends, rolled back or not): the parts
+# it replaces, the migrations the database had before, the backup it made and both versions. Written to disk before the first
+# program is touched (flushed, then moved over the name), so that a run after a power cut finds the update that was stopped and
+# can put the previous version back (Resume-InterruptedUpdate). The folder is for administrators alone.
+function Write-UpdateJournal($run) {
+    $backup = $null
+    if ($run.Backup) { $backup = [ordered]@{ folder = $run.Backup.Folder; dump = $run.Backup.Dump } }
+    $record = [ordered]@{
+        format = 1
+        from = $run.From
+        to = $run.To
+        parts = @($run.Parts)
+        migrationsBefore = $run.MigrationsBefore
+        backup = $backup
+        startedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
+    }
+    $written = Join-Path $UpdateRoot ('.in-progress-{0}.tmp' -f [Guid]::NewGuid().ToString('N'))
+    try {
+        $bytes = (New-Object Text.UTF8Encoding $false).GetBytes(($record | ConvertTo-Json -Depth 4))
+        $stream = New-Object IO.FileStream($written, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        try { $stream.Write($bytes, 0, $bytes.Length); $stream.Flush($true) }
+        finally { $stream.Dispose() }
+        Move-Item -LiteralPath $written -Destination $UpdateJournal -Force
+    }
+    catch {
+        Remove-Item -LiteralPath $written -Force -ErrorAction SilentlyContinue
+        throw (New-SetupError $ExitFailed "The journal of this update could not be written to ${UpdateJournal}: $($_.Exception.Message) Nothing was changed.")
+    }
+}
+
+# The journal an update left, or $null when there is none. Strictly: anything else than what Write-UpdateJournal writes is an
+# error, and a backup must be inside the update backups folder (its dump is restored as the database user).
+function Read-UpdateJournal {
+    if (-not (Test-Path -LiteralPath $UpdateJournal)) { return $null }
+    try { $json = [IO.File]::ReadAllText($UpdateJournal, (New-Object Text.UTF8Encoding $false, $true)) | ConvertFrom-Json }
+    catch { throw "$UpdateJournal cannot be read ($($_.Exception.Message))" }
+    if (-not $json.PSObject.Properties['format'] -or "$($json.format)" -cne '1') { throw "$UpdateJournal is of a format this script does not know" }
+    $parts = @()
+    if ($json.PSObject.Properties['parts']) { $parts = @($json.parts | ForEach-Object { "$_" }) }
+    if ($parts.Count -eq 0 -or @($parts | Where-Object { $_ -cnotin 'panel', 'agent' }).Count -gt 0) { throw "$UpdateJournal names no part, or a part that is neither the panel nor the agent" }
+    $folder = $null
+    $dump = $null
+    if ($json.PSObject.Properties['backup'] -and $null -ne $json.backup) {
+        $folder = [IO.Path]::GetFullPath("$($json.backup.folder)").TrimEnd('\')
+        $dump = [IO.Path]::GetFullPath("$($json.backup.dump)")
+        $root = [IO.Path]::GetFullPath($UpdateBackups).TrimEnd('\') + '\'
+        if (-not $folder.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -or -not $dump.StartsWith($folder + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            throw "$UpdateJournal names a backup outside $UpdateBackups"
+        }
+    }
+    $from = $null
+    if ($json.PSObject.Properties['from'] -and $null -ne $json.from) { $from = "$($json.from)" }
+    $to = $null
+    if ($json.PSObject.Properties['to'] -and $null -ne $json.to) { $to = "$($json.to)" }
+    $migrations = $null
+    if ($json.PSObject.Properties['migrationsBefore'] -and $null -ne $json.migrationsBefore) { $migrations = "$($json.migrationsBefore)" }
+    return [pscustomobject]@{ From = $from; To = $to; Parts = $parts; MigrationsBefore = $migrations; Folder = $folder; Dump = $dump }
+}
+
+# Deletes the journal. One that cannot be deleted would have the next run roll back an update that worked, so it is said.
+function Remove-UpdateJournal {
+    if (-not (Test-Path -LiteralPath $UpdateJournal)) { return }
+    try { Remove-Item -LiteralPath $UpdateJournal -Force }
+    catch { Write-Warning "The journal $UpdateJournal could not be deleted ($($_.Exception.Message)): delete it, or the next update rolls back this one." }
+}
+
+# At the start of an -Update run: puts right a program folder left half way by a power cut (Repair-ProgramSwap), then, if an
+# update left its journal (it was stopped before it ended), rolls it back with the same steps as a failed update (Undo-Update:
+# the services stopped, the database restored when its migrations differ from the journal's, the previous programs put back, the
+# services started and checked), and only then lets this update go on. Returns $true when it rolled one back. When that does not
+# work this update does not start (it would build on a half-replaced Pulsar), the journal stays, and the error says what is left.
+function Resume-InterruptedUpdate {
+    foreach ($folder in $PanelDir, $AgentDir) {
+        $said = Repair-ProgramSwap $folder
+        if ($said) { Write-Warning "An earlier install or update of $folder was stopped half way: $said." }
+    }
+    try { $journal = Read-UpdateJournal }
+    catch { throw (New-SetupError $ExitFailed "An update of Pulsar was stopped before it ended, and what it left cannot be used: $($_.Exception.Message). Nothing was changed. The programs before that update are in $UpdatePrevious and its backup in $UpdateBackups (docs/guides/update.md says how to put them back by hand); delete $UpdateJournal once Pulsar works.") }
+    if ($null -eq $journal) { return $false }
+    $target = if ($journal.To) { " to $($journal.To)" } else { '' }
+    Write-Warning "An earlier update${target} was stopped before it ended (a power cut, or the process was killed). It is rolled back first."
+    $run = [pscustomobject]@{ Touched = @($journal.Parts); MigrationsBefore = $journal.MigrationsBefore }
+    $backup = $null
+    if ($journal.Dump) { $backup = [pscustomobject]@{ Folder = $journal.Folder; Dump = $journal.Dump } }
+    $undo = Undo-Update $run $backup
+    if (-not $undo.Ok) {
+        $where = ''
+        if ($backup) { $where = " The panel's backup from before it is in $($backup.Folder)." }
+        throw (New-SetupError $ExitFailed "An earlier update was stopped before it ended, and putting Pulsar back failed: $($undo.Problems -join '; '). Done: $(if ($undo.Done.Count -gt 0) { $undo.Done -join '; ' } else { 'nothing' }).$where The programs before it are in $UpdatePrevious. This update was not started. Fix what is named and run this again (it tries the rollback again), or reinstall the previous release; Pulsar may be stopped on this machine.")
+    }
+    Remove-UpdateJournal
+    Write-Host "The earlier update was rolled back: $($undo.Done -join '; ')."
+    return $true
 }
 
 # Writes <DataRoot>\Updates\last-update.json once per run, UTF-8 without a byte order mark: how this run ended
@@ -3444,22 +3613,51 @@ function Remove-OldUpdateBackups([string] $folder, [int] $keep) {
     }
 }
 
-# Copies the programs about to be replaced ($parts: 'panel', 'agent') to $UpdatePrevious\Panel and \Agent, after deleting what
-# an earlier update left there (the rollback of this update must find only this update's). Settings files are copied too (the
-# folder is for administrators alone); a rollback never copies them back (Copy-Program).
-function Save-PreviousPrograms([string[]] $parts) {
+# Copies the programs about to be replaced ($parts: 'panel', 'agent') to $UpdatePrevious\Panel and \Agent, in place of what an
+# earlier update left there (the rollback of this update must find only this update's). Built whole in previous.new and swapped
+# in by renames (Copy-Program's way), so that the copy of the last good version is never half deleted: a failure or a power cut
+# while the new copy is made leaves the old one. Not at all, with a warning, when the installed Pulsar does not work
+# ($installedHealthy false) and previous already holds a program for every part: that copy is the last good one, and a failed
+# update then rolls back to it, not to a version that was already broken. Settings files are copied too (the folder is for
+# administrators alone); a rollback never copies them back (Copy-Program).
+function Save-PreviousPrograms([string[]] $parts, [bool] $installedHealthy = $true) {
+    $programs = @{ panel = @('Panel', 'Pulsar.Api.exe', $PanelDir); agent = @('Agent', 'PulsarAgent.exe', $AgentDir) }
+    $repaired = Repair-ProgramSwap $UpdatePrevious
+    if ($repaired) { Write-Warning "An earlier update's copy of the previous programs ($UpdatePrevious) was stopped half way: $repaired." }
     Initialize-UpdateFolder $UpdatePrevious
-    Get-ChildItem -LiteralPath $UpdatePrevious -Force | Remove-Item -Recurse -Force
-    foreach ($part in $parts) {
-        $isPanel = $part -ceq 'panel'
-        $source = if ($isPanel) { $PanelDir } else { $AgentDir }
-        $target = Join-Path $UpdatePrevious $(if ($isPanel) { 'Panel' } else { 'Agent' })
-        $null = New-Item -ItemType Directory $target
-        Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $target -Recurse -Force
-        $program = if ($isPanel) { 'Pulsar.Api.exe' } else { 'PulsarAgent.exe' }
-        if (-not (Test-Path -LiteralPath (Join-Path $target $program) -PathType Leaf)) {
-            throw (New-SetupError $ExitFailed "The $part's program could not be copied to $target ($program is missing there), so the update was not started and nothing was changed.")
+    if (-not $installedHealthy) {
+        $held = @($parts | Where-Object { Test-Path -LiteralPath (Join-Path $UpdatePrevious "$($programs[$_][0])\$($programs[$_][1])") -PathType Leaf })
+        if ($held.Count -eq @($parts).Count) {
+            Write-Warning "The installed Pulsar does not pass its checks, so it is not kept as the version to go back to: $UpdatePrevious keeps the programs of the version before it, and a failed update goes back to those."
+            return
         }
+    }
+    $staging = "$UpdatePrevious.new"
+    New-SetupFolder $staging
+    try {
+        foreach ($part in $parts) {
+            $name, $program, $source = $programs[$part]
+            $target = Join-Path $staging $name
+            $null = New-Item -ItemType Directory $target
+            Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $target -Recurse -Force
+            if (-not (Test-Path -LiteralPath (Join-Path $target $program) -PathType Leaf)) {
+                throw (New-SetupError $ExitFailed "The $part's program could not be copied to $target ($program is missing there), so the update was not started and nothing was changed.")
+            }
+        }
+        if (Test-Path -LiteralPath $UpdatePrevious) { Move-ProgramFolder $UpdatePrevious "$UpdatePrevious.old" }
+        try { Move-ProgramFolder $staging $UpdatePrevious }
+        catch {
+            if (Test-Path -LiteralPath "$UpdatePrevious.old") { Move-ProgramFolder "$UpdatePrevious.old" $UpdatePrevious }
+            throw
+        }
+    }
+    catch {
+        if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
+        throw
+    }
+    if (Test-Path -LiteralPath "$UpdatePrevious.old") {
+        try { Remove-Item -LiteralPath "$UpdatePrevious.old" -Recurse -Force }
+        catch { Write-Warning "The programs kept by the update before, $UpdatePrevious.old, could not be deleted ($($_.Exception.Message)): the next update deletes them." }
     }
 }
 
@@ -3514,6 +3712,24 @@ function Test-DatabaseChanged($before, $after) {
     return "$before" -cne "$after"
 }
 
+# Whether a rollback can set the failed version's tables aside (Restore-RolledBackDatabase renames the schema public): the panel's
+# database user must own it (or belong to the role that does) and be allowed to create schemas in the database. A database the
+# installer did not make, or one whose schema an administrator gave to someone else, may not allow it: found out now, before the
+# update changes anything, not after it fails. Refused when the database says no; only a warning when it cannot be asked (no psql
+# here, a database that refuses the question): the rollback then may fail, as it always could.
+function Assert-RollbackPossible {
+    $db = Get-PanelConnection
+    if ($null -eq $db) { return }
+    $result = Invoke-PanelPsql $db @('-c', "SELECT (pg_has_role(current_user, nspowner, 'MEMBER') AND has_database_privilege(current_database(), 'CREATE'))::int FROM pg_namespace WHERE nspname = 'public'")
+    if ($result.ExitCode -ne 0 -or "$($result.Output)".Trim() -cnotin '0', '1') {
+        Write-Warning 'Whether the panel''s database user may set the schema public aside could not be found out, so a rollback of this update may not be possible.'
+        return
+    }
+    if ("$($result.Output)".Trim() -ceq '0') {
+        throw (New-SetupError $ExitUnsupported "The panel's database user ($($db['username'])) does not own the schema public of the database $($db['database']) or may not create schemas in it, and a rollback of this update could not set the new version's tables aside. Make that user the owner (as the postgres user: ALTER SCHEMA public OWNER TO $($db['username']);, and GRANT CREATE ON DATABASE $($db['database']) TO $($db['username']);) and run this again. Nothing was changed.")
+    }
+}
+
 # Puts the database as the backup's dump had it (pulsar.dump of the backup the update made). The new version's tables are renamed
 # aside first (the schema public becomes pulsar_failed_update_<time> and a new public is made, in one transaction), the dump is
 # restored into the new one in a single transaction, and the renamed schema is dropped only when that worked. A restore that
@@ -3550,12 +3766,12 @@ function Stop-UpdateService([string] $name) {
 
 # Waits for the updated panel to answer /health/ready on its HTTPS port (from its settings; -Port's default if they do not say),
 # for UpdatePanelMinutes. Any certificate is taken on this machine's own address: nothing secret is sent.
-function Wait-UpdatedPanelReady {
+function Wait-UpdatedPanelReady([int] $minutes = $UpdatePanelMinutes) {
     $panelPort = $Port
     try { $panelPort = Get-EndpointPort "$((Get-Content -LiteralPath $PanelConfig -Raw | ConvertFrom-Json).Kestrel.Endpoints.Https.Url)" } catch { $panelPort = $Port }
     Initialize-PanelClient
     $client = [PulsarInstallerClient]::new("https://localhost:$panelPort", '')
-    try { Wait-PanelReady $client $UpdatePanelMinutes }
+    try { Wait-PanelReady $client $minutes }
     finally { $client.Dispose() }
 }
 
@@ -3664,17 +3880,37 @@ function Invoke-Update([string[]] $parts) {
     $run = $script:UpdateRun
     $run.Parts = @($parts)
     $backup = $null
-    if ($parts -contains 'panel') {
-        Write-Step 'Backing up the panel before the update'
-        $backup = New-UpdateBackup $run.From
-        $run.Backup = $backup
-        Write-Host "    $($backup.Folder)"
-        Remove-OldUpdateBackups $UpdateBackups $UpdateBackupsKept
-        $run.MigrationsBefore = Get-PanelMigrations
-        if ($null -eq $run.MigrationsBefore) { Write-Warning 'The migrations the database has applied could not be read, so a rollback restores it from the backup whether or not the update changed it.' }
+    # Looked at first, with everything running: only an installed Pulsar that works replaces the copy it can go back to.
+    $installedHealthy = Test-InstalledHealthy $parts
+    if (-not $installedHealthy) { Write-Warning 'The installed Pulsar does not pass its checks (a service is stopped, or the panel does not answer): it will not replace the copy of the version before it.' }
+    $panelStopped = $false
+    try {
+        if ($parts -contains 'panel') {
+            Assert-RollbackPossible
+            # Stopped for the dump: a panel that kept serving would take writes the dump lacks, which a rollback would lose.
+            Write-Step 'Stopping the panel and backing it up before the update'
+            $panelStopped = $true
+            Stop-UpdateService $PanelService
+            $backup = New-UpdateBackup $run.From
+            $run.Backup = $backup
+            Write-Host "    $($backup.Folder)"
+            Remove-OldUpdateBackups $UpdateBackups $UpdateBackupsKept
+            $run.MigrationsBefore = Get-PanelMigrations
+            if ($null -eq $run.MigrationsBefore) { Write-Warning 'The migrations the database has applied could not be read, so a rollback restores it from the backup whether or not the update changed it.' }
+        }
+        Write-Step 'Keeping the programs that are replaced, for a rollback'
+        Save-PreviousPrograms $parts $installedHealthy
+        # On disk before the first program is touched: a power cut from here on is rolled back by the next run.
+        Write-UpdateJournal $run
     }
-    Write-Step 'Keeping the programs that are replaced, for a rollback'
-    Save-PreviousPrograms $parts
+    catch {
+        # Nothing was replaced: the panel runs again as it was.
+        if ($panelStopped) {
+            try { Start-Panel }
+            catch { Write-Warning "The panel could not be started again after the update was refused ($(ConvertTo-PrintableText $_.Exception.Message)): start it with Start-Service $PanelService." }
+        }
+        throw
+    }
     try {
         if ($parts -contains 'agent') {
             $run.Touched += 'agent'
@@ -3687,13 +3923,22 @@ function Invoke-Update([string[]] $parts) {
         Assert-UpdateHealthy $parts
     }
     catch {
-        if (@($run.Touched).Count -eq 0) { throw }
+        if (@($run.Touched).Count -eq 0) {
+            Remove-UpdateJournal
+            if ($panelStopped) { try { Start-Panel } catch { Write-Warning "The panel could not be started again: start it with Start-Service $PanelService." } }
+            throw
+        }
         $why = ConvertTo-PrintableText ($_.Exception.Message.Trim())
         Write-Warning "The updated Pulsar does not work: $why"
+        # A panel that was stopped for the backup and not replaced runs again first: the agent's check signs in at it.
+        if ($panelStopped -and @($run.Touched) -notcontains 'panel') {
+            try { Start-Panel } catch { Write-Warning "The panel could not be started again ($(ConvertTo-PrintableText $_.Exception.Message)): start it with Start-Service $PanelService." }
+        }
         $undo = Undo-Update $run $backup
         $target = if ($run.To) { " to $($run.To)" } else { '' }
         $previous = if ($run.From) { " to $($run.From)" } else { '' }
         if ($undo.Ok) {
+            Remove-UpdateJournal
             $message = "The update${target} failed and Pulsar was put back${previous}: $why"
             Write-UpdateResult 'rolled_back' $message
             throw (New-SetupError $ExitRolledBack $message)
@@ -3704,6 +3949,8 @@ function Invoke-Update([string[]] $parts) {
         Write-UpdateResult 'failed' $message
         throw (New-SetupError $ExitFailed $message)
     }
+    # It works: nothing is left to roll back.
+    Remove-UpdateJournal
     Write-UpdateResult 'succeeded'
 }
 
@@ -4838,6 +5085,8 @@ $main = {
         if ($agentPackage) { Write-Warning "The agent is left as it is. $(Get-AgentPackageMessage $agentPackage)" }
         elseif (Test-Service $AgentService) { Uninstall-Agent }
         if (Test-Service $PanelService) { Uninstall-Panel }
+        # An update that was stopped must not be rolled back into a later install.
+        Remove-UpdateJournal
         # What -Mode Agent -TrustCertificate or -Mode AllInOne trusted (an agent from the MSI may need it: then it stays).
         if (-not $agentPackage) { Remove-TrustedCertificates }
         $removed = if ($agentPackage) { 'The panel is removed (not the agent: see above).' }
