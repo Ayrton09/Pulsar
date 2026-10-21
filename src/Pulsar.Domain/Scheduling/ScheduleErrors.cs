@@ -38,4 +38,8 @@ public static class ScheduleErrors
 
     /// <summary>The task runs only while the server does, and it did not.</summary>
     public static DomainError NotRunning { get; } = new("schedules.not_running", "The server was not running.");
+
+    /// <summary>A schedule valid when saved that this panel cannot read (a later time zone database or cron library).</summary>
+    public static DomainError Unreadable { get; } =
+        new("schedules.unreadable", "The task's schedule (its cron expression or time zone) can no longer be read: edit it to run it again.");
 }

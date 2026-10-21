@@ -645,6 +645,7 @@
       "missed": "The panel was not running at that time.",
       "interrupted": "The panel stopped before the run ended.",
       "not_running": "The server was not running.",
+      "unreadable": "The task's schedule (its cron expression or time zone) can no longer be read: edit it to run it again.",
       "error": "The panel could not run the task; its log has the details."
     },
     "notifications": {

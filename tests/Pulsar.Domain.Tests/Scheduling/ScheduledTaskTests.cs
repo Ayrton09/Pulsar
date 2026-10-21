@@ -1,3 +1,4 @@
+using System.Reflection;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Scheduling;
 using Pulsar.Domain.Servers;
@@ -94,6 +95,30 @@ public sealed class ScheduledTaskTests
                 Assert.Equal(first + TimeSpan.FromHours(5), now.ScheduledFor);
             });
         Assert.Equal(first + TimeSpan.FromHours(6), task.NextRunAt);
+    }
+
+    [Fact]
+    public void AScheduleThatCanNoLongerBeReadEndsInAFailedRunNotAnError()
+    {
+        // Valid when saved; a later time zone database or cron library may not read it (as a row loaded from the database).
+        foreach (var (property, value) in new[] { ("TimeZone", "Mars/Olympus_Mons"), ("CronExpression", "61 * * * *") })
+        {
+            var task = Daily("0 4 * * *", BuenosAires);
+            typeof(ScheduledTask).GetProperty(property)!.SetValue(task, value);
+            foreach (var parsed in new[] { "_expression", "_zone" })
+            {
+                typeof(ScheduledTask).GetField(parsed, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(task, null);
+            }
+
+            var due = task.NextRunAt!.Value;
+
+            var run = Assert.Single(task.Due(due));
+
+            Assert.Equal((ScheduledRunStatus.Failed, ScheduleErrors.Unreadable.Code), (run.Status, run.ErrorCode));
+            // Due no more: every other task of the panel is taken and runs.
+            Assert.Null(task.NextRunAt);
+            Assert.Empty(task.Due(due + TimeSpan.FromDays(1)));
+        }
     }
 
     [Fact]

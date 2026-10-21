@@ -49,13 +49,24 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
                 foreach (var run in task.Due(now))
                 {
                     db.ScheduledTaskRuns.Add(run);
-                    if (run.Status == ScheduledRunStatus.Running)
+                    switch (run.Status)
                     {
-                        toRun.Add((run.Id, task.Id));
-                    }
-                    else
-                    {
-                        LogMissed(task.Id, task.ServerId, run.Occurrences, run.ScheduledFor);
+                        case ScheduledRunStatus.Running:
+                            toRun.Add((run.Id, task.Id));
+                            break;
+                        case ScheduledRunStatus.Failed:
+                            // A schedule this panel cannot read: nobody sees it stop otherwise.
+                            LogUnreadable(task.Id, task.ServerId, task.CronExpression, task.TimeZone);
+                            if (await db.Servers.AsNoTracking().SingleOrDefaultAsync(s => s.Id == task.ServerId, cancellationToken) is { } server)
+                            {
+                                await scope.ServiceProvider.GetRequiredService<Notifier>().ScheduledTaskFailedAsync(server, task.Name, run.Message,
+                                    cancellationToken);
+                            }
+
+                            break;
+                        default:
+                            LogMissed(task.Id, task.ServerId, run.Occurrences, run.ScheduledFor);
+                            break;
                     }
                 }
             }
@@ -255,6 +266,10 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Scheduled task {TaskId} on server {ServerId} missed {Count} run(s) from {ScheduledFor} while the panel was not running")]
     private partial void LogMissed(ScheduledTaskId taskId, ServerId serverId, int count, DateTimeOffset scheduledFor);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Scheduled task {TaskId} on server {ServerId} stopped: its schedule \"{Cron}\" in {TimeZone} can no longer be read; edit it to run it again")]
+    private partial void LogUnreadable(ScheduledTaskId taskId, ServerId serverId, string cron, string timeZone);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Scheduled task {TaskId} ({Action}) on server {ServerId} failed unexpectedly")]
     private partial void LogRunFailed(Exception exception, ScheduledTaskId taskId, ServerId serverId, ScheduledAction action);

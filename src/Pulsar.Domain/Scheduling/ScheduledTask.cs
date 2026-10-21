@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Cronos;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Servers;
@@ -166,6 +167,7 @@ public sealed class ScheduledTask
     /// <summary>
     /// What is due at <paramref name="now"/>: one skipped run standing for every occurrence older than
     /// <see cref="MissedAfter"/>, then a run for an occurrence that is still on time. The next run moves past now.
+    /// A schedule that can no longer be read gives one failed run and is due no more until it is edited.
     /// </summary>
     public IReadOnlyList<ScheduledTaskRun> Due(DateTimeOffset now)
     {
@@ -174,7 +176,15 @@ public sealed class ScheduledTask
             return [];
         }
 
-        var (expression, zone) = Schedule();
+        if (!TrySchedule(out var expression, out var zone))
+        {
+            // Taken with the panel's other due tasks: they still run, and this one waits for an edit (Change parses again).
+            NextRunAt = null;
+            var unreadable = ScheduledTaskRun.Start(this, next, now);
+            unreadable.Failed(ScheduleErrors.Unreadable.Code, ScheduleErrors.Unreadable.Message, now);
+            return [unreadable];
+        }
+
         var runs = new List<ScheduledTaskRun>(2);
         var missedBefore = now - MissedAfter;
         DateTimeOffset? current = next;
@@ -236,12 +246,13 @@ public sealed class ScheduledTask
         return occurrences.Count == 0 ? ScheduleErrors.NeverRuns : occurrences.ToArray();
     }
 
-    private (CronExpression Expression, TimeZoneInfo Zone) Schedule()
+    private bool TrySchedule([NotNullWhen(true)] out CronExpression? expression, [NotNullWhen(true)] out TimeZoneInfo? zone)
     {
-        // Parsed once per loaded task: the stored values were valid when they were saved.
-        _expression ??= Parse(CronExpression) ?? throw new InvalidOperationException($"Task {Id} has an invalid cron expression.");
-        _zone ??= FindZone(TimeZone) ?? throw new InvalidOperationException($"Task {Id} has an unknown time zone.");
-        return (_expression, _zone);
+        // Parsed once per loaded task: the stored values were valid when they were saved, but this panel may not read them.
+        _expression ??= Parse(CronExpression);
+        _zone ??= FindZone(TimeZone);
+        (expression, zone) = (_expression, _zone);
+        return expression is not null && zone is not null;
     }
 
     /// <summary>The next occurrence in UTC (Cronos gives it in the zone's offset; the database stores UTC only).</summary>

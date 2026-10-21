@@ -240,6 +240,36 @@ public sealed class ServerScheduleTests(PulsarApiFactory factory) : IClassFixtur
         Assert.Equal(ScheduleErrors.Interrupted.Code, failed.ErrorCode);
     }
 
+    [DatabaseFact]
+    public async Task ATaskWhoseScheduleCanNoLongerBeReadFailsAloneAndTheOthersRun()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "unreadable");
+        var server = await RunningServerAsync(admin, agent, "Unreadable");
+        var broken = await CreateAsync(admin, server, new ScheduledTaskRequest("Nightly restart", "0 4 * * *", "UTC", ScheduledAction.Restart, null,
+            false, false, true));
+        var working = await CreateAsync(admin, server, new ScheduledTaskRequest("Nightly notice", "0 4 * * *", "UTC", ScheduledAction.ConsoleCommand,
+            "say hi", false, false, true));
+        // Valid when saved; a later time zone database may not know it.
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IPulsarDbContext>().ScheduledTasks.Where(t => t.Id == new ScheduledTaskId(broken.Id))
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.TimeZone, "Mars/Olympus_Mons"), Ct);
+        }
+
+        await PassAsync(broken.NextRunAt!.Value + TimeSpan.FromSeconds(1));
+
+        var failed = Assert.Single((await RunsAsync(admin, server, broken.Id)).Runs);
+        Assert.Equal((ScheduledRunStatus.Failed, ScheduleErrors.Unreadable.Code), (failed.Status, failed.ErrorCode));
+        Assert.Null((await ListAsync(admin, server)).Tasks.Single(t => t.Id == broken.Id).NextRunAt);
+        ScheduledRunView? run = null;
+        await InProcessAgent.EventuallyAsync(async () =>
+        {
+            run = Assert.Single((await RunsAsync(admin, server, working.Id)).Runs);
+            return run.Status == ScheduledRunStatus.Succeeded;
+        }, () => $"the other task ran (last: {run?.Status} {run?.ErrorCode})");
+    }
+
     private async Task<SchedulerPass> PassAsync(DateTimeOffset now) =>
         await factory.Services.GetRequiredService<Scheduler>().RunDueAsync(now, Ct);
 

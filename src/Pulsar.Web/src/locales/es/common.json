@@ -645,6 +645,7 @@
       "missed": "El panel no estaba en marcha a esa hora.",
       "interrupted": "El panel se detuvo antes de que terminara la ejecución.",
       "not_running": "El servidor no estaba en marcha.",
+      "unreadable": "El panel ya no puede leer el horario de la tarea (su expresión cron o su zona horaria): editala para que vuelva a ejecutarse.",
       "error": "El panel no pudo ejecutar la tarea; su log tiene los detalles."
     },
     "notifications": {
