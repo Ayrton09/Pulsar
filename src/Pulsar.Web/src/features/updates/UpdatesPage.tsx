@@ -186,6 +186,8 @@ function ApplyDialog({ nodes, version, onClose }: { nodes: NodeUpdateView[]; ver
         nodeIds: nodes.map((n) => n.nodeId),
         password,
         code: me.twoFactorEnabled ? code.replace(/[\s-]/g, '') : null,
+        // The release this dialog names: another one found meanwhile is refused (update.changed), not installed.
+        version,
       },
       {
         onSuccess: (results) => {

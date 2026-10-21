@@ -162,15 +162,21 @@ public sealed partial class PanelUpdates(
 
     /// <summary>
     /// Asks each node to install the newest release (the caller checked the administrator's password and code): a node
-    /// that cannot take it now is left with why, the others are told.
+    /// that cannot take it now is left with why, the others are told. Only <paramref name="confirmedVersion"/>, the release the
+    /// administrator confirmed: another one found since is refused.
     /// </summary>
-    public async Task<Result<IReadOnlyList<UpdateRequestResult>>> RequestAsync(IReadOnlyList<NodeId> nodes, CancellationToken cancellationToken)
+    public async Task<Result<IReadOnlyList<UpdateRequestResult>>> RequestAsync(IReadOnlyList<NodeId> nodes, string confirmedVersion, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(nodes);
         var state = await StateAsync(cancellationToken);
         if (Latest(state) is not { } latest)
         {
             return UpdateErrors.NothingAvailable;
+        }
+
+        if (!string.Equals(latest.Manifest.Version, confirmedVersion, StringComparison.Ordinal))
+        {
+            return UpdateErrors.Changed;
         }
 
         var results = new List<UpdateRequestResult>();
@@ -391,4 +397,6 @@ public sealed partial class PanelUpdates(
 public static class UpdateErrors
 {
     public static readonly DomainError NothingAvailable = new("update.nothing_available", "No newer release is known: check for updates first.");
+
+    public static readonly DomainError Changed = new("update.changed", "The release on offer changed since it was shown: look at it again.");
 }

@@ -814,6 +814,7 @@
       "in_progress": "Hay una actualización en curso.",
       "panel_first": "Primero actualizá la PC del panel.",
       "nothing_available": "No se conoce ninguna versión más nueva: primero buscá actualizaciones.",
+      "changed": "La versión disponible cambió desde que la viste: revisala y confirmá de nuevo.",
       "invalid_nodes": "Elegí los nodos a actualizar.",
       "not_newer": "El nodo ya tiene esta versión o una más nueva.",
       "msi_managed": "El MSI del agente mantiene este nodo: actualizalo con un paquete más nuevo.",

@@ -19,7 +19,11 @@ public sealed record UpdateSettingsRequest(bool CheckAutomatically);
 /// <param name="NodeIds">The nodes to update: the one the panel runs on updates the panel too.</param>
 /// <param name="Password">The administrator's current password.</param>
 /// <param name="Code">The authenticator code, with two-factor authentication on (never a recovery code).</param>
-public sealed record ApplyUpdateRequest(IReadOnlyList<Guid> NodeIds, string Password, string? Code);
+/// <param name="Version">
+/// The release the administrator was shown and confirmed: another one found since (by another administrator's look, or
+/// the daily one) is refused with <c>update.changed</c>, to be looked at again.
+/// </param>
+public sealed record ApplyUpdateRequest(IReadOnlyList<Guid> NodeIds, string Password, string? Code, string Version);
 
 /// <summary>
 /// Pulsar's updates (Phase 19, docs/guides/update.md, "One-click updates"): <c>settings.manage</c> sees what is available
@@ -87,7 +91,7 @@ public static class UpdateEndpoints
             return wrongCode;
         }
 
-        var requested = await panelUpdates.RequestAsync([.. request.NodeIds.Select(id => new NodeId(id))], ct);
+        var requested = await panelUpdates.RequestAsync([.. request.NodeIds.Select(id => new NodeId(id))], request.Version, ct);
         return requested.IsSuccess ? TypedResults.Ok(requested.Value) : ApiProblems.FromDomainError(requested.Error!);
     }
 }

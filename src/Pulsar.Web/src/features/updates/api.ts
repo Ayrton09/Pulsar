@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, unwrap, type Schemas } from '../../api/client';
+import { ApiError, api, unwrap, type Schemas } from '../../api/client';
 import { invalidateAfterChange } from '../../lib/queries';
 import { adminKeys } from '../admin/api';
 
@@ -58,5 +58,10 @@ export function useApplyUpdate() {
   return useMutation({
     mutationFn: (body: Schemas['ApplyUpdateRequest']) => unwrap(api.POST('/api/v1/updates/apply', { body })),
     onSuccess: () => invalidateAfterChange(queryClient, { queryKey: updateKeys.all }, { queryKey: adminKeys.audit }),
+    // Another release is on offer now: the page shows it, to be confirmed again.
+    onError: (error) =>
+      error instanceof ApiError && error.code === 'update.changed'
+        ? queryClient.invalidateQueries({ queryKey: updateKeys.all })
+        : undefined,
   });
 }

@@ -86,14 +86,22 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
         Assert.Equal("update.panel_first", otherView.Blocked);
 
         // A wrong password starts nothing (and counts, as every wrong password does).
-        using (var wrong = await admin.PostAsync("/api/v1/updates/apply", new ApplyUpdateRequest([hostView.NodeId], "not the password", null)))
+        using (var wrong = await admin.PostAsync("/api/v1/updates/apply", new ApplyUpdateRequest([hostView.NodeId], "not the password", null, Next)))
         {
             await SetupTests.AssertProblemAsync(wrong, HttpStatusCode.BadRequest, "auth.wrong_current_password");
         }
 
         Assert.Empty(host.Platform.Started);
+        // What the administrator confirmed is what is installed: a release found since (another administrator's look,
+        // the daily one) is refused, to be looked at again.
+        using (var stale = await admin.PostAsync("/api/v1/updates/apply", new ApplyUpdateRequest([hostView.NodeId], PulsarApiFactory.AdminPassword, null, "1.0.2")))
+        {
+            await SetupTests.AssertProblemAsync(stale, HttpStatusCode.Conflict, "update.changed");
+        }
+
+        Assert.Empty(host.Platform.Started);
         using var applied = await admin.PostAsync("/api/v1/updates/apply",
-            new ApplyUpdateRequest([hostView.NodeId, otherView.NodeId], PulsarApiFactory.AdminPassword, null));
+            new ApplyUpdateRequest([hostView.NodeId, otherView.NodeId], PulsarApiFactory.AdminPassword, null, Next));
         var results = await ReadAsync<List<UpdateRequestResult>>(applied);
         Assert.True(results.Single(r => r.NodeId == hostView.NodeId).Sent);
         Assert.Equal("update.panel_first", results.Single(r => r.NodeId == otherView.NodeId).ErrorCode);
@@ -125,7 +133,7 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
             Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
         }
 
-        using (var denied = await viewer.PostAsync("/api/v1/updates/apply", new ApplyUpdateRequest([Guid.NewGuid()], AccessScenario.Password, null)))
+        using (var denied = await viewer.PostAsync("/api/v1/updates/apply", new ApplyUpdateRequest([Guid.NewGuid()], AccessScenario.Password, null, Next)))
         {
             Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
         }
@@ -143,7 +151,7 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
         }
 
         using var refused = await script.PostAsJsonAsync(new Uri("/api/v1/updates/apply", UriKind.Relative),
-            new ApplyUpdateRequest([Guid.NewGuid()], AccessScenario.Password, null), AccessScenario.Json, Ct);
+            new ApplyUpdateRequest([Guid.NewGuid()], AccessScenario.Password, null, Next), AccessScenario.Json, Ct);
         Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
     }
 

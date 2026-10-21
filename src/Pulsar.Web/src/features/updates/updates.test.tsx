@@ -93,7 +93,8 @@ describe('updates', () => {
     await user.click(confirm);
 
     expect(await within(dialog).findByText(/Home PC: The agent MSI maintains this node/)).toBeInTheDocument();
-    expect(sent).toEqual({ nodeIds: [hostId], password: 'my password', code: null });
+    // The release the dialog named: the panel refuses another one found meanwhile.
+    expect(sent).toEqual({ nodeIds: [hostId], password: 'my password', code: null, version: '1.0.1' });
   });
 
   it('says why a wrong password was refused, and asks for the code with two-factor authentication', async () => {

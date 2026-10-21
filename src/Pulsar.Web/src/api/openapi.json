@@ -12852,7 +12852,8 @@
         "required": [
           "nodeIds",
           "password",
-          "code"
+          "code",
+          "version"
         ],
         "type": "object",
         "properties": {
@@ -12871,6 +12872,9 @@
               "null",
               "string"
             ]
+          },
+          "version": {
+            "type": "string"
           }
         }
       },

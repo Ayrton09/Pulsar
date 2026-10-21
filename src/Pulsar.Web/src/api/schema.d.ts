@@ -12364,6 +12364,7 @@ export interface components {
             nodeIds: string[];
             password: string;
             code: null | string;
+            version: string;
         };
         ApproveNodesRequest: {
             nodeIds: string[];
