@@ -71,6 +71,12 @@ public sealed class SftpOptions
     /// </summary>
     internal TimeSpan ReadIdleRelease { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// The least time a failed password check takes, counted once it is the account's turn (more than any of the paths
+    /// needs: a password hash and a few queries); tests lengthen it to see it.
+    /// </summary>
+    internal TimeSpan FailedPasswordCheckTime { get; set; } = TimeSpan.FromMilliseconds(400);
+
     /// <summary>Tests: false keeps the server from listening at all.</summary>
     internal bool Listen { get; set; } = true;
 

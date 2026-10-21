@@ -137,7 +137,8 @@ The same as the browser's sign-in:
 - Wrong passwords count towards the account's lockout (5 in a row lock it for 15 minutes), each one, however many
   connections they come in, at the same time or not: an account's checks run one at a time, over SFTP and in the
   browser alike, and each keeps its audit entry. Wrong codes count too.
-- Disabled and locked-out users, and unknown user names, get the same answer as a wrong password, after the same time.
+- Disabled and locked-out users, and unknown user names, get the same answer as a wrong password, after the same time:
+  every failed password check takes at least 0.4 seconds, so the database work that differs between them does not show.
 - Attempts from one address are limited (`RateLimiting:Auth`, 10 a minute by default, counted apart from the web's),
   and one connection may try a password 3 times. Signed attempts with an SSH key take turns of the same limit; the
   questions whether a key would do have one of their own, 6 times as large.

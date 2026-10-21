@@ -202,10 +202,12 @@ internal sealed partial class SftpAuthenticator : IDisposable
 
         // One check at a time per account, as in the browser (SignInLocks): names of no user wait the same.
         using var turn = await _locks.AcquireAsync(user?.NormalizedUserName ?? users.NormalizeName(login), cancellationToken);
+        var checkedFrom = _clock.GetTimestamp();
         if (user is null)
         {
             users.PasswordHasher.VerifyHashedPassword(new PulsarUser(), s_dummyPasswordHash, password);
             await FailAsync(services, null, "invalid_credentials");
+            await TakeFailedCheckTimeAsync(checkedFrom, cancellationToken);
             return (Outcome.Failed, null, null);
         }
 
@@ -217,6 +219,7 @@ internal sealed partial class SftpAuthenticator : IDisposable
             // Locked-out and disabled users get the answer a wrong password gets, after as long.
             users.PasswordHasher.VerifyHashedPassword(user, s_dummyPasswordHash, password);
             await FailAsync(services, user, lockedOut ? "locked_out" : "not_allowed");
+            await TakeFailedCheckTimeAsync(checkedFrom, cancellationToken);
             return (Outcome.Failed, null, null);
         }
 
@@ -224,6 +227,7 @@ internal sealed partial class SftpAuthenticator : IDisposable
         {
             await SignInLocks.CountFailureAsync(users, services.GetRequiredService<PulsarDbContext>(), user);
             await FailAsync(services, user, await users.IsLockedOutAsync(user) ? "locked_out" : "invalid_credentials");
+            await TakeFailedCheckTimeAsync(checkedFrom, cancellationToken);
             return (Outcome.Failed, null, null);
         }
 
@@ -249,6 +253,29 @@ internal sealed partial class SftpAuthenticator : IDisposable
 
         var principal = await SignInAsync(connection, services, users, user, shortId, secondFactor: null, key: null);
         return (principal is null ? Outcome.Failed : Outcome.SignedIn, principal, null);
+    }
+
+    /// <summary>
+    /// A failed password check ends <see cref="SftpOptions.FailedPasswordCheckTime"/> after <paramref name="from"/> at the
+    /// earliest: an unknown name, a locked or disabled account and a wrong password cost different database work, which
+    /// the answer's time would otherwise tell.
+    /// </summary>
+    private async Task TakeFailedCheckTimeAsync(long from, CancellationToken cancellationToken)
+    {
+        var rest = _options.FailedPasswordCheckTime - _clock.GetElapsedTime(from);
+        if (rest <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(rest, _clock, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // The connection ended: nobody waits for the answer.
+        }
     }
 
     private async Task<ClaimsPrincipal?> CheckCodeAsync(SftpConnection connection, UserId userId, string? shortId, string answer,
