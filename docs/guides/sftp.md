@@ -117,8 +117,8 @@ root).
   key does not clear the count of wrong passwords. Key attempts take turns of the per-address limit
   (`RateLimiting:Auth`), and one connection may offer at most `Sftp:MaxKeyAttemptsPerConnection` keys (6): past them,
   the next question is answered no and the next signed attempt ends the connection. A request with an algorithm the
-  panel does not take (`ssh-rsa`, which SSH.NET tries first, DSA, security keys, certificates) is refused and counts as
-  one of them; one past them ends the connection. Whatever the method, a connection makes at most 64 sign-in requests
+  panel does not take (`ssh-rsa`, which SSH.NET tries first, DSA, security keys, certificates), or with a key that is
+  not a well-formed one of its algorithm (a point off its curve, say), is refused and counts as one of them; one past them ends the connection. Whatever the method, a connection makes at most 64 sign-in requests
   (far more than a client trying all its keys, a password and codes needs): the 65th ends it.
 - Whether a key would do: clients ask before they sign with it, and the panel answers yes only for a key the user named
   has added, as OpenSSH does. Someone who has one of your public keys (they are public by nature, for example on GitHub)

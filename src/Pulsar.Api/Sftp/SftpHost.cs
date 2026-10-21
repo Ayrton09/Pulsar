@@ -594,8 +594,9 @@ internal sealed partial class SftpHost(
 
 /// <summary>
 /// The server's SSH session, refusing a <c>publickey</c> request for an algorithm it does not take (<c>ssh-rsa</c>, which
-/// is SHA-1; <c>ssh-dss</c>; security keys; certificates) as the protocol says (RFC 4252, 7): the library would end the
-/// connection instead, before the client tried its other keys or its password (SSH.NET asks with <c>ssh-rsa</c> first).
+/// is SHA-1; <c>ssh-dss</c>; security keys; certificates), or with a key that is not a well-formed one of that algorithm,
+/// as the protocol says (RFC 4252, 7): the library would end the connection instead, before the client tried its other
+/// keys or its password (SSH.NET asks with <c>ssh-rsa</c> first).
 /// Each counts as a question about a key (<see cref="SftpOptions.MaxKeyAttemptsPerConnection"/>): past them, the
 /// connection ends. Sign-in requests of every method are bounded too (<see cref="MaxAuthenticationRequests"/>), and the
 /// sign-in messages only a server sends end the connection.
@@ -634,8 +635,8 @@ internal sealed class SftpServerSession(SshSessionConfiguration configuration, T
         }
 
         if (message is AuthenticationRequestMessage { MethodName: AuthenticationMethods.PublicKey } request
-            && request.ConvertTo<PublicKeyRequestMessage>().KeyAlgorithmName is var algorithm
-            && !Config.PublicKeyAlgorithms.Any(a => a is not null && a.Name == algorithm))
+            && request.ConvertTo<PublicKeyRequestMessage>() is var query
+            && !Config.PublicKeyAlgorithms.Any(a => a is not null && a.Name == query.KeyAlgorithmName && IsKeyFor(a, query.PublicKey)))
         {
             if (++connection.KeyQuestions > maxKeyQuestions)
             {
@@ -647,6 +648,25 @@ internal sealed class SftpServerSession(SshSessionConfiguration configuration, T
         }
 
         return base.HandleMessageAsync(message, cancellation);
+    }
+
+    /// <summary>
+    /// Whether the library can import the blob as a key of the algorithm, as it will right after: a blob it cannot (a point
+    /// off its curve, which Windows takes for a curve it does not support, among others) would end there in an error of its
+    /// own instead of a refusal. Whatever the import throws, the key is not one to ask about.
+    /// </summary>
+    private static bool IsKeyFor(PublicKeyAlgorithm algorithm, Microsoft.DevTunnels.Ssh.Buffer blob)
+    {
+        try
+        {
+            using var key = algorithm.CreateKeyPair();
+            key.SetPublicKeyBytes(blob);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 }
 

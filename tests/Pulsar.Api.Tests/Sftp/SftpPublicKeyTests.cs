@@ -246,6 +246,27 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
     }
 
     [DatabaseFact]
+    public async Task KeysOffTheirCurveAreRefusedLikeAnyKeyNotTaken()
+    {
+        _ = await AccessScenario.CreateAsync(factory);
+        var port = await factory.PortAsync();
+        using var session = await RawClientSession.PastAWrongPasswordAsync(port);
+
+        // Asked about before anyone signs in: Windows takes such a point for a curve it does not support, which the
+        // library would let through as an error of its own instead of an answer.
+        foreach (var curve in new[] { ECCurve.NamedCurves.nistP256, ECCurve.NamedCurves.nistP384 })
+        {
+            using var key = TestSshKey.Ecdsa(curve);
+            var blob = key.Blob.ToArray();
+            blob[^2] ^= 0x5a;
+            await session.SendAsync(new PublicKeyQueryMessage(key.Type, blob));
+        }
+
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(session.Refusals == 2), "both keys refused");
+        Assert.False(session.IsClosed);
+    }
+
+    [DatabaseFact]
     public async Task DisabledLockedOutAndUnpreparedUsersAreRefusedTheirKeys()
     {
         var scenario = await AccessScenario.CreateAsync(factory);
@@ -463,6 +484,19 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
             {
                 _tcp.Dispose();
             }
+        }
+    }
+
+    /// <summary>A question about a key (RFC 4252, 7) with any blob: the library's own message takes it from a key pair.</summary>
+    private sealed class PublicKeyQueryMessage(string algorithm, byte[] blob)
+        : AuthenticationRequestMessage("ssh-connection", AuthenticationMethods.PublicKey, "flood-nobody")
+    {
+        protected override void OnWrite(ref Microsoft.DevTunnels.Ssh.IO.SshDataWriter writer)
+        {
+            base.OnWrite(ref writer);
+            writer.Write(false);
+            writer.Write(algorithm, Encoding.ASCII);
+            writer.WriteBinary(Microsoft.DevTunnels.Ssh.Buffer.From(blob));
         }
     }
 
