@@ -452,9 +452,82 @@ function Test-PrivateFolder([string] $path) {
     }
 }
 
+# The SID of the account Windows gives a service (NT SERVICE\<name>): the SHA-1 of the upper-case name in UTF-16, as five
+# 32-bit numbers after S-1-5-80. Worked out here, not looked up, because the account cannot be looked up before the service
+# exists, and the folders below are checked before anything is installed (TrustedInstaller's SID, in $TrustedWriters, is
+# what this gives for 'TrustedInstaller').
+function Get-ServiceAccountSid([string] $name) {
+    $sha1 = [Security.Cryptography.SHA1]::Create()
+    try { $hash = $sha1.ComputeHash([Text.Encoding]::Unicode.GetBytes($name.ToUpperInvariant())) }
+    finally { $sha1.Dispose() }
+    $numbers = foreach ($index in 0..4) { [BitConverter]::ToUInt32($hash, 4 * $index) }
+    return New-Object Security.Principal.SecurityIdentifier ('S-1-5-80-' + ($numbers -join '-'))
+}
+
+# What makes a folder of Pulsar's data ($DataRoot, the panel's data folder) unfit to hold keys and settings, one line each,
+# nothing when it is fit: not a folder, a link, owned by anyone but SYSTEM or Administrators (the owner can always change
+# the permissions), permissions inherited (from C:\ProgramData, whose subfolders any user may add to), or anybody allowed in
+# besides SYSTEM, Administrators and the $allowed SIDs.
+function Get-DataFolderProblems([string] $path, [string[]] $allowed = @()) {
+    $item = Get-Item -LiteralPath $path -Force
+    if ($item -isnot [IO.DirectoryInfo]) { "$path is not a folder"; return }
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { "$path is a link"; return }
+    $acl = Get-Acl -LiteralPath $path
+    $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier])
+    if ($null -eq $owner -or $owner.Value -notin 'S-1-5-18', 'S-1-5-32-544') { "$path is owned by $(if ($null -ne $owner) { Get-AccountName $owner } else { 'nobody' })" }
+    if (-not $acl.AreAccessRulesProtected) { "$path inherits its permissions from the folder above" }
+    $permitted = @('S-1-5-18', 'S-1-5-32-544') + @($allowed)
+    $others = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -notin $permitted } |
+            ForEach-Object { Get-AccountName $_.IdentityReference } | Select-Object -Unique)
+    foreach ($other in $others) { "$other is allowed in $path" }
+}
+
+# The permissions of a folder of Pulsar's data: SYSTEM and Administrators full control, $modify (SIDs) may change what is in
+# it, nothing inherited. Given when the folder is made (New-DataFolder), or put on one that was left open (Initialize-DataFolder).
+function New-DataFolderSecurity([string[]] $modify) {
+    $security = New-Object Security.AccessControl.DirectorySecurity
+    $security.SetAccessRuleProtection($true, $false)
+    foreach ($sid in 'S-1-5-18', 'S-1-5-32-544') {
+        $security.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier $sid), 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+    }
+    foreach ($sid in $modify) {
+        $security.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier $sid), 'Modify', 'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+    }
+    return $security
+}
+
+# Makes one of the folders where Pulsar keeps what must stay private (C:\ProgramData\Pulsar, the panel's keys, certificates
+# and logs, the update folders) with its permissions given in the call that creates it, as New-SetupFolder does, or checks the
+# one that is there. A folder created with New-Item inherits C:\ProgramData's permissions, which let any user add to it; and
+# one that somebody else made first stays theirs after the permissions are set (its owner can change them again), with
+# whatever they put in it. So a folder that is there already must be a folder, not a link, owned by SYSTEM or Administrators,
+# with nobody else allowed in (besides $modify, the SIDs the install gives access to). Refused, not repaired, since what is in
+# it is not known; $repair is for a folder this script owns the contents of by its own rule (the data root, whose subfolders
+# are checked one by one): when only its permissions are wrong, and it is owned by SYSTEM or Administrators, they are set.
+function Initialize-DataFolder([string] $path, [string[]] $modify = @(), [bool] $repair = $false) {
+    $made = $false
+    if (-not (Test-Path -LiteralPath $path)) {
+        $null = [IO.Directory]::CreateDirectory($path, (New-DataFolderSecurity $modify))
+        $made = $true
+    }
+    $problems = @(Get-DataFolderProblems $path $modify)
+    if ($problems.Count -gt 0 -and $repair -and -not $made) {
+        $item = Get-Item -LiteralPath $path -Force
+        $owner = if ($item -is [IO.DirectoryInfo] -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) { (Get-Acl -LiteralPath $path).GetOwner([Security.Principal.SecurityIdentifier]) } else { $null }
+        if ($null -ne $owner -and $owner.Value -in 'S-1-5-18', 'S-1-5-32-544') {
+            $item.SetAccessControl((New-DataFolderSecurity $modify))
+            $problems = @(Get-DataFolderProblems $path $modify)
+        }
+    }
+    if ($problems.Count -gt 0) {
+        $who = if ($modify.Count -gt 0) { 'SYSTEM, Administrators and the panel''s service account' } else { 'SYSTEM and Administrators' }
+        throw (New-SetupError $ExitUnsupported "Pulsar keeps its private data (keys, certificates, settings, updates) in $path, which must be for $who alone, and is not:$([Environment]::NewLine)$(Get-UntrustedWritersMessage $problems)$([Environment]::NewLine)Someone else may have made it. Move out of it what you need, delete that folder (docs/guides/install.md, ""Starting over"") and run this script again.")
+    }
+}
+
 # Makes this script's folder if needed and starts this run's log there.
 function Start-SetupLog {
-    if (-not (Test-Path -LiteralPath $DataRoot)) { $null = New-Item -ItemType Directory $DataRoot }
+    Initialize-DataFolder $DataRoot @() $true
     if (-not (Test-Path -LiteralPath $SetupRoot)) { New-SetupFolder $SetupRoot }
     $findings = @(Find-UntrustedWriters $SetupRoot)
     if ($findings.Count -gt 0 -or -not (Test-PrivateFolder $SetupRoot)) {
@@ -1965,6 +2038,15 @@ function Assert-PanelInstallable {
     if (Test-Service $PanelService) { throw (New-SetupError $ExitUsage 'The panel is already installed on this machine. Use -Update to update it, or -Uninstall first.') }
     if ($Mode -eq 'AllInOne' -and (Test-Service $AgentService)) { throw (New-SetupError $ExitUsage 'The agent is already installed on this machine. Use -Update to update it, or -Uninstall first.') }
     Assert-HostNames
+    # The folders the install keeps its private data in, when they are there already (a reinstall; or one a local user made
+    # first): checked now, so that nothing is changed if they are not fit (Initialize-DataFolder).
+    if (Test-Path -LiteralPath $PanelData) {
+        $problems = @(Get-DataFolderProblems $PanelData @((Get-ServiceAccountSid $PanelService).Value))
+        if ($problems.Count -gt 0) {
+            throw (New-SetupError $ExitUnsupported "$PanelData holds the panel's keys, certificates and settings, and must be for SYSTEM, Administrators and the panel's service account alone, and is not:$([Environment]::NewLine)$(Get-UntrustedWritersMessage $problems)$([Environment]::NewLine)Someone else may have made it. Move out of it what you need, delete that folder (docs/guides/install.md, ""Starting over"") and run this script again. Nothing was changed.")
+        }
+    }
+    if (Test-Path -LiteralPath $UpdateRoot) { Initialize-UpdateFolder $UpdateRoot }
     $https = $Port
     $agents = $AgentsPort
     $what = @{ Https = '-Port'; Agents = '-AgentsPort' }
@@ -2069,8 +2151,10 @@ function Install-Panel {
         $null = Invoke-Native $Sc failure $PanelService reset= 86400 actions= restart/5000/restart/15000/restart/60000
         $null = Invoke-Native $Sc failureflag $PanelService 1
 
-        New-Item -ItemType Directory -Force $PanelData | Out-Null
-        Set-PrivateAcl $PanelData -modify @($PanelAccount)
+        # Made with its permissions in the call that creates it, or checked (Initialize-DataFolder): a folder a local user made
+        # first would stay theirs. Its subfolders inherit them. The update folder too: a user's Updates would block updates.
+        Initialize-DataFolder $PanelData @((Get-ServiceAccountSid $PanelService).Value)
+        Initialize-UpdateFolder $UpdateRoot
         foreach ($folder in 'keys', 'logs', 'tls') { New-Item -ItemType Directory -Force (Join-Path $PanelData $folder) | Out-Null }
 
         $setupToken = New-Secret 48

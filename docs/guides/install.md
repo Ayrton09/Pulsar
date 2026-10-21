@@ -1054,7 +1054,13 @@ database as `pulsar`, never as `postgres`: the commands below connect as `postgr
 
   Then run the installer again. With the database gone, `C:\ProgramData\Pulsar\Panel` (the old panel's keys and logs)
   protects nothing: delete it too before installing again (a new panel makes its own keys, and `-RestoreFrom` brings
-  the backup's).
+  the backup's). The installer makes `C:\ProgramData\Pulsar\Panel` and `C:\ProgramData\Pulsar\Updates` with their
+  permissions in the call that creates them (SYSTEM and Administrators, and the panel's service account in `Panel`;
+  nothing inherited from `C:\ProgramData`, where any user may add folders), and checks the ones that are there before it
+  changes anything: owned by SYSTEM or Administrators, not a link, nobody else allowed in. One that is not (a local user
+  made it first, say) stops the install with exit code 3 and the names it found: move out of it what you need, delete the
+  folder and run the installer again. `C:\ProgramData\Pulsar` itself, if only its permissions are open (an earlier
+  install left it inheriting them), the installer closes by itself.
 - **Or** give the panel another database with `-ConnectionString` (step 1).
 
 ## Uninstalling

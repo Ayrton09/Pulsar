@@ -1294,6 +1294,7 @@ try {
     function Test-Preflight([hashtable] $values) {
         & {
             $PanelService = 'PulsarPanel'; $AgentService = 'PulsarAgent'; $Mode = 'Panel'; $AdminUserName = 'admin'; $AdminPassword = ConvertTo-Secure 'a long enough password'
+            $PanelData = Join-Path $root 'no-panel-data'; $UpdateRoot = Join-Path $root 'no-updates'
             $Port = $freePorts[0]; $AgentsPort = 0; $SftpPort = $freePorts[1]; $CertificatePath = $null; $CertificatePassword = $null; $RestoreFrom = $null; $HostName = @()
             foreach ($name in $values.Keys) { Set-Variable -Name $name -Value $values[$name] }
             function Test-Service([string] $name) { return $false }
@@ -3764,6 +3765,61 @@ Check 'docs: install.md lists exit code 7 in the unattended exit codes' ($guideI
 Check 'docs: releasing.md covers the key, the build, the publishing, strictly increasing versions, -MinimumUpdateFrom and key rotation' (
     $guideReleasing.Contains('new-key') -and $guideReleasing.Contains('UpdateKeys.Trusted') -and $guideReleasing.Contains('-UpdateSigningKey') -and $guideReleasing.Contains('Publish-GitHubRelease.ps1') -and $guideReleasing.Contains('-MinimumUpdateFrom') -and
     $guideReleasing -match '(?i)strictly increas' -and $guideReleasing -match '(?i)rotat' -and $guideReleasing -match '(?i)public' -and $guideReleasing.Contains('PULSAR_UPDATE_KEY_PASSPHRASE') -and $guideReleasing.Contains('offline'))
+
+# --- Audit fixes of the install, update and release scripts (each section runs the script's own functions on folders of this test's own) ---
+
+$elevatedNow = (New-Object Security.Principal.WindowsPrincipal ([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$installText = Get-Content -Raw -LiteralPath $installScript
+$auditRoot = Join-Path $Scratch ('pulsar-audit-tests-' + [Guid]::NewGuid().ToString('N'))
+$null = New-Item -ItemType Directory $auditRoot
+
+# 1. The data folders are made with their permissions in the call that creates them, or checked.
+$dataParts = Get-ScriptParts $installScript @('New-SetupError', 'Get-AccountName', 'Get-UntrustedWritersMessage', 'Get-ServiceAccountSid', 'Get-DataFolderProblems', 'New-DataFolderSecurity', 'Initialize-DataFolder') @('ExitUnsupported')
+foreach ($part in $dataParts.Values) { . ([scriptblock]::Create($part)) }
+Check 'data folders: a service''s account SID is worked out from its name (TrustedInstaller''s is the known one)' (
+    (Get-ServiceAccountSid 'TrustedInstaller').Value -ceq $TrustedWriters[2] -and (Get-ServiceAccountSid 'trustedinstaller').Value -ceq $TrustedWriters[2] -and
+    (Get-ServiceAccountSid 'PulsarPanel').Value -match '^S-1-5-80-\d+-\d+-\d+-\d+-\d+\z' -and (Get-ServiceAccountSid 'PulsarPanel').Value -cne (Get-ServiceAccountSid 'PulsarAgent').Value)
+$usersSid = 'S-1-5-32-545'
+$ordinaryFolder = Join-Path $auditRoot 'ordinary'
+$null = New-Item -ItemType Directory $ordinaryFolder
+$ordinaryProblems = @(Get-DataFolderProblems $ordinaryFolder)
+Check 'data folders: one that inherits its permissions is a problem' (@($ordinaryProblems | Where-Object { $_ -match 'inherits its permissions' }).Count -eq 1) ($ordinaryProblems -join '; ')
+$wideFolder = Join-Path $auditRoot 'wide'
+$null = [IO.Directory]::CreateDirectory($wideFolder, (New-DataFolderSecurity @($usersSid)))
+Check 'data folders: somebody allowed in besides SYSTEM, Administrators and the accounts given is named' (
+    @(Get-DataFolderProblems $wideFolder | Where-Object { $_ -match 'is allowed in' }).Count -eq 1 -and @(Get-DataFolderProblems $wideFolder @($usersSid) | Where-Object { $_ -match 'is allowed in|inherits' }).Count -eq 0)
+$wideRules = @((Get-Acl -LiteralPath $wideFolder).GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+Check 'data folders: the permissions given at creation are SYSTEM and Administrators full control and the given account modify, nothing inherited' (
+    (Get-Acl -LiteralPath $wideFolder).AreAccessRulesProtected -and @($wideRules | Where-Object { $_.IsInherited }).Count -eq 0 -and
+    (($wideRules | ForEach-Object { "$($_.IdentityReference.Value)=$($_.FileSystemRights)" } | Sort-Object) -join ',') -ceq 'S-1-5-18=FullControl,S-1-5-32-544=FullControl,S-1-5-32-545=Modify, Synchronize')
+$linkTarget = Join-Path $auditRoot 'link-target'
+$null = New-Item -ItemType Directory $linkTarget
+$junction = Join-Path $auditRoot 'junction'
+$null = New-Item -ItemType Junction -Path $junction -Target $linkTarget
+Check 'data folders: a link is a problem' (@(Get-DataFolderProblems $junction | Where-Object { $_ -match 'is a link' }).Count -eq 1 -and (Get-SetupExitCode (Get-Caught { Initialize-DataFolder $junction })) -eq 3)
+[IO.Directory]::Delete($junction)
+$asFile = Join-Path $auditRoot 'a-file'
+Set-Content -LiteralPath $asFile -Value 'x'
+Check 'data folders: a file in place of the folder is a problem' (@(Get-DataFolderProblems $asFile | Where-Object { $_ -match 'is not a folder' }).Count -eq 1)
+$caught = Get-Caught { Initialize-DataFolder $ordinaryFolder }
+Check 'data folders: an existing folder that is not fit is refused, not repaired, with how to fix it, exit code 3' (
+    (Get-SetupExitCode $caught) -eq 3 -and $caught.Exception.Message -match 'Move out of it what you need, delete that folder' -and $caught.Exception.Message -match [regex]::Escape($ordinaryFolder) -and
+    @(Get-DataFolderProblems $ordinaryFolder | Where-Object { $_ -match 'inherits' }).Count -eq 1) "$caught"
+$newFolder = Join-Path $auditRoot 'new\inner'
+$made = Get-Caught { Initialize-DataFolder $newFolder @($usersSid) }
+Check 'data folders: one that does not exist is made with those permissions (elevated), or refused for its owner when this account is not an administrator' (
+    $(if ($elevatedNow) { $null -eq $made -and @(Get-DataFolderProblems $newFolder @($usersSid)).Count -eq 0 } else { $null -ne $made -and $made.Exception.Message -match 'is owned by' })) "$made"
+$repairable = Join-Path $auditRoot 'repairable'
+$null = New-Item -ItemType Directory $repairable
+$repaired = Get-Caught { Initialize-DataFolder $repairable @() $true }
+Check 'data folders: with $repair a folder owned by SYSTEM or Administrators that only inherits is given the permissions (elevated); one owned by anybody else never is' (
+    $(if ($elevatedNow) { $null -eq $repaired -and @(Get-DataFolderProblems $repairable).Count -eq 0 } else { $null -ne $repaired -and $repaired.Exception.Message -match 'is owned by' -and (Get-Acl -LiteralPath $repairable).AreAccessRulesProtected -eq $false })) "$repaired"
+Check 'data folders: the data root, the panel''s data folder and the update folder are made or checked before anything is kept in them' (
+    $installText -match '(?s)function Start-SetupLog \{\s+Initialize-DataFolder \$DataRoot @\(\) \$true' -and $installText -notmatch 'New-Item -ItemType Directory \$DataRoot' -and
+    $installText -match '(?s)Initialize-DataFolder \$PanelData @\(\(Get-ServiceAccountSid \$PanelService\)\.Value\)\s+Initialize-UpdateFolder \$UpdateRoot\s+foreach \(\$folder in ''keys'', ''logs'', ''tls''\)' -and
+    $installText -notmatch 'Set-PrivateAcl \$PanelData' -and $installText -notmatch 'New-Item -ItemType Directory -Force \$PanelData')
+Check 'data folders: an existing panel data or update folder is checked before the install changes anything' (
+    (Get-ScriptParts $installScript @('Assert-PanelInstallable'))['Assert-PanelInstallable'] -match '(?s)Test-Path -LiteralPath \$PanelData\) \{\s+\$problems = @\(Get-DataFolderProblems \$PanelData @\(\(Get-ServiceAccountSid \$PanelService\)\.Value\)\).*Nothing was changed.*Initialize-UpdateFolder \$UpdateRoot')
 
 if ($script:failures -gt 0) {
     Write-Host "$($script:failures) check(s) failed." -ForegroundColor Red
