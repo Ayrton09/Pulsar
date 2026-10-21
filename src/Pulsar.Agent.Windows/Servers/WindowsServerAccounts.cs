@@ -5,6 +5,7 @@ using System.Security.Principal;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using Microsoft.Win32.SafeHandles;
+using Pulsar.Agent.Core.Processes;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.NetworkManagement.NetManagement;
@@ -29,6 +30,9 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
     private const uint ProfileNoUi = 0x00000001; // PI_NOUI
     private const uint UserExists = 2224; // NERR_UserExists
     private const uint UserNotFound = 2221; // NERR_UserNotFound
+    private const int ProfileDeleteAttempts = 4;
+
+    private static readonly TimeSpan s_profileDeleteRetry = TimeSpan.FromSeconds(1);
 
     private static readonly string[] s_grantedRights = ["SeBatchLogonRight"];
     private static readonly string[] s_deniedRights =
@@ -49,7 +53,10 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
         return string.Equals(key?.GetValue("ProductType") as string, "LanmanNT", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Creates the account (or takes over an existing one with that name) and sets its logon rights.</summary>
+    /// <summary>
+    /// Creates the account (or takes over an existing one with that name, if <see cref="RefusalToAdopt"/> allows) and
+    /// sets its logon rights.
+    /// </summary>
     public unsafe SecurityIdentifier Ensure(string name, string description)
     {
         ValidateName(name);
@@ -69,6 +76,14 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
             var status = PInvoke.NetUserAdd(null, 1, (byte*)&info, null);
             if (status == UserExists)
             {
+                // Looked at before anything of it changes (its rights, its password).
+                var (privilege, comment) = ExistingAccount(name);
+                if (RefusalToAdopt(privilege, comment, description) is { } refusal)
+                {
+                    throw new GameProcessException("server.account_unusable",
+                        $"The account {name} exists already and {refusal}: Pulsar does not run a server as it. Delete or rename that account.");
+                }
+
                 LogAccountExists(name);
             }
             else if (status != 0)
@@ -103,15 +118,7 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
         }
 
         ChangeRights(sid, add: false);
-        fixed (char* sidPtr = sid.Value)
-        {
-            // Fails harmlessly when the profile was never loaded.
-            if (!PInvoke.DeleteProfile(sidPtr, null, null))
-            {
-                var reason = Marshal.GetLastPInvokeErrorMessage();
-                LogProfileNotDeleted(name, reason);
-            }
-        }
+        DeleteProfile(name, sid);
 
         fixed (char* namePtr = name)
         {
@@ -126,6 +133,67 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
         DeleteLogonLock(name);
         Deleted?.Invoke(name);
         return true;
+    }
+
+    /// <summary>
+    /// Why an existing account of a server's name is not taken over, or null when it may be: Pulsar made it (its comment
+    /// is the one Pulsar sets: a provisioning that stopped halfway, a reinstalled agent), and it is no administrator,
+    /// whose group the server's processes would keep (their token drops privileges, not groups).
+    /// </summary>
+    internal static string? RefusalToAdopt(USER_PRIV privilege, string? comment, string description) =>
+        privilege != USER_PRIV.USER_PRIV_USER ? "is an administrator's or a guest's"
+        : !string.Equals(comment, description, StringComparison.Ordinal) ? "was not made by Pulsar"
+        : null;
+
+    private static unsafe (USER_PRIV Privilege, string? Comment) ExistingAccount(string name)
+    {
+        byte* buffer = null;
+        fixed (char* namePtr = name)
+        {
+            var status = PInvoke.NetUserGetInfo(null, namePtr, 1, &buffer);
+            if (status != 0)
+            {
+                throw new Win32Exception((int)status, $"Cannot read the account {name}.");
+            }
+        }
+
+        try
+        {
+            var info = (USER_INFO_1*)buffer;
+            return (info->usri1_priv, info->usri1_comment.ToString());
+        }
+        finally
+        {
+            _ = PInvoke.NetApiBufferFree(buffer);
+        }
+    }
+
+    /// <summary>
+    /// Deletes the account's profile, its folder included. One never loaded has nothing to delete; one still in use (a
+    /// process of the account just ending, the profile service unloading it) is tried again a few times. Once the account
+    /// is gone nothing can name the profile any more, so a profile left behind is said (a warning), not kept quiet.
+    /// </summary>
+    private unsafe void DeleteProfile(string name, SecurityIdentifier sid)
+    {
+        fixed (char* sidPtr = sid.Value)
+        {
+            for (var attempt = 1; !PInvoke.DeleteProfile(sidPtr, null, null); attempt++)
+            {
+                var error = (WIN32_ERROR)Marshal.GetLastPInvokeError();
+                if (error is WIN32_ERROR.ERROR_FILE_NOT_FOUND or WIN32_ERROR.ERROR_PATH_NOT_FOUND)
+                {
+                    return; // never loaded
+                }
+
+                if (attempt == ProfileDeleteAttempts)
+                {
+                    LogProfileNotDeleted(name, new Win32Exception((int)error).Message);
+                    return;
+                }
+
+                Thread.Sleep(s_profileDeleteRetry);
+            }
+        }
     }
 
     private void DeleteLogonLock(string name)
@@ -358,7 +426,8 @@ public sealed partial class WindowsServerAccounts(ILogger<WindowsServerAccounts>
     [LoggerMessage(Level = LogLevel.Information, Message = "Deleted the local account {Account} and its profile")]
     private partial void LogAccountDeleted(string account);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Profile of {Account} not deleted: {Reason}")]
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "The profile of {Account} could not be deleted ({Reason}): its profile folder stays, with what the server left there; delete it by hand")]
     private partial void LogProfileNotDeleted(string account, string reason);
 }
 

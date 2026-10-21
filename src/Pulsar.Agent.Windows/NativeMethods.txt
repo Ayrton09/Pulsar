@@ -70,6 +70,8 @@ CreateRestrictedToken
 NetUserAdd
 NetUserDel
 NetUserSetInfo
+NetUserGetInfo
+NetApiBufferFree
 USER_INFO_1
 USER_INFO_1003
 LsaOpenPolicy
