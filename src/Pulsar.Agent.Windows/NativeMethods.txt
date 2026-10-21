@@ -96,6 +96,13 @@ FILE_DISPOSITION_INFO
 OpenProcess
 OpenProcessToken
 
+// Server hosts: the privileges they never use, removed before the game's console host starts with their token (doc 08)
+AdjustTokenPrivileges
+LookupPrivilegeValue
+DuplicateTokenEx
+GetCurrentProcess
+TOKEN_PRIVILEGES
+
 // Servers root and server folders: rules set through a handle that never follows a link (docs/architecture/06)
 SetSecurityInfo
 

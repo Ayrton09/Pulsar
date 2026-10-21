@@ -42,6 +42,16 @@ internal static class HostCommand
         using var loggers = new SerilogLoggerFactory(log, dispose: true);
         try
         {
+            // Before the game's console host starts with this process's token (docs/architecture/08): never stops a start.
+            try
+            {
+                log.Information("Removed the privileges a host never uses: {Privileges}", string.Join(", ", HostPrivileges.RemoveFromProcess()));
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                log.Warning(ex, "The privileges a host never uses could not be removed");
+            }
+
             // The agent's own lock files: its logons of the server's account and this host's never overlap.
             var accounts = new WindowsServerAccounts(loggers.CreateLogger<WindowsServerAccounts>(), paths.LogonLocksDirectory);
             var processes = new WindowsGameProcessManager(accounts, TimeProvider.System, loggers.CreateLogger<WindowsGameProcessManager>(),
