@@ -42,7 +42,8 @@ internal sealed class DirectoryHandle(string clientPath, SftpServer? server, str
 /// <summary>
 /// A file open for reading: one download from the node, served in order. A read a little ahead skips forward keeping
 /// what it skipped, and a read of what was just served is answered from what was kept (clients that read in parallel or
-/// ask again); anything else starts a new download at its offset.
+/// ask again); anything else starts a new download at its offset. The download gives its place among the node's
+/// transfers back once it reached its end, or when no read used it for a while (<see cref="ReleaseIfIdle"/>).
 /// </summary>
 internal sealed class ReadHandle(string clientPath, SftpServer server, string path, long size, DateTimeOffset modified) : Handle(clientPath)
 {
@@ -51,6 +52,8 @@ internal sealed class ReadHandle(string clientPath, SftpServer server, string pa
     private byte[]? _window;
     private int _windowSize;
     private bool _completed;
+    private FileContent? _content;
+    private long _lastUsed;
 
     public SftpServer Server { get; } = server;
 
@@ -60,7 +63,10 @@ internal sealed class ReadHandle(string clientPath, SftpServer server, string pa
 
     public DateTimeOffset Modified { get; private set; } = modified;
 
-    public FileContent? Content { get; private set; }
+    public FileContent? Content => Volatile.Read(ref _content);
+
+    /// <summary>Held by the session while a read uses the download (so it is never released under a read).</summary>
+    public SemaphoreSlim Busy { get; } = new(1, 1);
 
     /// <summary>The next offset the download delivers.</summary>
     public long Position { get; private set; }
@@ -75,7 +81,7 @@ internal sealed class ReadHandle(string clientPath, SftpServer server, string pa
     {
         ArgumentNullException.ThrowIfNull(content);
         DropContent();
-        Content = content;
+        Volatile.Write(ref _content, content);
         Position = offset;
         End = offset + content.Length;
         Size = content.File.Entry.Size;
@@ -133,21 +139,52 @@ internal sealed class ReadHandle(string clientPath, SftpServer server, string pa
         {
             _completed = true;
             content.Complete();
+            // All of it arrived: the node's transfer place is free again, and what was kept still answers reads of it.
+            content.Dispose();
         }
 
         return served;
     }
 
-    /// <summary>Ends the download (a new one starts at the next read, if any).</summary>
+    /// <summary>A read used the download at <paramref name="timestamp"/> (<see cref="TimeProvider.GetTimestamp"/>).</summary>
+    public void Used(long timestamp) => Interlocked.Exchange(ref _lastUsed, timestamp);
+
+    /// <summary>
+    /// Ends a download that no read used for <paramref name="after"/>, unless a read is using it now: true when it did.
+    /// Called away from the session's requests.
+    /// </summary>
+    public bool ReleaseIfIdle(TimeProvider clock, TimeSpan after)
+    {
+        ArgumentNullException.ThrowIfNull(clock);
+        if (Content is null || clock.GetElapsedTime(Interlocked.Read(ref _lastUsed)) < after || !Busy.Wait(0))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (Content is null)
+            {
+                return false;
+            }
+
+            DropContent();
+            return true;
+        }
+        finally
+        {
+            Busy.Release();
+        }
+    }
+
+    /// <summary>Ends the download (a new one starts at the next read, if any). Each part is let go once, whoever calls.</summary>
     public void DropContent()
     {
-        Content?.Dispose();
-        Content = null;
+        Interlocked.Exchange(ref _content, null)?.Dispose();
         Retained = 0;
-        if (_window is not null)
+        if (Interlocked.Exchange(ref _window, null) is { } window)
         {
-            ArrayPool<byte>.Shared.Return(_window);
-            _window = null;
+            ArrayPool<byte>.Shared.Return(window);
         }
     }
 

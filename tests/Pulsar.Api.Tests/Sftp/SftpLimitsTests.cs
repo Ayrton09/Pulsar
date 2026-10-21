@@ -1,9 +1,13 @@
 using System.Diagnostics;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Sftp;
 using Pulsar.Api.Tests.Infrastructure;
+using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
+using Pulsar.Domain.Common;
 using Renci.SshNet.Common;
 using static Pulsar.Api.Tests.Sftp.SftpTesting;
 
@@ -103,6 +107,39 @@ public sealed class SftpLimitsTests(SftpLimitsTests.SmallLimitsFactory factory) 
     }
 
     [DatabaseFact]
+    public async Task AFileOpenButNotBeingReadHoldsNoneOfItsNodesTransferPlaces()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(factory, scenario.Admin, "limits-reads");
+        var server = await InstalledAsync(scenario.Admin, agent, "Reads");
+        var content = RandomNumberGenerator.GetBytes(2 * 1024 * 1024);
+        await File.WriteAllBytesAsync(Path.Combine(server.Directory, "big.bin"), content, Ct);
+        await File.WriteAllTextAsync(Path.Combine(server.Directory, "small.cfg"), "x", Ct);
+        var role = await ServerRoleAsync(scenario, "limits-reads-view", Permissions.Server.View, Permissions.Server.FilesView);
+        var user = await scenario.CreateUserAsync("limits-reads-user");
+        await GrantAsync(scenario.Admin, user.Id, server.Id, role.Id);
+        var transfers = factory.Services.GetRequiredService<FileTransfers>();
+        int Places() => FreePlaces(transfers, new NodeId(agent.Config!.NodeId), new UserId(user.Id));
+        using var client = await ConnectedAsync(await factory.PortAsync(), $"limits-reads-user.{server.ShortId}");
+
+        // Read to its end and left open: its download from the node is over.
+        using var small = await Run(() => client.OpenRead("/small.cfg"));
+        Assert.Equal((int)'x', await Run(() => small.ReadByte()));
+        Assert.Equal(-1, await Run(() => small.ReadByte()));
+        Assert.Equal(transfers.Limits.PerUser, Places());
+
+        // Read in part and left: its download ends once nothing read it for a while, and reading goes on where it was.
+        using var big = await Run(() => client.OpenRead("/big.bin"));
+        var start = new byte[64 * 1024];
+        await Run(() => big.ReadExactly(start));
+        Assert.Equal(transfers.Limits.PerUser - 1, Places());
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(Places() == transfers.Limits.PerUser), "the idle download ended");
+        using var rest = new MemoryStream();
+        await Run(() => big.CopyTo(rest));
+        Assert.Equal(content, start.Concat(rest.ToArray()).ToArray());
+    }
+
+    [DatabaseFact]
     public async Task AConnectionHoldsAFewChannelsThatMustStartSftpSoon()
     {
         var scenario = await AccessScenario.CreateAsync(factory);
@@ -128,6 +165,25 @@ public sealed class SftpLimitsTests(SftpLimitsTests.SmallLimitsFactory factory) 
 
             await Assert.ThrowsAnyAsync<Exception>(() => session.OpenChannelAsync(Ct).WaitAsync(SftpApiFactory.Timeout, Ct));
             await ended.Task.WaitAsync(SftpApiFactory.Timeout, Ct);
+        }
+    }
+
+    /// <summary>How many transfers <paramref name="user"/> could start on <paramref name="node"/> now (each is given back at once).</summary>
+    private static int FreePlaces(FileTransfers transfers, NodeId node, UserId user)
+    {
+        var started = new List<FileTransfers.Download>();
+        try
+        {
+            while (started.Count < 16 && transfers.BeginDownload(node, user) is { } download)
+            {
+                started.Add(download);
+            }
+
+            return started.Count;
+        }
+        finally
+        {
+            started.ForEach(d => d.Dispose());
         }
     }
 
@@ -190,6 +246,7 @@ public sealed class SftpLimitsTests(SftpLimitsTests.SmallLimitsFactory factory) 
             options.IdleTimeout = TimeSpan.FromSeconds(4);
             options.MaxHandlesPerSession = Handles;
             options.SubsystemTimeout = TimeSpan.FromSeconds(1);
+            options.ReadIdleRelease = TimeSpan.FromSeconds(1);
         }
     }
 }

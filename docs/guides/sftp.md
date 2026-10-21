@@ -199,6 +199,8 @@ Limits, in the `Sftp` section of the panel's settings (the defaults suit most pa
 - A listing returns at most 100,000 entries of one folder: each page reads the folder again on the node, which reads
   at most 100,000 entries of it for a page, and the listing stops there (the panel log says so).
 - `mkdir` makes one folder, in a folder that exists (`No such file` otherwise), as on a local disk.
+- A file open for reading takes one of its node's transfer places (8 for a node, 3 for one user) only while it is
+  being read: one read to its end, or not read for 30 seconds, gives the place back (the next read starts again).
 - A connection holds at most 4 channels at once (one more closes it) and runs at most 2 SFTP sessions at once
   (clients that open one per transfer open the next once one closes), and a channel that has not started SFTP within
   10 seconds is closed.

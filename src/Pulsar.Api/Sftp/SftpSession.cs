@@ -43,6 +43,7 @@ internal sealed partial class SftpSession(
     private const int MaxNamesPerReply = 100;
 
     private readonly Dictionary<string, Handle> _handles = new(StringComparer.Ordinal);
+    private readonly Lock _handlesLock = new(); // the request loop changes _handles, the idle release reads it
     private uint _nextHandle;
     private bool _initialized;
     private long _reorderBytes;
@@ -61,14 +62,47 @@ internal sealed partial class SftpSession(
             FullMode = BoundedChannelFullMode.Wait,
         });
         var sending = SendAsync(replies, stop);
+        using var releasing = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var releaser = ReleaseIdleDownloadsAsync(releasing.Token);
         try
         {
             await ServeAsync(replies.Writer, stop.Token);
         }
         finally
         {
+            await releasing.CancelAsync();
+            await releaser;
             replies.Writer.TryComplete();
             await sending;
+        }
+    }
+
+    /// <summary>
+    /// Ends the downloads of open files that no read used for <see cref="SftpOptions.ReadIdleRelease"/>: a client that
+    /// keeps a file open without reading it holds none of its node's few transfer places (the next read starts again).
+    /// </summary>
+    private async Task ReleaseIdleDownloadsAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(options.ReadIdleRelease / 2, clock);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                ReadHandle[] reads;
+                lock (_handlesLock)
+                {
+                    reads = [.. _handles.Values.OfType<ReadHandle>()];
+                }
+
+                foreach (var read in reads)
+                {
+                    read.ReleaseIfIdle(clock, options.ReadIdleRelease);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The session ended.
         }
     }
 
@@ -154,8 +188,14 @@ internal sealed partial class SftpSession(
 
     public async ValueTask DisposeAsync()
     {
-        await Task.WhenAll(_handles.Values.Select(CloseQuietlyAsync));
-        _handles.Clear();
+        Handle[] open;
+        lock (_handlesLock)
+        {
+            open = [.. _handles.Values];
+            _handles.Clear();
+        }
+
+        await Task.WhenAll(open.Select(CloseQuietlyAsync));
     }
 
     private async Task<bool> FillAsync(Memory<byte> buffer, CancellationToken cancellationToken)
@@ -458,6 +498,20 @@ internal sealed partial class SftpSession(
     private async Task<SftpWriter> ReadAsync(Request request, CancellationToken cancellationToken)
     {
         var handle = Find<ReadHandle>(request.Handle!);
+        await handle.Busy.WaitAsync(cancellationToken);
+        try
+        {
+            return await ReadAsync(request, handle, cancellationToken);
+        }
+        finally
+        {
+            handle.Used(clock.GetTimestamp());
+            handle.Busy.Release();
+        }
+    }
+
+    private async Task<SftpWriter> ReadAsync(Request request, ReadHandle handle, CancellationToken cancellationToken)
+    {
         var want = (int)Math.Min(request.Length, (uint)options.MaxDataBytes);
         if ((request.Offset >= (ulong)Math.Max(handle.Size, 0) && handle.Content is null) || request.Offset > long.MaxValue)
         {
@@ -578,7 +632,11 @@ internal sealed partial class SftpSession(
     private async Task<SftpWriter> CloseAsync(Request request, CancellationToken cancellationToken)
     {
         var handle = Find<Handle>(request.Handle!);
-        _handles.Remove(request.Handle!);
+        lock (_handlesLock)
+        {
+            _handles.Remove(request.Handle!);
+        }
+
         switch (handle)
         {
             case ReadHandle read:
@@ -898,7 +956,11 @@ internal sealed partial class SftpSession(
     private SftpWriter HandleReply(uint id, Handle handle)
     {
         var name = (++_nextHandle).ToString("x8", CultureInfo.InvariantCulture);
-        _handles.Add(name, handle);
+        lock (_handlesLock)
+        {
+            _handles.Add(name, handle);
+        }
+
         return new SftpWriter(SftpProtocol.Handle).UInt32(id).String(name);
     }
 

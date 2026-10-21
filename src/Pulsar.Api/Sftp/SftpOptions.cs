@@ -65,6 +65,12 @@ public sealed class SftpOptions
     /// <summary>A channel that has not asked for the <c>sftp</c> subsystem this long after it opened is closed (tests shorten it).</summary>
     internal TimeSpan SubsystemTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
+    /// <summary>
+    /// An open file's download from the node that no read used this long ends, giving back its place among the node's
+    /// few transfers; the next read starts another (tests shorten it).
+    /// </summary>
+    internal TimeSpan ReadIdleRelease { get; set; } = TimeSpan.FromSeconds(30);
+
     /// <summary>Tests: false keeps the server from listening at all.</summary>
     internal bool Listen { get; set; } = true;
 
