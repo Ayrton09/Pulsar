@@ -1644,7 +1644,8 @@
     "recoveryCode": "Recovery code",
     "verify": "Verify",
     "useRecovery": "Use a recovery code",
-    "useApp": "Use the authenticator app"
+    "useApp": "Use the authenticator app",
+    "otherAccount": "Sign in as someone else"
   },
   "notifications": {
     "title": "Notifications",

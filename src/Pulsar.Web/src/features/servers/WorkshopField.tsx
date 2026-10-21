@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate, useFormatFileSize } from '../../lib/format';
+import { visibleName } from '../../lib/visibleText';
 import type { TemplateVariable } from './api';
 import { parseWorkshopId, workshopUrl } from './workshop';
 
@@ -202,7 +203,8 @@ function WorkshopRow({
   const formatSize = useFormatFileSize();
   const formatDate = useFormatDate();
   const noteId = useId();
-  const name = item?.found ? (item.title ?? id) : id;
+  // A Workshop author chose the title: its hidden characters are shown, not acted on.
+  const name = item?.found ? visibleName(item.title ?? id) : id;
   const facts = item?.found
     ? [
         item.size != null ? formatSize(item.size) : null,

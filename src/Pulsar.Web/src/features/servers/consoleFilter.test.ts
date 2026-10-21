@@ -11,6 +11,19 @@ describe('ConsoleFilter', () => {
     expect(filter.push(text)).toBe(text);
   });
 
+  it('keeps only colours that cannot hide text, and no style outlives its line', () => {
+    const filter = new ConsoleFilter();
+
+    // Concealed, inverse and blinking text, and a colour of any value (the console's own background) go; bold, the 16
+    // colours and the 256-colour palette stay, and a line that set one ends with a reset.
+    expect(
+      filter.push(`${ESC}[8mhidden ${ESC}[38;2;7;9;13mdark ${ESC}[1;7;5;31mred ${ESC}[38;5;0;48;5;16mx\nnext\n`),
+    ).toBe(`hidden dark ${ESC}[1;31mred ${ESC}[38;5;0;48;5;16mx${ESC}[0m\nnext\n`);
+    expect(filter.push(`${ESC}[32mok\rover`)).toBe(`${ESC}[32mok${ESC}[0m\r\nover`);
+    // A reset of its own needs none more.
+    expect(filter.push(`\n${ESC}[33mwarn${ESC}[m\n`)).toBe(`\n${ESC}[33mwarn${ESC}[0m\n`);
+  });
+
   it('drops hyperlinks (OSC 8) and keeps their text: the reader cannot see where they lead', () => {
     const filter = new ConsoleFilter();
 

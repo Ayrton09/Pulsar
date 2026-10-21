@@ -35,12 +35,25 @@ export function nodeState(node: Pick<NodeSummary, 'status' | 'connected'>): Node
  * must not run from a folder other accounts can write) and enrolls it.
  */
 export function enrollCommand(origin: string, token: string, panelKeyFingerprint: string): string {
-  return `powershell -ExecutionPolicy Bypass -File .\\Install-Pulsar.ps1 -Mode Agent -PanelUrl ${origin} -Token ${token} -PanelKey ${panelKeyFingerprint}`;
+  return `powershell -ExecutionPolicy Bypass -File .\\Install-Pulsar.ps1 -Mode Agent -PanelUrl ${argument(origin)} -Token ${argument(token)} -PanelKey ${argument(panelKeyFingerprint)}`;
 }
 
 /** The agent's MSI, installed silently (Intune, a group policy, a script) with a reusable token. */
 export function msiCommand(origin: string, token: string, panelKeyFingerprint: string, agentPackage: string): string {
-  return `msiexec /i ${agentPackage} /qn PANELURL=${origin} TOKEN=${token} PANELKEY=${panelKeyFingerprint}`;
+  return `msiexec /i ${argument(agentPackage)} /qn PANELURL=${argument(origin)} TOKEN=${argument(token)} PANELKEY=${argument(panelKeyFingerprint)}`;
+}
+
+/**
+ * One argument of a command pasted into a console (cmd or PowerShell), whatever the panel's answer holds: as it is when
+ * plain (what the panel sends: URLs, tokens, fingerprints, file names), otherwise in double quotes, without the
+ * characters that would end them, expand in them or run something else.
+ */
+function argument(value: string): string {
+  if (/^[A-Za-z0-9._:/@+=-]+$/.test(value)) {
+    return value;
+  }
+  // Format characters too: they could make the command read as something else than it runs.
+  return `"${value.replace(/["`$%!&|<>^;(){}\r\n\p{Cc}\p{Cf}]/gu, '')}"`;
 }
 
 /** Where the panel serves the agent's setup, when it has it (the enrollment says so: agentSetupAvailable). */

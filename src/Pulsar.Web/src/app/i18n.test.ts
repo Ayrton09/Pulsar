@@ -13,3 +13,16 @@ describe('document language', () => {
     expect(document.documentElement.lang).toBe('en');
   });
 });
+
+describe('interpolated values', () => {
+  it('show the characters that would reorder or hide what a message says, instead of acting', async () => {
+    await initI18n('en');
+
+    // A name a node, a game or another user chose, in a confirmation: "invoice<U+202E>fdp.exe" cannot read as a pdf.
+    const question = i18next.t('servers.deleteConfirm', { name: 'invoice‮fdp.exe' });
+    expect(question).toContain('invoice[U+202E]fdp.exe');
+    expect(question).not.toContain('‮');
+    // Plain names, and the joiners some scripts need, are left alone.
+    expect(i18next.t('servers.deleteConfirm', { name: 'Señor‍Server 1' })).toContain('Señor‍Server 1');
+  });
+});

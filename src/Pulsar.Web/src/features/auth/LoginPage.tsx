@@ -19,13 +19,23 @@ type Values = z.infer<typeof schema>;
 
 export function LoginPage() {
   const login = useLogin();
-  if (login.data?.twoFactorRequired) {
-    return <SecondFactor />;
+  const [secondStep, setSecondStep] = useState(false);
+  if (secondStep) {
+    return <SecondFactor onBack={() => setSecondStep(false)} />;
   }
-  return <PasswordStep login={login} />;
+  return (
+    <PasswordStep
+      login={login}
+      onSecondStep={() => {
+        // The password is not kept while the code is asked for: the mutation forgets what it sent.
+        login.reset();
+        setSecondStep(true);
+      }}
+    />
+  );
 }
 
-function PasswordStep({ login }: { login: ReturnType<typeof useLogin> }) {
+function PasswordStep({ login, onSecondStep }: { login: ReturnType<typeof useLogin>; onSecondStep: () => void }) {
   const { t } = useTranslation();
   const { register, handleSubmit, formState } = useForm<Values>({
     resolver: zodResolver(schema),
@@ -33,7 +43,15 @@ function PasswordStep({ login }: { login: ReturnType<typeof useLogin> }) {
   });
 
   // On success the session reloads and the PublicOnly guard redirects to the return address.
-  const onSubmit = handleSubmit((values) => login.mutate(values));
+  const onSubmit = handleSubmit((values) =>
+    login.mutate(values, {
+      onSuccess: (answer) => {
+        if (answer.twoFactorRequired) {
+          onSecondStep();
+        }
+      },
+    }),
+  );
 
   return (
     <AuthCard title={t('auth.login.title')} subtitle={t('auth.login.subtitle')}>
@@ -60,7 +78,7 @@ function PasswordStep({ login }: { login: ReturnType<typeof useLogin> }) {
 }
 
 /** After the right password: a code from the authenticator app, or a recovery code. */
-function SecondFactor() {
+function SecondFactor({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation();
   const verify = useLoginTwoFactor();
   const [recovery, setRecovery] = useState(false);
@@ -105,6 +123,9 @@ function SecondFactor() {
         </Button>
         <Button variant="ghost" size="sm" className="w-full" onClick={switchMethod}>
           {recovery ? t('twoFactor.useApp') : t('twoFactor.useRecovery')}
+        </Button>
+        <Button variant="ghost" size="sm" className="w-full" onClick={onBack}>
+          {t('twoFactor.otherAccount')}
         </Button>
       </form>
     </AuthCard>

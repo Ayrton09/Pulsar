@@ -1644,7 +1644,8 @@
     "recoveryCode": "Código de recuperación",
     "verify": "Verificar",
     "useRecovery": "Usar un código de recuperación",
-    "useApp": "Usar la app de autenticación"
+    "useApp": "Usar la app de autenticación",
+    "otherAccount": "Entrar con otra cuenta"
   },
   "notifications": {
     "title": "Notificaciones",

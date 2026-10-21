@@ -2,6 +2,7 @@ import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import enCommon from '../locales/en/common.json';
 import esCommon from '../locales/es/common.json';
+import { visibleName } from '../lib/visibleText';
 
 export const supportedLanguages = ['en', 'es'] as const;
 export type SupportedLanguage = (typeof supportedLanguages)[number];
@@ -30,7 +31,9 @@ export async function initI18n(languageTag: string | undefined): Promise<void> {
     lng: resolveLanguage(languageTag),
     fallbackLng: 'en',
     defaultNS: 'common',
-    interpolation: { escapeValue: false }, // React already escapes rendered values.
+    // React already escapes rendered values; what is left to do to a name put into a message (a confirmation too, which
+    // React does not render) is to keep its hidden characters from reordering or hiding what the message says.
+    interpolation: { escapeValue: true, escape: visibleName },
   });
   setDocumentLanguage(i18next.language);
 }

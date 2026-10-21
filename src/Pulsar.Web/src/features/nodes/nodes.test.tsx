@@ -137,6 +137,16 @@ describe('node helpers', () => {
     );
   });
 
+  it('quotes a value that is not plain, and drops what would end the quotes or expand', () => {
+    // What a pasted command must not do: run something else, or take more arguments than it says.
+    expect(msiCommand('https://panel.example.com', 'tok', 'sha256:abc', 'agent setup & calc".msi')).toBe(
+      'msiexec /i "agent setup  calc.msi" /qn PANELURL=https://panel.example.com TOKEN=tok PANELKEY=sha256:abc',
+    );
+    expect(enrollCommand('https://panel.example.com', 'to`k$(x)', 'sha256:abc')).toBe(
+      'powershell -ExecutionPolicy Bypass -File .\\Install-Pulsar.ps1 -Mode Agent -PanelUrl https://panel.example.com -Token "tokx" -PanelKey sha256:abc',
+    );
+  });
+
   it.each([
     ['00:07:30', 450],
     ['3.04:05:06.1230000', 3 * 86_400 + 4 * 3_600 + 5 * 60 + 6],

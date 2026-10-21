@@ -12,7 +12,8 @@ type Sequence =
 
 /**
  * What a game writes, made safe for the console view (docs/architecture/07, "Console"): text, line breaks, tabs,
- * colours (SGR) go through; every other control character or sequence (clearing the screen or the scrollback, the
+ * colours (SGR, those that only colour or weigh text, reset at the end of their line) go through; every other control
+ * character or sequence (clearing the screen or the scrollback, the
  * alternate screen, cursor moves, a reset, titles, hyperlinks: their text stays, their target does not) is dropped, so
  * player or game text cannot wipe or rewrite what the admin reads. A carriage return without a line break would let later text overwrite its row: it
  * becomes a line break. A pseudo console ends rows with a move to the start of the next one instead of a line break:
@@ -25,6 +26,8 @@ export class ConsoleFilter {
   private lineHasText = false;
   /** The last character was a carriage return, already written as a line break: a line feed after it adds none. */
   private afterReturn = false;
+  /** The line set a style no reset ended yet: its line break resets it. */
+  private styled = false;
 
   /** Forgets an unfinished sequence (after a gap, its rest will not come). */
   reset() {
@@ -52,11 +55,11 @@ export class ConsoleFilter {
       const code = c.charCodeAt(0);
       if (c === '\n') {
         if (!this.afterReturn) {
-          out += c;
+          out += this.lineBreak(c);
         }
         this.lineHasText = false;
       } else if (c === '\r') {
-        out += '\r\n';
+        out += this.lineBreak('\r\n');
         this.lineHasText = false;
       } else if (c === '\t') {
         out += c;
@@ -79,16 +82,69 @@ export class ConsoleFilter {
       return '';
     }
     if (sequence.final === 'm' && /^[0-9;:]*$/.test(sequence.params)) {
-      return `${ESC}[${sequence.params}m`;
+      const { kept, styled } = colours(sequence.params);
+      if (kept.length === 0) {
+        return '';
+      }
+      this.styled = styled;
+      return `${ESC}[${kept.join(';')}m`;
     }
     if (sequence.final === 'H' && /^[0-9]*(;1?)?$/.test(sequence.params)) {
       if (this.lineHasText) {
         this.lineHasText = false;
-        return '\r\n';
+        return this.lineBreak('\r\n');
       }
     }
     return '';
   }
+
+  /** A line break, after a reset when the line set a style: what one line of a game says does not colour the next. */
+  private lineBreak(text: string): string {
+    const reset = this.styled ? `${ESC}[0m` : '';
+    this.styled = false;
+    return reset + text;
+  }
+}
+
+/**
+ * The SGR codes that only colour or weigh text: bold, faint, italic, underline, the 16 colours and the 256-colour
+ * palette, and their resets. Concealed, blinking, inverse and struck-through text and colours of any value (the console's
+ * own background among them) are dropped: game or player text could otherwise hide the lines that follow it.
+ */
+function colours(params: string): { kept: string[]; styled: boolean } {
+  const codes = params === '' ? [''] : params.split(';');
+  const kept: string[] = [];
+  // Whether a style is left on once these codes are applied: the last one kept says (a reset, or anything else).
+  let styled = false;
+  for (let i = 0; i < codes.length; i++) {
+    const code = codes[i] as string;
+    if (code.includes(':')) {
+      continue;
+    }
+    const n = code === '' ? 0 : Number(code);
+    if (n === 38 || n === 48) {
+      const index = codes[i + 2];
+      if (codes[i + 1] === '5' && index !== undefined && /^[0-9]{1,3}$/.test(index) && Number(index) <= 255) {
+        kept.push(String(n), '5', String(Number(index)));
+        styled = true;
+        i += 2;
+      } else if (codes[i + 1] === '2') {
+        i += 4;
+      }
+      continue;
+    }
+    if (
+      [0, 1, 2, 3, 4, 22, 23, 24, 39, 49].includes(n) ||
+      (n >= 30 && n <= 37) ||
+      (n >= 40 && n <= 47) ||
+      (n >= 90 && n <= 97) ||
+      (n >= 100 && n <= 107)
+    ) {
+      kept.push(String(n));
+      styled = n !== 0;
+    }
+  }
+  return { kept, styled };
 }
 
 /**

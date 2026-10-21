@@ -1,10 +1,11 @@
 import { QueryClient } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { App } from '../../app/App';
 import { initI18n } from '../../app/i18n';
+import { createQueryClient } from '../../app/queryClient';
 import { routes } from '../../app/routes';
 import { adminUser, fakeApi, json, problem } from '../../test/fakeApi';
 
@@ -92,6 +93,36 @@ describe('two-factor sign-in', () => {
 
     expect(await screen.findByText('Welcome, Ada Admin.')).toBeInTheDocument();
     expect(sent).toEqual({ code: null, recoveryCode: 'abcde-fghij' });
+  });
+
+  it('goes back to the password, which it keeps nowhere while it asks for the code', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': () => json({ setupRequired: false, user: null, insecureConnection: false }),
+      'POST /api/v1/auth/login': () => json({ twoFactorRequired: true, user: null }),
+    });
+    // The app's own cache: finished mutations leave it once nothing shows them.
+    const queryClient = createQueryClient();
+    render(<App router={createMemoryRouter(routes, { initialEntries: ['/login'] })} queryClient={queryClient} />);
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText('User name'), 'admin');
+    await user.type(screen.getByLabelText('Password'), 'correct horse battery staple');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByLabelText('Authentication code');
+
+    await waitFor(() =>
+      expect(
+        JSON.stringify(
+          queryClient
+            .getMutationCache()
+            .getAll()
+            .map((m) => m.state.variables),
+        ),
+      ).not.toContain('correct horse battery staple'),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Sign in as someone else' }));
+    expect(await screen.findByLabelText('Password')).toHaveValue('');
   });
 });
 
