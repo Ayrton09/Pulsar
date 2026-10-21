@@ -81,7 +81,8 @@ public sealed record TreeEntry(string Path, FileEntryKind Kind, long Size, DateT
 /// <summary>
 /// What <see cref="IServerFileManager.Walk"/> found: the entries, and how many it left out because no
 /// <see cref="ServerFilePath"/> can name them (a trailing dot, a device name or a control character, created through
-/// extended paths). A refused directory counts once; what it holds is not looked at.
+/// extended paths), or because they lie beyond the walk's bounds (<see cref="ServerFileRules.MaxWalkDepth"/>,
+/// <see cref="ServerFileRules.MaxWalkEntries"/>). A refused directory counts once; what it holds is not looked at.
 /// </summary>
 public sealed class TreeWalk : IReadOnlyList<TreeEntry>
 {
@@ -93,7 +94,10 @@ public sealed class TreeWalk : IReadOnlyList<TreeEntry>
 
     public int Count => _entries.Count;
 
-    /// <summary>How many entries were left out.</summary>
+    /// <summary>The walk holds <see cref="ServerFileRules.MaxWalkEntries"/>: what it meets next is refused.</summary>
+    public bool IsFull => _entries.Count >= ServerFileRules.MaxWalkEntries;
+
+    /// <summary>How many entries were left out (at least: past <see cref="IsFull"/>, a folder not read counts once).</summary>
     public int Refused { get; private set; }
 
     /// <summary>The paths of the first refused entries; may hold characters a log must not print as they are.</summary>
@@ -162,7 +166,10 @@ public static class ServerFileRules
     /// <summary>Temporary files of transfers in progress (left behind only if the agent stops in the middle of one).</summary>
     public const string TemporaryPrefix = ".pulsar-upload-";
 
-    /// <summary>The most entries a walk returns (and the deepest it goes): a tree beyond either is refused.</summary>
+    /// <summary>
+    /// The most entries a walk returns (and the deepest folder it goes into): what lies beyond is left out and counted
+    /// (<see cref="TreeWalk.Refused"/>), so a game nesting folders without end makes its backups skip them, not fail.
+    /// </summary>
     public const int MaxWalkEntries = 1_000_000;
 
     public const int MaxWalkDepth = 256;
@@ -416,14 +423,14 @@ public static class ServerFileRules
         _ => null,
     };
 
-    /// <summary>Counts one more entry of a walk at <paramref name="depth"/>.</summary>
-    public static void CheckWalk(int entries, int depth)
+    /// <summary>
+    /// Whether a walk keeps <paramref name="entry"/> (<paramref name="depth"/> folders below the server directory): false
+    /// once it is full, and for a folder deeper than <see cref="MaxWalkDepth"/>, which is then refused with what it holds.
+    /// </summary>
+    public static bool WalkKeeps(TreeWalk walk, FileEntryKind kind, int depth)
     {
-        if (entries > MaxWalkEntries || depth > MaxWalkDepth)
-        {
-            throw new FileManagerException(FileErrors.TooLarge,
-                $"The server directory has more than {MaxWalkEntries} entries or is nested more than {MaxWalkDepth} levels deep.");
-        }
+        ArgumentNullException.ThrowIfNull(walk);
+        return !walk.IsFull && (kind != FileEntryKind.Directory || depth <= MaxWalkDepth);
     }
 
     public static void CheckMove(string path, string destination)

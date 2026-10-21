@@ -752,7 +752,8 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
     [LoggerMessage(Level = LogLevel.Warning, Message = "Backup of {ShortId}: {Path} left out ({Code})")]
     private partial void LogSkipped(string shortId, string path, string code);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Backup of {ShortId}: {Count} entries left out because no path can name them (a trailing dot, a device name, a control character), e.g. {Paths}")]
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Backup of {ShortId}: {Count} entries left out because no path can name them (a trailing dot, a device name, a control character) or because they lie deeper than 256 folders or past a million entries, e.g. {Paths}")]
     private partial void LogUnnameable(string shortId, int count, string paths);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete {Path}: {Reason}")]

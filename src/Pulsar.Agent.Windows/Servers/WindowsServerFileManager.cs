@@ -111,23 +111,20 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
         List<FileEntry> children;
         using (var directory = root.OpenDirectory(path, ListDirectory | ReadAttributes | Synchronize))
         {
-            // One more than the walk may still return is enough to refuse it.
+            // One more than the walk may still keep is enough: past it, entries are only counted.
             children = [.. Enumerate(directory, path).Take(ServerFileRules.MaxWalkEntries - entries.Count + 1)];
         }
-
-        ServerFileRules.CheckWalk(entries.Count + children.Count, depth);
 
         foreach (var child in children)
         {
             var childPath = ServerFilePath.Join(path, child.Name);
-            if (!ServerFilePath.IsValid(childPath))
+            if (!ServerFilePath.IsValid(childPath) || !ServerFileRules.WalkKeeps(entries, child.Kind, depth + 1))
             {
                 entries.Refuse(childPath);
                 continue;
             }
 
             entries.Add(new TreeEntry(childPath, child.Kind, child.Size, child.ModifiedAt));
-            ServerFileRules.CheckWalk(entries.Count, depth);
             if (child.Kind == FileEntryKind.Directory && !ServerFileRules.IsSteamLoginFolder(childPath))
             {
                 WalkInto(root, childPath, entries, depth + 1);

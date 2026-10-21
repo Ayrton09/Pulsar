@@ -308,6 +308,26 @@ public abstract partial class ServerFileManagerContract : IDisposable
     }
 
     [ContractFact]
+    public void AFolderNestedDeeperThanAWalkGoesIsLeftOutAndCountedNotAFailure()
+    {
+        // A game can nest folders as deep as it likes: backups and clean restores still work, without what is too deep.
+        var deep = ServerDirectory;
+        for (var level = 0; level <= ServerFileRules.MaxWalkDepth + 1; level++)
+        {
+            deep = Path.Combine(deep, "d");
+        }
+
+        Directory.CreateDirectory(deep);
+        File.WriteAllText(Path.Combine(ServerDirectory, "top.cfg"), "x");
+
+        var walk = Files.Walk(Server);
+
+        Assert.Contains(walk, e => e.Path == "top.cfg");
+        Assert.Equal(ServerFileRules.MaxWalkDepth, walk.Count(e => e.Kind == FileEntryKind.Directory));
+        Assert.Equal(1, walk.Refused);
+    }
+
+    [ContractFact]
     public void WalkReportsTheNamesItCannotNameInsteadOfDroppingThemSilently()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows names a file with a trailing dot or a device name through \\\\?\\ paths.");

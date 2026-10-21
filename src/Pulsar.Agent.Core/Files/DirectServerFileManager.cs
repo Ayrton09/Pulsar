@@ -122,8 +122,18 @@ public sealed class DirectServerFileManager : IServerFileManager
 
             var entry = Entry(info);
             var entryPath = ServerFilePath.Join(path, entry.Name);
+            if (!ServerFileRules.WalkKeeps(entries, entry.Kind, depth + 1))
+            {
+                entries.Refuse(entryPath);
+                if (entries.IsFull)
+                {
+                    return; // the rest of this folder is not read: counted once, with it
+                }
+
+                continue;
+            }
+
             entries.Add(new TreeEntry(entryPath, entry.Kind, entry.Size, entry.ModifiedAt));
-            ServerFileRules.CheckWalk(entries.Count, depth);
             if (entry.Kind == FileEntryKind.Directory && !ServerFileRules.IsSteamLoginFolder(entryPath))
             {
                 WalkInto(info.FullName, entryPath, entries, depth + 1);
