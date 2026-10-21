@@ -45,6 +45,28 @@ public sealed class SftpSignInTimingTests(SftpSignInTimingTests.SlowFailuresFact
         }
     }
 
+    [DatabaseFact]
+    public async Task FailedChecksOnOneNameDoNotWaitOutEachOthersTime()
+    {
+        // Wrong passwords sent for someone's name (from many addresses) must not make the owner's sign-in queue behind
+        // each one's wait: it is waited out without the name's turn.
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await scenario.CreateUserAsync("timing-queue-user");
+        using var first = await PanelClient.CreateAsync(factory);
+        using var second = await PanelClient.CreateAsync(factory);
+
+        var took = Stopwatch.StartNew();
+        await Task.WhenAll(FailAsync(first), FailAsync(second));
+
+        Assert.True(took.Elapsed < SlowFailuresFactory.CheckTime * 1.75, $"two failures took {took.Elapsed}");
+
+        static async Task FailAsync(PanelClient client)
+        {
+            using var response = await client.LoginAsync("timing-queue-user", "not the password");
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+    }
+
     public sealed class SlowFailuresFactory : SftpApiFactory
     {
         // Far longer than a password hash and a few queries take, so a shorter answer can only be a check that skips it.

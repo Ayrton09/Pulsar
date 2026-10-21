@@ -45,7 +45,7 @@ internal sealed partial class SftpSession(
 
     /// <summary>
     /// Downloads a session starts again per minute for reads out of order (each is a command to the node, a transfer and an
-    /// audit entry); reads in order, and the first download of each file, are not counted.
+    /// audit entry); reads in order, the first download of each file and the one after an idle release are not counted.
     /// </summary>
     internal const int MaxReadRestartsPerMinute = 30;
 
@@ -546,7 +546,7 @@ internal sealed partial class SftpSession(
                 }
 
                 // A seek back or far ahead: the download starts again there (audited as a download, with its offset).
-                if (handle.Downloads > 0 && !TakeReadRestart())
+                if (handle.Downloads > 0 && !handle.ReleasedIdle && !TakeReadRestart())
                 {
                     throw SftpException.Failure("Too many reads out of order this minute: read the file in order, or try again in a minute.");
                 }

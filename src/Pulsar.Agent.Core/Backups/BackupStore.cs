@@ -516,7 +516,8 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
         var keep = kept.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var deleted = 0;
         var failed = new List<(string, FileManagerException)>();
-        foreach (var file in Select(files.Walk(server), rules))
+        var walk = files.Walk(server);
+        foreach (var file in Select(walk, rules))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (keep.Contains(file.Path))
@@ -543,6 +544,14 @@ public sealed partial class BackupStore(IServerFileManager files, ILogger<Backup
 
                 failed.Add((file.Path, ex));
             }
+        }
+
+        // What the walk left out (deeper than it goes, past its size, a name no path can say) under what the rules select
+        // was never looked at: the restore says so rather than call itself clean.
+        foreach (var refused in Select([.. walk.RefusedSample.Select(p => new TreeEntry(p, FileEntryKind.File, 0, DateTimeOffset.MinValue))], rules))
+        {
+            failed.Add((refused.Path, new FileManagerException(FileErrors.Failed,
+                "not looked at: it is deeper than 256 folders, past a million entries, or named so no path can say it")));
         }
 
         LogCleaned(location.ShortId, location.BackupId, deleted);

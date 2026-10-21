@@ -74,6 +74,9 @@ internal sealed class ReadHandle(string clientPath, SftpServer server, string pa
     /// <summary>Downloads started for the handle so far.</summary>
     public int Downloads { get; private set; }
 
+    /// <summary>The last download was ended for being idle (<see cref="ReleaseIfIdle"/>): the next one is not a read out of order.</summary>
+    public bool ReleasedIdle { get; private set; }
+
     /// <summary>The next offset the download delivers.</summary>
     public long Position { get; private set; }
 
@@ -89,6 +92,7 @@ internal sealed class ReadHandle(string clientPath, SftpServer server, string pa
         DropContent();
         Volatile.Write(ref _content, content);
         Downloads++;
+        ReleasedIdle = false;
         Position = offset;
         End = offset + content.Length;
         Size = content.File.Entry.Size;
@@ -176,6 +180,7 @@ internal sealed class ReadHandle(string clientPath, SftpServer server, string pa
             }
 
             DropContent();
+            ReleasedIdle = true;
             return true;
         }
         finally

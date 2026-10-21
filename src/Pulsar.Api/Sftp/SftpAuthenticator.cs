@@ -209,7 +209,7 @@ internal sealed partial class SftpAuthenticator : IDisposable
         {
             users.PasswordHasher.VerifyHashedPassword(new PulsarUser(), s_dummyPasswordHash, password);
             await FailAsync(services, null, "invalid_credentials");
-            await TakeFailedCheckTimeAsync(checkedFrom, cancellationToken);
+            await TakeFailedCheckTimeAsync(turn, checkedFrom, cancellationToken);
             return (Outcome.Failed, null, null);
         }
 
@@ -221,7 +221,7 @@ internal sealed partial class SftpAuthenticator : IDisposable
             // Locked-out and disabled users get the answer a wrong password gets, after as long.
             users.PasswordHasher.VerifyHashedPassword(user, s_dummyPasswordHash, password);
             await FailAsync(services, user, lockedOut ? "locked_out" : "not_allowed");
-            await TakeFailedCheckTimeAsync(checkedFrom, cancellationToken);
+            await TakeFailedCheckTimeAsync(turn, checkedFrom, cancellationToken);
             return (Outcome.Failed, null, null);
         }
 
@@ -229,7 +229,7 @@ internal sealed partial class SftpAuthenticator : IDisposable
         {
             await SignInLocks.CountFailureAsync(users, services.GetRequiredService<PulsarDbContext>(), user);
             await FailAsync(services, user, await users.IsLockedOutAsync(user) ? "locked_out" : "invalid_credentials");
-            await TakeFailedCheckTimeAsync(checkedFrom, cancellationToken);
+            await TakeFailedCheckTimeAsync(turn, checkedFrom, cancellationToken);
             return (Outcome.Failed, null, null);
         }
 
@@ -257,9 +257,15 @@ internal sealed partial class SftpAuthenticator : IDisposable
         return (principal is null ? Outcome.Failed : Outcome.SignedIn, principal, null);
     }
 
-    /// <summary>A failed password check ends no sooner than the browser's does (<see cref="FailedCheckTime"/>).</summary>
-    private Task TakeFailedCheckTimeAsync(long from, CancellationToken cancellationToken) =>
-        FailedCheckTime.WaitOutAsync(_clock, from, _failedCheckTime, cancellationToken);
+    /// <summary>
+    /// A failed password check ends no sooner than the browser's does (<see cref="FailedCheckTime"/>), waited out without the
+    /// name's turn: attempts on it (the owner's included) do not also wait out each other's floors.
+    /// </summary>
+    private Task TakeFailedCheckTimeAsync(IDisposable turn, long from, CancellationToken cancellationToken)
+    {
+        turn.Dispose();
+        return FailedCheckTime.WaitOutAsync(_clock, from, _failedCheckTime, cancellationToken);
+    }
 
     private async Task<ClaimsPrincipal?> CheckCodeAsync(SftpConnection connection, UserId userId, string? shortId, string answer,
         CancellationToken cancellationToken)

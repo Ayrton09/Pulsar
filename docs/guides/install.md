@@ -761,6 +761,20 @@ What to know:
   `"PublicIpCertificate": { "ChallengePort": 8080 }` in the panel's `appsettings.Production.json` only when the router
   forwards its own port 80 to that port: Let's Encrypt always connects to port 80.
 
+### Behind a reverse proxy
+
+The panel serves HTTPS itself and needs no proxy. If one is put in front of it anyway (nginx, Caddy, IIS), name the
+proxy's address in the panel's `appsettings.Production.json`, including when it runs on the panel's own machine:
+
+```json
+"Security": { "TrustedProxies": [ "127.0.0.1", "::1" ] }
+```
+
+The panel reads `X-Forwarded-For` and `X-Forwarded-Proto` only from the addresses listed there. Without it, every
+browser looks like the proxy's address: they share one sign-in rate limit (a few wrong passwords lock everyone out for a
+minute), the audit log names the proxy, and a proxy that decrypts TLS makes the panel refuse the requests as plain HTTP.
+Nodes and SFTP clients connect to the panel directly, not through the proxy.
+
 ### Many nodes at once
 
 To enroll many machines with one command, for example with Intune or a group policy, create a reusable token in the

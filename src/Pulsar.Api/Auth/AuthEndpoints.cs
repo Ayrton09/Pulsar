@@ -247,6 +247,8 @@ public static class AuthEndpoints
                 await db.SaveChangesAsync(CancellationToken.None);
             }
 
+            // Without the name's turn: attempts on it (the owner's included) do not also wait out each other's floors.
+            turn.Dispose();
             await FailedCheckTime.WaitOutAsync(clock, checkedFrom, limits.Value.FailedPasswordCheckTime, ct);
             return ApiProblems.Create(StatusCodes.Status401Unauthorized, "auth.invalid_credentials", "Invalid user name or password.");
         }

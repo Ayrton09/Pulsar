@@ -204,6 +204,23 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task ACleanRestoreSaysSoWhenPartOfTheTreeWasNeverLookedAt()
+    {
+        // A game nested folders deeper than a walk goes, under what the rules select: whatever is there is not deleted.
+        Write("cfg/server.cfg", "hostname old");
+        var store = new BackupStore(new DirectServerFileManager(), NullLogger<BackupStore>.Instance);
+        var location = Location();
+        var backup = await store.CreateAsync(location, _server, s_rules, Progress, TestContext.Current.CancellationToken);
+        Write(string.Join('/', ["cfg", .. Enumerable.Repeat("d", ServerFileRules.MaxWalkDepth + 1), "hidden.cfg"]), "made later");
+
+        var error = await Assert.ThrowsAsync<BackupException>(() =>
+            store.RestoreAsync(location, _server, backup.Sha256, new CleanRestore(s_rules), Progress, TestContext.Current.CancellationToken));
+
+        Assert.Contains("1 newer files could not be deleted (first: cfg/d/", error.Message, StringComparison.Ordinal);
+        Assert.Equal("hostname old", ReadServer("cfg/server.cfg"));
+    }
+
+    [Fact]
     public async Task AFileACleanRestoreCannotDeleteDoesNotKeepTheBackupFromBeingRestored()
     {
         Write("cfg/server.cfg", "hostname old");
