@@ -25,6 +25,13 @@ function Check([string] $name, [bool] $ok, [string] $detail = '') {
     }
 }
 
+# A check that cannot run here (it needs an elevated PowerShell): reported as skipped, never as passed.
+$script:skipped = 0
+function Skip([string] $name, [string] $reason = 'needs elevation') {
+    $script:skipped++
+    Write-Host "SKIP $name - not run: $reason" -ForegroundColor Yellow
+}
+
 # The message of the error a script block throws, or $null when it throws none.
 function Get-Thrown([scriptblock] $block) {
     try { $null = & $block; return $null } catch { return $_.Exception.Message }
@@ -53,7 +60,7 @@ function Get-ScriptParts([string] $path, [string[]] $functions, [string[]] $vari
     return $parts
 }
 
-$shared = @('Get-AccountName', 'Find-UntrustedWriter', 'Find-UntrustedWriters', 'Find-UntrustedAncestors', 'Test-PrivateFolder')
+$shared = @('Get-AccountName', 'Find-UntrustedWriter', 'Find-UntrustedWriters', 'Find-UntrustedAncestors', 'Test-PrivateFolder', 'Get-PgSslEnvironment', 'Copy-PlainTree', 'Copy-TreeLevel', 'Find-Links')
 $sharedVariables = @('TrustedWriters', 'ModifyRights', 'ReplaceRights')
 $installParts = Get-ScriptParts $installScript (@($shared) + @('Read-DerElement', 'Get-CertificateNames', 'Get-ForeignCertificateNames',
         'Test-CertificateNames', 'Get-CertificateAuthority', 'Get-CertificateUses', 'Test-ServerAuthenticationOnly', 'ConvertTo-PrintableText',
@@ -65,7 +72,7 @@ $installParts = Get-ScriptParts $installScript (@($shared) + @('Read-DerElement'
         'Resolve-NodeCertificate', 'Assert-PinnableCertificate', 'Get-EnrollArguments', 'Test-PostgresInstallerName', 'Select-PostgresVersion', 'Get-PostgresInstallerUrl', 'Find-NonLocalHbaRules',
         'Get-NameAttributes', 'Find-NameMismatches', 'Assert-InstallerSignature', 'Assert-InstallerVersion', 'Read-PostgresMinimum',
         'Assert-PostgresMinimum', 'ConvertTo-Secure', 'ConvertFrom-Secure', 'Assert-NotOlderThanInstalled', 'ConvertTo-CommandLine', 'Add-RuntimeRequirement', 'Read-RuntimeRequirements',
-        'Get-InstalledRuntimes', 'Get-MissingRuntimes', 'Test-DotNetDownloadUrl', 'Get-DotNetInstallerEntries', 'Copy-Program', 'Initialize-SetupNetwork',
+        'Get-InstalledRuntimes', 'Get-MissingRuntimes', 'Test-DotNetDownloadUrl', 'Get-DotNetInstallerEntries', 'Copy-Program', 'Repair-ProgramSwap', 'Move-ProgramFolder', 'Copy-PrivateFile', 'Initialize-SetupNetwork',
         # What a panel's install checks first and undoes when it fails; EDB's builds; signers' chains; the agent's runtimes.
         'Test-PortFree', 'Test-PfxFile', 'Get-EndpointPort', 'Assert-PanelInstallable', 'Get-PanelDatabaseState', 'Get-PanelDatabaseMessage',
         'New-Secret', 'New-PanelDatabase', 'Remove-PanelDatabase', 'Undo-PanelInstall', 'Find-PostgresInstallerUrl', 'Get-SignerChain', 'Get-AgentMissingRuntimes',
@@ -569,8 +576,9 @@ try {
         Check 'private folder: as made, it is private' (Test-PrivateFolder $private)
     }
     else {
+        Skip 'private folder: as made, it is private'
         # Not elevated, the folder's owner is this account, which could change its permissions.
-        Check 'private folder: owned by an account other than SYSTEM and Administrators, it is not private' (-not (Test-PrivateFolder $private))
+        Check 'private folder (not elevated): owned by an account other than SYSTEM and Administrators, it is not private' (-not (Test-PrivateFolder $private))
     }
     Check 'private folder: an ordinary folder is not private' (-not (Test-PrivateFolder $root))
     Check 'private folder: a missing folder is not private' (-not (Test-PrivateFolder (Join-Path $root 'missing')))
@@ -905,11 +913,17 @@ Check "PostgreSQL: the version in EDB's installer name" ($named.Major -eq 18 -an
 foreach ($bad in 'postgresql-18.6-windows-x64.exe', 'PostgreSQL-18.6-1-windows-x64.exe', 'postgresql-18.6-1-windows-x64.exe.lnk', 'postgresql-18.6-1-windows.exe', 'x-postgresql-18.6-1-windows-x64.exe') {
     Check "PostgreSQL: not an installer name: $bad" ($null -eq (Test-PostgresInstallerName $bad))
 }
-$rows = @('host|127.0.0.1|255.255.255.255|', 'host|::1|ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff|', 'local|||', 'hostssl|127.0.0.0|255.0.0.0|', '')
-Check 'PostgreSQL: pg_hba.conf rules for this machine only pass' (@(Find-NonLocalHbaRules $rows).Count -eq 0) (@(Find-NonLocalHbaRules $rows) -join ' | ')
-foreach ($bad in 'host|0.0.0.0|0.0.0.0|', 'host|192.168.1.0|255.255.255.0|', 'hostnossl|::|::|', 'host|samehost||', 'host|127.0.0.1|0.0.0.0|', 'host|::1|ffff:ffff:ffff:ffff::|', 'host|::ffff:127.0.0.1|ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff|', 'host|127.0.0.1|255.255.255.255|invalid', 'garbage') {
+$rows = @('host|127.0.0.1|255.255.255.255|scram-sha-256|', 'host|::1|ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff|scram-sha-256|', 'local|||scram-sha-256|', 'hostssl|127.0.0.0|255.0.0.0|md5|', 'host|127.0.0.1|255.255.255.255|reject|', '')
+Check 'PostgreSQL: pg_hba.conf rules for this machine only, with a password, pass' (@(Find-NonLocalHbaRules $rows).Count -eq 0) (@(Find-NonLocalHbaRules $rows) -join ' | ')
+foreach ($bad in 'host|0.0.0.0|0.0.0.0|scram-sha-256|', 'host|192.168.1.0|255.255.255.0|scram-sha-256|', 'hostnossl|::|::|scram-sha-256|', 'host|samehost||scram-sha-256|', 'host|127.0.0.1|0.0.0.0|scram-sha-256|', 'host|::1|ffff:ffff:ffff:ffff::|scram-sha-256|', 'host|::ffff:127.0.0.1|ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff|scram-sha-256|', 'host|127.0.0.1|255.255.255.255|scram-sha-256|invalid', 'garbage') {
     Check "PostgreSQL: a pg_hba.conf rule that lets in more than this machine: $bad" (@(Find-NonLocalHbaRules @($bad)).Count -eq 1)
 }
+# trust lets any account on this machine in as any database user, a game server's too: refused even on the loopback.
+foreach ($trusting in 'host|127.0.0.1|255.255.255.255|trust|', 'host|::1|ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff|trust|', 'local|||trust|', 'hostssl|127.0.0.0|255.0.0.0|trust|') {
+    $found = @(Find-NonLocalHbaRules @($trusting))
+    Check "PostgreSQL: a pg_hba.conf rule that needs no password is refused: $trusting" ($found.Count -eq 1 -and $found[0] -match 'without a password') "$found"
+}
+Check 'PostgreSQL: the rules are read with their authentication method' ($installText -match "coalesce\(netmask, ''\), coalesce\(auth_method, ''\), coalesce\(error, ''\) FROM pg_hba_file_rules")
 # EDB's newest build of a release: what its server answers for each build (Get-DownloadStatus, mocked), 403 and 404
 # meaning there is none; anything else is a server that could not answer, not a missing build.
 function Find-Build([object[]] $answers) {
@@ -1213,6 +1227,10 @@ try {
         [IO.File]::WriteAllText($secrets, '{"adminPasword": "typo"}')
         Check 'secrets file: a name it does not know is refused' ((Get-SetupExitCode (Get-Caught { Read-SecretsFile $secrets })) -eq 2)
     }
+    else {
+        Skip 'secrets file: a private one is read and deleted'
+        Skip 'secrets file: a name it does not know is refused'
+    }
 
     # .NET's folders as its installers leave them: the newest 10.0 patch of each framework, with a host resolver.
     $dotnet = Join-Path $root 'dotnet'
@@ -1244,6 +1262,80 @@ try {
     Copy-Program $source $target
     $left = @(Get-ChildItem -LiteralPath $target -Recurse -Force | ForEach-Object { $_.FullName.Substring($target.Length + 1) } | Sort-Object)
     Check 'update: the program folder is replaced, keeping only the settings file and the downloads folder' (($left -join ',') -eq 'appsettings.Production.json,downloads,downloads\PulsarAgentSetup.exe,Pulsar.Api.dll,Pulsar.Api.runtimeconfig.json' -and (Get-Content (Join-Path $target 'Pulsar.Api.dll')) -eq 'new' -and (Get-Content (Join-Path $target 'appsettings.Production.json')) -eq 'settings') ($left -join ',')
+    Check 'program swap: nothing is left beside the program folder once it is replaced (no .new, no .old)' (
+        (@(Get-ChildItem -LiteralPath (Split-Path -Parent $target) -Force | ForEach-Object Name) -join ',') -ceq 'panel')
+
+    # The new program is built beside the old one and swapped in by renames: a power cut leaves the old program, or the new one,
+    # or a folder Repair-ProgramSwap puts right, never half of each.
+    function Reset-Program([string] $folder, [string] $text) {
+        if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force }
+        $null = New-Item -ItemType Directory $folder
+        Set-Content -LiteralPath (Join-Path $folder 'Pulsar.Api.dll') $text
+        Set-Content -LiteralPath (Join-Path $folder 'appsettings.Production.json') 'settings'
+    }
+    function Get-ProgramText([string] $folder) { if (Test-Path -LiteralPath (Join-Path $folder 'Pulsar.Api.dll')) { (Get-Content -LiteralPath (Join-Path $folder 'Pulsar.Api.dll')) } else { '<none>' } }
+    Reset-Program $target 'old'
+    Reset-Program "$target.new" 'half copied by a run that was stopped'
+    Set-Content -LiteralPath (Join-Path "$target.new" 'garbage.bin') 'x'
+    Copy-Program $source $target
+    Check 'program swap: a half-built .new left by a run that was stopped is deleted, not merged into the new program' (
+        (Get-ProgramText $target) -ceq 'new' -and -not (Test-Path -LiteralPath (Join-Path $target 'garbage.bin')) -and -not (Test-Path -LiteralPath "$target.new"))
+    Reset-Program $target 'old'
+    $script:moves = New-Object Collections.Generic.List[string]
+    $realMove = (Get-Item function:Move-ProgramFolder).ScriptBlock
+    function Move-ProgramFolder([string] $from, [string] $to) {
+        $script:moves.Add("$(Split-Path -Leaf $from)>$(Split-Path -Leaf $to)")
+        if ($script:failMove -and $script:moves.Count -eq $script:failMove) { throw 'Access to the path is denied (test).' }
+        & $realMove $from $to
+    }
+    $script:failMove = 2
+    $caught = Get-Thrown { Copy-Program $source $target }
+    Check 'program swap: when the new folder cannot be moved into place the old program is put back, and the new one is not left behind' (
+        $caught -match 'denied' -and (Get-ProgramText $target) -ceq 'old' -and -not (Test-Path -LiteralPath "$target.new") -and -not (Test-Path -LiteralPath "$target.old")) "$caught $(Get-ProgramText $target) $($script:moves -join ',')"
+    $script:moves.Clear(); $script:failMove = 1
+    $caught = Get-Thrown { Copy-Program $source $target }
+    Check 'program swap: when the old folder cannot be moved aside (a file in it is open) nothing changed: the old program stays whole' (
+        $caught -match 'denied' -and (Get-ProgramText $target) -ceq 'old' -and -not (Test-Path -LiteralPath "$target.new") -and -not (Test-Path -LiteralPath "$target.old"))
+    $script:failMove = 0; $script:moves.Clear()
+    Copy-Program $source $target
+    Check 'program swap: the old folder is moved aside, the new one moved in, then the old one deleted' (($script:moves -join ',') -ceq 'panel>panel.old,panel.new>panel' -and (Get-ProgramText $target) -ceq 'new')
+    Set-Item function:Move-ProgramFolder $realMove
+
+    # The settings file holds the passwords and is protected on its own (Write-PanelConfig): a program swap must not hand it the
+    # folder's permissions, which let every user read it.
+    $account = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    Reset-Program $target 'old'
+    $settingsOld = Join-Path $target 'appsettings.Production.json'
+    $null = & (Join-Path ([Environment]::SystemDirectory) 'icacls.exe') $settingsOld /inheritance:r /grant:r "*${account}:(F)"
+    $before = Get-FileAccess $settingsOld
+    $oldRules = @((Get-Acl -LiteralPath $settingsOld).Access)
+    Copy-Program $source $target
+    $settingsNew = Join-Path $target 'appsettings.Production.json'
+    $aclNew = Get-Acl -LiteralPath $settingsNew
+    $readers = @($aclNew.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object { $_.AccessControlType -eq 'Allow' } | ForEach-Object { $_.IdentityReference.Value })
+    Check 'program swap: the settings file keeps its own protected permissions through the swap (no inheritance from the folder, nobody added: not Users, Authenticated Users or Everyone)' (
+        $aclNew.AreAccessRulesProtected -and ((Get-Acl -LiteralPath $settingsNew).Access | ForEach-Object { "$($_.IdentityReference):$($_.FileSystemRights)" }) -join ',' -ceq (($oldRules | ForEach-Object { "$($_.IdentityReference):$($_.FileSystemRights)" }) -join ',') -and @($readers | Where-Object { $_ -in 'S-1-5-32-545', 'S-1-5-11', 'S-1-1-0' }).Count -eq 0 -and (Get-Content -LiteralPath $settingsNew) -eq 'settings') "$before / $(Get-FileAccess $settingsNew)"
+    Check 'program swap: ...also for a program folder that is built beside the old one while the old settings are copied (no copy through Copy-Item, which would inherit)' (
+        $installParts['Copy-Program'] -match 'Copy-PrivateFile' )
+
+    # Repair-ProgramSwap: what a run that was stopped between the steps left.
+    Reset-Program "$target.old" 'the old program'
+    Remove-Item -LiteralPath $target -Recurse -Force
+    Reset-Program "$target.new" 'a new program'
+    $said = Repair-ProgramSwap $target
+    Check 'program swap: stopped between the two renames (no program, the old one in .old): the old program is put back' (
+        (Get-ProgramText $target) -ceq 'the old program' -and -not (Test-Path -LiteralPath "$target.old") -and -not (Test-Path -LiteralPath "$target.new") -and "$said" -match 'put back')
+    Reset-Program $target 'the new program'
+    Reset-Program "$target.old" 'the old program'
+    $null = Repair-ProgramSwap $target
+    Check 'program swap: stopped after the swap (the new program in place, .old left): the program stays, .old goes' (
+        (Get-ProgramText $target) -ceq 'the new program' -and -not (Test-Path -LiteralPath "$target.old"))
+    Check 'program swap: with nothing left over there is nothing to repair' ([string]::IsNullOrEmpty("$(Repair-ProgramSwap $target)") -and (Get-ProgramText $target) -ceq 'the new program')
+    Reset-Program "$target.old" 'the old program'
+    Remove-Item -LiteralPath $target -Recurse -Force
+    Copy-Program $source $target
+    Check 'program swap: Copy-Program starts by putting right what an earlier run left, so a program folder that is missing is not replaced from nothing' (
+        (Get-ProgramText $target) -ceq 'new' -and -not (Test-Path -LiteralPath "$target.old"))
 }
 finally {
     if (Test-Path -LiteralPath (Join-Path $root 'private')) {
@@ -1294,13 +1386,23 @@ try {
     function Test-Preflight([hashtable] $values) {
         & {
             $PanelService = 'PulsarPanel'; $AgentService = 'PulsarAgent'; $Mode = 'Panel'; $AdminUserName = 'admin'; $AdminPassword = ConvertTo-Secure 'a long enough password'
-            $Port = $freePorts[0]; $AgentsPort = 0; $SftpPort = $freePorts[1]; $CertificatePath = $null; $CertificatePassword = $null; $RestoreFrom = $null; $HostName = @()
+            $PanelData = Join-Path $root 'no-panel-data'; $UpdateRoot = Join-Path $root 'no-updates'
+            $Port = $freePorts[0]; $AgentsPort = 0; $SftpPort = $freePorts[1]; $CertificatePath = $null; $CertificatePassword = $null; $RestoreFrom = $null; $HostName = @(); $ConnectionString = $null
             foreach ($name in $values.Keys) { Set-Variable -Name $name -Value $values[$name] }
             function Test-Service([string] $name) { return $false }
+            # The database of -ConnectionString is asked about its migrations in the checks below.
+            function Assert-DatabaseNotNewer([string] $connection) { $script:checkedConnection = $connection }
+            # Copying and checking the backup have their own checks below; here the folder is read as it is.
+            function Copy-RestoreSource([string] $source) { return $source }
             Get-Caught { Assert-PanelInstallable }
         }
     }
     Check 'preflight: free ports and no certificate pass' ($null -eq (Test-Preflight @{})) "$(Test-Preflight @{})"
+    $script:checkedConnection = 'not called'
+    $null = Test-Preflight @{}
+    Check 'preflight: without -ConnectionString no database is asked about' ($script:checkedConnection -ceq 'not called')
+    $null = Test-Preflight @{ ConnectionString = 'Host=db;Database=pulsar;Username=u;Password=p' }
+    Check 'preflight: the database of -ConnectionString is checked for migrations of a newer Pulsar' ($script:checkedConnection -ceq 'Host=db;Database=pulsar;Username=u;Password=p')
     Check "preflight: a PFX that opens with its password passes" ($null -eq (Test-Preflight @{ CertificatePath = $pfxFile; CertificatePassword = (ConvertTo-Secure 'the right password'); AgentsPort = $freePorts[2] }))
     Check 'preflight: -HostName names and IP addresses pass' ($null -eq (Test-Preflight @{ HostName = @('panel.example.com', '203.0.113.7', '2001:db8::7') }))
     foreach ($case in ([ordered]@{
@@ -3154,11 +3256,60 @@ Check '-MinimumUpdateFrom defaults to 1.0.0 and takes only major.minor.patch; -R
     $minimumParameter.Count -eq 1 -and $minimumParameter[0].DefaultValue.Value -ceq '1.0.0' -and $minimumParameter[0].Extent.Text -match '\[ValidatePattern\(' -and
     @($buildParams | Where-Object { $_.Name.VariablePath.UserPath -in 'ReleaseNotes', 'UpdateSigningKey', 'RequireUpdateSignature' }).Count -eq 3)
 
+# 10. Build-Release.ps1 builds a clean tree, and records the commit it built.
+foreach ($part in (Get-ScriptParts $buildReleasePath @('Get-BuildState', 'Assert-BuildTreeClean', 'Get-CommitRecord', 'Assert-DirtyBuildNotSigned')).Values) { . ([scriptblock]::Create($part)) }
+Check 'build: -AllowDirtyTree refuses -UpdateSigningKey and -RequireUpdateSignature: a build that is not any commit never gets the update key''s signature' (
+    (Get-Thrown { Assert-DirtyBuildNotSigned $true $true $false }) -match '-AllowDirtyTree.*-UpdateSigningKey' -and (Get-Thrown { Assert-DirtyBuildNotSigned $true $false $true }) -match '-RequireUpdateSignature' -and
+    $null -eq (Get-Thrown { Assert-DirtyBuildNotSigned $true $false $false }) -and $null -eq (Get-Thrown { Assert-DirtyBuildNotSigned $false $true $true }))
+Check 'build: ...and it is refused before git is even asked' ((Get-Content -Raw -LiteralPath $buildReleasePath) -match '(?s)Assert-DirtyBuildNotSigned \(\[bool\]\$AllowDirtyTree\) \(\[bool\]\$UpdateSigningKey\) \(\[bool\]\$RequireUpdateSignature\).*Get-BuildState \$repo')
+$script:gitReply = @{}
+function git { $global:LASTEXITCODE = 0; $key = ($args | Where-Object { $_ -notin '-C' } | Select-Object -Skip 1) -join ' '; if ($script:gitReply.ContainsKey($key)) { $v = $script:gitReply[$key]; if ($v -is [int]) { $global:LASTEXITCODE = $v; return }; return $v }; $global:LASTEXITCODE = 128 }
+$script:gitReply = @{ 'rev-parse HEAD' = ('1' * 40); 'status --porcelain --untracked-files=normal' = @() }
+$state = Get-BuildState 'C:\repo'
+Check 'build: a clean checkout has its commit and no changes' ($state.Commit -ceq ('1' * 40) -and @($state.Changes).Count -eq 0)
+$script:gitReply['status --porcelain --untracked-files=normal'] = @(' M src/Pulsar.Api/Program.cs', '?? scratch.txt')
+$state = Get-BuildState 'C:\repo'
+Check 'build: modified and untracked files are changes' (@($state.Changes).Count -eq 2)
+$caught = Get-Thrown { Assert-BuildTreeClean $state $false }
+Check 'build: a tree with changes is refused, naming them and -AllowDirtyTree, before anything is built' (
+    $caught -match 'uncommitted changes' -and $caught -match 'Program\.cs' -and $caught -match 'scratch\.txt' -and $caught -match '-AllowDirtyTree')
+Check 'build: ...unless -AllowDirtyTree says it is a build for development' ($null -eq (Get-Thrown { Assert-BuildTreeClean $state $true }))
+Check 'build: a clean tree passes' ($null -eq (Get-Thrown { Assert-BuildTreeClean ([pscustomobject]@{ Commit = ('1' * 40); Changes = @() }) $false }))
+$many = [pscustomobject]@{ Commit = ('1' * 40); Changes = @(1..25 | ForEach-Object { " M file$_.cs" }) }
+Check 'build: a long list of changes is cut' ((Get-Thrown { Assert-BuildTreeClean $many $false }) -match 'and 15 more')
+Check 'build: the commit record is the commit alone for a clean tree, and says dirty for a development build' (
+    (Get-CommitRecord ([pscustomobject]@{ Commit = ('1' * 40); Changes = @() })) -ceq (('1' * 40) + "`n") -and (Get-CommitRecord $state) -ceq (('1' * 40) + " dirty`n"))
+$script:gitReply['rev-parse HEAD'] = 128
+Check 'build: a checkout git cannot read (no git, not a repository) stops the build: the commit cannot be recorded' ((Get-Thrown { Get-BuildState 'C:\repo' }) -match 'could not read the commit')
+$script:gitReply['rev-parse HEAD'] = 'not a commit'
+Check 'build: ...nor does an answer that is no commit pass' ((Get-Thrown { Get-BuildState 'C:\repo' }) -match 'could not read the commit')
+Remove-Item function:git
+$buildText = Get-Content -Raw -LiteralPath $buildReleasePath
+Check 'build: -AllowDirtyTree is a switch; the tree is checked before the work folder and the long builds, and the state is read once' (
+    @($buildParams | Where-Object { $_.Name.VariablePath.UserPath -eq 'AllowDirtyTree' -and $_.StaticType.Name -eq 'SwitchParameter' }).Count -eq 1 -and
+    $buildText.IndexOf('Assert-BuildTreeClean $buildState') -gt 0 -and $buildText.IndexOf('Assert-BuildTreeClean $buildState') -lt $buildText.IndexOf('npm ci --ignore-scripts') -and $buildText.IndexOf('Assert-BuildTreeClean $buildState') -lt $buildText.IndexOf('$Work = Join-Path $Output') -and
+    ([regex]::Matches($buildText, 'Get-BuildState \$repo')).Count -eq 1)
+Check 'build: the commit is in release.json and in pulsar-<version>.commit, which is published and named by the signed manifest, with a checksum' (
+    $buildText -match "commit = \`$buildState\.Commit" -and $buildText -match 'pulsar-\$Version\.commit' -and $buildText -match "Get-CommitRecord \`$buildState" -and $buildText -match '(?s)\$commitFile.*Write-Checksum \$commitFile.*\$published' )
+
+# 11. The passphrase of a new update key is in the environment of the signer only, not of the build servers dotnet leaves running.
+$keyScript = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\release\New-UpdateSigningKey.ps1')
+$keyPublish = $keyScript.IndexOf('dotnet publish')
+$keySet = $keyScript.IndexOf("SetEnvironmentVariable('PULSAR_UPDATE_KEY_PASSPHRASE', `$passphrase")
+$keyRun = $keyScript.IndexOf('new-key $Path')
+$keyClear = $keyScript.LastIndexOf("SetEnvironmentVariable('PULSAR_UPDATE_KEY_PASSPHRASE', `$null")
+Check 'key: the signer is built first, with no build server left running (-nodeReuse:false, --disable-build-servers, no shared compilation)' (
+    $keyPublish -gt 0 -and $keyScript -match '-nodeReuse:false' -and $keyScript -match '--disable-build-servers' -and $keyScript -match '-p:UseSharedCompilation=false' -and $keyScript -notmatch 'dotnet run')
+Check 'key: the passphrase is put in the environment after the build, runs only the signer, and is taken out again when it ends' (
+    $keyPublish -lt $keySet -and $keySet -lt $keyRun -and $keyRun -lt $keyClear -and $keyScript.Substring($keySet, $keyRun - $keySet) -notmatch 'dotnet')
+Check 'key: the built signer is run directly (not through dotnet), and its folder is a temporary one that is removed' (
+    $keyScript -match '(?s)\$signer = Join-Path \$build ''pulsar-update-signer\.exe''.*& \$signer new-key \$Path' -and $keyScript -match 'Remove-Item -LiteralPath \$build -Recurse -Force')
+
 # --- Phase 19: Publish-GitHubRelease.ps1 (gh and the signer are mocked) -------------------------
 
 $publishPath = Join-Path $PSScriptRoot '..\release\Publish-GitHubRelease.ps1'
 $publishText = Get-Content -Raw -LiteralPath $publishPath
-$publishParts = Get-ScriptParts $publishPath @('Invoke-Gh', 'Test-GhInstalled', 'Assert-ManifestVerifies', 'Get-UpdateSigner', 'Test-ReleaseFolder', 'Assert-GitHubReady') @('Repository', 'UpdateManifestName', 'UpdateSignatureName')
+$publishParts = Get-ScriptParts $publishPath @('Invoke-Gh', 'Test-GhInstalled', 'Assert-ManifestVerifies', 'Get-UpdateSigner', 'Test-ReleaseFolder', 'Assert-GitHubReady', 'Get-RecordedCommit', 'Assert-CommitRecorded', 'Resolve-TargetCommit') @('Repository', 'UpdateManifestName', 'UpdateSignatureName')
 foreach ($part in $publishParts.Values) { . ([scriptblock]::Create($part)) }
 Check 'publish: only the project''s own repository' ($Repository -ceq 'Ayrton09/Pulsar' -and $publishText -match "'--repo', \`$Repository")
 
@@ -3191,7 +3342,7 @@ try {
     function New-PublishFolder([string] $name, [string] $version = '1.2.3') {
         $folder = Join-Path $publishRoot $name
         $null = New-Item -ItemType Directory $folder
-        $files = [ordered]@{ "pulsar-$version-windows-x64.zip" = [byte[]](1..120); "pulsar-agent-$version-windows-x64.msi" = [byte[]](3..80) }
+        $files = [ordered]@{ "pulsar-$version-windows-x64.zip" = [byte[]](1..120); "pulsar-agent-$version-windows-x64.msi" = [byte[]](3..80); "pulsar-$version.commit" = [Text.Encoding]::ASCII.GetBytes(("a" * 40) + "`n") }
         foreach ($file in $files.Keys) {
             [IO.File]::WriteAllBytes((Join-Path $folder $file), $files[$file])
             $hash = (Get-FileHash -LiteralPath (Join-Path $folder $file) -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -3208,7 +3359,7 @@ try {
     $release = Test-ReleaseFolder $good '1.2.3' 'signer.exe'
     $uploads = @($release.Files | ForEach-Object { Split-Path -Leaf $_ })
     Check 'publish: the manifest''s files, their checksum files, the manifest and its signature are uploaded, and nothing else in the folder' (
-        ($uploads -join ',') -ceq 'pulsar-1.2.3-windows-x64.zip,pulsar-1.2.3-windows-x64.zip.sha256,pulsar-agent-1.2.3-windows-x64.msi,pulsar-agent-1.2.3-windows-x64.msi.sha256,pulsar-update.json,pulsar-update.json.sig') ($uploads -join ',')
+        ($uploads -join ',') -ceq 'pulsar-1.2.3-windows-x64.zip,pulsar-1.2.3-windows-x64.zip.sha256,pulsar-agent-1.2.3-windows-x64.msi,pulsar-agent-1.2.3-windows-x64.msi.sha256,pulsar-1.2.3.commit,pulsar-1.2.3.commit.sha256,pulsar-update.json,pulsar-update.json.sig') ($uploads -join ',')
     Check 'publish: the signature is verified (the signer''s verify, the pinned keys) on the manifest of the folder' ($verifyCalls.Count -eq 1 -and $verifyCalls[0] -ceq (Join-Path $good 'pulsar-update.json'))
     $verifyFails = $true
     Check 'publish: a signature that does not verify refuses the release' ((Get-Thrown { Test-ReleaseFolder $good '1.2.3' 'signer.exe' }) -match 'does not verify against the keys Pulsar trusts')
@@ -3255,6 +3406,10 @@ try {
     $fakeSigner = Join-Path $publishRoot 'pulsar-update-signer.exe'
     Set-Content -LiteralPath $fakeSigner -Value 'not run: Assert-ManifestVerifies is mocked'
     function Get-UpdateSigner([string] $path, [string] $folder) { return $path }
+    # The checkout's commit, which `git rev-parse` answers (HEAD, a branch, a commit); the build recorded "a" * 40.
+    $script:gitAnswer = 'a' * 40
+    $script:gitSeen = New-Object Collections.Generic.List[string]
+    function git { $script:gitSeen.Add($args -join ' '); $global:LASTEXITCODE = $(if ($script:gitAnswer) { 0 } else { 128 }); $script:gitAnswer }
     function Invoke-PublishMain([hashtable] $options = @{}) {
         $ghCalls.Clear(); $verifyCalls.Clear()
         $ghState.Visibility = $(if ($options['Visibility']) { $options['Visibility'] } else { 'PUBLIC' })
@@ -3271,7 +3426,7 @@ try {
     if ($create.Count -eq 1) {
         $line = $create[0]
         Check 'publish: gh release create v<version> <files> --repo Ayrton09/Pulsar --title ... --notes-file ... --target ... as the latest release' (
-            $line -match '^release create v1\.2\.3 ' -and $line -match '--repo Ayrton09/Pulsar' -and $line -match '--title Pulsar 1\.2\.3' -and $line -match '--notes-file .+notes\.md' -and $line -match '--target main' -and $line -match '--latest' -and
+            $line -match '^release create v1\.2\.3 ' -and $line -match '--repo Ayrton09/Pulsar' -and $line -match '--title Pulsar 1\.2\.3' -and $line -match '--notes-file .+notes\.md' -and $line -match "--target $('a' * 40)" -and $line -match '--latest' -and
             $line -notmatch '--draft|--prerelease' -and $line -match 'pulsar-update\.json ' -and $line -match 'pulsar-update\.json\.sig ' -and $line -match 'zip\.sha256' -and $line -notmatch 'pulsar-1\.0\.0') $line
         Check 'publish: the checks all come before the upload (visibility, release and tag, then create)' (
             $ghCalls[0] -like 'repo view*' -and $ghCalls[1] -like 'release view*' -and $ghCalls[2] -like 'api repos/*' -and $ghCalls[3] -like 'release create*' -and $ghCalls.Count -eq 4) ($ghCalls -join ' | ')
@@ -3291,9 +3446,43 @@ try {
     $caught = Invoke-PublishMain @{ Notes = $notesText }
     Check 'publish: -Notes names the notes file given' ($null -eq $caught -and (@($ghCalls | Where-Object { $_ -like 'release create*' })[0]) -like '*--notes-file*mynotes.md*') "$caught"
     Check 'publish: the tag is made at a commit (-Target, or this checkout''s HEAD), no token is a parameter or an argument, and no draft or pre-release' (
-        $publishText -match "'--target', \`$Target" -and $publishText -match 'rev-parse HEAD' -and $publishText -notmatch '(?i)GH_TOKEN|GITHUB_TOKEN|password|passphrase|--draft|--prerelease' -and $publishText -match "'--latest'")
+        $publishText -match "'--target', \`$Target" -and $publishText -match 'rev-parse --verify' -and $publishText -notmatch '(?i)GH_TOKEN|GITHUB_TOKEN|password|passphrase|--draft|--prerelease' -and $publishText -match "'--latest'")
     $order = @('Test-ReleaseFolder $Folder', 'Assert-GitHubReady $Repository', "'release', 'create'") | ForEach-Object { $publishText.IndexOf($_) }
     Check 'publish: the folder and the signature are checked, then GitHub, and only then the release is created' ($order[0] -gt 0 -and $order[0] -lt $order[1] -and $order[1] -lt $order[2]) ($order -join ',')
+
+    # 10. The tag is made at the commit the release was built at, which the signed manifest records.
+    $recorded = Get-RecordedCommit (Get-Content -Raw -LiteralPath (Join-Path $good 'pulsar-update.json') | ConvertFrom-Json) $good '1.2.3'
+    Check 'commit: the commit a release was built at is read from the file the signed manifest names' ($recorded.Commit -ceq ('a' * 40) -and -not $recorded.Dirty)
+    $script:gitAnswer = 'b' * 40
+    $caught = Invoke-PublishMain
+    Check 'commit: a checkout whose commit is not the one the release was built at publishes nothing (gh is not asked)' (
+        $null -ne $caught -and $caught.Exception.Message -match ('built at commit ' + ('a' * 40)) -and $caught.Exception.Message -match ('b' * 40) -and $ghCalls.Count -eq 0) "$caught"
+    $script:gitAnswer = 'a' * 40
+    $caught = Invoke-PublishMain
+    Check 'commit: the checkout''s commit being the recorded one, the tag is made at that commit' ($null -eq $caught -and @($ghCalls | Where-Object { $_ -like "release create*--target $('a' * 40)*" }).Count -eq 1) "$caught"
+    $script:gitAnswer = ''
+    $caught = Invoke-PublishMain
+    Check 'commit: a target that git cannot resolve to a commit stops the publication before gh is asked' ($null -ne $caught -and $caught.Exception.Message -match 'is not a commit' -and $ghCalls.Count -eq 0) "$caught"
+    $script:gitAnswer = 'a' * 40
+    Check 'commit: the target is resolved to a full commit (a branch name or a short one cannot differ from the recorded)' ((Resolve-TargetCommit 'main') -ceq ('a' * 40) -and ($script:gitSeen -join '|') -match 'rev-parse --verify --quiet main\^\{commit\}')
+    Check 'commit: a target with characters no commit or branch has is refused, git is not asked' (
+        (Get-Thrown { Resolve-TargetCommit 'main; calc' }) -match 'not a commit or a branch name')
+    # A release without the file (built before it existed), with a file that is no commit, or built from a tree with changes.
+    $noCommit = New-PublishFolder 'nocommit'
+    $manifestJson = Get-Content -Raw -LiteralPath (Join-Path $noCommit 'pulsar-update.json') | ConvertFrom-Json
+    $manifestJson.files = @($manifestJson.files | Where-Object { $_.name -notlike '*.commit' })
+    Check 'commit: a manifest that does not name the commit file is refused: the commit of the release is unknown' ((Get-Thrown { Get-RecordedCommit $manifestJson $noCommit '1.2.3' }) -match 'does not name pulsar-1\.2\.3\.commit.*Build-Release\.ps1')
+    [IO.File]::WriteAllText((Join-Path $noCommit 'pulsar-1.2.3.commit'), 'main')
+    Check 'commit: a commit file that holds no commit is refused' ((Get-Thrown { Get-RecordedCommit (Get-Content -Raw -LiteralPath (Join-Path $noCommit 'pulsar-update.json') | ConvertFrom-Json) $noCommit '1.2.3' }) -match 'is not a commit')
+    [IO.File]::WriteAllText((Join-Path $noCommit 'pulsar-1.2.3.commit'), (('c' * 40) + " dirty`n"))
+    $dirtyRecord = Get-RecordedCommit (Get-Content -Raw -LiteralPath (Join-Path $noCommit 'pulsar-update.json') | ConvertFrom-Json) $noCommit '1.2.3'
+    Check 'commit: a build made from a tree with uncommitted changes is read as dirty, and is never published' (
+        $dirtyRecord.Dirty -and $dirtyRecord.Commit -ceq ('c' * 40) -and (Get-Thrown { Assert-CommitRecorded $dirtyRecord ('c' * 40) }) -match 'uncommitted changes')
+    Check 'commit: the recorded commit and the target agree, or the message names both' (
+        $null -eq (Get-Thrown { Assert-CommitRecorded ([pscustomobject]@{ Commit = ('a' * 40); Dirty = $false }) ('a' * 40) }) -and
+        (Get-Thrown { Assert-CommitRecorded ([pscustomobject]@{ Commit = ('a' * 40); Dirty = $false }) ('d' * 40) }) -match "$('a' * 40).*$('d' * 40)")
+    Check 'commit: the check comes with the others, before gh is asked and before anything is uploaded' (
+        $publishText.IndexOf('Assert-CommitRecorded (Get-RecordedCommit') -gt $publishText.IndexOf('Test-ReleaseFolder $Folder') -and $publishText.IndexOf('Assert-CommitRecorded (Get-RecordedCommit') -lt $publishText.IndexOf('Assert-GitHubReady $Repository'))
 }
 finally {
     Remove-Item -LiteralPath $publishRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -3310,8 +3499,8 @@ Check 'workflow: its header says releases are built and update-signed on the mai
 $updateParts = Get-ScriptParts $installScript @('Invoke-Native', 'New-SetupFolder', 'Get-UntrustedWritersMessage', 'Get-ShortVersion', 'Get-UpdateVersions', 'Initialize-UpdateFolder', 'Lock-Update', 'Unlock-Update',
     'Start-UpdateRun', 'Write-UpdateResult', 'New-UpdateBackup', 'Remove-OldUpdateBackups', 'Save-PreviousPrograms', 'Get-PanelConnection', 'Invoke-PanelPsql', 'Get-PanelMigrations',
     'Test-DatabaseChanged', 'Restore-RolledBackDatabase', 'Stop-UpdateService', 'Wait-UpdatedPanelReady', 'Wait-UpdatedAgentHealthy', 'Assert-UpdateHealthy', 'Undo-Update', 'Invoke-Update',
-    'Wait-PanelReady') `
-    @('ExitRolledBack', 'UpdateRoot', 'UpdateBackups', 'UpdateBackupsKept', 'UpdatePrevious', 'UpdateResultFile', 'UpdateLockFile', 'UpdatePanelMinutes', 'UpdateAgentStableSeconds', 'UpdateAgentCheckMinutes', 'UpdateRun', 'UpdateLock')
+    'Wait-PanelReady', 'Test-InstalledHealthy', 'Write-UpdateJournal', 'Read-UpdateJournal', 'Remove-UpdateJournal', 'Resume-InterruptedUpdate', 'Repair-ProgramSwap', 'Move-ProgramFolder', 'Assert-RollbackPossible', 'Close-UpdateJournal', 'Set-UpdateJournalCompleted', 'Save-UpdateJournal', 'Copy-PrivateFile') `
+    @('ExitRolledBack', 'UpdateRoot', 'UpdateBackups', 'UpdateBackupsKept', 'UpdatePrevious', 'UpdateResultFile', 'UpdateLockFile', 'UpdateJournal', 'UpdatePanelMinutes', 'UpdateAgentStableSeconds', 'UpdateAgentCheckMinutes', 'UpdateRun', 'UpdateLock')
 # The variables built from one another (UpdateRoot, then the paths in it) are loaded in any order: the folder they start from is set first.
 $DataRoot = Join-Path $Scratch 'pulsar-update-data-root'; $UpdateRoot = Join-Path $DataRoot 'Updates'
 foreach ($part in $updateParts.Values) { . ([scriptblock]::Create($part)) }
@@ -3363,6 +3552,10 @@ try {
     $null = New-Item -ItemType Directory -Force (Join-Path $UpdatePrevious 'Panel\old'), (Join-Path $UpdatePrevious 'Agent')
     Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\old\left-over.txt') 'from an earlier update'
     function Initialize-UpdateFolder([string] $path) { $script:upFolders.Add($path) }
+    # Not elevated, the real one makes a folder its owner (this account) fails its own check.
+    $realNewSetupFolder = (Get-Item function:New-SetupFolder).ScriptBlock
+    function New-SetupFolder([string] $path) { $null = New-Item -ItemType Directory $path }
+    function Write-SetupLog([string] $text) { }
     $script:upFolders = New-Object Collections.Generic.List[string]
     Save-PreviousPrograms @('panel', 'agent')
     Check 'update: the programs about to be replaced are copied whole to previous\Panel and previous\Agent (nested files and settings too)' (
@@ -3373,8 +3566,36 @@ try {
         -not (Test-Path (Join-Path $UpdatePrevious 'Panel\old')) -and $script:upFolders -contains $UpdatePrevious)
     Save-PreviousPrograms @('agent')
     Check 'update: an agent-only update keeps no panel copy (an older one is not left to be put back)' (-not (Test-Path (Join-Path $UpdatePrevious 'Panel')) -and (Test-Path (Join-Path $UpdatePrevious 'Agent\PulsarAgent.exe')))
+    Check 'previous: it is built beside the old copy and swapped in: nothing is left beside previous afterwards' (
+        (@(Get-ChildItem -LiteralPath $upRoot -Force | ForEach-Object Name | Where-Object { $_ -like 'previous*' }) -join ',') -ceq 'previous')
+    # The copy of the last good version is never wiped to make room for a broken one.
+    $null = New-Item -ItemType Directory -Force (Join-Path $UpdatePrevious 'Panel'), (Join-Path $UpdatePrevious 'Agent')
+    Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe') 'panel 0.9.0 (the last good one)'
+    Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Agent\PulsarAgent.exe') 'agent 0.9.0 (the last good one)'
+    Set-Content -LiteralPath (Join-Path $PanelDir 'Pulsar.Api.exe') 'panel 1.0.0 (broken)'
+    Set-Content -LiteralPath (Join-Path $UpdatePrevious 'previous.json') '{"format":1,"version":"1.0.0"}'
+    Save-PreviousPrograms @('panel', 'agent') $false '1.0.0'
+    Check 'previous: an installed version that does not pass its checks does not replace the good copy of that same version (the update then rolls back to that)' (
+        (Get-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe')) -ceq 'panel 0.9.0 (the last good one)' -and (Get-Content -LiteralPath (Join-Path $UpdatePrevious 'Agent\PulsarAgent.exe')) -ceq 'agent 0.9.0 (the last good one)')
+    Save-PreviousPrograms @('panel', 'agent') $false '1.1.0'
+    Check 'previous: ...but a copy of another version than the installed one is replaced (an older program on a newer database is no rollback), and the version is recorded' (
+        (Get-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe')) -ceq 'panel 1.0.0 (broken)' -and (Get-Content -LiteralPath (Join-Path $UpdatePrevious 'previous.json') -Raw | ConvertFrom-Json).version -ceq '1.1.0')
+    Save-PreviousPrograms @('panel', 'agent') $true '1.2.0'
+    Check 'previous: a healthy install records its version with the copy' ((Get-Content -LiteralPath (Join-Path $UpdatePrevious 'previous.json') -Raw | ConvertFrom-Json).version -ceq '1.2.0')
+    Save-PreviousPrograms @('panel', 'agent') $true
+    Check 'previous: an installed version that is not known is recorded as unknown, and never matches' ($null -eq (Get-Content -LiteralPath (Join-Path $UpdatePrevious 'previous.json') -Raw | ConvertFrom-Json).version)
+    Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe') 'panel 0.9.0 (the last good one)'
+    Set-Content -LiteralPath (Join-Path $UpdatePrevious 'previous.json') '{"format":1,"version":"1.0.0"}'
+    Remove-Item -LiteralPath (Join-Path $UpdatePrevious 'Agent') -Recurse -Force
+    Save-PreviousPrograms @('panel', 'agent') $false '1.0.0'
+    Check 'previous: ...but only when it has every part this update replaces; otherwise the installed programs are kept, as nothing better exists' (
+        (Get-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe')) -ceq 'panel 1.0.0 (broken)' -and (Test-Path -LiteralPath (Join-Path $UpdatePrevious 'Agent\PulsarAgent.exe')))
+    Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe') 'panel 0.9.0 (the last good one)'
     Remove-Item (Join-Path $PanelDir 'Pulsar.Api.exe')
     Check 'update: a program that cannot be copied stops the update before it starts' ((Get-SetupExitCode (Get-Caught { Save-PreviousPrograms @('panel') })) -eq 1 -and (Get-Thrown { Save-PreviousPrograms @('panel') }) -match 'nothing was changed')
+    Check 'previous: ...and the copy that was there stays whole, with no half-built one beside it' (
+        (Get-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe')) -ceq 'panel 0.9.0 (the last good one)' -and
+        (@(Get-ChildItem -LiteralPath $upRoot -Force | ForEach-Object Name | Where-Object { $_ -like 'previous*' }) -join ',') -ceq 'previous')
 
     # Remove-OldUpdateBackups: the newest three by the time in the name; other things are not backups and stay.
     $UpdateBackups = Join-Path $upRoot 'backups'
@@ -3491,16 +3712,19 @@ try {
     # are mocks that record what was asked of them.
     function Invoke-UpdateScenario([hashtable] $options = @{}) {
         $PanelDir, $AgentDir = Get-FakePrograms
+        if ($options['SaveFails']) { Remove-Item -LiteralPath (Join-Path $PanelDir 'Pulsar.Api.exe') }
         $UpdateRoot = Join-Path $upRoot 'Updates'
         foreach ($folder in $UpdateRoot) { if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force }; $null = New-Item -ItemType Directory $folder }
         $UpdateBackups = Join-Path $UpdateRoot 'backups'; $UpdatePrevious = Join-Path $UpdateRoot 'previous'
-        $UpdateResultFile = Join-Path $UpdateRoot 'last-update.json'; $UpdateLockFile = Join-Path $UpdateRoot 'update.lock'
+        $UpdateResultFile = Join-Path $UpdateRoot 'last-update.json'; $UpdateLockFile = Join-Path $UpdateRoot 'update.lock'; $UpdateJournal = Join-Path $UpdateRoot 'in-progress.json'; $DiscardInterruptedUpdate = [bool]$options['Discard']
         $null = New-Item -ItemType Directory $UpdateBackups, $UpdatePrevious
         $script:UpdateLock = $null; $script:UpdateRun = $null
         $script:upCalls = New-Object Collections.Generic.List[string]
         $script:upHealth = @{ panel = 0; agent = 0 }
-        $script:upMigrations = @($options['Before'], $options['After'])
+        $script:upMigrations = if ($options['Interrupted']) { @($options['Current'], $options['Before'], $options['After']) } else { @($options['Before'], $options['After']) }
         $script:upMigrationReads = 0
+        $script:upJournalAtReplace = $null
+        $script:upSavedHealthy = $null
         $PanelService = 'PulsarPanel'; $AgentService = 'PulsarAgent'
         $parts = if ($options.ContainsKey('Parts')) { $options['Parts'] } else { @('agent', 'panel') }
         function Get-UpdateVersions { [pscustomobject]@{ From = '1.0.0'; To = '1.0.1' } }
@@ -3511,9 +3735,11 @@ try {
             [pscustomobject]@{ Folder = (Join-Path $UpdateBackups '1.0.0-20261020-101010\pulsar-backup-20261020-101010'); Dump = (Join-Path $UpdateBackups '1.0.0-20261020-101010\pulsar-backup-20261020-101010\pulsar.dump') }
         }
         function Remove-OldUpdateBackups([string] $folder, [int] $keep) { $script:upCalls.Add("prune $keep") }
-        function Get-PanelMigrations { $value = $script:upMigrations[[Math]::Min($script:upMigrationReads, 1)]; $script:upMigrationReads++; $script:upCalls.Add('read migrations'); $value }
-        function Update-Agent { $script:upCalls.Add('update agent'); if ($options['Fail'] -ceq 'agent') { throw 'The agent''s service could not start (test).' } }
-        function Update-Panel { $script:upCalls.Add('update panel'); if ($options['Fail'] -ceq 'panel') { throw 'The panel service did not start (test).' } }
+        function Get-PanelMigrations { $value = $script:upMigrations[[Math]::Min($script:upMigrationReads, $script:upMigrations.Count - 1)]; $script:upMigrationReads++; $script:upCalls.Add('read migrations'); $value }
+        function Test-InstalledHealthy([string[]] $parts) { -not $options['Unhealthy'] }
+        function Assert-RollbackPossible { if ($options['NotOwner']) { throw (New-SetupError $ExitUnsupported 'The panel''s database user does not own the schema public (test). Nothing was changed.') } }
+        function Update-Agent { $script:upJournalAtReplace = Test-Path -LiteralPath $UpdateJournal; $script:upCalls.Add('update agent'); if ($options['Fail'] -ceq 'agent') { throw 'The agent''s service could not start (test).' } }
+        function Update-Panel { if ($null -eq $script:upJournalAtReplace) { $script:upJournalAtReplace = Test-Path -LiteralPath $UpdateJournal }; $script:upCalls.Add('update panel'); if ($options['Fail'] -ceq 'panel') { throw 'The panel service did not start (test).' } }
         function Wait-UpdatedPanelReady {
             $script:upHealth['panel']++; $script:upCalls.Add("health panel $($script:upHealth['panel'])")
             if ($script:upHealth['panel'] -eq 1 -and $options['Fail'] -ceq 'panelHealth') { throw 'The panel did not become ready in 5 minutes (test).' }
@@ -3523,7 +3749,12 @@ try {
             $script:upHealth['agent']++; $script:upCalls.Add("health agent $($script:upHealth['agent'])")
             if ($script:upHealth['agent'] -eq 1 -and $options['Fail'] -ceq 'agentHealth') { throw 'The agent could not sign in at the panel within 2 minutes (test).' }
         }
-        function Stop-UpdateService([string] $name) { $script:upCalls.Add("stop $name"); if ($options['StopFails'] -ceq $name) { throw 'Access denied (test).' } }
+        $script:upStops = @{}
+        function Stop-UpdateService([string] $name) {
+            $script:upCalls.Add("stop $name")
+            $script:upStops[$name] = 1 + $(if ($script:upStops.ContainsKey($name)) { $script:upStops[$name] } else { 0 })
+            if ($options['StopFails'] -ceq $name -or ($options['StopFailsOnRollback'] -ceq $name -and $script:upStops[$name] -ge 2)) { throw 'Access denied (test).' }
+        }
         function Copy-Program([string] $source, [string] $target) {
             $script:upCalls.Add("copy $(Split-Path -Leaf $source) to $(Split-Path -Leaf $target)")
             if ($options['CopyFails'] -ceq (Split-Path -Leaf $target)) { throw 'The file is in use (test).' }
@@ -3531,20 +3762,36 @@ try {
         function Restore-RolledBackDatabase([string] $dump) { $script:upCalls.Add("restore $(Split-Path -Leaf $dump)"); if ($options['RestoreFails']) { throw 'pg_restore failed (test)' } }
         function Start-Panel { $script:upCalls.Add('start panel') }
         function Start-Service { $script:upCalls.Add("start $($args[0])") }
-        Start-UpdateRun
-        $script:UpdateRun.Parts = @()
+        # An update that was stopped half way: its journal, the backup it made and (HalfSwap) a panel folder moved aside and never replaced.
+        if ($options['Interrupted']) {
+            $dumpFolder = Join-Path $UpdateBackups '1.0.0-20261020-101010\pulsar-backup-20261020-101010'
+            $null = New-Item -ItemType Directory $dumpFolder
+            Set-Content -LiteralPath (Join-Path $dumpFolder 'pulsar.dump') 'a dump'
+            $null = New-Item -ItemType Directory -Force (Join-Path $UpdatePrevious 'Panel'), (Join-Path $UpdatePrevious 'Agent')
+            Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Panel\Pulsar.Api.exe') 'panel 1.0.0'
+            Set-Content -LiteralPath (Join-Path $UpdatePrevious 'Agent\PulsarAgent.exe') 'agent 1.0.0'
+            Write-UpdateJournal ([pscustomobject]@{ From = '1.0.0'; To = '1.0.1'; Parts = @('agent', 'panel'); MigrationsBefore = $options['Before']; Backup = [pscustomobject]@{ Folder = $dumpFolder; Dump = (Join-Path $dumpFolder 'pulsar.dump') } })
+            if ($options['HalfSwap']) { Rename-Item -LiteralPath $PanelDir -NewName 'Panel.old' }
+            if ($options['Completed']) { Set-UpdateJournalCompleted }
+            if ($options['Garbage']) { [IO.File]::WriteAllText($UpdateJournal, 'garbage') }
+        }
         $failure = $null
-        try { Invoke-Update $parts } catch { $failure = $_ }
+        try {
+            Start-UpdateRun
+            $script:UpdateRun.Parts = @()
+            Invoke-Update $parts
+        }
+        catch { $failure = $_ }
         $record = $null
         if (Test-Path -LiteralPath $UpdateResultFile) { $record = [IO.File]::ReadAllText($UpdateResultFile) | ConvertFrom-Json }
         Unlock-Update
-        return [pscustomobject]@{ Error = $failure; Calls = @($script:upCalls); Result = $record; Previous = $UpdatePrevious; Panel = $PanelDir; Agent = $AgentDir }
+        return [pscustomobject]@{ Error = $failure; Calls = @($script:upCalls); Result = $record; Previous = $UpdatePrevious; Panel = $PanelDir; Agent = $AgentDir; JournalLeft = (Test-Path -LiteralPath $UpdateJournal); JournalAtReplace = $script:upJournalAtReplace }
     }
     $calls = { param($s) $s.Calls -join ' | ' }
 
     $ok = Invoke-UpdateScenario @{ Before = "m1`nm2"; After = "m1`nm2`nm3" }
     Check 'update: a good update backs the panel up, notes the migrations, keeps the programs, updates the agent then the panel, checks the panel then the agent' (
-        $null -eq $ok.Error -and (& $calls $ok) -ceq 'backup 1.0.0 | prune 3 | read migrations | update agent | update panel | health panel 1 | health agent 1') (& $calls $ok)
+        $null -eq $ok.Error -and (& $calls $ok) -ceq 'stop PulsarPanel | backup 1.0.0 | prune 3 | read migrations | update agent | update panel | health panel 1 | health agent 1') (& $calls $ok)
     Check 'update: ...and the previous programs are in previous\Panel and \Agent' ((Test-Path (Join-Path $ok.Previous 'Panel\Pulsar.Api.exe')) -and (Test-Path (Join-Path $ok.Previous 'Agent\PulsarAgent.exe')))
     Check 'update: ...and last-update.json says succeeded, from 1.0.0 to 1.0.1, agent and panel, no error' (
         $ok.Result.status -ceq 'succeeded' -and $ok.Result.from -ceq '1.0.0' -and $ok.Result.to -ceq '1.0.1' -and (@($ok.Result.parts) -join ',') -ceq 'agent,panel' -and $null -eq $ok.Result.error)
@@ -3552,15 +3799,20 @@ try {
     Check 'update: a node with no panel is backed up for nothing (no backup), updated and checked, and the result lists the agent only' (
         $null -eq $agentOnly.Error -and (& $calls $agentOnly) -ceq 'update agent | health agent 1' -and (@($agentOnly.Result.parts) -join ',') -ceq 'agent' -and -not (Test-Path (Join-Path $agentOnly.Previous 'Panel')))
     $panelOnly = Invoke-UpdateScenario @{ Parts = @('panel'); Before = 'm1'; After = 'm1' }
-    Check 'update: a panel alone: backup, notes, panel update, panel check, no agent check' ((& $calls $panelOnly) -ceq 'backup 1.0.0 | prune 3 | read migrations | update panel | health panel 1')
+    Check 'update: a panel alone: backup, notes, panel update, panel check, no agent check' ((& $calls $panelOnly) -ceq 'stop PulsarPanel | backup 1.0.0 | prune 3 | read migrations | update panel | health panel 1')
 
     $backupFailed = Invoke-UpdateScenario @{ BackupFails = $true }
-    Check 'update: a backup that fails stops the update before anything is replaced: no stop, no copy, no rollback' (
-        (Get-SetupExitCode $backupFailed.Error) -eq 1 -and $backupFailed.Error.Exception.Message -match 'nothing was changed' -and (& $calls $backupFailed) -ceq 'backup 1.0.0')
+    Check 'update: a backup that fails stops the update before anything is replaced: no copy, no rollback, and the panel that was stopped for the dump runs again' (
+        (Get-SetupExitCode $backupFailed.Error) -eq 1 -and $backupFailed.Error.Exception.Message -match 'nothing was changed' -and (& $calls $backupFailed) -ceq 'stop PulsarPanel | backup 1.0.0 | start panel' -and -not $backupFailed.JournalLeft)
+    $saveFailed = Invoke-UpdateScenario @{ SaveFails = $true }
+    Check 'update: programs that cannot be kept for a rollback stop the update before anything is replaced, with the panel running again and no journal' (
+        (Get-SetupExitCode $saveFailed.Error) -eq 1 -and (& $calls $saveFailed) -ceq 'stop PulsarPanel | backup 1.0.0 | prune 3 | read migrations | start panel' -and -not $saveFailed.JournalLeft)
+    Check 'update: the panel is stopped, and the backup waits for it, before the dump is taken (writes made between the dump and the stop would be lost by a rollback)' (
+        $updateParts['Invoke-Update'].IndexOf('Stop-UpdateService $PanelService') -ge 0 -and $updateParts['Invoke-Update'].IndexOf('Stop-UpdateService $PanelService') -lt $updateParts['Invoke-Update'].IndexOf('New-UpdateBackup'))
 
     $bad = Invoke-UpdateScenario @{ Fail = 'panelHealth'; Before = "m1`nm2"; After = "m1`nm2`nm3" }
     Check 'rollback: a panel that does not become ready puts the previous version back: services stopped, database restored from the backup, previous programs copied back, services started, previous version checked' (
-        (& $calls $bad) -ceq 'backup 1.0.0 | prune 3 | read migrations | update agent | update panel | health panel 1 | stop PulsarPanel | read migrations | restore pulsar.dump | copy Panel to Panel | start panel | stop PulsarAgent | copy Agent to Agent | start PulsarAgent | health panel 2 | health agent 1') (& $calls $bad)
+        (& $calls $bad) -ceq 'stop PulsarPanel | backup 1.0.0 | prune 3 | read migrations | update agent | update panel | health panel 1 | stop PulsarPanel | read migrations | restore pulsar.dump | copy Panel to Panel | start panel | stop PulsarAgent | copy Agent to Agent | start PulsarAgent | health panel 2 | health agent 1') (& $calls $bad)
     Check 'rollback: it ends with the exit code for "rolled back" and a message naming both versions and why' (
         (Get-SetupExitCode $bad.Error) -eq 7 -and $bad.Error.Exception.Message -ceq 'The update to 1.0.1 failed and Pulsar was put back to 1.0.0: The panel did not become ready in 5 minutes (test).') $bad.Error.Exception.Message
     Check 'rollback: last-update.json says rolled_back with that message' ($bad.Result.status -ceq 'rolled_back' -and $bad.Result.error -ceq $bad.Error.Exception.Message -and $bad.Result.to -ceq '1.0.1' -and (@($bad.Result.parts) -join ',') -ceq 'agent,panel')
@@ -3574,7 +3826,7 @@ try {
         (Get-SetupExitCode $agentBroke.Error) -eq 7 -and ($agentBroke.Calls -join ' | ') -match 'stop PulsarPanel.*stop PulsarAgent' -and $agentBroke.Error.Exception.Message -match 'could not sign in')
     $agentFailed = Invoke-UpdateScenario @{ Fail = 'agent'; Before = 'm1'; After = 'm1' }
     Check 'rollback: an agent that fails to update rolls back the agent only: the panel was not touched, so no panel is stopped, restored or copied' (
-        (Get-SetupExitCode $agentFailed.Error) -eq 7 -and ($agentFailed.Calls -join ' | ') -ceq 'backup 1.0.0 | prune 3 | read migrations | update agent | stop PulsarAgent | copy Agent to Agent | start PulsarAgent | health agent 1' -and
+        (Get-SetupExitCode $agentFailed.Error) -eq 7 -and ($agentFailed.Calls -join ' | ') -ceq 'stop PulsarPanel | backup 1.0.0 | prune 3 | read migrations | update agent | start panel | stop PulsarAgent | copy Agent to Agent | start PulsarAgent | health agent 1' -and
         $agentFailed.Result.status -ceq 'rolled_back') ($agentFailed.Calls -join ' | ')
     $panelFailed = Invoke-UpdateScenario @{ Fail = 'panel'; Before = 'm1'; After = 'm1' }
     Check 'rollback: a panel that fails to start while it is updated is put back with the agent, whose update was fine' ((Get-SetupExitCode $panelFailed.Error) -eq 7 -and $panelFailed.Calls -contains 'copy Agent to Agent' -and $panelFailed.Calls -contains 'copy Panel to Panel')
@@ -3592,10 +3844,135 @@ try {
     Check 'rollback failure: a database that cannot be restored keeps the new panel program and leaves the panel stopped (an older panel on newer tables is worse)' (
         (Get-SetupExitCode $dbBroken.Error) -eq 1 -and $dbBroken.Error.Exception.Message -match 'database could not be restored from the backup \(pg_restore failed \(test\)\), so the panel keeps the new program and stays stopped' -and
         $dbBroken.Calls -notcontains 'copy Panel to Panel' -and $dbBroken.Calls -notcontains 'start panel' -and $dbBroken.Result.status -ceq 'failed')
-    $stuck = Invoke-UpdateScenario @{ Fail = 'panelHealth'; Before = 'm1'; After = 'm1'; StopFails = 'PulsarPanel' }
+    $stuck = Invoke-UpdateScenario @{ Fail = 'panelHealth'; Before = 'm1'; After = 'm1'; StopFailsOnRollback = 'PulsarPanel' }
     Check 'rollback failure: a service that will not stop is left alone, and nothing is copied over its running program' ($stuck.Error.Exception.Message -match 'service could not be stopped' -and $stuck.Calls -notcontains 'copy Panel to Panel')
+    $noStop = Invoke-UpdateScenario @{ StopFails = 'PulsarPanel' }
+    Check 'update: a panel that will not stop for its backup stops the update before anything is replaced (no dump, no journal)' (
+        $null -ne $noStop.Error -and $noStop.Error.Exception.Message -match 'Access denied' -and (& $calls $noStop) -ceq 'stop PulsarPanel | start panel' -and -not $noStop.JournalLeft)
     $still = Invoke-UpdateScenario @{ Fail = 'panelHealth'; Before = 'm1'; After = 'm1'; StillBroken = $true }
     Check 'rollback failure: a previous version that does not work either is said so' ((Get-SetupExitCode $still.Error) -eq 1 -and $still.Error.Exception.Message -match 'the previous version does not work either \(The panel did not become ready' -and $still.Result.status -ceq 'failed')
+
+    # --- The journal: an update that is stopped half way (a power cut, a killed process) is rolled back by the next run ---
+    Check 'journal: it is written before the first program is replaced, and is gone when the update succeeded' (
+        $ok.JournalAtReplace -eq $true -and -not $ok.JournalLeft -and $agentOnly.JournalAtReplace -eq $true -and -not $agentOnly.JournalLeft)
+    Check 'journal: a rollback that worked removes it; one that did not keeps it, for the next run to try again' (
+        -not $bad.JournalLeft -and -not $agentFailed.JournalLeft -and $broken.JournalLeft -and $dbBroken.JournalLeft -and $still.JournalLeft)
+    $unhealthy = Invoke-UpdateScenario @{ Unhealthy = $true }
+    Check 'previous: whether the installed Pulsar works is looked at before the panel is stopped, and decides whether previous is replaced' (
+        $updateParts['Invoke-Update'].IndexOf('Test-InstalledHealthy') -ge 0 -and $updateParts['Invoke-Update'].IndexOf('Test-InstalledHealthy') -lt $updateParts['Invoke-Update'].IndexOf('Stop-UpdateService $PanelService') -and
+        $updateParts['Invoke-Update'] -match 'Save-PreviousPrograms \$parts \$installedHealthy \$run\.From' -and $null -eq $unhealthy.Error)
+
+    $resumed = Invoke-UpdateScenario @{ Interrupted = $true; Current = "m1`nm2"; Before = 'm1'; After = "m1`nm2" }
+    Check 'resume: a journal found at the start of an update is rolled back first: the database restored (its migrations differ from the journal''s), the previous programs put back, the services started and checked; then this update goes on' (
+        $null -eq $resumed.Error -and (& $calls $resumed) -cmatch '^stop PulsarPanel \| read migrations \| restore pulsar\.dump \| copy Panel to Panel \| start panel \| stop PulsarAgent \| copy Agent to Agent \| start PulsarAgent \| health panel 1 \| health agent 1 \| stop PulsarPanel \| backup 1\.0\.0 .* update agent \| update panel') (& $calls $resumed)
+    Check 'resume: ...and the journal of the interrupted update is gone, this update wrote its own and removed it' (-not $resumed.JournalLeft -and $resumed.Result.status -ceq 'succeeded')
+    $resumedSame = Invoke-UpdateScenario @{ Interrupted = $true; Current = 'm1'; Before = 'm1'; After = 'm1' }
+    Check 'resume: with the same migrations as the journal''s the database is left as it is' (@($resumedSame.Calls | Where-Object { $_ -like 'restore*' }).Count -eq 0 -and $null -eq $resumedSame.Error -and $resumedSame.Calls -contains 'copy Panel to Panel')
+    $halfSwap = Invoke-UpdateScenario @{ Interrupted = $true; HalfSwap = $true; Current = 'm1'; Before = 'm1'; After = 'm1' }
+    Check 'resume: a program folder moved aside and never replaced is put back before anything else' ((Test-Path -LiteralPath $halfSwap.Panel -PathType Container) -and -not (Test-Path -LiteralPath "$($halfSwap.Panel).old") -and $null -eq $halfSwap.Error)
+    $stuckResume = Invoke-UpdateScenario @{ Interrupted = $true; RestoreFails = $true; Current = "m1`nm2"; Before = 'm1'; After = 'm1' }
+    Check 'resume: a rollback that fails stops this update before it changes anything, says what is left, and keeps the journal' (
+        (Get-SetupExitCode $stuckResume.Error) -eq 1 -and $stuckResume.Error.Exception.Message -match 'stopped before it ended' -and $stuckResume.Error.Exception.Message -match 'database could not be restored' -and
+        $stuckResume.JournalLeft -and $stuckResume.Calls -notcontains 'update agent' -and ($stuckResume.Calls -join ' | ') -notmatch 'backup')
+
+    # A rollback sets the failed version's tables aside, which needs the panel's database user to own the schema public.
+    $notOwner = Invoke-UpdateScenario @{ NotOwner = $true }
+    Check 'rollback: a database whose schema public the panel''s user does not own is found before anything changes: exit code 3, no service stopped, no backup' (
+        (Get-SetupExitCode $notOwner.Error) -eq 3 -and $notOwner.Error.Exception.Message -match 'Nothing was changed' -and $notOwner.Calls.Count -eq 0 -and -not $notOwner.JournalLeft)
+    Check 'rollback: ...and it is asked before the panel is stopped' (
+        $updateParts['Invoke-Update'].IndexOf('Assert-RollbackPossible') -ge 0 -and $updateParts['Invoke-Update'].IndexOf('Assert-RollbackPossible') -lt $updateParts['Invoke-Update'].IndexOf('Stop-UpdateService $PanelService'))
+    $agentNotOwner = Invoke-UpdateScenario @{ NotOwner = $true; Parts = @('agent') }
+    Check 'rollback: an agent-only update has no database and is not asked' ($null -eq $agentNotOwner.Error)
+    $script:psqlAnswer = [pscustomobject]@{ ExitCode = 0; Output = '1' }
+    $script:psqlSql = $null
+    $ownerCheck = {
+        function Get-PanelConnection { @{ host = 'localhost'; port = '5432'; username = 'pulsar'; database = 'pulsar'; password = 'x' } }
+        function Invoke-PanelPsql($db, [string[]] $arguments) { $script:psqlSql = $arguments[1]; $script:psqlAnswer }
+        Get-Caught { Assert-RollbackPossible }
+    }
+    $caught = & $ownerCheck
+    Check 'rollback: the owner of the schema public passes, and the question asks for membership of the owning role and CREATE on the database' (
+        $null -eq $caught -and $script:psqlSql -match "pg_has_role\(current_user, nspowner, 'MEMBER'\)" -and $script:psqlSql -match "has_database_privilege\(current_database\(\), 'CREATE'\)")
+    $script:psqlAnswer = [pscustomobject]@{ ExitCode = 0; Output = '0' }
+    $caught = & $ownerCheck
+    Check 'rollback: a user that does not own it is refused, saying how to give it the schema' ((Get-SetupExitCode $caught) -eq 3 -and $caught.Exception.Message -match 'ALTER SCHEMA public OWNER TO pulsar' -and $caught.Exception.Message -match 'Nothing was changed')
+    foreach ($answer in [pscustomobject]@{ ExitCode = 2; Output = 'psql: error' }, [pscustomobject]@{ ExitCode = 0; Output = '' }, [pscustomobject]@{ ExitCode = 0; Output = 'maybe' }) {
+        $script:psqlAnswer = $answer
+        Check "rollback: when the database cannot be asked ($($answer.Output)) the update is not refused, only warned about" ($null -eq (& $ownerCheck))
+    }
+
+    Check 'resume: ...and the error names the journal and the switch that keeps the current state and drops it' (
+        $stuckResume.Error.Exception.Message -match [regex]::Escape('in-progress.json') -and $stuckResume.Error.Exception.Message -match '-DiscardInterruptedUpdate')
+    $garbage = Invoke-UpdateScenario @{ Interrupted = $true; Garbage = $true; Current = 'm1'; Before = 'm1'; After = 'm1' }
+    Check 'resume: a journal that cannot be read names the journal and the switch too' ($garbage.Error.Exception.Message -match 'in-progress\.json' -and $garbage.Error.Exception.Message -match '-DiscardInterruptedUpdate')
+    $discard = Invoke-UpdateScenario @{ Interrupted = $true; RestoreFails = $true; Discard = $true; Current = "m1`nm2"; Before = 'm1'; After = 'm1' }
+    Check 'resume: -DiscardInterruptedUpdate keeps the current state (no rollback: nothing stopped, restored or copied for it), moves the journal aside under a name that records it, and the update goes on' (
+        $null -eq $discard.Error -and $discard.Calls[0] -ceq 'stop PulsarPanel' -and $discard.Calls[1] -like 'backup*' -and @($discard.Calls | Where-Object { $_ -like 'restore*' }).Count -eq 0 -and -not $discard.JournalLeft -and
+        @(Get-ChildItem -LiteralPath (Split-Path -Parent $discard.Previous) -Filter 'discarded-update-*.json').Count -eq 1) ($discard.Calls -join ' | ')
+    $discardGarbage = Invoke-UpdateScenario @{ Interrupted = $true; Garbage = $true; Discard = $true; Current = 'm1'; Before = 'm1'; After = 'm1' }
+    Check 'resume: ...also a journal that cannot be read' ($null -eq $discardGarbage.Error -and -not $discardGarbage.JournalLeft)
+    $completedJournal = Invoke-UpdateScenario @{ Interrupted = $true; Completed = $true; Current = "m1`nm2"; Before = 'm1'; After = 'm1' }
+    Check 'resume: a journal marked completed (the update ended well, the file could not be deleted) is only discarded: no database restore, no program copied back' (
+        $null -eq $completedJournal.Error -and @($completedJournal.Calls | Where-Object { $_ -like 'restore*' -or $_ -like 'copy*' }).Count -eq 0 -and $completedJournal.Calls[0] -ceq 'stop PulsarPanel' -and $completedJournal.Result.status -ceq 'succeeded')
+    Check 'discard: it is a switch of -Update only' ($installText -match "\[Parameter\(ParameterSetName = 'Update'\)\] \[switch\] \`$DiscardInterruptedUpdate")
+
+    # A successful update marks its journal completed before it deletes it; a journal that can be neither marked nor deleted fails the run.
+    $UpdateJournal = Join-Path $UpdateRoot 'in-progress.json'
+    $UpdateBackups = Join-Path $UpdateRoot 'backups'
+    Write-UpdateJournal ([pscustomobject]@{ From = '1.0.0'; To = '1.0.1'; Parts = @('panel'); MigrationsBefore = 'm1'; Backup = $null })
+    Check 'journal: a new journal is not completed' (-not (Read-UpdateJournal).Completed)
+    Set-UpdateJournalCompleted
+    $marked = Read-UpdateJournal
+    Check 'journal: marked completed it keeps everything else' ($marked.Completed -and $marked.To -ceq '1.0.1' -and (@($marked.Parts) -join ',') -ceq 'panel' -and $marked.MigrationsBefore -ceq 'm1')
+    Check 'journal: closing it deletes it' ($null -eq (Get-Thrown { Close-UpdateJournal }) -and -not (Test-Path -LiteralPath $UpdateJournal))
+    Write-UpdateJournal ([pscustomobject]@{ From = '1.0.0'; To = '1.0.1'; Parts = @('panel'); MigrationsBefore = 'm1'; Backup = $null })
+    $realRemove = (Get-Item function:Remove-UpdateJournal).ScriptBlock
+    $realMark = (Get-Item function:Set-UpdateJournalCompleted).ScriptBlock
+    function Remove-UpdateJournal { return $false }
+    Check 'journal: one that was marked but cannot be deleted is only warned about (it will be discarded, never rolled back)' (
+        $null -eq (Get-Thrown { Close-UpdateJournal }) -and (Read-UpdateJournal).Completed)
+    Remove-Item -LiteralPath $UpdateJournal
+    Write-UpdateJournal ([pscustomobject]@{ From = '1.0.0'; To = '1.0.1'; Parts = @('panel'); MigrationsBefore = 'm1'; Backup = $null })
+    function Set-UpdateJournalCompleted { throw 'disk full (test)' }
+    $caught = Get-Caught { Close-UpdateJournal }
+    Check 'journal: one that can be neither marked nor deleted fails the run loudly (exit code 1), saying what to delete' (
+        (Get-SetupExitCode $caught) -eq 1 -and $caught.Exception.Message -match 'in-progress\.json' -and $caught.Exception.Message -match 'roll back')
+    Set-Item function:Remove-UpdateJournal $realRemove
+    Check 'journal: one that cannot be marked but can be deleted is simply gone' ($null -eq (Get-Thrown { Close-UpdateJournal }) -and -not (Test-Path -LiteralPath $UpdateJournal))
+    Set-Item function:Set-UpdateJournalCompleted $realMark
+    Check 'journal: a successful update and a rollback that worked close the journal; a refused one removes it' (
+        ([regex]::Matches($updateParts['Invoke-Update'], 'Close-UpdateJournal')).Count -eq 2 -and $updateParts['Invoke-Update'] -match 'Remove-UpdateJournal')
+
+    # The journal's file.
+    $UpdateJournal = Join-Path $UpdateRoot 'in-progress.json'
+    $UpdateBackups = Join-Path $UpdateRoot 'backups'
+    $journalDump = Join-Path $UpdateBackups '1.0.0-20261020-101010\pulsar-backup-20261020-101010\pulsar.dump'
+    if (Test-Path -LiteralPath $UpdateJournal) { Remove-Item -LiteralPath $UpdateJournal }
+    Check 'journal: none when no update was interrupted' ($null -eq (Read-UpdateJournal))
+    Write-UpdateJournal ([pscustomobject]@{ From = '1.0.0'; To = '1.0.1'; Parts = @('agent', 'panel'); MigrationsBefore = "m1`nm2"; Backup = [pscustomobject]@{ Folder = (Split-Path -Parent $journalDump); Dump = $journalDump } })
+    $journalBytes = [IO.File]::ReadAllBytes($UpdateJournal)
+    $read = Read-UpdateJournal
+    Check 'journal: it is UTF-8 JSON without a byte order mark and holds the parts, the migrations before, the backup and both versions' (
+        $journalBytes[0] -eq 123 -and (@($read.Parts) -join ',') -ceq 'agent,panel' -and $read.MigrationsBefore -ceq "m1`nm2" -and $read.Dump -ceq $journalDump -and $read.Folder -ceq (Split-Path -Parent $journalDump) -and $read.From -ceq '1.0.0' -and $read.To -ceq '1.0.1')
+    Check 'journal: only the journal is left in the folder (no temporary file)' ((@(Get-ChildItem -LiteralPath $UpdateRoot -Force | ForEach-Object Name | Where-Object { $_ -like '*journal*' -or $_ -like 'in-progress*' -or $_ -like '.in-progress*' }) -join ',') -ceq 'in-progress.json')
+    Write-UpdateJournal ([pscustomobject]@{ From = $null; To = '1.0.1'; Parts = @('agent'); MigrationsBefore = $null; Backup = $null })
+    $read = Read-UpdateJournal
+    Check 'journal: an update with no panel has no backup and no migrations; versions may be unknown' (@($read.Parts).Count -eq 1 -and $null -eq $read.Dump -and $null -eq $read.MigrationsBefore -and $null -eq $read.From)
+    foreach ($case in @(
+            @('text that is not JSON', 'this is not json', 'cannot be read'),
+            @('a format it does not know', '{"format":2,"parts":["panel"]}', 'format'),
+            @('a part that is neither the panel nor the agent', '{"format":1,"parts":["database"]}', 'part'),
+            @('no part at all', '{"format":1,"parts":[]}', 'part'),
+            @('a backup outside the update backups folder', ('{"format":1,"parts":["panel"],"backup":{"folder":"C:\\Windows","dump":"C:\\Windows\\evil.dump"}}'), 'backup'))) {
+        [IO.File]::WriteAllText($UpdateJournal, $case[1])
+        $caught = Get-Thrown { Read-UpdateJournal }
+        Check "journal: $($case[0]) is refused, not guessed at" ($null -ne $caught -and $caught -match $case[2]) "$caught"
+    }
+    Remove-UpdateJournal
+    Check 'journal: it can be removed, also when it is not there' (-not (Test-Path -LiteralPath $UpdateJournal) -and $null -eq (Get-Thrown { Remove-UpdateJournal }))
+    Check 'journal: Uninstall removes it (an update that was stopped must not be rolled back into a new install)' ($installText -match '(?s)if \(\$Uninstall\) \{.*Remove-UpdateJournal.*Kept: the database')
+
+    Set-Item function:New-SetupFolder $realNewSetupFolder
 
     # --- Health checks of the agent ---
     . $restoreUpdateFunctions
@@ -3633,7 +4010,7 @@ try {
         $null -ne $caught -and $caught.Exception.Message -match 'could not sign in at the panel within 0 minutes' -and $caught.Exception.Message -match 'exit code 1' -and $caught.Exception.Message -match 'FAILED, the panel refused this node')
     Check 'agent check: the check is bounded in time, not endless' ($updateParts['Wait-UpdatedAgentHealthy'] -match '\$deadline = \(Get-Date\)\.AddMinutes\(\$UpdateAgentCheckMinutes\)' -and $updateParts['Wait-UpdatedAgentHealthy'] -match '\(Get-Date\) -ge \$deadline\) \{ break \}')
     Check 'update: the updated panel is awaited with a bound, for UpdatePanelMinutes, on its own address with any certificate' (
-        $updateParts['Wait-UpdatedPanelReady'] -match 'Wait-PanelReady \$client \$UpdatePanelMinutes' -and $updateParts['Wait-UpdatedPanelReady'] -match '"https://localhost:\$panelPort", ''''\)' -and
+        $updateParts['Wait-UpdatedPanelReady'] -match 'Wait-PanelReady \$client \$minutes' -and $updateParts['Wait-UpdatedPanelReady'] -match '\[int\] \$minutes = \$UpdatePanelMinutes' -and $updateParts['Wait-UpdatedPanelReady'] -match '"https://localhost:\$panelPort", ''''\)' -and
         $installText -match '\[int\] \$minutes = 3' -and $installText -match 'if \(string\.IsNullOrEmpty\(thumbprint\) && !_base\.IsLoopback\)')
 
     # --- The database restore ---
@@ -3690,8 +4067,11 @@ try {
     $new = Join-Path $folderRoot 'Updates'
     $made = Get-Caught { Initialize-UpdateFolder $new }
     # Not elevated, the folder is made with the right permissions but its owner is this account, which New-SetupFolder refuses.
-    Check 'folders: one that does not exist is made (elevated), or refused for its owner when this account is not an administrator' (
-        $(if ($elevatedNow) { $null -eq $made } else { $null -ne $made -and $made.Exception.Message -match 'could not be made for SYSTEM and Administrators alone' })) "$made"
+    if ($elevatedNow) { Check 'folders: one that does not exist is made' ($null -eq $made) "$made" }
+    else {
+        Skip 'folders: one that does not exist is made'
+        Check 'folders (not elevated): one that does not exist is refused for its owner, which is this account' ($null -ne $made -and $made.Exception.Message -match 'could not be made for SYSTEM and Administrators alone') "$made"
+    }
     $acl = Get-Acl -LiteralPath $new
     $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
     $sids = @($rules | ForEach-Object { $_.IdentityReference.Value } | Select-Object -Unique | Sort-Object)
@@ -3701,6 +4081,7 @@ try {
         $again = Get-Thrown { Initialize-UpdateFolder $new }
         Check 'folders: one made so is accepted again (the agent''s update makes it too)' ($null -eq $again) "$again"
     }
+    else { Skip 'folders: one made so is accepted again (the agent''s update makes it too)' }
     $ordinary = Join-Path $folderRoot 'ordinary'
     $null = New-Item -ItemType Directory $ordinary
     $caught = Get-Caught { Initialize-UpdateFolder $ordinary }
@@ -3718,7 +4099,7 @@ try {
         $installText -match "\`$UpdateBackups = Join-Path \`$UpdateRoot 'backups'" -and $installText -match "\`$UpdatePrevious = Join-Path \`$UpdateRoot 'previous'" -and $installText -match "\`$UpdateResultFile = Join-Path \`$UpdateRoot 'last-update\.json'" -and
         $installText -match "\`$UpdateLockFile = Join-Path \`$UpdateRoot 'update\.lock'" -and $updateParts['Start-UpdateRun'] -match 'Initialize-UpdateFolder \$UpdateRoot' -and $updateParts['New-UpdateBackup'] -match 'Initialize-UpdateFolder \$UpdateBackups' -and
         $updateParts['Save-PreviousPrograms'] -match 'Initialize-UpdateFolder \$UpdatePrevious' -and $updateParts['Write-UpdateResult'] -match 'Initialize-UpdateFolder \$UpdateRoot' -and $updateParts['Start-UpdateRun'].IndexOf('Initialize-UpdateFolder') -lt $updateParts['Start-UpdateRun'].IndexOf('Lock-Update'))
-    Check 'folders: the Updates folder is made like the setup folder (New-SetupFolder: the permissions in the call that creates it, then checked)' ($updateParts['Initialize-UpdateFolder'] -match 'New-SetupFolder \$path' -and $updateParts['New-SetupFolder'] -match 'CreateDirectory\(\$path, \$security\)')
+    Check 'source text: folders: the Updates folder is made like the setup folder (New-SetupFolder: the permissions in the call that creates it, then checked)' ($updateParts['Initialize-UpdateFolder'] -match 'New-SetupFolder \$path' -and $updateParts['New-SetupFolder'] -match 'CreateDirectory\(\$path, \$security\)')
 }
 finally {
     # The folder made for administrators alone: given back to this account (its owner may always change the permissions) to be removed.
@@ -3746,10 +4127,10 @@ Check 'update: the backup and the previous programs come before the first servic
 Check 'update: the existing Update-Agent and Update-Panel are as they were (stop, replace, start), settings are never copied over' (
     $installText -match '(?s)function Update-Agent \{\s+Write-Step ''Updating the agent[^\n]+\s+Stop-Service \$AgentService\s+Copy-Program \(Join-Path \$PSScriptRoot ''agent''\) \$AgentDir\s+Start-Service \$AgentService\s+\}' -and
     $installText -match "(?s)function Update-Panel \{\s+Write-Step 'Updating the panel'\s+Stop-Service \`$PanelService\s+Copy-Program \(Join-Path \`$PSScriptRoot 'panel'\) \`$PanelDir\s+Copy-BackupScript\s+Invoke-PanelMigrations\s+Start-Panel\s+Write-StaleBackupTasks\s+\}" -and
-    $installParts['Copy-Program'] -match "'appsettings\.Production\.json', 'downloads'")
+    $installParts['Copy-Program'] -match "(?s)appsettings\.Production\.json.*downloads")
 $tail = $installText.Substring($mainEnd)
 Check 'update: a failure writes the result file (failed) in the catch, and the lock is released in the finally' (
-    $tail -match "(?s)catch \{.*if \(\`$Update\) \{ Write-UpdateResult 'failed' \`$message \}.*if \(-not \`$Unattended\)" -and $tail -match '(?s)finally \{\s+Remove-SetupDownloads\s+Unlock-Update\s+\}')
+    $tail -match "(?s)catch \{.*if \(\`$Update\) \{ Write-UpdateResult 'failed' \`$message \}.*if \(-not \`$Unattended\)" -and $tail -match '(?s)finally \{\s+Remove-SetupDownloads\s+Remove-RestoreCopy\s+Unlock-Update\s+\}')
 Check 'update: the exit code 7 is "rolled back", and the progress steps of an update are as they were (check, downloads, dotnet, update)' (
     $ExitRolledBack -eq 7 -and $installText -match "Update = @\('check', 'downloads', 'dotnet', 'update'\)" -and $installText -match '\$ExitRolledBack = 7 ')
 Check 'update: the result is written as UTF-8 without a byte order mark, beside the file and moved over it' (
@@ -3765,6 +4146,416 @@ Check 'docs: releasing.md covers the key, the build, the publishing, strictly in
     $guideReleasing.Contains('new-key') -and $guideReleasing.Contains('UpdateKeys.Trusted') -and $guideReleasing.Contains('-UpdateSigningKey') -and $guideReleasing.Contains('Publish-GitHubRelease.ps1') -and $guideReleasing.Contains('-MinimumUpdateFrom') -and
     $guideReleasing -match '(?i)strictly increas' -and $guideReleasing -match '(?i)rotat' -and $guideReleasing -match '(?i)public' -and $guideReleasing.Contains('PULSAR_UPDATE_KEY_PASSPHRASE') -and $guideReleasing.Contains('offline'))
 
+# --- Audit fixes of the install, update and release scripts (each section runs the script's own functions on folders of this test's own) ---
+
+$elevatedNow = (New-Object Security.Principal.WindowsPrincipal ([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$installText = Get-Content -Raw -LiteralPath $installScript
+$auditRoot = Join-Path $Scratch ('pulsar-audit-tests-' + [Guid]::NewGuid().ToString('N'))
+$null = New-Item -ItemType Directory $auditRoot
+
+# 1. The data folders are made with their permissions in the call that creates them, or checked.
+$dataParts = Get-ScriptParts $installScript @('New-SetupError', 'Get-AccountName', 'Get-UntrustedWritersMessage', 'Get-ServiceAccountSid', 'Get-DataFolderProblems', 'New-DataFolderSecurity', 'Initialize-DataFolder') @('ExitUnsupported')
+foreach ($part in $dataParts.Values) { . ([scriptblock]::Create($part)) }
+Check 'data folders: a service''s account SID is worked out from its name (TrustedInstaller''s is the known one)' (
+    (Get-ServiceAccountSid 'TrustedInstaller').Value -ceq $TrustedWriters[2] -and (Get-ServiceAccountSid 'trustedinstaller').Value -ceq $TrustedWriters[2] -and
+    (Get-ServiceAccountSid 'PulsarPanel').Value -match '^S-1-5-80-\d+-\d+-\d+-\d+-\d+\z' -and (Get-ServiceAccountSid 'PulsarPanel').Value -cne (Get-ServiceAccountSid 'PulsarAgent').Value)
+$usersSid = 'S-1-5-32-545'
+$ordinaryFolder = Join-Path $auditRoot 'ordinary'
+$null = New-Item -ItemType Directory $ordinaryFolder
+$ordinaryProblems = @(Get-DataFolderProblems $ordinaryFolder)
+Check 'data folders: one that inherits its permissions is a problem' (@($ordinaryProblems | Where-Object { $_ -match 'inherits its permissions' }).Count -eq 1) ($ordinaryProblems -join '; ')
+$wideFolder = Join-Path $auditRoot 'wide'
+$null = [IO.Directory]::CreateDirectory($wideFolder, (New-DataFolderSecurity @($usersSid)))
+Check 'data folders: somebody allowed in besides SYSTEM, Administrators and the accounts given is named' (
+    @(Get-DataFolderProblems $wideFolder | Where-Object { $_ -match 'is allowed in' }).Count -eq 1 -and @(Get-DataFolderProblems $wideFolder @($usersSid) | Where-Object { $_ -match 'is allowed in|inherits' }).Count -eq 0)
+$wideRules = @((Get-Acl -LiteralPath $wideFolder).GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+Check 'data folders: the permissions given at creation are SYSTEM and Administrators full control and the given account modify, nothing inherited' (
+    (Get-Acl -LiteralPath $wideFolder).AreAccessRulesProtected -and @($wideRules | Where-Object { $_.IsInherited }).Count -eq 0 -and
+    (($wideRules | ForEach-Object { "$($_.IdentityReference.Value)=$($_.FileSystemRights)" } | Sort-Object) -join ',') -ceq 'S-1-5-18=FullControl,S-1-5-32-544=FullControl,S-1-5-32-545=Modify, Synchronize')
+$linkTarget = Join-Path $auditRoot 'link-target'
+$null = New-Item -ItemType Directory $linkTarget
+$junction = Join-Path $auditRoot 'junction'
+$null = New-Item -ItemType Junction -Path $junction -Target $linkTarget
+Check 'data folders: a link is a problem' (@(Get-DataFolderProblems $junction | Where-Object { $_ -match 'is a link' }).Count -eq 1 -and (Get-SetupExitCode (Get-Caught { Initialize-DataFolder $junction })) -eq 3)
+[IO.Directory]::Delete($junction)
+$asFile = Join-Path $auditRoot 'a-file'
+Set-Content -LiteralPath $asFile -Value 'x'
+Check 'data folders: a file in place of the folder is a problem' (@(Get-DataFolderProblems $asFile | Where-Object { $_ -match 'is not a folder' }).Count -eq 1)
+$caught = Get-Caught { Initialize-DataFolder $ordinaryFolder }
+Check 'data folders: an existing folder that is not fit is refused, not repaired, with how to fix it, exit code 3' (
+    (Get-SetupExitCode $caught) -eq 3 -and $caught.Exception.Message -match 'Move out of it what you need, delete that folder' -and $caught.Exception.Message -match [regex]::Escape($ordinaryFolder) -and
+    @(Get-DataFolderProblems $ordinaryFolder | Where-Object { $_ -match 'inherits' }).Count -eq 1) "$caught"
+$newFolder = Join-Path $auditRoot 'new\inner'
+$made = Get-Caught { Initialize-DataFolder $newFolder @($usersSid) }
+if ($elevatedNow) { Check 'data folders: one that does not exist is made with those permissions' ($null -eq $made -and @(Get-DataFolderProblems $newFolder @($usersSid)).Count -eq 0) "$made" }
+else {
+    Skip 'data folders: one that does not exist is made with those permissions'
+    Check 'data folders (not elevated): one that does not exist is refused for its owner, which is this account' ($null -ne $made -and $made.Exception.Message -match 'is owned by') "$made"
+}
+$repairable = Join-Path $auditRoot 'repairable'
+$null = New-Item -ItemType Directory $repairable
+$repaired = Get-Caught { Initialize-DataFolder $repairable @() $true }
+if ($elevatedNow) { Check 'data folders: with $repair a folder owned by SYSTEM or Administrators that only inherits is given the permissions' ($null -eq $repaired -and @(Get-DataFolderProblems $repairable).Count -eq 0) "$repaired" }
+else {
+    Skip 'data folders: with $repair a folder owned by SYSTEM or Administrators that only inherits is given the permissions'
+    Check 'data folders (not elevated): with $repair a folder owned by anybody else is never given the permissions' ($null -ne $repaired -and $repaired.Exception.Message -match 'is owned by' -and (Get-Acl -LiteralPath $repairable).AreAccessRulesProtected -eq $false) "$repaired"
+}
+Check 'source text: data folders: the data root, the panel''s data folder and the update folder are made or checked before anything is kept in them' (
+    $installText -match '(?s)function Start-SetupLog \{\s+Initialize-DataFolder \$DataRoot @\(\) \$true' -and $installText -notmatch 'New-Item -ItemType Directory \$DataRoot' -and
+    $installText -match '(?s)Initialize-DataFolder \$PanelData @\(\(Get-ServiceAccountSid \$PanelService\)\.Value\)\s+Initialize-UpdateFolder \$UpdateRoot\s+foreach \(\$folder in ''keys'', ''logs'', ''tls''\)' -and
+    $installText -notmatch 'Set-PrivateAcl \$PanelData' -and $installText -notmatch 'New-Item -ItemType Directory -Force \$PanelData')
+Check 'source text: data folders: an existing panel data or update folder is checked before the install changes anything' (
+    (Get-ScriptParts $installScript @('Assert-PanelInstallable'))['Assert-PanelInstallable'] -match '(?s)Test-Path -LiteralPath \$PanelData\) \{\s+\$problems = @\(Get-DataFolderProblems \$PanelData @\(\(Get-ServiceAccountSid \$PanelService\)\.Value\)\).*Nothing was changed.*Initialize-UpdateFolder \$UpdateRoot')
+
+# 2. -RestoreFrom copies the backup to a private folder and checks that copy: its backup.json, the Pulsar version, the migrations.
+$restoreParts = Get-ScriptParts $installScript @('Copy-PlainTree', 'Get-ReleaseMigrations', 'Find-UnshippedMigrations', 'Read-BackupManifest', 'Get-BackupFileList', 'Get-BackupFileProblems',
+    'Get-BackupVersionProblems', 'Copy-RestoreSource', 'Remove-RestoreCopy', 'New-SetupError', 'Get-UntrustedWritersMessage', 'Get-SetupExitCode') @('RestoreCopy', 'ExitUsage', 'ExitUnsupported')
+foreach ($part in $restoreParts.Values) { . ([scriptblock]::Create($part)) }
+$restoreRoot = Join-Path $auditRoot 'restore'
+$null = New-Item -ItemType Directory $restoreRoot
+
+# The migrations of a release, read from its assembly without running it.
+$fakeDll = Join-Path $restoreRoot 'Fake.dll'
+[IO.File]::WriteAllBytes($fakeDll, [Text.Encoding]::GetEncoding(28591).GetBytes("MZjunk`0" + '5' + '20261001154302_Alpha' + "`0" + 'x' + '20261002105727_Beta' + 'Q' + "`0" + '99999999999999 no id 2026_x'))
+$shipped = @(Get-ReleaseMigrations $fakeDll)
+Check 'restore: the release''s migrations are read from its assembly, also when a length byte before one is a digit or a letter follows it' (
+    $shipped.Count -eq 2 -and $shipped[0] -ceq '20261001154302_Alpha' -and $shipped[1] -ceq '20261002105727_BetaQ') ($shipped -join ',')
+Check 'restore: a release without its assembly lists none' (@(Get-ReleaseMigrations (Join-Path $restoreRoot 'nothing.dll')).Count -eq 0)
+Check 'restore: an applied migration the release does not ship is found (by prefix), the shipped ones are not, and nothing is found when the release''s list is not known' (
+    (@(Find-UnshippedMigrations @('20261001154302_Alpha', '20261002105727_Beta', '20261003000000_Gamma') $shipped) -join ',') -ceq '20261003000000_Gamma' -and
+    @(Find-UnshippedMigrations @('20261003000000_Gamma') @()).Count -eq 0 -and @(Find-UnshippedMigrations @() $shipped).Count -eq 0)
+$realDll = Join-Path $PSScriptRoot '..\..\src\Pulsar.Infrastructure\bin\Release\net10.0\Pulsar.Infrastructure.dll'
+$migrationFiles = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '..\..\src\Pulsar.Infrastructure\Persistence\Migrations') -Filter '2*_*.cs' | Where-Object { $_.Name -notmatch 'Designer' })
+if ((Test-Path -LiteralPath $realDll) -and (Get-Item -LiteralPath $realDll).LastWriteTime -gt ($migrationFiles | Sort-Object LastWriteTime | Select-Object -Last 1).LastWriteTime) {
+    $inDll = @(Get-ReleaseMigrations $realDll)
+    Check 'restore: every migration of the repository is found in the built Pulsar.Infrastructure.dll' (
+        $migrationFiles.Count -gt 0 -and @(Find-UnshippedMigrations @($migrationFiles | ForEach-Object { $_.BaseName }) $inDll).Count -eq 0) (@(Find-UnshippedMigrations @($migrationFiles | ForEach-Object { $_.BaseName }) $inDll) -join ',')
+}
+
+# The private copy: file by file, never through a link.
+$tree = Join-Path $restoreRoot 'tree'
+$null = New-Item -ItemType Directory (Join-Path $tree 'panel-data\keys')
+Set-Content -LiteralPath (Join-Path $tree 'pulsar.dump') -Value 'dump'
+Set-Content -LiteralPath (Join-Path $tree 'panel-data\keys\key-1.xml') -Value 'key'
+$treeCopy = Join-Path $restoreRoot 'tree-copy'
+Copy-PlainTree $tree $treeCopy
+Check 'restore: a folder is copied whole, nested files too' (
+    (Get-Content -LiteralPath (Join-Path $treeCopy 'pulsar.dump')) -ceq 'dump' -and (Get-Content -LiteralPath (Join-Path $treeCopy 'panel-data\keys\key-1.xml')) -ceq 'key')
+$linkedTree = Join-Path $restoreRoot 'linked'
+Copy-Item -LiteralPath $tree -Destination $linkedTree -Recurse
+$outside = Join-Path $restoreRoot 'outside'
+$null = New-Item -ItemType Directory $outside
+Set-Content -LiteralPath (Join-Path $outside 'other.txt') -Value 'not the backup''s'
+$null = New-Item -ItemType Junction -Path (Join-Path $linkedTree 'panel-data\tls') -Target $outside
+$caught = Get-Caught { Copy-PlainTree $linkedTree (Join-Path $restoreRoot 'linked-copy') }
+Check 'restore: a link in the backup is refused, and what it points at is not copied' (
+    $null -ne $caught -and $caught.Exception.Message -match 'is a link' -and -not (Test-Path -LiteralPath (Join-Path $restoreRoot 'linked-copy\panel-data\tls\other.txt')))
+[IO.Directory]::Delete((Join-Path $linkedTree 'panel-data\tls'))
+
+# backup.json as Backup-Pulsar.ps1 writes it.
+function New-TestBackup([string] $name, [hashtable] $overrides = @{}) {
+    $folder = Join-Path $restoreRoot $name
+    $null = New-Item -ItemType Directory (Join-Path $folder 'panel-data\keys')
+    Set-Content -LiteralPath (Join-Path $folder 'pulsar.dump') -Value "dump of $name"
+    Set-Content -LiteralPath (Join-Path $folder 'appsettings.Production.json') -Value '{}'
+    Set-Content -LiteralPath (Join-Path $folder 'panel-data\keys\key-1.xml') -Value 'key'
+    $files = [ordered]@{}
+    foreach ($relative in 'appsettings.Production.json', 'panel-data/keys/key-1.xml', 'pulsar.dump') { $files[$relative] = (Get-FileHash -LiteralPath (Join-Path $folder $relative) -Algorithm SHA256).Hash.ToLowerInvariant() }
+    $manifest = [ordered]@{ format = 1; pulsarVersion = '1.2.0'; created = '2026-10-21T10:00:00Z'; migrations = @('20261001154302_Alpha', '20261002105727_Beta'); files = $files }
+    foreach ($key in $overrides.Keys) { $manifest[$key] = $overrides[$key] }
+    [IO.File]::WriteAllText((Join-Path $folder 'backup.json'), ($manifest | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding $false))
+    return $folder
+}
+$good = New-TestBackup 'good'
+$manifest = Read-BackupManifest $good
+Check 'restore: backup.json is read: version, migrations and the files with their hashes' (
+    $manifest.Version -ceq '1.2.0' -and $manifest.Migrations.Count -eq 2 -and $manifest.Files.Count -eq 3 -and $manifest.Files['pulsar.dump'] -cmatch '^[0-9a-f]{64}\z')
+Check 'restore: a folder without backup.json has no manifest' ($null -eq (Read-BackupManifest $tree))
+Check 'restore: the files of a backup match their hashes, and nothing is missing or more' (@(Get-BackupFileProblems $manifest $good).Count -eq 0)
+Set-Content -LiteralPath (Join-Path $good 'panel-data\keys\key-1.xml') -Value 'a key someone changed'
+Set-Content -LiteralPath (Join-Path $good 'panel-data\keys\key-2.xml') -Value 'a key someone added'
+Remove-Item -LiteralPath (Join-Path $good 'appsettings.Production.json')
+$problems = @(Get-BackupFileProblems $manifest $good)
+Check 'restore: a file changed, one added and one missing are each found' (
+    $problems.Count -eq 3 -and ($problems -join '|') -match 'key-1\.xml is not what backup\.json says' -and ($problems -join '|') -match 'key-2\.xml is in the backup but not in backup\.json' -and ($problems -join '|') -match 'appsettings\.Production\.json is in backup\.json but not in the backup') ($problems -join '|')
+foreach ($case in @(
+        @('a format it does not know', @{ format = 2 }, 'format this script does not know'),
+        @('a version that is not major.minor.patch', @{ pulsarVersion = '1.2' }, 'not major\.minor\.patch'),
+        @('a migration that is not an id', @{ migrations = @('not an id') }, 'not a migration id'),
+        @('a path that leaves the backup', @{ files = @{ '../x' = ('a' * 64) } }, 'not one of a backup'),
+        @('a hash that is not SHA-256', @{ files = @{ 'pulsar.dump' = 'abc' } }, 'no SHA-256 for pulsar\.dump'))) {
+    $caught = Get-Caught { Read-BackupManifest (New-TestBackup ('bad-' + [Guid]::NewGuid().ToString('N')) $case[1]) }
+    Check "restore: backup.json with $($case[0]) is refused" ($null -ne $caught -and $caught.Exception.Message -match $case[2]) "$caught"
+}
+$notJson = Join-Path $restoreRoot 'not-json'
+$null = New-Item -ItemType Directory $notJson
+Set-Content -LiteralPath (Join-Path $notJson 'backup.json') -Value 'this is not json'
+Check 'restore: a backup.json that is not JSON is refused' ($null -ne (Get-Caught { Read-BackupManifest $notJson }))
+$versioned = [pscustomobject]@{ Version = '1.2.0'; Migrations = @('20261001154302_Alpha'); Files = @{} }
+Check 'restore: a backup from a newer Pulsar than this release is refused; the same or an older one, or no version to compare, is not' (
+    @(Get-BackupVersionProblems $versioned '1.1.9' $shipped).Count -eq 1 -and (Get-BackupVersionProblems $versioned '1.1.9' $shipped) -match 'newer than this release \(1\.1\.9\)' -and
+    @(Get-BackupVersionProblems $versioned '1.2.0' $shipped).Count -eq 0 -and @(Get-BackupVersionProblems $versioned '1.10.0' $shipped).Count -eq 0 -and @(Get-BackupVersionProblems $versioned $null $shipped).Count -eq 0)
+$futureDb = [pscustomobject]@{ Version = '1.0.0'; Migrations = @('20261001154302_Alpha', '20270101000000_Future'); Files = @{} }
+Check 'restore: a backup whose database has a migration this release does not ship is refused' (
+    (Get-BackupVersionProblems $futureDb '1.2.0' $shipped) -match '20270101000000_Future' -and @(Get-BackupVersionProblems $futureDb '1.2.0' @()).Count -eq 0 -and
+    @(Get-BackupVersionProblems ([pscustomobject]@{ Version = $null; Migrations = $null; Files = @{} }) '1.2.0' $shipped).Count -eq 0)
+
+# Copy-RestoreSource as a whole, with the machine's checks mocked (the folders here are the test's own, writable by this account).
+function Test-RestoreSource([string] $source, [hashtable] $options = @{}) {
+    & {
+        $SetupRoot = Join-Path $restoreRoot ('setup-' + [Guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory $SetupRoot
+        $TrustRestoreSource = [bool]$options['Trust']
+        $script:RestoreCopy = $null
+        $script:mockWriters = $(if ($options.ContainsKey('Writers')) { @($options['Writers']) } else { @() })
+        function Find-UntrustedWriters([string] $path) { $script:mockWriters }
+        function New-SetupFolder([string] $path) { $null = New-Item -ItemType Directory $path }
+        function Get-UpdateVersions { [pscustomobject]@{ From = $null; To = $(if ($options.ContainsKey('Release')) { $options['Release'] } else { '1.2.0' }) } }
+        function Get-ReleaseMigrations { $shipped }
+        $caught = Get-Caught { $script:copied = Copy-RestoreSource $source }
+        [pscustomobject]@{ Error = $caught; Copy = $script:copied; Root = $SetupRoot; Kept = $script:RestoreCopy }
+    }
+}
+$fresh = New-TestBackup 'fresh'
+$ok = Test-RestoreSource $fresh
+Check 'restore: a good backup is copied under the setup folder and that copy is what is returned (and remembered, to be deleted)' (
+    $null -eq $ok.Error -and $ok.Copy -like (Join-Path $ok.Root 'restore-*\backup') -and (Get-Content -LiteralPath (Join-Path $ok.Copy 'pulsar.dump')) -ceq 'dump of fresh' -and $ok.Kept -ceq (Split-Path -Parent $ok.Copy)) "$($ok.Error)"
+$tampered = New-TestBackup 'tampered'
+Set-Content -LiteralPath (Join-Path $tampered 'pulsar.dump') -Value 'a dump someone else made'
+$bad = Test-RestoreSource $tampered
+Check 'restore: a dump that is not the one backup.json names is refused, exit code 2, nothing changed' (
+    (Get-SetupExitCode $bad.Error) -eq 2 -and $bad.Error.Exception.Message -match 'pulsar\.dump is not what backup\.json says' -and $bad.Error.Exception.Message -match 'Nothing was changed')
+$newer = Test-RestoreSource (New-TestBackup 'newer' @{ pulsarVersion = '9.0.0' })
+Check 'restore: a backup from a newer Pulsar is refused with that reason' ((Get-SetupExitCode $newer.Error) -eq 2 -and $newer.Error.Exception.Message -match 'newer than this release')
+$old = Join-Path $restoreRoot 'old-backup'
+Copy-Item -LiteralPath $tree -Destination $old -Recurse
+$oldRestore = Test-RestoreSource $old
+Check 'restore: a backup from before backup.json is copied with a warning (it has nothing to check)' ($null -eq $oldRestore.Error -and (Test-Path -LiteralPath (Join-Path $oldRestore.Copy 'pulsar.dump')))
+$open = Test-RestoreSource $fresh @{ Writers = @('Users can change D:\usb\backup') }
+Check 'restore: a backup folder others could change is refused, naming who, unless -TrustRestoreSource says the drive keeps no permissions' (
+    (Get-SetupExitCode $open.Error) -eq 3 -and $open.Error.Exception.Message -match 'Users can change D:\\usb\\backup' -and $open.Error.Exception.Message -match '-TrustRestoreSource' -and
+    $null -eq (Test-RestoreSource $fresh @{ Writers = @('Users can change D:\usb\backup'); Trust = $true }).Error)
+$withLink = Join-Path $restoreRoot 'with-link'
+Copy-Item -LiteralPath $tree -Destination $withLink -Recurse
+$null = New-Item -ItemType Junction -Path (Join-Path $withLink 'panel-data\tls') -Target $outside
+$linked = Test-RestoreSource $withLink
+Check 'restore: a link inside the backup stops the copy' ((Get-SetupExitCode $linked.Error) -eq 2 -and $linked.Error.Exception.Message -match 'is a link')
+[IO.Directory]::Delete((Join-Path $withLink 'panel-data\tls'))
+$asLink = Join-Path $restoreRoot 'as-link'
+$null = New-Item -ItemType Junction -Path $asLink -Target $fresh
+Check 'restore: -RestoreFrom that is itself a link, or not a folder, is refused' (
+    (Get-SetupExitCode (Test-RestoreSource $asLink).Error) -eq 2 -and (Get-SetupExitCode (Test-RestoreSource (Join-Path $fresh 'pulsar.dump')).Error) -eq 2)
+[IO.Directory]::Delete($asLink)
+Check 'restore: the copy is deleted when the run ends' (
+    $null -ne $ok.Kept -and ($(& { $RestoreCopy = $ok.Kept; Remove-RestoreCopy; -not (Test-Path -LiteralPath $ok.Kept) })))
+$assertText = (Get-ScriptParts $installScript @('Assert-PanelInstallable'))['Assert-PanelInstallable']
+$installPanelText = (Get-ScriptParts $installScript @('Install-Panel'))['Install-Panel']
+Check 'restore: the install reads only the private copy: the preflight copies and checks it first, and Install-Panel never reads -RestoreFrom''s folder' (
+    $assertText -match '\$backupCopy = Copy-RestoreSource \$RestoreFrom' -and $assertText -notmatch 'Join-Path \$RestoreFrom' -and $installPanelText -notmatch 'Join-Path \$RestoreFrom' -and
+    $installPanelText -match 'Join-Path \$RestoreCopy' -and $installText -match '(?s)finally \{\s+Remove-SetupDownloads\s+Remove-RestoreCopy\s+Unlock-Update')
+Check 'restore: -TrustRestoreSource is a parameter, said in the script''s help' ($installText -match '\[switch\] \$TrustRestoreSource' -and $installText -match '-TrustRestoreSource says a\s+drive keeps no permissions')
+
+# Backup-Pulsar.ps1 writes backup.json.
+$backupJsonParts = Get-ScriptParts $backupScript @('ConvertFrom-MigrationDump')
+. ([scriptblock]::Create($backupJsonParts['ConvertFrom-MigrationDump']))
+$dumpText = @('--', '-- Data for Name: __EFMigrationsHistory; Type: TABLE DATA; Schema: public; Owner: pulsar', '--', '',
+    'COPY public."__EFMigrationsHistory" ("MigrationId", "ProductVersion") FROM stdin;', "20261002105727_Beta`t10.0.0", "20261001154302_Alpha`t10.0.0", '\.', '', 'COPY public.other (id) FROM stdin;', "1", '\.')
+$ids = ConvertFrom-MigrationDump $dumpText
+Check 'backup: the migration ids come from the COPY block of the history table in the dump, sorted' ($ids.Count -eq 2 -and $ids[0] -ceq '20261001154302_Alpha' -and $ids[1] -ceq '20261002105727_Beta')
+Check 'backup: a dump without that table, or with a row that is not an id, gives none (not a guess)' (
+    $null -eq (ConvertFrom-MigrationDump @('COPY public.other (id) FROM stdin;', '1', '\.')) -and $null -eq (ConvertFrom-MigrationDump @('COPY public."__EFMigrationsHistory" ("MigrationId", "ProductVersion") FROM stdin;', "not an id`t1", '\.')))
+$backupFullText = Get-Content -Raw -LiteralPath $backupScript
+Check 'backup: backup.json is written last, with the format, the Pulsar version, the dump''s migrations and the SHA-256 of every file' (
+    $backupFullText -match '(?s)Copy-Item \$config \$target.*format = 1.*pulsarVersion = \$version.*migrations = \$migrations.*files = \$files.*backup\.json.*Backup written to' -and
+    $backupFullText -match "Get-FileHash -LiteralPath \`$file\.FullName -Algorithm SHA256" -and $backupFullText -match 'Get-DumpMigrations \$PostgresBin \(Join-Path \$target ''pulsar\.dump''\)')
+Check 'backup: pg_restore.exe, which reads the dump for its migrations, is run only when others cannot change it' ((Get-ScriptParts $backupScript @('Get-DumpMigrations'))['Get-DumpMigrations'] -match 'Find-UntrustedWriters \$restore')
+
+# 4. -ConnectionString: a database that a newer Pulsar migrated is refused before anything changes.
+. ([scriptblock]::Create((Get-ScriptParts $installScript @('Assert-DatabaseNotNewer'))['Assert-DatabaseNotNewer']))
+function Test-DatabaseVersion([string] $connection, $psqlResult, [string[]] $releaseMigrations) {
+    & {
+        $script:psqlArguments = $null
+        function Invoke-PanelPsql($db, [string[]] $arguments) { $script:psqlDb = $db; $script:psqlArguments = $arguments; $psqlResult }
+        function Get-ReleaseMigrations { $releaseMigrations }
+        Get-Caught { Assert-DatabaseNotNewer $connection }
+    }
+}
+$shippedIds = @('20261001154302_Alpha', '20261002105727_Beta')
+$connection = 'Host=db.example.com;Port=5433;Database=pulsar;Username=u;Password=pw1234'
+$SetupSecrets.Clear()
+$caught = Test-DatabaseVersion $connection ([pscustomobject]@{ ExitCode = 0; Output = "20261001154302_Alpha`n20261002105727_Beta`n20270101000000_Future" }) $shippedIds
+Check 'database: a -ConnectionString database with a migration this release does not ship is refused (exit code 2), naming it, before anything changes' (
+    (Get-SetupExitCode $caught) -eq 2 -and $caught.Exception.Message -match '20270101000000_Future' -and $caught.Exception.Message -match 'newer Pulsar' -and $caught.Exception.Message -match 'Nothing was changed')
+Check 'database: ...asked with the connection string''s own host, port and user, and its password is a secret' (
+    $script:psqlDb['host'] -ceq 'db.example.com' -and $script:psqlDb['port'] -ceq '5433' -and $script:psqlDb['username'] -ceq 'u' -and $SetupSecrets.Contains('pw1234') -and $script:psqlArguments[1] -match '__EFMigrationsHistory')
+Check 'database: one whose migrations this release ships all of passes' ($null -eq (Test-DatabaseVersion $connection ([pscustomobject]@{ ExitCode = 0; Output = "20261001154302_Alpha`r`n20261002105727_Beta" }) $shippedIds))
+Check 'database: a new, empty database (no migrations table: psql fails) passes' ($null -eq (Test-DatabaseVersion $connection ([pscustomobject]@{ ExitCode = 1; Output = 'relation "__EFMigrationsHistory" does not exist' }) $shippedIds))
+Check 'database: without the release''s list of migrations nothing can be compared, and nothing is refused' ($null -eq (Test-DatabaseVersion $connection ([pscustomobject]@{ ExitCode = 0; Output = '20270101000000_Future' }) @()))
+Check 'database: a connection string without host, user, database or password is left to the install to refuse' ($null -eq (Test-DatabaseVersion 'Host=db;Database=pulsar' ([pscustomobject]@{ ExitCode = 0; Output = '20270101000000_Future' }) $shippedIds))
+Check 'database: the migrations of the dump a backup holds are checked against the release as well (-RestoreFrom)' ($installText -match 'Get-BackupVersionProblems \$manifest')
+
+# 14. What an uninstall keeps is said in full, in both languages: the update backups hold the database dump, the keys and the settings.
+$commonIss = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $PSScriptRoot '..\release\setup\Common.iss')
+$setupIss = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $PSScriptRoot '..\release\setup\PulsarSetup.iss')
+foreach ($key in 'en.ConfirmUninstall', 'es.ConfirmUninstall', 'en.UninstalledAll', 'es.UninstalledAll') {
+    $line = [regex]::Match($commonIss, "(?m)^$([regex]::Escape($key))=.*$").Value
+    Check "uninstall text: $key says the update backups (Updates\backups: database dumps with the keys and the settings) stay in C:\ProgramData\Pulsar" ($line -match 'Updates\\backups' -and $line -match 'C:\\ProgramData\\Pulsar') $line
+}
+Check 'uninstall text: ...and that the HTTPS certificate''s file stays too' (([regex]::Matches($commonIss, '(?m)^(en|es)\.(ConfirmUninstall|UninstalledAll)=.*$') | Where-Object { $_.Value -match 'PFX|\.pfx' }).Count -eq 4)
+$install = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\docs\guides\install.md')
+Check 'uninstall text: install.md says the update backups, the settings of the backups and the PFX stay, and how to delete them' (
+    $install -match 'Updates\\backups' -and $install -match '(?s)Uninstalling.*Updates\\backups.*(passwords|PFX)')
+
+# 6. The docs promise `gh attestation verify` only for releases the workflow built, not for the ones published from the maintainer's PC.
+Check 'docs: install.md says gh attestation verify works for releases the workflow built and fails for locally built ones, at both places it names it' (
+    ([regex]::Matches($install, 'gh attestation verify')).Count -eq 2 -and ([regex]::Matches($install, '(?s)(carry no attestation|has none \(the command then says)')).Count -eq 2 -and $install -match 'Publish-GitHubRelease\.ps1' -and $install -match 'SHA-256')
+
+# 15. A silent setup shows no page, so the ports of its command line are checked before anything is installed.
+Check 'setup: a silent setup checks /PORT, /SFTPPORT and /AGENTSPORT in InitializeSetup (the wizard''s page checks never run), refusing with the same messages' (
+    $setupIss -match '(?s)function SilentPortsAreValid: Boolean;.*WizardSilent.*AGENTSPORT.*StrToIntDef\(Trim\(ExpandConstant\(''\{param:PORT\|8443\}''\)\), -1\).*SFTPPORT.*Refuse\(CustomMessage\(''ErrorPort''\)\)' -and
+    $setupIss -match '(?s)function InitializeSetup: Boolean;.*Result := SilentPortsAreValid;')
+Check 'setup: ...and, as the wizard''s page does, that the three ports differ' (
+    $setupIss -match '(?s)function SilentPortsAreValid: Boolean;.*\(PanelNumber = SftpNumber\) or \(\(AgentsNumber > 0\) and \(\(AgentsNumber = PanelNumber\) or \(AgentsNumber = SftpNumber\)\)\).*Refuse\(CustomMessage\(''ErrorSamePorts''\)\)' -and
+    $setupIss -match '(?s)function CheckNetworkPage: Boolean;.*\(PanelPort = SftpPort\) or \(\(AgentsPort > 0\) and \(\(AgentsPort = PanelPort\) or \(AgentsPort = SftpPort\)\)\)')
+
+# 12. An installer that does not finish is ended with everything it started, and the .NET installers get a private TEMP.
+foreach ($part in (Get-ScriptParts $installScript @('Stop-ProcessTree', 'Start-Installer', 'Install-DotNetRuntimes', 'ConvertTo-CommandLine')).Values) { . ([scriptblock]::Create($part)) }
+function Start-SleepingTree {
+    $cmd = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
+    $started = Start-Process -FilePath $cmd -ArgumentList '/c', 'ping -n 60 127.0.0.1 > nul' -WindowStyle Hidden -PassThru
+    $child = $null
+    for ($i = 0; $i -lt 50 -and $null -eq $child; $i++) {
+        $child = Get-CimInstance Win32_Process -Filter "ParentProcessId = $($started.Id)" | Select-Object -First 1
+        if ($null -eq $child) { Start-Sleep -Milliseconds 100 }
+    }
+    return [pscustomobject]@{ Parent = $started; ChildId = $(if ($child) { [int]$child.ProcessId } else { 0 }) }
+}
+function Test-Alive([int] $id) { return $id -gt 0 -and $null -ne (Get-Process -Id $id -ErrorAction SilentlyContinue) }
+$tree = Start-SleepingTree
+try {
+    Check 'installer timeout: the test''s process tree is running (a cmd.exe with a ping under it)' ((Test-Alive $tree.Parent.Id) -and (Test-Alive $tree.ChildId)) "child $($tree.ChildId)"
+    Stop-ProcessTree $tree.Parent.Id
+    $tree.Parent.WaitForExit(5000) | Out-Null
+    Check 'installer timeout: Stop-ProcessTree ends the process and everything it started' (-not (Test-Alive $tree.Parent.Id) -and -not (Test-Alive $tree.ChildId))
+}
+finally {
+    foreach ($id in $tree.Parent.Id, $tree.ChildId) { if (Test-Alive $id) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue } }
+}
+$script:killedId = 0
+$realStopTree = (Get-Item function:Stop-ProcessTree).ScriptBlock
+function Stop-ProcessTree([int] $id) { $script:killedId = $id; & $realStopTree $id }
+function Write-SetupLog([string] $text) { }
+$sleeper = Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
+$caught = Get-Thrown { Start-Installer $sleeper @('/c', 'ping -n 60 127.0.0.1 > nul') $null 0.03 }
+$killed = $script:killedId
+Start-Sleep -Milliseconds 500
+Check 'installer timeout: an installer that does not finish in time is an error, and its whole process tree is ended' (
+    $caught -match 'did not finish within' -and $killed -gt 0 -and -not (Test-Alive $killed)) "$caught $killed"
+$fast = Start-Installer $sleeper @('/c', 'exit 7') $null 1
+Check 'installer timeout: one that finishes returns its exit code, and nothing is ended' ($fast -eq 7)
+Set-Item function:Stop-ProcessTree $realStopTree
+$SetupDownloads = Join-Path $restoreRoot 'downloads'
+$SetupLogs = Join-Path $restoreRoot 'logs'
+$null = New-Item -ItemType Directory $SetupDownloads, $SetupLogs
+$script:installerTemps = New-Object Collections.Generic.List[string]
+$script:RestartNeeded = $false
+function Write-Step([string] $text) { }
+function Start-Installer([string] $exe, [string[]] $arguments, [string] $temp = $null, [double] $minutes = 30) {
+    $script:installerTemps.Add("$temp")
+    $script:tempExisted = $temp -and (Test-Path -LiteralPath $temp -PathType Container)
+    return 0
+}
+Install-DotNetRuntimes @([pscustomobject]@{ Name = 'dotnet-runtime'; Version = '10.0.1'; Path = 'C:\x\dotnet-runtime.exe' }, [pscustomobject]@{ Name = 'aspnetcore-runtime'; Version = '10.0.1'; Path = 'C:\x\aspnetcore-runtime.exe' })
+Check 'installer temp: the .NET installers unpack and log in a TEMP of the downloads folder (only administrators), not the caller''s' (
+    $script:installerTemps.Count -eq 2 -and $script:installerTemps[0] -like "$SetupDownloads\*" -and $script:tempExisted -and -not (Test-Path -LiteralPath $script:installerTemps[0]))
+Check 'installer temp: the ...and the timeout is a number of minutes that may be fractional' ($installText -match '\[double\] \$minutes = 30' -and $installText -match 'WaitForExit\(\[int\]\(\$minutes \* 60000\)\)')
+
+# 8. -Uninstall says so when the panel's folder, with its settings (the database password), could not be removed.
+foreach ($part in (Get-ScriptParts $installScript @('Remove-ProgramFolder', 'Uninstall-Panel')).Values) { . ([scriptblock]::Create($part)) }
+$gone = Join-Path $restoreRoot 'uninstall-gone'
+$null = New-Item -ItemType Directory (Join-Path $gone 'wwwroot')
+Set-Content -LiteralPath (Join-Path $gone 'appsettings.Production.json') '{"password":"x"}'
+Check 'uninstall: a folder is removed, and said to be' ((Remove-ProgramFolder $gone) -and -not (Test-Path -LiteralPath $gone))
+Check 'uninstall: a folder that is not there counts as removed' (Remove-ProgramFolder $gone)
+$held = Join-Path $restoreRoot 'uninstall-held'
+$null = New-Item -ItemType Directory (Join-Path $held 'wwwroot')
+Set-Content -LiteralPath (Join-Path $held 'appsettings.Production.json') '{"password":"x"}'
+Set-Content -LiteralPath (Join-Path $held 'wwwroot\open.dll') 'a program has this open'
+$lock = [IO.File]::Open((Join-Path $held 'wwwroot\open.dll'), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+try {
+    $started = Get-Date
+    $removed = Remove-ProgramFolder $held 3 0
+    Check 'uninstall: a folder with a file a program holds open is tried again, then reported as not removed' (-not $removed -and (Test-Path -LiteralPath (Join-Path $held 'wwwroot\open.dll')))
+    Check 'uninstall: ...but its settings file (the database password) went first, whatever else stayed' (-not (Test-Path -LiteralPath (Join-Path $held 'appsettings.Production.json')))
+    $left = & {
+        $PanelService = 'PulsarPanel'; $PanelDir = $held; $Sc = 'sc.exe'; $script:UninstallLeft = @()
+        function Stop-Service { }
+        function Invoke-Native { [pscustomobject]@{ ExitCode = 0; Output = '' } }
+        function Get-NetFirewallRule { }
+        function Start-Sleep { }
+        Uninstall-Panel
+        $script:UninstallLeft
+    }
+    Check 'uninstall: the panel''s program folder that stays is recorded, for the run to fail with' (@($left).Count -eq 1 -and "$left" -match [regex]::Escape($held))
+}
+finally { $lock.Dispose() }
+$mainText = $installText.Substring($installText.IndexOf('$main = {'))
+Check 'uninstall: a folder that could not be removed ends the run with an error (exit code 1), before it says Pulsar is removed' (
+    $mainText -match '(?s)if \(\$Uninstall\) \{.*if \(\$UninstallLeft.Count -gt 0\) \{ throw \(New-SetupError \$ExitFailed.*delete.*\).*Pulsar is removed\.' -and $installText -match '\$UninstallLeft = @\(\)')
+
+# 7. pg_dump, psql and pg_restore connect with the SSL settings of the Npgsql connection string, not libpq's default (prefer).
+$ssl = Get-PgSslEnvironment @{ 'ssl mode' = 'VerifyFull'; 'root certificate' = 'C:\certs\ca.crt' }
+Check 'ssl: SSL Mode=VerifyFull and Root Certificate become PGSSLMODE=verify-full and PGSSLROOTCERT' ($ssl['PGSSLMODE'] -ceq 'verify-full' -and $ssl['PGSSLROOTCERT'] -ceq 'C:\certs\ca.crt' -and $ssl.Count -eq 2)
+$wrongModes = @(foreach ($pair in @(@('Disable', 'disable'), @('Allow', 'allow'), @('Prefer', 'prefer'), @('Require', 'require'), @('VerifyCA', 'verify-ca'), @('verifyfull', 'verify-full'))) {
+        if ((Get-PgSslEnvironment @{ sslmode = $pair[0] })['PGSSLMODE'] -cne $pair[1]) { $pair[0] }
+    })
+Check 'ssl: every Npgsql mode maps to libpq''s, under the key SslMode too' ($wrongModes.Count -eq 0) ($wrongModes -join ',')
+Check 'ssl: no SSL setting asks for none (libpq''s default, prefer, is Npgsql''s)' ((Get-PgSslEnvironment @{ host = 'localhost' }).Count -eq 0)
+Check 'ssl: a mode this script does not know is refused, not guessed' ((Get-Thrown { Get-PgSslEnvironment @{ 'ssl mode' = 'Verify-Everything' } }) -match 'SSL Mode')
+$sslSpots = [ordered]@{
+    'Backup-Pulsar.ps1' = $backupText
+    'Restore-PanelDatabase' = (Get-ScriptParts $installScript @('Restore-PanelDatabase'))['Restore-PanelDatabase']
+    'Invoke-PanelPsql' = (Get-ScriptParts $installScript @('Invoke-PanelPsql'))['Invoke-PanelPsql']
+    'Restore-RolledBackDatabase' = (Get-ScriptParts $installScript @('Restore-RolledBackDatabase'))['Restore-RolledBackDatabase']
+}
+foreach ($spot in $sslSpots.Keys) {
+    Check "ssl: $spot passes the connection string's SSL settings to the program it runs, and clears them afterwards" (
+        $sslSpots[$spot] -match 'Get-PgSslEnvironment' -and $sslSpots[$spot] -match 'Remove-Item Env:PGPASSWORD, Env:PGSSLMODE, Env:PGSSLROOTCERT')
+}
+
+# 9. The backup copies the panel's keys and certificates without following a link the panel's account could have planted.
+$planted = Join-Path $restoreRoot 'planted'
+$null = New-Item -ItemType Directory (Join-Path $planted 'keys')
+Set-Content -LiteralPath (Join-Path $planted 'keys\key-1.xml') -Value 'key'
+$loopTarget = Join-Path $restoreRoot 'loop-target'
+$null = New-Item -ItemType Directory $loopTarget
+$null = New-Item -ItemType Junction -Path (Join-Path $planted 'keys\loop') -Target $loopTarget
+$caught = Get-Caught { Copy-PlainTree (Join-Path $planted 'keys') (Join-Path $restoreRoot 'planted-copy') }
+Check 'backup: a junction in the panel''s keys is refused, not followed' ($null -ne $caught -and $caught.Exception.Message -match 'is a link')
+[IO.Directory]::Delete((Join-Path $planted 'keys\loop'))
+# A folder swapped for a junction while it is copied (between the check and the read) is found afterwards, and the copy fails.
+$null = New-Item -ItemType Directory (Join-Path $planted 'keys\sub')
+Set-Content -LiteralPath (Join-Path $planted 'keys\sub\a.txt') -Value 'a'
+$null = New-Item -ItemType Junction -Path (Join-Path $planted 'keys\j') -Target $loopTarget
+$found = @(Find-Links (Join-Path $planted 'keys'))
+Check 'links: Find-Links names a junction, and does not go into it' ($found.Count -eq 1 -and $found[0] -like '*keys\j')
+[IO.Directory]::Delete((Join-Path $planted 'keys\j'))
+Check 'links: a tree with none has none' (@(Find-Links (Join-Path $planted 'keys')).Count -eq 0)
+$realLevel = (Get-Item function:Copy-TreeLevel).ScriptBlock
+$script:didPlant = $false
+function Copy-TreeLevel([string] $source, [string] $target) {
+    & $realLevel $source $target
+    if (-not $script:didPlant -and $source -like '*\keys') { $script:didPlant = $true; $null = New-Item -ItemType Junction -Path (Join-Path $source 'sub\late') -Target $loopTarget }
+}
+$caught = Get-Caught { Copy-PlainTree (Join-Path $planted 'keys') (Join-Path $restoreRoot 'late-copy') }
+Check 'links: a junction that appears in the source while it is copied makes the copy fail, naming it' ($null -ne $caught -and $caught.Exception.Message -match 'appeared' -and $caught.Exception.Message -match 'late')
+Set-Item function:Copy-TreeLevel $realLevel
+[IO.Directory]::Delete((Join-Path $planted 'keys\sub\late'))
+Check 'backup: the keys, keyring and tls folders are copied with Copy-PlainTree, and a backup that was stopped by a link is deleted' (
+    $backupFullText -notmatch 'Copy-Item \(Join-Path \$panelData \$folder\)' -and $backupFullText -match 'Copy-PlainTree \(Join-Path \$panelData \$folder\) \(Join-Path \$data \$folder\)' -and
+    $backupFullText -match '(?s)catch \{\s+Remove-Item -LiteralPath \$target -Recurse -Force.*?throw')
+
+if ($script:skipped -gt 0) { Write-Host "$($script:skipped) check(s) SKIPPED: not run, they need an elevated PowerShell." -ForegroundColor Yellow }
 if ($script:failures -gt 0) {
     Write-Host "$($script:failures) check(s) failed." -ForegroundColor Red
     exit 1

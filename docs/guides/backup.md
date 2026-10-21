@@ -25,7 +25,8 @@ powershell -ExecutionPolicy Bypass -File "C:\Program Files\Pulsar\Panel\Backup-P
 ```
 
 It writes `D:\PulsarBackups\pulsar-backup-<date>` with the database dump (`pulsar.dump`), the keys and certificates
-(`panel-data`) and the settings. The panel keeps running. The folder holds secrets: only SYSTEM and Administrators can
+(`panel-data`), the settings and `backup.json`, which names the Pulsar version the backup comes from, the migrations the
+database had applied and the SHA-256 of every other file (a restore checks them). The panel keeps running. The folder holds secrets: only SYSTEM and Administrators can
 read it, so the destination must be on a drive that keeps permissions (NTFS or ReFS): on a FAT or exFAT drive (most
 USB sticks), or a share that ignores permissions, the script stops before writing anything. Keep a copy away from the
 machine (another disk, another computer, offline storage).
@@ -63,6 +64,13 @@ installation of the same or a later major version) with `-PostgresBin`. The scri
 Administrators and TrustedInstaller could change, in a folder they could add files to or below one they could rename,
 before running it at all, as `Install-Pulsar.ps1` refuses such a `psql.exe`: keep PostgreSQL in Program Files (its
 installer's default).
+
+`pg_dump` connects with the SSL settings of the panel's connection string: `SSL Mode` (Disable, Allow, Prefer, Require,
+VerifyCA, VerifyFull) and `Root Certificate` are handed to it as `PGSSLMODE` and `PGSSLROOTCERT`, so a database that
+needs a verified TLS connection is dumped over one too (libpq's own default would accept an unencrypted or unverified
+one). Another `SSL Mode` value stops the backup. The script never follows a link while it copies the panel's keys and
+certificates: if the panel's account (which can write there) left a junction or symbolic link in `keys`, `keyring` or
+`tls`, the backup stops with an error and the half-made folder is deleted, instead of copying whatever the link points at.
 
 ## Backing up game servers
 
@@ -172,6 +180,14 @@ path* can. To move to another bucket, add a storage for it and choose it in the 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Mode Panel -RestoreFrom D:\PulsarBackups\pulsar-backup-<date>
    ```
+
+   The installer first copies the backup to a private folder and works only on that copy, so a file changed while it
+   runs is not used. It refuses a backup folder that accounts other than administrators could change (put the backup in
+   a folder made as above, on an NTFS or ReFS drive; for a drive that keeps no permissions, such as a FAT USB stick that
+   nobody else touched, add `-TrustRestoreSource`), a backup with a link (junction or symbolic link) inside, a file
+   that is not the one `backup.json` names, and a backup made by a newer Pulsar than the release (or whose database has
+   a migration the release does not ship): extract the newer release instead. A backup made before `backup.json`
+   existed has nothing to check against and is restored with a warning.
 
    It creates the database in the local PostgreSQL (asking for the `postgres` password), restores the dump into it,
    puts the keys, certificates and settings back, and starts the panel on the port it used before. Users sign in with

@@ -9,6 +9,9 @@
       pulsar.dump                PostgreSQL dump of the panel's database (pg_dump custom format)
       panel-data\                the panel's Data Protection keys, key ring certificate and HTTPS certificate
       appsettings.Production.json the panel's settings (database and certificate passwords)
+      backup.json                the Pulsar version, the migrations the database had applied and the SHA-256 of every
+                                 file above: a restore (Install-Pulsar.ps1 -RestoreFrom) checks them, and refuses a
+                                 backup made by a newer Pulsar than the release restoring it
 
     The database's secrets (game server tokens, two-factor keys, the panel's signing key) can only be read with the
     keys, so the three always go together. The folder holds secrets: keep it as private as the panel itself (it is
@@ -156,6 +159,59 @@ function Test-PrivateFolder([string] $path) {
     }
 }
 
+# Copies the files and folders of $source into a new folder $target, one by one, and refuses a link (a junction or symbolic
+# link there would make the copy read what is somewhere else, or never end). $target must not exist; it takes the permissions
+# of its parent. Copy-PlainTree is what callers use: it also looks again afterwards. The same functions as the other script's.
+function Copy-TreeLevel([string] $source, [string] $target) {
+    $null = New-Item -ItemType Directory -Path $target
+    foreach ($child in (New-Object IO.DirectoryInfo $source).GetFileSystemInfos()) {
+        if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "$($child.FullName) is a link, not a file or folder. Nothing is copied through links." }
+        if ($child -is [IO.DirectoryInfo]) { Copy-TreeLevel $child.FullName (Join-Path $target $child.Name) }
+        else { [IO.File]::Copy($child.FullName, (Join-Path $target $child.Name), $false) }
+    }
+}
+
+# The links (junctions, symbolic links) in a tree, by path; none is followed.
+function Find-Links([string] $root) {
+    $pending = New-Object Collections.Generic.Stack[string]
+    $pending.Push($root)
+    while ($pending.Count -gt 0) {
+        foreach ($child in (New-Object IO.DirectoryInfo $pending.Pop()).GetFileSystemInfos()) {
+            if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { $child.FullName }
+            elseif ($child -is [IO.DirectoryInfo]) { $pending.Push($child.FullName) }
+        }
+    }
+}
+
+# Copy-TreeLevel checks each entry and then reads it, and an account that can write the source (the panel's, for its data
+# folder) could swap a folder for a junction between the two. So the source and the copy are searched for links again once
+# the copy is made, and one that appeared fails it: what was read through it is not kept. What this cannot see is a link made
+# and removed again inside that window.
+function Copy-PlainTree([string] $source, [string] $target) {
+    Copy-TreeLevel $source $target
+    $links = @(Find-Links $source) + @(Find-Links $target)
+    if ($links.Count -gt 0) { throw "A link appeared while $source was copied ($($links[0])), so the copy cannot be trusted. Nothing is copied through links." }
+}
+
+# libpq's SSL settings for pg_dump, psql and pg_restore, from the keys of an Npgsql connection string ($parts: lower-case
+# names), so they connect as the panel does and not with libpq's default (prefer): SSL Mode becomes PGSSLMODE and Root
+# Certificate PGSSLROOTCERT. No SSL Mode asks for nothing (Npgsql's default, prefer, is libpq's). A mode not known here is
+# refused: guessing one could connect with less than the connection string asks for. The same function as Install-Pulsar.ps1's.
+function Get-PgSslEnvironment($parts) {
+    $modes = @{ disable = 'disable'; allow = 'allow'; prefer = 'prefer'; require = 'require'; verifyca = 'verify-ca'; verifyfull = 'verify-full' }
+    $environment = @{}
+    foreach ($key in 'ssl mode', 'sslmode') {
+        if (-not $parts.ContainsKey($key)) { continue }
+        $mode = $parts[$key].Trim().ToLowerInvariant()
+        if (-not $modes.ContainsKey($mode)) { throw "The connection string's SSL Mode '$($parts[$key])' is not one of Disable, Allow, Prefer, Require, VerifyCA or VerifyFull." }
+        $environment['PGSSLMODE'] = $modes[$mode]
+    }
+    foreach ($key in 'root certificate', 'rootcertificate') {
+        if ($parts.ContainsKey($key) -and $parts[$key].Trim()) { $environment['PGSSLROOTCERT'] = $parts[$key].Trim() }
+    }
+    return $environment
+}
+
 $findings = @(Find-UntrustedWriters $PSCommandPath)
 if ($findings.Count -gt 0) {
     $shown = @($findings | Select-Object -First 10)
@@ -178,6 +234,36 @@ function Assert-TrustedPgDump([string] $bin) {
         $shown = @($findings | Select-Object -First 10)
         throw "This script runs PostgreSQL's pg_dump.exe as administrator (a nightly task runs it as SYSTEM), and $pgDump could be changed by other accounts:$([Environment]::NewLine)  $($shown -join "$([Environment]::NewLine)  ")$([Environment]::NewLine)Install PostgreSQL in a folder only administrators can change (its installer's default, in Program Files), or pass -PostgresBin with such a folder. Nothing was backed up."
     }
+}
+
+# The migration ids the database in a dump had applied (EF Core's __EFMigrationsHistory), read from the dump itself with
+# pg_restore (it connects to nothing without -d): what the backup holds, not what a second query would find a moment later.
+# $null when they cannot be read: pg_restore.exe is missing, could be changed by other accounts (it runs as administrator,
+# like pg_dump.exe), fails, or the dump has no such table.
+function Get-DumpMigrations([string] $bin, [string] $dump) {
+    $restore = Join-Path $bin 'pg_restore.exe'
+    if (-not (Test-Path -LiteralPath $restore -PathType Leaf) -or @(Find-UntrustedWriters $restore).Count -gt 0) { return $null }
+    $ErrorActionPreference = 'Continue'
+    $lines = @(& $restore --data-only --table=__EFMigrationsHistory --file=- $dump 2>&1 | ForEach-Object { "$_" })
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return ConvertFrom-MigrationDump $lines
+}
+
+# The ids in pg_restore's text for the migrations table: the rows of its COPY block (the id, a tab, the EF Core version).
+# $null when there is no such block or a row is not an id: nothing else is trusted to be one.
+function ConvertFrom-MigrationDump([string[]] $lines) {
+    $ids = @()
+    $inside = $false
+    foreach ($line in $lines) {
+        if ($inside) {
+            if ($line -ceq '\.') { return , @($ids | Sort-Object) }
+            $id = $line.Split("`t")[0]
+            if ($id -cnotmatch '^\d{14}_[A-Za-z][A-Za-z0-9_]*\z') { return $null }
+            $ids += $id
+        }
+        elseif ($line -cmatch '^COPY .*"__EFMigrationsHistory" \(.*\) FROM stdin;\z') { $inside = $true }
+    }
+    return $null
 }
 
 # pg_dump must be as new as the server: the newest PostgreSQL installed here.
@@ -242,15 +328,17 @@ if ($parts.ContainsKey('port')) { $port = $parts['port'] }
 foreach ($name in @([Environment]::GetEnvironmentVariables('Process').Keys)) {
     if ("$name" -match '^(PG|PSQL)') { [Environment]::SetEnvironmentVariable("$name", $null, 'Process') }
 }
+$ssl = Get-PgSslEnvironment $parts
 $env:PGPASSWORD = $parts['password']
 try {
+    foreach ($name in $ssl.Keys) { Set-Item "Env:$name" $ssl[$name] }
     $ErrorActionPreference = 'Continue'
     $output = & (Join-Path $PostgresBin 'pg_dump.exe') -h $parts['host'] -p $port -U $parts['username'] -d $parts['database'] -Fc -f (Join-Path $target 'pulsar.dump') 2>&1
     $ErrorActionPreference = 'Stop'
     if ($LASTEXITCODE -ne 0) { throw "pg_dump failed: $output" }
 }
 finally {
-    Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+    Remove-Item Env:PGPASSWORD, Env:PGSSLMODE, Env:PGSSLROOTCERT -ErrorAction SilentlyContinue
 }
 
 Write-Host '==> Copying the keys, certificates and settings' -ForegroundColor Cyan
@@ -259,9 +347,43 @@ Assert-TrustedDestination
 if (-not (Test-PrivateFolder $target)) { throw "$target changed while the database was dumped: the keys, certificates and settings were not copied." }
 # Not -Force: a panel-data folder already there is not this script's, and is refused.
 $data = New-Item -ItemType Directory (Join-Path $target 'panel-data')
-foreach ($folder in 'keys', 'keyring', 'tls') {
-    if (Test-Path (Join-Path $panelData $folder)) { Copy-Item (Join-Path $panelData $folder) $data -Recurse }
+# The panel's account can write these folders: a link it planted in one (a junction back to a parent, or to a big disk) would
+# be followed by a recursive copy, as SYSTEM, until the disk filled. A link stops the backup (a backup without its keys is
+# worth nothing) and the half-made folder goes.
+try {
+    foreach ($folder in 'keys', 'keyring', 'tls') {
+        if (Test-Path -LiteralPath (Join-Path $panelData $folder)) { Copy-PlainTree (Join-Path $panelData $folder) (Join-Path $data $folder) }
+    }
+}
+catch {
+    Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
+    throw "The panel's keys and certificates were not backed up: $($_.Exception.Message) The folder $target was removed. Look at who made the link in $panelData before backing up again."
 }
 Copy-Item $config $target
+
+# backup.json: what Install-Pulsar.ps1 -RestoreFrom checks before it restores this backup (Copy-RestoreSource): the Pulsar
+# version it comes from, the migrations the database in the dump had applied, and the SHA-256 of every file here. A restore
+# refuses a backup whose files differ from it, and one made by a newer Pulsar than the release restoring it (the panel does
+# not run on the database of a newer one).
+Write-Host '==> Writing backup.json' -ForegroundColor Cyan
+$version = $null
+$panelExe = Join-Path $InstallRoot 'Panel\Pulsar.Api.exe'
+if ((Test-Path -LiteralPath $panelExe -PathType Leaf) -and "$((Get-Item -LiteralPath $panelExe).VersionInfo.FileVersion)" -cmatch '^(\d+\.\d+\.\d+)(?:[.+-]|\z)') { $version = $Matches[1] }
+else { Write-Warning 'The panel''s version could not be read, so backup.json does not name it.' }
+$migrations = Get-DumpMigrations $PostgresBin (Join-Path $target 'pulsar.dump')
+if ($null -eq $migrations) { Write-Warning 'The migrations in the dump could not be read (pg_restore.exe is missing, could be changed by other accounts, or failed), so backup.json does not list them.' }
+$targetPath = (Get-Item -LiteralPath $target).FullName.TrimEnd('\')
+$files = [ordered]@{}
+foreach ($file in Get-ChildItem -LiteralPath $target -Recurse -File -Force | Sort-Object FullName) {
+    $files[$file.FullName.Substring($targetPath.Length + 1).Replace('\', '/')] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+$manifest = [ordered]@{
+    format = 1
+    pulsarVersion = $version
+    created = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
+    migrations = $migrations
+    files = $files
+}
+[IO.File]::WriteAllText((Join-Path $target 'backup.json'), ($manifest | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding $false))
 
 Write-Host "Backup written to $target. Copy it somewhere safe, away from this machine." -ForegroundColor Green

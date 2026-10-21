@@ -37,9 +37,12 @@ what the wizard does not ask.
 1. Download `PulsarSetup-<version>.exe` and its `.sha256` file from the project's
    [Releases](https://github.com/Ayrton09/Pulsar/releases) page, and check it as [step 2](#2-download-pulsar) shows
    for the ZIP: `(Get-FileHash .\PulsarSetup-<version>.exe -Algorithm SHA256).Hash` must show the value in the
-   `.sha256` file. The release workflow builds the setups and attests their provenance, as it does the ZIP's: with
-   the GitHub CLI, `gh attestation verify .\PulsarSetup-<version>.exe --repo Ayrton09/Pulsar` (and the same for
-   `PulsarAgentSetup-<version>.exe`) says it was built by this repository's workflow from the tag's commit.
+   `.sha256` file. A release built by the repository's release workflow on GitHub attests its provenance, the ZIP's and
+   the setups': with the GitHub CLI, `gh attestation verify .\PulsarSetup-<version>.exe --repo Ayrton09/Pulsar` (and
+   the same for `PulsarAgentSetup-<version>.exe`) says it was built by that workflow from the tag's commit. **Releases
+   the maintainer builds on their own PC and publishes with `Publish-GitHubRelease.ps1` (the ones installed panels and
+   agents update to) carry no attestation, and that command fails for them**: the SHA-256 file is their check, and
+   the signature of the update manifest, which panels and agents verify themselves, is the one for updates.
 2. Run it. It asks for administrator rights. The setups are not code-signed yet, so Windows SmartScreen may say
    *Windows protected your PC*: for a file whose SHA-256 you checked, click **More info**, check that the app is
    `PulsarSetup-<version>.exe`, and click **Run anyway**.
@@ -119,7 +122,10 @@ Remove-Item Env:PULSAR_ADMIN_PASSWORD
 ```
 
 The choices are parameters, never a secret: `/MODE=AllInOne|Panel|Agent`, `/ADMINUSER=`, `/SERVERSROOT=`, `/PORT=`,
-`/SFTPPORT=`, `/AGENTSPORT=`, `/HOSTNAME=`, `/CERTIFICATE=<pfx>`, `/FIREWALLPUBLIC=yes`, `/PANELURL=`, `/LANG=en|es`,
+`/SFTPPORT=`, `/AGENTSPORT=`, `/HOSTNAME=`, `/CERTIFICATE=<pfx>`, `/FIREWALLPUBLIC=yes`, `/PANELURL=`, `/LANG=en|es`
+(a silent setup checks the ports, each from 1 to 65535, before it installs anything; one that is not stops it
+with Inno Setup's own exit code `1` and a line in its `/LOG`, instead of a script error that would look like an install that
+changed the PC),
 and, offline, `/DOTNETINSTALLERS=<folder>` and `/POSTGRESINSTALLER=<file>` ([Offline installs](#offline-installs)).
 `PulsarAgentSetup-<version>.exe` takes `/SERVERSROOT=`, `/PANELURL=` and `/DOTNETINSTALLERS=`, with the code in
 `PULSAR_NODE_CODE`. Exit codes: `0` done (add `/RESTARTEXITCODE=3010` to get 3010 when a .NET installer asks for a
@@ -292,6 +298,10 @@ The setups run the release's `Install-Pulsar.ps1`, which the release ZIP, publis
 install with it directly, for automation, offline machines, a panel restored from a backup (`-RestoreFrom`), several
 host names, and everything else the wizard does not ask.
 
+`-RestoreFrom` copies the backup to a private folder, checks the copy against its `backup.json` and refuses a backup
+folder others could change, a backup made by a newer Pulsar than the release, or one with links in it (see
+[backup.md](backup.md#on-a-new-machine); `-TrustRestoreSource` is for a drive that keeps no permissions).
+
 ## 1. PostgreSQL (panel machine)
 
 Usually nothing to do. When the panel's machine has no PostgreSQL 15 or later, the installer installs the newest
@@ -301,7 +311,8 @@ PostgreSQL 18 with EDB's installer (the one postgresql.org links for Windows), u
   the service `postgresql-x64-18` on **port 5432** (`-PostgresPort` chooses another; a port in use stops the install
   before anything changes);
 - listening on this machine only (`listen_addresses = 'localhost'`, set with `ALTER SYSTEM`), and the installer checks
-  that `pg_hba.conf` lets in nothing but this machine;
+  that `pg_hba.conf` lets in nothing but this machine, and every rule asks for a password (a `trust` rule would let any
+  account on the machine, a game server's too, in as the database's superuser: the install stops instead);
 - its superuser, `postgres`, gets a random password, handed to EDB's installer in a file only SYSTEM and Administrators
   can read (deleted when the installer ends), changed again to another random one as soon as PostgreSQL runs, used to
   create Pulsar's database and user, and then kept nowhere. Nobody needs it for Pulsar; to use PostgreSQL yourself,
@@ -323,6 +334,10 @@ itself.
 Already have a PostgreSQL elsewhere? Create an empty database and a user that owns it, and give the installer its
 connection string with `-ConnectionString "Host=…;Port=5432;Database=…;Username=…;Password=…"` instead, or in the
 `PULSAR_CONNECTION_STRING` environment variable of that PowerShell, which keeps the password off the command line.
+When this machine has `psql.exe`, the installer asks that database which migrations it has applied, and stops before
+changing anything if a newer Pulsar than this release migrated it (the panel refuses to start on such a database). The
+`SSL Mode` and `Root Certificate` of the connection string are also used by the programs the installer, the update's
+rollback and `Backup-Pulsar.ps1` run against it (`psql`, `pg_dump`, `pg_restore`), not only by the panel.
 
 ### The postgres superuser's password
 
@@ -357,8 +372,11 @@ do it while no game server runs here, or accept that):
    Get-Content .\pulsar-<version>-windows-x64.zip.sha256
    ```
 
-   Both must show the same value. A release built by the project's release workflow also carries a provenance
-   attestation, which you can check with the GitHub CLI: `gh attestation verify .\pulsar-<version>-windows-x64.zip --repo Ayrton09/Pulsar`.
+   Both must show the same value. A release built by the project's release workflow on GitHub also carries a
+   provenance attestation, which you can check with the GitHub CLI:
+   `gh attestation verify .\pulsar-<version>-windows-x64.zip --repo Ayrton09/Pulsar`. A release built on the
+   maintainer's PC and published from there has none (the command then says it found no attestation): its SHA-256
+   is the check, and the one-click updates also check the manifest's signature.
 3. Extract it into a **new folder in `C:\Program Files`**, which only administrators can change. Open **Windows
    PowerShell as administrator** (Start → type *PowerShell* → *Run as administrator*), go to the download folder and
    run:
@@ -1054,7 +1072,13 @@ database as `pulsar`, never as `postgres`: the commands below connect as `postgr
 
   Then run the installer again. With the database gone, `C:\ProgramData\Pulsar\Panel` (the old panel's keys and logs)
   protects nothing: delete it too before installing again (a new panel makes its own keys, and `-RestoreFrom` brings
-  the backup's).
+  the backup's). The installer makes `C:\ProgramData\Pulsar\Panel` and `C:\ProgramData\Pulsar\Updates` with their
+  permissions in the call that creates them (SYSTEM and Administrators, and the panel's service account in `Panel`;
+  nothing inherited from `C:\ProgramData`, where any user may add folders), and checks the ones that are there before it
+  changes anything: owned by SYSTEM or Administrators, not a link, nobody else allowed in. One that is not (a local user
+  made it first, say) stops the install with exit code 3 and the names it found: move out of it what you need, delete the
+  folder and run the installer again. `C:\ProgramData\Pulsar` itself, if only its permissions are open (an earlier
+  install left it inheriting them), the installer closes by itself.
 - **Or** give the panel another database with `-ConnectionString` (step 1).
 
 ## Uninstalling
@@ -1068,7 +1092,10 @@ entry to try again. There is no option to delete the data: it is kept, as below.
 powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Uninstall
 ```
 
-It removes the services, the programs (`Backup-Pulsar.ps1` in the panel's folder too), the firewall rules
+It removes the services, the programs (`Backup-Pulsar.ps1` in the panel's folder too; it tries again for ten seconds
+or so when a file is held open, deletes the panel's `appsettings.Production.json`, which holds the database and
+certificate passwords, first, and, if a folder still could not be removed, says which and ends with exit code `1`
+instead of reporting success: close what holds it and delete it yourself), the firewall rules
 (`Pulsar-Panel-HTTPS`, `Pulsar-Panel-Agents` for the agents' port, `Pulsar-Panel-SFTP` for SFTP and `Pulsar-Panel-ACME`
 for Let's Encrypt's check) and the trust the script gave the panel's
 certificate (in all-in-one mode, or with `-TrustCertificate`; a certificate this machine trusted already stays
@@ -1080,6 +1107,15 @@ database, `C:\ProgramData\Pulsar` and the game servers' folders, and PostgreSQL 
 programs may use: remove them from **Apps** when nothing else needs them, after Pulsar (the agent's program needs the
 .NET runtime to unenroll; PostgreSQL's data folder stays until you delete it). Delete game servers from the panel
 first: that also removes their Windows accounts.
+
+What stays in `C:\ProgramData\Pulsar` is sensitive, and only administrators can open it: the panel's keys (needed to
+read the database's secrets), its HTTPS certificate's PFX file and the password in the settings, the logs, and
+`Updates\backups`, the update backups, each of which is a full database dump with the keys and the settings
+(`appsettings.Production.json`, with the database and certificate passwords). Delete `C:\ProgramData\Pulsar` yourself
+(and the database, if you keep none of it) when you no longer need any of that; the uninstaller leaves it because the
+keys are the only way to read the database's secrets again. The programs' own folders keep nothing: the panel's
+settings file is deleted first, and a folder that still cannot be removed is reported with exit code `1`. The setups'
+texts say the same, in English and Spanish.
 
 If the .NET runtime the agent needs is gone already, `-Uninstall` cannot run the agent's program: it says so in a
 warning, stops and removes the agent's service (`sc.exe`), and keeps the program in `C:\Program Files\Pulsar\Agent`

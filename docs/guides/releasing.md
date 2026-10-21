@@ -35,7 +35,9 @@ It asks for a passphrase twice (typed without echo) and writes the key file, enc
 **public key** and its id. The passphrase is never a command-line argument: the signer asks for it at the console, or
 reads the `PULSAR_UPDATE_KEY_PASSPHRASE` environment variable when there is no console to type in. In a terminal where
 typing without echo does not work, `scripts\release\New-UpdateSigningKey.ps1` asks for it with PowerShell's prompt, which
-shows an asterisk for each character, and gives it to the signer through its environment for that one run:
+shows an asterisk for each character. It builds the signer first (with no MSBuild or compiler server left running, which
+would keep the environment they started with) and puts the passphrase in the environment of the signer's own run only,
+taking it out as soon as that ends:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release\New-UpdateSigningKey.ps1 -Path D:\keys\pulsar-update.key
@@ -65,7 +67,13 @@ Pick the version, exactly `major.minor.patch` (for example `1.0.1`), and write t
 
 (add `-SigningThumbprint …` to Authenticode-sign the programs as well,
 [the roadmap's "Code signing"](../architecture/09-roadmap.md); add `-RequireUpdateSignature` to fail any build that would
-not end up with a signed manifest.) It builds everything in a work folder, as before, and, only when every file is
+not end up with a signed manifest.) **Commit everything first**: before it builds anything, the script reads the commit
+you are on and refuses a checkout with uncommitted changes (modified or untracked files; ignored files such as the built
+web app do not count), because the release would not be what any commit holds. `-AllowDirtyTree` builds anyway, for
+trying things out: the release is marked `dirty`, `Publish-GitHubRelease.ps1` never publishes it, and it cannot be combined with
+`-UpdateSigningKey` or `-RequireUpdateSignature` (such a build never gets the update key's signature). The commit is
+written into `release.json` and into `pulsar-<version>.commit`, which is published with the release and named by the
+signed manifest. The script builds everything in a work folder, as before, and, only when every file is
 built, checksummed and verified:
 
 1. writes `pulsar-update.json` for the files it is about to publish (not the `.sha256` files), with `-MinimumUpdateFrom`
@@ -92,7 +100,10 @@ SHA-256 it says (and that the `.sha256` files agree); and that the release `v1.0
 then runs `gh release create v1.0.1 …` as a normal release, not a draft or a pre-release, so that it is the **latest**
 release: that is the one panels find (`releases/latest`). It uploads the files the manifest names, their `.sha256`
 files, `pulsar-update.json` and `pulsar-update.json.sig`, and makes the tag at the commit you are on (`-Target` names
-another one); that commit must be pushed. The title is `Pulsar 1.0.1` and the notes are the manifest's (or `-Notes`).
+another one, resolved to its full hash); that commit must be pushed, and **must be the commit the release was built
+at**: the script reads it from `pulsar-<version>.commit` (its SHA-256 is in the signed manifest) and refuses to publish
+when HEAD or `-Target` is another commit, when the manifest does not name that file (a release built before this
+check: build it again), or when the build was dirty. The title is `Pulsar 1.0.1` and the notes are the manifest's (or `-Notes`).
 
 The release workflow (`.github/workflows/release.yml`) is run by hand and is not how update releases are made: it has no
 update key. A tag created by `gh release create` does not start it.
