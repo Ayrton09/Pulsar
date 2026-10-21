@@ -292,6 +292,10 @@ The setups run the release's `Install-Pulsar.ps1`, which the release ZIP, publis
 install with it directly, for automation, offline machines, a panel restored from a backup (`-RestoreFrom`), several
 host names, and everything else the wizard does not ask.
 
+`-RestoreFrom` copies the backup to a private folder, checks the copy against its `backup.json` and refuses a backup
+folder others could change, a backup made by a newer Pulsar than the release, or one with links in it (see
+[backup.md](backup.md#on-a-new-machine); `-TrustRestoreSource` is for a drive that keeps no permissions).
+
 ## 1. PostgreSQL (panel machine)
 
 Usually nothing to do. When the panel's machine has no PostgreSQL 15 or later, the installer installs the newest

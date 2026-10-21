@@ -25,7 +25,8 @@ powershell -ExecutionPolicy Bypass -File "C:\Program Files\Pulsar\Panel\Backup-P
 ```
 
 It writes `D:\PulsarBackups\pulsar-backup-<date>` with the database dump (`pulsar.dump`), the keys and certificates
-(`panel-data`) and the settings. The panel keeps running. The folder holds secrets: only SYSTEM and Administrators can
+(`panel-data`), the settings and `backup.json`, which names the Pulsar version the backup comes from, the migrations the
+database had applied and the SHA-256 of every other file (a restore checks them). The panel keeps running. The folder holds secrets: only SYSTEM and Administrators can
 read it, so the destination must be on a drive that keeps permissions (NTFS or ReFS): on a FAT or exFAT drive (most
 USB sticks), or a share that ignores permissions, the script stops before writing anything. Keep a copy away from the
 machine (another disk, another computer, offline storage).
@@ -167,6 +168,14 @@ path* can. To move to another bucket, add a storage for it and choose it in the 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Mode Panel -RestoreFrom D:\PulsarBackups\pulsar-backup-<date>
    ```
+
+   The installer first copies the backup to a private folder and works only on that copy, so a file changed while it
+   runs is not used. It refuses a backup folder that accounts other than administrators could change (put the backup in
+   a folder made as above, on an NTFS or ReFS drive; for a drive that keeps no permissions, such as a FAT USB stick that
+   nobody else touched, add `-TrustRestoreSource`), a backup with a link (junction or symbolic link) inside, a file
+   that is not the one `backup.json` names, and a backup made by a newer Pulsar than the release (or whose database has
+   a migration the release does not ship): extract the newer release instead. A backup made before `backup.json`
+   existed has nothing to check against and is restored with a warning.
 
    It creates the database in the local PostgreSQL (asking for the `postgres` password), restores the dump into it,
    puts the keys, certificates and settings back, and starts the panel on the port it used before. Users sign in with

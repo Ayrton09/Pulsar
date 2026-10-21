@@ -37,7 +37,9 @@
 
     -Mode Panel -RestoreFrom <folder> installs the panel from a backup made by Backup-Pulsar.ps1 (on this machine or
     another): its database, keys, certificates and settings. Nodes reconnect on their own when the panel's address
-    leads to this machine.
+    leads to this machine. The backup folder must be one only administrators can change (-TrustRestoreSource says a
+    drive keeps no permissions); it is copied to a private folder first, checked there against its backup.json (the
+    SHA-256 of every file), and refused when it comes from a newer Pulsar than this release.
 
     What Pulsar needs and this machine lacks is downloaded over HTTPS and checked before anything is installed: the
     .NET 10 runtimes (Microsoft's installers, against the SHA-512 in Microsoft's release metadata and Microsoft's
@@ -124,6 +126,12 @@ param(
     [SecureString] $AdminPassword,
     # A backup folder made by Backup-Pulsar.ps1 (with -Mode Panel).
     [string] $RestoreFrom,
+    # Allows -RestoreFrom with a backup folder that others could change (a USB stick formatted FAT or exFAT keeps no
+    # permissions, so every file on it looks writable by anyone). By default such a folder is refused: the backup holds the
+    # panel's keys and the database dump the install restores as administrator. The backup is still copied to a private
+    # folder, checked against its backup.json and not followed through links; but whoever could change the drive could
+    # have changed backup.json along with the files, so use it only for a drive nobody else touched.
+    [switch] $TrustRestoreSource,
     # Leaves the Windows Firewall alone (by default the panel's ports (HTTPS, agents, SFTP) are opened for the panel's
     # program, on Domain and Private networks).
     [switch] $NoFirewall,
@@ -1632,6 +1640,160 @@ function Restore-PanelDatabase([string] $dump, [string] $connection) {
     }
 }
 
+# --- The backup -RestoreFrom restores ---------------------------------------------------------------------------------
+
+# Why this exists: a backup (Backup-Pulsar.ps1's folder) holds what the install runs as administrator and gives the panel: a
+# database dump pg_restore loads, the Data Protection keys, the key ring's and the HTTPS certificate's PFX and the settings.
+# Read in place, several times, from any folder, it could be changed between one read and the next, or by whoever may write
+# where it is (a folder under C:\ with Users in it, a USB stick, a share), or hold a link that sends a read somewhere else.
+# So: (1) a source others could change is refused, unless -TrustRestoreSource says the drive keeps no permissions (FAT);
+# (2) it is copied once, file by file and never through a link, into a new private folder under $SetupRoot, and only that
+# copy is checked and used; (3) its backup.json (Backup-Pulsar.ps1 writes it: the Pulsar version, the migrations the
+# database had applied, the SHA-256 of every file) must match the copy file by file, with nothing more in it; (4) a backup
+# made by a newer Pulsar than this release, or whose database has a migration this release does not ship, is refused: the
+# panel would not start on it (or, worse, would run on a schema it does not know). A backup from before backup.json has none
+# of that to check: it is restored with a warning, but only from a source that passed (1) or was trusted.
+
+# The folder with the private copy of the backup, set by Copy-RestoreSource.
+$RestoreCopy = $null
+
+# Copies the files and folders of $source into a new folder $target, one by one, and refuses a link (a junction or symbolic
+# link there would make the copy read what is somewhere else). $target must not exist; it takes the permissions of its parent.
+function Copy-PlainTree([string] $source, [string] $target) {
+    $null = New-Item -ItemType Directory -Path $target
+    foreach ($child in (New-Object IO.DirectoryInfo $source).GetFileSystemInfos()) {
+        if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "$($child.FullName) is a link, not a file or folder of the backup." }
+        if ($child -is [IO.DirectoryInfo]) { Copy-PlainTree $child.FullName (Join-Path $target $child.Name) }
+        else { [IO.File]::Copy($child.FullName, (Join-Path $target $child.Name), $false) }
+    }
+}
+
+# The migration ids this release's panel carries, read from its Pulsar.Infrastructure.dll without running it: each EF Core
+# migration is a class with [Migration("<yyyyMMddHHmmss>_<Name>")], whose text is in the assembly's metadata (UTF-8). Every
+# such id in the file, sorted; the bytes after one may be the next entry's length, which can be a letter, so a candidate may
+# carry a stray character at its end (Find-UnshippedMigrations compares by prefix). None when the file is not there.
+function Get-ReleaseMigrations([string] $dll = (Join-Path $PSScriptRoot 'panel\Pulsar.Infrastructure.dll')) {
+    if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) { return @() }
+    $text = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($dll))
+    return @([regex]::Matches($text, '\d{14}_[A-Za-z][A-Za-z0-9_]*') | ForEach-Object { $_.Value } | Sort-Object -Unique)
+}
+
+# The ids of $applied (a database's __EFMigrationsHistory, or a backup's list) that the release does not ship: none of
+# $shipped (Get-ReleaseMigrations) starts with it. Nothing when $shipped is empty (the release's list is not known).
+function Find-UnshippedMigrations([string[]] $applied, [string[]] $shipped) {
+    if (@($shipped).Count -eq 0) { return }
+    foreach ($id in @($applied | Where-Object { $_ })) {
+        $known = $false
+        foreach ($candidate in $shipped) { if ($candidate.StartsWith($id, [StringComparison]::Ordinal)) { $known = $true; break } }
+        if (-not $known) { $id }
+    }
+}
+
+# backup.json of a backup folder, strictly: @{ Version; Migrations; Files } (Version and Migrations $null when the backup could
+# not note them; Files: relative path with '/' -> lower-case SHA-256), or $null when the folder has none (a backup from before
+# it). Anything else than what Backup-Pulsar.ps1 writes is an error.
+function Read-BackupManifest([string] $folder) {
+    $path = Join-Path $folder 'backup.json'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+    try { $json = [IO.File]::ReadAllText($path, (New-Object Text.UTF8Encoding $false, $true)) | ConvertFrom-Json }
+    catch { throw "backup.json cannot be read ($($_.Exception.Message))" }
+    foreach ($name in 'format', 'pulsarVersion', 'migrations', 'files') {
+        if (-not $json.PSObject.Properties[$name]) { throw "backup.json has no $name" }
+    }
+    if ("$($json.format)" -cne '1') { throw 'backup.json is of a format this script does not know' }
+    $version = $null
+    if ($null -ne $json.pulsarVersion) {
+        if ("$($json.pulsarVersion)" -cnotmatch '^\d{1,9}\.\d{1,9}\.\d{1,9}\z') { throw 'backup.json names a Pulsar version that is not major.minor.patch' }
+        $version = "$($json.pulsarVersion)"
+    }
+    $migrations = $null
+    if ($null -ne $json.migrations) {
+        $migrations = @($json.migrations | ForEach-Object { "$_" })
+        foreach ($id in $migrations) { if ($id -cnotmatch '^\d{14}_[A-Za-z][A-Za-z0-9_]*\z') { throw 'backup.json lists a migration that is not a migration id' } }
+    }
+    $files = @{}
+    foreach ($entry in @($json.files.PSObject.Properties)) {
+        if ($entry.Name -cnotmatch '^[A-Za-z0-9._ -]+(/[A-Za-z0-9._ -]+)*\z' -or @($entry.Name.Split('/') | Where-Object { $_ -match '^\.+\z' }).Count -gt 0) { throw 'backup.json lists a file whose name is not one of a backup''s' }
+        if ("$($entry.Value)" -cnotmatch '^[0-9A-Fa-f]{64}\z') { throw "backup.json has no SHA-256 for $($entry.Name)" }
+        $files[$entry.Name] = "$($entry.Value)".ToLowerInvariant()
+    }
+    return [pscustomobject]@{ Version = $version; Migrations = $migrations; Files = $files }
+}
+
+# The files of a backup folder as backup.json names them (relative, with '/'), backup.json itself left out.
+function Get-BackupFileList([string] $root) {
+    $rootPath = (Get-Item -LiteralPath $root).FullName.TrimEnd('\')
+    foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -File -Force) {
+        $relative = $file.FullName.Substring($rootPath.Length + 1).Replace('\', '/')
+        if ($relative -cne 'backup.json') { $relative }
+    }
+}
+
+# What differs between the backup folder and its backup.json ($manifest, Read-BackupManifest's): a file listed that is not
+# there or has another SHA-256, and a file that is there and not listed. One line each; nothing when they agree.
+function Get-BackupFileProblems($manifest, [string] $folder) {
+    $actual = @(Get-BackupFileList $folder)
+    foreach ($path in @($manifest.Files.Keys | Sort-Object)) {
+        if ($actual -cnotcontains $path) { "$path is in backup.json but not in the backup"; continue }
+        $hash = (Get-FileHash -LiteralPath (Join-Path $folder $path) -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($hash -cne $manifest.Files[$path]) { "$path is not what backup.json says (its SHA-256 differs)" }
+    }
+    foreach ($path in $actual) { if (-not $manifest.Files.ContainsKey($path)) { "$path is in the backup but not in backup.json" } }
+}
+
+# Why a backup cannot go to this release: made by a newer Pulsar ($release is this release's version, $null when not known), or
+# its database holds a migration this release does not ship ($shipped, Get-ReleaseMigrations'; empty when not known).
+function Get-BackupVersionProblems($manifest, [string] $release, [string[]] $shipped) {
+    if ($manifest.Version -and $release -and [Version]$manifest.Version -gt [Version]$release) {
+        "it was made by Pulsar $($manifest.Version), newer than this release ($release): a panel does not run on the data of a newer one"
+    }
+    $unknown = @(Find-UnshippedMigrations $manifest.Migrations $shipped)
+    if ($unknown.Count -gt 0) {
+        "its database has migrations this release does not have ($($unknown -join ', ')): it comes from a newer Pulsar"
+    }
+}
+
+# Copies the backup in $source to a new private folder under $SetupRoot and checks it (see above): the copy's path, which is
+# all that is read from now on; $RestoreCopy remembers it for Remove-RestoreCopy. Nothing of Pulsar is changed by it.
+function Copy-RestoreSource([string] $source) {
+    $item = Get-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue
+    if ($item -isnot [IO.DirectoryInfo]) { throw (New-SetupError $ExitUsage "-RestoreFrom $source is not a folder. Nothing was changed.") }
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw (New-SetupError $ExitUsage "-RestoreFrom $source is a link: give the backup folder itself. Nothing was changed.") }
+    $findings = @(Find-UntrustedWriters $source)
+    if ($findings.Count -gt 0) {
+        if (-not $TrustRestoreSource) {
+            throw (New-SetupError $ExitUnsupported "The backup in $source holds the panel's keys and the database this install restores as administrator, and others could change it:$([Environment]::NewLine)$(Get-UntrustedWritersMessage $findings)$([Environment]::NewLine)Copy the backup to a folder only administrators can change, on an NTFS or ReFS drive (D:\PulsarBackups, as the backup guide makes them), and restore from there; or, if it is on a drive that keeps no permissions (a USB stick formatted FAT, say) and nobody else could have touched it, add -TrustRestoreSource. Nothing was changed.")
+        }
+        Write-Warning "-TrustRestoreSource: $source could be changed by others, so the backup is restored on your word that it was not."
+    }
+    # Left by a run that was stopped: this script's own.
+    Get-ChildItem -LiteralPath $SetupRoot -Directory -Filter 'restore-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    $folder = Join-Path $SetupRoot ('restore-' + [Guid]::NewGuid().ToString('N'))
+    New-SetupFolder $folder
+    $script:RestoreCopy = $folder
+    $copy = Join-Path $folder 'backup'
+    try { Copy-PlainTree $source $copy }
+    catch { throw (New-SetupError $ExitUsage "The backup in $source cannot be copied: $($_.Exception.Message) Nothing was changed.") }
+    try { $manifest = Read-BackupManifest $copy }
+    catch { throw (New-SetupError $ExitUsage "The backup in ${source}: $($_.Exception.Message). Nothing was changed.") }
+    if ($null -eq $manifest) {
+        Write-Warning "The backup in $source has no backup.json (it was made by an earlier Pulsar), so its files and the Pulsar version it comes from cannot be checked."
+        return $copy
+    }
+    $problems = @(Get-BackupFileProblems $manifest $copy) + @(Get-BackupVersionProblems $manifest (Get-UpdateVersions).To (Get-ReleaseMigrations))
+    if ($problems.Count -gt 0) {
+        throw (New-SetupError $ExitUsage "The backup in $source cannot be restored:$([Environment]::NewLine)$(Get-UntrustedWritersMessage $problems)$([Environment]::NewLine)Nothing was changed.")
+    }
+    return $copy
+}
+
+# Deletes the private copy of the backup, which holds the panel's keys.
+function Remove-RestoreCopy {
+    if (-not $RestoreCopy -or -not (Test-Path -LiteralPath $RestoreCopy)) { return }
+    try { Remove-Item -LiteralPath $RestoreCopy -Recurse -Force }
+    catch { Write-SetupLog "The copy of the backup in $RestoreCopy could not all be deleted ($($_.Exception.Message)); the next run deletes it." }
+}
+
 # Reads a certificate file once: what is checked is what is trusted (a file read again could have changed meanwhile).
 function Read-Certificate([string] $path) {
     $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $path).ProviderPath)
@@ -2051,8 +2213,10 @@ function Assert-PanelInstallable {
     $agents = $AgentsPort
     $what = @{ Https = '-Port'; Agents = '-AgentsPort' }
     if ($RestoreFrom) {
-        if (-not (Test-Path -LiteralPath (Join-Path $RestoreFrom 'panel-data\keys'))) { throw (New-SetupError $ExitUsage "$RestoreFrom is not a Pulsar backup (no panel-data\keys). Nothing was changed.") }
-        $settingsFile = Join-Path $RestoreFrom 'appsettings.Production.json'
+        # Copied once into a private folder and checked there (Copy-RestoreSource): that copy is all that is read from here on.
+        $backupCopy = Copy-RestoreSource $RestoreFrom
+        if (-not (Test-Path -LiteralPath (Join-Path $backupCopy 'panel-data\keys'))) { throw (New-SetupError $ExitUsage "$RestoreFrom is not a Pulsar backup (no panel-data\keys). Nothing was changed.") }
+        $settingsFile = Join-Path $backupCopy 'appsettings.Production.json'
         if (-not (Test-Path -LiteralPath $settingsFile -PathType Leaf)) { throw (New-SetupError $ExitUsage "$RestoreFrom is not a Pulsar backup (no appsettings.Production.json). Nothing was changed.") }
         $old = Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json
         $https = Get-EndpointPort $old.Kestrel.Endpoints.Https.Url
@@ -2061,7 +2225,7 @@ function Assert-PanelInstallable {
         $what = @{ Https = "the backup's panel port"; Agents = "the backup's agents' port" }
         $tlsPassword = $old.Kestrel.Endpoints.Https.Certificate.Password
         Register-Secret $tlsPassword
-        $problem = Test-PfxFile (Join-Path $RestoreFrom 'panel-data\tls\panel.pfx') $tlsPassword
+        $problem = Test-PfxFile (Join-Path $backupCopy 'panel-data\tls\panel.pfx') $tlsPassword
         if ($problem) { throw (New-SetupError $ExitUsage "The backup's HTTPS certificate (panel-data\tls\panel.pfx in $RestoreFrom) cannot be the panel's: $problem. Nothing was changed.") }
     }
     elseif ($CertificatePath) {
@@ -2116,10 +2280,13 @@ function Undo-PanelInstall([bool] $service, [bool] $database) {
 function Install-Panel {
     $backup = $null
     if ($RestoreFrom) {
+        # Only the private copy Assert-PanelInstallable made and checked is read, never -RestoreFrom's folder again.
+        if (-not $RestoreCopy -or -not (Test-Path -LiteralPath $RestoreCopy)) { throw 'The backup was not copied and checked before the install (Copy-RestoreSource).' }
+        $source = Join-Path $RestoreCopy 'backup'
         $backup = @{
-            Settings = Get-Content (Join-Path $RestoreFrom 'appsettings.Production.json') -Raw | ConvertFrom-Json
-            Data = Join-Path $RestoreFrom 'panel-data'
-            Dump = Join-Path $RestoreFrom 'pulsar.dump'
+            Settings = Get-Content -LiteralPath (Join-Path $source 'appsettings.Production.json') -Raw | ConvertFrom-Json
+            Data = Join-Path $source 'panel-data'
+            Dump = Join-Path $source 'pulsar.dump'
         }
     }
 
@@ -4798,6 +4965,7 @@ catch {
 }
 finally {
     Remove-SetupDownloads
+    Remove-RestoreCopy
     Unlock-Update
 }
 if ($Unattended) { exit $outcome }

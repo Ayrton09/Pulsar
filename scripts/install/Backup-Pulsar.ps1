@@ -9,6 +9,9 @@
       pulsar.dump                PostgreSQL dump of the panel's database (pg_dump custom format)
       panel-data\                the panel's Data Protection keys, key ring certificate and HTTPS certificate
       appsettings.Production.json the panel's settings (database and certificate passwords)
+      backup.json                the Pulsar version, the migrations the database had applied and the SHA-256 of every
+                                 file above: a restore (Install-Pulsar.ps1 -RestoreFrom) checks them, and refuses a
+                                 backup made by a newer Pulsar than the release restoring it
 
     The database's secrets (game server tokens, two-factor keys, the panel's signing key) can only be read with the
     keys, so the three always go together. The folder holds secrets: keep it as private as the panel itself (it is
@@ -180,6 +183,36 @@ function Assert-TrustedPgDump([string] $bin) {
     }
 }
 
+# The migration ids the database in a dump had applied (EF Core's __EFMigrationsHistory), read from the dump itself with
+# pg_restore (it connects to nothing without -d): what the backup holds, not what a second query would find a moment later.
+# $null when they cannot be read: pg_restore.exe is missing, could be changed by other accounts (it runs as administrator,
+# like pg_dump.exe), fails, or the dump has no such table.
+function Get-DumpMigrations([string] $bin, [string] $dump) {
+    $restore = Join-Path $bin 'pg_restore.exe'
+    if (-not (Test-Path -LiteralPath $restore -PathType Leaf) -or @(Find-UntrustedWriters $restore).Count -gt 0) { return $null }
+    $ErrorActionPreference = 'Continue'
+    $lines = @(& $restore --data-only --table=__EFMigrationsHistory --file=- $dump 2>&1 | ForEach-Object { "$_" })
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return ConvertFrom-MigrationDump $lines
+}
+
+# The ids in pg_restore's text for the migrations table: the rows of its COPY block (the id, a tab, the EF Core version).
+# $null when there is no such block or a row is not an id: nothing else is trusted to be one.
+function ConvertFrom-MigrationDump([string[]] $lines) {
+    $ids = @()
+    $inside = $false
+    foreach ($line in $lines) {
+        if ($inside) {
+            if ($line -ceq '\.') { return , @($ids | Sort-Object) }
+            $id = $line.Split("`t")[0]
+            if ($id -cnotmatch '^\d{14}_[A-Za-z][A-Za-z0-9_]*\z') { return $null }
+            $ids += $id
+        }
+        elseif ($line -cmatch '^COPY .*"__EFMigrationsHistory" \(.*\) FROM stdin;\z') { $inside = $true }
+    }
+    return $null
+}
+
 # pg_dump must be as new as the server: the newest PostgreSQL installed here.
 if ($PostgresBin) {
     if (-not (Test-Path -LiteralPath (Join-Path $PostgresBin 'pg_dump.exe') -PathType Leaf)) { throw "$PostgresBin has no pg_dump.exe. Nothing was backed up." }
@@ -263,5 +296,30 @@ foreach ($folder in 'keys', 'keyring', 'tls') {
     if (Test-Path (Join-Path $panelData $folder)) { Copy-Item (Join-Path $panelData $folder) $data -Recurse }
 }
 Copy-Item $config $target
+
+# backup.json: what Install-Pulsar.ps1 -RestoreFrom checks before it restores this backup (Copy-RestoreSource): the Pulsar
+# version it comes from, the migrations the database in the dump had applied, and the SHA-256 of every file here. A restore
+# refuses a backup whose files differ from it, and one made by a newer Pulsar than the release restoring it (the panel does
+# not run on the database of a newer one).
+Write-Host '==> Writing backup.json' -ForegroundColor Cyan
+$version = $null
+$panelExe = Join-Path $InstallRoot 'Panel\Pulsar.Api.exe'
+if ((Test-Path -LiteralPath $panelExe -PathType Leaf) -and "$((Get-Item -LiteralPath $panelExe).VersionInfo.FileVersion)" -cmatch '^(\d+\.\d+\.\d+)(?:[.+-]|\z)') { $version = $Matches[1] }
+else { Write-Warning 'The panel''s version could not be read, so backup.json does not name it.' }
+$migrations = Get-DumpMigrations $PostgresBin (Join-Path $target 'pulsar.dump')
+if ($null -eq $migrations) { Write-Warning 'The migrations in the dump could not be read (pg_restore.exe is missing, could be changed by other accounts, or failed), so backup.json does not list them.' }
+$targetPath = (Get-Item -LiteralPath $target).FullName.TrimEnd('\')
+$files = [ordered]@{}
+foreach ($file in Get-ChildItem -LiteralPath $target -Recurse -File -Force | Sort-Object FullName) {
+    $files[$file.FullName.Substring($targetPath.Length + 1).Replace('\', '/')] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+$manifest = [ordered]@{
+    format = 1
+    pulsarVersion = $version
+    created = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
+    migrations = $migrations
+    files = $files
+}
+[IO.File]::WriteAllText((Join-Path $target 'backup.json'), ($manifest | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding $false))
 
 Write-Host "Backup written to $target. Copy it somewhere safe, away from this machine." -ForegroundColor Green

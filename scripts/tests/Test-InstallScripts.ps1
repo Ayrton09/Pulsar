@@ -1298,6 +1298,8 @@ try {
             $Port = $freePorts[0]; $AgentsPort = 0; $SftpPort = $freePorts[1]; $CertificatePath = $null; $CertificatePassword = $null; $RestoreFrom = $null; $HostName = @()
             foreach ($name in $values.Keys) { Set-Variable -Name $name -Value $values[$name] }
             function Test-Service([string] $name) { return $false }
+            # Copying and checking the backup have their own checks below; here the folder is read as it is.
+            function Copy-RestoreSource([string] $source) { return $source }
             Get-Caught { Assert-PanelInstallable }
         }
     }
@@ -3750,7 +3752,7 @@ Check 'update: the existing Update-Agent and Update-Panel are as they were (stop
     $installParts['Copy-Program'] -match "'appsettings\.Production\.json', 'downloads'")
 $tail = $installText.Substring($mainEnd)
 Check 'update: a failure writes the result file (failed) in the catch, and the lock is released in the finally' (
-    $tail -match "(?s)catch \{.*if \(\`$Update\) \{ Write-UpdateResult 'failed' \`$message \}.*if \(-not \`$Unattended\)" -and $tail -match '(?s)finally \{\s+Remove-SetupDownloads\s+Unlock-Update\s+\}')
+    $tail -match "(?s)catch \{.*if \(\`$Update\) \{ Write-UpdateResult 'failed' \`$message \}.*if \(-not \`$Unattended\)" -and $tail -match '(?s)finally \{\s+Remove-SetupDownloads\s+Remove-RestoreCopy\s+Unlock-Update\s+\}')
 Check 'update: the exit code 7 is "rolled back", and the progress steps of an update are as they were (check, downloads, dotnet, update)' (
     $ExitRolledBack -eq 7 -and $installText -match "Update = @\('check', 'downloads', 'dotnet', 'update'\)" -and $installText -match '\$ExitRolledBack = 7 ')
 Check 'update: the result is written as UTF-8 without a byte order mark, beside the file and moved over it' (
@@ -3820,6 +3822,169 @@ Check 'data folders: the data root, the panel''s data folder and the update fold
     $installText -notmatch 'Set-PrivateAcl \$PanelData' -and $installText -notmatch 'New-Item -ItemType Directory -Force \$PanelData')
 Check 'data folders: an existing panel data or update folder is checked before the install changes anything' (
     (Get-ScriptParts $installScript @('Assert-PanelInstallable'))['Assert-PanelInstallable'] -match '(?s)Test-Path -LiteralPath \$PanelData\) \{\s+\$problems = @\(Get-DataFolderProblems \$PanelData @\(\(Get-ServiceAccountSid \$PanelService\)\.Value\)\).*Nothing was changed.*Initialize-UpdateFolder \$UpdateRoot')
+
+# 2. -RestoreFrom copies the backup to a private folder and checks that copy: its backup.json, the Pulsar version, the migrations.
+$restoreParts = Get-ScriptParts $installScript @('Copy-PlainTree', 'Get-ReleaseMigrations', 'Find-UnshippedMigrations', 'Read-BackupManifest', 'Get-BackupFileList', 'Get-BackupFileProblems',
+    'Get-BackupVersionProblems', 'Copy-RestoreSource', 'Remove-RestoreCopy', 'New-SetupError', 'Get-UntrustedWritersMessage', 'Get-SetupExitCode') @('RestoreCopy', 'ExitUsage', 'ExitUnsupported')
+foreach ($part in $restoreParts.Values) { . ([scriptblock]::Create($part)) }
+$restoreRoot = Join-Path $auditRoot 'restore'
+$null = New-Item -ItemType Directory $restoreRoot
+
+# The migrations of a release, read from its assembly without running it.
+$fakeDll = Join-Path $restoreRoot 'Fake.dll'
+[IO.File]::WriteAllBytes($fakeDll, [Text.Encoding]::GetEncoding(28591).GetBytes("MZjunk`0" + '5' + '20261001154302_Alpha' + "`0" + 'x' + '20261002105727_Beta' + 'Q' + "`0" + '99999999999999 no id 2026_x'))
+$shipped = @(Get-ReleaseMigrations $fakeDll)
+Check 'restore: the release''s migrations are read from its assembly, also when a length byte before one is a digit or a letter follows it' (
+    $shipped.Count -eq 2 -and $shipped[0] -ceq '20261001154302_Alpha' -and $shipped[1] -ceq '20261002105727_BetaQ') ($shipped -join ',')
+Check 'restore: a release without its assembly lists none' (@(Get-ReleaseMigrations (Join-Path $restoreRoot 'nothing.dll')).Count -eq 0)
+Check 'restore: an applied migration the release does not ship is found (by prefix), the shipped ones are not, and nothing is found when the release''s list is not known' (
+    (@(Find-UnshippedMigrations @('20261001154302_Alpha', '20261002105727_Beta', '20261003000000_Gamma') $shipped) -join ',') -ceq '20261003000000_Gamma' -and
+    @(Find-UnshippedMigrations @('20261003000000_Gamma') @()).Count -eq 0 -and @(Find-UnshippedMigrations @() $shipped).Count -eq 0)
+$realDll = Join-Path $PSScriptRoot '..\..\src\Pulsar.Infrastructure\bin\Release\net10.0\Pulsar.Infrastructure.dll'
+$migrationFiles = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '..\..\src\Pulsar.Infrastructure\Persistence\Migrations') -Filter '2*_*.cs' | Where-Object { $_.Name -notmatch 'Designer' })
+if ((Test-Path -LiteralPath $realDll) -and (Get-Item -LiteralPath $realDll).LastWriteTime -gt ($migrationFiles | Sort-Object LastWriteTime | Select-Object -Last 1).LastWriteTime) {
+    $inDll = @(Get-ReleaseMigrations $realDll)
+    Check 'restore: every migration of the repository is found in the built Pulsar.Infrastructure.dll' (
+        $migrationFiles.Count -gt 0 -and @(Find-UnshippedMigrations @($migrationFiles | ForEach-Object { $_.BaseName }) $inDll).Count -eq 0) (@(Find-UnshippedMigrations @($migrationFiles | ForEach-Object { $_.BaseName }) $inDll) -join ',')
+}
+
+# The private copy: file by file, never through a link.
+$tree = Join-Path $restoreRoot 'tree'
+$null = New-Item -ItemType Directory (Join-Path $tree 'panel-data\keys')
+Set-Content -LiteralPath (Join-Path $tree 'pulsar.dump') -Value 'dump'
+Set-Content -LiteralPath (Join-Path $tree 'panel-data\keys\key-1.xml') -Value 'key'
+$treeCopy = Join-Path $restoreRoot 'tree-copy'
+Copy-PlainTree $tree $treeCopy
+Check 'restore: a folder is copied whole, nested files too' (
+    (Get-Content -LiteralPath (Join-Path $treeCopy 'pulsar.dump')) -ceq 'dump' -and (Get-Content -LiteralPath (Join-Path $treeCopy 'panel-data\keys\key-1.xml')) -ceq 'key')
+$linkedTree = Join-Path $restoreRoot 'linked'
+Copy-Item -LiteralPath $tree -Destination $linkedTree -Recurse
+$outside = Join-Path $restoreRoot 'outside'
+$null = New-Item -ItemType Directory $outside
+Set-Content -LiteralPath (Join-Path $outside 'other.txt') -Value 'not the backup''s'
+$null = New-Item -ItemType Junction -Path (Join-Path $linkedTree 'panel-data\tls') -Target $outside
+$caught = Get-Caught { Copy-PlainTree $linkedTree (Join-Path $restoreRoot 'linked-copy') }
+Check 'restore: a link in the backup is refused, and what it points at is not copied' (
+    $null -ne $caught -and $caught.Exception.Message -match 'is a link' -and -not (Test-Path -LiteralPath (Join-Path $restoreRoot 'linked-copy\panel-data\tls\other.txt')))
+[IO.Directory]::Delete((Join-Path $linkedTree 'panel-data\tls'))
+
+# backup.json as Backup-Pulsar.ps1 writes it.
+function New-TestBackup([string] $name, [hashtable] $overrides = @{}) {
+    $folder = Join-Path $restoreRoot $name
+    $null = New-Item -ItemType Directory (Join-Path $folder 'panel-data\keys')
+    Set-Content -LiteralPath (Join-Path $folder 'pulsar.dump') -Value "dump of $name"
+    Set-Content -LiteralPath (Join-Path $folder 'appsettings.Production.json') -Value '{}'
+    Set-Content -LiteralPath (Join-Path $folder 'panel-data\keys\key-1.xml') -Value 'key'
+    $files = [ordered]@{}
+    foreach ($relative in 'appsettings.Production.json', 'panel-data/keys/key-1.xml', 'pulsar.dump') { $files[$relative] = (Get-FileHash -LiteralPath (Join-Path $folder $relative) -Algorithm SHA256).Hash.ToLowerInvariant() }
+    $manifest = [ordered]@{ format = 1; pulsarVersion = '1.2.0'; created = '2026-10-21T10:00:00Z'; migrations = @('20261001154302_Alpha', '20261002105727_Beta'); files = $files }
+    foreach ($key in $overrides.Keys) { $manifest[$key] = $overrides[$key] }
+    [IO.File]::WriteAllText((Join-Path $folder 'backup.json'), ($manifest | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding $false))
+    return $folder
+}
+$good = New-TestBackup 'good'
+$manifest = Read-BackupManifest $good
+Check 'restore: backup.json is read: version, migrations and the files with their hashes' (
+    $manifest.Version -ceq '1.2.0' -and $manifest.Migrations.Count -eq 2 -and $manifest.Files.Count -eq 3 -and $manifest.Files['pulsar.dump'] -cmatch '^[0-9a-f]{64}\z')
+Check 'restore: a folder without backup.json has no manifest' ($null -eq (Read-BackupManifest $tree))
+Check 'restore: the files of a backup match their hashes, and nothing is missing or more' (@(Get-BackupFileProblems $manifest $good).Count -eq 0)
+Set-Content -LiteralPath (Join-Path $good 'panel-data\keys\key-1.xml') -Value 'a key someone changed'
+Set-Content -LiteralPath (Join-Path $good 'panel-data\keys\key-2.xml') -Value 'a key someone added'
+Remove-Item -LiteralPath (Join-Path $good 'appsettings.Production.json')
+$problems = @(Get-BackupFileProblems $manifest $good)
+Check 'restore: a file changed, one added and one missing are each found' (
+    $problems.Count -eq 3 -and ($problems -join '|') -match 'key-1\.xml is not what backup\.json says' -and ($problems -join '|') -match 'key-2\.xml is in the backup but not in backup\.json' -and ($problems -join '|') -match 'appsettings\.Production\.json is in backup\.json but not in the backup') ($problems -join '|')
+foreach ($case in @(
+        @('a format it does not know', @{ format = 2 }, 'format this script does not know'),
+        @('a version that is not major.minor.patch', @{ pulsarVersion = '1.2' }, 'not major\.minor\.patch'),
+        @('a migration that is not an id', @{ migrations = @('not an id') }, 'not a migration id'),
+        @('a path that leaves the backup', @{ files = @{ '../x' = ('a' * 64) } }, 'not one of a backup'),
+        @('a hash that is not SHA-256', @{ files = @{ 'pulsar.dump' = 'abc' } }, 'no SHA-256 for pulsar\.dump'))) {
+    $caught = Get-Caught { Read-BackupManifest (New-TestBackup ('bad-' + [Guid]::NewGuid().ToString('N')) $case[1]) }
+    Check "restore: backup.json with $($case[0]) is refused" ($null -ne $caught -and $caught.Exception.Message -match $case[2]) "$caught"
+}
+$notJson = Join-Path $restoreRoot 'not-json'
+$null = New-Item -ItemType Directory $notJson
+Set-Content -LiteralPath (Join-Path $notJson 'backup.json') -Value 'this is not json'
+Check 'restore: a backup.json that is not JSON is refused' ($null -ne (Get-Caught { Read-BackupManifest $notJson }))
+$versioned = [pscustomobject]@{ Version = '1.2.0'; Migrations = @('20261001154302_Alpha'); Files = @{} }
+Check 'restore: a backup from a newer Pulsar than this release is refused; the same or an older one, or no version to compare, is not' (
+    @(Get-BackupVersionProblems $versioned '1.1.9' $shipped).Count -eq 1 -and (Get-BackupVersionProblems $versioned '1.1.9' $shipped) -match 'newer than this release \(1\.1\.9\)' -and
+    @(Get-BackupVersionProblems $versioned '1.2.0' $shipped).Count -eq 0 -and @(Get-BackupVersionProblems $versioned '1.10.0' $shipped).Count -eq 0 -and @(Get-BackupVersionProblems $versioned $null $shipped).Count -eq 0)
+$futureDb = [pscustomobject]@{ Version = '1.0.0'; Migrations = @('20261001154302_Alpha', '20270101000000_Future'); Files = @{} }
+Check 'restore: a backup whose database has a migration this release does not ship is refused' (
+    (Get-BackupVersionProblems $futureDb '1.2.0' $shipped) -match '20270101000000_Future' -and @(Get-BackupVersionProblems $futureDb '1.2.0' @()).Count -eq 0 -and
+    @(Get-BackupVersionProblems ([pscustomobject]@{ Version = $null; Migrations = $null; Files = @{} }) '1.2.0' $shipped).Count -eq 0)
+
+# Copy-RestoreSource as a whole, with the machine's checks mocked (the folders here are the test's own, writable by this account).
+function Test-RestoreSource([string] $source, [hashtable] $options = @{}) {
+    & {
+        $SetupRoot = Join-Path $restoreRoot ('setup-' + [Guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory $SetupRoot
+        $TrustRestoreSource = [bool]$options['Trust']
+        $script:RestoreCopy = $null
+        $script:mockWriters = $(if ($options.ContainsKey('Writers')) { @($options['Writers']) } else { @() })
+        function Find-UntrustedWriters([string] $path) { $script:mockWriters }
+        function New-SetupFolder([string] $path) { $null = New-Item -ItemType Directory $path }
+        function Get-UpdateVersions { [pscustomobject]@{ From = $null; To = $(if ($options.ContainsKey('Release')) { $options['Release'] } else { '1.2.0' }) } }
+        function Get-ReleaseMigrations { $shipped }
+        $caught = Get-Caught { $script:copied = Copy-RestoreSource $source }
+        [pscustomobject]@{ Error = $caught; Copy = $script:copied; Root = $SetupRoot; Kept = $script:RestoreCopy }
+    }
+}
+$fresh = New-TestBackup 'fresh'
+$ok = Test-RestoreSource $fresh
+Check 'restore: a good backup is copied under the setup folder and that copy is what is returned (and remembered, to be deleted)' (
+    $null -eq $ok.Error -and $ok.Copy -like (Join-Path $ok.Root 'restore-*\backup') -and (Get-Content -LiteralPath (Join-Path $ok.Copy 'pulsar.dump')) -ceq 'dump of fresh' -and $ok.Kept -ceq (Split-Path -Parent $ok.Copy)) "$($ok.Error)"
+$tampered = New-TestBackup 'tampered'
+Set-Content -LiteralPath (Join-Path $tampered 'pulsar.dump') -Value 'a dump someone else made'
+$bad = Test-RestoreSource $tampered
+Check 'restore: a dump that is not the one backup.json names is refused, exit code 2, nothing changed' (
+    (Get-SetupExitCode $bad.Error) -eq 2 -and $bad.Error.Exception.Message -match 'pulsar\.dump is not what backup\.json says' -and $bad.Error.Exception.Message -match 'Nothing was changed')
+$newer = Test-RestoreSource (New-TestBackup 'newer' @{ pulsarVersion = '9.0.0' })
+Check 'restore: a backup from a newer Pulsar is refused with that reason' ((Get-SetupExitCode $newer.Error) -eq 2 -and $newer.Error.Exception.Message -match 'newer than this release')
+$old = Join-Path $restoreRoot 'old-backup'
+Copy-Item -LiteralPath $tree -Destination $old -Recurse
+$oldRestore = Test-RestoreSource $old
+Check 'restore: a backup from before backup.json is copied with a warning (it has nothing to check)' ($null -eq $oldRestore.Error -and (Test-Path -LiteralPath (Join-Path $oldRestore.Copy 'pulsar.dump')))
+$open = Test-RestoreSource $fresh @{ Writers = @('Users can change D:\usb\backup') }
+Check 'restore: a backup folder others could change is refused, naming who, unless -TrustRestoreSource says the drive keeps no permissions' (
+    (Get-SetupExitCode $open.Error) -eq 3 -and $open.Error.Exception.Message -match 'Users can change D:\\usb\\backup' -and $open.Error.Exception.Message -match '-TrustRestoreSource' -and
+    $null -eq (Test-RestoreSource $fresh @{ Writers = @('Users can change D:\usb\backup'); Trust = $true }).Error)
+$withLink = Join-Path $restoreRoot 'with-link'
+Copy-Item -LiteralPath $tree -Destination $withLink -Recurse
+$null = New-Item -ItemType Junction -Path (Join-Path $withLink 'panel-data\tls') -Target $outside
+$linked = Test-RestoreSource $withLink
+Check 'restore: a link inside the backup stops the copy' ((Get-SetupExitCode $linked.Error) -eq 2 -and $linked.Error.Exception.Message -match 'is a link')
+[IO.Directory]::Delete((Join-Path $withLink 'panel-data\tls'))
+$asLink = Join-Path $restoreRoot 'as-link'
+$null = New-Item -ItemType Junction -Path $asLink -Target $fresh
+Check 'restore: -RestoreFrom that is itself a link, or not a folder, is refused' (
+    (Get-SetupExitCode (Test-RestoreSource $asLink).Error) -eq 2 -and (Get-SetupExitCode (Test-RestoreSource (Join-Path $fresh 'pulsar.dump')).Error) -eq 2)
+[IO.Directory]::Delete($asLink)
+Check 'restore: the copy is deleted when the run ends' (
+    $null -ne $ok.Kept -and ($(& { $RestoreCopy = $ok.Kept; Remove-RestoreCopy; -not (Test-Path -LiteralPath $ok.Kept) })))
+$assertText = (Get-ScriptParts $installScript @('Assert-PanelInstallable'))['Assert-PanelInstallable']
+$installPanelText = (Get-ScriptParts $installScript @('Install-Panel'))['Install-Panel']
+Check 'restore: the install reads only the private copy: the preflight copies and checks it first, and Install-Panel never reads -RestoreFrom''s folder' (
+    $assertText -match '\$backupCopy = Copy-RestoreSource \$RestoreFrom' -and $assertText -notmatch 'Join-Path \$RestoreFrom' -and $installPanelText -notmatch 'Join-Path \$RestoreFrom' -and
+    $installPanelText -match 'Join-Path \$RestoreCopy' -and $installText -match '(?s)finally \{\s+Remove-SetupDownloads\s+Remove-RestoreCopy\s+Unlock-Update')
+Check 'restore: -TrustRestoreSource is a parameter, said in the script''s help' ($installText -match '\[switch\] \$TrustRestoreSource' -and $installText -match '-TrustRestoreSource says a\s+drive keeps no permissions')
+
+# Backup-Pulsar.ps1 writes backup.json.
+$backupJsonParts = Get-ScriptParts $backupScript @('ConvertFrom-MigrationDump')
+. ([scriptblock]::Create($backupJsonParts['ConvertFrom-MigrationDump']))
+$dumpText = @('--', '-- Data for Name: __EFMigrationsHistory; Type: TABLE DATA; Schema: public; Owner: pulsar', '--', '',
+    'COPY public."__EFMigrationsHistory" ("MigrationId", "ProductVersion") FROM stdin;', "20261002105727_Beta`t10.0.0", "20261001154302_Alpha`t10.0.0", '\.', '', 'COPY public.other (id) FROM stdin;', "1", '\.')
+$ids = ConvertFrom-MigrationDump $dumpText
+Check 'backup: the migration ids come from the COPY block of the history table in the dump, sorted' ($ids.Count -eq 2 -and $ids[0] -ceq '20261001154302_Alpha' -and $ids[1] -ceq '20261002105727_Beta')
+Check 'backup: a dump without that table, or with a row that is not an id, gives none (not a guess)' (
+    $null -eq (ConvertFrom-MigrationDump @('COPY public.other (id) FROM stdin;', '1', '\.')) -and $null -eq (ConvertFrom-MigrationDump @('COPY public."__EFMigrationsHistory" ("MigrationId", "ProductVersion") FROM stdin;', "not an id`t1", '\.')))
+$backupFullText = Get-Content -Raw -LiteralPath $backupScript
+Check 'backup: backup.json is written last, with the format, the Pulsar version, the dump''s migrations and the SHA-256 of every file' (
+    $backupFullText -match '(?s)Copy-Item \$config \$target.*format = 1.*pulsarVersion = \$version.*migrations = \$migrations.*files = \$files.*backup\.json.*Backup written to' -and
+    $backupFullText -match "Get-FileHash -LiteralPath \`$file\.FullName -Algorithm SHA256" -and $backupFullText -match 'Get-DumpMigrations \$PostgresBin \(Join-Path \$target ''pulsar\.dump''\)')
+Check 'backup: pg_restore.exe, which reads the dump for its migrations, is run only when others cannot change it' ((Get-ScriptParts $backupScript @('Get-DumpMigrations'))['Get-DumpMigrations'] -match 'Find-UntrustedWriters \$restore')
 
 if ($script:failures -gt 0) {
     Write-Host "$($script:failures) check(s) failed." -ForegroundColor Red
