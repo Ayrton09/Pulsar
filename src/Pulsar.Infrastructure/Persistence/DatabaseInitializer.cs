@@ -43,6 +43,20 @@ internal sealed partial class DatabaseInitializer(
             historyExists = true;
         }
 
+        // A newer Pulsar migrated this database (a backup of it restored onto an older install, or a connection string to
+        // its database): this one would read and write a schema it does not know.
+        if (historyExists)
+        {
+            var known = db.Database.GetMigrations().ToHashSet(StringComparer.Ordinal);
+            var unknown = (await db.Database.GetAppliedMigrationsAsync(cancellationToken)).Where(m => !known.Contains(m)).ToList();
+            if (unknown.Count > 0)
+            {
+                throw new DatabaseStartupException(
+                    $"The database ({where}) was migrated by a newer version of Pulsar than this one ({string.Join(", ", unknown)}). " +
+                    "Install that version or a newer one, or restore a backup this version made.");
+            }
+        }
+
         var pending = historyExists
             ? (await db.Database.GetPendingMigrationsAsync(cancellationToken)).ToList()
             : db.Database.GetMigrations().ToList();

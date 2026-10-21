@@ -249,16 +249,21 @@ public static class AuthEndpoints
     }
 
     /// <summary>
-    /// Signs out, and closes the user's live connections: the browser's other tabs would otherwise keep theirs (the hub
-    /// checks the cookie only when a connection opens). Sessions are not told apart, so the user's other browsers lose
-    /// theirs too, and reconnect at once with their own cookies.
+    /// Signs out everywhere: a new security stamp ends every session of the user (a cookie copied before included, which
+    /// signing out of one browser alone would leave working), and the user's live connections close now (the hub checks
+    /// the cookie only when a connection opens). The user's other browsers sign in again.
     /// </summary>
     private static async Task<NoContent> LogoutAsync(
-        HttpContext http, PulsarDbContext db, SignInManager<PulsarUser> signIn, IAuditLog audit, BrowserConnections connections,
-        CancellationToken ct)
+        HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn, IAuditLog audit,
+        BrowserConnections connections, CancellationToken ct)
     {
         audit.Record(AuditActions.Auth.Logout);
         await db.SaveChangesAsync(ct);
+        if (await users.GetUserAsync(http.User) is { } user)
+        {
+            await users.UpdateSecurityStampAsync(user);
+        }
+
         await signIn.SignOutAsync();
         connections.EndUser(http.User.GetRequiredUserId());
 

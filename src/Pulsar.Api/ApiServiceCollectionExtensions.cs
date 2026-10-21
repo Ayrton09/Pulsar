@@ -207,6 +207,9 @@ internal static class ApiServiceCollectionExtensions
             options.Cookie.SameSite = SameSiteMode.Strict;
             options.ExpireTimeSpan = TimeSpan.FromHours(12);
             options.SlidingExpiration = true;
+            // Sliding, but never past SessionLifetime.MaxAge from the sign-in; then the security stamp, as Identity does.
+            options.Events.OnSigningIn = SessionLifetime.OnSigningIn;
+            options.Events.OnValidatePrincipal = SessionLifetime.OnValidatePrincipal;
 
             // An API answers 401/403; the SPA decides where to go.
             options.Events.OnRedirectToLogin = context => WriteProblemAsync(context.HttpContext, StatusCodes.Status401Unauthorized,

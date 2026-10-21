@@ -84,6 +84,30 @@ public sealed class DatabaseInitializerTests
     }
 
     [DatabaseFact]
+    public async Task ADatabaseANewerPulsarMigratedIsRefused()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await TestDatabase.CreateAsync(ct);
+        await using var services = Build(database.ConnectionString);
+        await using (var scope = services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IDatabaseInitializer>().InitializeAsync(applyMigrations: true, ct);
+            // A later release's migration, which this one does not know (a backup restored onto an older install).
+            await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().Database.ExecuteSqlRawAsync(
+                "INSERT INTO \"__EFMigrationsHistory\" (migration_id, product_version) VALUES ('29991231000000_FromTheFuture', '10.0.0')", ct);
+        }
+
+        foreach (var apply in (bool[])[true, false])
+        {
+            await using var scope = services.CreateAsyncScope();
+            var ex = await Assert.ThrowsAsync<DatabaseStartupException>(() =>
+                scope.ServiceProvider.GetRequiredService<IDatabaseInitializer>().InitializeAsync(apply, ct));
+            Assert.Contains("29991231000000_FromTheFuture", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("newer", ex.Message, StringComparison.Ordinal);
+        }
+    }
+
+    [DatabaseFact]
     public async Task FreshDatabaseInitializesWithoutLoggingErrors()
     {
         var ct = TestContext.Current.CancellationToken;
