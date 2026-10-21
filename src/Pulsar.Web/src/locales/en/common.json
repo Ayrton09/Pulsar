@@ -565,6 +565,7 @@
       "limits_unsupported": "The node's agent cannot limit a server's CPU and memory: update the agent.",
       "limits_invalid": "A CPU limit goes from 1 to 100 %, a memory limit from 128 MiB to 1 TiB.",
       "template_not_newer": "A server can only move to a newer version of its own game's template.",
+      "template_invalid": "This server's game template does not pass this panel's checks anymore: move the server to a newer version of it.",
       "database_limit_invalid": "The database limit is a number from 0 to 50.",
       "create_forbidden": "You may not create servers on this node.",
       "not_running": "The server is not running.",

@@ -30,6 +30,7 @@ public static class ApiProblems
         "role.name_taken" or "role.in_use" or "access.last_administrator" or "role.system_immutable"
             or "node.name_taken" or "node.not_connected" or "node.has_servers" or "panel_key.rotation_in_progress" or "panel_key.not_retiring" or "panel_key.nodes_outdated"
             or "server.busy" or "server.must_be_stopped" or "server.not_installed" or "server.not_running" or "server.template_unsupported" or "server.template_not_newer" or "server.command_rejected"
+            or "server.template_invalid"
             or "node.allocation_taken" or "node.allocation_in_use" or "server.no_free_allocation" or "server.allocation_unavailable"
             or "template.version_exists" or "operation.not_cancellable" or "update.changed"
             or "files.unsupported" or "files.sftp_unsupported" or "files.exists" or "files.not_a_directory" or "files.is_a_directory" or "files.reparse_point" or "files.in_use" or "files.transfers_busy"

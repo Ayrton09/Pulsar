@@ -143,6 +143,10 @@ public static class ServerErrors
     /// <summary>A manifest that does not pass validation; the message lists the problems.</summary>
     public static DomainError InvalidManifest(string message) => new("template.invalid", message);
 
+    /// <summary>A stored template valid when it was imported that this panel's checks refuse (they may have become stricter).</summary>
+    public static DomainError TemplateNoLongerValid(string key, string version) => new("server.template_invalid",
+        $"The game template {key} {version} does not pass this panel's checks anymore: move its servers to a newer version of it.");
+
     /// <summary>A value the manifest refuses; the message names the variable or port.</summary>
     public static DomainError InvalidSettings(string message) => new("server.invalid_settings", message);
 

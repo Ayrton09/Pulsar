@@ -130,7 +130,14 @@ public sealed partial class Scheduler(IServiceScopeFactory scopes, TimeProvider 
             }
 
             run = failedRun;
-            run.Failed("schedules.error", "The panel could not run the task; its log has the details.", clock.GetUtcNow());
+            if (ex is DomainErrorException { Error: var error })
+            {
+                run.Failed(error.Code, error.Message, clock.GetUtcNow()); // a template this panel refuses, say
+            }
+            else
+            {
+                run.Failed("schedules.error", "The panel could not run the task; its log has the details.", clock.GetUtcNow());
+            }
         }
 
         if (run.Status == ScheduledRunStatus.Failed

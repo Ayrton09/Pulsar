@@ -58,6 +58,7 @@ internal static class ApiServiceCollectionExtensions
     public static IServiceCollection AddPulsarApi(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddProblemDetails();
+        services.AddExceptionHandler<DomainErrorHandler>();
 
         // Requests are small JSON documents; the endpoints that take files (uploads, the agent's transfers) raise the
         // limit for themselves. Kestrel's default (30 MB) would let anonymous requests (login, setup, enrollment) send

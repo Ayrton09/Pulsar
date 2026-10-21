@@ -1,10 +1,15 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
+using Pulsar.Application.Abstractions;
 using Pulsar.Application.Servers;
 using Pulsar.Domain.Access;
+using Pulsar.Domain.Common;
+using Pulsar.Domain.Servers;
 
 namespace Pulsar.Api.Tests.Servers;
 
@@ -65,6 +70,44 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
         using var reserved = await admin.PostAsync("/api/v1/templates", new TemplateContentRequest(File.ReadAllText(GamePath("_test"))));
         Assert.Equal(HttpStatusCode.BadRequest, reserved.StatusCode);
         Assert.Contains("template.invalid", await reserved.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+    }
+
+    [DatabaseFact]
+    public async Task ATemplateThisPanelNoLongerAcceptsIsRefusedNotAFailure()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        Guid template;
+        using (var imported = await admin.PostAsync("/api/v1/templates", new TemplateContentRequest(Manifest(m => m["key"] = "css-stricter"))))
+        {
+            Assert.Equal(HttpStatusCode.Created, imported.StatusCode);
+            template = (await imported.Content.ReadFromJsonAsync<TemplateDetails>(AccessScenario.Json, Ct))!.Template.Id;
+        }
+
+        var node = await NodeApi.CreateAsync(admin, "stricter-checks");
+        Guid server;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IPulsarDbContext>();
+            // Valid when imported; this panel's checks refuse it now (as a later, stricter validator would).
+            var refused = Manifest(m =>
+            {
+                m["key"] = "css-stricter";
+                m["install"] = JsonNode.Parse("""{"steps": [{"type": "run", "command": "cmd"}]}""");
+            });
+            await db.GameTemplates.Where(t => t.Id == new TemplateId(template)).ExecuteUpdateAsync(s => s.SetProperty(t => t.Content, refused), Ct);
+            var row = Server.Create(new NodeId(node.Node.Id), new TemplateId(template), "Stricter", null, Server.NewShortId(), DateTimeOffset.UtcNow).Value;
+            db.Servers.Add(row);
+            await db.SaveChangesAsync(Ct);
+            server = row.Id.Value;
+        }
+
+        foreach (var path in new[] { $"/api/v1/templates/{template}", $"/api/v1/servers/{server}/settings" })
+        {
+            using var response = await admin.GetAsync(path);
+            var body = await response.Content.ReadAsStringAsync(Ct);
+            Assert.True(response.StatusCode == HttpStatusCode.Conflict, $"{path}: {(int)response.StatusCode} {body}");
+            Assert.Contains("server.template_invalid", body, StringComparison.Ordinal);
+        }
     }
 
     [DatabaseFact]

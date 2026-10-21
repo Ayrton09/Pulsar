@@ -565,6 +565,7 @@
       "limits_unsupported": "El agente del nodo no puede limitar la CPU y la memoria de un servidor: actualizá el agente.",
       "limits_invalid": "Un límite de CPU va de 1 a 100 %; uno de memoria, de 128 MiB a 1 TiB.",
       "template_not_newer": "Un servidor solo puede pasar a una versión más nueva de la plantilla de su propio juego.",
+      "template_invalid": "La plantilla del juego de este servidor ya no pasa los controles de este panel: pasá el servidor a una versión más nueva.",
       "database_limit_invalid": "El límite de bases de datos es un número de 0 a 50.",
       "create_forbidden": "No podés crear servidores en este nodo.",
       "not_running": "El servidor no está en marcha.",

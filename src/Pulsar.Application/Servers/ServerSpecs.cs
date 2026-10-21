@@ -18,11 +18,18 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
 {
     private const string Platform = ManifestValidator.WindowsX64;
 
+    /// <summary>
+    /// The stored template's manifest. One this panel's checks refuse is not used anyway (a stricter rule may be a
+    /// security one): <see cref="DomainErrorException"/> with <see cref="ServerErrors.TemplateNoLongerValid"/>.
+    /// </summary>
     public static GameManifest Parse(GameTemplate template)
     {
         ArgumentNullException.ThrowIfNull(template);
         var result = ManifestParser.Parse(Encoding.UTF8.GetBytes(template.Content));
-        return result.IsValid ? result.Manifest! : throw new InvalidOperationException($"Template {template.Key} {template.Version} is not valid anymore.");
+        return result.IsValid
+            ? result.Manifest!
+            : throw new DomainErrorException(ServerErrors.TemplateNoLongerValid(template.Key, template.Version),
+                $"Template {template.Key} {template.Version} is not valid anymore: {string.Join("; ", result.Errors)}");
     }
 
     /// <summary>The spec the agent renders the server from: manifest text, values (secrets decrypted) and ports.</summary>
