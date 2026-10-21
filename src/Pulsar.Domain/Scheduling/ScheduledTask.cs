@@ -37,6 +37,12 @@ public sealed class ScheduledTask
     /// <summary>A run this late still runs (the panel was busy or restarting); an older one was missed.</summary>
     public static readonly TimeSpan MissedAfter = TimeSpan.FromMinutes(1);
 
+    /// <summary>Scheduled backups are at least this far apart (each one is a copy of the whole server on its node's drive).</summary>
+    public static readonly TimeSpan MinBackupInterval = TimeSpan.FromMinutes(15);
+
+    // Schedules repeat within a month, but for a few dates of the year: two backups closer than the minimum show up within it.
+    private static readonly TimeSpan s_intervalCheckedOver = TimeSpan.FromDays(32);
+
     // Counting missed runs stops here (a task every minute and a panel down for months).
     private const int MaxCountedMisses = 100_000;
 
@@ -131,6 +137,11 @@ public sealed class ScheduledTask
         if (Next(expression, now, zone) is null)
         {
             return ScheduleErrors.NeverRuns;
+        }
+
+        if (action == ScheduledAction.Backup && Closer(expression, zone, now, MinBackupInterval))
+        {
+            return ScheduleErrors.BackupTooOften;
         }
 
         if (onlyIfRunning && action is not (ScheduledAction.Restart or ScheduledAction.Backup))
@@ -253,6 +264,24 @@ public sealed class ScheduledTask
         _zone ??= FindZone(TimeZone);
         (expression, zone) = (_expression, _zone);
         return expression is not null && zone is not null;
+    }
+
+    /// <summary>Whether two occurrences after <paramref name="from"/> are closer than <paramref name="interval"/>.</summary>
+    private static bool Closer(CronExpression expression, TimeZoneInfo zone, DateTimeOffset from, TimeSpan interval)
+    {
+        var until = from + s_intervalCheckedOver;
+        DateTimeOffset? previous = null;
+        for (var at = Next(expression, from, zone); at is { } current && current <= until; at = Next(expression, current, zone))
+        {
+            if (previous is { } last && current - last < interval)
+            {
+                return true;
+            }
+
+            previous = current;
+        }
+
+        return false;
     }
 
     /// <summary>The next occurrence in UTC (Cronos gives it in the zone's offset; the database stores UTC only).</summary>

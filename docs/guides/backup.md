@@ -69,6 +69,10 @@ installer's default).
 Each server's **Backups** tab makes backups on its node (and schedules can make them every night). They are kept in
 `C:\ProgramData\Pulsar\Agent\backups` on that node. Restoring one is done from the same tab.
 
+A new server keeps its last 7 backups (the tab's settings change that, or keep them all), scheduled backups are at
+least 15 minutes apart, and the panel makes no backup, and takes no upload, while the node's drive has less than 5 %
+or 2 GB free: free space on it first (deleting old backups, or files in the server's folder).
+
 ### While the server runs
 
 A backup does not need the server stopped. When the game runs, Pulsar first asks it to save its world (for the games

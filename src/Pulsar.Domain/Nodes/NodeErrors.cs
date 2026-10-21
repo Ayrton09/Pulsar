@@ -24,6 +24,9 @@ public static class NodeErrors
 
     public static DomainError HasServers { get; } = new("node.has_servers", "Delete the node's servers first.");
 
+    public static DomainError DiskLow { get; } = new("node.disk_low",
+        $"The node's drive would have less than {DiskFloor.MinFreePercent}% or {DiskFloor.MinFreeBytes >> 30} GB free: make room on it first.");
+
     public static DomainError AllocationAddressInvalid { get; } =
         new("node.allocation_address_invalid", "The address must be an IPv4 address (0.0.0.0 for every interface).");
 

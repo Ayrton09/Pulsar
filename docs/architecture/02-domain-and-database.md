@@ -328,7 +328,7 @@ CREATE TABLE servers (
     desired_state        text NOT NULL CHECK (desired_state IN ('stopped','running')),
     active_operation_id  uuid,                 -- FK added after operations is created
     active_operation_type text,                -- its type: a backup leaves the server free to start (doc 05)
-    backup_limit         integer CHECK (backup_limit BETWEEN 1 AND 1000),  -- retention; NULL keeps every backup
+    backup_limit         integer CHECK (backup_limit BETWEEN 1 AND 1000),  -- retention (7 for a new server); NULL keeps every backup
     cpu_limit_percent    integer CHECK (cpu_limit_percent BETWEEN 1 AND 100),  -- Phase 12: share of the node; NULL: no cap
     memory_limit_mb      integer CHECK (memory_limit_mb BETWEEN 128 AND 1048576),  -- Phase 12: committed memory; NULL: no cap
     backup_storage_id    uuid REFERENCES backup_storages(id) ON DELETE RESTRICT,  -- where new backups are copied; NULL: nowhere

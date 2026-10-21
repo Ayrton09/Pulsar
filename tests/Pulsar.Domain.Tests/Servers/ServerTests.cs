@@ -21,6 +21,27 @@ public sealed class ServerTests
         Assert.Equal(NodeErrors.NameInvalid, node.Update(name, null, null, s_now).Error);
     }
 
+    [Fact]
+    public void ANewServerKeepsItsLastSevenBackups()
+    {
+        var server = NewServer();
+
+        Assert.Equal(7, server.BackupLimit);
+        Assert.True(server.SetBackupLimit(null, s_now).IsSuccess); // keeping them all is still a choice
+        Assert.Null(server.BackupLimit);
+    }
+
+    [Theory]
+    [InlineData(100L << 30, 6L << 30, 0, true)]
+    [InlineData(100L << 30, 5L << 30, 0, true)] // 5 % exactly
+    [InlineData(100L << 30, 4L << 30, 0, false)] // under 5 %
+    [InlineData(100L << 30, 6L << 30, 2L << 30, false)] // under 5 % once the upload is written
+    [InlineData(20L << 30, 3L << 30, 0, true)]
+    [InlineData(20L << 30, (2L << 30) - 1, 0, false)] // 10 %, but under 2 GB
+    [InlineData(0, 0, 0, true)] // a drive of unknown size
+    public void ADriveKeepsFivePercentAndTwoGigabytesFree(long total, long free, long adding, bool keeps) =>
+        Assert.Equal(keeps, DiskFloor.Keeps(total, free, adding));
+
     [Theory]
     [InlineData(OperationStatus.Succeeded, InstallState.Installed)]
     [InlineData(OperationStatus.Failed, InstallState.Failed)]

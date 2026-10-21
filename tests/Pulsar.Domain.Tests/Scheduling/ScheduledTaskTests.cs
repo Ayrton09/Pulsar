@@ -121,6 +121,34 @@ public sealed class ScheduledTaskTests
         }
     }
 
+    [Theory]
+    [InlineData("*/5 * * * *", false)]
+    [InlineData("0,10 4 * * *", false)] // twice a night, ten minutes apart
+    [InlineData("59 23 * * *", true)]
+    [InlineData("0,59 0,23 1,2 * *", false)] // 23:59 on the 1st, then 00:00 on the 2nd
+    [InlineData("50 23 31 * *", true)]
+    [InlineData("*/15 * * * *", true)]
+    [InlineData("0 */6 * * *", true)]
+    public void ScheduledBackupsAreAtLeastFifteenMinutesApart(string cron, bool allowed)
+    {
+        var backup = ScheduledTask.Create(Server(), "Backup", cron, "UTC", ScheduledAction.Backup, ScheduledActionPayload.None, false, true, null, s_now);
+
+        Assert.Equal(allowed ? null : ScheduleErrors.BackupTooOften, backup.Error);
+        // Other actions run as often as the schedule says.
+        Assert.True(ScheduledTask.Create(Server(), "Restart", cron, "UTC", ScheduledAction.Restart, ScheduledActionPayload.None, false, true, null, s_now)
+            .IsSuccess);
+    }
+
+    [Fact]
+    public void ATaskMadeABackupTaskIsCheckedLikeANewOne()
+    {
+        var task = Create("*/5 * * * *", "UTC").Value;
+
+        Assert.Equal(ScheduleErrors.BackupTooOften,
+            task.Change("Backup", "*/5 * * * *", "UTC", ScheduledAction.Backup, ScheduledActionPayload.None, false, true, s_now).Error);
+        Assert.Equal(ScheduledAction.Restart, task.Action);
+    }
+
     [Fact]
     public void NothingIsDueBeforeItsTime()
     {

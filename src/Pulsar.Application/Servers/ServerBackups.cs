@@ -97,6 +97,11 @@ public sealed partial class ServerBackups(
             return connection.Error!;
         }
 
+        if (connections.Find(server.NodeId)?.BelowFloor(DiskUses.Backups) is not null)
+        {
+            return NodeErrors.DiskLow;
+        }
+
         var now = clock.GetUtcNow();
         var requestedBy = via == OperationRequester.User ? request.UserId : null;
         var operation = Operation.Create(OperationType.BackupCreate, server.NodeId, server.Id, requestedBy, via, now);

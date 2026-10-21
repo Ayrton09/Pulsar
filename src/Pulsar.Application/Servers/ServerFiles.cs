@@ -258,6 +258,12 @@ public sealed class ServerFiles(
             return target.Error!;
         }
 
+        // What the editor saves (a config to fix, on a nearly full drive too) is not held back.
+        if (length > FileLimits.MaxEditableBytes && connections.Find(target.Value.NodeId)?.BelowFloor(DiskUses.Servers, length) is not null)
+        {
+            return NodeErrors.DiskLow;
+        }
+
         // Refused before the node is told: it would hold one more of its connections to the panel for it.
         if (transfers.BeginUpload(target.Value.NodeId, request.UserId, content, length, request.ApiKeyId) is not { } started)
         {
@@ -298,6 +304,12 @@ public sealed class ServerFiles(
         if (!target.IsSuccess)
         {
             return target.Error!;
+        }
+
+        // The size is unknown until the content ends: refused on a drive already below the floor.
+        if (connections.Find(target.Value.NodeId)?.BelowFloor(DiskUses.Servers) is not null)
+        {
+            return NodeErrors.DiskLow;
         }
 
         var limit = options.MaxUploadBytes;

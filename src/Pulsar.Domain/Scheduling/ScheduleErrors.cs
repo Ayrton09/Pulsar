@@ -21,6 +21,9 @@ public static class ScheduleErrors
 
     public static DomainError CommandRequired { get; } = new("schedules.command_required", "A console command task needs a valid command.");
 
+    public static DomainError BackupTooOften { get; } = new("schedules.backup_too_often",
+        $"Scheduled backups are at least {(int)ScheduledTask.MinBackupInterval.TotalMinutes} minutes apart.");
+
     public static DomainError CommandSensitive { get; } =
         new("schedules.command_sensitive", "A scheduled command cannot set a secret: it would be kept and shown in clear.");
 

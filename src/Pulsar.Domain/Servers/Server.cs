@@ -63,6 +63,9 @@ public sealed class Server
     public const int MaxExtraArguments = 32;
     public const int MaxExtraArgumentLength = 512;
     public const int MaxBackupLimit = 1000;
+
+    /// <summary>The backups a new server keeps (a backup every 15 minutes would otherwise fill its node's drive).</summary>
+    public const int DefaultBackupLimit = 7;
     public const int MinMemoryLimitMb = 128;
     public const int MaxMemoryLimitMb = 1024 * 1024; // 1 TiB
     public const int DefaultDatabaseLimit = 2;
@@ -91,6 +94,7 @@ public sealed class Server
         RuntimeState = ServerRuntimeState.Offline;
         DesiredState = DesiredState.Stopped;
         RestartOnCrash = true;
+        BackupLimit = DefaultBackupLimit;
         CreatedAt = now;
         UpdatedAt = now;
     }

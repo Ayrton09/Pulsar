@@ -43,7 +43,7 @@ public static class ApiProblems
         "files.access_denied" or "files.outside_server" => StatusCodes.Status403Forbidden,
         "files.too_large" => StatusCodes.Status413PayloadTooLarge,
         "files.length_required" => StatusCodes.Status411LengthRequired,
-        "files.disk_full" => StatusCodes.Status507InsufficientStorage,
+        "files.disk_full" or "node.disk_low" => StatusCodes.Status507InsufficientStorage,
         "files.transfer_failed" or "files.failed" or "workshop.unavailable" or "database_host.unreachable" or "database.host_unreachable"
             => StatusCodes.Status502BadGateway,
         _ => StatusCodes.Status400BadRequest,
