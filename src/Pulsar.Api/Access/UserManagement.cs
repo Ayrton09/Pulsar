@@ -130,6 +130,14 @@ public sealed class UserManagement(
         }
 
         var disabledChanged = user.IsDisabled != input.IsDisabled;
+        // Two administrators disabling each other at once (or one whose session was not checked again yet) would leave
+        // none: under the Administrator role's lock, the last enabled one stays.
+        await using var transaction = disabledChanged && input.IsDisabled ? await db.Database.BeginTransactionAsync(ct) : null;
+        if (transaction is not null && await HoldsLastEnabledAdministratorAssignmentAsync(user.Id, ct))
+        {
+            return ApiProblems.FromDomainError(AccessErrors.LastAdministrator);
+        }
+
         if (disabledChanged)
         {
             user.IsDisabled = input.IsDisabled;
@@ -150,6 +158,11 @@ public sealed class UserManagement(
             {
                 // A new security stamp ends the user's existing sessions at the next validation; live channels now.
                 await users.UpdateSecurityStampAsync(user);
+                if (transaction is not null)
+                {
+                    await transaction.CommitAsync(ct);
+                }
+
                 connections.EndUser(user.Id);
             }
         }
@@ -461,6 +474,21 @@ public sealed class UserManagement(
         var administrators = await db.UserRoles
             .Where(a => db.Roles.Any(r => r.Id == a.RoleId && r.IsSystem))
             .Select(a => a.UserId)
+            .ToListAsync(ct);
+        return administrators.Contains(user) && administrators.Count == 1;
+    }
+
+    /// <summary>
+    /// True when <paramref name="user"/> is the only enabled user with a global Administrator assignment, under the same
+    /// lock as <see cref="HoldsLastAdministratorAssignmentAsync"/>. Call inside a transaction.
+    /// </summary>
+    private async Task<bool> HoldsLastEnabledAdministratorAssignmentAsync(UserId user, CancellationToken ct)
+    {
+        await db.Database.ExecuteSqlAsync($"SELECT id FROM roles WHERE is_system FOR UPDATE", ct);
+        var administrators = await db.UserRoles
+            .Where(a => db.Roles.Any(r => r.Id == a.RoleId && r.IsSystem) && db.Users.Any(u => u.Id == a.UserId && !u.IsDisabled))
+            .Select(a => a.UserId)
+            .Distinct()
             .ToListAsync(ct);
         return administrators.Contains(user) && administrators.Count == 1;
     }

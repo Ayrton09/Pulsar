@@ -41,6 +41,12 @@ public sealed class AuthRateLimitOptions
 
     /// <summary>Agent enrollments per minute from one address (<c>RateLimiting:Auth:EnrollPermitLimit</c>).</summary>
     public int EnrollPermitLimit { get; set; } = 10;
+
+    /// <summary>
+    /// Requests per minute from one address to the anonymous routes that read the database: the session check every page
+    /// load makes and readiness (<c>RateLimiting:Auth:AnonymousPermitLimit</c>).
+    /// </summary>
+    public int AnonymousPermitLimit { get; set; } = 300;
 }
 
 internal static class ApiServiceCollectionExtensions
@@ -246,6 +252,10 @@ internal static class ApiServiceCollectionExtensions
             options.AddPolicy(AuthEndpoints.RateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
                 ClientAddress.PartitionOf(context.Connection.RemoteIpAddress),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.PermitLimit, Window = limits.Window, QueueLimit = 0 }));
+            // Anyone may ask, and each answer takes a database connection: a flood must not take the pool from sign-ins.
+            options.AddPolicy(AuthEndpoints.AnonymousRateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
+                ClientAddress.PartitionOf(context.Connection.RemoteIpAddress),
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.AnonymousPermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
             options.AddPolicy(AgentEndpoints.EnrollRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
                 ClientAddress.PartitionOf(context.Connection.RemoteIpAddress),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.EnrollPermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));

@@ -103,7 +103,8 @@ Effective permissions(user, server S on node N) =
 ### Anti-escalation rules
 
 1. System role **Administrator** (`is_system = true`): always holds every permission in the catalog (computed, so new permissions are included automatically). Not editable or deletable.
-2. The last global Administrator assignment cannot be removed.
+2. The last global Administrator assignment cannot be removed, nor the last enabled user who holds one disabled (two
+   administrators disabling each other at once leave one).
 3. Holders of `role.manage`/`user.manage` **can only grant permissions they hold themselves** in that scope.
 4. Nobody can change their own assignments.
 5. Every role/access change is audited with the permission diff.

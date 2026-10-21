@@ -161,15 +161,24 @@ internal sealed class PanelHub(
 
     public override async Task OnConnectedAsync()
     {
-        // A disabled user, or a session older than a password change, is refused even if its cookie has not been
-        // checked again yet.
-        if (await signIn.ValidateSecurityStampAsync(Context.User) is not { } user)
+        if (Context.User?.GetUserId() is not { } claimed)
         {
             Context.Abort();
             return;
         }
 
-        connections.Add(user.Id, Context);
+        // Counted first, checked then: whatever ends the user's sessions while the check runs (a disable, a password
+        // changed elsewhere) finds this connection and closes it, and what ended them before is seen by the check. A
+        // disabled user, or a session older than a password change, is refused even if its cookie has not been checked
+        // again yet.
+        connections.Add(claimed, Context);
+        if (await signIn.ValidateSecurityStampAsync(Context.User) is not { } user || user.Id != claimed)
+        {
+            connections.Remove(Context.ConnectionId);
+            Context.Abort();
+            return;
+        }
+
         await base.OnConnectedAsync();
     }
 

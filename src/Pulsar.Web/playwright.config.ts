@@ -46,6 +46,8 @@ export default defineConfig({
       // Every spec signs in from the same address, and the two-factor one alone needs a dozen sign-in steps a minute
       // (the limit itself is covered by the API tests).
       RateLimiting__Auth__PermitLimit: '100',
+      // Every page load asks for the session, and the web server's readiness is polled while it starts.
+      RateLimiting__Auth__AnonymousPermitLimit: '10000',
     },
     url: `${baseURL}/health/ready`,
     reuseExistingServer: !process.env.CI,

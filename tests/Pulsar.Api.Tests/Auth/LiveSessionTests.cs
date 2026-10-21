@@ -1,8 +1,20 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Pulsar.Api.Access;
 using Pulsar.Api.Auth;
+using Pulsar.Api.Realtime;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Domain.Access;
+using Pulsar.Infrastructure.Identity;
 
 namespace Pulsar.Api.Tests.Auth;
 
@@ -102,7 +114,7 @@ public sealed class LiveSessionTests(PulsarApiFactory factory) : IClassFixture<P
         Assert.False(await again.Connection.InvokeAsync<bool>("WatchServers", Ct));
     }
 
-    private static Task ClosedAsync(HubConnection connection)
+    internal static Task ClosedAsync(HubConnection connection)
     {
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         connection.Closed += _ =>
@@ -132,6 +144,84 @@ public sealed class LiveSessionTests(PulsarApiFactory factory) : IClassFixture<P
             if (hub.Connection.State != HubConnectionState.Disconnected)
             {
                 await closed.WaitAsync(s_closeTimeout, Ct);
+            }
+        }
+    }
+}
+
+/// <summary>A panel that runs <see cref="AfterStampCheck"/> once, right after the next check of a session's security stamp.</summary>
+public sealed class LateSessionEndApiFactory : PulsarApiFactory
+{
+    private Action<PulsarUser>? _afterStampCheck;
+
+    public Action<PulsarUser>? AfterStampCheck
+    {
+        get => Volatile.Read(ref _afterStampCheck);
+        set => Volatile.Write(ref _afterStampCheck, value);
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.ConfigureTestServices(services => services.Replace(ServiceDescriptor.Scoped<SignInManager<PulsarUser>>(
+            provider => ActivatorUtilities.CreateInstance<HookedSignInManager>(provider, this))));
+    }
+
+    private sealed class HookedSignInManager(
+        LateSessionEndApiFactory factory,
+        UserManager<PulsarUser> userManager,
+        IHttpContextAccessor contextAccessor,
+        IUserClaimsPrincipalFactory<PulsarUser> claimsFactory,
+        IOptions<IdentityOptions> optionsAccessor,
+        ILogger<SignInManager<PulsarUser>> logger,
+        IAuthenticationSchemeProvider schemes,
+        IUserConfirmation<PulsarUser> confirmation)
+        : SignInManager<PulsarUser>(userManager, contextAccessor, claimsFactory, optionsAccessor, logger, schemes, confirmation)
+    {
+        public override async Task<PulsarUser?> ValidateSecurityStampAsync(ClaimsPrincipal? principal)
+        {
+            var user = await base.ValidateSecurityStampAsync(principal);
+            if (user is not null && Interlocked.Exchange(ref factory._afterStampCheck, null) is { } hook)
+            {
+                hook(user);
+            }
+
+            return user;
+        }
+    }
+}
+
+public sealed class LiveSessionRaceTests(LateSessionEndApiFactory factory) : IClassFixture<LateSessionEndApiFactory>
+{
+    [DatabaseFact]
+    public async Task SessionsEndedWhileTheChannelOpensCloseItToo()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        await scenario.CreateUserAsync("live-race");
+        using var user = await scenario.SignInAsync("live-race");
+        var connections = factory.Services.GetRequiredService<BrowserConnections>();
+
+        // The user's sessions end (disabled, a password changed elsewhere) right after the channel found theirs valid.
+        factory.AfterStampCheck = checkedUser => connections.EndUser(checkedUser.Id);
+        BrowserHub hub;
+        try
+        {
+            hub = await BrowserHub.ConnectAsync(factory, user);
+        }
+        catch (Exception refused) when (BrowserHub.IsRefusal(refused))
+        {
+            Assert.Null(factory.AfterStampCheck);
+            return;
+        }
+
+        await using (hub)
+        {
+            var closed = LiveSessionTests.ClosedAsync(hub.Connection);
+            Assert.Null(factory.AfterStampCheck);
+            if (hub.Connection.State != HubConnectionState.Disconnected)
+            {
+                await closed.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
             }
         }
     }

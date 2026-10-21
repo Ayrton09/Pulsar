@@ -96,6 +96,7 @@ public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:Pulsar", _database?.ConnectionString ?? "Host=database-tests-disabled");
         builder.UseSetting("RateLimiting:Auth:PermitLimit", "1000");
         builder.UseSetting("RateLimiting:Auth:EnrollPermitLimit", "1000"); // a test class enrolls an agent per test
+        builder.UseSetting("RateLimiting:Auth:AnonymousPermitLimit", "100000"); // every client starts with the session check
         builder.UseSetting("DataProtection:KeysPath", KeysDirectory);
         builder.UseSetting("Pulsar:EnableTestGame", "true");
 

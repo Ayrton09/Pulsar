@@ -128,6 +128,34 @@ public sealed class LoginTests(PulsarApiFactory factory) : IClassFixture<PulsarA
     }
 
     [DatabaseFact]
+    public async Task AnonymousReadsOfTheDatabaseAreRateLimitedPerClient()
+    {
+        using var limited = factory.WithWebHostBuilder(b => b.UseSetting("RateLimiting:Auth:AnonymousPermitLimit", "3"));
+        using var admin = await factory.CreateAdminClientAsync();
+        using var http = limited.CreateDefaultClient(new Uri("https://localhost"));
+
+        // The session check and readiness share the budget; liveness, which reads nothing, has none.
+        foreach (var path in (string[])["/api/v1/auth/session", "/health/ready", "/api/v1/auth/session"])
+        {
+            using var allowed = await http.GetAsync(path, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+        }
+
+        using (var session = await http.GetAsync("/api/v1/auth/session", TestContext.Current.CancellationToken))
+        {
+            await SetupTests.AssertProblemAsync(session, HttpStatusCode.TooManyRequests, "rate_limit.exceeded");
+        }
+
+        using (var ready = await http.GetAsync("/health/ready", TestContext.Current.CancellationToken))
+        {
+            Assert.Equal(HttpStatusCode.TooManyRequests, ready.StatusCode);
+        }
+
+        using var live = await http.GetAsync("/health/live", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+    }
+
+    [DatabaseFact]
     public async Task FailedSignInsBeyondTheMinutesBudgetAreCountedNotEachRecorded()
     {
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);

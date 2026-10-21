@@ -227,6 +227,52 @@ public sealed class TwoFactorTests(TwoFactorApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task RecoveryCodesFollowTheAuthenticatorsRules()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var admin = scenario.Admin;
+        await scenario.CreateUserAsync("recovery-guessed");
+        var (_, codes) = await EnableAsync(scenario, "recovery-guessed");
+
+        // Wrong recovery codes count towards the lockout, as wrong authenticator codes do: a right one is refused then.
+        using (var client = await PanelClient.CreateAsync(factory))
+        {
+            using (var password = await client.LoginAsync("recovery-guessed", AccessScenario.Password))
+            {
+                await AccessScenario.EnsureSuccessAsync(password);
+            }
+
+            for (var i = 0; i < 5; i++)
+            {
+                using var guess = await client.PostAsync("/api/v1/auth/login/two-factor", new TwoFactorLoginRequest(null, $"WRONG-{i:D5}"));
+                Assert.Equal(HttpStatusCode.Unauthorized, guess.StatusCode);
+            }
+
+            using var right = await client.PostAsync("/api/v1/auth/login/two-factor", new TwoFactorLoginRequest(null, codes[0]));
+            await SetupTests.AssertProblemAsync(right, HttpStatusCode.Unauthorized, "auth.invalid_code");
+        }
+
+        // A user disabled between the password and the code gets no session, whichever code they give.
+        var disabled = await scenario.CreateUserAsync("recovery-disabled");
+        var (_, theirs) = await EnableAsync(scenario, "recovery-disabled");
+        using var pending = await PanelClient.CreateAsync(factory);
+        using (var password = await pending.LoginAsync("recovery-disabled", AccessScenario.Password))
+        {
+            await AccessScenario.EnsureSuccessAsync(password);
+        }
+
+        using (var disabling = await admin.PutAsync($"/api/v1/users/{disabled.Id}", new UpdateUserRequest(null, null, IsDisabled: true)))
+        {
+            await AccessScenario.EnsureSuccessAsync(disabling);
+        }
+
+        using var refused = await pending.PostAsync("/api/v1/auth/login/two-factor", new TwoFactorLoginRequest(null, theirs[0]));
+        await SetupTests.AssertProblemAsync(refused, HttpStatusCode.Unauthorized, "auth.invalid_code");
+        using var me = await pending.GetAsync("/api/v1/auth/me");
+        Assert.Equal(HttpStatusCode.Unauthorized, me.StatusCode);
+    }
+
+    [DatabaseFact]
     public async Task TheSecondStepNeedsTheFirst()
     {
         using var admin = await factory.CreateAdminClientAsync();

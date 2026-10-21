@@ -116,7 +116,7 @@ try
     app.MapHealthChecks("/health/ready", new HealthCheckOptions
     {
         Predicate = check => check.Tags.Contains(HealthTags.Ready),
-    }).AllowAnonymous();
+    }).AllowAnonymous().RequireRateLimiting(AuthEndpoints.AnonymousRateLimitPolicy);
 
     // The OpenAPI document is a development tool (the TypeScript client is generated from a committed copy).
     if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))

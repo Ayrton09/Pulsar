@@ -18,13 +18,16 @@ public static class AuthEndpoints
 {
     public const string RateLimitPolicy = "auth";
 
+    /// <summary>The anonymous routes that read the database (<see cref="AuthRateLimitOptions.AnonymousPermitLimit"/>).</summary>
+    public const string AnonymousRateLimitPolicy = "anonymous";
+
     // Verified when the user name does not exist, so both paths cost one password hash (no user enumeration by timing).
     private static readonly string s_dummyPasswordHash =
         new PasswordHasher<PulsarUser>().HashPassword(new PulsarUser(), "pulsar-timing-equalizer");
 
     public static RouteGroupBuilder MapAuthEndpoints(this RouteGroupBuilder group)
     {
-        group.MapGet("/session", GetSessionAsync).AllowAnonymous();
+        group.MapGet("/session", GetSessionAsync).AllowAnonymous().RequireRateLimiting(AnonymousRateLimitPolicy);
         group.MapPost("/setup", SetupAsync).AllowAnonymous().RequireRateLimiting(RateLimitPolicy);
         group.MapPost("/login", LoginAsync).AllowAnonymous().RequireRateLimiting(RateLimitPolicy);
         group.MapPost("/logout", LogoutAsync).RequireSignedInUser().AllowWithoutTwoFactor();

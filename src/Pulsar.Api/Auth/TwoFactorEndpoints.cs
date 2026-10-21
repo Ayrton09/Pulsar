@@ -48,7 +48,7 @@ public static class TwoFactorEndpoints
     }
 
     /// <summary>
-    /// The second step after a correct password: an authenticator code or a recovery code. Wrong authenticator codes
+    /// The second step after a correct password: an authenticator code or a recovery code. Wrong codes of either kind
     /// count towards the lockout, like wrong passwords; every answer that is not a sign-in is the same.
     /// </summary>
     private static async Task<Results<Ok<CurrentUserResponse>, ProblemHttpResult>> LoginAsync(
@@ -80,7 +80,20 @@ public static class TwoFactorEndpoints
         }
         else if (recovery)
         {
-            result = await signIn.TwoFactorRecoveryCodeSignInAsync(request.RecoveryCode!);
+            // Identity's recovery sign-in neither asks whether the user may sign in (a user disabled since the password step)
+            // nor counts a wrong code: both are done here, as its authenticator sign-in does them.
+            if (!await signIn.CanSignInAsync(user))
+            {
+                result = SignInResult.NotAllowed;
+            }
+            else
+            {
+                result = await signIn.TwoFactorRecoveryCodeSignInAsync(request.RecoveryCode!);
+                if (!result.Succeeded)
+                {
+                    await SignInLocks.CountFailureAsync(users, db, user);
+                }
+            }
         }
         else
         {
