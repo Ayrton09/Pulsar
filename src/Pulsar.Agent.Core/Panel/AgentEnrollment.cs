@@ -111,6 +111,16 @@ public sealed class AgentEnrollment(
                 throw new AgentException("The panel's key list does not include the key that signed the enrollment; nothing was saved.");
             }
 
+            // The panel's answer names the key it enrolled. Another one means whatever this machine trusted on the way (a proxy,
+            // a certificate it was not told to pin) read the token and enrolled its own key with it (docs/architecture/08, T2).
+            if (!string.Equals(result.KeyFingerprint, ProtocolCrypto.Fingerprint(publicKey), StringComparison.Ordinal))
+            {
+                throw new AgentException(
+                    $"The panel enrolled another key with this token ({result.KeyFingerprint ?? "none named"}): something between this machine and " +
+                    $"the panel read the token. Nothing was saved. Revoke node {result.NodeId} in the panel, and enroll again with a new token, " +
+                    "from a node code that pins the panel's certificate.");
+            }
+
             var config = new AgentConfig(panel, result.NodeId, result.CredentialId, key.Reference, result.PanelKeys,
                 request.ServersRoot, clock.GetUtcNow(), request.Development, BackupsRoot: request.BackupsRoot, PanelCertificate: request.PanelCertificate);
             configs.Save(config);

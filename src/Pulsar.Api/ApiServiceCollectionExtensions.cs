@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Pulsar.Api.Access;
@@ -179,7 +180,9 @@ internal static class ApiServiceCollectionExtensions
         services.AddSignalR(options => options.MaximumReceiveMessageSize = AgentProtocol.MaximumMessageSize)
             .AddJsonProtocol(options => ProtocolJson.Configure(options.PayloadSerializerOptions))
             // Browsers only send small requests (what they watch); agents send console output in large batches.
-            .AddHubOptions<PanelHub>(options => options.MaximumReceiveMessageSize = 32 * 1024);
+            .AddHubOptions<PanelHub>(options => options.MaximumReceiveMessageSize = 32 * 1024)
+            .AddHubOptions<AgentHub>(options => options.AddFilter<AgentHubLimits>());
+        services.AddSingleton<AgentHubLimits>();
         services.AddSingleton<ConsoleMirrors>();
         services.AddSingleton<BrowserConnections>();
         services.AddSingleton<LiveMetrics>();

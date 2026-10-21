@@ -45,7 +45,7 @@ public sealed record ServerQueryView(DateTimeOffset At, string? Name, string? Ma
     public static ServerQueryView? From(ServerQueryInfo? info) => info is null ? null : new ServerQueryView(info.At, QueryText.Clean(info.Name),
         QueryText.Clean(info.Map), Math.Clamp(info.Players, 0, MaxCount), Math.Clamp(info.MaxPlayers, 0, MaxCount), Math.Clamp(info.Bots, 0, MaxCount),
         QueryText.Clean(info.Version),
-        [.. (info.PlayerList ?? []).Take(QueryText.MaxPlayers).Select(p => QueryText.Clean(p.Name) is { } name
+        [.. (info.PlayerList ?? []).OfType<QueryPlayer>().Take(QueryText.MaxPlayers).Select(p => QueryText.Clean(p.Name) is { } name
             ? new QueryPlayerView(name, p.Score, p.Connected is { } connected && connected >= TimeSpan.Zero ? Math.Floor(connected.TotalSeconds) : null)
             : null).OfType<QueryPlayerView>()]);
 }

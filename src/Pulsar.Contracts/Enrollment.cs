@@ -45,7 +45,12 @@ public sealed record EnrollRequest(
 /// The node was created by a reusable token that requires approval (Phase 14): the agent cannot connect until an
 /// administrator approves it in the panel.
 /// </param>
-public sealed record EnrollmentResult(Guid NodeId, Guid CredentialId, string PanelOrigin, IReadOnlyList<PanelKey> PanelKeys, bool AwaitingApproval = false);
+/// <param name="KeyFingerprint">
+/// The fingerprint of the key the panel enrolled (<see cref="ProtocolCrypto.Fingerprint"/>), which binds the answer to the
+/// request: the agent refuses an answer for another key, the one whatever read the token on the way enrolled with it.
+/// </param>
+public sealed record EnrollmentResult(
+    Guid NodeId, Guid CredentialId, string PanelOrigin, IReadOnlyList<PanelKey> PanelKeys, bool AwaitingApproval = false, string? KeyFingerprint = null);
 
 /// <summary>
 /// Bytes signed by a panel key. The signature covers <c>SignedData(purpose, Payload)</c>; the payload is verified

@@ -3,9 +3,11 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Pulsar.Api.Agents;
 using Pulsar.Api.Nodes;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Nodes;
@@ -88,6 +90,40 @@ public sealed class AgentProtocolTests(PulsarApiFactory factory) : IClassFixture
 
         // The rejected attempt did not consume the token.
         await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+    }
+
+    [DatabaseFact]
+    public async Task AConnectionCallsTheHubOnlySoFast()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await CreateNodeAsync(admin, "node-flood");
+        await using var agent = new TestAgent(factory);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken);
+        var connection = agent.Connection!;
+
+        // Hello once per connection: each one writes the node's row and reconciles all its servers.
+        var again = await Assert.ThrowsAsync<HubException>(() => connection.InvokeAsync<HelloAccepted>(nameof(IAgentHub.Hello),
+            new AgentHello(agent.AgentVersion, AgentProtocol.CurrentVersion, [], agent.HelloInventory), Ct));
+        Assert.Contains("Hello", again.Message, StringComparison.Ordinal);
+
+        // Reports in a loop: the first ones (the burst) are taken, the rest refused, and the connection stays.
+        var (_, burst) = AgentHubLimits.Rates[nameof(IAgentHub.UpdateReport)];
+        var refused = 0;
+        for (var i = 0; i < burst + 20; i++)
+        {
+            try
+            {
+                await connection.InvokeAsync(nameof(IAgentHub.UpdateReport), new UpdateReport("nonsense", "1.0.0", "1.0.0", null, null, DateTimeOffset.UtcNow), Ct);
+            }
+            catch (HubException)
+            {
+                refused++;
+            }
+        }
+
+        Assert.InRange(refused, 18, 20);
+        Assert.Equal(HubConnectionState.Connected, connection.State);
     }
 
     [DatabaseFact]

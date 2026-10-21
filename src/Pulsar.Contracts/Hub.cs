@@ -61,6 +61,9 @@ public sealed record AgentHello(
 {
     /// <summary>The most cached Steam logins a Hello names; the panel reads no more.</summary>
     public const int MaxCachedSteamLogins = 256;
+
+    /// <summary>The most capabilities a Hello names (an agent has a few dozen); the panel reads no more.</summary>
+    public const int MaxCapabilities = 256;
 }
 
 /// <summary><see cref="ServerTime"/> lets the agent detect clock skew (command expiry is a secondary defense).</summary>

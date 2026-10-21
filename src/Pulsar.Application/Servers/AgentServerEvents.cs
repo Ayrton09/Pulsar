@@ -36,7 +36,8 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
 {
     private static readonly TimeSpan s_queuedGrace = TimeSpan.FromMinutes(1);
 
-    public async Task StateChangedAsync(NodeId nodeId, ServerStateChanged change, CancellationToken cancellationToken)
+    /// <summary>Applies a server's new state; false when the server is not this node's (nothing else of it is to be touched).</summary>
+    public async Task<bool> StateChangedAsync(NodeId nodeId, ServerStateChanged change, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(change);
         for (var attempt = 0; attempt < 3; attempt++)
@@ -45,14 +46,14 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
             if (server is null || server.NodeId != nodeId)
             {
                 LogForeignServer(nodeId, change.ServerId);
-                return;
+                return false;
             }
 
             // Stamped with the panel's clock: an agent whose clock is off would write times in the future. The order of events
             // is the agent's sequence, not its time.
             if (!server.Observe(Map(change.State), Map(change.Reason), change.ExitCode, change.StateSequence, clock.GetUtcNow(), snapshot: false))
             {
-                return;
+                return true;
             }
 
             switch (change.Reason)
@@ -69,7 +70,7 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
             try
             {
                 await db.SaveChangesAsync(cancellationToken);
-                return;
+                return true;
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -77,6 +78,8 @@ public sealed partial class AgentServerEvents(IPulsarDbContext db, IAuditLog aud
                 db.ChangeTracker.Clear();
             }
         }
+
+        return true;
     }
 
     /// <summary>

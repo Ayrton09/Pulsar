@@ -100,7 +100,8 @@ internal sealed partial class ConsoleMirrors(
             return;
         }
 
-        var fresh = mirror.Add(output.Entries);
+        // Absent in the JSON of a faulty agent: what is not an entry is no output.
+        var fresh = mirror.Add([.. (output.Entries ?? []).Where(e => e is { Text: not null })]);
         if (fresh.Count > 0)
         {
             await hub.Clients.Group(Group(server)).ConsoleOutput(new ConsoleOutputView(output.ServerId, fresh));

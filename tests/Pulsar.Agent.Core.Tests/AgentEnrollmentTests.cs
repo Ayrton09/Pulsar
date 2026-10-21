@@ -76,6 +76,21 @@ public sealed class AgentEnrollmentTests : IDisposable
     }
 
     [Fact]
+    public async Task AnAnswerForAnotherKeyIsRefusedAndNothingIsKept()
+    {
+        // Something on the way that the agent trusts (a proxy, a certificate it was not told to pin) read the token and
+        // enrolled its own key with it: the panel's genuine answer names that key.
+        using var theirs = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var panel = new FakePanel(this, busyAnswers: 0, retryAfter: null) { EnrolledKey = theirs.ExportSubjectPublicKeyInfo() };
+
+        var refused = await Assert.ThrowsAsync<AgentException>(() => RunAsync(Enrollment(panel).EnrollAsync(Request(), TestContext.Current.CancellationToken)));
+
+        Assert.Contains("revoke", refused.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(_keys.Names);
+        Assert.Null(new AgentConfigStore(new AgentPaths(_root)).Load());
+    }
+
+    [Fact]
     public async Task TheServersRootIsSecuredBeforeAnythingIsSent()
     {
         var chosen = Path.Combine(_root, "games");
@@ -238,6 +253,9 @@ public sealed class AgentEnrollmentTests : IDisposable
 
         public bool Refuse { get; init; }
 
+        /// <summary>The key the answer says was enrolled; null: the one the request sent.</summary>
+        public byte[]? EnrolledKey { get; init; }
+
         public int Enrollments => _enrollments;
 
         /// <summary>The panel certificates the handlers were told to pin.</summary>
@@ -251,12 +269,14 @@ public sealed class AgentEnrollmentTests : IDisposable
             return handler;
         }
 
-        private HttpResponseMessage Answer(HttpRequestMessage request)
+        private async Task<HttpResponseMessage> AnswerAsync(HttpRequestMessage request)
         {
             if (request.Method == HttpMethod.Get)
             {
                 return Json(new PanelIdentityResponse([test.PanelKey]));
             }
+
+            var enroll = await request.Content!.ReadFromJsonAsync<EnrollRequest>(ProtocolJson.Options, TestContext.Current.CancellationToken);
 
             var attempt = Interlocked.Increment(ref _enrollments);
             if (Refuse)
@@ -274,7 +294,8 @@ public sealed class AgentEnrollmentTests : IDisposable
                 return busy;
             }
 
-            var result = new EnrollmentResult(NodeId, Guid.NewGuid(), "https://panel.example.com", [test.PanelKey]);
+            var result = new EnrollmentResult(NodeId, Guid.NewGuid(), "https://panel.example.com", [test.PanelKey],
+                KeyFingerprint: ProtocolCrypto.Fingerprint(EnrolledKey ?? enroll!.PublicKey));
             return Json(ProtocolCrypto.SignMessage(test._panelKey, test.PanelKey.KeyId, AgentProtocol.Purposes.EnrollmentResult, ProtocolJson.Serialize(result)));
         }
 
@@ -283,7 +304,7 @@ public sealed class AgentEnrollmentTests : IDisposable
         private sealed class Handler(FakePanel panel) : HttpMessageHandler
         {
             protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-                Task.FromResult(panel.Answer(request));
+                panel.AnswerAsync(request);
         }
     }
 

@@ -39,13 +39,35 @@ public sealed class AgentSessionStore(TimeProvider clock)
 {
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(15);
 
+    /// <summary>
+    /// The live sessions one credential holds at most: an agent has one, and a second while it renews it. Sign-ins in a
+    /// loop (a copied key, a stuck agent) end the oldest instead of piling up, and a renewed session's token stops working
+    /// soon after the agent moved on.
+    /// </summary>
+    public const int MaxSessionsPerCredential = 4;
+
     private readonly ConcurrentDictionary<string, AgentSession> _byTokenHash = new(StringComparer.Ordinal);
+
+    // Every hub call asks whether its session lasts: found by id at once, not by looking through them all.
+    private readonly ConcurrentDictionary<Guid, string> _hashById = new();
+    private readonly Lock _creating = new();
 
     public (string Token, AgentSession Session) Create(NodeId node, Guid credentialId, string? certificateKey = null)
     {
         var token = Base64Url(RandomNumberGenerator.GetBytes(32));
         var session = new AgentSession(Guid.CreateVersion7(), node, credentialId, clock.GetUtcNow() + Lifetime, certificateKey);
-        _byTokenHash[Hash(token)] = session;
+        var hash = Hash(token);
+        lock (_creating)
+        {
+            _byTokenHash[hash] = session;
+            _hashById[session.SessionId] = hash;
+            foreach (var older in _byTokenHash.Values.Where(s => s.CredentialId == credentialId)
+                .OrderByDescending(s => s.ExpiresAt).Skip(MaxSessionsPerCredential).ToList())
+            {
+                End(older.SessionId);
+            }
+        }
+
         return (token, session);
     }
 
@@ -60,7 +82,7 @@ public sealed class AgentSessionStore(TimeProvider clock)
 
         if (session.ExpiresAt <= clock.GetUtcNow())
         {
-            _byTokenHash.TryRemove(hash, out _);
+            Remove(hash, session);
             return null;
         }
 
@@ -68,11 +90,10 @@ public sealed class AgentSessionStore(TimeProvider clock)
     }
 
     /// <summary>The live session for an id, or null when unknown, expired or ended.</summary>
-    public AgentSession? Find(Guid sessionId)
-    {
-        var now = clock.GetUtcNow();
-        return _byTokenHash.Values.FirstOrDefault(s => s.SessionId == sessionId && s.ExpiresAt > now);
-    }
+    public AgentSession? Find(Guid sessionId) =>
+        _hashById.TryGetValue(sessionId, out var hash) && _byTokenHash.TryGetValue(hash, out var session) && session.ExpiresAt > clock.GetUtcNow()
+            ? session
+            : null;
 
     /// <summary>True while the session exists and has not expired or been ended.</summary>
     public bool IsActive(Guid sessionId) => Find(sessionId) is not null;
@@ -80,12 +101,9 @@ public sealed class AgentSessionStore(TimeProvider clock)
     /// <summary>Ends one session.</summary>
     public void End(Guid sessionId)
     {
-        foreach (var (hash, session) in _byTokenHash)
+        if (_hashById.TryRemove(sessionId, out var hash))
         {
-            if (session.SessionId == sessionId)
-            {
-                _byTokenHash.TryRemove(hash, out _);
-            }
+            _byTokenHash.TryRemove(hash, out _);
         }
     }
 
@@ -96,7 +114,7 @@ public sealed class AgentSessionStore(TimeProvider clock)
         {
             if (session.CredentialId == credentialId)
             {
-                _byTokenHash.TryRemove(hash, out _);
+                Remove(hash, session);
             }
         }
     }
@@ -108,7 +126,7 @@ public sealed class AgentSessionStore(TimeProvider clock)
         {
             if (session.NodeId == node)
             {
-                _byTokenHash.TryRemove(hash, out _);
+                Remove(hash, session);
             }
         }
     }
@@ -122,7 +140,7 @@ public sealed class AgentSessionStore(TimeProvider clock)
         var nodes = new HashSet<NodeId>();
         foreach (var (hash, session) in _byTokenHash)
         {
-            if (session.CertificateKey is null && _byTokenHash.TryRemove(hash, out _))
+            if (session.CertificateKey is null && Remove(hash, session))
             {
                 nodes.Add(session.NodeId);
             }
@@ -139,9 +157,15 @@ public sealed class AgentSessionStore(TimeProvider clock)
         {
             if (session.ExpiresAt <= now)
             {
-                _byTokenHash.TryRemove(hash, out _);
+                Remove(hash, session);
             }
         }
+    }
+
+    private bool Remove(string hash, AgentSession session)
+    {
+        _hashById.TryRemove(session.SessionId, out _);
+        return _byTokenHash.TryRemove(hash, out _);
     }
 
     private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token)));

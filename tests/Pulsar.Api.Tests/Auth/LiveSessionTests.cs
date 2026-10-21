@@ -217,12 +217,14 @@ public sealed class LiveSessionRaceTests(LateSessionEndApiFactory factory) : ICl
 
         await using (hub)
         {
+            // The handshake is answered before the connection's check runs: closed once it ran and ended the session.
             var closed = LiveSessionTests.ClosedAsync(hub.Connection);
-            Assert.Null(factory.AfterStampCheck);
             if (hub.Connection.State != HubConnectionState.Disconnected)
             {
                 await closed.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
             }
+
+            Assert.Null(factory.AfterStampCheck);
         }
     }
 }

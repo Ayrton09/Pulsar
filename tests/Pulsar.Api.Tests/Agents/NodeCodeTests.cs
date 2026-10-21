@@ -152,7 +152,7 @@ public sealed class NodeCodeKestrelTests(KestrelPanelFactory factory) : IClassFi
         factory.StartServer();
         using var admin = await AdminAsync();
 
-        // The proxy (loopback is a trusted one) may have served the browser a certificate of its own.
+        // A proxy (its headers say so, whether or not the panel trusts it) may have served the browser a certificate of its own.
         var (enrollment, _) = await CreateNodeAsync(admin, "kestrel-proxied", HttpVersion.Version11, ("X-Forwarded-For", "192.0.2.10"));
 
         Assert.True(NodeCode.TryParse(enrollment.NodeCode, out var code));

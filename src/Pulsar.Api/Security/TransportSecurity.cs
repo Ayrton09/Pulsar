@@ -17,7 +17,8 @@ public sealed class SecurityOptions
 
     /// <summary>
     /// Reverse proxies (IP addresses) whose X-Forwarded-For/Proto headers are trusted, so a TLS-terminating proxy is
-    /// recognized as HTTPS. Loopback is always trusted.
+    /// recognized as HTTPS. No other is, loopback included: a proxy on the panel's own machine is named here too
+    /// (127.0.0.1, ::1).
     /// </summary>
     public IReadOnlyList<string> TrustedProxies { get; set; } = [];
 }
@@ -42,7 +43,12 @@ internal static partial class TransportSecurity
 {
     public static void ConfigureForwardedHeaders(ForwardedHeadersOptions options, SecurityOptions security)
     {
-        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        // Only the proxies the settings name, loopback too: ASP.NET Core trusts loopback by default, and any process on the
+        // panel's machine (a game server's account) would choose the address its requests are limited and audited by. With
+        // none named nothing is read at all: with both of its lists empty, the middleware would trust every client.
+        options.KnownProxies.Clear();
+        options.KnownIPNetworks.Clear();
+        options.ForwardedHeaders = security.TrustedProxies.Count > 0 ? ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto : ForwardedHeaders.None;
         foreach (var proxy in security.TrustedProxies)
         {
             options.KnownProxies.Add(IPAddress.Parse(proxy));
@@ -56,7 +62,11 @@ internal static partial class TransportSecurity
     /// </summary>
     public static void UseTransportSecurity(this WebApplication app, SecurityOptions security)
     {
-        app.UseForwardedHeaders();
+        if (security.TrustedProxies.Count > 0)
+        {
+            app.UseForwardedHeaders();
+        }
+
         if (security.AllowInsecureHttp)
         {
             LogInsecureHttp(app.Logger);

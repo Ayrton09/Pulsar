@@ -140,7 +140,7 @@ public sealed partial class AgentAccess(
         }
 
         LogEnrolled(node.Id, inventory.Hostname, fingerprint);
-        var result = new EnrollmentResult(node.Id.Value, credential.Id, panelOrigin, panelKeys);
+        var result = new EnrollmentResult(node.Id.Value, credential.Id, panelOrigin, panelKeys, KeyFingerprint: fingerprint);
         return await keys.SignAsync(AgentProtocol.Purposes.EnrollmentResult, ProtocolJson.Serialize(result), cancellationToken);
     }
 
@@ -224,7 +224,7 @@ public sealed partial class AgentAccess(
 
         await transaction.CommitAsync(cancellationToken);
         LogEnrolledWithToken(node.Id, node.Name, inventory.Hostname, fingerprint, reusable.Name, node.ApprovalRequired);
-        var result = new EnrollmentResult(node.Id.Value, credential.Id, panelOrigin, panelKeys, node.ApprovalRequired);
+        var result = new EnrollmentResult(node.Id.Value, credential.Id, panelOrigin, panelKeys, node.ApprovalRequired, fingerprint);
         return await keys.SignAsync(AgentProtocol.Purposes.EnrollmentResult, ProtocolJson.Serialize(result), cancellationToken);
     }
 

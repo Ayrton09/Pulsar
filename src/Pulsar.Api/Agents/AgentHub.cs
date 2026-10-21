@@ -33,7 +33,11 @@ internal sealed partial class AgentHub(
     TimeProvider clock,
     ILogger<AgentHub> logger) : Hub, IAgentHub
 {
+    /// <summary>The most servers one metrics batch is read for.</summary>
+    internal const int MaxServersPerBatch = 512;
+
     private static readonly object s_lastSeenAtKey = new();
+    private static readonly object s_registeredKey = new();
     private static readonly TimeSpan s_seenInterval = TimeSpan.FromMinutes(1);
 
     public override async Task OnConnectedAsync()
@@ -96,7 +100,9 @@ internal sealed partial class AgentHub(
         }
 
         var panelKeys = await keys.GetPublicKeysAsync(Context.ConnectionAborted);
-        var canMove = hello.Capabilities.Contains(AgentCapabilities.UseAgentsAddress, StringComparer.Ordinal);
+        // Absent in the JSON of a faulty agent, or longer than any agent's: what it says it can do, bounded.
+        IReadOnlyList<string> capabilities = [.. (hello.Capabilities ?? []).OfType<string>().Take(AgentHello.MaxCapabilities)];
+        var canMove = capabilities.Contains(AgentCapabilities.UseAgentsAddress, StringComparer.Ordinal);
         var now = clock.GetUtcNow();
         var inventory = AgentAccess.ToSnapshot(hello.Inventory, hello.AgentVersion, hello.ProtocolVersion);
         // The keys this connection says it pins sign its commands; the node's record of them comes from its sign-ins only,
@@ -125,8 +131,9 @@ internal sealed partial class AgentHub(
 
         // Hub instances are transient; Items keeps the throttle across this connection's invocations.
         Context.Items[s_lastSeenAtKey] = now;
+        Context.Items[s_registeredKey] = true;
         connections.Register(Context, session, new AgentConnectionInfo(nodeId, session.SessionId, now,
-            inventory.AgentVersion, hello.ProtocolVersion, hello.Capabilities, null, pinned ?? node.PinnedPanelKeys));
+            inventory.AgentVersion, hello.ProtocolVersion, capabilities, null, pinned ?? node.PinnedPanelKeys));
 
         // A revocation between the checks above and the registration ended the session but found nothing to close.
         if (!sessions.IsActive(session.SessionId))
@@ -155,7 +162,7 @@ internal sealed partial class AgentHub(
 
         // The cached logins of Steam accounts deleted while the agent was away: forgotten by signed commands (this answer is
         // not signed, so the agent acts on no list in it). Not awaited either.
-        if (hello.CachedSteamLogins is { Count: > 0 } cached && hello.Capabilities.Contains(AgentCapabilities.ForgetSteamLogin, StringComparer.Ordinal))
+        if (hello.CachedSteamLogins is { Count: > 0 } cached && capabilities.Contains(AgentCapabilities.ForgetSteamLogin, StringComparer.Ordinal))
         {
             var known = (await db.SteamAccounts.AsNoTracking().Select(a => a.Id).ToListAsync(Context.ConnectionAborted)).Select(id => id.Value).ToHashSet();
             var deleted = cached.Take(AgentHello.MaxCachedSteamLogins).Distinct().Where(id => !known.Contains(id)).ToList();
@@ -252,8 +259,8 @@ internal sealed partial class AgentHub(
         change = AgentInput.StateChanged(change);
         if (RegisteredNode() is { } nodeId)
         {
-            await servers.StateChangedAsync(nodeId, change, CancellationToken.None);
-            if (change.State is RuntimeState.Offline or RuntimeState.Crashed)
+            // Only its own servers' samples go: another node's would otherwise show blank to whoever opens its page.
+            if (await servers.StateChangedAsync(nodeId, change, CancellationToken.None) && change.State is RuntimeState.Offline or RuntimeState.Crashed)
             {
                 liveMetrics.Remove(new ServerId(change.ServerId));
             }
@@ -301,17 +308,22 @@ internal sealed partial class AgentHub(
     public async Task Metrics(MetricsBatch batch)
     {
         ArgumentNullException.ThrowIfNull(batch);
-        if (RegisteredNode() is not { } nodeId || batch.Servers.Count == 0)
+        // One sample per server, as many as a node hosts at most: a batch of thousands (or of one server over and over)
+        // would cost a query that size and a push to browsers for each.
+        var samples = (batch.Servers ?? []).OfType<ServerMetrics>().DistinctBy(s => s.ServerId).Take(MaxServersPerBatch).ToList();
+        if (RegisteredNode() is not { } nodeId || samples.Count == 0)
         {
             return;
         }
 
-        var reported = batch.Servers.Select(s => new ServerId(s.ServerId)).ToList();
+        var reported = samples.Select(s => new ServerId(s.ServerId)).ToList();
         var own = (await db.Servers.Where(s => s.NodeId == nodeId && reported.Contains(s.Id)).Select(s => s.Id).ToListAsync(CancellationToken.None))
             .ToHashSet();
-        foreach (var sample in batch.Servers.Where(s => own.Contains(new ServerId(s.ServerId))))
+        // When the panel received it, not when the agent says it sampled: a node's clock decides nothing of how fresh it is.
+        var at = clock.GetUtcNow();
+        foreach (var sample in samples.Where(s => own.Contains(new ServerId(s.ServerId))))
         {
-            var view = new ServerMetricsView(sample.ServerId, batch.At, MetricHistory.CpuPercent(sample.CpuPercent), sample.MemoryBytes, sample.ProcessCount,
+            var view = new ServerMetricsView(sample.ServerId, at, MetricHistory.CpuPercent(sample.CpuPercent), sample.MemoryBytes, sample.ProcessCount,
                 sample.Uptime.TotalSeconds,
                 ServerQueryView.From(sample.Query), sample.CommittedBytes);
             liveMetrics.Update(view);
@@ -379,7 +391,10 @@ internal sealed partial class AgentHub(
     public override Task OnDisconnectedAsync(Exception? exception)
     {
         var nodeId = Context.User!.NodeId();
-        if (connections.Unregister(nodeId, Context.ConnectionId))
+        connections.Unregister(nodeId, Context.ConnectionId);
+        // Whether the agent left or the panel ended it (a revocation, a disable: its entry is gone already), unless a newer
+        // connection of the node took its place: browsers see the node gone and its consoles stop.
+        if (Context.Items.ContainsKey(s_registeredKey) && connections.Find(nodeId) is null)
         {
             consoles.NodeDisconnected(nodeId);
             notifier.NodesChanged([nodeId]);

@@ -102,7 +102,7 @@ public sealed class PanelCertificateKestrelTests(KestrelPanelFactory factory) : 
         factory.StartServer();
         using var admin = await AdminAsync();
 
-        // The proxy (loopback is a trusted one) may have served the browser a certificate of its own.
+        // A proxy (its headers say so, whether or not the panel trusts it) may have served the browser a certificate of its own.
         foreach (var header in new[] { ("X-Forwarded-For", "192.0.2.10"), ("Forwarded", "for=192.0.2.10"), ("Via", "1.1 proxy") })
         {
             foreach (var path in new[] { Describe, Download })
