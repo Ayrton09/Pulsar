@@ -276,6 +276,8 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
     /// <summary>GitHub's releases: files redirect to the release storage, the latest release's too.</summary>
     public sealed class FakeReleases(ECDsa key) : HttpMessageHandler
     {
+        private static readonly DateTimeOffset s_published = new(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+
         private readonly Dictionary<string, byte[]> _files = new(StringComparer.Ordinal);
         private string _version = "0.0.0";
 
@@ -291,13 +293,17 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
             {
                 foreach (var name in new[] { "Install-Pulsar.ps1", "release.json", @"agent\PulsarAgent.dll" })
                 {
-                    using var writer = new StreamWriter(zip.CreateEntry(name).Open());
+                    var entry = zip.CreateEntry(name);
+                    entry.LastWriteTime = s_published;
+                    using var writer = new StreamWriter(entry.Open());
                     writer.Write(name == "release.json" ? $$"""{"version":"{{version}}"}""" : "content");
                 }
             }
 
             var bytes = stream.ToArray();
-            var manifest = ProtocolJson.Serialize(new UpdateManifest("pulsar", version, "1.0.0", DateTimeOffset.UtcNow, "What changed.",
+            // A version's manifest is the same each time it is published (as a real release's is): the panel keeps the one
+            // it found first, and the agent refuses any other, so a test of this class publishing it again would break the next.
+            var manifest = ProtocolJson.Serialize(new UpdateManifest("pulsar", version, "1.0.0", s_published, "What changed.",
                 [new UpdateFile(UpdateRelease.ZipName(parsed), bytes.Length, Convert.ToHexStringLower(SHA256.HashData(bytes)))]));
             var by = signer ?? key;
             lock (_files)
