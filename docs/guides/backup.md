@@ -65,6 +65,13 @@ Administrators and TrustedInstaller could change, in a folder they could add fil
 before running it at all, as `Install-Pulsar.ps1` refuses such a `psql.exe`: keep PostgreSQL in Program Files (its
 installer's default).
 
+`pg_dump` connects with the SSL settings of the panel's connection string: `SSL Mode` (Disable, Allow, Prefer, Require,
+VerifyCA, VerifyFull) and `Root Certificate` are handed to it as `PGSSLMODE` and `PGSSLROOTCERT`, so a database that
+needs a verified TLS connection is dumped over one too (libpq's own default would accept an unencrypted or unverified
+one). Another `SSL Mode` value stops the backup. The script never follows a link while it copies the panel's keys and
+certificates: if the panel's account (which can write there) left a junction or symbolic link in `keys`, `keyring` or
+`tls`, the backup stops with an error and the half-made folder is deleted, instead of copying whatever the link points at.
+
 ## Backing up game servers
 
 Each server's **Backups** tab makes backups on its node (and schedules can make them every night). They are kept in

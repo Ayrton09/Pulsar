@@ -460,6 +460,37 @@ function Test-PrivateFolder([string] $path) {
     }
 }
 
+# Copies the files and folders of $source into a new folder $target, one by one, and refuses a link (a junction or symbolic
+# link there would make the copy read what is somewhere else, or never end). $target must not exist; it takes the permissions
+# of its parent. The same function as Backup-Pulsar.ps1's.
+function Copy-PlainTree([string] $source, [string] $target) {
+    $null = New-Item -ItemType Directory -Path $target
+    foreach ($child in (New-Object IO.DirectoryInfo $source).GetFileSystemInfos()) {
+        if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "$($child.FullName) is a link, not a file or folder. Nothing is copied through links." }
+        if ($child -is [IO.DirectoryInfo]) { Copy-PlainTree $child.FullName (Join-Path $target $child.Name) }
+        else { [IO.File]::Copy($child.FullName, (Join-Path $target $child.Name), $false) }
+    }
+}
+
+# libpq's SSL settings for pg_dump, psql and pg_restore, from the keys of an Npgsql connection string ($parts: lower-case
+# names), so they connect as the panel does and not with libpq's default (prefer): SSL Mode becomes PGSSLMODE and Root
+# Certificate PGSSLROOTCERT. No SSL Mode asks for nothing (Npgsql's default, prefer, is libpq's). A mode not known here is
+# refused: guessing one could connect with less than the connection string asks for. The same function as Backup-Pulsar.ps1's.
+function Get-PgSslEnvironment($parts) {
+    $modes = @{ disable = 'disable'; allow = 'allow'; prefer = 'prefer'; require = 'require'; verifyca = 'verify-ca'; verifyfull = 'verify-full' }
+    $environment = @{}
+    foreach ($key in 'ssl mode', 'sslmode') {
+        if (-not $parts.ContainsKey($key)) { continue }
+        $mode = $parts[$key].Trim().ToLowerInvariant()
+        if (-not $modes.ContainsKey($mode)) { throw "The connection string's SSL Mode '$($parts[$key])' is not one of Disable, Allow, Prefer, Require, VerifyCA or VerifyFull." }
+        $environment['PGSSLMODE'] = $modes[$mode]
+    }
+    foreach ($key in 'root certificate', 'rootcertificate') {
+        if ($parts.ContainsKey($key) -and $parts[$key].Trim()) { $environment['PGSSLROOTCERT'] = $parts[$key].Trim() }
+    }
+    return $environment
+}
+
 # The SID of the account Windows gives a service (NT SERVICE\<name>): the SHA-1 of the upper-case name in UTF-16, as five
 # 32-bit numbers after S-1-5-80. Worked out here, not looked up, because the account cannot be looked up before the service
 # exists, and the folders below are checked before anything is installed (TrustedInstaller's SID, in $TrustedWriters, is
@@ -1630,13 +1661,15 @@ function Restore-PanelDatabase([string] $dump, [string] $connection) {
     foreach ($part in $connection.Split(';')) {
         if ($part -match '^\s*([^=]+?)\s*=\s*(.*)$') { $parts[$Matches[1].ToLowerInvariant()] = $Matches[2] }
     }
+    $ssl = Get-PgSslEnvironment $parts
     $env:PGPASSWORD = $parts['password']
     try {
+        foreach ($name in $ssl.Keys) { Set-Item "Env:$name" $ssl[$name] }
         $result = Invoke-Native (Join-Path $bin 'pg_restore.exe') -h $parts['host'] -p $parts['port'] -U $parts['username'] -d $parts['database'] --no-owner --exit-on-error $dump
         if ($result.ExitCode -ne 0) { throw "Could not restore the database: $($result.Output)" }
     }
     finally {
-        Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+        Remove-Item Env:PGPASSWORD, Env:PGSSLMODE, Env:PGSSLROOTCERT -ErrorAction SilentlyContinue
     }
 }
 
@@ -1656,17 +1689,6 @@ function Restore-PanelDatabase([string] $dump, [string] $connection) {
 
 # The folder with the private copy of the backup, set by Copy-RestoreSource.
 $RestoreCopy = $null
-
-# Copies the files and folders of $source into a new folder $target, one by one, and refuses a link (a junction or symbolic
-# link there would make the copy read what is somewhere else). $target must not exist; it takes the permissions of its parent.
-function Copy-PlainTree([string] $source, [string] $target) {
-    $null = New-Item -ItemType Directory -Path $target
-    foreach ($child in (New-Object IO.DirectoryInfo $source).GetFileSystemInfos()) {
-        if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "$($child.FullName) is a link, not a file or folder of the backup." }
-        if ($child -is [IO.DirectoryInfo]) { Copy-PlainTree $child.FullName (Join-Path $target $child.Name) }
-        else { [IO.File]::Copy($child.FullName, (Join-Path $target $child.Name), $false) }
-    }
-}
 
 # The migration ids this release's panel carries, read from its Pulsar.Infrastructure.dll without running it: each EF Core
 # migration is a class with [Migration("<yyyyMMddHHmmss>_<Name>")], whose text is in the assembly's metadata (UTF-8). Every
@@ -3464,9 +3486,13 @@ function Get-PanelConnection {
 function Invoke-PanelPsql($db, [string[]] $arguments) {
     $program = Join-Path (Find-PostgresBin) 'psql.exe'
     $common = @('-X', '-h', $db['host'], '-p', $db['port'], '-U', $db['username'], '-d', $db['database'], '-v', 'ON_ERROR_STOP=1', '-q', '-t', '-A')
+    $ssl = Get-PgSslEnvironment $db
     $env:PGPASSWORD = $db['password']
-    try { return Invoke-Native $program @common @arguments }
-    finally { Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue }
+    try {
+        foreach ($name in $ssl.Keys) { Set-Item "Env:$name" $ssl[$name] }
+        return Invoke-Native $program @common @arguments
+    }
+    finally { Remove-Item Env:PGPASSWORD, Env:PGSSLMODE, Env:PGSSLROOTCERT -ErrorAction SilentlyContinue }
 }
 
 # The migrations the panel's database has applied, as one text (EF Core's __EFMigrationsHistory, the ids in order, a line each),
@@ -3498,11 +3524,13 @@ function Restore-RolledBackDatabase([string] $dump) {
     $aside = 'pulsar_failed_update_' + (Get-Date).ToString('yyyyMMddHHmmss')
     $moved = Invoke-PanelPsql $db @('-c', "BEGIN; ALTER SCHEMA public RENAME TO $aside; CREATE SCHEMA public; COMMIT;")
     if ($moved.ExitCode -ne 0) { throw "the tables of the failed version could not be set aside ($(ConvertTo-PrintableText $moved.Output.Trim()))" }
+    $ssl = Get-PgSslEnvironment $db
     $env:PGPASSWORD = $db['password']
     try {
+        foreach ($name in $ssl.Keys) { Set-Item "Env:$name" $ssl[$name] }
         $restored = Invoke-Native (Join-Path (Find-PostgresBin) 'pg_restore.exe') -h $db['host'] -p $db['port'] -U $db['username'] -d $db['database'] --no-owner --single-transaction --exit-on-error $dump
     }
-    finally { Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue }
+    finally { Remove-Item Env:PGPASSWORD, Env:PGSSLMODE, Env:PGSSLROOTCERT -ErrorAction SilentlyContinue }
     if ($restored.ExitCode -ne 0) {
         $undone = Invoke-PanelPsql $db @('-c', "BEGIN; DROP SCHEMA public CASCADE; ALTER SCHEMA $aside RENAME TO public; COMMIT;")
         $left = if ($undone.ExitCode -eq 0) { 'the failed version''s tables were put back as they were' } else { "the failed version's tables are in the schema $aside of the database, and a restore of the backup is half done: $(ConvertTo-PrintableText $undone.Output.Trim())" }

@@ -53,7 +53,7 @@ function Get-ScriptParts([string] $path, [string[]] $functions, [string[]] $vari
     return $parts
 }
 
-$shared = @('Get-AccountName', 'Find-UntrustedWriter', 'Find-UntrustedWriters', 'Find-UntrustedAncestors', 'Test-PrivateFolder')
+$shared = @('Get-AccountName', 'Find-UntrustedWriter', 'Find-UntrustedWriters', 'Find-UntrustedAncestors', 'Test-PrivateFolder', 'Get-PgSslEnvironment', 'Copy-PlainTree')
 $sharedVariables = @('TrustedWriters', 'ModifyRights', 'ReplaceRights')
 $installParts = Get-ScriptParts $installScript (@($shared) + @('Read-DerElement', 'Get-CertificateNames', 'Get-ForeignCertificateNames',
         'Test-CertificateNames', 'Get-CertificateAuthority', 'Get-CertificateUses', 'Test-ServerAuthenticationOnly', 'ConvertTo-PrintableText',
@@ -3985,6 +3985,40 @@ Check 'backup: backup.json is written last, with the format, the Pulsar version,
     $backupFullText -match '(?s)Copy-Item \$config \$target.*format = 1.*pulsarVersion = \$version.*migrations = \$migrations.*files = \$files.*backup\.json.*Backup written to' -and
     $backupFullText -match "Get-FileHash -LiteralPath \`$file\.FullName -Algorithm SHA256" -and $backupFullText -match 'Get-DumpMigrations \$PostgresBin \(Join-Path \$target ''pulsar\.dump''\)')
 Check 'backup: pg_restore.exe, which reads the dump for its migrations, is run only when others cannot change it' ((Get-ScriptParts $backupScript @('Get-DumpMigrations'))['Get-DumpMigrations'] -match 'Find-UntrustedWriters \$restore')
+
+# 7. pg_dump, psql and pg_restore connect with the SSL settings of the Npgsql connection string, not libpq's default (prefer).
+$ssl = Get-PgSslEnvironment @{ 'ssl mode' = 'VerifyFull'; 'root certificate' = 'C:\certs\ca.crt' }
+Check 'ssl: SSL Mode=VerifyFull and Root Certificate become PGSSLMODE=verify-full and PGSSLROOTCERT' ($ssl['PGSSLMODE'] -ceq 'verify-full' -and $ssl['PGSSLROOTCERT'] -ceq 'C:\certs\ca.crt' -and $ssl.Count -eq 2)
+$wrongModes = @(foreach ($pair in @(@('Disable', 'disable'), @('Allow', 'allow'), @('Prefer', 'prefer'), @('Require', 'require'), @('VerifyCA', 'verify-ca'), @('verifyfull', 'verify-full'))) {
+        if ((Get-PgSslEnvironment @{ sslmode = $pair[0] })['PGSSLMODE'] -cne $pair[1]) { $pair[0] }
+    })
+Check 'ssl: every Npgsql mode maps to libpq''s, under the key SslMode too' ($wrongModes.Count -eq 0) ($wrongModes -join ',')
+Check 'ssl: no SSL setting asks for none (libpq''s default, prefer, is Npgsql''s)' ((Get-PgSslEnvironment @{ host = 'localhost' }).Count -eq 0)
+Check 'ssl: a mode this script does not know is refused, not guessed' ((Get-Thrown { Get-PgSslEnvironment @{ 'ssl mode' = 'Verify-Everything' } }) -match 'SSL Mode')
+$sslSpots = [ordered]@{
+    'Backup-Pulsar.ps1' = $backupText
+    'Restore-PanelDatabase' = (Get-ScriptParts $installScript @('Restore-PanelDatabase'))['Restore-PanelDatabase']
+    'Invoke-PanelPsql' = (Get-ScriptParts $installScript @('Invoke-PanelPsql'))['Invoke-PanelPsql']
+    'Restore-RolledBackDatabase' = (Get-ScriptParts $installScript @('Restore-RolledBackDatabase'))['Restore-RolledBackDatabase']
+}
+foreach ($spot in $sslSpots.Keys) {
+    Check "ssl: $spot passes the connection string's SSL settings to the program it runs, and clears them afterwards" (
+        $sslSpots[$spot] -match 'Get-PgSslEnvironment' -and $sslSpots[$spot] -match 'Remove-Item Env:PGPASSWORD, Env:PGSSLMODE, Env:PGSSLROOTCERT')
+}
+
+# 9. The backup copies the panel's keys and certificates without following a link the panel's account could have planted.
+$planted = Join-Path $restoreRoot 'planted'
+$null = New-Item -ItemType Directory (Join-Path $planted 'keys')
+Set-Content -LiteralPath (Join-Path $planted 'keys\key-1.xml') -Value 'key'
+$loopTarget = Join-Path $restoreRoot 'loop-target'
+$null = New-Item -ItemType Directory $loopTarget
+$null = New-Item -ItemType Junction -Path (Join-Path $planted 'keys\loop') -Target $loopTarget
+$caught = Get-Caught { Copy-PlainTree (Join-Path $planted 'keys') (Join-Path $restoreRoot 'planted-copy') }
+Check 'backup: a junction in the panel''s keys is refused, not followed' ($null -ne $caught -and $caught.Exception.Message -match 'is a link')
+[IO.Directory]::Delete((Join-Path $planted 'keys\loop'))
+Check 'backup: the keys, keyring and tls folders are copied with Copy-PlainTree, and a backup that was stopped by a link is deleted' (
+    $backupFullText -notmatch 'Copy-Item \(Join-Path \$panelData \$folder\)' -and $backupFullText -match 'Copy-PlainTree \(Join-Path \$panelData \$folder\) \(Join-Path \$data \$folder\)' -and
+    $backupFullText -match '(?s)catch \{\s+Remove-Item -LiteralPath \$target -Recurse -Force.*?throw')
 
 if ($script:failures -gt 0) {
     Write-Host "$($script:failures) check(s) failed." -ForegroundColor Red

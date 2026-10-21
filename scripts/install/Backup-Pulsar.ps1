@@ -159,6 +159,37 @@ function Test-PrivateFolder([string] $path) {
     }
 }
 
+# Copies the files and folders of $source into a new folder $target, one by one, and refuses a link (a junction or symbolic
+# link there would make the copy read what is somewhere else, or never end). $target must not exist; it takes the permissions
+# of its parent. The same function as Install-Pulsar.ps1's.
+function Copy-PlainTree([string] $source, [string] $target) {
+    $null = New-Item -ItemType Directory -Path $target
+    foreach ($child in (New-Object IO.DirectoryInfo $source).GetFileSystemInfos()) {
+        if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "$($child.FullName) is a link, not a file or folder. Nothing is copied through links." }
+        if ($child -is [IO.DirectoryInfo]) { Copy-PlainTree $child.FullName (Join-Path $target $child.Name) }
+        else { [IO.File]::Copy($child.FullName, (Join-Path $target $child.Name), $false) }
+    }
+}
+
+# libpq's SSL settings for pg_dump, psql and pg_restore, from the keys of an Npgsql connection string ($parts: lower-case
+# names), so they connect as the panel does and not with libpq's default (prefer): SSL Mode becomes PGSSLMODE and Root
+# Certificate PGSSLROOTCERT. No SSL Mode asks for nothing (Npgsql's default, prefer, is libpq's). A mode not known here is
+# refused: guessing one could connect with less than the connection string asks for. The same function as Install-Pulsar.ps1's.
+function Get-PgSslEnvironment($parts) {
+    $modes = @{ disable = 'disable'; allow = 'allow'; prefer = 'prefer'; require = 'require'; verifyca = 'verify-ca'; verifyfull = 'verify-full' }
+    $environment = @{}
+    foreach ($key in 'ssl mode', 'sslmode') {
+        if (-not $parts.ContainsKey($key)) { continue }
+        $mode = $parts[$key].Trim().ToLowerInvariant()
+        if (-not $modes.ContainsKey($mode)) { throw "The connection string's SSL Mode '$($parts[$key])' is not one of Disable, Allow, Prefer, Require, VerifyCA or VerifyFull." }
+        $environment['PGSSLMODE'] = $modes[$mode]
+    }
+    foreach ($key in 'root certificate', 'rootcertificate') {
+        if ($parts.ContainsKey($key) -and $parts[$key].Trim()) { $environment['PGSSLROOTCERT'] = $parts[$key].Trim() }
+    }
+    return $environment
+}
+
 $findings = @(Find-UntrustedWriters $PSCommandPath)
 if ($findings.Count -gt 0) {
     $shown = @($findings | Select-Object -First 10)
@@ -275,15 +306,17 @@ if ($parts.ContainsKey('port')) { $port = $parts['port'] }
 foreach ($name in @([Environment]::GetEnvironmentVariables('Process').Keys)) {
     if ("$name" -match '^(PG|PSQL)') { [Environment]::SetEnvironmentVariable("$name", $null, 'Process') }
 }
+$ssl = Get-PgSslEnvironment $parts
 $env:PGPASSWORD = $parts['password']
 try {
+    foreach ($name in $ssl.Keys) { Set-Item "Env:$name" $ssl[$name] }
     $ErrorActionPreference = 'Continue'
     $output = & (Join-Path $PostgresBin 'pg_dump.exe') -h $parts['host'] -p $port -U $parts['username'] -d $parts['database'] -Fc -f (Join-Path $target 'pulsar.dump') 2>&1
     $ErrorActionPreference = 'Stop'
     if ($LASTEXITCODE -ne 0) { throw "pg_dump failed: $output" }
 }
 finally {
-    Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+    Remove-Item Env:PGPASSWORD, Env:PGSSLMODE, Env:PGSSLROOTCERT -ErrorAction SilentlyContinue
 }
 
 Write-Host '==> Copying the keys, certificates and settings' -ForegroundColor Cyan
@@ -292,8 +325,17 @@ Assert-TrustedDestination
 if (-not (Test-PrivateFolder $target)) { throw "$target changed while the database was dumped: the keys, certificates and settings were not copied." }
 # Not -Force: a panel-data folder already there is not this script's, and is refused.
 $data = New-Item -ItemType Directory (Join-Path $target 'panel-data')
-foreach ($folder in 'keys', 'keyring', 'tls') {
-    if (Test-Path (Join-Path $panelData $folder)) { Copy-Item (Join-Path $panelData $folder) $data -Recurse }
+# The panel's account can write these folders: a link it planted in one (a junction back to a parent, or to a big disk) would
+# be followed by a recursive copy, as SYSTEM, until the disk filled. A link stops the backup (a backup without its keys is
+# worth nothing) and the half-made folder goes.
+try {
+    foreach ($folder in 'keys', 'keyring', 'tls') {
+        if (Test-Path -LiteralPath (Join-Path $panelData $folder)) { Copy-PlainTree (Join-Path $panelData $folder) (Join-Path $data $folder) }
+    }
+}
+catch {
+    Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
+    throw "The panel's keys and certificates were not backed up: $($_.Exception.Message) The folder $target was removed. Look at who made the link in $panelData before backing up again."
 }
 Copy-Item $config $target
 
