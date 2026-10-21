@@ -77,7 +77,11 @@ param(
     [ValidateNotNullOrEmpty()] [string] $UpdateSigningKey,
     # Fails a build whose update manifest would not be signed (no -UpdateSigningKey, or a version that is not
     # major.minor.patch): for a release that must be an update.
-    [switch] $RequireUpdateSignature)
+    [switch] $RequireUpdateSignature,
+    # Builds although the checkout has uncommitted changes (modified or untracked files): for a build to try things out. The
+    # release then records "dirty" next to the commit, and Publish-GitHubRelease.ps1 never publishes it. Without this switch a
+    # build refuses such a tree, since the release would not be what any commit contains.
+    [switch] $AllowDirtyTree)
 $ErrorActionPreference = 'Stop'
 # The signing options that were given, whatever their value (an empty one is refused above, never taken for "unsigned").
 $GivenSigningOptions = @('SigningThumbprint', 'TrustedSigningMetadata', 'TrustedSigningDlib', 'SignTool', 'TimestampUrl' | Where-Object { $PSBoundParameters.ContainsKey($_) })
@@ -736,6 +740,39 @@ function Remove-BuildWork([string] $work, $signing) {
     if ($signing -and $signing.MetadataFolder -and (Split-Path -Leaf $signing.MetadataFolder) -like 'pulsar-signing-*') { Remove-FolderPatiently $signing.MetadataFolder }
 }
 
+# The commit this checkout is at and what is not committed in it (git status: modified, staged and untracked files; ignored ones,
+# such as the built web app, are not changes): the release records the commit, and is built only from a tree that is exactly it.
+function Get-BuildState([string] $repository) {
+    $commit = @(& git -C $repository rev-parse HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0 -or $commit.Count -ne 1 -or "$($commit[0])" -cnotmatch '^[0-9a-f]{40}\z') {
+        throw "git could not read the commit of $repository (is git installed, and is this a checkout?): a release is built only when the commit it is built at can be recorded."
+    }
+    $changes = @(& git -C $repository status --porcelain --untracked-files=normal 2>$null)
+    if ($LASTEXITCODE -ne 0) { throw "git could not read the state of $repository." }
+    return [pscustomobject]@{ Commit = "$($commit[0])"; Changes = @($changes | Where-Object { $_ } | ForEach-Object { "$_" }) }
+}
+
+# Refuses a tree with uncommitted changes unless $allowDirty (-AllowDirtyTree): the release would not be what any commit holds,
+# and the tag Publish-GitHubRelease.ps1 makes would name a commit that is not what was built.
+function Assert-BuildTreeClean($state, [bool] $allowDirty) {
+    if (@($state.Changes).Count -eq 0) { return }
+    if ($allowDirty) {
+        Write-Warning "-AllowDirtyTree: $(@($state.Changes).Count) uncommitted change(s) go into this build. It is marked dirty and will not be published."
+        return
+    }
+    $shown = @($state.Changes | Select-Object -First 10)
+    $more = ''
+    if (@($state.Changes).Count -gt $shown.Count) { $more = "$([Environment]::NewLine)  ... and $(@($state.Changes).Count - $shown.Count) more" }
+    throw "The checkout has uncommitted changes, so this release would not be what the commit $($state.Commit) contains:$([Environment]::NewLine)  $($shown -join "$([Environment]::NewLine)  ")$more$([Environment]::NewLine)Commit or stash them and build again, or add -AllowDirtyTree for a build that is only to try things out (it cannot be published)."
+}
+
+# The text of pulsar-<version>.commit: the commit, and "dirty" after it when the tree had changes (-AllowDirtyTree).
+function Get-CommitRecord($state) {
+    $text = "$($state.Commit)"
+    if (@($state.Changes).Count -gt 0) { $text += ' dirty' }
+    return $text + "`n"
+}
+
 function Write-Checksum([string] $path) {
     $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  $(Split-Path $path -Leaf)" | Set-Content "$path.sha256" -Encoding ASCII
@@ -880,6 +917,9 @@ function Restore-UpdatePassphrase {
 }
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+# First of all: the commit being built, and that the tree is exactly it (or -AllowDirtyTree says it is a build to try things out).
+$buildState = Get-BuildState $repo
+Assert-BuildTreeClean $buildState ([bool]$AllowDirtyTree)
 $name = "pulsar-$Version-windows-x64"
 # The setups' Windows version resource takes numbers only.
 $numeric = ($Version -split '[-+]')[0]
@@ -1003,7 +1043,8 @@ try {
 
     # What the packages carry says it is signed only now that the programs and the MSI are, verified again.
     Assert-ProgramsSigned
-    $releaseInfo = [ordered]@{ version = $Version; runtimes = $runtimes; postgresMinimum = $PostgresMinimum }
+    $releaseInfo = [ordered]@{ version = $Version; commit = $buildState.Commit; runtimes = $runtimes; postgresMinimum = $PostgresMinimum }
+    if (@($buildState.Changes).Count -gt 0) { $releaseInfo['dirty'] = $true }
     if ($Signing) { $releaseInfo['signing'] = [ordered]@{ signed = $true; signer = $Signing.Subject } }
     # An ASCII file: a character of the signer's name outside ASCII (a city, say) is written as a JSON escape.
     [regex]::Replace(($releaseInfo | ConvertTo-Json), '[^\x00-\x7F]', { param($match) '\u{0:x4}' -f [int][char]$match.Value }) | Set-Content (Join-Path $staging 'release.json') -Encoding ASCII
@@ -1051,6 +1092,12 @@ Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas u
 
     # All there, signed and verified: now it replaces what an earlier build of this version left in the output folder.
     $published = @($name, "$name.zip", "$name.zip.sha256", (Split-Path $msi -Leaf), "$(Split-Path $msi -Leaf).sha256")
+    # The commit this release was built at, in a file of its own: the signed manifest names it (with its SHA-256), so
+    # Publish-GitHubRelease.ps1 can check, without opening the ZIP, that the tag it makes is at the commit that was built.
+    $commitFile = Join-Path $Work "pulsar-$Version.commit"
+    [IO.File]::WriteAllText($commitFile, (Get-CommitRecord $buildState), (New-Object Text.UTF8Encoding $false))
+    $null = Write-Checksum $commitFile
+    $published += @((Split-Path $commitFile -Leaf), "$(Split-Path $commitFile -Leaf).sha256")
     if ($iscc) { $published += @($setup, $agentSetup | ForEach-Object { Split-Path $_ -Leaf; "$(Split-Path $_ -Leaf).sha256" }) }
     # The update manifest names every file published (not the checksum files, and not itself), and is signed last: only a
     # build that got here, with everything made, signed and verified, ever uses the update key.

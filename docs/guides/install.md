@@ -37,9 +37,12 @@ what the wizard does not ask.
 1. Download `PulsarSetup-<version>.exe` and its `.sha256` file from the project's
    [Releases](https://github.com/Ayrton09/Pulsar/releases) page, and check it as [step 2](#2-download-pulsar) shows
    for the ZIP: `(Get-FileHash .\PulsarSetup-<version>.exe -Algorithm SHA256).Hash` must show the value in the
-   `.sha256` file. The release workflow builds the setups and attests their provenance, as it does the ZIP's: with
-   the GitHub CLI, `gh attestation verify .\PulsarSetup-<version>.exe --repo Ayrton09/Pulsar` (and the same for
-   `PulsarAgentSetup-<version>.exe`) says it was built by this repository's workflow from the tag's commit.
+   `.sha256` file. A release built by the repository's release workflow on GitHub attests its provenance, the ZIP's and
+   the setups': with the GitHub CLI, `gh attestation verify .\PulsarSetup-<version>.exe --repo Ayrton09/Pulsar` (and
+   the same for `PulsarAgentSetup-<version>.exe`) says it was built by that workflow from the tag's commit. **Releases
+   the maintainer builds on their own PC and publishes with `Publish-GitHubRelease.ps1` (the ones installed panels and
+   agents update to) carry no attestation, and that command fails for them**: the SHA-256 file is their check, and
+   the signature of the update manifest, which panels and agents verify themselves, is the one for updates.
 2. Run it. It asks for administrator rights. The setups are not code-signed yet, so Windows SmartScreen may say
    *Windows protected your PC*: for a file whose SHA-256 you checked, click **More info**, check that the app is
    `PulsarSetup-<version>.exe`, and click **Run anyway**.
@@ -369,8 +372,11 @@ do it while no game server runs here, or accept that):
    Get-Content .\pulsar-<version>-windows-x64.zip.sha256
    ```
 
-   Both must show the same value. A release built by the project's release workflow also carries a provenance
-   attestation, which you can check with the GitHub CLI: `gh attestation verify .\pulsar-<version>-windows-x64.zip --repo Ayrton09/Pulsar`.
+   Both must show the same value. A release built by the project's release workflow on GitHub also carries a
+   provenance attestation, which you can check with the GitHub CLI:
+   `gh attestation verify .\pulsar-<version>-windows-x64.zip --repo Ayrton09/Pulsar`. A release built on the
+   maintainer's PC and published from there has none (the command then says it found no attestation): its SHA-256
+   is the check, and the one-click updates also check the manifest's signature.
 3. Extract it into a **new folder in `C:\Program Files`**, which only administrators can change. Open **Windows
    PowerShell as administrator** (Start → type *PowerShell* → *Run as administrator*), go to the download folder and
    run:

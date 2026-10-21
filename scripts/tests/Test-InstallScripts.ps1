@@ -3227,11 +3227,56 @@ Check '-MinimumUpdateFrom defaults to 1.0.0 and takes only major.minor.patch; -R
     $minimumParameter.Count -eq 1 -and $minimumParameter[0].DefaultValue.Value -ceq '1.0.0' -and $minimumParameter[0].Extent.Text -match '\[ValidatePattern\(' -and
     @($buildParams | Where-Object { $_.Name.VariablePath.UserPath -in 'ReleaseNotes', 'UpdateSigningKey', 'RequireUpdateSignature' }).Count -eq 3)
 
+# 10. Build-Release.ps1 builds a clean tree, and records the commit it built.
+foreach ($part in (Get-ScriptParts $buildReleasePath @('Get-BuildState', 'Assert-BuildTreeClean', 'Get-CommitRecord')).Values) { . ([scriptblock]::Create($part)) }
+$script:gitReply = @{}
+function git { $global:LASTEXITCODE = 0; $key = ($args | Where-Object { $_ -notin '-C' } | Select-Object -Skip 1) -join ' '; if ($script:gitReply.ContainsKey($key)) { $v = $script:gitReply[$key]; if ($v -is [int]) { $global:LASTEXITCODE = $v; return }; return $v }; $global:LASTEXITCODE = 128 }
+$script:gitReply = @{ 'rev-parse HEAD' = ('1' * 40); 'status --porcelain --untracked-files=normal' = @() }
+$state = Get-BuildState 'C:\repo'
+Check 'build: a clean checkout has its commit and no changes' ($state.Commit -ceq ('1' * 40) -and @($state.Changes).Count -eq 0)
+$script:gitReply['status --porcelain --untracked-files=normal'] = @(' M src/Pulsar.Api/Program.cs', '?? scratch.txt')
+$state = Get-BuildState 'C:\repo'
+Check 'build: modified and untracked files are changes' (@($state.Changes).Count -eq 2)
+$caught = Get-Thrown { Assert-BuildTreeClean $state $false }
+Check 'build: a tree with changes is refused, naming them and -AllowDirtyTree, before anything is built' (
+    $caught -match 'uncommitted changes' -and $caught -match 'Program\.cs' -and $caught -match 'scratch\.txt' -and $caught -match '-AllowDirtyTree')
+Check 'build: ...unless -AllowDirtyTree says it is a build for development' ($null -eq (Get-Thrown { Assert-BuildTreeClean $state $true }))
+Check 'build: a clean tree passes' ($null -eq (Get-Thrown { Assert-BuildTreeClean ([pscustomobject]@{ Commit = ('1' * 40); Changes = @() }) $false }))
+$many = [pscustomobject]@{ Commit = ('1' * 40); Changes = @(1..25 | ForEach-Object { " M file$_.cs" }) }
+Check 'build: a long list of changes is cut' ((Get-Thrown { Assert-BuildTreeClean $many $false }) -match 'and 15 more')
+Check 'build: the commit record is the commit alone for a clean tree, and says dirty for a development build' (
+    (Get-CommitRecord ([pscustomobject]@{ Commit = ('1' * 40); Changes = @() })) -ceq (('1' * 40) + "`n") -and (Get-CommitRecord $state) -ceq (('1' * 40) + " dirty`n"))
+$script:gitReply['rev-parse HEAD'] = 128
+Check 'build: a checkout git cannot read (no git, not a repository) stops the build: the commit cannot be recorded' ((Get-Thrown { Get-BuildState 'C:\repo' }) -match 'could not read the commit')
+$script:gitReply['rev-parse HEAD'] = 'not a commit'
+Check 'build: ...nor does an answer that is no commit pass' ((Get-Thrown { Get-BuildState 'C:\repo' }) -match 'could not read the commit')
+Remove-Item function:git
+$buildText = Get-Content -Raw -LiteralPath $buildReleasePath
+Check 'build: -AllowDirtyTree is a switch; the tree is checked before the work folder and the long builds, and the state is read once' (
+    @($buildParams | Where-Object { $_.Name.VariablePath.UserPath -eq 'AllowDirtyTree' -and $_.StaticType.Name -eq 'SwitchParameter' }).Count -eq 1 -and
+    $buildText.IndexOf('Assert-BuildTreeClean $buildState') -gt 0 -and $buildText.IndexOf('Assert-BuildTreeClean $buildState') -lt $buildText.IndexOf('npm ci --ignore-scripts') -and $buildText.IndexOf('Assert-BuildTreeClean $buildState') -lt $buildText.IndexOf('$Work = Join-Path $Output') -and
+    ([regex]::Matches($buildText, 'Get-BuildState \$repo')).Count -eq 1)
+Check 'build: the commit is in release.json and in pulsar-<version>.commit, which is published and named by the signed manifest, with a checksum' (
+    $buildText -match "commit = \`$buildState\.Commit" -and $buildText -match 'pulsar-\$Version\.commit' -and $buildText -match "Get-CommitRecord \`$buildState" -and $buildText -match '(?s)\$commitFile.*Write-Checksum \$commitFile.*\$published' )
+
+# 11. The passphrase of a new update key is in the environment of the signer only, not of the build servers dotnet leaves running.
+$keyScript = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\release\New-UpdateSigningKey.ps1')
+$keyPublish = $keyScript.IndexOf('dotnet publish')
+$keySet = $keyScript.IndexOf("SetEnvironmentVariable('PULSAR_UPDATE_KEY_PASSPHRASE', `$passphrase")
+$keyRun = $keyScript.IndexOf('new-key $Path')
+$keyClear = $keyScript.LastIndexOf("SetEnvironmentVariable('PULSAR_UPDATE_KEY_PASSPHRASE', `$null")
+Check 'key: the signer is built first, with no build server left running (-nodeReuse:false, --disable-build-servers, no shared compilation)' (
+    $keyPublish -gt 0 -and $keyScript -match '-nodeReuse:false' -and $keyScript -match '--disable-build-servers' -and $keyScript -match '-p:UseSharedCompilation=false' -and $keyScript -notmatch 'dotnet run')
+Check 'key: the passphrase is put in the environment after the build, runs only the signer, and is taken out again when it ends' (
+    $keyPublish -lt $keySet -and $keySet -lt $keyRun -and $keyRun -lt $keyClear -and $keyScript.Substring($keySet, $keyRun - $keySet) -notmatch 'dotnet')
+Check 'key: the built signer is run directly (not through dotnet), and its folder is a temporary one that is removed' (
+    $keyScript -match '(?s)\$signer = Join-Path \$build ''pulsar-update-signer\.exe''.*& \$signer new-key \$Path' -and $keyScript -match 'Remove-Item -LiteralPath \$build -Recurse -Force')
+
 # --- Phase 19: Publish-GitHubRelease.ps1 (gh and the signer are mocked) -------------------------
 
 $publishPath = Join-Path $PSScriptRoot '..\release\Publish-GitHubRelease.ps1'
 $publishText = Get-Content -Raw -LiteralPath $publishPath
-$publishParts = Get-ScriptParts $publishPath @('Invoke-Gh', 'Test-GhInstalled', 'Assert-ManifestVerifies', 'Get-UpdateSigner', 'Test-ReleaseFolder', 'Assert-GitHubReady') @('Repository', 'UpdateManifestName', 'UpdateSignatureName')
+$publishParts = Get-ScriptParts $publishPath @('Invoke-Gh', 'Test-GhInstalled', 'Assert-ManifestVerifies', 'Get-UpdateSigner', 'Test-ReleaseFolder', 'Assert-GitHubReady', 'Get-RecordedCommit', 'Assert-CommitRecorded', 'Resolve-TargetCommit') @('Repository', 'UpdateManifestName', 'UpdateSignatureName')
 foreach ($part in $publishParts.Values) { . ([scriptblock]::Create($part)) }
 Check 'publish: only the project''s own repository' ($Repository -ceq 'Ayrton09/Pulsar' -and $publishText -match "'--repo', \`$Repository")
 
@@ -3264,7 +3309,7 @@ try {
     function New-PublishFolder([string] $name, [string] $version = '1.2.3') {
         $folder = Join-Path $publishRoot $name
         $null = New-Item -ItemType Directory $folder
-        $files = [ordered]@{ "pulsar-$version-windows-x64.zip" = [byte[]](1..120); "pulsar-agent-$version-windows-x64.msi" = [byte[]](3..80) }
+        $files = [ordered]@{ "pulsar-$version-windows-x64.zip" = [byte[]](1..120); "pulsar-agent-$version-windows-x64.msi" = [byte[]](3..80); "pulsar-$version.commit" = [Text.Encoding]::ASCII.GetBytes(("a" * 40) + "`n") }
         foreach ($file in $files.Keys) {
             [IO.File]::WriteAllBytes((Join-Path $folder $file), $files[$file])
             $hash = (Get-FileHash -LiteralPath (Join-Path $folder $file) -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -3281,7 +3326,7 @@ try {
     $release = Test-ReleaseFolder $good '1.2.3' 'signer.exe'
     $uploads = @($release.Files | ForEach-Object { Split-Path -Leaf $_ })
     Check 'publish: the manifest''s files, their checksum files, the manifest and its signature are uploaded, and nothing else in the folder' (
-        ($uploads -join ',') -ceq 'pulsar-1.2.3-windows-x64.zip,pulsar-1.2.3-windows-x64.zip.sha256,pulsar-agent-1.2.3-windows-x64.msi,pulsar-agent-1.2.3-windows-x64.msi.sha256,pulsar-update.json,pulsar-update.json.sig') ($uploads -join ',')
+        ($uploads -join ',') -ceq 'pulsar-1.2.3-windows-x64.zip,pulsar-1.2.3-windows-x64.zip.sha256,pulsar-agent-1.2.3-windows-x64.msi,pulsar-agent-1.2.3-windows-x64.msi.sha256,pulsar-1.2.3.commit,pulsar-1.2.3.commit.sha256,pulsar-update.json,pulsar-update.json.sig') ($uploads -join ',')
     Check 'publish: the signature is verified (the signer''s verify, the pinned keys) on the manifest of the folder' ($verifyCalls.Count -eq 1 -and $verifyCalls[0] -ceq (Join-Path $good 'pulsar-update.json'))
     $verifyFails = $true
     Check 'publish: a signature that does not verify refuses the release' ((Get-Thrown { Test-ReleaseFolder $good '1.2.3' 'signer.exe' }) -match 'does not verify against the keys Pulsar trusts')
@@ -3328,6 +3373,10 @@ try {
     $fakeSigner = Join-Path $publishRoot 'pulsar-update-signer.exe'
     Set-Content -LiteralPath $fakeSigner -Value 'not run: Assert-ManifestVerifies is mocked'
     function Get-UpdateSigner([string] $path, [string] $folder) { return $path }
+    # The checkout's commit, which `git rev-parse` answers (HEAD, a branch, a commit); the build recorded "a" * 40.
+    $script:gitAnswer = 'a' * 40
+    $script:gitSeen = New-Object Collections.Generic.List[string]
+    function git { $script:gitSeen.Add($args -join ' '); $global:LASTEXITCODE = $(if ($script:gitAnswer) { 0 } else { 128 }); $script:gitAnswer }
     function Invoke-PublishMain([hashtable] $options = @{}) {
         $ghCalls.Clear(); $verifyCalls.Clear()
         $ghState.Visibility = $(if ($options['Visibility']) { $options['Visibility'] } else { 'PUBLIC' })
@@ -3344,7 +3393,7 @@ try {
     if ($create.Count -eq 1) {
         $line = $create[0]
         Check 'publish: gh release create v<version> <files> --repo Ayrton09/Pulsar --title ... --notes-file ... --target ... as the latest release' (
-            $line -match '^release create v1\.2\.3 ' -and $line -match '--repo Ayrton09/Pulsar' -and $line -match '--title Pulsar 1\.2\.3' -and $line -match '--notes-file .+notes\.md' -and $line -match '--target main' -and $line -match '--latest' -and
+            $line -match '^release create v1\.2\.3 ' -and $line -match '--repo Ayrton09/Pulsar' -and $line -match '--title Pulsar 1\.2\.3' -and $line -match '--notes-file .+notes\.md' -and $line -match "--target $('a' * 40)" -and $line -match '--latest' -and
             $line -notmatch '--draft|--prerelease' -and $line -match 'pulsar-update\.json ' -and $line -match 'pulsar-update\.json\.sig ' -and $line -match 'zip\.sha256' -and $line -notmatch 'pulsar-1\.0\.0') $line
         Check 'publish: the checks all come before the upload (visibility, release and tag, then create)' (
             $ghCalls[0] -like 'repo view*' -and $ghCalls[1] -like 'release view*' -and $ghCalls[2] -like 'api repos/*' -and $ghCalls[3] -like 'release create*' -and $ghCalls.Count -eq 4) ($ghCalls -join ' | ')
@@ -3364,9 +3413,43 @@ try {
     $caught = Invoke-PublishMain @{ Notes = $notesText }
     Check 'publish: -Notes names the notes file given' ($null -eq $caught -and (@($ghCalls | Where-Object { $_ -like 'release create*' })[0]) -like '*--notes-file*mynotes.md*') "$caught"
     Check 'publish: the tag is made at a commit (-Target, or this checkout''s HEAD), no token is a parameter or an argument, and no draft or pre-release' (
-        $publishText -match "'--target', \`$Target" -and $publishText -match 'rev-parse HEAD' -and $publishText -notmatch '(?i)GH_TOKEN|GITHUB_TOKEN|password|passphrase|--draft|--prerelease' -and $publishText -match "'--latest'")
+        $publishText -match "'--target', \`$Target" -and $publishText -match 'rev-parse --verify' -and $publishText -notmatch '(?i)GH_TOKEN|GITHUB_TOKEN|password|passphrase|--draft|--prerelease' -and $publishText -match "'--latest'")
     $order = @('Test-ReleaseFolder $Folder', 'Assert-GitHubReady $Repository', "'release', 'create'") | ForEach-Object { $publishText.IndexOf($_) }
     Check 'publish: the folder and the signature are checked, then GitHub, and only then the release is created' ($order[0] -gt 0 -and $order[0] -lt $order[1] -and $order[1] -lt $order[2]) ($order -join ',')
+
+    # 10. The tag is made at the commit the release was built at, which the signed manifest records.
+    $recorded = Get-RecordedCommit (Get-Content -Raw -LiteralPath (Join-Path $good 'pulsar-update.json') | ConvertFrom-Json) $good '1.2.3'
+    Check 'commit: the commit a release was built at is read from the file the signed manifest names' ($recorded.Commit -ceq ('a' * 40) -and -not $recorded.Dirty)
+    $script:gitAnswer = 'b' * 40
+    $caught = Invoke-PublishMain
+    Check 'commit: a checkout whose commit is not the one the release was built at publishes nothing (gh is not asked)' (
+        $null -ne $caught -and $caught.Exception.Message -match ('built at commit ' + ('a' * 40)) -and $caught.Exception.Message -match ('b' * 40) -and $ghCalls.Count -eq 0) "$caught"
+    $script:gitAnswer = 'a' * 40
+    $caught = Invoke-PublishMain
+    Check 'commit: the checkout''s commit being the recorded one, the tag is made at that commit' ($null -eq $caught -and @($ghCalls | Where-Object { $_ -like "release create*--target $('a' * 40)*" }).Count -eq 1) "$caught"
+    $script:gitAnswer = ''
+    $caught = Invoke-PublishMain
+    Check 'commit: a target that git cannot resolve to a commit stops the publication before gh is asked' ($null -ne $caught -and $caught.Exception.Message -match 'is not a commit' -and $ghCalls.Count -eq 0) "$caught"
+    $script:gitAnswer = 'a' * 40
+    Check 'commit: the target is resolved to a full commit (a branch name or a short one cannot differ from the recorded)' ((Resolve-TargetCommit 'main') -ceq ('a' * 40) -and ($script:gitSeen -join '|') -match 'rev-parse --verify --quiet main\^\{commit\}')
+    Check 'commit: a target with characters no commit or branch has is refused, git is not asked' (
+        (Get-Thrown { Resolve-TargetCommit 'main; calc' }) -match 'not a commit or a branch name')
+    # A release without the file (built before it existed), with a file that is no commit, or built from a tree with changes.
+    $noCommit = New-PublishFolder 'nocommit'
+    $manifestJson = Get-Content -Raw -LiteralPath (Join-Path $noCommit 'pulsar-update.json') | ConvertFrom-Json
+    $manifestJson.files = @($manifestJson.files | Where-Object { $_.name -notlike '*.commit' })
+    Check 'commit: a manifest that does not name the commit file is refused: the commit of the release is unknown' ((Get-Thrown { Get-RecordedCommit $manifestJson $noCommit '1.2.3' }) -match 'does not name pulsar-1\.2\.3\.commit.*Build-Release\.ps1')
+    [IO.File]::WriteAllText((Join-Path $noCommit 'pulsar-1.2.3.commit'), 'main')
+    Check 'commit: a commit file that holds no commit is refused' ((Get-Thrown { Get-RecordedCommit (Get-Content -Raw -LiteralPath (Join-Path $noCommit 'pulsar-update.json') | ConvertFrom-Json) $noCommit '1.2.3' }) -match 'is not a commit')
+    [IO.File]::WriteAllText((Join-Path $noCommit 'pulsar-1.2.3.commit'), (('c' * 40) + " dirty`n"))
+    $dirtyRecord = Get-RecordedCommit (Get-Content -Raw -LiteralPath (Join-Path $noCommit 'pulsar-update.json') | ConvertFrom-Json) $noCommit '1.2.3'
+    Check 'commit: a build made from a tree with uncommitted changes is read as dirty, and is never published' (
+        $dirtyRecord.Dirty -and $dirtyRecord.Commit -ceq ('c' * 40) -and (Get-Thrown { Assert-CommitRecorded $dirtyRecord ('c' * 40) }) -match 'uncommitted changes')
+    Check 'commit: the recorded commit and the target agree, or the message names both' (
+        $null -eq (Get-Thrown { Assert-CommitRecorded ([pscustomobject]@{ Commit = ('a' * 40); Dirty = $false }) ('a' * 40) }) -and
+        (Get-Thrown { Assert-CommitRecorded ([pscustomobject]@{ Commit = ('a' * 40); Dirty = $false }) ('d' * 40) }) -match "$('a' * 40).*$('d' * 40)")
+    Check 'commit: the check comes with the others, before gh is asked and before anything is uploaded' (
+        $publishText.IndexOf('Assert-CommitRecorded (Get-RecordedCommit') -gt $publishText.IndexOf('Test-ReleaseFolder $Folder') -and $publishText.IndexOf('Assert-CommitRecorded (Get-RecordedCommit') -lt $publishText.IndexOf('Assert-GitHubReady $Repository'))
 }
 finally {
     Remove-Item -LiteralPath $publishRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -4225,6 +4308,10 @@ Check 'uninstall text: ...and that the HTTPS certificate''s file stays too' (([r
 $install = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\docs\guides\install.md')
 Check 'uninstall text: install.md says the update backups, the settings of the backups and the PFX stay, and how to delete them' (
     $install -match 'Updates\\backups' -and $install -match '(?s)Uninstalling.*Updates\\backups.*(passwords|PFX)')
+
+# 6. The docs promise `gh attestation verify` only for releases the workflow built, not for the ones published from the maintainer's PC.
+Check 'docs: install.md says gh attestation verify works for releases the workflow built and fails for locally built ones, at both places it names it' (
+    ([regex]::Matches($install, 'gh attestation verify')).Count -eq 2 -and ([regex]::Matches($install, '(?s)(carry no attestation|has none \(the command then says)')).Count -eq 2 -and $install -match 'Publish-GitHubRelease\.ps1' -and $install -match 'SHA-256')
 
 # 15. A silent setup shows no page, so the ports of its command line are checked before anything is installed.
 Check 'setup: a silent setup checks /PORT, /SFTPPORT and /AGENTSPORT in InitializeSetup (the wizard''s page checks never run), refusing with the same message' (
