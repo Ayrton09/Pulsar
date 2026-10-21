@@ -65,6 +65,7 @@ internal sealed partial class SftpAuthenticator : IDisposable
     private readonly ILogger<SftpAuthenticator> _logger;
     private readonly PartitionedRateLimiter<string> _perAddress;
     private readonly PartitionedRateLimiter<string> _keyQuestions;
+    private readonly TimeSpan _failedCheckTime;
 
     public SftpAuthenticator(IServiceScopeFactory scopes, SftpConnections connections, FailedLoginBudget failures, SignInLocks locks,
         IOptions<SftpOptions> options, IConfiguration configuration, TimeProvider clock, ILogger<SftpAuthenticator> logger)
@@ -77,6 +78,7 @@ internal sealed partial class SftpAuthenticator : IDisposable
         _clock = clock;
         _logger = logger;
         var limits = configuration.GetSection(AuthRateLimitOptions.SectionName).Get<AuthRateLimitOptions>() ?? new AuthRateLimitOptions();
+        _failedCheckTime = limits.FailedPasswordCheckTime;
         _perAddress = PartitionedRateLimiter.Create<string, string>(partition => RateLimitPartition.GetFixedWindowLimiter(partition,
             _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.PermitLimit, Window = limits.Window, QueueLimit = 0 }));
 
@@ -255,28 +257,9 @@ internal sealed partial class SftpAuthenticator : IDisposable
         return (principal is null ? Outcome.Failed : Outcome.SignedIn, principal, null);
     }
 
-    /// <summary>
-    /// A failed password check ends <see cref="SftpOptions.FailedPasswordCheckTime"/> after <paramref name="from"/> at the
-    /// earliest: an unknown name, a locked or disabled account and a wrong password cost different database work, which
-    /// the answer's time would otherwise tell.
-    /// </summary>
-    private async Task TakeFailedCheckTimeAsync(long from, CancellationToken cancellationToken)
-    {
-        var rest = _options.FailedPasswordCheckTime - _clock.GetElapsedTime(from);
-        if (rest <= TimeSpan.Zero)
-        {
-            return;
-        }
-
-        try
-        {
-            await Task.Delay(rest, _clock, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            // The connection ended: nobody waits for the answer.
-        }
-    }
+    /// <summary>A failed password check ends no sooner than the browser's does (<see cref="FailedCheckTime"/>).</summary>
+    private Task TakeFailedCheckTimeAsync(long from, CancellationToken cancellationToken) =>
+        FailedCheckTime.WaitOutAsync(_clock, from, _failedCheckTime, cancellationToken);
 
     private async Task<ClaimsPrincipal?> CheckCodeAsync(SftpConnection connection, UserId userId, string? shortId, string answer,
         CancellationToken cancellationToken)

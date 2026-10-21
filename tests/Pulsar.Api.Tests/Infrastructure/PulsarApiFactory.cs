@@ -97,6 +97,7 @@ public class PulsarApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("RateLimiting:Auth:PermitLimit", "1000");
         builder.UseSetting("RateLimiting:Auth:EnrollPermitLimit", "1000"); // a test class enrolls an agent per test
         builder.UseSetting("RateLimiting:Auth:AnonymousPermitLimit", "100000"); // every client starts with the session check
+        builder.UseSetting("RateLimiting:Auth:FailedPasswordCheckTime", "00:00:00"); // SftpSignInTimingTests sees it
         builder.UseSetting("DataProtection:KeysPath", KeysDirectory);
         builder.UseSetting("Pulsar:EnableTestGame", "true");
 

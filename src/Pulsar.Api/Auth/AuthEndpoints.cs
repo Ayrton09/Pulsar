@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Pulsar.Api.Http;
 using Pulsar.Api.Realtime;
 using Pulsar.Api.Security;
@@ -179,10 +180,12 @@ public static class AuthEndpoints
         FailedLoginBudget failures,
         SignInLocks locks,
         TimeProvider clock,
+        IOptions<AuthRateLimitOptions> limits,
         CancellationToken ct)
     {
         // One check at a time per name (SignInLocks): each wrong password counts, and each attempt keeps its audit entry.
         using var turn = await locks.AcquireAsync(users.NormalizeName(request.UserName), ct);
+        var checkedFrom = clock.GetTimestamp();
         var user = await users.FindByNameAsync(request.UserName);
         if (user is null)
         {
@@ -244,6 +247,7 @@ public static class AuthEndpoints
                 await db.SaveChangesAsync(CancellationToken.None);
             }
 
+            await FailedCheckTime.WaitOutAsync(clock, checkedFrom, limits.Value.FailedPasswordCheckTime, ct);
             return ApiProblems.Create(StatusCodes.Status401Unauthorized, "auth.invalid_credentials", "Invalid user name or password.");
         }
     }

@@ -57,6 +57,12 @@ public sealed class AuthRateLimitOptions
     /// asks Steam) and the previews that check a manifest or a schedule (<c>RateLimiting:Auth:LookupPermitLimit</c>).
     /// </summary>
     public int LookupPermitLimit { get; set; } = DefaultLookupPermitLimit;
+
+    /// <summary>
+    /// The least time a failed password check takes, in the browser and over SFTP (<see cref="FailedCheckTime"/>;
+    /// <c>RateLimiting:Auth:FailedPasswordCheckTime</c>).
+    /// </summary>
+    public TimeSpan FailedPasswordCheckTime { get; set; } = FailedCheckTime.Default;
 }
 
 internal static class ApiServiceCollectionExtensions
@@ -257,6 +263,7 @@ internal static class ApiServiceCollectionExtensions
     private static void AddRateLimiting(IServiceCollection services, IConfiguration configuration)
     {
         var limits = configuration.GetSection(AuthRateLimitOptions.SectionName).Get<AuthRateLimitOptions>() ?? new AuthRateLimitOptions();
+        services.AddOptions<AuthRateLimitOptions>().Bind(configuration.GetSection(AuthRateLimitOptions.SectionName));
         var downloads = configuration.GetSection(DownloadsOptions.SectionName).Get<DownloadsOptions>() ?? new DownloadsOptions();
         if (downloads.ConcurrentPerAddress < 1 || downloads.PerAddressPerHour < 1)
         {
