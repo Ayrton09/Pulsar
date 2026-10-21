@@ -289,6 +289,8 @@ $UpdateAgentCheckMinutes = 2
 # This -Update run (Start-UpdateRun) and the lock it holds (Lock-Update).
 $UpdateRun = $null
 $UpdateLock = $null
+# What -Uninstall could not remove (Remove-ProgramFolder): the run then ends with an error instead of saying Pulsar is removed.
+$UninstallLeft = @()
 
 # Exit codes with -Unattended (docs/guides/install.md, "Unattended installs"). Without it, a failure is an error, as it
 # always was (exit code 1 under powershell -File).
@@ -2551,6 +2553,20 @@ function Update-Panel {
     Write-StaleBackupTasks
 }
 
+# Deletes a program folder, trying again for a while (a service that has just stopped, or a virus scanner, may hold a file for a
+# moment), and says whether it is gone. The settings file goes first: it holds the passwords, and is the one thing that must not
+# stay when something else in the folder does.
+function Remove-ProgramFolder([string] $path, [int] $attempts = 5, [int] $delaySeconds = 2) {
+    for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+        if (-not (Test-Path -LiteralPath $path)) { return $true }
+        Remove-Item -LiteralPath (Join-Path $path 'appsettings.Production.json') -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+        if (-not (Test-Path -LiteralPath $path)) { return $true }
+        if ($attempt -lt $attempts -and $delaySeconds -gt 0) { Start-Sleep -Seconds $delaySeconds }
+    }
+    return $false
+}
+
 function Uninstall-Panel {
     Write-Step 'Removing the panel'
     Stop-Service $PanelService -ErrorAction SilentlyContinue
@@ -2560,7 +2576,9 @@ function Uninstall-Panel {
     Get-NetFirewallRule -Name 'Pulsar-Panel-SFTP' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     Get-NetFirewallRule -Name 'Pulsar-Panel-ACME' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     Start-Sleep -Seconds 2
-    Remove-Item $PanelDir -Recurse -Force -ErrorAction SilentlyContinue
+    if (-not (Remove-ProgramFolder $PanelDir)) {
+        $script:UninstallLeft += "the panel's folder $PanelDir could not all be deleted (a program holds a file in it open?), and its appsettings.Production.json, with the database and certificate passwords, $(if (Test-Path -LiteralPath (Join-Path $PanelDir 'appsettings.Production.json')) { 'is still in it' } else { 'was deleted first' })"
+    }
 }
 
 # --- Renewing the panel's certificate ---------------------------------------------------------------------------
@@ -3334,7 +3352,9 @@ function Uninstall-Agent {
         $null = Invoke-Native $Sc delete $AgentService
     }
     Start-Sleep -Seconds 2
-    Remove-Item $AgentDir -Recurse -Force -ErrorAction SilentlyContinue
+    if (-not (Remove-ProgramFolder $AgentDir)) {
+        $script:UninstallLeft += "the agent's folder $AgentDir could not all be deleted (a program holds a file in it open?)"
+    }
 }
 
 # --- Updating: backup, health checks and rollback ---------------------------------------------------------------------
@@ -5117,6 +5137,7 @@ $main = {
         Remove-UpdateJournal
         # What -Mode Agent -TrustCertificate or -Mode AllInOne trusted (an agent from the MSI may need it: then it stays).
         if (-not $agentPackage) { Remove-TrustedCertificates }
+        if ($UninstallLeft.Count -gt 0) { throw (New-SetupError $ExitFailed "Pulsar was removed, but not all of it: $($UninstallLeft -join '; '). Close what holds the files (or restart Windows) and delete those folders yourself; they are not used any more.") }
         $removed = if ($agentPackage) { 'The panel is removed (not the agent: see above).' }
         elseif (Test-Path -LiteralPath (Join-Path $AgentDir 'PulsarAgent.exe')) { 'Pulsar is removed, but for the agent''s program and data (see the warning above).' }
         else { 'Pulsar is removed.' }

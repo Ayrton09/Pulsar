@@ -4208,6 +4208,39 @@ Check 'database: without the release''s list of migrations nothing can be compar
 Check 'database: a connection string without host, user, database or password is left to the install to refuse' ($null -eq (Test-DatabaseVersion 'Host=db;Database=pulsar' ([pscustomobject]@{ ExitCode = 0; Output = '20270101000000_Future' }) $shippedIds))
 Check 'database: the migrations of the dump a backup holds are checked against the release as well (-RestoreFrom)' ($installText -match 'Get-BackupVersionProblems \$manifest')
 
+# 8. -Uninstall says so when the panel's folder, with its settings (the database password), could not be removed.
+foreach ($part in (Get-ScriptParts $installScript @('Remove-ProgramFolder', 'Uninstall-Panel')).Values) { . ([scriptblock]::Create($part)) }
+$gone = Join-Path $restoreRoot 'uninstall-gone'
+$null = New-Item -ItemType Directory (Join-Path $gone 'wwwroot')
+Set-Content -LiteralPath (Join-Path $gone 'appsettings.Production.json') '{"password":"x"}'
+Check 'uninstall: a folder is removed, and said to be' ((Remove-ProgramFolder $gone) -and -not (Test-Path -LiteralPath $gone))
+Check 'uninstall: a folder that is not there counts as removed' (Remove-ProgramFolder $gone)
+$held = Join-Path $restoreRoot 'uninstall-held'
+$null = New-Item -ItemType Directory (Join-Path $held 'wwwroot')
+Set-Content -LiteralPath (Join-Path $held 'appsettings.Production.json') '{"password":"x"}'
+Set-Content -LiteralPath (Join-Path $held 'wwwroot\open.dll') 'a program has this open'
+$lock = [IO.File]::Open((Join-Path $held 'wwwroot\open.dll'), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+try {
+    $started = Get-Date
+    $removed = Remove-ProgramFolder $held 3 0
+    Check 'uninstall: a folder with a file a program holds open is tried again, then reported as not removed' (-not $removed -and (Test-Path -LiteralPath (Join-Path $held 'wwwroot\open.dll')))
+    Check 'uninstall: ...but its settings file (the database password) went first, whatever else stayed' (-not (Test-Path -LiteralPath (Join-Path $held 'appsettings.Production.json')))
+    $left = & {
+        $PanelService = 'PulsarPanel'; $PanelDir = $held; $Sc = 'sc.exe'; $script:UninstallLeft = @()
+        function Stop-Service { }
+        function Invoke-Native { [pscustomobject]@{ ExitCode = 0; Output = '' } }
+        function Get-NetFirewallRule { }
+        function Start-Sleep { }
+        Uninstall-Panel
+        $script:UninstallLeft
+    }
+    Check 'uninstall: the panel''s program folder that stays is recorded, for the run to fail with' (@($left).Count -eq 1 -and "$left" -match [regex]::Escape($held))
+}
+finally { $lock.Dispose() }
+$mainText = $installText.Substring($installText.IndexOf('$main = {'))
+Check 'uninstall: a folder that could not be removed ends the run with an error (exit code 1), before it says Pulsar is removed' (
+    $mainText -match '(?s)if \(\$Uninstall\) \{.*if \(\$UninstallLeft.Count -gt 0\) \{ throw \(New-SetupError \$ExitFailed.*delete.*\).*Pulsar is removed\.' -and $installText -match '\$UninstallLeft = @\(\)')
+
 # 7. pg_dump, psql and pg_restore connect with the SSL settings of the Npgsql connection string, not libpq's default (prefer).
 $ssl = Get-PgSslEnvironment @{ 'ssl mode' = 'VerifyFull'; 'root certificate' = 'C:\certs\ca.crt' }
 Check 'ssl: SSL Mode=VerifyFull and Root Certificate become PGSSLMODE=verify-full and PGSSLROOTCERT' ($ssl['PGSSLMODE'] -ceq 'verify-full' -and $ssl['PGSSLROOTCERT'] -ceq 'C:\certs\ca.crt' -and $ssl.Count -eq 2)

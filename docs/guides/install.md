@@ -1082,7 +1082,10 @@ entry to try again. There is no option to delete the data: it is kept, as below.
 powershell -ExecutionPolicy Bypass -File .\Install-Pulsar.ps1 -Uninstall
 ```
 
-It removes the services, the programs (`Backup-Pulsar.ps1` in the panel's folder too), the firewall rules
+It removes the services, the programs (`Backup-Pulsar.ps1` in the panel's folder too; it tries again for ten seconds
+or so when a file is held open, deletes the panel's `appsettings.Production.json`, which holds the database and
+certificate passwords, first, and, if a folder still could not be removed, says which and ends with exit code `1`
+instead of reporting success: close what holds it and delete it yourself), the firewall rules
 (`Pulsar-Panel-HTTPS`, `Pulsar-Panel-Agents` for the agents' port, `Pulsar-Panel-SFTP` for SFTP and `Pulsar-Panel-ACME`
 for Let's Encrypt's check) and the trust the script gave the panel's
 certificate (in all-in-one mode, or with `-TrustCertificate`; a certificate this machine trusted already stays
