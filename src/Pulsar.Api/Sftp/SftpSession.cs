@@ -40,6 +40,9 @@ internal sealed partial class SftpSession(
     /// </summary>
     internal const int MaxListingEntries = 100_000;
 
+    /// <summary>Pages one listing reads at most, shown or not (names SFTP hides fill pages without counting as entries).</summary>
+    internal const int MaxListingPages = MaxListingEntries / FileLimits.MaxListEntries;
+
     /// <summary>
     /// Downloads a session starts again per minute for reads out of order (each is a command to the node, a transfer and an
     /// audit entry); reads in order, and the first download of each file, are not counted.
@@ -392,15 +395,17 @@ internal sealed partial class SftpSession(
     private async Task<SftpWriter> ReadDirectoryAsync(Request request, CancellationToken cancellationToken)
     {
         var handle = Find<DirectoryHandle>(request.Handle!);
-        if (handle.Index >= handle.Entries.Count && handle.Next is not null && handle.Listed >= MaxListingEntries)
+        // A page may hold only names SFTP hides: the next one is read, until one has names or the folder ends.
+        while (handle.Index >= handle.Entries.Count && handle.Next is { } after && handle.Server is { } server)
         {
-            // Each page reads the folder again on the node: one listing of a huge folder stops here.
-            LogListingCut(logger, connection.CorrelationId, handle.Listed);
-            handle.Next = null;
-        }
+            if (handle.Listed >= MaxListingEntries || handle.Pages >= MaxListingPages)
+            {
+                // Each page reads the folder again on the node: one listing of a huge folder stops here.
+                LogListingCut(logger, connection.CorrelationId, handle.Listed);
+                handle.Next = null;
+                break;
+            }
 
-        if (handle.Index >= handle.Entries.Count && handle.Next is { } after && handle.Server is { } server)
-        {
             await using var operation = await files.BeginAsync(cancellationToken);
             SftpFileSystem.Require(operation, server, write: false);
             var page = await operation.Files.ListPageAsync(server.Id, handle.Path, after, cancellationToken);
@@ -412,6 +417,7 @@ internal sealed partial class SftpSession(
             handle.Entries = Listed.From(page.Value.Entries, operation.Permissions.Has(Permissions.Server.FilesEdit, server.Target));
             handle.Index = 0;
             handle.Next = page.Value.Next;
+            handle.Pages++;
         }
 
         if (handle.Index >= handle.Entries.Count)

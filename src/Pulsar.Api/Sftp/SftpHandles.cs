@@ -35,6 +35,9 @@ internal sealed class DirectoryHandle(string clientPath, SftpServer? server, str
     /// <summary>Entries returned so far (<see cref="SftpSession.MaxListingEntries"/>).</summary>
     public int Listed { get; set; }
 
+    /// <summary>Pages of the folder read so far, the one OPENDIR read included (<see cref="SftpSession.MaxListingPages"/>).</summary>
+    public int Pages { get; set; } = 1;
+
     /// <summary>Where the next page starts; null: the last page is listed.</summary>
     public string? Next { get; set; } = next;
 }
