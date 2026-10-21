@@ -1759,7 +1759,9 @@ function Get-ReleaseMigrations([string] $dll = (Join-Path $PSScriptRoot 'panel\P
 # The ids of $applied (a database's __EFMigrationsHistory, or a backup's list) that the release does not ship: none of
 # $shipped (Get-ReleaseMigrations) starts with it. Nothing when $shipped is empty (the release's list is not known).
 function Find-UnshippedMigrations([string[]] $applied, [string[]] $shipped) {
-    if (@($shipped).Count -eq 0) { return }
+    # No list at all (Get-ReleaseMigrations gave nothing) arrives as $null, not as an empty array.
+    $shipped = @($shipped | Where-Object { $_ })
+    if ($shipped.Count -eq 0) { return }
     foreach ($id in @($applied | Where-Object { $_ })) {
         $known = $false
         foreach ($candidate in $shipped) { if ($candidate.StartsWith($id, [StringComparison]::Ordinal)) { $known = $true; break } }
@@ -2321,6 +2323,7 @@ function Assert-PanelInstallable {
         }
     }
     Assert-PublicIpInstallable
+    if ($ConnectionString) { Assert-DatabaseNotNewer $ConnectionString }
     if ($RestoreFrom) { return }
     if (-not $AdminPassword) {
         $script:AdminPassword = Read-Secret "Password for the panel's first administrator, '$AdminUserName' (at least 12 characters)" 'adminPassword'
@@ -3691,6 +3694,31 @@ function Invoke-PanelPsql($db, [string[]] $arguments) {
         return Invoke-Native $program @common @arguments
     }
     finally { Remove-Item Env:PGPASSWORD, Env:PGSSLMODE, Env:PGSSLROOTCERT -ErrorAction SilentlyContinue }
+}
+
+# Whether the database of -ConnectionString was migrated by a newer Pulsar than this release (a migration applied there that
+# this release does not ship): the panel does not run on such a database (it refuses it at start), and an install that found
+# out only then would have changed the machine for nothing. Asked with psql as the panel's own user; nothing is refused when it
+# cannot be asked (no psql here, an empty database with no migrations table, the connection string refused): the install then
+# goes on as it always did.
+function Assert-DatabaseNotNewer([string] $connection) {
+    $db = @{}
+    foreach ($part in $connection.Split(';')) {
+        if ($part -match '^\s*([^=]+?)\s*=\s*(.*)$') { $db[$Matches[1].ToLowerInvariant()] = $Matches[2] }
+    }
+    foreach ($key in 'host', 'username', 'database', 'password') {
+        if (-not $db.ContainsKey($key) -or -not $db[$key]) { return }
+    }
+    if (-not $db.ContainsKey('port')) { $db['port'] = '5432' }
+    Register-Secret $db['password']
+    try { $result = Invoke-PanelPsql $db @('-c', 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY "MigrationId"') }
+    catch { return }
+    if ($result.ExitCode -ne 0) { return }
+    $applied = @($result.Output -split "\r?\n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $unknown = @(Find-UnshippedMigrations $applied (Get-ReleaseMigrations))
+    if ($unknown.Count -gt 0) {
+        throw (New-SetupError $ExitUsage "The database in -ConnectionString was migrated by a newer Pulsar than this release: it has $(@($unknown | Select-Object -First 5) -join ', ') applied, which this release does not have, and the panel would not start on it. Install the newer release, or give a database a Pulsar of this version or older used. Nothing was changed.")
+    }
 }
 
 # The migrations the panel's database has applied, as one text (EF Core's __EFMigrationsHistory, the ids in order, a line each),

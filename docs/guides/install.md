@@ -327,6 +327,10 @@ itself.
 Already have a PostgreSQL elsewhere? Create an empty database and a user that owns it, and give the installer its
 connection string with `-ConnectionString "Host=…;Port=5432;Database=…;Username=…;Password=…"` instead, or in the
 `PULSAR_CONNECTION_STRING` environment variable of that PowerShell, which keeps the password off the command line.
+When this machine has `psql.exe`, the installer asks that database which migrations it has applied, and stops before
+changing anything if a newer Pulsar than this release migrated it (the panel refuses to start on such a database). The
+`SSL Mode` and `Root Certificate` of the connection string are also used by the programs the installer, the update's
+rollback and `Backup-Pulsar.ps1` run against it (`psql`, `pg_dump`, `pg_restore`), not only by the panel.
 
 ### The postgres superuser's password
 

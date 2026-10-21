@@ -1352,15 +1352,22 @@ try {
         & {
             $PanelService = 'PulsarPanel'; $AgentService = 'PulsarAgent'; $Mode = 'Panel'; $AdminUserName = 'admin'; $AdminPassword = ConvertTo-Secure 'a long enough password'
             $PanelData = Join-Path $root 'no-panel-data'; $UpdateRoot = Join-Path $root 'no-updates'
-            $Port = $freePorts[0]; $AgentsPort = 0; $SftpPort = $freePorts[1]; $CertificatePath = $null; $CertificatePassword = $null; $RestoreFrom = $null; $HostName = @()
+            $Port = $freePorts[0]; $AgentsPort = 0; $SftpPort = $freePorts[1]; $CertificatePath = $null; $CertificatePassword = $null; $RestoreFrom = $null; $HostName = @(); $ConnectionString = $null
             foreach ($name in $values.Keys) { Set-Variable -Name $name -Value $values[$name] }
             function Test-Service([string] $name) { return $false }
+            # The database of -ConnectionString is asked about its migrations in the checks below.
+            function Assert-DatabaseNotNewer([string] $connection) { $script:checkedConnection = $connection }
             # Copying and checking the backup have their own checks below; here the folder is read as it is.
             function Copy-RestoreSource([string] $source) { return $source }
             Get-Caught { Assert-PanelInstallable }
         }
     }
     Check 'preflight: free ports and no certificate pass' ($null -eq (Test-Preflight @{})) "$(Test-Preflight @{})"
+    $script:checkedConnection = 'not called'
+    $null = Test-Preflight @{}
+    Check 'preflight: without -ConnectionString no database is asked about' ($script:checkedConnection -ceq 'not called')
+    $null = Test-Preflight @{ ConnectionString = 'Host=db;Database=pulsar;Username=u;Password=p' }
+    Check 'preflight: the database of -ConnectionString is checked for migrations of a newer Pulsar' ($script:checkedConnection -ceq 'Host=db;Database=pulsar;Username=u;Password=p')
     Check "preflight: a PFX that opens with its password passes" ($null -eq (Test-Preflight @{ CertificatePath = $pfxFile; CertificatePassword = (ConvertTo-Secure 'the right password'); AgentsPort = $freePorts[2] }))
     Check 'preflight: -HostName names and IP addresses pass' ($null -eq (Test-Preflight @{ HostName = @('panel.example.com', '203.0.113.7', '2001:db8::7') }))
     foreach ($case in ([ordered]@{
@@ -4176,6 +4183,30 @@ Check 'backup: backup.json is written last, with the format, the Pulsar version,
     $backupFullText -match '(?s)Copy-Item \$config \$target.*format = 1.*pulsarVersion = \$version.*migrations = \$migrations.*files = \$files.*backup\.json.*Backup written to' -and
     $backupFullText -match "Get-FileHash -LiteralPath \`$file\.FullName -Algorithm SHA256" -and $backupFullText -match 'Get-DumpMigrations \$PostgresBin \(Join-Path \$target ''pulsar\.dump''\)')
 Check 'backup: pg_restore.exe, which reads the dump for its migrations, is run only when others cannot change it' ((Get-ScriptParts $backupScript @('Get-DumpMigrations'))['Get-DumpMigrations'] -match 'Find-UntrustedWriters \$restore')
+
+# 4. -ConnectionString: a database that a newer Pulsar migrated is refused before anything changes.
+. ([scriptblock]::Create((Get-ScriptParts $installScript @('Assert-DatabaseNotNewer'))['Assert-DatabaseNotNewer']))
+function Test-DatabaseVersion([string] $connection, $psqlResult, [string[]] $releaseMigrations) {
+    & {
+        $script:psqlArguments = $null
+        function Invoke-PanelPsql($db, [string[]] $arguments) { $script:psqlDb = $db; $script:psqlArguments = $arguments; $psqlResult }
+        function Get-ReleaseMigrations { $releaseMigrations }
+        Get-Caught { Assert-DatabaseNotNewer $connection }
+    }
+}
+$shippedIds = @('20261001154302_Alpha', '20261002105727_Beta')
+$connection = 'Host=db.example.com;Port=5433;Database=pulsar;Username=u;Password=pw1234'
+$SetupSecrets.Clear()
+$caught = Test-DatabaseVersion $connection ([pscustomobject]@{ ExitCode = 0; Output = "20261001154302_Alpha`n20261002105727_Beta`n20270101000000_Future" }) $shippedIds
+Check 'database: a -ConnectionString database with a migration this release does not ship is refused (exit code 2), naming it, before anything changes' (
+    (Get-SetupExitCode $caught) -eq 2 -and $caught.Exception.Message -match '20270101000000_Future' -and $caught.Exception.Message -match 'newer Pulsar' -and $caught.Exception.Message -match 'Nothing was changed')
+Check 'database: ...asked with the connection string''s own host, port and user, and its password is a secret' (
+    $script:psqlDb['host'] -ceq 'db.example.com' -and $script:psqlDb['port'] -ceq '5433' -and $script:psqlDb['username'] -ceq 'u' -and $SetupSecrets.Contains('pw1234') -and $script:psqlArguments[1] -match '__EFMigrationsHistory')
+Check 'database: one whose migrations this release ships all of passes' ($null -eq (Test-DatabaseVersion $connection ([pscustomobject]@{ ExitCode = 0; Output = "20261001154302_Alpha`r`n20261002105727_Beta" }) $shippedIds))
+Check 'database: a new, empty database (no migrations table: psql fails) passes' ($null -eq (Test-DatabaseVersion $connection ([pscustomobject]@{ ExitCode = 1; Output = 'relation "__EFMigrationsHistory" does not exist' }) $shippedIds))
+Check 'database: without the release''s list of migrations nothing can be compared, and nothing is refused' ($null -eq (Test-DatabaseVersion $connection ([pscustomobject]@{ ExitCode = 0; Output = '20270101000000_Future' }) @()))
+Check 'database: a connection string without host, user, database or password is left to the install to refuse' ($null -eq (Test-DatabaseVersion 'Host=db;Database=pulsar' ([pscustomobject]@{ ExitCode = 0; Output = '20270101000000_Future' }) $shippedIds))
+Check 'database: the migrations of the dump a backup holds are checked against the release as well (-RestoreFrom)' ($installText -match 'Get-BackupVersionProblems \$manifest')
 
 # 7. pg_dump, psql and pg_restore connect with the SSL settings of the Npgsql connection string, not libpq's default (prefer).
 $ssl = Get-PgSslEnvironment @{ 'ssl mode' = 'VerifyFull'; 'root certificate' = 'C:\certs\ca.crt' }
