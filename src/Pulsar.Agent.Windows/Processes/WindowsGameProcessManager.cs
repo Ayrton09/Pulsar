@@ -89,7 +89,7 @@ public sealed partial class WindowsGameProcessManager(WindowsServerAccounts acco
             {
                 logon = accounts.LogOn(account.Name);
                 resources.Add(logon);
-                var station = ServerWindowStation.Create($"Pulsar-{spec.ServerId:N}", logon.Sid);
+                var station = ServerWindowStation.ForServer(spec.ServerId, logon.Sid);
                 resources.Add(station);
                 desktop = station.DesktopName;
                 baseEnvironment = logon.Environment;

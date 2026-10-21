@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Security.Principal;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -36,6 +37,17 @@ internal sealed class ServerWindowStation : IDisposable
     /// <summary>Value for <c>STARTUPINFO.lpDesktop</c> ("station\desktop").</summary>
     public string DesktopName { get; }
 
+    /// <summary>
+    /// A new station for one start of <paramref name="serverId"/>: its name ends with a random part, so the code of
+    /// another server (in the same session, with its own account) cannot make one of that name first.
+    /// </summary>
+    public static ServerWindowStation ForServer(Guid serverId, SecurityIdentifier account) =>
+        Create($"Pulsar-{serverId:N}-{Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(8))}", account);
+
+    /// <summary>
+    /// Creates the station <paramref name="stationName"/>. One that exists already is refused (Windows would open it, with
+    /// the permissions whoever made it chose): <see cref="Win32Exception"/> with <c>ERROR_ALREADY_EXISTS</c>.
+    /// </summary>
     public static unsafe ServerWindowStation Create(string stationName, SecurityIdentifier account)
     {
         var sddl = $"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;{account.Value})";
@@ -66,6 +78,12 @@ internal sealed class ServerWindowStation : IDisposable
             if (station.IsNull)
             {
                 throw new Win32Exception(Marshal.GetLastPInvokeError(), $"CreateWindowStation({stationName}) failed.");
+            }
+
+            if ((WIN32_ERROR)Marshal.GetLastPInvokeError() == WIN32_ERROR.ERROR_ALREADY_EXISTS)
+            {
+                PInvoke.CloseWindowStation(station);
+                throw new Win32Exception((int)WIN32_ERROR.ERROR_ALREADY_EXISTS, $"The window station {stationName} exists already: it is not used.");
             }
 
             HDESK desktop;
