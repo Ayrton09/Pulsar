@@ -61,27 +61,38 @@ public sealed class WindowsServerFiles : IServerFiles
         ArgumentNullException.ThrowIfNull(content);
         var (root, _) = Paths(serverRoot, relativePath);
         var separator = relativePath.LastIndexOf('/');
+        var name = relativePath[(separator + 1)..];
         using var directory = OpenDirectories(serverRoot, root, separator < 0 ? "" : relativePath[..separator]);
-        Delete(serverRoot, relativePath);
         BeforeCreate?.Invoke();
 
-        // Created through the handle of the folder just checked, not by its path: a folder on the path swapped for a
-        // junction since then is not followed. Should the file still end up elsewhere (the checked folder itself moved
-        // away), it is deleted through its own handle.
-        using var handle = OpenRelative(directory, relativePath[(separator + 1)..], GenericWrite | DeleteAccess | ReadAttributesAccess | SynchronizeAccess, NtFile.FileCreate,
-            NtFile.FileNonDirectoryFile | NtFile.FileSynchronousIoNonAlert | NtFile.FileOpenReparsePoint, relativePath);
+        // The content goes to a new file beside the target, which then takes the target's place in one rename: a write
+        // that fails halfway (a full disk, content cut off) leaves the old file whole, and a hard link in its place is
+        // replaced, never written into. Created and renamed through the handle of the folder just checked, not by its
+        // path: a folder on the path swapped for a junction since then is not followed. Should the file still end up
+        // elsewhere (the checked folder itself moved away), it is deleted through its own handle.
+        using var handle = OpenRelative(directory, $".pulsar-write-{Guid.NewGuid():N}.tmp", GenericWrite | DeleteAccess | ReadAttributesAccess | SynchronizeAccess,
+            NtFile.FileCreate, NtFile.FileNonDirectoryFile | NtFile.FileSynchronousIoNonAlert | NtFile.FileOpenReparsePoint, relativePath);
+        var placed = false;
+        FileStream? stream = null;
         try
         {
             Check(handle, root, relativePath);
+            stream = new FileStream(handle, FileAccess.Write);
+            content.CopyTo(stream);
+            stream.Flush(flushToDisk: true);
+            Replace(handle, directory, serverRoot, relativePath, name);
+            placed = true;
         }
-        catch
+        finally
         {
-            MarkDeleted(handle);
-            throw;
-        }
+            // Deleted through the handle while it is still open (the stream closes it).
+            if (!placed)
+            {
+                _ = HandleFileOperations.MarkDeleted(handle);
+            }
 
-        using var stream = new FileStream(handle, FileAccess.Write);
-        content.CopyTo(stream);
+            stream?.Dispose();
+        }
     }
 
     public void Delete(string serverRoot, string relativePath)
@@ -94,15 +105,11 @@ public sealed class WindowsServerFiles : IServerFiles
         }
 
         // The handle is the link itself when the name is one (backup semantics open a directory junction too): deleting
-        // it never touches a target.
+        // it never touches a target. A read-only file is deleted as any other (a game may mark its own files so).
         CheckLocation(handle, root, relativePath);
-        var disposition = new FILE_DISPOSITION_INFO { DeleteFile = true };
-        unsafe
+        if (HandleFileOperations.MarkDeleted(handle) is var error and not WIN32_ERROR.ERROR_SUCCESS)
         {
-            if (!PInvoke.SetFileInformationByHandle((HANDLE)handle.DangerousGetHandle(), FILE_INFO_BY_HANDLE_CLASS.FileDispositionInfo, &disposition, (uint)sizeof(FILE_DISPOSITION_INFO)))
-            {
-                throw Failure("files.delete_failed", relativePath);
-            }
+            throw Failure("files.delete_failed", relativePath, error);
         }
     }
 
@@ -132,16 +139,12 @@ public sealed class WindowsServerFiles : IServerFiles
         }
 
         CheckLocation(handle, root, relativePath);
-        var disposition = new FILE_DISPOSITION_INFO { DeleteFile = true };
-        unsafe
+        return HandleFileOperations.MarkDeleted(handle) switch
         {
-            if (PInvoke.SetFileInformationByHandle((HANDLE)handle.DangerousGetHandle(), FILE_INFO_BY_HANDLE_CLASS.FileDispositionInfo, &disposition, (uint)sizeof(FILE_DISPOSITION_INFO)))
-            {
-                return true;
-            }
-        }
-
-        return (WIN32_ERROR)Marshal.GetLastPInvokeError() == WIN32_ERROR.ERROR_DIR_NOT_EMPTY ? false : throw Failure("files.delete_failed", relativePath);
+            WIN32_ERROR.ERROR_SUCCESS => true,
+            WIN32_ERROR.ERROR_DIR_NOT_EMPTY => false,
+            var error => throw Failure("files.delete_failed", relativePath, error),
+        };
     }
 
     public void CreateDirectory(string serverRoot, string relativePath)
@@ -314,12 +317,24 @@ public sealed class WindowsServerFiles : IServerFiles
         }
     }
 
-    /// <summary>Deletes what the handle is, at once (the file a refused write had just created).</summary>
-    private static unsafe void MarkDeleted(SafeFileHandle handle)
+    /// <summary>
+    /// Puts the written file (<paramref name="handle"/>) in the place of <paramref name="name"/> in <paramref name="directory"/>.
+    /// A folder or a link to one there cannot be replaced by a rename: it is deleted first, as writing over it always did
+    /// (an empty folder or the link itself, never what a link leads to).
+    /// </summary>
+    private void Replace(SafeFileHandle handle, SafeFileHandle directory, string serverRoot, string relativePath, string name)
     {
-        var disposition = new FILE_DISPOSITION_INFO { DeleteFile = true };
-        _ = PInvoke.SetFileInformationByHandle((HANDLE)handle.DangerousGetHandle(), FILE_INFO_BY_HANDLE_CLASS.FileDispositionInfo, &disposition,
-            (uint)sizeof(FILE_DISPOSITION_INFO));
+        var status = HandleFileOperations.Rename(handle, directory, name, replace: true);
+        if (status < 0)
+        {
+            Delete(serverRoot, relativePath);
+            status = HandleFileOperations.Rename(handle, directory, name, replace: true);
+        }
+
+        if (status < 0)
+        {
+            throw Failure("files.write_failed", relativePath, (WIN32_ERROR)NtFile.RtlNtStatusToDosError(status));
+        }
     }
 
     /// <summary>The opened object is a plain file or directory under the server directory.</summary>
@@ -380,6 +395,8 @@ public sealed class WindowsServerFiles : IServerFiles
         return Path.TrimEndingDirectorySeparator(path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path[4..] : path);
     }
 
-    private static GameProcessException Failure(string code, string relativePath) =>
-        new(code, $"'{relativePath}': {new Win32Exception(Marshal.GetLastPInvokeError()).Message}");
+    private static GameProcessException Failure(string code, string relativePath) => Failure(code, relativePath, (WIN32_ERROR)Marshal.GetLastPInvokeError());
+
+    private static GameProcessException Failure(string code, string relativePath, WIN32_ERROR error) =>
+        new(code, $"'{relativePath}': {new Win32Exception((int)error).Message}");
 }

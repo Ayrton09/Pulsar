@@ -162,6 +162,38 @@ public sealed class ServerFilesTests : IDisposable
     }
 
     [WindowsFact]
+    public void AReadOnlyFileIsReplacedAndDeletedAsAnyOther()
+    {
+        // A game (or its account) may mark its files read-only: the agent's writes at every start must not fail on them.
+        var path = Path.Combine(_server, "server.cfg");
+        File.WriteAllText(path, "theirs");
+        File.SetAttributes(path, FileAttributes.ReadOnly);
+
+        _files.Write(_server, "server.cfg", Content("mine"));
+        Assert.Equal("mine", File.ReadAllText(path));
+
+        File.SetAttributes(path, FileAttributes.ReadOnly);
+        _files.Delete(_server, "server.cfg");
+        Assert.False(File.Exists(path));
+
+        Directory.CreateDirectory(Path.Combine(_server, "empty"));
+        File.SetAttributes(Path.Combine(_server, "empty"), FileAttributes.ReadOnly | FileAttributes.Directory);
+        Assert.True(_files.DeleteEmptyDirectory(_server, "empty"));
+    }
+
+    [WindowsFact]
+    public void AWriteThatFailsLeavesTheFileAsItWas()
+    {
+        // The content stops halfway (a full disk, a download cut off): the old file stays whole, and nothing else is left.
+        File.WriteAllText(Path.Combine(_server, "server.cfg"), "the old one");
+
+        Assert.Throws<IOException>(() => _files.Write(_server, "server.cfg", new FailingStream(4096)));
+
+        Assert.Equal("the old one", File.ReadAllText(Path.Combine(_server, "server.cfg")));
+        Assert.Equal(["server.cfg"], Directory.EnumerateFileSystemEntries(_server).Select(Path.GetFileName));
+    }
+
+    [WindowsFact]
     public void DeletingAJunctionRemovesTheLinkNotItsTarget()
     {
         Run("mklink", "/J", Path.Combine(_server, "logs"), _outside);
@@ -213,6 +245,45 @@ public sealed class ServerFilesTests : IDisposable
     }
 
     private static MemoryStream Content(string text) => new(Encoding.UTF8.GetBytes(text));
+
+    /// <summary>Gives <paramref name="bytes"/> bytes, then fails.</summary>
+    private sealed class FailingStream(int bytes) : Stream
+    {
+        private int _left = bytes;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (_left == 0)
+            {
+                throw new IOException("The content stopped.");
+            }
+
+            var n = Math.Min(count, _left);
+            Array.Fill(buffer, (byte)'x', offset, n);
+            _left -= n;
+            return n;
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 
     private static void Run(params string[] arguments)
     {

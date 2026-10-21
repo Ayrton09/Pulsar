@@ -499,94 +499,21 @@ public sealed class WindowsServerFileManager(IServerImpersonation impersonation)
     }
 
     /// <summary>Deletes what the handle is (a link, never its target) as soon as possible, read-only or not.</summary>
-    private static unsafe void MarkDeleted(SafeFileHandle handle, string path)
+    private static void MarkDeleted(SafeFileHandle handle, string path)
     {
-        var flags = FILE_DISPOSITION_INFO_EX_FLAGS.FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_INFO_EX_FLAGS.FILE_DISPOSITION_FLAG_POSIX_SEMANTICS
-            | FILE_DISPOSITION_INFO_EX_FLAGS.FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE;
-        var extended = new FILE_DISPOSITION_INFO_EX { Flags = flags };
-        if (PInvoke.SetFileInformationByHandle((HANDLE)handle.DangerousGetHandle(), FILE_INFO_BY_HANDLE_CLASS.FileDispositionInfoEx, &extended,
-            (uint)sizeof(FILE_DISPOSITION_INFO_EX)))
-        {
-            return;
-        }
-
-        // File systems without POSIX deletes (FAT, older ReFS): the classic delete, when the last handle closes.
-        var error = (WIN32_ERROR)Marshal.GetLastPInvokeError();
-        if (error is not (WIN32_ERROR.ERROR_INVALID_PARAMETER or WIN32_ERROR.ERROR_NOT_SUPPORTED or WIN32_ERROR.ERROR_INVALID_FUNCTION))
+        if (HandleFileOperations.MarkDeleted(handle) is var error and not WIN32_ERROR.ERROR_SUCCESS)
         {
             throw Failure(path, error);
         }
-
-        var classic = new FILE_DISPOSITION_INFO { DeleteFile = true };
-        if (!PInvoke.SetFileInformationByHandle((HANDLE)handle.DangerousGetHandle(), FILE_INFO_BY_HANDLE_CLASS.FileDispositionInfo, &classic,
-            (uint)sizeof(FILE_DISPOSITION_INFO)))
-        {
-            throw Win32Failure(path);
-        }
     }
 
-    /// <summary>
-    /// Renames what the handle is to <paramref name="name"/> inside the directory <paramref name="directory"/> is: the
-    /// target folder is the one already checked, not a path looked up again. The Win32 call refuses a root directory,
-    /// so this goes to the native one (FILE_RENAME_INFORMATION, the same structure).
-    /// </summary>
-    /// <remarks>
-    /// POSIX semantics, as deletes: a file replaced while another program reads it (a virus scanner, the search
-    /// indexer, a game reading its configuration) is replaced anyway, where a classic rename refuses with access
-    /// denied; that program keeps reading the old content. A read-only file is replaced as it would be deleted.
-    /// </remarks>
+    /// <summary>Renames what the handle is inside the checked directory (<see cref="HandleFileOperations.Rename"/>).</summary>
     private static void Rename(SafeFileHandle handle, SafeFileHandle directory, string name, bool replace, string path)
     {
-        var flags = NtFile.FileRenamePosixSemantics | NtFile.FileRenameIgnoreReadOnlyAttribute | (replace ? NtFile.FileRenameReplaceIfExists : 0u);
-        var status = SetRename(handle, directory, name, flags, NtFile.FileRenameInformationEx);
-
-        // File systems without POSIX renames (FAT, older ReFS): the classic rename.
-        if (status is NtFile.StatusInvalidParameter or NtFile.StatusNotSupported or NtFile.StatusInvalidInfoClass)
-        {
-            status = SetRename(handle, directory, name, replace ? 1u : 0u, NtFile.FileRenameInformation);
-        }
-
+        var status = HandleFileOperations.Rename(handle, directory, name, replace);
         if (status < 0)
         {
             throw Failure(path, (WIN32_ERROR)NtFile.RtlNtStatusToDosError(status));
-        }
-    }
-
-    private static unsafe int SetRename(SafeFileHandle handle, SafeFileHandle directory, string name, uint flags, int informationClass)
-    {
-        // FILE_RENAME_INFORMATION: ReplaceIfExists (a BOOLEAN) or, for the extended class, Flags (a ULONG) in the same
-        // place; the root directory handle; the name's length in bytes; the name.
-        var rootOffset = IntPtr.Size;
-        var lengthOffset = rootOffset + IntPtr.Size;
-        var nameOffset = lengthOffset + sizeof(uint);
-        var buffer = new byte[nameOffset + ((name.Length + 1) * sizeof(char))];
-        BinaryPrimitives.WriteUInt32LittleEndian(buffer, flags);
-        var added = false;
-        directory.DangerousAddRef(ref added);
-        try
-        {
-            if (IntPtr.Size == 8)
-            {
-                BinaryPrimitives.WriteInt64LittleEndian(buffer.AsSpan(rootOffset), directory.DangerousGetHandle());
-            }
-            else
-            {
-                BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(rootOffset), (int)directory.DangerousGetHandle());
-            }
-
-            BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(lengthOffset), (uint)(name.Length * sizeof(char)));
-            MemoryMarshal.AsBytes(name.AsSpan()).CopyTo(buffer.AsSpan(nameOffset));
-            fixed (byte* info = buffer)
-            {
-                return NtFile.NtSetInformationFile(handle, out _, info, (uint)buffer.Length, informationClass);
-            }
-        }
-        finally
-        {
-            if (added)
-            {
-                directory.DangerousRelease();
-            }
         }
     }
 
