@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Pulsar.Api.Http;
 using Pulsar.Api.Security;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Access;
 using Pulsar.Application.Metrics;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Servers;
@@ -127,8 +128,15 @@ public static class ServerEndpoints
 
         // The accounts themselves: panel settings (their passwords are the panel's).
         var steamAccounts = api.MapGroup("/steam-accounts").WithTags("Servers");
-        // Listed (never with a password) for whoever chooses a server's account too.
-        steamAccounts.MapGet("/", async (SteamAccounts a, CancellationToken ct) => TypedResults.Ok(await a.ListAsync(ct)))
+        // Listed (never with a password) for whoever chooses a server's account too, by their names alone: a node's cached
+        // login signs in with the user name, which is half of a credential.
+        steamAccounts.MapGet("/", async (HttpContext http, SteamAccounts a, IPermissionEvaluator evaluator, CancellationToken ct) =>
+            {
+                var list = await a.ListAsync(ct);
+                return TypedResults.Ok((await evaluator.GetAsync(http.User.GetRequiredUserId(), ct)).HasGlobal(Permissions.Settings.Manage)
+                    ? list
+                    : list with { Accounts = [.. list.Accounts.Select(account => account with { UserName = null })] });
+            })
             .RequirePermissionAnywhere(Permissions.Settings.Manage, Permissions.Server.LimitsEdit);
         steamAccounts.MapPost("/", CreateSteamAccountAsync).RequirePermission(Permissions.Settings.Manage);
         steamAccounts.MapPut("/{accountId:guid}", async (Guid accountId, SteamAccountRequest request, SteamAccounts a, CancellationToken ct) =>

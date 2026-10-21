@@ -65,7 +65,7 @@ describe('backup storage page', () => {
 
     await user.click(within(table).getByRole('button', { name: 'Edit' }));
     const dialog = await screen.findByRole('dialog', { name: 'Edit storage' });
-    expect(within(dialog).getByText('Leave it empty to keep the saved key.')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Leave it empty to keep the saved key/)).toBeInTheDocument();
     await user.clear(within(dialog).getByLabelText('Name'));
     await user.type(within(dialog).getByLabelText('Name'), 'R2 (offsite)');
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));

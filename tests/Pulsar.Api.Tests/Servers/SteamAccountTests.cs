@@ -81,7 +81,15 @@ public sealed class SteamAccountTests(PulsarApiFactory factory) : IClassFixture<
         Assert.Equal(HttpStatusCode.Forbidden, (await operatorClient.Http.GetAsync("/api/v1/steam-accounts", Ct)).StatusCode);
         // Whoever chooses a server's account sees the accounts, and changes none.
         using var host = await scenario.SignedInWithAsync("steam-host", Permissions.Server.View, Permissions.Server.LimitsEdit);
-        Assert.Equal(HttpStatusCode.OK, (await host.Http.GetAsync("/api/v1/steam-accounts", Ct)).StatusCode);
+        using (var chosen = await host.Http.GetAsync("/api/v1/steam-accounts", Ct))
+        {
+            Assert.Equal(HttpStatusCode.OK, chosen.StatusCode);
+            // By their names alone: a cached login on a node signs in with the user name, which is half of a credential.
+            var accounts = (await chosen.Content.ReadFromJsonAsync<SteamAccountList>(AccessScenario.Json, Ct))!.Accounts;
+            Assert.Contains(accounts, a => a.Id == account.Id && a.Name == "Renamed");
+            Assert.All(accounts, a => Assert.Null(a.UserName));
+        }
+
         using (var create = await host.PostAsync("/api/v1/steam-accounts", new SteamAccountRequest("Mine", "my_account", Password)))
         {
             Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);

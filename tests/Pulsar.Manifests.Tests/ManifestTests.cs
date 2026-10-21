@@ -114,6 +114,11 @@ public sealed class ManifestTests
     [InlineData("+sv_rcon_maxfailures")]
     [InlineData("-usercon")]
     [InlineData("+game_type 0;rcon_password x")]
+    // Other spellings of the manifest's own switches: many engines take "--x", "+x" or "/x" for "-x".
+    [InlineData("--port")]
+    [InlineData("+port")]
+    [InlineData("/port")]
+    [InlineData("--IP")]
     public void ExtraArgumentsCannotOverrideWhatTheGameOrPulsarSets(string extra)
     {
         var error = Assert.Throws<LaunchPlanException>(() => RenderCs2(["-tickrate", "128", extra, "value"]));

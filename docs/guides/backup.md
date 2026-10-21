@@ -125,7 +125,8 @@ or your own MinIO or SeaweedFS):
      connects only to those addresses).
    - **Region:** the bucket's (AWS, B2), `auto` (R2), `us-east-1` (most others).
    - **Bucket**, a **folder** in it, the **access key id** and **secret access key**; keep **Bucket in the path** on
-     except for AWS S3.
+     except for AWS S3. Editing a storage later, the secret may be left empty to keep the saved one, except with
+     another endpoint, bucket or access key id: the saved secret signs only for where it was given.
 3. In each server's **Backups** tab, **Remote copy**: choose the storage.
 
 From then on every new backup is uploaded after it is made, and the tab says whether each copy is there (a failed copy

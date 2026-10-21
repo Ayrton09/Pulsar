@@ -62,7 +62,8 @@ export function SteamAccountCard({ details }: { details: ServerDetails }) {
                     )}
                     {accounts.data?.accounts.map((account) => (
                       <option key={account.id} value={account.id}>
-                        {account.name} ({account.userName})
+                        {/* The user name only for who may change the accounts: the panel leaves it out for the others. */}
+                        {account.userName ? `${account.name} (${account.userName})` : account.name}
                       </option>
                     ))}
                   </Select>

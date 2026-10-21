@@ -18,10 +18,27 @@ public sealed class BackupStorageTests
         var backup = BackupId.New();
         Assert.Equal($"pulsar/backups/k3x7m2qa/{backup.Value:N}.zip", storage.KeyFor("k3x7m2qa", backup));
 
-        Assert.True(storage.Change("R2", null, "us-east-1", "bucket", null, "AKID", null, false, s_now).IsSuccess);
-        Assert.Null(storage.Endpoint); // AWS S3
+        // A new name, region, path style or folder for new copies keeps it.
+        Assert.True(storage.Change("R2", "https://abc.r2.cloudflarestorage.com", "us-east-1", "pulsar-backups", null, "AKIDEXAMPLE", null, false, s_now)
+            .IsSuccess);
         Assert.Equal(string.Empty, storage.Prefix);
         Assert.Equal(s_secret, storage.SecretProtected);
+
+        // Another endpoint, bucket or key: the saved secret is never sent there, so it is asked for again.
+        foreach (var (endpoint, bucket, key) in new[]
+        {
+            ((string?)null, "pulsar-backups", "AKIDEXAMPLE"),
+            ("https://abc.r2.cloudflarestorage.com", "someone-elses", "AKIDEXAMPLE"),
+            ("https://abc.r2.cloudflarestorage.com", "pulsar-backups", "AKIDOTHER"),
+        })
+        {
+            Assert.Equal(BackupStorageErrors.SecretRequired, storage.Change("R2", endpoint, "us-east-1", bucket, null, key, null, false, s_now).Error);
+        }
+
+        byte[] typed = [7, 8, 9];
+        Assert.True(storage.Change("R2", null, "us-east-1", "bucket", null, "AKID", typed, false, s_now).IsSuccess);
+        Assert.Null(storage.Endpoint); // AWS S3
+        Assert.Equal(typed, storage.SecretProtected);
     }
 
     [Theory]
@@ -100,8 +117,8 @@ public sealed class BackupStorageTests
             holdsCopies: true).IsSuccess);
         Assert.Equal(("AKID2", rotated, "new-folder/"), (storage.AccessKeyId, storage.SecretProtected, storage.Prefix));
 
-        // Without copies, it may move.
-        Assert.True(storage.Change("Moved", "https://other.example.com", "auto", "other-bucket", null, "AKID2", null, true, s_now).IsSuccess);
+        // Without copies, it may move (with its secret typed again).
+        Assert.True(storage.Change("Moved", "https://other.example.com", "auto", "other-bucket", null, "AKID2", rotated, true, s_now).IsSuccess);
     }
 
     [Fact]

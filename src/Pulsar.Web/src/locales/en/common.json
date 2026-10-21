@@ -1751,7 +1751,7 @@
     "prefixHint": "Each backup goes to <folder>/<server>/<backup>.zip.",
     "accessKeyId": "Access key id",
     "secret": "Secret access key",
-    "secretKeep": "Leave it empty to keep the saved key.",
+    "secretKeep": "Leave it empty to keep the saved key (not with another endpoint, bucket or access key: it is asked for again).",
     "pathStyle": "Bucket in the path (most S3-compatible services need it; AWS does not)",
     "keysHint": "Give these keys access to this bucket only. Nodes get them inside each backup command and keep nothing.",
     "deleteConfirm": "Delete the storage {{name}}? Backups already copied stay in the bucket.",

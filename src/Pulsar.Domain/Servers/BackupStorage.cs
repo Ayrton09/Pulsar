@@ -135,6 +135,15 @@ public sealed class BackupStorage
             return BackupStorageErrors.HoldsCopies;
         }
 
+        // The saved secret signs only for where it was given: another endpoint, bucket or key gets it typed again, as a
+        // database host's or the mail server's password (whoever may change the settings cannot send backups, signed
+        // with it, to a bucket of theirs).
+        if (secretProtected is null && (!string.Equals(Endpoint, address, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(Bucket, bucketName, StringComparison.Ordinal) || !string.Equals(AccessKeyId, keyId, StringComparison.Ordinal)))
+        {
+            return BackupStorageErrors.SecretRequired;
+        }
+
         Name = trimmed;
         Endpoint = address;
         Region = zone;

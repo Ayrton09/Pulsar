@@ -1751,7 +1751,7 @@
     "prefixHint": "Cada backup va a <carpeta>/<servidor>/<backup>.zip.",
     "accessKeyId": "ID de clave de acceso",
     "secret": "Clave de acceso secreta",
-    "secretKeep": "Dejala vacía para mantener la clave guardada.",
+    "secretKeep": "Dejala vacía para mantener la clave guardada (no si cambiás el endpoint, el bucket o la access key: se pide de nuevo).",
     "pathStyle": "Bucket en la ruta (la mayoría de los servicios compatibles con S3 lo necesitan; AWS no)",
     "keysHint": "Dale a estas claves acceso solo a este bucket. Los nodos las reciben dentro de cada comando de backup y no guardan nada.",
     "deleteConfirm": "¿Borrar el almacenamiento {{name}}? Los backups ya copiados quedan en el bucket.",

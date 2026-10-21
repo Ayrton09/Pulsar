@@ -459,17 +459,20 @@ public static class LaunchPlanRenderer
             throw new LaunchPlanException($"The extra argument '{extra}' has a ';', which starts another command.");
         }
 
+        // The manifest's switches however they are spelt, as the game may take any spelling for its own.
+        var switches = reserved.Where(n => n is ['-' or '+', ..]).Select(SwitchName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         // Every word: one argument may still be split at spaces by the game.
         foreach (var word in extra.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
         {
-            if (word is not ['-' or '+', ..])
+            if (word is not ['-' or '+' or '/', ..])
             {
                 continue;
             }
 
             var name = ArgumentName(word);
-            var setting = name.TrimStart('-', '+');
-            if (reserved.Contains(name) || IsSensitive(setting, runtime, commands))
+            var setting = SwitchName(word);
+            if (switches.Contains(setting) || IsSensitive(setting, runtime, commands))
             {
                 throw new LaunchPlanException($"The extra argument '{name}' is set by Pulsar or by the game's settings.");
             }
@@ -484,6 +487,12 @@ public static class LaunchPlanRenderer
             }
         }
     }
+
+    /// <summary>
+    /// A switch's name without how it is written ("-port", "--port", "+port" and "/port" are "port"): many engines take one
+    /// spelling for another, so an extra argument cannot set the manifest's own switch by spelling it differently.
+    /// </summary>
+    private static string SwitchName(string word) => ArgumentName(word).TrimStart('-', '+', '/');
 
     private static bool IsSensitive(string setting, RuntimeDefinition runtime, bool commands) =>
         (runtime.Console.SensitiveCommandPrefixes ?? []).Any(p => setting.StartsWith(p, StringComparison.OrdinalIgnoreCase))

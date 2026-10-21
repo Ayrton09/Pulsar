@@ -17143,7 +17143,10 @@
             "type": "string"
           },
           "userName": {
-            "type": "string"
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "servers": {
             "type": "integer",

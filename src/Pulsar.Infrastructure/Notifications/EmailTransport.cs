@@ -42,7 +42,10 @@ internal sealed class EmailTransport(INotificationSecretProtector secrets) : INo
         }
 
         using var mail = Build(channel, settings, message);
-        using var client = new SmtpClient { Timeout = (int)s_timeout.TotalMilliseconds };
+        // No revocation lists or OCSP answers fetched from where the server's certificate points (the agents' port does
+        // the same, docs/architecture/08, T31): whoever sets the server, or sits on the way, cannot make the panel send
+        // requests to addresses of their choosing, and an unreachable revocation server does not lose the mail.
+        using var client = new SmtpClient { Timeout = (int)s_timeout.TotalMilliseconds, CheckCertificateRevocation = false };
         try
         {
             var security = settings.SmtpSecurity switch

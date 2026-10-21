@@ -24,8 +24,9 @@ public interface ISteamAccountSecretProtector
 /// <param name="Password">Null on an update keeps the current password.</param>
 public sealed record SteamAccountDefinition(string Name, string UserName, string? Password);
 
+/// <param name="UserName">Null for whoever may only choose a server's account (not change the settings): a node's cached login signs in with it.</param>
 /// <param name="Servers">Servers that sign in with it.</param>
-public sealed record SteamAccountView(Guid Id, string Name, string UserName, int Servers, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+public sealed record SteamAccountView(Guid Id, string Name, string? UserName, int Servers, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 
 public sealed record SteamAccountList(IReadOnlyList<SteamAccountView> Accounts);
 

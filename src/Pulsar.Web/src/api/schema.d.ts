@@ -13385,7 +13385,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
-            userName: string;
+            userName: null | string;
             /** Format: int32 */
             servers: number;
             /** Format: date-time */
