@@ -248,6 +248,42 @@ public sealed class SftpServerTests(SftpApiFactory factory) : IClassFixture<Sftp
     }
 
     [DatabaseFact]
+    public async Task ReadsOutOfOrderStartSoManyDownloadsAMinute()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(factory, scenario.Admin, "sftp-seeks");
+        var server = await InstalledAsync(scenario.Admin, agent, "Seeks");
+        await File.WriteAllBytesAsync(Path.Combine(server.Directory, "big.bin"), new byte[1024 * 1024], Ct);
+        var role = await ServerRoleAsync(scenario, "sftp-seeker", Permissions.Server.View, Permissions.Server.FilesView);
+        var kim = await scenario.CreateUserAsync("sftp-kim");
+        await GrantAsync(scenario.Admin, kim.Id, server.Id, role.Id);
+        using var raw = await RawSftpAsync(await factory.PortAsync(), $"sftp-kim.{server.ShortId}");
+        var handle = await raw.OpenAsync("/big.bin", SftpProtocol.OpenRead);
+
+        // Each read far from the last one is a new download: a command to the node, a transfer and an audit entry.
+        var restarts = -1;
+        var refused = false;
+        while (!refused && restarts <= SftpSession.MaxReadRestartsPerMinute)
+        {
+            try
+            {
+                Assert.NotNull(await raw.ReadAsync(handle, restarts % 2 == 0 ? 768UL * 1024 : 0, 1024));
+                restarts++;
+            }
+            catch (InvalidOperationException)
+            {
+                refused = true;
+            }
+        }
+
+        Assert.True(refused, "a read out of order was refused");
+        Assert.Equal(SftpSession.MaxReadRestartsPerMinute, restarts);
+        Assert.Equal(SftpSession.MaxReadRestartsPerMinute + 1, (await AuditAsync(AuditActions.Server.FileDownloaded)).Count(e => e.ServerId?.Value == server.Id));
+        // In order (the last download was at the start), the file still reads.
+        Assert.NotNull(await raw.ReadAsync(handle, 1024, 1024));
+    }
+
+    [DatabaseFact]
     public async Task WritesThatWouldCutAFileOrHoldTooMuchAndFoldersWithoutTheirParentAreRefused()
     {
         var scenario = await AccessScenario.CreateAsync(factory);

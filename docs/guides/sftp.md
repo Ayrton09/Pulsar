@@ -201,6 +201,9 @@ Limits, in the `Sftp` section of the panel's settings (the defaults suit most pa
 - `mkdir` makes one folder, in a folder that exists (`No such file` otherwise), as on a local disk.
 - A file open for reading takes one of its node's transfer places (8 for a node, 3 for one user) only while it is
   being read: one read to its end, or not read for 30 seconds, gives the place back (the next read starts again).
+- A read far from the previous one (more than 256 KiB back or ahead) starts the file's download from the node again,
+  audited like a download; a session does that at most 30 times a minute, then such reads fail for the rest of the
+  minute. Reading in order, as file clients do, never counts.
 - A connection holds at most 4 channels at once (one more closes it) and runs at most 2 SFTP sessions at once
   (clients that open one per transfer open the next once one closes), and a channel that has not started SFTP within
   10 seconds is closed.

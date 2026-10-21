@@ -40,7 +40,17 @@ internal sealed partial class SftpSession(
     /// </summary>
     internal const int MaxListingEntries = 100_000;
 
+    /// <summary>
+    /// Downloads a session starts again per minute for reads out of order (each is a command to the node, a transfer and an
+    /// audit entry); reads in order, and the first download of each file, are not counted.
+    /// </summary>
+    internal const int MaxReadRestartsPerMinute = 30;
+
     private const int MaxNamesPerReply = 100;
+
+    private static readonly TimeSpan s_restartWindow = TimeSpan.FromMinutes(1);
+
+    private readonly Queue<long> _readRestarts = new();
 
     private readonly Dictionary<string, Handle> _handles = new(StringComparer.Ordinal);
     private readonly Lock _handlesLock = new(); // the request loop changes _handles, the idle release reads it
@@ -530,6 +540,11 @@ internal sealed partial class SftpSession(
                 }
 
                 // A seek back or far ahead: the download starts again there (audited as a download, with its offset).
+                if (handle.Downloads > 0 && !TakeReadRestart())
+                {
+                    throw SftpException.Failure("Too many reads out of order this minute: read the file in order, or try again in a minute.");
+                }
+
                 handle.DropContent();
                 var opened = await operation.Files.OpenAtAsync(handle.Server.Id, handle.Path, offset, cancellationToken);
                 if (!opened.IsSuccess)
@@ -566,6 +581,24 @@ internal sealed partial class SftpSession(
         {
             ArrayPool<byte>.Shared.Return(buffer);
         }
+    }
+
+    /// <summary>One more download started again (<see cref="MaxReadRestartsPerMinute"/>): false when the minute's are used.</summary>
+    private bool TakeReadRestart()
+    {
+        var now = clock.GetTimestamp();
+        while (_readRestarts.TryPeek(out var at) && clock.GetElapsedTime(at, now) >= s_restartWindow)
+        {
+            _readRestarts.Dequeue();
+        }
+
+        if (_readRestarts.Count >= MaxReadRestartsPerMinute)
+        {
+            return false;
+        }
+
+        _readRestarts.Enqueue(now);
+        return true;
     }
 
     private async Task<SftpWriter> WriteAsync(Request request, CancellationToken cancellationToken)

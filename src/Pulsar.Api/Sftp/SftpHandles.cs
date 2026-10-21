@@ -68,6 +68,9 @@ internal sealed class ReadHandle(string clientPath, SftpServer server, string pa
     /// <summary>Held by the session while a read uses the download (so it is never released under a read).</summary>
     public SemaphoreSlim Busy { get; } = new(1, 1);
 
+    /// <summary>Downloads started for the handle so far.</summary>
+    public int Downloads { get; private set; }
+
     /// <summary>The next offset the download delivers.</summary>
     public long Position { get; private set; }
 
@@ -82,6 +85,7 @@ internal sealed class ReadHandle(string clientPath, SftpServer server, string pa
         ArgumentNullException.ThrowIfNull(content);
         DropContent();
         Volatile.Write(ref _content, content);
+        Downloads++;
         Position = offset;
         End = offset + content.Length;
         Size = content.File.Entry.Size;
