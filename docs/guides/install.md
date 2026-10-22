@@ -32,6 +32,28 @@ what the wizard does not ask.
 
 ## Easy install
 
+### With one command
+
+In PowerShell **run as administrator** (right-click Windows PowerShell, *Run as administrator*), on the PC to install:
+
+```powershell
+irm https://github.com/Ayrton09/Pulsar/releases/latest/download/install.ps1 | iex
+```
+
+It downloads the newest release's `PulsarSetup-<version>.exe` and runs it: the same wizard as below, which installs
+the panel, this PC as a node, or both. Before running anything, it checks the release as installed Pulsars check an
+update: the release's manifest (`pulsar-update.json`) must be signed by the project's update key, which the script
+carries ([releasing.md](releasing.md)), and the setup must have the size and SHA-256 that signed manifest gives; it is
+downloaded into a new folder in Program Files, which only administrators can change, run from there, and the folder is
+removed afterwards. A release that anyone without the maintainer's key published or changed on GitHub is refused.
+
+`install.ps1` itself is what GitHub serves for the newest release, over HTTPS, so that line trusts GitHub for it as a
+download from the Releases page does. To read it first, download it from the Releases page (it is named by the signed
+manifest too, with its SHA-256, and has its own `.sha256` file), check it, and run it with `-File`:
+`powershell -ExecutionPolicy Bypass -File .\install.ps1`, adding `-Agent` for a node only (`PulsarAgentSetup`, below)
+and `-SetupArguments '/VERYSILENT', '/SUPPRESSMSGBOXES', ...` for a [silent install](#silent-installs-with-the-setups).
+When the setup ends with an exit code other than `0`, the script stops with an error that names it.
+
 ### The panel's PC: PulsarSetup.exe
 
 1. Download `PulsarSetup-<version>.exe` and its `.sha256` file from the project's

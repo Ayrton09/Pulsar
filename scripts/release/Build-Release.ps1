@@ -1106,7 +1106,15 @@ Pulsar is licensed under the GNU AGPL v3 (LICENSE); game manifests and schemas u
     [IO.File]::WriteAllText($commitFile, (Get-CommitRecord $buildState), (New-Object Text.UTF8Encoding $false))
     $null = Write-Checksum $commitFile
     $published += @((Split-Path $commitFile -Leaf), "$(Split-Path $commitFile -Leaf).sha256")
-    if ($iscc) { $published += @($setup, $agentSetup | ForEach-Object { Split-Path $_ -Leaf; "$(Split-Path $_ -Leaf).sha256" }) }
+    if ($iscc) {
+        $published += @($setup, $agentSetup | ForEach-Object { Split-Path $_ -Leaf; "$(Split-Path $_ -Leaf).sha256" })
+        # The one-command install (docs/guides/install.md, "With one command"), which runs those setups once the signed
+        # manifest names them: published with them, and named by the manifest too.
+        $oneCommand = Join-Path $Work 'install.ps1'
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install.ps1') -Destination $oneCommand
+        $null = Write-Checksum $oneCommand
+        $published += @('install.ps1', 'install.ps1.sha256')
+    }
     # The update manifest names every file published (not the checksum files, and not itself), and is signed last: only a
     # build that got here, with everything made, signed and verified, ever uses the update key.
     $manifestPath = $null

@@ -4579,6 +4579,99 @@ Check 'backup: the keys, keyring and tls folders are copied with Copy-PlainTree,
     $backupFullText -notmatch 'Copy-Item \(Join-Path \$panelData \$folder\)' -and $backupFullText -match 'Copy-PlainTree \(Join-Path \$panelData \$folder\) \(Join-Path \$data \$folder\)' -and
     $backupFullText -match '(?s)catch \{\s+Remove-Item -LiteralPath \$target -Recurse -Force.*?throw')
 
+# --- The one-command install (scripts\release\install.ps1): its functions run here on keys, manifests and signatures of
+# --- this test's own; nothing is downloaded or run. In a scope of its own (its constants share names with Build-Release.ps1's).
+$oneCommandPath = Join-Path $PSScriptRoot '..\release\install.ps1'
+& {
+    $parts = Get-ScriptParts $oneCommandPath @('ConvertFrom-UpdateKey', 'Get-SignedData', 'Assert-ManifestSigned', 'Get-SetupEntry', 'Test-DownloadUri', 'Get-Download', 'New-DownloadFolder', 'Install-Pulsar') @(
+        'Repository', 'TrustedKeys', 'SignaturePurpose', 'ManifestName', 'SignatureName', 'MaxManifestBytes', 'MaxSignatureBytes', 'MaxFileBytes', 'DownloadHosts', 'VersionPattern', 'P256KeyPrefix')
+    foreach ($name in @($parts.Keys | Where-Object { $_ -ne 'Install-Pulsar' })) { . ([scriptblock]::Create($parts[$name])) }
+    $oneCommand = Get-Content -Raw -LiteralPath $oneCommandPath
+    $updatesCs = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\src\Pulsar.Contracts\Updates.cs')
+
+    # The same keys and the same release as every Pulsar build.
+    $trustedBlock = [regex]::Match($updatesCs, '(?s)Trusted \{ get; \} =\s*\[(.*?)\];').Groups[1].Value
+    $buildKeys = @([regex]::Matches($trustedBlock, '"([A-Za-z0-9+/=]+)"') | ForEach-Object { $_.Groups[1].Value })
+    Check 'one command: it trusts exactly the update keys every Pulsar build trusts (UpdateKeys.Trusted)' ($buildKeys.Count -gt 0 -and (@($TrustedKeys) -join '|') -ceq ($buildKeys -join '|')) "$($buildKeys.Count) in Updates.cs"
+    Check 'one command: the repository, file names, signature purpose and limits are the builds'' own' (
+        $updatesCs -match "Repository = `"$([regex]::Escape($Repository))`"" -and $updatesCs -match "ManifestName = `"$([regex]::Escape($ManifestName))`"" -and
+        $updatesCs -match "SignatureName = `"$([regex]::Escape($SignatureName))`"" -and $updatesCs -match "SignaturePurpose = `"$([regex]::Escape($SignaturePurpose))`"" -and
+        $updatesCs -match 'MaxManifestBytes = 64 \* 1024;' -and $MaxManifestBytes -eq 64KB -and $updatesCs -match 'MaxSignatureBytes = 4 \* 1024;' -and $MaxSignatureBytes -eq 4KB -and
+        $updatesCs -match 'MaxFileBytes = 1L << 30;' -and $MaxFileBytes -eq 1GB -and
+        $updatesCs -match ('\[' + ((@($DownloadHosts) | ForEach-Object { '"' + [regex]::Escape($_) + '"' }) -join ', ') + '\]'))
+    Check 'one command: the trusted key''s id is its fingerprint, as the builds compute it' ((ConvertFrom-UpdateKey $TrustedKeys[0]).Id -ceq 'sha256:NGvHPuvCxo7JLsWzoeIV4RrCBiF9ohi-NbaVVZTb0MM')
+    Check 'one command: a key that is not P-256 is refused' ($null -ne (Get-Thrown { ConvertFrom-UpdateKey ([Convert]::ToBase64String((New-Object byte[] 91))) }))
+    # The signed bytes, laid out as ProtocolCrypto.SignedData: each field after its length, 4 bytes big-endian.
+    $layout = Get-SignedData 'pulsar-update-manifest-v1' ([byte[]](0x61, 0x62))
+    $expected = [byte[]](0, 0, 0, 25) + [Text.Encoding]::UTF8.GetBytes('pulsar-update-manifest-v1') + [byte[]](0, 0, 0, 2, 0x61, 0x62)
+    Check 'one command: what is signed is laid out as ProtocolCrypto.SignedData' ([Convert]::ToBase64String($layout) -ceq [Convert]::ToBase64String($expected))
+
+    # A key of this test's own, signing as Pulsar.UpdateSigner does (ECDSA P-256, SHA-256, r||s).
+    $testKey = [Security.Cryptography.CngKey]::Create([Security.Cryptography.CngAlgorithm]::ECDsaP256)
+    $publicBlob = $testKey.Export([Security.Cryptography.CngKeyBlobFormat]::EccPublicBlob)
+    $spki = [Convert]::ToBase64String([byte[]](@($P256KeyPrefix) + @([byte] 0x04) + @($publicBlob[8..71])))
+    $signer = New-Object Security.Cryptography.ECDsaCng $testKey
+    $sign = { param([byte[]] $bytes, [string] $purpose = $SignaturePurpose, [string] $keyId = (ConvertFrom-UpdateKey $spki).Id)
+        $signature = $signer.SignData((Get-SignedData $purpose $bytes), [Security.Cryptography.HashAlgorithmName]::SHA256)
+        [Text.Encoding]::UTF8.GetBytes((@{ keyId = $keyId; signature = [Convert]::ToBase64String($signature) } | ConvertTo-Json -Compress)) }
+    $sha = 'ab' * 32
+    $manifestText = '{"product":"pulsar","version":"1.0.1","minimumUpdateFrom":"1.0.0","published":"2026-10-22T00:00:00Z","notes":null,"files":[' +
+        '{"name":"pulsar-1.0.1-windows-x64.zip","size":10,"sha256":"' + $sha + '"},{"name":"PulsarSetup-1.0.1.exe","size":2048,"sha256":"' + $sha + '"},' +
+        '{"name":"PulsarAgentSetup-1.0.1.exe","size":1024,"sha256":"' + ('cd' * 32) + '"}]}'
+    $manifestBytes = [Text.Encoding]::UTF8.GetBytes($manifestText)
+    Check 'one command: a manifest signed by a trusted key passes' ($null -eq (Get-Thrown { Assert-ManifestSigned $manifestBytes (& $sign $manifestBytes) @($spki) }))
+    $tampered = [byte[]]$manifestBytes.Clone()
+    $tampered[20] = $tampered[20] -bxor 1
+    foreach ($case in ([ordered]@{
+            'a manifest changed after it was signed' = { Assert-ManifestSigned $tampered (& $sign $manifestBytes) @($spki) }
+            'a signature for another purpose' = { Assert-ManifestSigned $manifestBytes (& $sign $manifestBytes 'pulsar-other-v1') @($spki) }
+            'a key it does not trust' = { Assert-ManifestSigned $manifestBytes (& $sign $manifestBytes) $TrustedKeys }
+            'a signature naming a trusted key it is not by' = { Assert-ManifestSigned $manifestBytes (& $sign $manifestBytes $SignaturePurpose (ConvertFrom-UpdateKey $TrustedKeys[0]).Id) (@($spki) + $TrustedKeys) }
+            'a signature file that is not one' = { Assert-ManifestSigned $manifestBytes ([Text.Encoding]::UTF8.GetBytes('not json')) @($spki) }
+            'a signature that is not 64 bytes' = { Assert-ManifestSigned $manifestBytes ([Text.Encoding]::UTF8.GetBytes((@{ keyId = (ConvertFrom-UpdateKey $spki).Id; signature = 'AAAA' } | ConvertTo-Json))) @($spki) }
+        }).GetEnumerator()) {
+        Check "one command: refuses $($case.Key)" ($null -ne (Get-Thrown $case.Value))
+    }
+    $signer.Dispose()
+    $testKey.Dispose()
+
+    # The setup a signed manifest names.
+    $entry = Get-SetupEntry $manifestBytes $false
+    $agentEntry = Get-SetupEntry $manifestBytes $true
+    Check 'one command: the setup of the manifest''s version, with its size and SHA-256 (and the node''s with -Agent)' (
+        $entry.Name -ceq 'PulsarSetup-1.0.1.exe' -and $entry.Version -ceq '1.0.1' -and $entry.Size -eq 2048 -and $entry.Sha256 -ceq $sha -and
+        $agentEntry.Name -ceq 'PulsarAgentSetup-1.0.1.exe' -and $agentEntry.Sha256 -ceq ('cd' * 32))
+    foreach ($case in ([ordered]@{
+            'another product' = $manifestText.Replace('"product":"pulsar"', '"product":"other"')
+            'a version that is not a release' = $manifestText.Replace('"version":"1.0.1"', '"version":"1.0.1-rc1"')
+            'no setup of its version' = $manifestText.Replace('PulsarSetup-1.0.1.exe', 'PulsarSetup-1.0.0.exe')
+            'a SHA-256 that is not one' = $manifestText.Replace('"size":2048,"sha256":"' + $sha, '"size":2048,"sha256":"' + $sha.ToUpperInvariant())
+            'a size over 1 GB' = $manifestText.Replace('"size":2048', '"size":2147483648')
+            'no size' = $manifestText.Replace('"size":2048,', '')
+        }).GetEnumerator()) {
+        $text = $case.Value
+        Check "one command: refuses a manifest with $($case.Key)" ($null -ne (Get-Thrown { Get-SetupEntry ([Text.Encoding]::UTF8.GetBytes($text)) $false }))
+    }
+
+    # Where it downloads from, and what it runs.
+    Check 'one command: downloads only over HTTPS from GitHub and its release hosts' (
+        (Test-DownloadUri 'https://github.com/Ayrton09/Pulsar/releases/latest/download/pulsar-update.json') -and (Test-DownloadUri 'https://release-assets.githubusercontent.com/x') -and
+        (Test-DownloadUri 'https://objects.githubusercontent.com/x') -and -not (Test-DownloadUri 'http://github.com/x') -and -not (Test-DownloadUri 'https://github.com.example.org/x') -and
+        -not (Test-DownloadUri 'https://github.com:8443/x') -and -not (Test-DownloadUri 'https://user@github.com/x') -and -not (Test-DownloadUri 'https://example.org/x'))
+    $main = $parts['Install-Pulsar']
+    Check 'one command: as administrator; the signature is checked before the manifest is read, and the size and SHA-256 before the setup runs, from a new folder in Program Files' (
+        $main -match 'IsInRole\(\[Security\.Principal\.WindowsBuiltInRole\]::Administrator\)' -and
+        $main.IndexOf('Assert-ManifestSigned') -gt 0 -and $main.IndexOf('Assert-ManifestSigned') -lt $main.IndexOf('Get-SetupEntry') -and
+        $main.IndexOf('Get-FileHash') -gt 0 -and $main.IndexOf('Get-FileHash') -lt $main.IndexOf('Start-Process') -and
+        $parts['New-DownloadFolder'] -match "GetFolderPath\('ProgramFiles'\)" -and $parts['Get-Download'] -match 'AllowAutoRedirect = \$false' -and $parts['Get-Download'] -match 'FileMode\]::CreateNew')
+    $oneCommandCode = (($oneCommand -split "`r?`n") | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
+    $runs = @([regex]::Matches($oneCommandCode, '\b(Start-Process|Invoke-Expression|iex|Invoke-Item|cmd(\.exe)?)\b|&\s*\$') | ForEach-Object { $_.Value })
+    Check 'one command: the only program it starts is the checked setup' ((@($runs | Where-Object { $_ -ne 'Start-Process' }).Count -eq 0) -and @([regex]::Matches($main, 'Start-Process -FilePath \$file')).Count -eq 2 -and $oneCommandCode -notmatch '(?m)^\s*exit\b') ($runs -join ', ')
+}
+Check 'one command: the release carries install.ps1 with the setups, named by the signed manifest' (
+    $buildRelease -match "Copy-Item -LiteralPath \(Join-Path \`$PSScriptRoot 'install\.ps1'\)" -and $buildRelease -match "\`$published \+= @\('install\.ps1', 'install\.ps1\.sha256'\)" -and
+    $buildRelease.IndexOf("'install.ps1', 'install.ps1.sha256'") -lt $buildRelease.IndexOf('New-UpdateManifest $Work'))
+
 if ($script:skipped -gt 0) { Write-Host "$($script:skipped) check(s) SKIPPED: not run, they need an elevated PowerShell." -ForegroundColor Yellow }
 if ($script:failures -gt 0) {
     Write-Host "$($script:failures) check(s) failed." -ForegroundColor Red

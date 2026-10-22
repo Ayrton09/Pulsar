@@ -16,9 +16,16 @@ Games in 1.0: Counter-Strike 2 and Counter-Strike: Source. More can be added wit
 
 ## Installing
 
-Download the release ZIP, install PostgreSQL, extract the ZIP into a folder only administrators can change, and run
-`Install-Pulsar.ps1` from there as administrator: it installs the panel and
-an agent on one PC, or each on its own machines. Step by step: [docs/guides/install.md](docs/guides/install.md).
+In PowerShell run as administrator:
+
+```powershell
+irm https://github.com/Ayrton09/Pulsar/releases/latest/download/install.ps1 | iex
+```
+
+It checks the newest release against the project's update key and runs its setup wizard, which installs what the PC
+lacks (.NET 10, PostgreSQL 18) and then the panel, this PC as a node, or both. Or download `PulsarSetup-<version>.exe`
+from [Releases](https://github.com/Ayrton09/Pulsar/releases) and run it, or, for automation, use the release ZIP's
+`Install-Pulsar.ps1`. Step by step: [docs/guides/install.md](docs/guides/install.md).
 Updating and backups: [update.md](docs/guides/update.md), [backup.md](docs/guides/backup.md). MySQL/MariaDB databases for game
 plugins: [databases.md](docs/guides/databases.md). Server files over SFTP: [sftp.md](docs/guides/sftp.md).
 

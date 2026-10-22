@@ -7,14 +7,17 @@ agent take a file nobody signed ([update.md](update.md), "One-click updates").
 
 How it fits together:
 
-- A release has `pulsar-<version>-windows-x64.zip` (the programs and `Install-Pulsar.ps1`), the agent MSI, the two setups
-  and a `.sha256` file for each, as before, plus two files for updates:
+- A release has `pulsar-<version>-windows-x64.zip` (the programs and `Install-Pulsar.ps1`), the agent MSI, the two setups,
+  `install.ps1` (the one-command install, [install.md](install.md#with-one-command), which checks the newest release's
+  signed manifest and runs its setup) and a `.sha256` file for each, as before, plus two files for updates:
   - `pulsar-update.json`, the **manifest**: the version, the oldest version that may update to this one
     (`minimumUpdateFrom`), the release notes, and every file of the release with its size and SHA-256;
   - `pulsar-update.json.sig`, its **signature** by an update key.
 - Every Pulsar build has the public keys it trusts built in (`UpdateKeys.Trusted` in
   `src/Pulsar.Contracts/Updates.cs`). It takes an update only if the signature on the manifest verifies against one of
-  them, and then only the files the signed manifest names, with the sizes and SHA-256 it gives.
+  them, and then only the files the signed manifest names, with the sizes and SHA-256 it gives. `install.ps1` carries
+  the same list (`$TrustedKeys` in `scripts/release/install.ps1`; `Test-InstallScripts.ps1` fails when they differ):
+  whenever this guide says to add or remove a key in `UpdateKeys.Trusted`, do the same there.
 
 ## What you need
 
