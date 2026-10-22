@@ -25,7 +25,7 @@
     $Repository = 'Ayrton09/Pulsar'
     # The update keys' public keys (ECDSA P-256, SubjectPublicKeyInfo in base64): UpdateKeys.Trusted, the same list.
     $TrustedKeys = @(
-        'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEl1pTve5NYrABuEu/3rd81rP5xsJSGKLUEcyM1vuSfQXrv3xP1w6oYPYkNwtOYbjB1q5O09Hz1hSrP7O0U8K34A=='
+        'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDoveNpq4aiT1Pmog9P4f2egClTyuGYeYtyaG9S6MVS15A31pequgC+TyKe0E7zDKqY7HXWwZWiY65JZ4vpafXA=='
     )
     $SignaturePurpose = 'pulsar-update-manifest-v1'
     $ManifestName = 'pulsar-update.json'

@@ -136,8 +136,9 @@ public static class UpdateKeys
 {
     public static IReadOnlyList<string> Trusted { get; } =
     [
-        // sha256:NGvHPuvCxo7JLsWzoeIV4RrCBiF9ohi-NbaVVZTb0MM, made 2026-10-21.
-        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEl1pTve5NYrABuEu/3rd81rP5xsJSGKLUEcyM1vuSfQXrv3xP1w6oYPYkNwtOYbjB1q5O09Hz1hSrP7O0U8K34A==",
+        // sha256:mIudURK-7CYCrht6ZxuX5B_v2ToaYyPGC5VEAWw4ibA, made 2026-10-22. It replaces the key of 2026-10-21, whose
+        // passphrase was lost before it signed any release.
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDoveNpq4aiT1Pmog9P4f2egClTyuGYeYtyaG9S6MVS15A31pequgC+TyKe0E7zDKqY7HXWwZWiY65JZ4vpafXA==",
     ];
 }
 

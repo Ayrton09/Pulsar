@@ -4621,7 +4621,7 @@ $oneCommandPath = Join-Path $PSScriptRoot '..\release\install.ps1'
         $updatesCs -match 'MaxManifestBytes = 64 \* 1024;' -and $MaxManifestBytes -eq 64KB -and $updatesCs -match 'MaxSignatureBytes = 4 \* 1024;' -and $MaxSignatureBytes -eq 4KB -and
         $updatesCs -match 'MaxFileBytes = 1L << 30;' -and $MaxFileBytes -eq 1GB -and
         $updatesCs -match ('\[' + ((@($DownloadHosts) | ForEach-Object { '"' + [regex]::Escape($_) + '"' }) -join ', ') + '\]'))
-    Check 'one command: the trusted key''s id is its fingerprint, as the builds compute it' ((ConvertFrom-UpdateKey $TrustedKeys[0]).Id -ceq 'sha256:NGvHPuvCxo7JLsWzoeIV4RrCBiF9ohi-NbaVVZTb0MM')
+    Check 'one command: the trusted key''s id is its fingerprint, as the builds compute it' ((ConvertFrom-UpdateKey $TrustedKeys[0]).Id -ceq 'sha256:mIudURK-7CYCrht6ZxuX5B_v2ToaYyPGC5VEAWw4ibA')
     Check 'one command: a key that is not P-256 is refused' ($null -ne (Get-Thrown { ConvertFrom-UpdateKey ([Convert]::ToBase64String((New-Object byte[] 91))) }))
     # The signed bytes, laid out as ProtocolCrypto.SignedData: each field after its length, 4 bytes big-endian.
     $layout = Get-SignedData 'pulsar-update-manifest-v1' ([byte[]](0x61, 0x62))
