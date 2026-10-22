@@ -139,6 +139,11 @@ jobs:
           # Self-contained: the service runs as SYSTEM, which does not see the job's DOTNET_ROOT.
           dotnet publish src/Pulsar.Api -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/panel
           dotnet publish src/Pulsar.Agent -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/agent
+          # The agent MSI, as scripts/sandbox/agent-install/prepare.ps1 builds it: 1.0.0, a second build of 1.0.0, and 1.0.1.
+          foreach ($build in @(@('1.0.0', 'msi'), @('1.0.0', 'msi/rebuild'), @('1.0.1', 'msi'))) {
+            powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release/Build-AgentMsi.ps1 -AgentDir artifacts/agent-install-ci/agent -Version $build[0] -Output "artifacts/agent-install-ci/$($build[1])"
+            if ($LASTEXITCODE -ne 0) { throw 'agent MSI failed' }
+          }
           dotnet publish tests/Pulsar.TestGameServer -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/testgame
 
       - name: Install, rotate, run servers, revoke and remove the agent
