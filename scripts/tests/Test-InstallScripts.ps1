@@ -1176,6 +1176,10 @@ foreach ($installed in '18.5', '18.60', '17.6', '', '18') {
     $caught = Get-Caught { Assert-InstalledPostgresVersion $installed '18.6' }
     Check "version: refuses PostgreSQL installed as '$installed' for 18.6" ($null -ne $caught -and "$caught" -match '18\.6') "$caught"
 }
+$postgresServerCode = (Get-ScriptParts $installScript @('Install-PostgresServer'))['Install-PostgresServer']
+Check 'version: a PostgreSQL that is not the release chosen is stopped and disabled before anything uses it, then the install fails' (
+    $postgresServerCode -match "(?s)SHOW server_version.*Assert-InstalledPostgresVersion.*if \(\`$wrong\) \{.*Stop-Service -Name \`$plan\.Service.*Set-Service -Name \`$plan\.Service -StartupType Disabled.*throw" -and
+    $postgresServerCode.IndexOf('Assert-InstalledPostgresVersion') -lt $postgresServerCode.IndexOf('ALTER ROLE'))
 
 # The oldest PostgreSQL a release installs.
 Check 'PostgreSQL: the floor release.json records' ((Read-PostgresMinimum '{"version": "1.0.0", "runtimes": {}, "postgresMinimum": "18.6"}') -ceq '18.6' -and $null -eq (Read-PostgresMinimum '{"version": "1.0.0", "runtimes": {}}') -and $null -eq (Read-PostgresMinimum $null))
@@ -4583,9 +4587,23 @@ Check 'backup: the keys, keyring and tls folders are copied with Copy-PlainTree,
 # --- this test's own; nothing is downloaded or run. In a scope of its own (its constants share names with Build-Release.ps1's).
 $oneCommandPath = Join-Path $PSScriptRoot '..\release\install.ps1'
 & {
-    $parts = Get-ScriptParts $oneCommandPath @('ConvertFrom-UpdateKey', 'Get-SignedData', 'Assert-ManifestSigned', 'Get-SetupEntry', 'Test-DownloadUri', 'Get-Download', 'New-DownloadFolder', 'Install-Pulsar') @(
-        'Repository', 'TrustedKeys', 'SignaturePurpose', 'ManifestName', 'SignatureName', 'MaxManifestBytes', 'MaxSignatureBytes', 'MaxFileBytes', 'DownloadHosts', 'VersionPattern', 'P256KeyPrefix')
-    foreach ($name in @($parts.Keys | Where-Object { $_ -ne 'Install-Pulsar' })) { . ([scriptblock]::Create($parts[$name])) }
+    # The whole script is one script block, invoked with @args: its functions and constants are that block's statements.
+    $oneCommandAst = [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $oneCommandPath).ProviderPath, [ref] $null, [ref] $null)
+    $topLevel = @($oneCommandAst.EndBlock.Statements)
+    $inner = $oneCommandAst.Find({ param($node) $node -is [Management.Automation.Language.ScriptBlockExpressionAst] }, $false).ScriptBlock
+    $parts = @{}
+    foreach ($statement in $inner.EndBlock.Statements) {
+        if ($statement -is [Management.Automation.Language.FunctionDefinitionAst]) { $parts[$statement.Name] = $statement.Extent.Text }
+        elseif ($statement -is [Management.Automation.Language.AssignmentStatementAst] -and $statement.Left -is [Management.Automation.Language.VariableExpressionAst]) {
+            $parts['$' + $statement.Left.VariablePath.UserPath] = $statement.Extent.Text
+        }
+    }
+    $wanted = @('ConvertFrom-UpdateKey', 'Get-SignedData', 'Assert-ManifestSigned', 'Get-SetupEntry', 'Assert-SetupFile', 'Test-DownloadUri', 'Get-Download', 'New-DownloadFolder', 'Install-Pulsar',
+        '$Repository', '$TrustedKeys', '$SignaturePurpose', '$ManifestName', '$SignatureName', '$MaxManifestBytes', '$MaxSignatureBytes', '$MaxFileBytes', '$DownloadHosts', '$VersionPattern', '$P256KeyPrefix', '$RestartExitCode')
+    Check 'one command: one script block with every part, run with @args, so piped to iex it leaves nothing in the caller''s session' (
+        $topLevel.Count -eq 1 -and $topLevel[0].Extent.Text -match '^& \{' -and $topLevel[0].Extent.Text -match '\} @args\s*\z' -and
+        @($wanted | Where-Object { -not $parts.ContainsKey($_) }).Count -eq 0 -and $parts['$ErrorActionPreference'] -match "'Stop'") (@($wanted | Where-Object { -not $parts.ContainsKey($_) }) -join ', ')
+    foreach ($name in @($parts.Keys | Where-Object { $_ -notin 'Install-Pulsar', '$ErrorActionPreference' })) { . ([scriptblock]::Create($parts[$name])) }
     $oneCommand = Get-Content -Raw -LiteralPath $oneCommandPath
     $updatesCs = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\src\Pulsar.Contracts\Updates.cs')
 
@@ -4653,6 +4671,21 @@ $oneCommandPath = Join-Path $PSScriptRoot '..\release\install.ps1'
         Check "one command: refuses a manifest with $($case.Key)" ($null -ne (Get-Thrown { Get-SetupEntry ([Text.Encoding]::UTF8.GetBytes($text)) $false }))
     }
 
+    # The downloaded setup against its signed entry.
+    $downloadFolder = Join-Path ([IO.Path]::GetTempPath()) ('pulsar-one-command-' + [Guid]::NewGuid().ToString('N'))
+    $null = New-Item -ItemType Directory $downloadFolder
+    try {
+        $setupFile = Join-Path $downloadFolder 'PulsarSetup-1.0.1.exe'
+        [IO.File]::WriteAllBytes($setupFile, [byte[]](1..200))
+        $realHash = (Get-FileHash -LiteralPath $setupFile -Algorithm SHA256).Hash.ToLowerInvariant()
+        $entryOf = { param([long] $size, [string] $hash) [pscustomobject]@{ Name = 'PulsarSetup-1.0.1.exe'; Version = '1.0.1'; Size = $size; Sha256 = $hash } }
+        Check 'one command: a setup with its signed size and SHA-256 passes' ($null -eq (Get-Thrown { Assert-SetupFile $setupFile (& $entryOf 200 $realHash) }))
+        Check 'one command: refuses a setup whose SHA-256 is not the signed one' ($null -ne (Get-Thrown { Assert-SetupFile $setupFile (& $entryOf 200 ('0' * 64)) }))
+        Check 'one command: refuses a setup whose size is not the signed one, even with its SHA-256' ($null -ne (Get-Thrown { Assert-SetupFile $setupFile (& $entryOf 201 $realHash) }))
+        Check 'one command: refuses a SHA-256 in capitals (the manifest''s are lower-case)' ($null -ne (Get-Thrown { Assert-SetupFile $setupFile (& $entryOf 200 $realHash.ToUpperInvariant()) }))
+    }
+    finally { Remove-Item -LiteralPath $downloadFolder -Recurse -Force }
+
     # Where it downloads from, and what it runs.
     Check 'one command: downloads only over HTTPS from GitHub and its release hosts' (
         (Test-DownloadUri 'https://github.com/Ayrton09/Pulsar/releases/latest/download/pulsar-update.json') -and (Test-DownloadUri 'https://release-assets.githubusercontent.com/x') -and
@@ -4662,11 +4695,14 @@ $oneCommandPath = Join-Path $PSScriptRoot '..\release\install.ps1'
     Check 'one command: as administrator; the signature is checked before the manifest is read, and the size and SHA-256 before the setup runs, from a new folder in Program Files' (
         $main -match 'IsInRole\(\[Security\.Principal\.WindowsBuiltInRole\]::Administrator\)' -and
         $main.IndexOf('Assert-ManifestSigned') -gt 0 -and $main.IndexOf('Assert-ManifestSigned') -lt $main.IndexOf('Get-SetupEntry') -and
-        $main.IndexOf('Get-FileHash') -gt 0 -and $main.IndexOf('Get-FileHash') -lt $main.IndexOf('Start-Process') -and
+        $main.IndexOf('Assert-SetupFile $file $setup') -gt 0 -and $main.IndexOf('Assert-SetupFile $file $setup') -lt $main.IndexOf('Start-Process') -and
+        $main.IndexOf('Get-Download "https://github.com/$Repository/releases/download/') -lt $main.IndexOf('Assert-SetupFile') -and
         $parts['New-DownloadFolder'] -match "GetFolderPath\('ProgramFiles'\)" -and $parts['Get-Download'] -match 'AllowAutoRedirect = \$false' -and $parts['Get-Download'] -match 'FileMode\]::CreateNew')
     $oneCommandCode = (($oneCommand -split "`r?`n") | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
     $runs = @([regex]::Matches($oneCommandCode, '\b(Start-Process|Invoke-Expression|iex|Invoke-Item|cmd(\.exe)?)\b|&\s*\$') | ForEach-Object { $_.Value })
     Check 'one command: the only program it starts is the checked setup' ((@($runs | Where-Object { $_ -ne 'Start-Process' }).Count -eq 0) -and @([regex]::Matches($main, 'Start-Process -FilePath \$file')).Count -eq 2 -and $oneCommandCode -notmatch '(?m)^\s*exit\b') ($runs -join ', ')
+    Check 'one command: a setup done but asking for a restart (3010) is a success that says to restart; any other code but 0 fails' (
+        $RestartExitCode -eq 3010 -and $main -match 'if \(\$process\.ExitCode -eq \$RestartExitCode\) \{ Write-Host [^\n]*restart' -and $main -match 'elseif \(\$process\.ExitCode -ne 0\) \{ throw')
 }
 Check 'one command: the release carries install.ps1 with the setups, named by the signed manifest' (
     $buildRelease -match "Copy-Item -LiteralPath \(Join-Path \`$PSScriptRoot 'install\.ps1'\)" -and $buildRelease -match "\`$published \+= @\('install\.ps1', 'install\.ps1\.sha256'\)" -and

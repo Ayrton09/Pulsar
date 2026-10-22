@@ -1321,8 +1321,19 @@ function Install-PostgresServer($installer, $plan) {
     try {
         Wait-PostgresReady $plan.Service $bin $installPassword
         $server = Invoke-Psql $bin $installPassword @('-c', 'SHOW server_version')
-        if ($server.ExitCode -ne 0) { throw "Its version could not be read: $(ConvertTo-PrintableText $server.Output.Trim())" }
-        Assert-InstalledPostgresVersion $server.Output.Trim() $installer.Version
+        $wrong = $null
+        if ($server.ExitCode -ne 0) { $wrong = "Its version could not be read: $(ConvertTo-PrintableText $server.Output.Trim())" }
+        else {
+            try { Assert-InstalledPostgresVersion $server.Output.Trim() $installer.Version }
+            catch { $wrong = $_.Exception.Message }
+        }
+        if ($wrong) {
+            # Not the release chosen (or one this script cannot tell): it is not left running with the installer's
+            # password and settings until someone removes it.
+            Stop-Service -Name $plan.Service -Force -ErrorAction SilentlyContinue
+            Set-Service -Name $plan.Service -StartupType Disabled -ErrorAction SilentlyContinue
+            throw "$wrong Its service, $($plan.Service), is stopped and disabled."
+        }
         $password = New-Secret 32
         Register-Secret $password
         $changed = Invoke-Psql $bin $installPassword @() "ALTER ROLE postgres PASSWORD '$password';"

@@ -49,10 +49,13 @@ removed afterwards. A release that anyone without the maintainer's key published
 
 `install.ps1` itself is what GitHub serves for the newest release, over HTTPS, so that line trusts GitHub for it as a
 download from the Releases page does. To read it first, download it from the Releases page (it is named by the signed
-manifest too, with its SHA-256, and has its own `.sha256` file), check it, and run it with `-File`:
-`powershell -ExecutionPolicy Bypass -File .\install.ps1`, adding `-Agent` for a node only (`PulsarAgentSetup`, below)
-and `-SetupArguments '/VERYSILENT', '/SUPPRESSMSGBOXES', ...` for a [silent install](#silent-installs-with-the-setups).
-When the setup ends with an exit code other than `0`, the script stops with an error that names it.
+manifest too, with its SHA-256, and has its own `.sha256` file), check it, and run it from PowerShell as
+administrator: `powershell -ExecutionPolicy Bypass -File .\install.ps1`, adding `-Agent` for a node only
+(`PulsarAgentSetup`, below). For a [silent install](#silent-installs-with-the-setups), pass the setup's options from
+within PowerShell, where a list is a list: `& .\install.ps1 -SetupArguments '/VERYSILENT', '/SUPPRESSMSGBOXES', ...`
+(after `Unblock-File .\install.ps1`, if the execution policy asks for it). When the setup ends with an exit code other
+than `0`, the script stops with an error that names it; `3010` (done, restart Windows, with `/RESTARTEXITCODE=3010`) is
+a success that says so. Piped to `iex`, the script runs in a scope of its own and leaves nothing in that PowerShell.
 
 ### The panel's PC: PulsarSetup.exe
 
