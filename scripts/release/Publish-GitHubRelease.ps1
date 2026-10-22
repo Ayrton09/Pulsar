@@ -19,8 +19,9 @@
 param(
     # The version being published, exactly major.minor.patch; the folder's manifest must be for it.
     [Parameter(Mandatory)] [ValidatePattern('^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\z')] [string] $Version,
-    # Where Build-Release.ps1 put the release.
-    [string] $Folder = (Join-Path $PSScriptRoot '..\..\artifacts\release'),
+    # Where Build-Release.ps1 put the release (default artifacts\release; set below, since Windows PowerShell leaves
+    # $PSScriptRoot empty in a parameter's default).
+    [string] $Folder,
     # Release notes (a text file) for the GitHub release; without it, the manifest's notes.
     [string] $Notes,
     # The commit the release's tag is made at (a commit of the repository on GitHub); default: this checkout's HEAD.
@@ -32,6 +33,7 @@ param(
     # Runs every check and uploads nothing.
     [switch] $CheckOnly)
 $ErrorActionPreference = 'Stop'
+if (-not $Folder) { $Folder = Join-Path $PSScriptRoot '..\..\artifacts\release' }
 
 # The repository releases come from: the one UpdateRelease.Repository (src\Pulsar.Contracts\Updates.cs) names, and the only
 # one installations take updates from.
