@@ -233,20 +233,18 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             return null; // a game slow to answer must not pile samples up
         }
 
-        var sample = new TaskCompletionSource<ServerMetrics?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _ = sample.Task.ContinueWith(_ => Volatile.Write(ref _sampling, 0), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
+        // Released here, before the result is returned: released by a continuation of the sample (which runs
+        // asynchronously), a sample asked for right after this one could find it still taken.
         try
         {
+            var sample = new TaskCompletionSource<ServerMetrics?>(TaskCreationOptions.RunContinuationsAsynchronously);
             await Post(new Sample(sample));
+            return await sample.Task;
         }
-        catch (ObjectDisposedException)
+        finally
         {
-            sample.TrySetResult(null);
-            throw;
+            Volatile.Write(ref _sampling, 0);
         }
-
-        return await sample.Task;
     }
 
     /// <summary>

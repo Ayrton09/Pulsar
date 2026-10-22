@@ -55,6 +55,7 @@ public sealed partial class GameHostService(
     private int? _exitCode;
     private bool _reachedMemoryLimit;
     private Session? _session;
+    private int _treeGraceStarted;
     private Task _pump = Task.CompletedTask;
     private Task? _ending;
 
@@ -148,16 +149,23 @@ public sealed partial class GameHostService(
         }
         finally
         {
+            IGameProcess? exited = null;
             lock (_lock)
             {
                 if (_session == session)
                 {
                     _session = null;
+                    exited = _exitCode is not null ? _game : null;
                 }
             }
 
             await session.DisposeAsync().ConfigureAwait(false);
             LogDisconnected(serverId);
+            if (exited is not null)
+            {
+                // The game ended while this agent was here: what is left of its tree is this host's to end now.
+                _ = EndTreeAfterGraceAsync(exited);
+            }
         }
     }
 
@@ -241,25 +249,44 @@ public sealed partial class GameHostService(
         LogExited(serverId, code, remaining);
         if (session is not null)
         {
-            // The agent decides about what is left of the tree (its own grace period).
-            await session.SendAsync(new HostExited(code, _reachedMemoryLimit, remaining)).ConfigureAwait(false);
+            // The agent decides about what is left of the tree (its own grace period). One that leaves meanwhile, before
+            // it decides, leaves it to this host again (ServeAsync).
+            try
+            {
+                await session.SendAsync(new HostExited(code, _reachedMemoryLimit, remaining)).ConfigureAwait(false);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException or OperationCanceledException)
+            {
+                // The agent left as the game ended.
+            }
+        }
+
+        await EndTreeAfterGraceAsync(game).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// What is left of an exited game's tree when no agent is there to decide (none was connected, or the one that was
+    /// left before it decided): children (crash handlers, helpers) get the same grace the agent would give them, then end.
+    /// Once per game.
+    /// </summary>
+    private async Task EndTreeAfterGraceAsync(IGameProcess game)
+    {
+        if (game.CountProcesses() == 0 || Interlocked.Exchange(ref _treeGraceStarted, 1) != 0)
+        {
             return;
         }
 
-        if (remaining > 0)
+        try
         {
-            // Nobody to decide: children (crash handlers, helpers) get the same grace the agent would give them.
-            try
-            {
-                await Task.Delay(options.TreeGrace, clock, _released.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-
-            game.TerminateTree(1);
+            await Task.Delay(options.TreeGrace, clock, _released.Token).ConfigureAwait(false);
         }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        game.TerminateTree(1);
     }
 
     /// <summary>

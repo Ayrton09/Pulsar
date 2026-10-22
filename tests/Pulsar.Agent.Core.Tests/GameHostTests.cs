@@ -283,6 +283,26 @@ public sealed class GameHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AnAgentThatLeavesBeforeItDecidesLeavesWhatIsLeftOfTheTreeToTheHost()
+    {
+        await using var launcher = new InProcessHostLauncher(_games, new GameHostOptions { TreeGrace = TimeSpan.FromMilliseconds(100) });
+        var hosts = new GameHostManager(_games, launcher, NullLogger<GameHostManager>.Instance);
+        var process = (IHostedGameProcess)await hosts.StartAsync(Spec(), TestContext.Current.CancellationToken);
+        var game = _games.Last;
+
+        game.Children = 1;
+        game.Exit(3);
+        // The agent hears of the exit, so the tree is its to decide about: the host leaves it alone ...
+        Assert.Equal(3, await process.Exited.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        await Task.Delay(300, TestContext.Current.CancellationToken);
+        Assert.Null(game.TerminatedWith);
+
+        // ... until the agent leaves without deciding: then the host gives the children their grace and ends them.
+        await process.DetachAsync();
+        await WaitUntilAsync(() => game.TerminatedWith == 1);
+    }
+
+    [Fact]
     public async Task AHostNobodyConnectsToEnds()
     {
         using var service = new GameHostService(_games, Guid.NewGuid(), GameHostProtocol.NewPipeName(Guid.NewGuid()),
