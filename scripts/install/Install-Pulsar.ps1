@@ -1207,7 +1207,7 @@ function Find-PostgresInstallerUrl([string] $version) {
 
 # EDB's installer of the PostgreSQL to install, in the private downloads folder and checked: the one -PostgresInstaller
 # names (copied), or the newest build of the newest release of the plan's major version, downloaded. Either must be
-# signed by EnterpriseDB.
+# signed by EnterpriseDB. Returns its Path and the release it was chosen as (Version, "18.6").
 function Get-PostgresInstallerFile($plan) {
     $minimum = Read-PostgresMinimum (Get-ReleaseText)
     if ($PostgresInstaller) {
@@ -1237,9 +1237,10 @@ function Get-PostgresInstallerFile($plan) {
     $chain = $null
     if ($signature.SignerCertificate) { $chain = Get-SignerChain $file $signature.SignerCertificate }
     Assert-InstallerSignature $signature $PostgresSigner $what $chain
-    # Signed for the release it was chosen for, not an older one of EDB's under the expected name.
-    Assert-InstallerVersion (Get-Item -LiteralPath $file).VersionInfo 'PostgreSQL' $version $what -contains
-    return $file
+    # Signed for the release it was chosen for, not an older one of EDB's under the expected name: as far as its version
+    # information says (only "18" in EDB's), then by what it installs (Install-PostgresServer).
+    Assert-InstallerVersion (Get-Item -LiteralPath $file).VersionInfo 'PostgreSQL' $version $what -contains -major $version.Split('.')[0]
+    return [pscustomobject]@{ Path = $file; Version = $version }
 }
 
 # The pg_hba.conf rules that let in more than this machine ($rows: "type|address|netmask|auth_method|error", one per rule, as
@@ -1285,13 +1286,14 @@ function Wait-PostgresReady([string] $service, [string] $bin, [string] $password
     throw "PostgreSQL did not take connections within 2 minutes ($detail)."
 }
 
-# Installs PostgreSQL with EDB's installer ($installer, checked; $plan from Get-PostgresPlan), unattended: the server
-# and its command-line tools (no pgAdmin, no StackBuilder). Its superuser password is random and given in an options
+# Installs PostgreSQL with EDB's installer ($installer, checked: Get-PostgresInstallerFile's; $plan from
+# Get-PostgresPlan), unattended: the server and its command-line tools (no pgAdmin, no StackBuilder), which must then
+# be the release the installer was chosen as. Its superuser password is random and given in an options
 # file only SYSTEM and Administrators can read, deleted when the installer ends (never on a command line, which other
 # programs can read). It is replaced at once by another random one (the installer may pass the first to its own
 # helpers), which is kept nowhere: install.md says how an administrator sets a new one. Then PostgreSQL listens on
 # this machine only, and its pg_hba.conf may let in nothing else. Returns the superuser's password, for this run only.
-function Install-PostgresServer([string] $installer, $plan) {
+function Install-PostgresServer($installer, $plan) {
     $installPassword = New-Secret 32
     Register-Secret $installPassword
     $options = Join-Path $SetupDownloads 'postgresql-options.txt'
@@ -1301,7 +1303,7 @@ function Install-PostgresServer([string] $installer, $plan) {
     Write-PrivateFile $options "superpassword=$installPassword`r`n"
     Write-Step "Installing PostgreSQL $($plan.Major) in $($plan.Prefix) (the service $($plan.Service), port $($plan.Port); this takes a few minutes)"
     try {
-        $code = Start-Installer $installer @('--mode', 'unattended', '--unattendedmodeui', 'none', '--optionfile', $options,
+        $code = Start-Installer $installer.Path @('--mode', 'unattended', '--unattendedmodeui', 'none', '--optionfile', $options,
             '--prefix', $plan.Prefix, '--datadir', $plan.Data, '--serverport', "$($plan.Port)", '--servicename', $plan.Service,
             '--disable-components', 'pgAdmin,stackbuilder') $temp 60
     }
@@ -1318,6 +1320,9 @@ function Install-PostgresServer([string] $installer, $plan) {
     $bin = Join-Path $plan.Prefix 'bin'
     try {
         Wait-PostgresReady $plan.Service $bin $installPassword
+        $server = Invoke-Psql $bin $installPassword @('-c', 'SHOW server_version')
+        if ($server.ExitCode -ne 0) { throw "Its version could not be read: $(ConvertTo-PrintableText $server.Output.Trim())" }
+        Assert-InstalledPostgresVersion $server.Output.Trim() $installer.Version
         $password = New-Secret 32
         Register-Secret $password
         $changed = Invoke-Psql $bin $installPassword @() "ALTER ROLE postgres PASSWORD '$password';"
@@ -4798,12 +4803,16 @@ function Assert-InstallerSignature($signature, $signer, [string] $what, $chain =
 
 # Checks that an installer's version information ($versionInfo: its file's VersionInfo) is that of $product (its
 # ProductName, exactly, or containing it with -contains) at $version: its ProductVersion or FileVersion starts with
-# $version, followed by nothing or by what is not a digit ("10.0.12" for "10.0.12.36422", "18.6" for "18.6-1").
-function Assert-InstallerVersion($versionInfo, [string] $product, [string] $version, [string] $what, [switch] $contains) {
+# $version, followed by nothing or by what is not a digit ("10.0.12" for "10.0.12.36422", "18.6" for "18.6-1"). With
+# $major, a ProductVersion that is exactly that major version passes too: EDB's installers of PostgreSQL 18 say only
+# "18" (and FileVersion "1.0.0.0"), so which release one holds is checked once it is installed
+# (Assert-InstalledPostgresVersion).
+function Assert-InstallerVersion($versionInfo, [string] $product, [string] $version, [string] $what, [switch] $contains, [string] $major) {
     $name = "$($versionInfo.ProductName)"
     $nameMatches = if ($contains) { $name.IndexOf($product, [StringComparison]::OrdinalIgnoreCase) -ge 0 } else { $name -ceq $product }
     $pattern = '^' + [regex]::Escape($version) + '(\z|[^0-9])'
-    $versionMatches = "$($versionInfo.ProductVersion)" -cmatch $pattern -or "$($versionInfo.FileVersion)" -cmatch $pattern
+    $versionMatches = "$($versionInfo.ProductVersion)" -cmatch $pattern -or "$($versionInfo.FileVersion)" -cmatch $pattern -or
+        ($major -and "$($versionInfo.ProductVersion)" -ceq $major)
     if (-not $nameMatches -or -not $versionMatches) {
         throw (New-SetupError $ExitUntrusted "$what says it is '$(ConvertTo-PrintableText $name)' $(ConvertTo-PrintableText "$($versionInfo.ProductVersion)"), not $product $version, and is not run. Nothing was changed.")
     }
@@ -4828,6 +4837,15 @@ function Assert-PostgresMinimum([string] $version, [string] $minimum, [string] $
     $floor = $minimum.Split('.')
     if ($parts[0] -ceq $floor[0] -and [int]$parts[1] -lt [int]$floor[1]) {
         throw (New-SetupError $ExitUntrusted "$what is PostgreSQL $version, older than $minimum, the oldest this release of Pulsar installs (it lacks fixes that release has). Nothing was changed.")
+    }
+}
+
+# Checks that the PostgreSQL an installer put in place ($installed: its server_version, "18.6") is the release it was
+# chosen as ($version): EDB's installers name only the major version, so an older build served under the expected name
+# would show only here.
+function Assert-InstalledPostgresVersion([string] $installed, [string] $version) {
+    if ($installed -cnotmatch ('^' + [regex]::Escape($version) + '(\z|[^0-9])')) {
+        throw "It is PostgreSQL $(ConvertTo-PrintableText $installed), not the $version its installer was chosen as: it is not used."
     }
 }
 

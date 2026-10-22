@@ -851,10 +851,12 @@ PowerShell's `Get-AuthenticodeSignature` does not): a revoked one is refused (ex
 (no internet, an offline install), the installer says so in a warning, in its log too, and goes on with the other checks.
 
 The signers' identities are those of EDB's signed PostgreSQL 18 programs and Microsoft's .NET 10 installers when the
-release was made. Before a release, its Sandbox run (`scripts/sandbox/install`) must confirm them on the real
-downloads: EDB's installer's signer, issuer and chain (`Get-AuthenticodeSignature` on it, its
+release was made. Before a release, its Sandbox runs (`scripts/sandbox/install`, and `scripts/sandbox/setup` with
+`-Networking`, which downloads them as an easy install does) must confirm them on the real downloads: EDB's installer's signer, issuer and chain (`Get-AuthenticodeSignature` on it, its
 `SignerCertificate.Issuer`, and the thumbprints of the chain Windows builds for it) and its version information (`(Get-Item <installer>).VersionInfo`: a `ProductName` with `PostgreSQL` in it and a
-`ProductVersion` or `FileVersion` starting with `18.<minor>`). When a publisher changes them (a new certificate
+`ProductVersion` or `FileVersion` starting with `18.<minor>`, or a `ProductVersion` of exactly `18`, which is what
+EDB's installers of PostgreSQL 18 say; the server one installs must then report `18.<minor>` before anything uses it,
+or the install fails and says to remove that PostgreSQL). When a publisher changes them (a new certificate
 authority, a new address in its certificate), the installer refuses its files (exit code 5) until a release of
 Pulsar names the new ones.
 
@@ -885,7 +887,8 @@ them again):
   read after all, match the SHA-512 it lists for that version.
 - `-PostgresInstaller <file>`: EDB's installer, `postgresql-18.<minor>-<build>-windows-x64.exe` (from
   <https://www.enterprisedb.com/downloads/postgres-postgresql-downloads>; PostgreSQL 15 or later, its name gives the
-  version, which its version information must confirm; of 18, at least the release's floor), signed by EnterpriseDB.
+  version, which its version information must confirm, or name its major version, and then the server it installs;
+  of 18, at least the release's floor), signed by EnterpriseDB.
 
 Both are copied into the installer's private folder and checked and run from there. Without internet and without
 them, the installer says what it could not download and changes nothing; a panel can also use an existing PostgreSQL

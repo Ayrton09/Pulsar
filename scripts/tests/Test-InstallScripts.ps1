@@ -71,7 +71,7 @@ $installParts = Get-ScriptParts $installScript (@($shared) + @('Read-DerElement'
         'New-NodeCodeError', 'ConvertFrom-Base64Url', 'Test-RandomPart', 'Test-PanelUrl', 'ConvertFrom-NodeCode', 'Get-CertificateHash',
         'Resolve-NodeCertificate', 'Assert-PinnableCertificate', 'Get-EnrollArguments', 'Test-PostgresInstallerName', 'Select-PostgresVersion', 'Get-PostgresInstallerUrl', 'Find-NonLocalHbaRules',
         'Get-NameAttributes', 'Find-NameMismatches', 'Assert-InstallerSignature', 'Assert-InstallerVersion', 'Read-PostgresMinimum',
-        'Assert-PostgresMinimum', 'ConvertTo-Secure', 'ConvertFrom-Secure', 'Assert-NotOlderThanInstalled', 'ConvertTo-CommandLine', 'Add-RuntimeRequirement', 'Read-RuntimeRequirements',
+        'Assert-PostgresMinimum', 'Assert-InstalledPostgresVersion', 'ConvertTo-Secure', 'ConvertFrom-Secure', 'Assert-NotOlderThanInstalled', 'ConvertTo-CommandLine', 'Add-RuntimeRequirement', 'Read-RuntimeRequirements',
         'Get-InstalledRuntimes', 'Get-MissingRuntimes', 'Test-DotNetDownloadUrl', 'Get-DotNetInstallerEntries', 'Copy-Program', 'Repair-ProgramSwap', 'Move-ProgramFolder', 'Copy-PrivateFile', 'Initialize-SetupNetwork',
         # What a panel's install checks first and undoes when it fails; EDB's builds; signers' chains; the agent's runtimes.
         'Test-PortFree', 'Test-PfxFile', 'Get-EndpointPort', 'Assert-PanelInstallable', 'Get-PanelDatabaseState', 'Get-PanelDatabaseMessage',
@@ -1152,18 +1152,29 @@ Check 'signature: a name''s attributes, read from the encoding (a comma inside o
 # The version an installer says it is, against the one it was chosen as.
 function VersionInfo([string] $name, [string] $product, [string] $file = $product) { [pscustomobject]@{ ProductName = $name; ProductVersion = $product; FileVersion = $file } }
 Check "version: .NET's installer of the version chosen (as Microsoft's say it)" ($null -eq (Get-Caught { Assert-InstallerVersion (VersionInfo 'Microsoft .NET Runtime - 10.0.12 (x64)' '10.0.12.36422') 'Microsoft .NET Runtime - 10.0.12 (x64)' '10.0.12' 'The installer' }))
-Check "version: EDB's installer of the release chosen" ($null -eq (Get-Caught { Assert-InstallerVersion (VersionInfo 'PostgreSQL 18' '18.6-1') 'PostgreSQL' '18.6' 'The installer' -contains }))
+Check "version: an installer that names the release chosen" ($null -eq (Get-Caught { Assert-InstallerVersion (VersionInfo 'PostgreSQL 18' '18.6-1') 'PostgreSQL' '18.6' 'The installer' -contains -major '18' }))
+# What EDB's installers of PostgreSQL 18 say (postgresql-18.6-1 to -5 alike): the major version only.
+Check "version: EDB's installer, which names only the major version" ($null -eq (Get-Caught { Assert-InstallerVersion (VersionInfo 'PostgreSQL' '18' '1.0.0.0') 'PostgreSQL' '18.6' 'The installer' -contains -major '18' }))
 foreach ($case in ([ordered]@{
-        'another release' = @((VersionInfo 'Microsoft .NET Runtime - 10.0.1 (x64)' '10.0.1.1234'), 'Microsoft .NET Runtime - 10.0.12 (x64)', '10.0.12', $false)
-        'a release that only starts alike' = @((VersionInfo 'PostgreSQL 18' '18.60-1'), 'PostgreSQL', '18.6', $true)
-        'an older release of PostgreSQL' = @((VersionInfo 'PostgreSQL 18' '18.5-1'), 'PostgreSQL', '18.6', $true)
-        'another product of that version' = @((VersionInfo 'Microsoft ASP.NET Core Runtime - 10.0.12 (x64)' '10.0.12.36422'), 'Microsoft .NET Runtime - 10.0.12 (x64)', '10.0.12', $false)
-        'another product than PostgreSQL' = @((VersionInfo 'StackBuilder' '18.6'), 'PostgreSQL', '18.6', $true)
-        'no version information' = @((VersionInfo '' ''), 'PostgreSQL', '18.6', $true)
+        'another release' = @((VersionInfo 'Microsoft .NET Runtime - 10.0.1 (x64)' '10.0.1.1234'), 'Microsoft .NET Runtime - 10.0.12 (x64)', '10.0.12', $false, '')
+        'a release that only starts alike' = @((VersionInfo 'PostgreSQL 18' '18.60-1'), 'PostgreSQL', '18.6', $true, '18')
+        'an older release of PostgreSQL' = @((VersionInfo 'PostgreSQL 18' '18.5-1'), 'PostgreSQL', '18.6', $true, '18')
+        'another major version of PostgreSQL' = @((VersionInfo 'PostgreSQL' '17' '1.0.0.0'), 'PostgreSQL', '18.6', $true, '18')
+        'only a major version, where the release is wanted' = @((VersionInfo 'PostgreSQL' '18' '1.0.0.0'), 'PostgreSQL', '18.6', $true, '')
+        'a major version that only starts alike' = @((VersionInfo 'PostgreSQL' '180' '1.0.0.0'), 'PostgreSQL', '18.6', $true, '18')
+        'another product of that version' = @((VersionInfo 'Microsoft ASP.NET Core Runtime - 10.0.12 (x64)' '10.0.12.36422'), 'Microsoft .NET Runtime - 10.0.12 (x64)', '10.0.12', $false, '')
+        'another product than PostgreSQL' = @((VersionInfo 'StackBuilder' '18'), 'PostgreSQL', '18.6', $true, '18')
+        'no version information' = @((VersionInfo '' ''), 'PostgreSQL', '18.6', $true, '18')
     }).GetEnumerator()) {
     $value = $case.Value
-    $caught = Get-Caught { Assert-InstallerVersion $value[0] $value[1] $value[2] 'The installer' -contains:$value[3] }
+    $caught = Get-Caught { Assert-InstallerVersion $value[0] $value[1] $value[2] 'The installer' -contains:$value[3] -major $value[4] }
     Check "version: refuses an installer of $($case.Key)" ((Get-SetupExitCode $caught) -eq 5) "$caught"
+}
+# What EDB's installer put in place, against the release it was chosen as.
+Check 'version: PostgreSQL installed at the release chosen' ($null -eq (Get-Caught { Assert-InstalledPostgresVersion '18.6' '18.6'; Assert-InstalledPostgresVersion '18.6 (EDB build)' '18.6' }))
+foreach ($installed in '18.5', '18.60', '17.6', '', '18') {
+    $caught = Get-Caught { Assert-InstalledPostgresVersion $installed '18.6' }
+    Check "version: refuses PostgreSQL installed as '$installed' for 18.6" ($null -ne $caught -and "$caught" -match '18\.6') "$caught"
 }
 
 # The oldest PostgreSQL a release installs.
