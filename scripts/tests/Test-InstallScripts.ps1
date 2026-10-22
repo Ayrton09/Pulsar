@@ -3114,8 +3114,8 @@ Check 'renew: the roadmap''s Phase 18 mentions it' ($roadmap -match '(?s)## Phas
 # --- Phase 19: the update manifest and its signature (Build-Release.ps1's functions run on files of this test's own) -------------
 
 $manifestParts = Get-ScriptParts $buildReleasePath @('Test-UpdateVersion', 'Read-ReleaseNotes', 'ConvertTo-ManifestJson', 'New-UpdateManifest', 'Build-UpdateSigner', 'Invoke-UpdateSigner',
-    'Invoke-UpdateSigning', 'Hide-UpdatePassphrase', 'Set-UpdatePassphrase', 'Remove-UpdatePassphrase', 'Restore-UpdatePassphrase') `
-    @('UpdateManifestName', 'UpdateSignatureName', 'MaxManifestBytes', 'MaxManifestNotesBytes', 'MaxManifestFiles', 'MaxManifestFileBytes', 'UpdateVersionPattern', 'ManifestFileNamePattern', 'HiddenUpdatePassphrase')
+    'Invoke-UpdateSigning', 'Hide-UpdatePassphrase', 'Set-UpdatePassphrase', 'Remove-UpdatePassphrase', 'Restore-UpdatePassphrase', 'Read-UpdatePassphrase') `
+    @('UpdateManifestName', 'UpdateSignatureName', 'MaxManifestBytes', 'MaxManifestNotesBytes', 'MaxManifestFiles', 'MaxManifestFileBytes', 'UpdateVersionPattern', 'ManifestFileNamePattern', 'HiddenUpdatePassphrase', 'UpdatePassphraseTyped')
 foreach ($part in $manifestParts.Values) { . ([scriptblock]::Create($part)) }
 $realUpdateSigner = (Get-Item 'function:Invoke-UpdateSigner').ScriptBlock
 
@@ -3255,6 +3255,13 @@ try {
     Restore-UpdatePassphrase
     Check 'passphrase: restored to the shell when the script ends' ([Environment]::GetEnvironmentVariable('PULSAR_UPDATE_KEY_PASSPHRASE', 'Process') -ceq $markerFolder -and $null -eq $script:HiddenUpdatePassphrase)
     Remove-Item Env:PULSAR_UPDATE_KEY_PASSPHRASE
+    # One typed at PowerShell's prompt (Read-Host mocked): kept for the signer, never put into the environment at the end.
+    function Read-Host([string] $Prompt, [switch] $AsSecureString) { ConvertTo-Secure 'typed passphrase 123' }
+    Read-UpdatePassphrase
+    Check 'passphrase: one typed at PowerShell''s prompt is kept for the signer' ($script:HiddenUpdatePassphrase -ceq 'typed passphrase 123' -and $script:UpdatePassphraseTyped)
+    Restore-UpdatePassphrase
+    Check 'passphrase: ...and never goes into the environment when the script ends' ($null -eq [Environment]::GetEnvironmentVariable('PULSAR_UPDATE_KEY_PASSPHRASE', 'Process') -and $null -eq $script:HiddenUpdatePassphrase -and -not $script:UpdatePassphraseTyped)
+    Remove-Item function:Read-Host
 }
 finally {
     Remove-Item -LiteralPath $manifestRoot -Recurse -Force -ErrorAction SilentlyContinue
@@ -3279,6 +3286,9 @@ Check 'update signing: a version that is not major.minor.patch writes no manifes
 Check 'update signing: the passphrase is never a parameter and not on a command line; it is hidden from the builds and restored at the end' (
     @($buildRelease | Select-String -Pattern '\[string\] \$\w*(Passphrase|Password)' -AllMatches).Count -eq 0 -and
     $buildRelease.LastIndexOf('Hide-UpdatePassphrase') -lt $buildRelease.IndexOf('npm ci --ignore-scripts') -and $buildRelease -match '(?s)finally \{[^}]*Restore-UpdatePassphrase')
+Check 'update signing: the passphrase is asked (unless in the environment) and tried on the key right after the signer is built, before the long builds' (
+    $buildRelease -match "(?s)Build-UpdateSigner \`$repo \(Join-Path \`$Work 'update-signer'\)\s+.*?if \(\`$null -eq \`$script:HiddenUpdatePassphrase\) \{ Read-UpdatePassphrase \}\s+Invoke-UpdateSigner \`$updateSigner @\('public-key', \`$UpdateSigningKey\)" -and
+    $buildRelease.IndexOf("@('public-key'") -lt $buildRelease.IndexOf('npm ci --ignore-scripts'))
 Check 'update signing: the signer is built in locked mode before the long builds and run from the work folder, not from the output folder' (
     $buildRelease -match "Build-UpdateSigner \`$repo \(Join-Path \`$Work 'update-signer'\)" -and $buildRelease.IndexOf('Build-UpdateSigner $repo') -lt $buildRelease.IndexOf('npm ci --ignore-scripts') -and
     $buildRelease -match 'tools\\Pulsar\.UpdateSigner.*-p:RestoreLockedMode=true')

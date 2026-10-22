@@ -82,8 +82,11 @@ built, checksummed and verified:
 1. writes `pulsar-update.json` for the files it is about to publish (not the `.sha256` files), with `-MinimumUpdateFrom`
    (default `1.0.0`) and the notes. A version that is not exactly `major.minor.patch` (`0.0.0-dev`, a pre-release)
    gets a warning and no manifest;
-2. builds `tools/Pulsar.UpdateSigner`, asks you for the key's passphrase at the console (or reads
-   `PULSAR_UPDATE_KEY_PASSPHRASE`, which no build step that runs before the signer inherits) and signs the manifest;
+2. signs the manifest with `tools/Pulsar.UpdateSigner`, which it builds **first, before the long builds**, and then asks
+   you for the key's passphrase with PowerShell's prompt (an asterisk per character, as `New-UpdateSigningKey.ps1`
+   asks it; or it reads `PULSAR_UPDATE_KEY_PASSPHRASE`, which no build step that runs before the signer inherits) and
+   tries it on the key at once (`public-key`): a wrong passphrase fails the build there, not at the end. A passphrase
+   typed at the prompt is never put into the environment;
 3. runs the signer's `verify` on it, against the keys built into the programs, and fails the build if it does not verify;
 4. publishes the files into `artifacts\release` all at once, as before.
 

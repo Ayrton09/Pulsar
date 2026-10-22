@@ -103,8 +103,10 @@ $Signing = $null
 $Work = $null
 # The AZURE_* variables kept out of this process's environment (Hide-AzureCredentials), name -> value.
 $HiddenEnvironment = [ordered]@{}
-# The update key's passphrase from the environment, kept out of it (Hide-UpdatePassphrase), or $null.
+# The update key's passphrase from the environment, kept out of it (Hide-UpdatePassphrase), or typed at the prompt
+# (Read-UpdatePassphrase, $UpdatePassphraseTyped), or $null.
 $HiddenUpdatePassphrase = $null
+$UpdatePassphraseTyped = $false
 
 # Why a file is not validly signed by $organization, or $null when it is: a valid Authenticode signature, in the file
 # itself, of a certificate whose subject has exactly that one organization.
@@ -917,10 +919,22 @@ function Remove-UpdatePassphrase {
     if ($null -ne $script:HiddenUpdatePassphrase) { [Environment]::SetEnvironmentVariable('PULSAR_UPDATE_KEY_PASSPHRASE', $null, 'Process') }
 }
 
-# When the script ends, the variable goes back to the shell it was run from.
+# Asks for the update key's passphrase with PowerShell's own prompt (an asterisk per character; the signer's prompt reads
+# the keys one by one, which some terminals deliver otherwise, so the key file's passphrase, typed at this same prompt by
+# New-UpdateSigningKey.ps1, would not match), as a SecureString turned into text through .NET only.
+function Read-UpdatePassphrase {
+    $secure = Read-Host 'Passphrase of the update key' -AsSecureString
+    try { $script:HiddenUpdatePassphrase = [Net.NetworkCredential]::new('', $secure).Password }
+    finally { $secure.Dispose() }
+    $script:UpdatePassphraseTyped = $true
+}
+
+# When the script ends, the variable goes back to the shell it was run from; a passphrase typed at the prompt never goes
+# into it.
 function Restore-UpdatePassphrase {
-    Set-UpdatePassphrase
+    if (-not $script:UpdatePassphraseTyped) { Set-UpdatePassphrase }
     $script:HiddenUpdatePassphrase = $null
+    $script:UpdatePassphraseTyped = $false
 }
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -963,7 +977,13 @@ try {
     $null = New-Item -ItemType Directory $Work
     # The signer is built now, so a problem with it shows before the long builds; it signs only at the very end.
     $updateSigner = $null
-    if ($manifestWanted -and $UpdateSigningKey) { $updateSigner = Build-UpdateSigner $repo (Join-Path $Work 'update-signer') }
+    if ($manifestWanted -and $UpdateSigningKey) {
+        $updateSigner = Build-UpdateSigner $repo (Join-Path $Work 'update-signer')
+        # The passphrase too: asked now (unless it is in the environment) and tried on the key at once, so a wrong one fails
+        # the build here, not after the long builds.
+        if ($null -eq $script:HiddenUpdatePassphrase) { Read-UpdatePassphrase }
+        Invoke-UpdateSigner $updateSigner @('public-key', $UpdateSigningKey)
+    }
     $staging = Join-Path $Work $name
     $msiAgent = Join-Path $Work "$name-msi-agent"
     # The panel's and the agent's programs, by the project each is published from, in the folders they are published to (what
