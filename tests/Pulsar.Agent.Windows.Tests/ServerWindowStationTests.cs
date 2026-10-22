@@ -35,7 +35,7 @@ public sealed class ServerWindowStationTests
 
         // Opening it would give the server whatever permissions its maker set.
         var refused = Assert.Throws<Win32Exception>(() => ServerWindowStation.Create(name, s_me));
-        Assert.Equal(183, refused.NativeErrorCode); // ERROR_ALREADY_EXISTS
+        Assert.True(refused.NativeErrorCode is 183 or 5, $"error {refused.NativeErrorCode}"); // ERROR_ALREADY_EXISTS, or ERROR_ACCESS_DENIED (CWF_CREATE_ONLY)
     }
 
     [ElevatedFact]

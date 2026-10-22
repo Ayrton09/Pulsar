@@ -18,6 +18,9 @@ namespace Pulsar.Agent.Windows.Servers;
 internal sealed class ServerWindowStation : IDisposable
 {
     private const uint WinstaAllAccess = 0x0000037F;
+    // CWF_CREATE_ONLY: fail when the station exists already. Without it, CreateWindowStation opens the existing one, and
+    // does not always say so (the CI runner returned it with no ERROR_ALREADY_EXISTS).
+    private const uint CreateOnly = 0x00000001;
     private const uint GenericAll = 0x10000000;
     private const uint SddlRevision1 = 1;
 
@@ -46,7 +49,7 @@ internal sealed class ServerWindowStation : IDisposable
 
     /// <summary>
     /// Creates the station <paramref name="stationName"/>. One that exists already is refused (Windows would open it, with
-    /// the permissions whoever made it chose): <see cref="Win32Exception"/> with <c>ERROR_ALREADY_EXISTS</c>.
+    /// the permissions whoever made it chose): <see cref="Win32Exception"/>, created with <c>CWF_CREATE_ONLY</c>.
     /// </summary>
     public static unsafe ServerWindowStation Create(string stationName, SecurityIdentifier account)
     {
@@ -72,12 +75,15 @@ internal sealed class ServerWindowStation : IDisposable
             HWINSTA station;
             fixed (char* stationPtr = stationName)
             {
-                station = PInvoke.CreateWindowStation(stationPtr, 0, WinstaAllAccess, &attributes);
+                station = PInvoke.CreateWindowStation(stationPtr, CreateOnly, WinstaAllAccess, &attributes);
             }
 
             if (station.IsNull)
             {
-                throw new Win32Exception(Marshal.GetLastPInvokeError(), $"CreateWindowStation({stationName}) failed.");
+                var error = Marshal.GetLastPInvokeError();
+                throw new Win32Exception(error, (WIN32_ERROR)error is WIN32_ERROR.ERROR_ALREADY_EXISTS or WIN32_ERROR.ERROR_ACCESS_DENIED
+                    ? $"The window station {stationName} exists already, or cannot be made: it is not used."
+                    : $"CreateWindowStation({stationName}) failed.");
             }
 
             if ((WIN32_ERROR)Marshal.GetLastPInvokeError() == WIN32_ERROR.ERROR_ALREADY_EXISTS)
