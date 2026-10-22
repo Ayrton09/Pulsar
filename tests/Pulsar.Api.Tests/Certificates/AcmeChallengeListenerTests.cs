@@ -108,28 +108,44 @@ public sealed class AcmeChallengeListenerTests : IAsyncLifetime
     [Fact]
     public async Task OneAddressHoldsAFewConnectionsAtMost()
     {
-        using var first = await ConnectAsync();
-        using var second = await ConnectAsync();
-        using var third = await ConnectAsync();
-        TcpClient[] clients = [first, second, third];
-
-        // One of the three (whichever the server took last) is closed at once, before any request; the others stay open
-        // (until the 2-second idle limit) and answer.
-        var closed = await Task.WhenAll(clients.Select(c => ClosedWithinAsync(c, TimeSpan.FromSeconds(1))));
-        Assert.Equal(1, closed.Count(c => c));
-        var open = clients[Array.IndexOf(closed, false)];
-        await open.GetStream().WriteAsync(Encoding.ASCII.GetBytes($"GET /.well-known/acme-challenge/{Token} HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n"), Ct);
-        Assert.StartsWith("HTTP/1.1 200", await new StreamReader(open.GetStream()).ReadToEndAsync(Ct), StringComparison.Ordinal);
+        TcpClient?[] clients = [await TryConnectAsync(), await TryConnectAsync(), await TryConnectAsync()];
+        try
+        {
+            // One of the three (whichever the server took last) is closed at once, before any request; the others stay
+            // open (until the 2-second idle limit) and answer.
+            var closed = await Task.WhenAll(clients.Select(c => c is null ? Task.FromResult(true) : ClosedWithinAsync(c, TimeSpan.FromSeconds(1))));
+            Assert.Equal(1, closed.Count(c => c));
+            var open = clients[Array.IndexOf(closed, false)]!;
+            await open.GetStream().WriteAsync(Encoding.ASCII.GetBytes($"GET /.well-known/acme-challenge/{Token} HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n"), Ct);
+            Assert.StartsWith("HTTP/1.1 200", await new StreamReader(open.GetStream()).ReadToEndAsync(Ct), StringComparison.Ordinal);
+        }
+        finally
+        {
+            foreach (var client in clients)
+            {
+                client?.Dispose();
+            }
+        }
     }
 
     [Fact]
     public async Task WithNoTokenPendingEveryConnectionIsClosedOnArrival()
     {
         _pending.Dispose();
-        using var first = await ConnectAsync();
-        using var second = await ConnectAsync();
+        TcpClient?[] clients = [await TryConnectAsync(), await TryConnectAsync()];
+        try
+        {
+            Assert.All(await Task.WhenAll(clients.Select(c => c is null ? Task.FromResult(true) : ClosedWithinAsync(c, TimeSpan.FromSeconds(1)))),
+                closed => Assert.True(closed));
+        }
+        finally
+        {
+            foreach (var client in clients)
+            {
+                client?.Dispose();
+            }
+        }
 
-        Assert.All(await Task.WhenAll(new[] { first, second }.Select(c => ClosedWithinAsync(c, TimeSpan.FromSeconds(1)))), closed => Assert.True(closed));
         _pending = _challenges.Add(Token, KeyAuthorization);
     }
 
@@ -206,6 +222,25 @@ public sealed class AcmeChallengeListenerTests : IAsyncLifetime
         var client = new TcpClient();
         await client.ConnectAsync(IPAddress.Loopback, _listener.ListeningPort!.Value, Ct);
         return client;
+    }
+
+    /// <summary>
+    /// A connection, or null when the server reset it as it was made: one it does not keep is closed at once, and on Linux
+    /// that reset can reach the client before its connect completes.
+    /// </summary>
+    private async Task<TcpClient?> TryConnectAsync()
+    {
+        var client = new TcpClient();
+        try
+        {
+            await client.ConnectAsync(IPAddress.Loopback, _listener.ListeningPort!.Value, Ct);
+            return client;
+        }
+        catch (SocketException ex) when (ex.SocketErrorCode is SocketError.ConnectionReset or SocketError.ConnectionRefused)
+        {
+            client.Dispose();
+            return null;
+        }
     }
 
     /// <summary>The server closed the connection within <paramref name="wait"/> (an end of stream or a reset).</summary>

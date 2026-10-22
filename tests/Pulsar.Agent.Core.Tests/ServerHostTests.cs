@@ -605,7 +605,8 @@ public sealed class ServerHostTests : IAsyncDisposable
 
         Assert.NotEqual("server.host_not_ended", again.ErrorCode);
         Assert.NotEqual("server.host_incompatible", again.ErrorCode);
-        Assert.Empty(_store.LoadHosts());
+        // The ended host is forgotten (the restart may already have saved the record of the game it started).
+        Assert.DoesNotContain(_store.LoadHosts(), h => h.Host == running);
     }
 
     [Fact]
