@@ -27,8 +27,10 @@ es.MemoNode=esta PC como nodo
 ; Install-Pulsar.ps1, which stays for the uninstaller.
 Source: "{#Release}\agent\*"; DestDir: "{app}\payload\agent"; Flags: ignoreversion recursesubdirs createallsubdirs deleteafterinstall
 Source: "{#Release}\release.json"; DestDir: "{app}\payload"; Flags: ignoreversion deleteafterinstall
-; Last: once it is in place, it runs (RunPulsarSetup).
+; Last of the payload: once it is in place, it runs (RunPulsarSetup).
 Source: "{#Release}\Install-Pulsar.ps1"; DestDir: "{app}\payload"; Flags: ignoreversion; AfterInstall: RunPulsarSetup
+; The guard: a file that cannot be put in place once the setup is to roll back (GuardInstall); gone otherwise.
+Source: "{#Release}\release.json"; DestDir: "{app}\payload"; DestName: "install-guard"; Flags: ignoreversion deleteafterinstall; BeforeInstall: GuardInstall
 
 [Code]
 var
@@ -172,7 +174,7 @@ begin
     SetSecretVariable('PULSAR_NODE_CODE', SecretNodeCode);
 end;
 
-// AfterInstall of Install-Pulsar.ps1, the payload's last file.
+// AfterInstall of Install-Pulsar.ps1, the payload's last file (the guard file comes after it).
 procedure RunPulsarSetup;
 begin
   PassSecrets;

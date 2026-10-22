@@ -2208,7 +2208,7 @@ foreach ($line in Get-IssSection $commonIss 'Setup') { if ($line -match '^\s*(\w
 foreach ($pair in ([ordered]@{
         PrivilegesRequired = 'admin'; SetupArchitecture = 'x64'; ArchitecturesAllowed = 'x64compatible'; ArchitecturesInstallIn64BitMode = 'x64compatible'
         MinVersion = '10.0.19045'; DefaultDirName = '{commonpf64}\Pulsar\Setup'; DisableDirPage = 'yes'; UsePreviousAppDir = 'no'
-        AllowCancelDuringInstall = 'no'; AppPublisher = 'Pulsar contributors'; Compression = 'lzma2/ultra64'; SolidCompression = 'yes'
+        AllowCancelDuringInstall = 'yes'; AppPublisher = 'Pulsar contributors'; Compression = 'lzma2/ultra64'; SolidCompression = 'yes'
         AppId = '{{{#AppGuid}}'
     }).GetEnumerator()) {
     Check "setups: $($pair.Key)=$($pair.Value)" ($setupDirective[$pair.Key] -ceq $pair.Value) "$($setupDirective[$pair.Key])"
@@ -2223,9 +2223,12 @@ foreach ($name in $wizardIss.Keys) {
     # The payload: in the setup's own folder in Program Files (never {tmp} or a profile), with no permissions added.
     $elsewhere = @($files | Where-Object { $_ -notmatch 'DestDir: "\{app\}\\payload(\\(panel|agent))?"' -or $_ -match '(?i)Permissions:|\{tmp\}|\{user|\{localappdata\}|\{commonappdata\}' })
     Check "${name}: the payload goes to {app}\payload, with Program Files' permissions" ($files.Count -gt 0 -and $elsewhere.Count -eq 0) ($elsewhere -join ' | ')
-    $last = $files[$files.Count - 1]
-    Check "${name}: Install-Pulsar.ps1 is the last file and runs once it is in place; the rest goes after the install" ($last -match 'Source: "\{#Release\}\\Install-Pulsar\.ps1"' -and $last -match 'AfterInstall: RunPulsarSetup' -and $last -notmatch 'deleteafterinstall' -and
-        @($files | Select-Object -First ($files.Count - 1) | Where-Object { $_ -notmatch 'deleteafterinstall' }).Count -eq 0)
+    $script = $files[$files.Count - 2]
+    $guard = $files[$files.Count - 1]
+    Check "${name}: Install-Pulsar.ps1 is the last of the payload and runs once it is in place; the rest goes after the install" ($script -match 'Source: "\{#Release\}\\Install-Pulsar\.ps1"' -and $script -match 'AfterInstall: RunPulsarSetup' -and $script -notmatch 'deleteafterinstall' -and
+        @($files | Select-Object -First ($files.Count - 2) | Where-Object { $_ -notmatch 'deleteafterinstall' }).Count -eq 0)
+    # A very silent setup cannot be cancelled: the file after Install-Pulsar.ps1 is made to fail instead (GuardInstall).
+    Check "${name}: then a guard file, in the payload's folder, gone after the install, that can make the install roll back" ($guard -match 'DestDir: "\{app\}\\payload"' -and $guard -match 'BeforeInstall: GuardInstall' -and $guard -match 'deleteafterinstall' -and $guard -cnotmatch 'AfterInstall:')
     $sections = @('Registry', 'INI', 'Icons', 'Tasks', 'Run' | Where-Object { @(Get-IssSection $text $_).Count -gt 0 -or ($_ -ne 'Run' -and @(Get-IssSection $commonIss $_).Count -gt 0) })
     Check "${name}: no [Registry], [INI], [Icons] or [Tasks] section, and only Common.iss's [Run] entry" ($sections.Count -eq 0) ($sections -join ', ')
 
@@ -2274,9 +2277,19 @@ Check 'setups: the payload''s folder is C:\Program Files\Pulsar\Setup and no oth
 Check 'setups: the uninstaller runs Install-Pulsar.ps1 -Uninstall and stops (entry kept) when it fails' ($commonCode['CurUninstallStepChanged'] -match "RunInstallScript\(' -Uninstall'\)" -and $commonCode['CurUninstallStepChanged'] -match 'Abort;')
 Check 'setups: nothing changed (2 to 6), or an update put back as it was (7), rolls the setup back; otherwise its entry in Apps stays' (
     $commonCode['RunInstallStep'] -match '\(Code < ExitUsage\) or \(\(Code > ExitCertificate\) and \(Code <> ExitRolledBack\)\)' -and
-    $commonCode['RunInstallStep'] -match 'RunKept := True' -and $commonCode['RunInstallStep'] -match 'Abort;' -and
+    $commonCode['RunInstallStep'] -match 'RunKept := True' -and $commonCode['RunInstallStep'] -match 'RollBackInstall;' -and
+    $commonCode['RunInstallStep'] -notmatch '\b(Abort|RaiseException)\b' -and
     $commonIss -match '(?m)^\s*ExitRolledBack = 7;' -and $commonCode['OutcomeText'] -match "ExitRolledBack: Result := CustomMessage\('OutcomeRolledBack'\)" -and
     $commonIss -match '(?m)^en\.OutcomeRolledBack=' -and $commonIss -match '(?m)^es\.OutcomeRolledBack=')
+# Inno Setup 7 shows an exception or an Abort from AfterInstall and carries on (exit code 0, the entry in Apps made):
+# the rollback is a Cancel (Inno Setup's exit code 5), which the user may give only before Install-Pulsar.ps1 starts.
+Check 'setups: the rollback is a Cancel that asks nothing, or, very silent, a guard file that cannot be put in place' (
+    $commonCode['RollBackInstall'] -match 'RollBackRequested := True' -and $commonCode['RollBackInstall'] -match 'WizardForm\.CancelButton\.OnClick\(WizardForm\.CancelButton\)' -and
+    $commonCode['CancelButtonClick'] -match 'if RollBackRequested then\s+Confirm := False\s+else if InstallStepStarted then\s+Cancel := False' -and
+    $commonCode['RunInstallStep'] -match 'InstallStepStarted := True' -and
+    $commonCode['GuardInstall'] -match 'if RollBackRequested then' -and $commonCode['GuardInstall'] -match 'CreateDir\(GuardPath\)' -and
+    $commonCode['DeinitializeSetup'] -match 'RemoveDir\(GuardPath\)')
+Check 'setups: a rollback that did not happen (Ignore at the guard''s error) ends as an install that failed, its entry kept' ($commonCode['RollBackInstall'] -match 'RunKept := True' -and $commonCode['GetCustomSetupExitCode'] -match 'if RunKept then\s+Result := SetupExitPartial')
 Check 'setups: nothing is opened at the end (started elevated, a browser would run as administrator): the Finished page shows https://localhost:<port>/ from PULSAR-PANEL-URL in a read-only box' (
     $commonCode['ScriptOutput'] -match "if IsLocalPanelUrl\(Copy\(Line, 18, Length\(Line\)\)\) then\s+RunPanelUrl := " -and
     @(@($commonIss) + @($wizardIss.Values) | ForEach-Object { @(Get-IssSection $_ 'Run') }).Count -eq 0 -and

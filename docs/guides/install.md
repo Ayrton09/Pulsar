@@ -129,7 +129,9 @@ changed the PC),
 and, offline, `/DOTNETINSTALLERS=<folder>` and `/POSTGRESINSTALLER=<file>` ([Offline installs](#offline-installs)).
 `PulsarAgentSetup-<version>.exe` takes `/SERVERSROOT=`, `/PANELURL=` and `/DOTNETINSTALLERS=`, with the code in
 `PULSAR_NODE_CODE`. Exit codes: `0` done (add `/RESTARTEXITCODE=3010` to get 3010 when a .NET installer asks for a
-restart); `4` the installer stopped and changed nothing, and the setup undid its own files; `100` the installer
+restart); `5` the installer stopped and changed nothing, and the setup undid its own files (it cancels its own
+install, which is Inno Setup's code for a cancelled install; always pass `/SUPPRESSMSGBOXES`: without it, a very silent
+setup shows an error about a file named `install-guard` there, to be answered with **Abort**); `100` the installer
 failed after changing something (remove Pulsar from **Apps**); the installer's log says why. Inno Setup's other codes
 mean what [its documentation](https://jrsoftware.org/ishelp/index.php?topic=setupexitcodes) says.
 

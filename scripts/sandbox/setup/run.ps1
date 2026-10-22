@@ -104,7 +104,7 @@ try {
         $code = Invoke-Setup $Setup "$silent /LOG=`"$report\setup-offline.log`""
         $left = @(Get-PulsarLeftovers)
         $log = Get-InstallerLog
-        Check 'offline, without the installers: the setup stops (exit code 4) and changes nothing' ($code -eq 4 -and $left.Count -eq 0) "exit $code; left: $($left -join ', ')"
+        Check 'offline, without the installers: the setup rolls back (exit code 5) and changes nothing' ($code -eq 5 -and $left.Count -eq 0) "exit $code; left: $($left -join ', ')"
         Check 'offline: the installer''s log says what it could not download' ($log.Text -match 'FAILED \(exit code 4\)' -and $log.Text -match 'could not be downloaded') $log.Path
     }
 
@@ -121,8 +121,21 @@ try {
         $code = Invoke-Setup $Setup "$silent /LOG=`"$report\setup-tampered.log`" /DOTNETINSTALLERS=`"$($tampered.FullName)`" /POSTGRESINSTALLER=`"$PostgresInstaller`""
         $left = @(Get-PulsarLeftovers)
         $log = Get-InstallerLog
-        Check 'a tampered .NET installer: refused (installer exit code 5), the setup stops (exit code 4) and changes nothing' ($code -eq 4 -and $left.Count -eq 0 -and $log.Text -match 'FAILED \(exit code 5\)') "exit $code; left: $($left -join ', '); $($log.Path)"
+        Check 'a tampered .NET installer: refused (installer exit code 5), the setup rolls back (exit code 5) and changes nothing' ($code -eq 5 -and $left.Count -eq 0 -and $log.Text -match 'FAILED \(exit code 5\)') "exit $code; left: $($left -join ', '); $($log.Path)"
         Remove-Item $tampered -Recurse -Force
+    }
+
+    # --- An install that changes nothing rolls the setup back: a Cancel that asks nothing, or, very silent, the guard ---
+    # file that cannot be put in place (Inno Setup 7 carries on after an exception or an Abort from AfterInstall).
+    foreach ($mode in '/VERYSILENT', '/SILENT') {
+        $name = $mode.TrimStart('/').ToLowerInvariant()
+        $rollbackLog = Join-Path $report "setup-rollback-$name.log"
+        $code = Invoke-Setup $Setup "$mode /SUPPRESSMSGBOXES /NORESTART /LOG=`"$rollbackLog`" /MODE=AllInOne /POSTGRESINSTALLER=`"C:\missing\postgresql-18.6-1-windows-x64.exe`""
+        $left = @(Get-PulsarLeftovers)
+        $text = if (Test-Path $rollbackLog) { Get-Content -Raw $rollbackLog } else { '' }
+        $guard = $text -match 'Defaulting to Abort for suppressed message box'
+        Check "an install that changed nothing ($mode): the setup rolls back (exit code 5), $(if ($mode -eq '/VERYSILENT') { 'through the guard file' } else { 'by its own Cancel' }), leaving nothing" (
+            $code -eq 5 -and $left.Count -eq 0 -and -not (Test-Path 'C:\Program Files\Pulsar') -and $text -match 'Rolling back changes' -and $guard -eq ($mode -eq '/VERYSILENT')) "exit $code; left: $($left -join ', '); guard: $guard"
     }
 
     # --- Done when 1: the install, with the defaults ---

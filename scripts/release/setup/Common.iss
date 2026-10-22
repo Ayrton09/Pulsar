@@ -15,8 +15,11 @@
 ;   Setup's log or the wizard's saved settings (no SetPreviousData, no [Registry] or [INI] entries).
 ; - Its progress lines (PULSAR-STEP) move the progress bar; PULSAR-LOG, PULSAR-PANEL-URL and PULSAR-ERROR are kept
 ;   for the end. Done (0, or 3010 for a restart): the Finished page offers the panel's sign-in page. Nothing changed
-;   (2 to 6): the setup rolls back its own files too and says why. Anything else: the setup's entry in Apps stays, so
-;   that removing it removes what was left.
+;   (2 to 6, or 7, an update put back): the setup says why and rolls back its own files too, by cancelling the install
+;   (Inno Setup 7 shows an exception or an Abort from AfterInstall and carries on): a Cancel that asks nothing, and,
+;   very silent, where there is no wizard to cancel, a guard file after Install-Pulsar.ps1 that cannot be put in place
+;   (Inno Setup's exit code 5 either way). Anything else: the setup's entry in Apps stays, so that removing it removes
+;   what was left.
 ; - The uninstaller runs Install-Pulsar.ps1 -Unattended -Uninstall (data kept: the script has no option to delete it).
 
 #ifndef Version
@@ -62,8 +65,10 @@ DisableDirPage=yes
 UsePreviousAppDir=no
 DisableProgramGroupPage=yes
 DisableWelcomePage=no
-; Cancelling while Install-Pulsar.ps1 runs would roll back the setup's files under a Pulsar that is installed.
-AllowCancelDuringInstall=no
+; Cancelling while the payload is copied is as usual (nothing is installed yet). From the moment Install-Pulsar.ps1
+; starts, it would roll back the setup's files under a Pulsar that is installed: CancelButtonClick refuses it then, but
+; for the setup's own rollback when the script changed nothing (RollBackInstall).
+AllowCancelDuringInstall=yes
 CloseApplications=no
 RestartIfNeededByRun=no
 ; This session's only: a Global\ name could be taken first by any account on the PC, which would keep every setup from
@@ -247,6 +252,11 @@ var
   // It failed after changing something: the setup's entry in Apps stays, so that removing it removes what was left.
   RunKept: Boolean;
   RestartNeeded: Boolean;
+  // Install-Pulsar.ps1 has started: the user may no longer cancel. It changed nothing: the setup rolls back
+  // (RollBackInstall), through the guard file when very silent (GuardPath, the folder put in its place).
+  InstallStepStarted: Boolean;
+  RollBackRequested: Boolean;
+  GuardPath: String;
 
 // --- The environment: how the secrets reach Install-Pulsar.ps1 ---------------------------------------------------
 
@@ -787,15 +797,68 @@ begin
     RemovePayloadPrograms;
 end;
 
+// Cancelling: while the payload is copied, as usual (nothing is installed yet); from the moment Install-Pulsar.ps1
+// starts, never by the user (the setup's files would go from under what it installed), only by RollBackInstall,
+// without asking.
+procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
+begin
+  if CurPageID <> wpInstalling then
+    Exit;
+  if RollBackRequested then
+    Confirm := False
+  else if InstallStepStarted then
+    Cancel := False;
+end;
+
+// Rolls the setup's own files back once Install-Pulsar.ps1 changed nothing: Inno Setup 7 shows an exception or an
+// Abort from AfterInstall and carries on, so the install is cancelled instead, as if Cancel were clicked (exit code 5).
+// A very silent setup has no wizard to cancel: the guard file after Install-Pulsar.ps1 then cannot be put in place
+// (GuardInstall), which aborts and rolls back the same way. Should the install carry on even so (Ignore, at that
+// error), it ends as one that failed, its entry in Apps kept (RunKept).
+procedure RollBackInstall;
+begin
+  RollBackRequested := True;
+  RunKept := True;
+  WizardForm.CancelButton.Enabled := True;
+  WizardForm.CancelButton.OnClick(WizardForm.CancelButton);
+end;
+
+// BeforeInstall of the guard file, the last of [Files]: after a rollback the Cancel did not bring (very silent), a
+// folder in its place makes the file fail to install, which a setup with /SUPPRESSMSGBOXES answers with Abort (shown
+// otherwise, Abort being the answer to give), and Inno Setup rolls back. The folder is in the payload's, which only
+// administrators can change; DeinitializeSetup removes it.
+procedure GuardInstall;
+begin
+  if RollBackRequested then begin
+    GuardPath := ExpandConstant(CurrentFileName);
+    if not CreateDir(GuardPath) then
+      Log('The guard file''s folder could not be made: ' + GuardPath);
+  end;
+end;
+
+// What a rollback through the guard file leaves (its folder, and the folders the rollback could not remove because of
+// it), removed when empty: never a folder of an installed Pulsar.
+procedure DeinitializeSetup;
+begin
+  if GuardPath = '' then
+    Exit;
+  RemoveDir(GuardPath);
+  RemoveDir(ExtractFileDir(GuardPath));
+  RemoveDir(ExtractFileDir(ExtractFileDir(GuardPath)));
+  RemoveDir(ExtractFileDir(ExtractFileDir(ExtractFileDir(GuardPath))));
+end;
+
 // Runs the install (from the payload's last file, AfterInstall) and decides what the setup does next. Done: on to the
 // Finished page. Done with changes left (exit code 1, or one it does not know): the same, saying so, the entry in Apps
-// kept. Nothing changed (2 to 6), an update put back as it was (7), or PowerShell did not start: the setup rolls back its
-// own files and says why (an error that stops a silent setup, or a message and a silent stop).
+// kept. Nothing changed (2 to 6), an update put back as it was (7), or PowerShell did not start: the setup says why and
+// rolls back its own files (RollBackInstall).
 procedure RunInstallStep(const Arguments: String);
 var
   Code: Integer;
   Text: String;
 begin
+  InstallStepStarted := True;
+  WizardForm.CancelButton.Enabled := False;
   Code := RunInstallScript(Arguments);
   if RunStarted and ((Code = 0) or (Code = ExitRestart)) then begin
     RestartNeeded := Code = ExitRestart;
@@ -809,10 +872,9 @@ begin
   Log('Nothing was installed: rolling back.');
   // So that the rollback, which removes the folders it made only when they are empty, leaves nothing.
   RemovePayloadPrograms;
-  if WizardSilent then
-    RaiseException(Text);
+  // Shown, or written to the setup's log when suppressed.
   SuppressibleMsgBox(Text, mbError, MB_OK, IDOK);
-  Abort;
+  RollBackInstall;
 end;
 
 function HasPanelUrl: Boolean;
