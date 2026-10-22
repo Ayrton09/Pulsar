@@ -791,6 +791,28 @@ begin
   DelTree(ExpandConstant('{app}\payload\agent'), True, True, True);
 end;
 
+// Before a rollback: the payload's files but Install-Pulsar.ps1. The rollback removes only what its log holds, and the
+// deleteafterinstall files never are in it, nor what a folder holds once the programs' folders are gone; the folders it
+// made, it removes only when they are empty.
+procedure RemovePayloadForRollBack;
+var
+  Found: TFindRec;
+  Folder: String;
+begin
+  RemovePayloadPrograms;
+  Folder := ExpandConstant('{app}\payload');
+  if FindFirst(Folder + '\*', Found) then begin
+    try
+      repeat
+        if ((Found.Attributes and FILE_ATTRIBUTE_DIRECTORY) = 0) and (CompareText(Found.Name, 'Install-Pulsar.ps1') <> 0) then
+          DeleteFile(Folder + '\' + Found.Name);
+      until not FindNext(Found);
+    finally
+      FindClose(Found);
+    end;
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
@@ -871,7 +893,7 @@ begin
   Text := CustomMessage('OutcomeNotInstalled') + Paragraph + OutcomeText(Code, False);
   Log('Nothing was installed: rolling back.');
   // So that the rollback, which removes the folders it made only when they are empty, leaves nothing.
-  RemovePayloadPrograms;
+  RemovePayloadForRollBack;
   // Shown, or written to the setup's log when suppressed.
   SuppressibleMsgBox(Text, mbError, MB_OK, IDOK);
   RollBackInstall;

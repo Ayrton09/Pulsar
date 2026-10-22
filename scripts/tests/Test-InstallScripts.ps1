@@ -2293,6 +2293,10 @@ Check 'setups: the rollback is a Cancel that asks nothing, or, very silent, a gu
     $commonCode['RunInstallStep'] -match 'InstallStepStarted := True' -and
     $commonCode['GuardInstall'] -match 'if RollBackRequested then' -and $commonCode['GuardInstall'] -match 'CreateDir\(GuardPath\)' -and
     $commonCode['DeinitializeSetup'] -match 'RemoveDir\(GuardPath\)')
+Check 'setups: before a rollback, the payload''s files but Install-Pulsar.ps1 are deleted (deleteafterinstall files are never in the rollback''s log)' (
+    $commonCode['RunInstallStep'] -match 'RemovePayloadForRollBack;' -and $commonCode['RunInstallStep'].IndexOf('RemovePayloadForRollBack;') -lt $commonCode['RunInstallStep'].IndexOf('RollBackInstall;') -and
+    $commonCode['RemovePayloadForRollBack'] -match 'RemovePayloadPrograms;' -and $commonCode['RemovePayloadForRollBack'] -match "CompareText\(Found\.Name, 'Install-Pulsar\.ps1'\) <> 0" -and
+    $commonCode['RemovePayloadForRollBack'] -match 'DeleteFile\(Folder \+ ''\\'' \+ Found\.Name\)')
 Check 'setups: a rollback that did not happen (Ignore at the guard''s error) ends as an install that failed, its entry kept' ($commonCode['RollBackInstall'] -match 'RunKept := True' -and $commonCode['GetCustomSetupExitCode'] -match 'if RunKept then\s+Result := SetupExitPartial')
 Check 'setups: nothing is opened at the end (started elevated, a browser would run as administrator): the Finished page shows https://localhost:<port>/ from PULSAR-PANEL-URL in a read-only box' (
     $commonCode['ScriptOutput'] -match "if IsLocalPanelUrl\(Copy\(Line, 18, Length\(Line\)\)\) then\s+RunPanelUrl := " -and
