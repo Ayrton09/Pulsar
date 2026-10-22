@@ -292,7 +292,8 @@ public sealed class GameHostProcessTests : IAsyncDisposable
         const int All = 0x001FFFFF; // PROCESS_ALL_ACCESS
         const int EndAndWait = 0x00100000 | 0x1000 | 0x1; // SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE
         var entries = acl.Cast<CommonAce>().Select(a => (a.SecurityIdentifier.Value, a.AceType, a.AccessMask)).ToList();
-        Assert.Equal(3, entries.Count); // nobody else: no Users, no Everyone, not the game's account
+        // Nobody else: no Users, no Everyone, not the game's account. Run as SYSTEM (the CI step), its creator is SYSTEM.
+        Assert.Equal(identity.IsSystem ? 2 : 3, entries.Count);
         Assert.Contains((new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null).Value, AceType.AccessAllowed, All), entries);
         Assert.Contains((identity.User!.Value, AceType.AccessAllowed, All), entries);
         Assert.Contains((new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Value, AceType.AccessAllowed, EndAndWait), entries);

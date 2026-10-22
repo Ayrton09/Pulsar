@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Principal;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Windows.Servers;
 
@@ -58,10 +59,12 @@ public sealed class LocalPeersTests
     [WindowsFact]
     public void AProcessRunsAsItsOwnAccountOnly()
     {
+        // Run as SYSTEM (the CI step), this process and the System one are SYSTEM's own.
+        using var identity = WindowsIdentity.GetCurrent();
         Assert.True(_peers.RunsAs(Environment.ProcessId, ProcessIdentity.CurrentUser));
         Assert.False(_peers.RunsAs(Environment.ProcessId, ProcessIdentity.Account("pulsar_nosuch99")));
-        Assert.False(_peers.RunsAs(Environment.ProcessId, ProcessIdentity.Account("SYSTEM")));
-        Assert.False(_peers.RunsAs(4, ProcessIdentity.CurrentUser)); // the System process
+        Assert.Equal(identity.IsSystem, _peers.RunsAs(Environment.ProcessId, ProcessIdentity.Account("SYSTEM")));
+        Assert.Equal(identity.IsSystem, _peers.RunsAs(4, ProcessIdentity.CurrentUser)); // the System process
     }
 
     private async Task FindsTheListenerAsync(IPAddress address)

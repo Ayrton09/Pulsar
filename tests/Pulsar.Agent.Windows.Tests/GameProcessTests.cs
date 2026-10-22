@@ -313,8 +313,9 @@ public sealed class GameProcessTests : IDisposable
         })!;
         try
         {
-            var system = new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.LocalSystemSid, null);
-            Assert.False(WindowsGameProcessManager.TerminateIfRunningAs(process.Id, system));
+            // An account it does not run as (not SYSTEM: run as SYSTEM, the CI step, ping is SYSTEM's).
+            var other = new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.LocalServiceSid, null);
+            Assert.False(WindowsGameProcessManager.TerminateIfRunningAs(process.Id, other));
             Assert.False(process.WaitForExit(200));
 
             Assert.True(WindowsGameProcessManager.TerminateIfRunningAs(process.Id, System.Security.Principal.WindowsIdentity.GetCurrent().User!));
