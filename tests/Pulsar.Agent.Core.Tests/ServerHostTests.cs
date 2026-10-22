@@ -83,6 +83,7 @@ public sealed class ServerHostTests : IAsyncDisposable
     [Fact]
     public async Task AWantedStateThatCannotBeSavedDoesNotFailTheCommandAndIsSavedLater()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows keeps a file another program holds from being replaced.");
         var serverId = Stored("abcd2345");
         var host = Host(hosted: true, new ServerHostOptions { ConsoleLog = null, MetricsInterval = TimeSpan.FromMilliseconds(50) });
         await host.StartAsync(TestContext.Current.CancellationToken);
@@ -415,6 +416,9 @@ public sealed class ServerHostTests : IAsyncDisposable
         await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
         var game = await StartedAsync();
         await WaitForAsync(host, serverId, RuntimeState.Starting);
+        // Its process is up (the host answered): a stop now leaves it running. One that came while the host was still being
+        // made would interrupt that start instead (the server starts again with the next agent).
+        await WaitUntilAsync(() => host.Snapshots().Single().StartedAt is not null);
 
         await RestartAgentAsync();
         Assert.False(Assert.Single(_store.LoadHosts()).Ready);
@@ -426,6 +430,26 @@ public sealed class ServerHostTests : IAsyncDisposable
         await WaitForAsync(host, serverId, RuntimeState.Running);
         await WaitUntilAsync(() => _store.LoadHosts().SingleOrDefault()?.Ready == true);
         Assert.Single(_games.Started);
+    }
+
+    [Fact]
+    public async Task ACheckpointDuringTheAgentsStopNeverForgetsAGameLeftRunning()
+    {
+        // Checkpoints all the time: one that ran while the stopping agent detached and disposed the server would find no
+        // host there and forget the record the next agent needs to find the game again.
+        var options = new ServerHostOptions { ConsoleLog = null, HostCheckpointInterval = TimeSpan.FromMilliseconds(1) };
+        var serverId = Stored("abcd2345");
+        var host = Host(hosted: true, options);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        await host.ExecuteAsync(Envelope(new StartServerCommand(serverId), null));
+        var game = await StartedAsync();
+        game.Print("ready\n");
+        await WaitForAsync(host, serverId, RuntimeState.Running);
+
+        await RestartAgentAsync();
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+
+        Assert.Equal(serverId, Assert.Single(_store.LoadHosts()).ServerId);
     }
 
     [Fact]
@@ -968,6 +992,7 @@ public sealed class ServerHostTests : IAsyncDisposable
     [Fact]
     public async Task AnOperationTheAgentsStopEndsIsInTheOutboxBeforeTheStopReturns()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows keeps a file another program holds from being written.");
         var serverId = Stored("abcd2346", manifest: SavingManifest);
         WriteServerFile("world/level.dat", "the world");
         var host = Host(hosted: true, snapshots: new CopySnapshots());

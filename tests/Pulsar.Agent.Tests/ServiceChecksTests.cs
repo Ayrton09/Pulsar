@@ -42,7 +42,7 @@ public sealed class ServiceChecksTests : IDisposable
     public void TheServiceChecksApplyWhenTheAgentRunsAsTheService(bool windowsService, bool system, bool asService) =>
         Assert.Equal(asService, ServiceChecks.RunsAsService(windowsService, system));
 
-    [Fact]
+    [WindowsFact]
     public void ATestRunIsNotTheService() => Assert.False(ServiceChecks.RunsAsService());
 
     [WindowsFact]

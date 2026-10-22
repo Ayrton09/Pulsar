@@ -66,12 +66,18 @@ public sealed class PanelCertificateChainTests : IAsyncDisposable
 
         await Assert.ThrowsAnyAsync<HttpRequestException>(() => GetAsync(transport, panel.Port));
 
-        // Leaf, intermediate and root, all from the handshake, the root's trust being the only thing missing: on a real
-        // panel the machine's store holds it (and the panel need not send it).
+        // Leaf and intermediate from the handshake, nothing fetched. Windows sends the root too, its trust being the only
+        // thing missing (on a real panel the machine's store holds it, and the panel need not send it); OpenSSL leaves a
+        // self-signed root out of what a server sends.
         var chain = Assert.Single(transport.Chains);
-        Assert.Equal([_leaf.Thumbprint, _intermediate.Thumbprint, _root.Thumbprint], chain.Elements);
-        Assert.Contains(X509ChainStatusFlags.UntrustedRoot, chain.Status);
-        Assert.DoesNotContain(X509ChainStatusFlags.PartialChain, chain.Status);
+        Assert.Equal(new[] { _leaf.Thumbprint, _intermediate.Thumbprint }, chain.Elements.Take(2).ToArray());
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal([_leaf.Thumbprint, _intermediate.Thumbprint, _root.Thumbprint], chain.Elements);
+            Assert.Contains(X509ChainStatusFlags.UntrustedRoot, chain.Status);
+            Assert.DoesNotContain(X509ChainStatusFlags.PartialChain, chain.Status);
+        }
+
         await AssertNothingFetchedAsync();
     }
 

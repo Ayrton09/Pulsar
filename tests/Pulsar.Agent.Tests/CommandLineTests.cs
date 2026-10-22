@@ -160,7 +160,7 @@ public sealed partial class CommandLineTests
         Assert.Equal(@"C:\ProgramData\Pulsar\Agent\logs\unenroll.log", line.Value("log-file"));
     }
 
-    [Theory]
+    [WindowsTheory]
     [InlineData(@"D:\PulsarServers", @"D:\PulsarServers")]
     [InlineData(@"D:\PulsarServers""", @"D:\PulsarServers")] // "D:\PulsarServers\" from an installer: the backslash escaped the quote
     [InlineData(@"D:\Pulsar Servers\", @"D:\Pulsar Servers\")]
@@ -175,7 +175,7 @@ public sealed partial class CommandLineTests
             "servers-root"));
     }
 
-    [Theory]
+    [WindowsTheory]
     [InlineData(@"D:\Agent", @"D:\Agent")]
     [InlineData(@"D:\Agent\", @"D:\Agent")]
     [InlineData(@"D:\Agent""", @"D:\Agent")] // "D:\Agent\" quoted: the backslash escaped the quote (services installed that way before)
@@ -186,7 +186,7 @@ public sealed partial class CommandLineTests
         Assert.Equal(expected, AgentCommands.Paths(CommandLine.Parse(["run", "--data-dir", value], AgentCommands.Flags)).Root);
     }
 
-    [Theory]
+    [WindowsTheory]
     [InlineData(@"D:\Agent\")]
     [InlineData(@"D:\Agent Data\")]
     [InlineData(@"D:\")]

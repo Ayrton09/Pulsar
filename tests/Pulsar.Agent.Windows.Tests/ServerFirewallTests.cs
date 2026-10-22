@@ -131,7 +131,7 @@ public sealed class ServerFirewallTests
         Assert.Equal(owned, WindowsServerFirewall.IsRuleOf("abcd2345", name));
     }
 
-    [Fact]
+    [WindowsFact]
     public void ThePanelBlockIsNamedLikeTheServersOtherRulesAndListsTheAccountOnly()
     {
         Assert.Equal("Pulsar abcd2345 panel block", WindowsServerFirewall.PanelBlockName("abcd2345"));
@@ -152,7 +152,7 @@ public sealed class ServerFirewallTests
         Assert.False(WindowsServerFirewall.IsServerAccount(shortId, ProcessIdentity.CurrentUser));
     }
 
-    [Theory]
+    [WindowsTheory]
     [InlineData("S-1-5-21-1-2-3-1001", true)]
     [InlineData("S-1-5-21-1-2-3-500", true)] // a local account all the same (the name check above keeps it out)
     [InlineData("S-1-5-18", false)] // SYSTEM: the agent itself

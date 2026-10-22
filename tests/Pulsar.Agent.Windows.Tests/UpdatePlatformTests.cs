@@ -6,7 +6,7 @@ namespace Pulsar.Agent.Windows.Tests;
 /// <summary>Who may update Pulsar from a node, and which folder the release may be unpacked in (Phase 19).</summary>
 public sealed class UpdatePlatformTests
 {
-    [Fact]
+    [WindowsFact]
     public void OnlyTheServiceRunningAsSystemUpdates()
     {
         using var identity = WindowsIdentity.GetCurrent();
@@ -15,7 +15,7 @@ public sealed class UpdatePlatformTests
         Assert.Equal("update.not_service", new WindowsUpdatePlatform(() => false).CannotUpdate()?.Code);
     }
 
-    [Fact]
+    [WindowsFact]
     public void AFolderOthersCanChangeIsNotPrivate()
     {
         // A temporary folder inherits the user's own rules: not SYSTEM's and Administrators' alone.

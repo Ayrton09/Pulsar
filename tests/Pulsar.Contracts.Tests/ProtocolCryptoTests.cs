@@ -51,7 +51,8 @@ public sealed class ProtocolCryptoTests
         var offCurve = OffCurve(p256.ExportSubjectPublicKeyInfo());
         var data = ProtocolCrypto.SignedData("p", [1]);
 
-        Assert.Throws<CryptographicException>(() => ProtocolCrypto.ImportPublicKey(offCurve));
+        // A CryptographicException or one derived from it (OpenSSL's, on Linux): what callers catch.
+        Assert.ThrowsAny<CryptographicException>(() => ProtocolCrypto.ImportPublicKey(offCurve));
         Assert.False(ProtocolCrypto.Verify(offCurve, data, ProtocolCrypto.Sign(p256, data)));
     }
 

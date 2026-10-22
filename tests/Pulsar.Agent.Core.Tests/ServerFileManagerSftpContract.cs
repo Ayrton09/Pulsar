@@ -83,9 +83,12 @@ public abstract partial class ServerFileManagerContract
         Assert.Equal(time, Files.SetModified(Server, "cfg", time).Entry.ModifiedAt);
         Assert.Equal(time.UtcDateTime, Directory.GetLastWriteTimeUtc(Path.Combine(ServerDirectory, "cfg")));
 
-        // Times no file system keeps are clamped, not refused: a client's odd value must not fail its upload.
-        Assert.Equal(1601, Files.SetModified(Server, "server.cfg", DateTimeOffset.MinValue).Entry.ModifiedAt.Year);
-        Assert.Equal(9999, Files.SetModified(Server, "server.cfg", DateTimeOffset.MaxValue).Entry.ModifiedAt.Year);
+        // Times no file system keeps are clamped, not refused: a client's odd value must not fail its upload. NTFS keeps
+        // 1601 to 9999; a Linux file system its own range (ext4: 1901 to 2446).
+        var earliest = Files.SetModified(Server, "server.cfg", DateTimeOffset.MinValue).Entry.ModifiedAt.Year;
+        var latest = Files.SetModified(Server, "server.cfg", DateTimeOffset.MaxValue).Entry.ModifiedAt.Year;
+        Assert.True(OperatingSystem.IsWindows() ? earliest == 1601 : earliest is >= 1601 and <= 1970, $"earliest {earliest}");
+        Assert.True(OperatingSystem.IsWindows() ? latest == 9999 : latest is >= 2038 and <= 9999, $"latest {latest}");
 
         Assert.Equal(FileErrors.NotFound, Code(() => Files.SetModified(Server, "missing.cfg", time)));
         Assert.Equal(FileErrors.InvalidPath, Code(() => Files.SetModified(Server, "../outside.cfg", time)));

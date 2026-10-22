@@ -32,6 +32,18 @@ public sealed class WindowsFactAttribute : FactAttribute
     public static bool IsWindows => OperatingSystem.IsWindows();
 }
 
+/// <summary>A theory that runs only on Windows; elsewhere (the Linux CI leg) it is reported as skipped.</summary>
+public sealed class WindowsTheoryAttribute : TheoryAttribute
+{
+    public WindowsTheoryAttribute([CallerFilePath] string? sourceFilePath = null, [CallerLineNumber] int sourceLineNumber = -1)
+        : base(sourceFilePath, sourceLineNumber)
+    {
+        Skip = "Windows only.";
+        SkipUnless = nameof(WindowsFactAttribute.IsWindows);
+        SkipType = typeof(WindowsFactAttribute);
+    }
+}
+
 /// <summary>
 /// The Windows-specific parts of the agent against the real OS. Keys are created in the current user's store (machine
 /// keys need elevation) and deleted afterwards; the machine-scope path is exercised by the agent run in Windows Sandbox.

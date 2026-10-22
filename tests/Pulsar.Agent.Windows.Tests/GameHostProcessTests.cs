@@ -139,7 +139,7 @@ public sealed class GameHostProcessTests : IAsyncDisposable
         Assert.True(_hosts.End(gone));
     }
 
-    [Theory]
+    [WindowsTheory]
     [InlineData(87, false, true)] // ERROR_INVALID_PARAMETER: no such process
     [InlineData(87, true, true)] // ... whatever the pipe says
     [InlineData(5, false, true)] // access denied, and no pipe that may be the host's: the host is gone (a stale record, a reused id)
@@ -165,7 +165,7 @@ public sealed class GameHostProcessTests : IAsyncDisposable
     // Any account can create a pipe under a host's name (the names can be listed), and keep its instances busy: only one
     // owned by the agent's default owner, which no game server's account can give a pipe, or the host's id and start time
     // in the process list, keep a host that cannot be opened from counting as gone.
-    [Theory]
+    [WindowsTheory]
     [InlineData(nameof(WindowsGameHostLauncher.PipeProbe.Missing), false, null, false)]
     [InlineData(nameof(WindowsGameHostLauncher.PipeProbe.Refused), false, null, false)] // a host's pipe always lets the agent's account in
     [InlineData(nameof(WindowsGameHostLauncher.PipeProbe.Owned), true, null, true)]

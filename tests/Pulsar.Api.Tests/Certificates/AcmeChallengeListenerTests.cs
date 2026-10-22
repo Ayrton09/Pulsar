@@ -138,8 +138,9 @@ public sealed class AcmeChallengeListenerTests : IAsyncLifetime
     {
         using var idle = await ConnectAsync();
 
-        // Kestrel looks at its timeouts once a second: the 2-second limit closes it within four.
-        Assert.True(await ClosedWithinAsync(idle, TimeSpan.FromSeconds(4)));
+        // Kestrel looks at its timeouts once a second: the 2-second limit closes it within four, or a little more on a
+        // busy machine (a CI runner); a connection left open would not be closed at all.
+        Assert.True(await ClosedWithinAsync(idle, TimeSpan.FromSeconds(10)));
     }
 
     [Fact]

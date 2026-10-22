@@ -196,9 +196,23 @@ public sealed class InProcessAgent : IAsyncDisposable
             _connection.Dispose();
         }
 
-        if (Directory.Exists(_root))
+        // A file something still holds for a moment (a log being closed, an antivirus scan on a CI runner) must not fail the
+        // test that used the folder: a few tries, then the temporary folder is left behind.
+        for (var attempt = 0; Directory.Exists(_root); attempt++)
         {
-            Directory.Delete(_root, recursive: true);
+            try
+            {
+                Directory.Delete(_root, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (attempt >= 10)
+                {
+                    break;
+                }
+
+                await Task.Delay(100);
+            }
         }
     }
 

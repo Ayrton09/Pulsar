@@ -29,6 +29,18 @@ public sealed class WindowsFactAttribute : FactAttribute
     public static bool IsWindows => OperatingSystem.IsWindows();
 }
 
+/// <summary>A theory that runs only on Windows; elsewhere (the Linux CI leg) it is reported as skipped.</summary>
+public sealed class WindowsTheoryAttribute : TheoryAttribute
+{
+    public WindowsTheoryAttribute([CallerFilePath] string? sourceFilePath = null, [CallerLineNumber] int sourceLineNumber = -1)
+        : base(sourceFilePath, sourceLineNumber)
+    {
+        Skip = "Windows only.";
+        SkipUnless = nameof(WindowsFactAttribute.IsWindows);
+        SkipType = typeof(WindowsFactAttribute);
+    }
+}
+
 /// <summary>
 /// A Job that kills what it holds when the test process ends, however it ends: host processes leave the test runner's
 /// Job by design, so an aborted run would otherwise leave them (and their games) running.
