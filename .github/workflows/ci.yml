@@ -145,6 +145,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'agent MSI failed' }
           }
           dotnet publish tests/Pulsar.TestGameServer -c Release -r win-x64 --self-contained -o artifacts/agent-install-ci/testgame
+          # The check makes sure the ZIP's installer leaves an agent from the MSI alone (as prepare.ps1 bundles it).
+          Copy-Item scripts/install/Install-Pulsar.ps1 artifacts/agent-install-ci/
 
       - name: Install, rotate, run servers, revoke and remove the agent
         shell: powershell
