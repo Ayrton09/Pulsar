@@ -1,4 +1,4 @@
-import { useQueryClient, type Query, type QueryClient } from '@tanstack/react-query';
+import { useQueryClient, type Query, type QueryClient, type QueryFilters } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
 import { adminKeys } from '../admin/api';
 import { sessionKey } from '../auth/api';
@@ -23,9 +23,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Servers and their lists; not their settings, which change only when someone saves them.
     const refreshServers = () => {
-      void queryClient.invalidateQueries({ queryKey: serverKeys.all, predicate: notServerSettings });
+      void refetch(queryClient, { queryKey: serverKeys.all, predicate: notServerSettings });
       // The dashboard's latest activity: what changes servers and nodes is audited.
-      void queryClient.invalidateQueries({ queryKey: [...adminKeys.audit, 'recent'] });
+      void refetch(queryClient, { queryKey: [...adminKeys.audit, 'recent'] });
     };
     let reconnect = false;
     const offs = [
@@ -34,17 +34,17 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         // An install, an update or a restore rewrites the files: the listings of the servers named (the open editor's
         // content is not a query). Not at every node notice, which names no server.
         for (const id of serverIds) {
-          void queryClient.invalidateQueries({ queryKey: fileKeys.all(id) });
+          void refetch(queryClient, { queryKey: fileKeys.all(id) });
         }
       }),
       live.on('AppearanceChanged', () => {
-        void queryClient.invalidateQueries({ queryKey: appearanceKeys.settings });
+        void refetch(queryClient, { queryKey: appearanceKeys.settings });
       }),
       live.on<[string[]]>('NodesChanged', () => {
-        void queryClient.invalidateQueries({ queryKey: nodeKeys.all });
+        void refetch(queryClient, { queryKey: nodeKeys.all });
         // Who trusts which panel key, and how many times a reusable token was used, change with the nodes.
-        void queryClient.invalidateQueries({ queryKey: panelKeysKey });
-        void queryClient.invalidateQueries({ queryKey: nodeKeys.enrollmentTokens });
+        void refetch(queryClient, { queryKey: panelKeysKey });
+        void refetch(queryClient, { queryKey: nodeKeys.enrollmentTokens });
         refreshServers(); // servers show whether their node is connected
       }),
       live.on<[OperationProgress]>('OperationProgress', (progress) => applyProgress(queryClient, progress)),
@@ -55,7 +55,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       // What changed while disconnected was never pushed. (The first connection follows the page's own fetches.)
       live.onConnected(() => {
         if (reconnect) {
-          void queryClient.invalidateQueries({ predicate: notServerSettings });
+          void refetch(queryClient, { predicate: notServerSettings });
         }
         reconnect = true;
       }),
@@ -70,6 +70,20 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   }, [live, queryClient]);
 
   return <LiveContext value={live}>{children}</LiveContext>;
+}
+
+/**
+ * Fetches again what a notice is about. A query still on its first fetch is started again: TanStack Query would let that
+ * fetch end and keep what it read, which can be from before the change the notice is about (a server's page opened as its
+ * install ends would say Installing until the next notice).
+ */
+async function refetch(queryClient: QueryClient, filters: QueryFilters) {
+  await queryClient.cancelQueries({
+    ...filters,
+    predicate: (query) =>
+      query.state.data === undefined && query.state.fetchStatus === 'fetching' && (filters.predicate?.(query) ?? true),
+  });
+  await queryClient.invalidateQueries(filters);
 }
 
 /** A refetch of a server's settings would drop an admin's unsaved edits; only a save or a template upgrade changes them. */

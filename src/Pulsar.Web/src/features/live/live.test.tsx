@@ -280,6 +280,47 @@ describe('server console', () => {
 });
 
 describe('live updates', () => {
+  it('fetches a page again when a notice comes while its first fetch is on its way (a server whose install ends as its page opens)', async () => {
+    const installing: Schemas['ServerDetails'] = {
+      ...details,
+      server: {
+        ...server,
+        installState: 'installing',
+        runtimeState: 'offline',
+        desiredState: 'stopped',
+        lastStateReason: null,
+      },
+    };
+    const installed: Schemas['ServerDetails'] = {
+      ...details,
+      server: { ...server, runtimeState: 'offline', desiredState: 'stopped', lastStateReason: null },
+    };
+    let reads = 0;
+    let answerFirst: (response: Response) => void = () => {};
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      // The first read is slow and is answered with the server as it was when it was made: installing.
+      [`GET /api/v1/servers/${server.id}`]: () => {
+        reads++;
+        return reads === 1 ? new Promise<Response>((resolve) => (answerFirst = resolve)) : json(installed);
+      },
+      'GET /api/v1/servers': () => json([installed.server]),
+    });
+    const live = await renderAt(`/servers/${server.id}`);
+    await waitFor(() => expect(reads).toBe(1));
+
+    // The install ends, and the panel says so, while that first read is on its way.
+    live.emit('ServersChanged', [server.id]);
+    await act(async () => {
+      answerFirst(json(installing));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await waitFor(() => expect(reads).toBe(2));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Surf' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Installing')).not.toBeInTheDocument());
+  });
+
   it('shows the usage the agent pushes in the server header', async () => {
     serverApi();
     const live = await renderAt(`/servers/${server.id}`);
