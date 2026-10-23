@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -12,12 +13,18 @@ using Pulsar.Domain.Servers;
 namespace Pulsar.Infrastructure.Persistence;
 
 /// <summary>
-/// After every successful save, tells browsers which servers and nodes changed (whoever changed them: a user, an agent's
+/// Once changes are committed, tells browsers which servers and nodes changed (whoever changed them: a user, an agent's
 /// report, a reconciliation), so no code path can forget to; and wakes the notification sender when notifications were queued.
+/// A save outside a transaction of the caller's is committed when it ends; the saves made in one (each a savepoint) are
+/// gathered and told when it commits, and forgotten when it rolls back or is disposed without a commit: a browser asking
+/// again, or the sender looking for notifications, must find what it was told about.
 /// </summary>
-internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : SaveChangesInterceptor
+internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : SaveChangesInterceptor, IDbTransactionInterceptor
 {
+    // The save under way, and what the saves of the context's open transaction gathered, by context. A transaction is
+    // told apart by EF's id for it: the provider reuses its own transaction object for the connection's next one.
     private readonly ConditionalWeakTable<DbContext, Changes> _pending = [];
+    private readonly ConditionalWeakTable<DbContext, Uncommitted> _uncommitted = [];
 
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
@@ -34,14 +41,45 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
 
     public override int SavedChanges(SaveChangesCompletedEventData eventData, int result)
     {
-        Publish(eventData.Context);
+        Saved(eventData.Context);
         return result;
     }
 
     public override ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData eventData, int result, CancellationToken cancellationToken = default)
     {
-        Publish(eventData.Context);
+        Saved(eventData.Context);
         return ValueTask.FromResult(result);
+    }
+
+    public void TransactionCommitted(DbTransaction transaction, TransactionEndEventData eventData)
+    {
+        if (Take(eventData) is { } changes)
+        {
+            Publish(changes);
+        }
+    }
+
+    public Task TransactionCommittedAsync(DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken = default)
+    {
+        TransactionCommitted(transaction, eventData);
+        return Task.CompletedTask;
+    }
+
+    public void TransactionRolledBack(DbTransaction transaction, TransactionEndEventData eventData) => Take(eventData);
+
+    public Task TransactionRolledBackAsync(DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken = default)
+    {
+        Take(eventData);
+        return Task.CompletedTask;
+    }
+
+    // A commit that failed is not known to have happened: nothing is told (browsers fetch again at their next change).
+    public void TransactionFailed(DbTransaction transaction, TransactionErrorEventData eventData) => Take(eventData);
+
+    public Task TransactionFailedAsync(DbTransaction transaction, TransactionErrorEventData eventData, CancellationToken cancellationToken = default)
+    {
+        Take(eventData);
+        return Task.CompletedTask;
     }
 
     public override void SaveChangesFailed(DbContextErrorEventData eventData) => Forget(eventData.Context);
@@ -111,7 +149,7 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
         _pending.AddOrUpdate(context, changes);
     }
 
-    private void Publish(DbContext? context)
+    private void Saved(DbContext? context)
     {
         if (context is null || !_pending.TryGetValue(context, out var changes))
         {
@@ -119,6 +157,49 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
         }
 
         _pending.Remove(context);
+        // Inside the caller's transaction: kept for its commit. Otherwise the save's own transaction committed already.
+        if (context.Database.CurrentTransaction is { } transaction)
+        {
+            lock (_uncommitted)
+            {
+                // What an earlier transaction gathered is dropped: it was disposed without a commit (rolled back).
+                if (!_uncommitted.TryGetValue(context, out var open) || open.TransactionId != transaction.TransactionId)
+                {
+                    open = new Uncommitted(transaction.TransactionId, new Changes());
+                    _uncommitted.AddOrUpdate(context, open);
+                }
+
+                open.Changes.Add(changes);
+            }
+
+            return;
+        }
+
+        Publish(changes);
+    }
+
+    /// <summary>What the saves of the transaction that ended gathered, forgotten here.</summary>
+    private Changes? Take(TransactionEventData eventData)
+    {
+        if (eventData.Context is not { } context)
+        {
+            return null;
+        }
+
+        lock (_uncommitted)
+        {
+            if (!_uncommitted.TryGetValue(context, out var open) || open.TransactionId != eventData.TransactionId)
+            {
+                return null;
+            }
+
+            _uncommitted.Remove(context);
+            return open.Changes;
+        }
+    }
+
+    private void Publish(Changes changes)
+    {
         if (changes.NotificationsQueued)
         {
             // Committed: the sender finds them now.
@@ -150,6 +231,8 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
         }
     }
 
+    private sealed record Uncommitted(Guid TransactionId, Changes Changes);
+
     private sealed class Changes
     {
         public HashSet<ServerId> Servers { get; } = [];
@@ -159,5 +242,17 @@ internal sealed class RealtimeChangesInterceptor(IServiceProvider services) : Sa
         public HashSet<NodeId> Nodes { get; } = [];
 
         public bool NotificationsQueued { get; set; }
+
+        public void Add(Changes other)
+        {
+            Servers.UnionWith(other.Servers);
+            foreach (var (server, node) in other.ServerNodes)
+            {
+                ServerNodes[server] = node;
+            }
+
+            Nodes.UnionWith(other.Nodes);
+            NotificationsQueued |= other.NotificationsQueued;
+        }
     }
 }
