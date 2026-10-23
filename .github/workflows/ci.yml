@@ -98,12 +98,15 @@ jobs:
 
       # The install, update and backup scripts' own checks, in Windows PowerShell 5.1 as the setups run them. The runner
       # is elevated and thrown away after the job, so the checks that need elevation run too (-RequireElevation fails
-      # the step instead of skipping them); they change nothing but folders of their own under the runner's temp folder.
+      # the step instead of skipping them); they change nothing but folders of their own under -Scratch. That is in
+      # ProgramData: the scripts trust a folder only when no other account could replace a folder above it, which the
+      # runner's temp folders fail (D:\ belongs to NETWORK SERVICE, the profile to the runner's account).
       - name: Test the install scripts (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/tests/Test-InstallScripts.ps1 -Scratch $env:RUNNER_TEMP -RequireElevation
+          $scratch = New-Item -ItemType Directory -Force (Join-Path $env:ProgramData 'PulsarScriptTests')
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/tests/Test-InstallScripts.ps1 -Scratch $scratch.FullName -RequireElevation
           if ($LASTEXITCODE -ne 0) { throw "Test-InstallScripts.ps1 failed (exit code $LASTEXITCODE)." }
 
       # Local accounts, user rights and servers started as their own account: CreateProcessAsUser needs SYSTEM, as

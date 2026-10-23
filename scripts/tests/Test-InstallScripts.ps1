@@ -1253,8 +1253,11 @@ try {
         New-PrivateFolder $private
         $secrets = Join-Path $private 'secrets.json'
         [IO.File]::WriteAllText($secrets, '{"adminPassword": "a password of the test", "nodeCode": null}')
-        $read = Read-SecretsFile $secrets
-        Check 'secrets file: a private one is read and deleted' ($read['adminPassword'] -ceq 'a password of the test' -and $read.ContainsKey('nodeCode') -and -not (Test-Path -LiteralPath $secrets))
+        # Refused here only when a folder above -Scratch could be replaced by another account: a failed check, not the end of the run.
+        $read = $null
+        $caught = Get-Caught { $script:secretsRead = Read-SecretsFile $secrets }
+        if ($null -eq $caught) { $read = $script:secretsRead }
+        Check 'secrets file: a private one is read and deleted' ($null -ne $read -and $read['adminPassword'] -ceq 'a password of the test' -and $read.ContainsKey('nodeCode') -and -not (Test-Path -LiteralPath $secrets)) "$caught"
         [IO.File]::WriteAllText($secrets, '{"adminPasword": "typo"}')
         Check 'secrets file: a name it does not know is refused' ((Get-SetupExitCode (Get-Caught { Read-SecretsFile $secrets })) -eq 2)
     }
