@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Notifications;
 using Pulsar.Application.Realtime;
+using Pulsar.Application.Servers;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Nodes;
 using Pulsar.Domain.Notifications;
@@ -144,6 +145,38 @@ public sealed class CommittedChangesTests(PulsarApiFactory factory) : IClassFixt
             .AnyAsync(d => d.Id == delivery.Id, Ct));
     }
 
+    [DatabaseFact]
+    public async Task ANewServersLastNoticeComesOnceItIsInstalled()
+    {
+        var told = new Recorder();
+        using var app = Recording(told);
+        using (await factory.CreateAdminClientAsync())
+        {
+            // The administrator exists.
+        }
+
+        using var admin = await PanelClient.CreateAsync(app);
+        using (var login = await admin.LoginAsync(PulsarApiFactory.AdminUserName, PulsarApiFactory.AdminPassword))
+        {
+            await AccessScenario.EnsureSuccessAsync(login);
+        }
+
+        await admin.GetSessionAsync();
+        var created = await NodeApi.CreateAsync(admin, $"committed-install-{Tag()}");
+        await using var agent = new InProcessAgent(app);
+        await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
+        await agent.StartAsync();
+        await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, created.Node.Id)).Node.Connected, "agent connected");
+
+        // Created, provisioned, then installed by the follow-up the provisioning's result starts (two operations, quick ones).
+        var server = (await ServerApi.CreateAsync(admin, created.Node.Id, $"committed-{Tag()}")).Server.Id;
+        await ServerApi.WaitForAsync(admin, server, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null, "installed");
+
+        // A browser that fetches at its last notice finds it installed.
+        await InProcessAgent.EventuallyAsync(() => Task.FromResult(told.AboutServer(new ServerId(server)).LastOrDefault() == "installed"),
+            () => $"a notice once installed (told: {string.Join(", ", told.AboutServer(new ServerId(server)))})");
+    }
+
     private static NotificationDelivery Delivery(NotificationChannel channel, string subject, DateTimeOffset now) =>
         NotificationDelivery.Create(channel, NotificationEvent.ServerCrashed, subject,
             new NotificationMessage("Crashed", "A server crashed.", NotificationSeverity.Error, [], null), now);
@@ -193,6 +226,7 @@ public sealed class CommittedChangesTests(PulsarApiFactory factory) : IClassFixt
     private sealed class Recorder : IRealtimeNotifier
     {
         private readonly ConcurrentQueue<(NodeId Node, string? Name)> _nodes = new();
+        private readonly ConcurrentQueue<(ServerId Server, string? InstallState)> _servers = new();
         private IServiceProvider? _services;
 
         public Recorder For(IServiceProvider services)
@@ -204,6 +238,9 @@ public sealed class CommittedChangesTests(PulsarApiFactory factory) : IClassFixt
         public List<(NodeId Node, string? Name)> About(params NodeId[] nodes) => [.. _nodes.Where(n => nodes.Contains(n.Node))];
 
         public void Clear() => _nodes.Clear();
+
+        /// <summary>The install state of the server another context read at each notice about it.</summary>
+        public List<string?> AboutServer(ServerId server) => [.. _servers.Where(s => s.Server == server).Select(s => s.InstallState)];
 
         public void NodesChanged(IReadOnlyCollection<NodeId> nodes)
         {
@@ -217,6 +254,13 @@ public sealed class CommittedChangesTests(PulsarApiFactory factory) : IClassFixt
 
         public void ServersChanged(IReadOnlyCollection<ServerId> servers, IReadOnlyDictionary<ServerId, NodeId>? nodes = null)
         {
+            using var scope = _services!.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<PulsarDbContext>();
+            foreach (var server in servers)
+            {
+                var state = db.Servers.AsNoTracking().Where(s => s.Id == server).Select(s => (InstallState?)s.InstallState).SingleOrDefault();
+                _servers.Enqueue((server, state is { } known ? known.ToString().ToLowerInvariant() : null));
+            }
         }
 
         public void OperationProgress(ServerId server, Guid operationId, string stage, decimal? percent)
