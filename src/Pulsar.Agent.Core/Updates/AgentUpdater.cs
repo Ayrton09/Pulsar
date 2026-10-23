@@ -200,8 +200,18 @@ public sealed partial class AgentUpdater : IDisposable
             // trusted, a check failed). Its result, when it wrote one for this update, says why; otherwise its exit code.
             // This update's: its request's id when it has one, else this version's written since the installer started.
             LogInstallerEnded(version, exitCode);
-            if (ReadResult() is { } result
-                && (attempt is not null ? result.Attempt == attempt : result.To == version.ToString() && result.At >= started.AddSeconds(-5)))
+            var own = ReadResult() is { } result
+                && (attempt is not null ? result.Attempt == attempt : result.To == version.ToString() && result.At >= started.AddSeconds(-5));
+
+            // Done here before it is reported, as a failure is: once its end is told, the next update may be asked.
+            TryDelete(folder);
+            folder = null;
+            lock (_lock)
+            {
+                _running = false;
+            }
+
+            if (own)
             {
                 await ReportResultAsync(always: true, CancellationToken.None);
             }
@@ -209,12 +219,6 @@ public sealed partial class AgentUpdater : IDisposable
             {
                 await ReportAsync(UpdateStatuses.Failed, from, version, attempt,
                     $"The installer ended with exit code {exitCode} before updating anything. Its log is in {SetupLogs}.");
-            }
-
-            TryDelete(folder);
-            lock (_lock)
-            {
-                _running = false;
             }
         }
         catch (Exception ex)
