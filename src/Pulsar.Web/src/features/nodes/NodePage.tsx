@@ -34,10 +34,17 @@ import { EnrollmentCommand, NodeStateBadge } from './components';
 import { nodeSchema, type NodeFormValues } from './nodeForm';
 import { AllocationsSection } from './AllocationsSection';
 
-/** One node: what the agent reports (inventory, live usage), its credentials, and the administration actions. */
+/**
+ * One node: what the agent reports (inventory, live usage), its credentials, and the administration actions. Another
+ * node is another page: an edit, a dialog or enrollment instructions left open here never carry over to it.
+ */
 export function NodePage() {
-  const { t } = useTranslation();
   const { id = '' } = useParams();
+  return <NodeView key={id} id={id} />;
+}
+
+function NodeView({ id }: { id: string }) {
+  const { t } = useTranslation();
   const me = useCurrentUser();
   const details = useNode(id);
   useWatchNodes();

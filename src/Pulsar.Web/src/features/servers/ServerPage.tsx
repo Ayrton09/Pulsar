@@ -81,10 +81,19 @@ const tabIcons: Record<Tab, LucideIcon> = {
   network: Network,
 };
 
-/** One server: its state and live usage, the lifecycle actions, its console and its recent operations. */
+/**
+ * One server: its state and live usage, the lifecycle actions, its console and its recent operations. Going to another
+ * server (a link, back or forward) is another page, not this one with another id: what was open or being filled here
+ * (an editor and its file's version, a form, a dialog, the console's input) is never shown, or saved, as the other
+ * server's.
+ */
 export function ServerPage() {
-  const { t } = useTranslation();
   const { id = '' } = useParams();
+  return <ServerView key={id} id={id} />;
+}
+
+function ServerView({ id }: { id: string }) {
+  const { t } = useTranslation();
   const me = useCurrentUser();
   const details = useServer(id);
   useWatchServers();

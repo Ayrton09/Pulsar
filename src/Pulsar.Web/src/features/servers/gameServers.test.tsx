@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -358,6 +358,50 @@ describe('a game server page', () => {
     await user.click(screen.getByRole('button', { name: 'Update game' }));
 
     await vi.waitFor(() => expect(body).toEqual({ validate: true }));
+  });
+
+  it("never carries a settings form being filled to another server's page, even with the same settings", async () => {
+    const otherId = '0192f1a0-0000-7000-8000-0000000000ea';
+    const other = { ...summary, id: otherId, name: 'Deathmatch' };
+    // Both stored alike: the form's own key (its settings) does not tell the two servers apart.
+    const settings: Schemas['ServerSettings'] = {
+      variables: [{ definition: hostname, value: 'My server', hasValue: true }],
+      extraArguments: [],
+      allowExtraArguments: false,
+      autoStart: false,
+      restartOnCrash: true,
+    };
+    const saved: string[] = [];
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${otherId}`]: () => json(details(other)),
+      [`GET /api/v1/servers/${serverId}/settings`]: () => json(settings),
+      [`GET /api/v1/servers/${otherId}/settings`]: () => json(settings),
+      [`PUT /api/v1/servers/${serverId}/settings`]: () => {
+        saved.push(serverId);
+        return json(settings);
+      },
+      [`PUT /api/v1/servers/${otherId}/settings`]: () => {
+        saved.push(otherId);
+        return json(settings);
+      },
+    });
+    // The other server first: going back to it later finds its page in the cache, shown at once.
+    const router = renderAt(`/servers/${otherId}?tab=settings`);
+    const user = userEvent.setup();
+    expect(await screen.findByLabelText('Server name')).toHaveValue('My server');
+    await act(() => router.navigate(`/servers/${serverId}?tab=settings`));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Retakes' })).toBeInTheDocument();
+    await user.clear(await screen.findByLabelText('Server name'));
+    await user.type(screen.getByLabelText('Server name'), 'Typed on the first server');
+
+    await act(() => router.navigate(-1));
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Deathmatch' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('Server name')).toHaveValue('My server');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await vi.waitFor(() => expect(saved).toEqual([otherId]));
   });
 
   it('saves only the settings that changed, never sending a secret it does not have', async () => {

@@ -22,7 +22,8 @@ export interface FileEditorProps {
   onClose: () => void;
 }
 
-type Loaded = { request: number } & ({ file: OpenedFile } | { error: unknown });
+/** A read, with what it was a read of: one of another file, or an earlier read of this one, is never shown. */
+type Loaded = { serverId: string; path: string; request: number } & ({ file: OpenedFile } | { error: unknown });
 
 /**
  * A text file of the server in the editor (docs/architecture/07, "Files"): opened with its version and saved against
@@ -38,18 +39,23 @@ export function FileEditor({ serverId, path, canEdit, onClose }: FileEditorProps
 
   useEffect(() => {
     const controller = new AbortController();
+    // An answer that arrives after the read was given up (another file, a reload) is dropped, however it ended.
     readFile(serverId, path, controller.signal).then(
-      (file) => setLoaded({ request, file }),
+      (file) => {
+        if (!controller.signal.aborted) {
+          setLoaded({ serverId, path, request, file });
+        }
+      },
       (error: unknown) => {
         if (!controller.signal.aborted) {
-          setLoaded({ request, error });
+          setLoaded({ serverId, path, request, error });
         }
       },
     );
     return () => controller.abort();
   }, [serverId, path, request]);
 
-  if (loaded?.request !== request) {
+  if (loaded?.serverId !== serverId || loaded.path !== path || loaded.request !== request) {
     return <Spinner label={t('common.loading')} />;
   }
   if ('error' in loaded) {
@@ -90,7 +96,8 @@ export function FileEditor({ serverId, path, canEdit, onClose }: FileEditorProps
 
   return (
     <LoadedEditor
-      key={request}
+      // Its text and version are of this file of this server, as read by this request: anything else starts afresh.
+      key={`${serverId}\n${path}\n${request}`}
       serverId={serverId}
       path={path}
       canEdit={canEdit}

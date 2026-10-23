@@ -1,6 +1,6 @@
 import { defaultKeymap, toggleTabFocusMode } from '@codemirror/commands';
 import { QueryClient } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -436,6 +436,118 @@ describe('files tab', () => {
     expect(count('/files/content')).toBe(1);
     expect(screen.getByLabelText('Contents of server.cfg')).toHaveValue('sv_cheats 0 // mine');
     expect(screen.getByRole('status')).toHaveTextContent('Unsaved changes');
+  });
+
+  describe('the same file on two servers', () => {
+    const otherId = '0192f1a0-0000-7000-8000-0000000000e2';
+    const other: Schemas['ServerDetails'] = { ...details, server: { ...server, id: otherId, name: 'Deathmatch' } };
+    const contentPath = (id: string) => `/api/v1/servers/${id}/files/content`;
+
+    /** Reads that answer only when the test says so, in the order the test chooses. */
+    function delayedReads() {
+      const pending: Record<string, ((response: Response) => void)[]> = { [serverId]: [], [otherId]: [] };
+      const read = (id: string) => () =>
+        new Promise<Response>((resolve) => {
+          pending[id]?.push(resolve);
+        });
+      const answer = (id: string, index: number, text: string, version: string) =>
+        act(async () => {
+          pending[id]?.[index]?.(new Response(text, { headers: { ETag: `"${version}"` } }));
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+      const count = (id: string) => pending[id]?.length ?? 0;
+      return { read, answer, count };
+    }
+
+    /** Both servers already in the cache: going from one to the other shows its page at once. */
+    function renderBoth(first: string) {
+      const router = createMemoryRouter(routes, { initialEntries: [first] });
+      queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false, refetchInterval: false, staleTime: Infinity } },
+      });
+      queryClient.setQueryData(['servers', serverId], details);
+      queryClient.setQueryData(['servers', otherId], other);
+      render(<App router={router} queryClient={queryClient} />);
+      return router;
+    }
+
+    it("never shows or saves one server's file as the other's, back and forward, whatever order reads answer in", async () => {
+      const reads = delayedReads();
+      fakeApi({
+        'GET /api/v1/auth/session': session(editor),
+        [`GET /api/v1/servers/${serverId}`]: () => json(details),
+        [`GET /api/v1/servers/${otherId}`]: () => json(other),
+        [`GET ${contentPath(serverId)}`]: reads.read(serverId),
+        [`GET ${contentPath(otherId)}`]: reads.read(otherId),
+      });
+      FakeXhr.handler = async (xhr) => written(xhr.path ?? '', 30, 'b3');
+      const router = renderBoth(`/servers/${serverId}?tab=files&file=server.cfg`);
+      await waitFor(() => expect(reads.count(serverId)).toBe(1));
+      await reads.answer(serverId, 0, 'hostname "Retakes"\n', 'a1');
+      expect(await screen.findByLabelText('Contents of server.cfg')).toHaveValue('hostname "Retakes"\n');
+
+      // To the other server's same file: while it is read, nothing of the first one is shown.
+      await act(() => router.navigate(`/servers/${otherId}?tab=files&file=server.cfg`));
+      await waitFor(() => expect(reads.count(otherId)).toBe(1));
+      expect(screen.queryByLabelText('Contents of server.cfg')).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Deathmatch');
+
+      // Back to the first one and forward again before any of those reads answered.
+      await act(() => router.navigate(-1));
+      await waitFor(() => expect(reads.count(serverId)).toBe(2));
+      await act(() => router.navigate(1));
+      await waitFor(() => expect(reads.count(otherId)).toBe(2));
+
+      // The latest read of this server answers first, then the ones given up on: they change nothing.
+      await reads.answer(otherId, 1, 'hostname "Deathmatch"\n', 'b1');
+      await reads.answer(serverId, 1, 'hostname "Retakes"\n', 'a1');
+      await reads.answer(otherId, 0, 'hostname "an older read"\n', 'b0');
+      const text = screen.getByLabelText('Contents of server.cfg');
+      expect(text).toHaveValue('hostname "Deathmatch"\n');
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Deathmatch');
+
+      await userEvent.type(text, '// x');
+      await userEvent.keyboard('{Control>}s{/Control}');
+
+      await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('All changes saved'));
+      expect(FakeXhr.sent).toHaveLength(1);
+      expect(new URL(FakeXhr.sent[0]?.url ?? '', 'http://localhost').pathname).toBe(contentPath(otherId));
+      expect(FakeXhr.sent[0]?.path).toBe('server.cfg');
+      expect(FakeXhr.sent[0]?.headers['If-Match']).toBe('"b1"');
+      expect(await FakeXhr.sent[0]?.body?.text()).toBe('hostname "Deathmatch"\n// x');
+    });
+
+    it('asks before leaving unsaved changes for the other server, and opens its file afresh there', async () => {
+      const reads = delayedReads();
+      fakeApi({
+        'GET /api/v1/auth/session': session(editor),
+        [`GET /api/v1/servers/${serverId}`]: () => json(details),
+        [`GET /api/v1/servers/${otherId}`]: () => json(other),
+        [`GET ${contentPath(serverId)}`]: reads.read(serverId),
+        [`GET ${contentPath(otherId)}`]: reads.read(otherId),
+      });
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+      const router = renderBoth(`/servers/${serverId}?tab=files&file=server.cfg`);
+      await waitFor(() => expect(reads.count(serverId)).toBe(1));
+      await reads.answer(serverId, 0, 'sv_cheats 0', 'a1');
+      await userEvent.type(await screen.findByLabelText('Contents of server.cfg'), ' // mine');
+
+      await act(() => router.navigate(`/servers/${otherId}?tab=files&file=server.cfg`));
+
+      // Kept: still this server, still editing.
+      expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
+      expect(router.state.location.pathname).toBe(`/servers/${serverId}`);
+      expect(screen.getByLabelText('Contents of server.cfg')).toHaveValue('sv_cheats 0 // mine');
+
+      await act(() => router.navigate(`/servers/${otherId}?tab=files&file=server.cfg`));
+
+      await waitFor(() => expect(reads.count(otherId)).toBe(1));
+      expect(screen.queryByLabelText('Contents of server.cfg')).not.toBeInTheDocument();
+      await reads.answer(otherId, 0, 'sv_cheats 1', 'b1');
+      expect(screen.getByLabelText('Contents of server.cfg')).toHaveValue('sv_cheats 1');
+      expect(screen.getByRole('status')).toHaveTextContent('All changes saved');
+      expect(confirm).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('fetches the open folder again when the server changes (an install or a restore rewrites the files)', async () => {

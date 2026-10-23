@@ -63,7 +63,8 @@ export function FilesTab({ details }: { details: ServerDetails }) {
   if (file) {
     return (
       <FileEditor
-        key={file}
+        // The same path on another server is another file.
+        key={`${server.id}:${file}`}
         serverId={server.id}
         path={file}
         canEdit={canEdit}
