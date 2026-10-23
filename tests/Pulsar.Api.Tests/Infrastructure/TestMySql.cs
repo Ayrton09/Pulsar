@@ -6,13 +6,16 @@ namespace Pulsar.Api.Tests.Infrastructure;
 /// <summary>
 /// A real MySQL or MariaDB server for the game database tests: PULSAR_TEST_MYSQL is a connection string whose user may
 /// create databases and users (CONTRIBUTING.md). Each test's databases carry its server's random short id, so runs
-/// never collide; without the variable the tests are skipped.
+/// never collide; without the variable the tests are skipped, unless PULSAR_REQUIRE_MYSQL=true (CI), where they fail
+/// instead: a run that was to cover them cannot pass without them.
 /// </summary>
 public static class TestMySql
 {
     private const string ConnectionVariable = "PULSAR_TEST_MYSQL";
 
-    public static bool IsEnabled => TestDatabase.IsEnabled && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ConnectionVariable));
+    public static bool IsEnabled => TestDatabase.IsEnabled
+        && (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ConnectionVariable))
+            || string.Equals(Environment.GetEnvironmentVariable("PULSAR_REQUIRE_MYSQL"), "true", StringComparison.OrdinalIgnoreCase));
 
     public static MySqlConnectionStringBuilder Settings =>
         new(Environment.GetEnvironmentVariable(ConnectionVariable) ?? throw new InvalidOperationException($"{ConnectionVariable} is not set."));

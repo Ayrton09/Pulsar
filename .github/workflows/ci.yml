@@ -72,13 +72,39 @@ jobs:
           done
           echo "PULSAR_TEST_S3=http://127.0.0.1:8333;pulsar-ci-access;pulsar-ci-secret-not-a-real-one" >> "$GITHUB_ENV"
 
+      # MariaDB for the game database tests, which create databases and users: only in this throwaway container, on
+      # 127.0.0.1:3307 as in CONTRIBUTING.md (the host's network, so the users the tests make for 127.0.0.1 match). It
+      # makes its own TLS certificate, which the tests that require TLS need. The Linux leg requires the tests
+      # (PULSAR_REQUIRE_MYSQL): a server that did not start fails them instead of skipping them.
+      - name: Start MariaDB (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          docker run -d --name mariadb --network host -e MARIADB_ROOT_PASSWORD=pulsar-ci-mariadb mariadb:11.8 --port=3307
+          for i in $(seq 1 90); do
+            docker exec mariadb healthcheck.sh --connect --innodb_initialized && break
+            sleep 1
+          done
+          docker exec mariadb healthcheck.sh --connect --innodb_initialized
+          echo "PULSAR_TEST_MYSQL=Server=127.0.0.1;Port=3307;User ID=root;Password=pulsar-ci-mariadb" >> "$GITHUB_ENV"
+
       - name: Test
         run: dotnet test --solution Pulsar.slnx -c Release --no-build
         env:
           PULSAR_TEST_POSTGRES: Host=localhost;Port=5432;Username=pulsar_ci;Password=pulsar_ci
           PULSAR_REQUIRE_DATABASE: 'true'
+          PULSAR_REQUIRE_MYSQL: ${{ runner.os == 'Linux' && 'true' || 'false' }}
           # Downloads SteamCMD from Valve and checks its signature (Windows only).
           PULSAR_NETWORK_TESTS: '1'
+
+      # The install, update and backup scripts' own checks, in Windows PowerShell 5.1 as the setups run them. The runner
+      # is elevated and thrown away after the job, so the checks that need elevation run too (-RequireElevation fails
+      # the step instead of skipping them); they change nothing but folders of their own under the runner's temp folder.
+      - name: Test the install scripts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/tests/Test-InstallScripts.ps1 -Scratch $env:RUNNER_TEMP -RequireElevation
+          if ($LASTEXITCODE -ne 0) { throw "Test-InstallScripts.ps1 failed (exit code $LASTEXITCODE)." }
 
       # Local accounts, user rights and servers started as their own account: CreateProcessAsUser needs SYSTEM, as
       # the agent service runs. Only here, on the disposable runner (the tests skip themselves anywhere else).

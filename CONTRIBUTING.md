@@ -56,7 +56,14 @@ skipped.
 The game database tests need MySQL or MariaDB: set `PULSAR_TEST_MYSQL` to a connection string whose user may create
 databases and users (for example a portable MariaDB from mariadb.org, initialized with `mariadb-install-db --password=…
 --port=3307`: `Server=127.0.0.1;Port=3307;User ID=root;Password=…`). Every test's databases carry a random server id, so
-runs never collide. Without it they are skipped.
+runs never collide. Without it they are skipped, unless `PULSAR_REQUIRE_MYSQL=true` is set, as in CI (Linux), where a
+throwaway MariaDB container runs them and they fail rather than skip when it is missing. Give these tests a server of
+their own: they create and drop databases and users on it.
+
+The install scripts' checks (`scripts\tests\Test-InstallScripts.ps1`, Windows PowerShell 5.1) change nothing outside
+folders of their own under `-Scratch`; a few need an elevated PowerShell and are skipped without one. CI runs them
+elevated on its Windows runner with `-RequireElevation`, which fails rather than skips them. The tests that make Windows
+accounts and change user rights run only there, on the disposable runner, as SYSTEM (`PULSAR_ACCOUNT_TESTS`).
 
 Backend:
 

@@ -5,9 +5,11 @@
 # The scripts act as soon as they run, so their functions are read from them (with the PowerShell parser) and defined
 # here. Certificates are made in memory (no certificate store is touched) and folders under -Scratch, removed at the end.
 # Every check prints PASS or FAIL; the exit code is 1 on any FAIL. Pester is not needed (Windows ships Pester 3, whose
-# syntax newer Pester versions refuse).
+# syntax newer Pester versions refuse). -RequireElevation (CI) counts a check that needs elevation and could not run as
+# a failure, not a skip.
 param(
-    [string] $Scratch = [IO.Path]::GetTempPath()
+    [string] $Scratch = [IO.Path]::GetTempPath(),
+    [switch] $RequireElevation
 )
 
 $ErrorActionPreference = 'Stop'
@@ -4802,7 +4804,10 @@ Check 'one command: the release carries install.ps1 with the setups, named by th
     $buildRelease -match "Copy-Item -LiteralPath \(Join-Path \`$PSScriptRoot 'install\.ps1'\)" -and $buildRelease -match "\`$published \+= @\('install\.ps1', 'install\.ps1\.sha256'\)" -and
     $buildRelease.IndexOf("'install.ps1', 'install.ps1.sha256'") -lt $buildRelease.IndexOf('New-UpdateManifest $Work'))
 
-if ($script:skipped -gt 0) { Write-Host "$($script:skipped) check(s) SKIPPED: not run, they need an elevated PowerShell." -ForegroundColor Yellow }
+if ($script:skipped -gt 0) {
+    Write-Host "$($script:skipped) check(s) SKIPPED: not run, they need an elevated PowerShell." -ForegroundColor Yellow
+    if ($RequireElevation) { $script:failures += $script:skipped }
+}
 if ($script:failures -gt 0) {
     Write-Host "$($script:failures) check(s) failed." -ForegroundColor Red
     exit 1
