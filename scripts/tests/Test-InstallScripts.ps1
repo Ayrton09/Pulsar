@@ -601,8 +601,12 @@ try {
 
     $findings = @(Find-UntrustedDestination $root)
     Check 'destination: a folder this account can change is refused' ($findings.Count -gt 0 -and ($findings -join ' ') -match [regex]::Escape($root)) ($findings -join ' | ')
-    $findings = @(Find-UntrustedDestination (Join-Path $root 'new'))
-    Check 'destination: a new folder in a folder this account can rename is refused' ($findings.Count -gt 0) ($findings -join ' | ')
+    # A folder Users may delete, so rename or replace (made so here: wherever -Scratch is, elevated or not).
+    $renamable = Join-Path $root 'renamable'
+    $null = New-Item -ItemType Directory $renamable
+    $null = & (Join-Path ([Environment]::SystemDirectory) 'icacls.exe') $renamable /grant '*S-1-5-32-545:(DE)'
+    $findings = @(Find-UntrustedDestination (Join-Path $renamable 'new'))
+    Check 'destination: a new folder in a folder another account can rename is refused' (($findings -join ' ') -match [regex]::Escape($renamable)) ($findings -join ' | ')
     $findings = @(Find-UntrustedDestination (Join-Path $root 'missing\new'))
     Check 'destination: a new folder in a missing one is refused' (($findings -join ' ') -match 'does not exist') ($findings -join ' | ')
     $findings = @(Find-UntrustedDestination ([Environment]::SystemDirectory))
