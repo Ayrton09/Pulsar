@@ -482,7 +482,8 @@
       "two_factor_required": "Set up two-factor authentication to continue.",
       "two_factor_required_by_role": "One of your roles requires two-factor authentication.",
       "two_factor_enabled": "Two-factor authentication is already on.",
-      "two_factor_not_enabled": "Two-factor authentication is off."
+      "two_factor_not_enabled": "Two-factor authentication is off.",
+      "sign_out_failed": "Signing out everywhere did not complete: you are still signed in. Try again."
     },
     "setup": {
       "invalid_token": "The setup token is not valid. Copy it again from the panel log.",
@@ -517,7 +518,8 @@
       "https_required": "This panel only accepts HTTPS. Open it with https://."
     },
     "user": {
-      "not_found": "The user does not exist."
+      "not_found": "The user does not exist.",
+      "disable_failed": "The user's sessions could not be ended, so the user was not disabled. Try again."
     },
     "node": {
       "name_invalid": "A node name is one line of up to 64 characters, with no invisible ones.",

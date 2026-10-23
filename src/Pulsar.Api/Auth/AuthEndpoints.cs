@@ -257,19 +257,22 @@ public static class AuthEndpoints
     /// <summary>
     /// Signs out everywhere: a new security stamp ends every session of the user (a cookie copied before included, which
     /// signing out of one browser alone would leave working), and the user's live connections close now (the hub checks
-    /// the cookie only when a connection opens). The user's other browsers sign in again.
+    /// the cookie only when a connection opens). The user's other browsers sign in again. Only once the new stamp is
+    /// stored (<see cref="SecurityStamps"/>): if it cannot be, nothing is signed out, not even here, and the answer says
+    /// so; the user can try again.
     /// </summary>
-    private static async Task<NoContent> LogoutAsync(
+    private static async Task<Results<NoContent, ProblemHttpResult>> LogoutAsync(
         HttpContext http, PulsarDbContext db, UserManager<PulsarUser> users, SignInManager<PulsarUser> signIn, IAuditLog audit,
         BrowserConnections connections, CancellationToken ct)
     {
-        audit.Record(AuditActions.Auth.Logout);
-        await db.SaveChangesAsync(ct);
-        if (await users.GetUserAsync(http.User) is { } user)
+        if (await users.GetUserAsync(http.User) is { } user && !await SecurityStamps.RenewAsync(user, users, db, ct))
         {
-            await users.UpdateSecurityStampAsync(user);
+            return ApiProblems.Create(StatusCodes.Status409Conflict, "auth.sign_out_failed",
+                "Signing out everywhere did not complete: you are still signed in. Try again.");
         }
 
+        audit.Record(AuditActions.Auth.Logout);
+        await db.SaveChangesAsync(ct);
         await signIn.SignOutAsync();
         connections.EndUser(http.User.GetRequiredUserId());
 

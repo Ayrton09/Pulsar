@@ -154,15 +154,17 @@ public sealed class UserManagement(
                 return IdentityProblems.Validation(updated);
             }
 
-            if (disabledChanged)
+            if (transaction is not null)
             {
-                // A new security stamp ends the user's existing sessions at the next validation; live channels now.
-                await users.UpdateSecurityStampAsync(user);
-                if (transaction is not null)
+                // Disabled: a new security stamp ends the user's existing sessions at the next validation; live channels
+                // now. A user whose sessions would go on working is not disabled (the transaction is not committed).
+                if (!await SecurityStamps.RenewAsync(user, users, db, ct))
                 {
-                    await transaction.CommitAsync(ct);
+                    return ApiProblems.Create(StatusCodes.Status409Conflict, "user.disable_failed",
+                        "The user's sessions could not be ended, so the user was not disabled. Try again.");
                 }
 
+                await transaction.CommitAsync(ct);
                 connections.EndUser(user.Id);
             }
         }

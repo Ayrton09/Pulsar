@@ -482,7 +482,8 @@
       "two_factor_required": "Configurá la verificación en dos pasos para continuar.",
       "two_factor_required_by_role": "Uno de tus roles exige la verificación en dos pasos.",
       "two_factor_enabled": "La verificación en dos pasos ya está activada.",
-      "two_factor_not_enabled": "La verificación en dos pasos está desactivada."
+      "two_factor_not_enabled": "La verificación en dos pasos está desactivada.",
+      "sign_out_failed": "No se pudo cerrar la sesión en todos lados: seguís con la sesión iniciada. Probá de nuevo."
     },
     "setup": {
       "invalid_token": "El token de configuración no es válido. Copialo de nuevo del log del panel.",
@@ -517,7 +518,8 @@
       "https_required": "Este panel solo acepta HTTPS. Abrilo con https://."
     },
     "user": {
-      "not_found": "El usuario no existe."
+      "not_found": "El usuario no existe.",
+      "disable_failed": "No se pudieron cerrar las sesiones del usuario, así que no se desactivó. Probá de nuevo."
     },
     "node": {
       "name_invalid": "El nombre de un nodo es una línea de hasta 64 caracteres, sin caracteres invisibles.",
