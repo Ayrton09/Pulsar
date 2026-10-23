@@ -419,7 +419,7 @@ the other nodes, without anyone carrying a setup to each PC, and without breakin
   bytes and their SHA-256, and offers it to `settings.manage` (Administration → Updates, and a banner).
   Updating asks for the password and, with two-factor authentication on, the code; it takes the session cookie only (never an
   API key). The panel's machine (its agent announces `node.panel_host`) goes first: a node newer than its panel is refused.
-- *The node.* The panel sends a signed `UpdatePulsarCommand` with the version and the manifest's SHA-256, nothing else. The
+- *The node.* The panel sends a signed `UpdatePulsarCommand` with the version, the manifest's SHA-256 and its own id for the request, nothing else. The
   agent (the PulsarAgent service, as SYSTEM; not one the agent MSI maintains, nor a development one) downloads the manifest,
   its signature and the ZIP from GitHub itself, checks the manifest is that one, signed by a key it trusts, newer than itself
   and from a version it may update, checks the ZIP's size and SHA-256, unpacks it (every entry inside the folder, bounded)
@@ -428,6 +428,10 @@ the other nodes, without anyone carrying a setup to each PC, and without breakin
 - *Without breaking anything.* `Install-Pulsar.ps1 -Update` backs up the database and the programs first, updates, checks
   that the panel answers and the agent connects, and puts the old version back (programs and database) when they do not;
   it writes how it ended in `Updates\last-update.json`, which the agent reports after each Hello (docs/guides/update.md).
+  Every report names the request it is about (the agent passes the id to the installer, `-UpdateAttempt`, which writes it in
+  its result), and the panel takes a request's own reports only, in order: an earlier request's result sent again after a
+  reconnection never ends a later one of the same version, and a step that arrives late never moves one back (*1.0.3*;
+  reports without an id, from agents and releases before it, are taken in order only, an end once the agent said it began).
   Game servers keep running in their host processes throughout.
 
 **Done when:**

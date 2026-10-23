@@ -96,7 +96,12 @@ public sealed record NodeMetrics(DateTimeOffset At, double CpuPercent, long Memo
 /// <param name="Status">One of <see cref="UpdateStatuses"/>.</param>
 /// <param name="Parts">What the installer updated: <c>agent</c>, <c>panel</c>.</param>
 /// <param name="Error">Why it failed or was put back, for the administrator (plain text).</param>
-public sealed record UpdateReport(string Status, string? From, string? To, IReadOnlyList<string>? Parts, string? Error, DateTimeOffset At)
+/// <param name="Attempt">
+/// The request it is about (<see cref="UpdatePulsarCommand.Attempt"/>); null when the update was asked without one, or
+/// its result was written by an installer older than request ids (or by the setups).
+/// </param>
+public sealed record UpdateReport(string Status, string? From, string? To, IReadOnlyList<string>? Parts, string? Error, DateTimeOffset At,
+    Guid? Attempt = null)
 {
     public const int MaxErrorLength = 2000;
 }

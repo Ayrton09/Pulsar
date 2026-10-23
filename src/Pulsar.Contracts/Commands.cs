@@ -102,7 +102,12 @@ public sealed record UseAgentsAddressCommand(int Port, string? Url = null) : Age
 /// not newer than its own, and then runs the release's installer, which backs up, updates, checks and, when the new
 /// version does not come up, puts the old one back. Its progress and its end come as <see cref="UpdateReport"/>s.
 /// </summary>
-public sealed record UpdatePulsarCommand(string Version, string ManifestSha256) : AgentCommand
+/// <param name="Attempt">
+/// The panel's id for this request, sent back with every report about it (and through the installer's result), so the
+/// panel tells it from an earlier request of the same version. Null from panels older than request ids (agents older
+/// than them ignore it).
+/// </param>
+public sealed record UpdatePulsarCommand(string Version, string ManifestSha256, Guid? Attempt = null) : AgentCommand
 {
     public const string Type = "node.update_pulsar";
 }

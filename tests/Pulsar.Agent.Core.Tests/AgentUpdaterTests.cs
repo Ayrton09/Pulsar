@@ -127,6 +127,64 @@ public sealed class AgentUpdaterTests : IDisposable
         await FailuresAsync(2);
     }
 
+    [Fact]
+    public async Task EveryReportAndTheInstallerCarryTheRequestsId()
+    {
+        var release = Release();
+        using var updater = Updater(release.Handler);
+        var attempt = Guid.NewGuid();
+
+        Assert.Equal(AckStatus.Accepted, updater.Start(Guid.NewGuid(), new UpdatePulsarCommand(Version, release.ManifestSha256, attempt)).Status);
+
+        await _ended.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        Assert.Equal([attempt], _platform.Attempts);
+        Assert.All(_reports, r => Assert.Equal(attempt, r.Attempt));
+    }
+
+    [Fact]
+    public async Task AnInstallerThatEndsWithoutUpdatingIsNeverReportedWithAnEarlierRequestsResult()
+    {
+        var release = Release();
+        using var updater = Updater(release.Handler);
+        Directory.CreateDirectory(updater.UpdatesRoot);
+        // An earlier request's result, of this version, written a moment ago (the clocks say nothing apart).
+        var earlier = Guid.NewGuid();
+        WriteResult(updater, "rolled_back", earlier);
+        _platform.ExitCode = 3;
+        var attempt = Guid.NewGuid();
+
+        Assert.Equal(AckStatus.Accepted, updater.Start(Guid.NewGuid(), new UpdatePulsarCommand(Version, release.ManifestSha256, attempt)).Status);
+
+        var failed = await FailuresAsync(1);
+        Assert.Equal(attempt, failed.Attempt);
+        Assert.Contains("exit code 3 before updating anything", failed.Error, StringComparison.Ordinal);
+        Assert.DoesNotContain(_reports, r => r.Attempt == earlier);
+    }
+
+    [Fact]
+    public async Task AnInstallerThatEndsWithItsOwnResultIsReportedWithIt()
+    {
+        var release = Release();
+        using var updater = Updater(release.Handler);
+        var attempt = Guid.NewGuid();
+        _platform.ExitCode = 3;
+        // It refused (another update held its lock) and said so in its result, which names this request.
+        _platform.Writes = id => WriteResult(updater, "failed", id);
+
+        Assert.Equal(AckStatus.Accepted, updater.Start(Guid.NewGuid(), new UpdatePulsarCommand(Version, release.ManifestSha256, attempt)).Status);
+
+        var failed = await FailuresAsync(1);
+        Assert.Equal((attempt, "Another update is running."), (failed.Attempt, failed.Error));
+    }
+
+    private static void WriteResult(AgentUpdater updater, string status, Guid? attempt)
+    {
+        Directory.CreateDirectory(updater.UpdatesRoot);
+        File.WriteAllText(updater.ResultFile, $$"""
+            {"from":"1.0.0","to":"{{Version}}","parts":[],"status":"{{status}}","error":"Another update is running.","attempt":{{(attempt is null ? "null" : $"\"{attempt}\"")}},"finishedAt":"{{DateTimeOffset.UtcNow:O}}"}
+            """);
+    }
+
     /// <summary>The first failure reported, once <paramref name="count"/> were.</summary>
     private async Task<UpdateReport> FailuresAsync(int count)
     {
@@ -180,6 +238,16 @@ public sealed class AgentUpdaterTests : IDisposable
 
         Assert.Equal((UpdateStatuses.RolledBack, "1.0.0", "1.0.1", "The panel did not start."), (result!.Status, result.From, result.To, result.Error));
         Assert.Equal(["agent", "panel"], result.Parts!);
+        // Written by an installer older than request ids: none.
+        Assert.Null(result.Attempt);
+        var attempt = Guid.NewGuid();
+        File.WriteAllText(updater.ResultFile, $$"""{"status":"succeeded","attempt":"{{attempt}}","finishedAt":"2026-10-21T10:00:00Z"}""");
+        Assert.Equal(attempt, updater.ReadResult()!.Attempt);
+        // An id that is not one names no request.
+        File.WriteAllText(updater.ResultFile, """{"status":"succeeded","attempt":"not-an-id","finishedAt":"2026-10-21T10:00:00Z"}""");
+        Assert.Null(updater.ReadResult()!.Attempt);
+        File.WriteAllText(updater.ResultFile, """{"status":"succeeded","attempt":7,"finishedAt":"2026-10-21T10:00:00Z"}""");
+        Assert.Null(updater.ReadResult());
         File.WriteAllText(updater.ResultFile, """{"status":"downloading","finishedAt":"2026-10-21T10:00:00Z"}""");
         Assert.Null(updater.ReadResult());
         File.WriteAllText(updater.ResultFile, "not json");
@@ -286,8 +354,13 @@ public sealed class AgentUpdaterTests : IDisposable
 
         public List<(string Script, string Folder)> Started { get; } = [];
 
+        public List<Guid?> Attempts { get; } = [];
+
         /// <summary>The installer's exit code when it ends while the agent runs; null: it stops the agent (never ends here).</summary>
         public int? ExitCode { get; set; }
+
+        /// <summary>What the installer writes before it ends (its result), given the request's id.</summary>
+        public Action<Guid?>? Writes { get; set; }
 
         public (string Code, string Message)? CannotUpdate() => Cannot;
 
@@ -300,9 +373,11 @@ public sealed class AgentUpdaterTests : IDisposable
             return folder;
         }
 
-        public Task<int> StartInstaller(string script, string workingDirectory)
+        public Task<int> StartInstaller(string script, string workingDirectory, Guid? attempt)
         {
             Started.Add((script, workingDirectory));
+            Attempts.Add(attempt);
+            Writes?.Invoke(attempt);
             return ExitCode is { } code ? Task.FromResult(code) : new TaskCompletionSource<int>().Task;
         }
     }

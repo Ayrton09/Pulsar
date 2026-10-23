@@ -94,7 +94,7 @@ public sealed class WindowsUpdatePlatform(Func<bool> development) : IUpdatePlatf
         return folder.FullName;
     }
 
-    public Task<int> StartInstaller(string script, string workingDirectory)
+    public Task<int> StartInstaller(string script, string workingDirectory, Guid? attempt)
     {
         var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe"))
         {
@@ -105,6 +105,13 @@ public sealed class WindowsUpdatePlatform(Func<bool> development) : IUpdatePlatf
         foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-Update", "-Unattended" })
         {
             start.ArgumentList.Add(argument);
+        }
+
+        // The release's installer is newer than this agent (Start refuses others), so it knows the parameter.
+        if (attempt is { } id)
+        {
+            start.ArgumentList.Add("-UpdateAttempt");
+            start.ArgumentList.Add(id.ToString("D"));
         }
 
         // It stops this service, and outlives it (the agent's own process is in no job): its end is seen only when it

@@ -241,6 +241,20 @@ foreach ($bad in @("panel.example.com$lf", "*.example.com$lf", "panel.example.co
         '[::1]', 'fe80::1%3', "2001:db8::7$lf", '2001:db8::7/64', 'panel.example.com:8443', 'https://panel.example.com')) {
     Check "-HostName: refuses '$(ConvertTo-PrintableText $bad)'" (-not [regex]::IsMatch($bad, $hostNamePattern, 'None'))
 }
+# -UpdateAttempt: the panel's id for a one-click update (a GUID as .NET writes it, "D"), with -Update only.
+$attemptParameter = $parsed.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'UpdateAttempt' }
+$attemptAttribute = $attemptParameter.Attributes | Where-Object { $_.TypeName.Name -eq 'ValidatePattern' }
+$attemptPattern = $attemptAttribute.PositionalArguments[0].Value
+$attemptSets = @($attemptParameter.Attributes | Where-Object { $_.TypeName.Name -eq 'Parameter' } | ForEach-Object { ($_.NamedArguments | Where-Object { $_.ArgumentName -eq 'ParameterSetName' }).Argument.Value })
+Check '-UpdateAttempt: a string of the Update parameter set only, its pattern case-sensitive' (
+    $attemptParameter.StaticType -eq [string] -and ($attemptSets -join ',') -ceq 'Update' -and
+    ($attemptAttribute.NamedArguments | Where-Object { $_.ArgumentName -eq 'Options' }).Argument.Value -eq 'None') "$($attemptSets -join ',')"
+Check "-UpdateAttempt: accepts an id as the agent writes it" ([regex]::IsMatch([Guid]::NewGuid().ToString('D'), $attemptPattern, 'None'))
+foreach ($bad in @('', 'not-an-id', [Guid]::NewGuid().ToString('D').ToUpperInvariant(), [Guid]::NewGuid().ToString('N'), [Guid]::NewGuid().ToString('B'),
+        ([Guid]::NewGuid().ToString('D') + $lf), ([Guid]::NewGuid().ToString('D') + ' '), ('"' + [Guid]::NewGuid().ToString('D') + '"'))) {
+    Check "-UpdateAttempt: refuses '$(ConvertTo-PrintableText $bad)'" (-not [regex]::IsMatch($bad, $attemptPattern, 'None'))
+}
+
 $thrown = Get-Thrown { Get-CertificateNames (New-TestCertificate @(@{ Tag = 0x87; Bytes = [byte[]](1, 2, 3, 4, 5) })) }
 Check 'SAN parser: refuses an IP address of 5 bytes' ($thrown -match 'malformed') "$thrown"
 
@@ -3700,7 +3714,7 @@ try {
     $UpdateResultFile = Join-Path $UpdateRoot 'last-update.json'
     $SetupLogFile = Join-Path $upRoot 'install.log'
     function Write-SetupLog([string] $text) { }
-    function New-Run($from = '1.0.0', $to = '1.0.1', $parts = @('agent', 'panel')) { [pscustomobject]@{ From = $from; To = $to; Parts = $parts; Touched = @(); Written = $false; MigrationsBefore = $null; Backup = $null } }
+    function New-Run($from = '1.0.0', $to = '1.0.1', $parts = @('agent', 'panel'), $attempt = $null) { [pscustomobject]@{ From = $from; To = $to; Parts = $parts; Touched = @(); Written = $false; MigrationsBefore = $null; Backup = $null; Attempt = $attempt } }
     $script:UpdateRun = New-Run
     $SetupSecrets.Clear(); Register-Secret 'hunter2-secret'
     Write-UpdateResult 'succeeded'
@@ -3708,7 +3722,8 @@ try {
     $result = [Text.Encoding]::UTF8.GetString($bytes) | ConvertFrom-Json
     $fields = @($result.PSObject.Properties.Name) -join ','
     Check 'result: last-update.json is UTF-8 without a byte order mark and starts with an object' ($bytes[0] -eq 123)
-    Check 'result: its fields are from, to, parts, status, error, log and finishedAt' ($fields -ceq 'from,to,parts,status,error,log,finishedAt') $fields
+    Check 'result: its fields are from, to, parts, status, error, log, attempt and finishedAt' ($fields -ceq 'from,to,parts,status,error,log,attempt,finishedAt') $fields
+    Check 'result: an update started by hand (no -UpdateAttempt) names no request' ($null -eq $result.attempt)
     Check 'result: a good update says succeeded, from 1.0.0 to 1.0.1, agent and panel, no error, and the log of the run' (
         $result.from -ceq '1.0.0' -and $result.to -ceq '1.0.1' -and (@($result.parts) -join ',') -ceq 'agent,panel' -and $result.status -ceq 'succeeded' -and $null -eq $result.error -and $result.log -ceq $SetupLogFile)
     Check 'result: finishedAt is an ISO-8601 UTC time' ($result.finishedAt -cmatch '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z') $result.finishedAt
@@ -3721,10 +3736,12 @@ try {
     Check 'result: a failure''s error is at most 2000 characters, with no secret and no control character; an unknown version is null; one panel part' (
         $result.status -ceq 'failed' -and $result.error.Length -le 2000 -and $result.error -notmatch 'hunter2' -and $result.error -match '\[secret\]' -and $result.error -notmatch '[\x00-\x1F]' -and $null -eq $result.to -and (@($result.parts) -join ',') -ceq 'panel')
     Check 'result: only the result file is left in the folder (no temporary file)' ((@(Get-ChildItem -LiteralPath $UpdateRoot -Force | ForEach-Object Name) -join ',') -ceq 'last-update.json')
-    $script:UpdateRun = New-Run
+    $attempt = [Guid]::NewGuid().ToString('D')
+    $script:UpdateRun = New-Run '1.0.0' '1.0.1' @('agent', 'panel') $attempt
     Set-Content -LiteralPath $UpdateResultFile -Value 'an earlier result'
     Write-UpdateResult 'rolled_back' 'The update to 1.0.1 failed and Pulsar was put back to 1.0.0: test'
-    Check 'result: it replaces the earlier run''s file' ((([IO.File]::ReadAllText($UpdateResultFile) | ConvertFrom-Json).status) -ceq 'rolled_back')
+    $result = [IO.File]::ReadAllText($UpdateResultFile) | ConvertFrom-Json
+    Check 'result: it replaces the earlier run''s file, and names the panel''s request it was for' ($result.status -ceq 'rolled_back' -and $result.attempt -ceq $attempt) "$($result.attempt)"
     $script:UpdateRun = $null
     Remove-Item $UpdateResultFile
     Write-UpdateResult 'failed' 'before the run started'
@@ -3759,6 +3776,7 @@ try {
         foreach ($folder in $UpdateRoot) { if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force }; $null = New-Item -ItemType Directory $folder }
         $UpdateBackups = Join-Path $UpdateRoot 'backups'; $UpdatePrevious = Join-Path $UpdateRoot 'previous'
         $UpdateResultFile = Join-Path $UpdateRoot 'last-update.json'; $UpdateLockFile = Join-Path $UpdateRoot 'update.lock'; $UpdateJournal = Join-Path $UpdateRoot 'in-progress.json'; $DiscardInterruptedUpdate = [bool]$options['Discard']
+        $UpdateAttempt = if ($options['Attempt']) { $options['Attempt'] } else { '' }
         $null = New-Item -ItemType Directory $UpdateBackups, $UpdatePrevious
         $script:UpdateLock = $null; $script:UpdateRun = $null
         $script:upCalls = New-Object Collections.Generic.List[string]
@@ -3837,6 +3855,10 @@ try {
     Check 'update: ...and the previous programs are in previous\Panel and \Agent' ((Test-Path (Join-Path $ok.Previous 'Panel\Pulsar.Api.exe')) -and (Test-Path (Join-Path $ok.Previous 'Agent\PulsarAgent.exe')))
     Check 'update: ...and last-update.json says succeeded, from 1.0.0 to 1.0.1, agent and panel, no error' (
         $ok.Result.status -ceq 'succeeded' -and $ok.Result.from -ceq '1.0.0' -and $ok.Result.to -ceq '1.0.1' -and (@($ok.Result.parts) -join ',') -ceq 'agent,panel' -and $null -eq $ok.Result.error)
+    Check 'update: ...and, started by hand, names no request' ($null -eq $ok.Result.attempt)
+    $asked = [Guid]::NewGuid().ToString('D')
+    $fromPanel = Invoke-UpdateScenario @{ Before = 'm1'; After = 'm1'; Attempt = $asked }
+    Check 'update: one the panel asked for (-UpdateAttempt) names its request in last-update.json' ($fromPanel.Result.status -ceq 'succeeded' -and $fromPanel.Result.attempt -ceq $asked) "$($fromPanel.Result.attempt)"
     $agentOnly = Invoke-UpdateScenario @{ Parts = @('agent') }
     Check 'update: a node with no panel is backed up for nothing (no backup), updated and checked, and the result lists the agent only' (
         $null -eq $agentOnly.Error -and (& $calls $agentOnly) -ceq 'update agent | health agent 1' -and (@($agentOnly.Result.parts) -join ',') -ceq 'agent' -and -not (Test-Path (Join-Path $agentOnly.Previous 'Panel')))

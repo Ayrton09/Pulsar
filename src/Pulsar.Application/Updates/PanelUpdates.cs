@@ -202,12 +202,16 @@ public sealed partial class PanelUpdates(
             var from = version!;
             if (update is null)
             {
-                db.NodeUpdates.Add(NodeUpdate.Request(nodeId, from, latest.Manifest.Version, request.UserId, now));
+                update = NodeUpdate.Request(nodeId, from, latest.Manifest.Version, request.UserId, now);
+                db.NodeUpdates.Add(update);
             }
             else
             {
                 update.RequestAgain(from, latest.Manifest.Version, request.UserId, now);
             }
+
+            // Sent with the command, and back with every report about this request (NodeUpdate.Reported).
+            var attempt = update.AttemptId;
 
             audit.Record(AuditActions.Updates.Requested, metadata: new { from, to = latest.Manifest.Version, panel = HostsPanel(live) })
                 .WithTarget("node", nodeId.Value.ToString());
@@ -223,8 +227,8 @@ public sealed partial class PanelUpdates(
                 continue;
             }
 
-            var ack = await connections.SendAsync(nodeId, new UpdatePulsarCommand(latest.Manifest.Version, state.LatestManifestSha256!), request.UserId,
-                CancellationToken.None);
+            var ack = await connections.SendAsync(nodeId, new UpdatePulsarCommand(latest.Manifest.Version, state.LatestManifestSha256!, attempt),
+                request.UserId, CancellationToken.None);
             if (ack?.Status is AckStatus.Accepted)
             {
                 results.Add(new UpdateRequestResult(nodeId.Value, true, null, null));
@@ -235,7 +239,7 @@ public sealed partial class PanelUpdates(
             var code = ack is null ? NodeErrors.NotConnected.Code : AgentInput.ErrorCode(ack.ErrorCode) ?? "update.refused";
             var message = ack?.Message is { } said ? AgentInput.Text(said, NodeUpdate.MaxErrorLength) : null;
             var record = await db.NodeUpdates.SingleAsync(u => u.NodeId == nodeId, CancellationToken.None);
-            record.Reported(UpdateStatuses.Failed, null, null, message ?? code, clock.GetUtcNow());
+            record.Refused(message ?? code, clock.GetUtcNow());
             await db.SaveChangesAsync(CancellationToken.None);
             results.Add(new UpdateRequestResult(nodeId.Value, false, code, message));
         }
@@ -277,7 +281,7 @@ public sealed partial class PanelUpdates(
         }
         else
         {
-            changed = update.Reported(status, from, to, error, now);
+            changed = update.Reported(status, from, to, error, report.Attempt, now);
         }
 
         if (!changed)

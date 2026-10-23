@@ -124,6 +124,60 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
     }
 
     [DatabaseFact]
+    public async Task ARetryOfTheSameVersionIsNeverEndedByTheEarlierOnesResultSentAgain()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var host = await UpdatingAgentAsync(admin, "updates-retry", hostsPanel: true);
+        var node = host.Agent.Config!.NodeId;
+        factory.Releases.Publish(Next);
+        await CheckAsync(admin);
+
+        // The first try is put back by its installer, which says so in its result.
+        host.Platform.Results.Enqueue(UpdateStatuses.RolledBack);
+        await ApplyAsync(admin, node);
+        await InProcessAgent.EventuallyAsync(async () => (await NodeStatusAsync(admin, node))?.Status == "rolled_back", "the first try's end");
+        var first = Assert.Single(host.Platform.Attempts);
+        Assert.NotNull(first);
+
+        // The installer stops the agent, which starts again (and reports that result again: the same, nothing changes).
+        await host.RestartAsync(admin);
+        await host.ResultSentAsync(first, UpdateStatuses.RolledBack);
+
+        // Asked again, the same version; this installer takes its time.
+        host.Platform.Results.Enqueue(null);
+        await ApplyAsync(admin, node);
+        await InProcessAgent.EventuallyAsync(async () => (await NodeStatusAsync(admin, node))?.Status == "installing", "the second try installing");
+        var second = host.Platform.Attempts[^1];
+        Assert.NotEqual(first, second);
+
+        // The agent reconnects meanwhile and sends the installer's last result again: the first try's, rolled back, of the
+        // same version. The panel took it (the report is sent and answered) and kept the second try under way.
+        await host.RestartAsync(admin);
+        await host.ResultSentAsync(first, UpdateStatuses.RolledBack);
+        Assert.Equal("installing", (await NodeStatusAsync(admin, node))?.Status);
+
+        // The second try ends: its result names it.
+        host.Platform.WriteResult(UpdateStatuses.Succeeded, second);
+        await InProcessAgent.EventuallyAsync(async () => (await NodeStatusAsync(admin, node))?.Status == "succeeded", "the second try's end");
+
+        // Sent again after another reconnection, twice: the end stays, audited once per try.
+        await host.RestartAsync(admin);
+        await host.ResultSentAsync(second, UpdateStatuses.Succeeded);
+        var last = await NodeStatusAsync(admin, node);
+        Assert.Equal(("succeeded", null), (last?.Status, last?.Error));
+        await using var scope = factory.Services.CreateAsyncScope();
+        var ends = await scope.ServiceProvider.GetRequiredService<PulsarDbContext>().AuditLog.AsNoTracking()
+            .Where(e => e.Action == AuditActions.Updates.Finished && e.TargetId == node.ToString()).Select(e => e.Outcome).ToListAsync(Ct);
+        Assert.Equal(new[] { AuditOutcome.Failure, AuditOutcome.Success }.Order(), ends.Order());
+    }
+
+    private static async Task ApplyAsync(PanelClient admin, Guid node)
+    {
+        using var applied = await admin.PostAsync("/api/v1/updates/apply", new ApplyUpdateRequest([node], PulsarApiFactory.AdminPassword, null, Next));
+        Assert.True(Assert.Single(await ReadAsync<List<UpdateRequestResult>>(applied)).Sent);
+    }
+
+    [DatabaseFact]
     public async Task OnlyAnAdministratorsSessionUpdates()
     {
         var scenario = await AccessScenario.CreateAsync(factory);
@@ -178,8 +232,9 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
     {
         var created = await NodeApi.CreateAsync(admin, name);
         var agent = new InProcessAgent(factory);
-        var platform = new FakePlatform(hostsPanel);
         var root = Directory.CreateTempSubdirectory("pulsar-update-tests-").FullName;
+        var platform = new FakePlatform(hostsPanel, root);
+        var sent = new List<UpdateReport>();
         agent.UpdaterFactory = (channel, paths) => new AgentUpdater(platform, channel, paths, TimeProvider.System, NullLogger<AgentUpdater>.Instance,
             new AgentUpdaterOptions
             {
@@ -187,15 +242,47 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
                 Handler = () => factory.Releases,
                 ResultPoll = TimeSpan.FromMilliseconds(200),
                 UpdatesRoot = root,
+                OnReport = report =>
+                {
+                    lock (sent)
+                    {
+                        sent.Add(report);
+                    }
+
+                    return Task.CompletedTask;
+                },
             });
         await agent.EnrollAsync(created.Enrollment.Token, created.Enrollment.PanelKeyFingerprint);
         await agent.StartAsync();
         await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, created.Node.Id)).Node.Connected, "agent connected");
-        return new UpdatingAgent(agent, platform, root);
+        return new UpdatingAgent(agent, platform, root, created.Node.Id, sent);
     }
 
-    private sealed record UpdatingAgent(InProcessAgent Agent, FakePlatform Platform, string Root) : IAsyncDisposable
+    private sealed record UpdatingAgent(InProcessAgent Agent, FakePlatform Platform, string Root, Guid NodeId, List<UpdateReport> Sent) : IAsyncDisposable
     {
+        /// <summary>Stops the agent and starts it again (as an installer does), connected again before it returns.</summary>
+        public async Task RestartAsync(PanelClient admin)
+        {
+            lock (Sent)
+            {
+                Sent.Clear();
+            }
+
+            await Agent.StopAsync();
+            await InProcessAgent.EventuallyAsync(async () => !(await NodeApi.GetAsync(admin, NodeId)).Node.Connected, "agent disconnected");
+            await Agent.StartAsync();
+            await InProcessAgent.EventuallyAsync(async () => (await NodeApi.GetAsync(admin, NodeId)).Node.Connected, "agent connected again");
+        }
+
+        /// <summary>Waits until the agent sent that result since it restarted (and so the panel answered it: it took it or not).</summary>
+        public Task ResultSentAsync(Guid? attempt, string status) => InProcessAgent.EventuallyAsync(() =>
+        {
+            lock (Sent)
+            {
+                return Task.FromResult(Sent.Any(r => r.Attempt == attempt && r.Status == status));
+            }
+        }, $"the result {status} sent");
+
         public async ValueTask DisposeAsync()
         {
             await Agent.DisposeAsync();
@@ -203,10 +290,17 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
         }
     }
 
-    /// <summary>The machine, as far as an update needs it: the "installer" writes its result as the real one does.</summary>
-    private sealed class FakePlatform(bool hostsPanel) : IUpdatePlatform
+    /// <summary>
+    /// The machine, as far as an update needs it: the "installer" writes its result as the real one does, with the
+    /// request's id (succeeded unless <see cref="Results"/> says otherwise; null there: nothing yet, see <see cref="WriteResult"/>).
+    /// </summary>
+    private sealed class FakePlatform(bool hostsPanel, string updatesRoot) : IUpdatePlatform
     {
         public List<(string Script, string Folder)> Started { get; } = [];
+
+        public List<Guid?> Attempts { get; } = [];
+
+        public Queue<string?> Results { get; } = new();
 
         public (string Code, string Message)? CannotUpdate() => null;
 
@@ -214,16 +308,21 @@ public sealed class PanelUpdateTests(PanelUpdateTests.UpdatesFactory factory) : 
 
         public string PrepareFolder(string updatesRoot, string name) => Directory.CreateDirectory(Path.Combine(updatesRoot, name)).FullName;
 
-        public Task<int> StartInstaller(string script, string workingDirectory)
+        public Task<int> StartInstaller(string script, string workingDirectory, Guid? attempt)
         {
             Started.Add((script, workingDirectory));
-            var updates = Path.GetDirectoryName(workingDirectory.TrimEnd(Path.DirectorySeparatorChar))!;
-            File.WriteAllText(Path.Combine(Path.GetDirectoryName(updates)!, "last-update.json"),
-                $$"""{"from":"{{AgentInfo.Version}}","to":"{{Next}}","parts":["agent","panel"],"status":"succeeded","error":null,"finishedAt":"{{DateTimeOffset.UtcNow:O}}"}""");
+            Attempts.Add(attempt);
+            if ((Results.Count > 0 ? Results.Dequeue() : UpdateStatuses.Succeeded) is { } status)
+            {
+                WriteResult(status, attempt);
+            }
 
             // The real one stops the agent: it never ends while the agent runs.
             return new TaskCompletionSource<int>().Task;
         }
+
+        public void WriteResult(string status, Guid? attempt) => File.WriteAllText(Path.Combine(updatesRoot, "last-update.json"),
+            $$"""{"from":"{{AgentInfo.Version}}","to":"{{Next}}","parts":["agent","panel"],"status":"{{status}}","error":null,"attempt":"{{attempt}}","finishedAt":"{{DateTimeOffset.UtcNow:O}}"}""");
     }
 
     /// <summary>The panel with a test update key, and "GitHub" as a handler both it and the agents use.</summary>

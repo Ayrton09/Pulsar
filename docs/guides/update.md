@@ -183,12 +183,13 @@ database had changed).
 Every update, whatever its end, writes `C:\ProgramData\Pulsar\Updates\last-update.json` (UTF-8):
 
 ```json
-{"from":"1.0.0","to":"1.0.1","parts":["agent","panel"],"status":"succeeded","error":null,"log":"C:\\ProgramData\\Pulsar\\Setup\\logs\\install-….log","finishedAt":"2026-10-20T20:35:15Z"}
+{"from":"1.0.0","to":"1.0.1","parts":["agent","panel"],"status":"succeeded","error":null,"log":"C:\\ProgramData\\Pulsar\\Setup\\logs\\install-….log","attempt":"0f8e…","finishedAt":"2026-10-20T20:35:15Z"}
 ```
 
 `status` is `succeeded`, `rolled_back` (the previous version is back and works) or `failed` (an error before
 anything was replaced, or a rollback that did not work); `error` is the message, without secrets, at most 2000
-characters. The file is the last update's only: a run that stops before it starts (another update is running, or the
+characters; `attempt` is the panel's id for the update (`-UpdateAttempt`, which one-click updates give), null for an
+update started by hand. The file is the last update's only: a run that stops before it starts (another update is running, or the
 `Updates` folder is not as it must be) writes none. Only one update runs at a time (`update.lock` in the same folder).
 
 `C:\ProgramData\Pulsar\Updates` and the folders in it are for SYSTEM and Administrators alone, as the installer makes
@@ -201,7 +202,12 @@ folder (someone else may have made it) and run the update again.
 An update started from the panel ([From the panel](#from-the-panel)) runs the same `Install-Pulsar.ps1 -Update
 -Unattended`, from `C:\ProgramData\Pulsar\Updates\<version>-<random>`, with everything above, and the agent reports
 `last-update.json` back to the panel (and, when the installer ends without updating while the agent still runs, its exit
-code and where its log is). It takes only releases of this project's GitHub repository whose `pulsar-update.json` is
+code and where its log is). Each request has an id of its own, which the agent passes to the installer
+(`-UpdateAttempt`) and sends with everything it reports about it: the agent sends the last result again after every
+reconnection, and the panel takes a result only for the request it names, so an earlier update's end (of the same
+version too) never closes a later one, and a step reported late never moves an update back. Results without an id (an
+agent or a release older than 1.0.3) are taken in order only: an end once the agent said it started the update, the
+installer's result once the installer was started. It takes only releases of this project's GitHub repository whose `pulsar-update.json` is
 signed by an update key Pulsar trusts ([releasing.md](releasing.md) is how the maintainer makes them).
 
 ## If something goes wrong

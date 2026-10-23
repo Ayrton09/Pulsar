@@ -23,10 +23,11 @@ public interface IUpdatePlatform
     string PrepareFolder(string updatesRoot, string name);
 
     /// <summary>
-    /// Starts the release's installer (<c>Install-Pulsar.ps1 -Update -Unattended</c>), detached: it stops this agent. The task
-    /// ends with its exit code only when it ends while this agent still runs (it refused, or failed before updating).
+    /// Starts the release's installer (<c>Install-Pulsar.ps1 -Update -Unattended</c>, with <c>-UpdateAttempt</c> when the panel
+    /// gave the request an id: the installer writes it in its result), detached: it stops this agent. The task ends with
+    /// its exit code only when it ends while this agent still runs (it refused, or failed before updating).
     /// </summary>
-    Task<int> StartInstaller(string script, string workingDirectory);
+    Task<int> StartInstaller(string script, string workingDirectory, Guid? attempt);
 }
 
 /// <summary>Defaults for production; tests give their own keys and HTTP handler.</summary>
@@ -45,7 +46,10 @@ public sealed record AgentUpdaterOptions
     /// <summary>Where releases are unpacked and the installer writes its result; null: beside the agent's state folder.</summary>
     public string? UpdatesRoot { get; init; }
 
-    /// <summary>Tests: sees every report of a running update, whether or not the panel is connected.</summary>
+    /// <summary>
+    /// Tests: sees every report of a running update, and every result sent, whether or not the panel is connected (once
+    /// the panel took it, when it is).
+    /// </summary>
     internal Func<UpdateReport, Task>? OnReport { get; init; }
 }
 
@@ -54,7 +58,9 @@ public sealed record AgentUpdaterOptions
 /// the panel sends but the version and the manifest's SHA-256: the release comes from GitHub, its manifest must be signed
 /// by a trusted update key and newer than this agent, and the ZIP must have the manifest's size and SHA-256. It is
 /// unpacked into a folder only SYSTEM and Administrators can change, and its installer does the rest (backup, update,
-/// checks, rollback) and writes its result in <see cref="ResultFile"/>, which this agent reports after each Hello.
+/// checks, rollback) and writes its result in <see cref="ResultFile"/>, which this agent reports after each Hello. Every
+/// report carries the panel's id for the request (<see cref="UpdatePulsarCommand.Attempt"/>), the installer's result too:
+/// the panel never takes an earlier request's result, sent again, for a later one's.
 /// </summary>
 public sealed partial class AgentUpdater : IDisposable
 {
@@ -132,18 +138,18 @@ public sealed partial class AgentUpdater : IDisposable
         }
 
         LogStarting(commandId, installed.Version, version);
-        _ = Task.Run(() => RunAsync(installed.Version, version, command.ManifestSha256));
+        _ = Task.Run(() => RunAsync(installed.Version, version, command.ManifestSha256, command.Attempt));
         return new CommandAck(commandId, AckStatus.Accepted, null, null);
     }
 
     public void Dispose() => _poll.Dispose();
 
-    private async Task RunAsync(UpdateVersion from, UpdateVersion version, string manifestSha256)
+    private async Task RunAsync(UpdateVersion from, UpdateVersion version, string manifestSha256, Guid? attempt)
     {
         string? folder = null;
         try
         {
-            await ReportAsync(UpdateStatuses.Downloading, from, version, null);
+            await ReportAsync(UpdateStatuses.Downloading, from, version, attempt, null);
             RemoveEarlierReleases();
             using var client = new HttpClient(_options.Handler(), disposeHandler: true) { Timeout = TimeSpan.FromMinutes(30) };
             client.DefaultRequestHeaders.UserAgent.ParseAdd($"{UserAgent}/{AgentInfo.Version}");
@@ -185,21 +191,23 @@ public sealed partial class AgentUpdater : IDisposable
                 throw new UpdateDownloadException($"The release {version}'s ZIP is not a Pulsar release of that version.");
             }
 
-            await ReportAsync(UpdateStatuses.Installing, from, version, null);
+            await ReportAsync(UpdateStatuses.Installing, from, version, attempt, null);
             LogInstalling(version, unpacked);
             var started = _clock.GetUtcNow();
-            var exitCode = await _platform.StartInstaller(script, unpacked);
+            var exitCode = await _platform.StartInstaller(script, unpacked, attempt);
 
             // Still running: the installer ended without updating (another update held its lock, its folder was not
             // trusted, a check failed). Its result, when it wrote one for this update, says why; otherwise its exit code.
+            // This update's: its request's id when it has one, else this version's written since the installer started.
             LogInstallerEnded(version, exitCode);
-            if (ReadResult() is { } result && result.To == version.ToString() && result.At >= started.AddSeconds(-5))
+            if (ReadResult() is { } result
+                && (attempt is not null ? result.Attempt == attempt : result.To == version.ToString() && result.At >= started.AddSeconds(-5)))
             {
                 await ReportResultAsync(always: true, CancellationToken.None);
             }
             else
             {
-                await ReportAsync(UpdateStatuses.Failed, from, version,
+                await ReportAsync(UpdateStatuses.Failed, from, version, attempt,
                     $"The installer ended with exit code {exitCode} before updating anything. Its log is in {SetupLogs}.");
             }
 
@@ -224,13 +232,13 @@ public sealed partial class AgentUpdater : IDisposable
                 _running = false;
             }
 
-            await ReportAsync(UpdateStatuses.Failed, from, version, ex.Message);
+            await ReportAsync(UpdateStatuses.Failed, from, version, attempt, ex.Message);
         }
     }
 
     /// <summary>
-    /// The installer's result, sent after each Hello (<paramref name="always"/>) or when it changed: the panel keeps the
-    /// newest. A missing or malformed file reports nothing.
+    /// The installer's result, sent after each Hello (<paramref name="always"/>) or when it changed, with the request it
+    /// was for: the panel takes it only for that request. A missing or malformed file reports nothing.
     /// </summary>
     internal async Task ReportResultAsync(bool always, CancellationToken cancellationToken)
     {
@@ -243,6 +251,11 @@ public sealed partial class AgentUpdater : IDisposable
         if (await _channel.DeliverAsync(nameof(IAgentHub.UpdateReport), result, cancellationToken))
         {
             _reported = result.At;
+        }
+
+        if (_options.OnReport is { } seen)
+        {
+            await seen(result);
         }
     }
 
@@ -293,8 +306,10 @@ public sealed partial class AgentUpdater : IDisposable
                 return null;
             }
 
+            // An id that is not one is no request's: the result is reported without it.
             return new UpdateReport(status, Bounded(read.From, 32), Bounded(read.To, 32),
-                read.Parts?.Where(p => p is "agent" or "panel").Distinct().ToList(), Bounded(read.Error, UpdateReport.MaxErrorLength), at);
+                read.Parts?.Where(p => p is "agent" or "panel").Distinct().ToList(), Bounded(read.Error, UpdateReport.MaxErrorLength), at,
+                Guid.TryParseExact(read.Attempt, "D", out var attempt) ? attempt : null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -302,9 +317,10 @@ public sealed partial class AgentUpdater : IDisposable
         }
     }
 
-    private async Task ReportAsync(string status, UpdateVersion from, UpdateVersion to, string? error)
+    private async Task ReportAsync(string status, UpdateVersion from, UpdateVersion to, Guid? attempt, string? error)
     {
-        var report = new UpdateReport(status, from.ToString(), to.ToString(), null, Bounded(error, UpdateReport.MaxErrorLength), _clock.GetUtcNow());
+        var report = new UpdateReport(status, from.ToString(), to.ToString(), null, Bounded(error, UpdateReport.MaxErrorLength), _clock.GetUtcNow(),
+            attempt);
         await _channel.DeliverAsync(nameof(IAgentHub.UpdateReport), report, CancellationToken.None);
         if (_options.OnReport is { } seen)
         {
@@ -345,8 +361,9 @@ public sealed partial class AgentUpdater : IDisposable
         return new CommandAck(commandId, AckStatus.Rejected, code, message);
     }
 
-    /// <summary>The installer's <c>last-update.json</c>.</summary>
-    private sealed record InstallerResult(string? From, string? To, IReadOnlyList<string>? Parts, string? Status, string? Error, DateTimeOffset? FinishedAt);
+    /// <summary>The installer's <c>last-update.json</c> (<c>attempt</c> only from installers that know request ids).</summary>
+    private sealed record InstallerResult(string? From, string? To, IReadOnlyList<string>? Parts, string? Status, string? Error, DateTimeOffset? FinishedAt,
+        string? Attempt);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Update {CommandId}: from {From} to {To}, downloading the release from GitHub")]
     private partial void LogStarting(Guid commandId, UpdateVersion from, UpdateVersion to);

@@ -178,6 +178,11 @@ param(
     # With -Update: when an earlier update was stopped before it ended and cannot be rolled back (or its journal cannot be read), goes on
     # with Pulsar as it is instead of stopping: the journal is moved aside under a name that records it, and nothing is rolled back.
     [Parameter(ParameterSetName = 'Update')] [switch] $DiscardInterruptedUpdate,
+    # With -Update: the panel's id for this update (its one-click update gives it, docs/guides/update.md), written back in
+    # last-update.json so the panel tells this update's result from an earlier one's, of the same version too.
+    [Parameter(ParameterSetName = 'Update')]
+    [ValidatePattern('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z', Options = 'None')]
+    [string] $UpdateAttempt,
     [Parameter(Mandatory, ParameterSetName = 'Uninstall')] [switch] $Uninstall,
     # Replaces the self-signed certificate of an installed panel with a new one for this PC's names and current addresses
     # (and -HostName's: the names given at the install are not remembered), keeping the old one until the new one works
@@ -3511,6 +3516,7 @@ function Start-UpdateRun {
     Lock-Update
     $script:UpdateRun = [pscustomobject]@{
         From = $null; To = $null; Parts = @(); Touched = @(); Written = $false; MigrationsBefore = $null; Backup = $null
+        Attempt = $(if ($UpdateAttempt) { $UpdateAttempt } else { $null })
     }
     # Before the versions are read: the version installed is the one before an update that was stopped, once that is rolled back.
     $null = Resume-InterruptedUpdate
@@ -3685,9 +3691,10 @@ function Resume-InterruptedUpdate {
 }
 
 # Writes <DataRoot>\Updates\last-update.json once per run, UTF-8 without a byte order mark: how this run ended
-# ($status: 'succeeded', 'rolled_back' or 'failed'), what it updated, the error (no secret, at most 2000 characters) and
-# this run's log. Written beside the file and moved over it, so a reader sees the old file or the new one. The folder is
-# checked again first; one that is no longer as it was made gets no file, and the run's own outcome stands (its exit code and log).
+# ($status: 'succeeded', 'rolled_back' or 'failed'), what it updated, the error (no secret, at most 2000 characters),
+# this run's log and the panel's id for it (-UpdateAttempt; null without one). Written beside the file and moved over it,
+# so a reader sees the old file or the new one. The folder is checked again first; one that is no longer as it was made
+# gets no file, and the run's own outcome stands (its exit code and log).
 function Write-UpdateResult([string] $status, [string] $failure = '') {
     $run = $script:UpdateRun
     if ($null -eq $run -or $run.Written) { return }
@@ -3703,6 +3710,7 @@ function Write-UpdateResult([string] $status, [string] $failure = '') {
             status = $status
             error = $(if ($text) { $text } else { $null })
             log = $SetupLogFile
+            attempt = $run.Attempt
             finishedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
         }
         [IO.File]::WriteAllText($written, ($record | ConvertTo-Json -Depth 3), (New-Object Text.UTF8Encoding $false))
