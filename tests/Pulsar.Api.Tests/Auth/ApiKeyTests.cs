@@ -1,9 +1,12 @@
+using System.Data.Common;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Pulsar.Api.Access;
 using Pulsar.Api.Auth;
@@ -215,7 +218,10 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
     [DatabaseFact]
     public async Task RefusedRequestsWithAKeyCountToo()
     {
-        using var limited = factory.WithWebHostBuilder(b => b.UseSetting("RateLimiting:Auth:ApiKeyPermitLimit", "3"));
+        // The prober's first request is a lookup of its address too (its key was not known yet): one of the four.
+        using var limited = factory.WithWebHostBuilder(b => b
+            .UseSetting("RateLimiting:Auth:ApiKeyPermitLimit", "3")
+            .UseSetting("RateLimiting:Auth:ApiKeyLookupPermitLimit", "4"));
         var scenario = await AccessScenario.CreateAsync(factory);
         using var owner = await scenario.SignedInWithAsync("key-refused-budget", Permissions.Audit.View);
         var created = await CreateAsync(owner, new CreateApiKeyRequest("Prober", null, null));
@@ -237,6 +243,91 @@ public sealed class ApiKeyTests(PulsarApiFactory factory) : IClassFixture<Pulsar
         }
 
         Assert.Equal(HttpStatusCode.TooManyRequests, await SendAsync(guesser, "/api/v1/audit", "pulsar_another-made-up-key-000000000000000"));
+    }
+
+    [DatabaseFact]
+    public async Task GuessesOverTheAddressBudgetNeverReachTheKeysAndKeysInUseKeepTheirOwn()
+    {
+        var keyQueries = new QueryCounter("api_keys");
+        using var limited = factory.WithWebHostBuilder(b => b
+            .UseSetting("RateLimiting:Auth:ApiKeyLookupPermitLimit", "3")
+            .ConfigureTestServices(services => services.ConfigureDbContext<PulsarDbContext>(options => options.AddInterceptors(keyQueries))));
+        var scenario = await AccessScenario.CreateAsync(factory);
+        using var owner = await scenario.SignedInWithAsync("key-guessed-near", Permissions.Audit.View);
+        var created = await CreateAsync(owner, new CreateApiKeyRequest("In use", null, null));
+
+        // A script in use behind the same address as the guesser (one household, one office): its first request is
+        // one of the address's lookups.
+        using var script = Bearer(limited, created.Value);
+        Assert.Equal(HttpStatusCode.OK, await SendAsync(script, "/api/v1/audit", bearer: null));
+
+        using var guesser = Bearer(limited, "pulsar_not-a-real-key-at-all-000000000000");
+        for (var i = 0; i < 2; i++)
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, await SendAsync(guesser, "/api/v1/audit", $"pulsar_made-up-key-number-{i}-0000000000000000"));
+        }
+
+        var looked = keyQueries.Count;
+        Assert.True(looked >= 3, $"each lookup reads the keys ({looked} reads)");
+        for (var i = 0; i < 5; i++)
+        {
+            using var rejected = await guesser.GetAsync(new Uri("/api/v1/audit", UriKind.Relative), Ct);
+            await SetupTests.AssertProblemAsync(rejected, HttpStatusCode.TooManyRequests, "rate_limit.exceeded");
+            Assert.True(rejected.Headers.RetryAfter is not null);
+        }
+
+        Assert.Equal(looked, keyQueries.Count);
+
+        // The key in use is known: its own budget, whatever was guessed from its address.
+        Assert.Equal(HttpStatusCode.OK, await SendAsync(script, "/api/v1/audit", bearer: null));
+
+        // Revoked: no longer known, so again one of the address's lookups, which are used up.
+        using (var revoked = await owner.DeleteAsync($"/api/v1/account/api-keys/{created.Key.Id}"))
+        {
+            await AccessScenario.EnsureSuccessAsync(revoked);
+        }
+
+        Assert.Equal(HttpStatusCode.Unauthorized, await SendAsync(script, "/api/v1/audit", bearer: null));
+        var afterRevoked = keyQueries.Count;
+        Assert.Equal(HttpStatusCode.TooManyRequests, await SendAsync(script, "/api/v1/audit", bearer: null));
+        Assert.Equal(afterRevoked, keyQueries.Count);
+    }
+
+    /// <summary>Counts the commands the panel sends whose text names a table.</summary>
+    private sealed class QueryCounter(string table) : DbCommandInterceptor
+    {
+        private int _count;
+
+        public int Count => Volatile.Read(ref _count);
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData,
+            InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            Counted(command);
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command, CommandEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            Counted(command);
+            return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(DbCommand command, CommandEventData eventData,
+            InterceptionResult<object> result, CancellationToken cancellationToken = default)
+        {
+            Counted(command);
+            return base.ScalarExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        private void Counted(DbCommand command)
+        {
+            if (command.CommandText.Contains(table, StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref _count);
+            }
+        }
     }
 
     private static async Task<HttpStatusCode> SendAsync(HttpClient client, string path, string? bearer)

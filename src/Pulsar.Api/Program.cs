@@ -106,8 +106,9 @@ try
     app.UsePanelHubOriginCheck();
 
     app.UseAuthentication();
-    // Before authorization: requests with an API key count whether or not they are allowed.
-    app.UseApiKeyRateLimitPartition();
+    // Before authorization: requests with an API key count whether or not they are allowed, and before the key is
+    // looked up: one over its budget never reaches the database.
+    app.UseApiKeyRequestBudget();
     app.UseRateLimiter();
     app.UseAuthorization();
 

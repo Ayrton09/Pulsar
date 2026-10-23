@@ -1,7 +1,10 @@
+using System.Net;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Pulsar.Api.Http;
 using Pulsar.Application.Access;
@@ -75,29 +78,108 @@ internal sealed class ApiKeyAuthenticationHandler(
 }
 
 /// <summary>
-/// What a request with an API key counts against (docs/architecture/02, "API keys"): its key, or the client's address
-/// when the key does not work. Found before authorization, so refused requests count as well: each costs a key lookup.
+/// What requests with an API key count against (docs/architecture/02, "API keys"), decided before the key is looked up:
+/// a key known to work (it worked within the last hour) counts against its own budget; any other value (a guess, a
+/// revoked or expired key, the first request of a key) against its client address's budget of lookups. A request over
+/// either is refused without reading the database. A key's first request counts against both: the lookup it costs, then
+/// its own budget. Clients sharing an address (a household, an office) share only the lookups of keys unused for an
+/// hour: keys in use keep their own budgets whatever is guessed from their address.
 /// </summary>
+internal sealed class ApiKeyRequestBudget : IDisposable
+{
+    /// <summary>Only keys that worked are remembered (25 a user at most): the bound is never near for a real panel.</summary>
+    public const int MaxKnownKeys = 100_000;
+
+    private const string KeyPartition = "key:";
+    private static readonly TimeSpan s_window = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan s_remembered = TimeSpan.FromHours(1);
+
+    private readonly PartitionedRateLimiter<string> _limiter;
+    private readonly MemoryCache _known = new(new MemoryCacheOptions { SizeLimit = MaxKnownKeys });
+
+    public ApiKeyRequestBudget(IOptions<AuthRateLimitOptions> options)
+    {
+        var limits = options.Value;
+        _limiter = PartitionedRateLimiter.Create<string, string>(partition => RateLimitPartition.GetFixedWindowLimiter(partition,
+            name => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = name.StartsWith(KeyPartition, StringComparison.Ordinal) ? limits.ApiKeyPermitLimit : limits.ApiKeyLookupPermitLimit,
+                Window = s_window,
+                QueueLimit = 0,
+            }));
+    }
+
+    /// <summary>The key a bearer value was last found to be, while remembered; null for any other value.</summary>
+    public string? KnownKey(string value) => _known.TryGetValue(CacheKey(value), out string? key) ? key : null;
+
+    public void Remember(string value, string key) =>
+        _known.Set(CacheKey(value), key, new MemoryCacheEntryOptions { Size = 1, SlidingExpiration = s_remembered });
+
+    public void Forget(string value) => _known.Remove(CacheKey(value));
+
+    public RateLimitLease ForKey(string key) => _limiter.AttemptAcquire(KeyPartition + key);
+
+    public RateLimitLease ForLookup(IPAddress? client) => _limiter.AttemptAcquire("address:" + ClientAddress.PartitionOf(client));
+
+    public void Dispose()
+    {
+        _limiter.Dispose();
+        _known.Dispose();
+    }
+
+    // The value's hash, as stored: the plain value is never kept.
+    private static string CacheKey(string value) => Convert.ToBase64String(ApiKey.Hash(value));
+}
+
 internal static class ApiKeyRateLimit
 {
-    private static readonly object s_partition = new();
-
-    public static IApplicationBuilder UseApiKeyRateLimitPartition(this IApplicationBuilder app) => app.Use(async (context, next) =>
+    /// <summary>
+    /// Before authorization, so refused requests count as well; before the key is looked up, so a request over its
+    /// budget costs the database nothing (<see cref="ApiKeyRequestBudget"/>). Browsers (no key) have no budget here.
+    /// </summary>
+    public static IApplicationBuilder UseApiKeyRequestBudget(this IApplicationBuilder app) => app.Use(async (context, next) =>
     {
-        if (UserSchemes.BearerValue(context.Request) is not null)
+        if (UserSchemes.BearerValue(context.Request) is not { } value)
         {
-            // The handler keeps its result for the request: authorization uses it without matching the key again.
-            var result = await context.AuthenticateAsync(ApiKeyAuthenticationHandler.Scheme);
-            context.Items[s_partition] = result.Succeeded && result.Principal.FindFirstValue(ApiKeyClaims.KeyId) is { } key
-                ? $"key:{key}"
-                : $"address:{ClientAddress.PartitionOf(context.Connection.RemoteIpAddress)}";
+            await next(context);
+            return;
+        }
+
+        var budget = context.RequestServices.GetRequiredService<ApiKeyRequestBudget>();
+        var known = budget.KnownKey(value);
+        using (var lease = known is null ? budget.ForLookup(context.Connection.RemoteIpAddress) : budget.ForKey(known))
+        {
+            if (!lease.IsAcquired)
+            {
+                await ApiServiceCollectionExtensions.WriteRateLimitedAsync(context, lease);
+                return;
+            }
+        }
+
+        // The handler keeps its result for the request: authorization uses it without matching the key again.
+        var result = await context.AuthenticateAsync(ApiKeyAuthenticationHandler.Scheme);
+        if (result.Succeeded && result.Principal.FindFirstValue(ApiKeyClaims.KeyId) is { } key)
+        {
+            budget.Remember(value, key);
+            if (!string.Equals(key, known, StringComparison.Ordinal))
+            {
+                // Its first request: counted against its own budget too.
+                using var lease = budget.ForKey(key);
+                if (!lease.IsAcquired)
+                {
+                    await ApiServiceCollectionExtensions.WriteRateLimitedAsync(context, lease);
+                    return;
+                }
+            }
+        }
+        else
+        {
+            // Revoked, expired or its user disabled: from now on its requests are lookups again.
+            budget.Forget(value);
         }
 
         await next(context);
     });
-
-    /// <summary>The request's partition; null for requests without an API key (browsers have no budget).</summary>
-    public static string? Partition(HttpContext context) => context.Items.TryGetValue(s_partition, out var partition) ? partition as string : null;
 }
 
 /// <summary>Claims of a request made with an API key.</summary>

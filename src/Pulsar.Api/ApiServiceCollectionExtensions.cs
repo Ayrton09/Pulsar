@@ -41,6 +41,13 @@ public sealed class AuthRateLimitOptions
     /// <summary>Requests per minute each API key may make (<c>RateLimiting:Auth:ApiKeyPermitLimit</c>).</summary>
     public int ApiKeyPermitLimit { get; set; } = 600;
 
+    /// <summary>
+    /// Lookups per minute, from one address, of API keys not known to work (<c>RateLimiting:Auth:ApiKeyLookupPermitLimit</c>):
+    /// guesses, revoked or expired keys, and the first request of a key unused for an hour. Over it such requests are
+    /// refused before the database is read; keys in use keep their own budget (<see cref="ApiKeyRequestBudget"/>).
+    /// </summary>
+    public int ApiKeyLookupPermitLimit { get; set; } = 60;
+
     /// <summary>Agent enrollments per minute from one address (<c>RateLimiting:Auth:EnrollPermitLimit</c>).</summary>
     public int EnrollPermitLimit { get; set; } = 10;
 
@@ -270,6 +277,14 @@ internal static class ApiServiceCollectionExtensions
             throw new InvalidOperationException($"{DownloadsOptions.SectionName}:ConcurrentPerAddress and PerAddressPerHour must be at least 1.");
         }
 
+        if (limits.ApiKeyPermitLimit < 1 || limits.ApiKeyLookupPermitLimit < 1)
+        {
+            throw new InvalidOperationException($"{AuthRateLimitOptions.SectionName}:ApiKeyPermitLimit and ApiKeyLookupPermitLimit must be at least 1.");
+        }
+
+        // Each API key has its own budget (a script in a loop must not slow the panel down), checked before the key is
+        // looked up (ApiKeyRateLimit); browsers have none.
+        services.AddSingleton<ApiKeyRequestBudget>();
         services.AddRateLimiter(options =>
         {
             options.AddPolicy(AuthEndpoints.RateLimitPolicy, context => RateLimitPartition.GetFixedWindowLimiter(
@@ -292,25 +307,20 @@ internal static class ApiServiceCollectionExtensions
             // The agent's setup, anonymous and a whole program each time: so many at once and an hour per address.
             options.AddPolicy(DownloadEndpoints.RateLimitPolicy, context => RateLimitPartition.Get(
                 ClientAddress.PartitionOf(context.Connection.RemoteIpAddress), _ => DownloadEndpoints.CreateLimiter(downloads)));
-            // Each API key has its own budget (a script in a loop must not slow the panel down), keys that do not work
-            // share their client's; browsers have none. Refused requests count too (ApiKeyRateLimit).
-            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-                ApiKeyRateLimit.Partition(context) is { } partition
-                    ? RateLimitPartition.GetFixedWindowLimiter(partition,
-                        _ => new FixedWindowRateLimiterOptions { PermitLimit = limits.ApiKeyPermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
-                    : RateLimitPartition.GetNoLimiter(""));
-            options.OnRejected = (context, _) =>
-            {
-                // When the window ends: agents enrolling together (a rollout behind one address) wait that long.
-                if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
-                {
-                    context.HttpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
-                }
-
-                return new ValueTask(WriteProblemAsync(context.HttpContext,
-                    StatusCodes.Status429TooManyRequests, "rate_limit.exceeded", "Too many attempts. Try again in a minute."));
-            };
+            options.OnRejected = (context, _) => new ValueTask(WriteRateLimitedAsync(context.HttpContext, context.Lease));
         });
+    }
+
+    /// <summary>The answer to a request over a rate limit.</summary>
+    public static Task WriteRateLimitedAsync(HttpContext context, RateLimitLease lease)
+    {
+        // When the window ends: agents enrolling together (a rollout behind one address) wait that long.
+        if (lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            context.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+        }
+
+        return WriteProblemAsync(context, StatusCodes.Status429TooManyRequests, "rate_limit.exceeded", "Too many attempts. Try again in a minute.");
     }
 
     private static Task WriteProblemAsync(HttpContext context, int status, string code, string title)
