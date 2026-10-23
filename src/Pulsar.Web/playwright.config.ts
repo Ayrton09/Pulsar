@@ -51,6 +51,7 @@ export default defineConfig({
     },
     url: `${baseURL}/health/ready`,
     reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
+    // The publish runs first: a Windows CI runner can take over three minutes for it.
+    timeout: 360_000,
   },
 });
