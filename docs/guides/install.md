@@ -364,7 +364,10 @@ connection string with `-ConnectionString "Host=…;Port=5432;Database=…;Usern
 When this machine has `psql.exe`, the installer asks that database which migrations it has applied, and stops before
 changing anything if a newer Pulsar than this release migrated it (the panel refuses to start on such a database). The
 `SSL Mode` and `Root Certificate` of the connection string are also used by the programs the installer, the update's
-rollback and `Backup-Pulsar.ps1` run against it (`psql`, `pg_dump`, `pg_restore`), not only by the panel.
+rollback and `Backup-Pulsar.ps1` run against it (`psql`, `pg_dump`, `pg_restore`), not only by the panel. The scripts read
+the connection string as the panel does (Npgsql's syntax): a value with `;`, `=` or spaces goes in double quotes, with a
+double quote in it doubled (`Password="pa;ss ""word"""`), and Npgsql's other names for a key (`Server`, `User Id`, `UID`,
+`DB`, `PWD`…) work too; without `Port` it is 5432.
 
 ### The postgres superuser's password
 

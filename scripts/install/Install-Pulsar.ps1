@@ -507,6 +507,38 @@ function Copy-PlainTree([string] $source, [string] $target) {
     if ($links.Count -gt 0) { throw "A link appeared while $source was copied ($($links[0])), so the copy cannot be trusted. Nothing is copied through links." }
 }
 
+# An Npgsql connection string read as the panel reads it, as a hashtable of lower-case keys (host, port, username,
+# database, password, ssl mode, root certificate, and any other key as written, in lower case). .NET's
+# DbConnectionStringBuilder (Windows PowerShell 5.1 and PowerShell 7 alike) parses it with Npgsql's own syntax: a value in
+# double or single quotes may hold ';', '=' and spaces, a quote doubled inside them is one, keys are case-insensitive, and
+# spaces around keys and values are not theirs; so a password with a semicolon is that password, not a cut one. Npgsql's
+# other names for a key (Server; User Name, User Id, UserId, UID; DB; PWD, PSW; SslMode; RootCertificate) are read as
+# it; one key given twice under two names with different values is refused (which one Npgsql takes is not this script's
+# to guess). The port is 5432 when it is not given. No error repeats the text or a value (they hold the password).
+function ConvertFrom-PgConnectionString([string] $text) {
+    $names = @{
+        'server' = 'host'
+        'user name' = 'username'; 'user id' = 'username'; 'userid' = 'username'; 'uid' = 'username'
+        'db' = 'database'
+        'pwd' = 'password'; 'psw' = 'password'
+        'sslmode' = 'ssl mode'
+        'rootcertificate' = 'root certificate'
+    }
+    $builder = New-Object Data.Common.DbConnectionStringBuilder
+    try { $builder.set_ConnectionString($text) }
+    catch { throw "The connection string is not well formed: Key=Value pairs separated by ';', with a value that holds ';' or quotes in double quotes (a double quote in it doubled)." }
+    $parts = @{}
+    foreach ($key in @($builder.Keys)) {
+        $name = "$key".Trim().ToLowerInvariant()
+        if ($names.ContainsKey($name)) { $name = $names[$name] }
+        $value = "$($builder[$key])"
+        if ($parts.ContainsKey($name) -and $parts[$name] -cne $value) { throw "The connection string gives its $name twice, under two names, with different values." }
+        $parts[$name] = $value
+    }
+    if (-not $parts['port']) { $parts['port'] = '5432' }
+    return $parts
+}
+
 # libpq's SSL settings for pg_dump, psql and pg_restore, from the keys of an Npgsql connection string ($parts: lower-case
 # names), so they connect as the panel does and not with libpq's default (prefer): SSL Mode becomes PGSSLMODE and Root
 # Certificate PGSSLROOTCERT. No SSL Mode asks for nothing (Npgsql's default, prefer, is libpq's). A mode not known here is
@@ -1779,10 +1811,7 @@ function New-KeyRingCertificate {
 # A database dump from a backup, into the database the panel will use.
 function Restore-PanelDatabase([string] $dump, [string] $connection) {
     $bin = Find-PostgresBin
-    $parts = @{}
-    foreach ($part in $connection.Split(';')) {
-        if ($part -match '^\s*([^=]+?)\s*=\s*(.*)$') { $parts[$Matches[1].ToLowerInvariant()] = $Matches[2] }
-    }
+    $parts = ConvertFrom-PgConnectionString $connection
     $ssl = Get-PgSslEnvironment $parts
     $env:PGPASSWORD = $parts['password']
     try {
@@ -3824,14 +3853,11 @@ function Get-PanelConnection {
         $text = "$($settings.ConnectionStrings.Pulsar)"
     }
     catch { return $null }
-    $parts = @{}
-    foreach ($part in $text.Split(';')) {
-        if ($part -match '^\s*([^=]+?)\s*=\s*(.*)$') { $parts[$Matches[1].ToLowerInvariant()] = $Matches[2] }
-    }
+    try { $parts = ConvertFrom-PgConnectionString $text }
+    catch { return $null }
     foreach ($key in 'host', 'username', 'database', 'password') {
-        if (-not $parts.ContainsKey($key) -or -not $parts[$key]) { return $null }
+        if (-not $parts[$key]) { return $null }
     }
-    if (-not $parts.ContainsKey('port')) { $parts['port'] = '5432' }
     Register-Secret $parts['password']
     return $parts
 }
@@ -3855,14 +3881,11 @@ function Invoke-PanelPsql($db, [string[]] $arguments) {
 # cannot be asked (no psql here, an empty database with no migrations table, the connection string refused): the install then
 # goes on as it always did.
 function Assert-DatabaseNotNewer([string] $connection) {
-    $db = @{}
-    foreach ($part in $connection.Split(';')) {
-        if ($part -match '^\s*([^=]+?)\s*=\s*(.*)$') { $db[$Matches[1].ToLowerInvariant()] = $Matches[2] }
-    }
+    try { $db = ConvertFrom-PgConnectionString $connection }
+    catch { return }
     foreach ($key in 'host', 'username', 'database', 'password') {
-        if (-not $db.ContainsKey($key) -or -not $db[$key]) { return }
+        if (-not $db[$key]) { return }
     }
-    if (-not $db.ContainsKey('port')) { $db['port'] = '5432' }
     Register-Secret $db['password']
     try { $result = Invoke-PanelPsql $db @('-c', 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY "MigrationId"') }
     catch { return }
@@ -4237,7 +4260,10 @@ function Use-SetupInputs([hashtable] $inputs) {
     foreach ($secure in @($AdminPassword, $PostgresPassword, $CertificatePassword)) { if ($secure) { Register-Secret (ConvertFrom-Secure $secure) } }
     foreach ($text in @($ConnectionString, $Token, $NodeCode)) { Register-Secret $text }
     if ($ConnectionString) {
-        foreach ($part in $ConnectionString.Split(';')) { if ($part -match '^\s*(password|pwd|psw)\s*=\s*(.*?)\s*$') { Register-Secret $Matches[2] } }
+        # Its password as the panel reads it (quoted, it may hold ';'); a connection string that does not parse is kept out
+        # whole, and each password-like value of it as written.
+        try { Register-Secret (ConvertFrom-PgConnectionString $ConnectionString)['password'] }
+        catch { foreach ($part in $ConnectionString.Split(';')) { if ($part -match '^\s*(password|pwd|psw)\s*=\s*(.*?)\s*$') { Register-Secret $Matches[2] } } }
     }
 }
 

@@ -60,7 +60,7 @@ function Get-ScriptParts([string] $path, [string[]] $functions, [string[]] $vari
     return $parts
 }
 
-$shared = @('Get-AccountName', 'Find-UntrustedWriter', 'Find-UntrustedWriters', 'Find-UntrustedAncestors', 'Test-PrivateFolder', 'Get-PgSslEnvironment', 'Copy-PlainTree', 'Copy-TreeLevel', 'Find-Links')
+$shared = @('Get-AccountName', 'Find-UntrustedWriter', 'Find-UntrustedWriters', 'Find-UntrustedAncestors', 'Test-PrivateFolder', 'ConvertFrom-PgConnectionString', 'Get-PgSslEnvironment', 'Copy-PlainTree', 'Copy-TreeLevel', 'Find-Links')
 $sharedVariables = @('TrustedWriters', 'ModifyRights', 'ReplaceRights')
 $installParts = Get-ScriptParts $installScript (@($shared) + @('Read-DerElement', 'Get-CertificateNames', 'Get-ForeignCertificateNames',
         'Test-CertificateNames', 'Get-CertificateAuthority', 'Get-CertificateUses', 'Test-ServerAuthenticationOnly', 'ConvertTo-PrintableText',
@@ -4586,6 +4586,64 @@ foreach ($spot in $sslSpots.Keys) {
     Check "ssl: $spot passes the connection string's SSL settings to the program it runs, and clears them afterwards" (
         $sslSpots[$spot] -match 'Get-PgSslEnvironment' -and $sslSpots[$spot] -match 'Remove-Item Env:PGPASSWORD, Env:PGSSLMODE, Env:PGSSLROOTCERT')
 }
+
+# 8. Connection strings are read as the panel (Npgsql) reads them, by one parser both scripts share (DbConnectionStringBuilder):
+# quoted values hold ';', '=' and spaces, Npgsql's other key names count, the port defaults to 5432, and no error shows a value.
+$name = "p$([char]0x00FC)lsar-$([char]0x00F1)and$([char]0x00FA)"
+$secret = "a;b=c ""q"" $([char]0x00F1) $([char]0x4E2D)"
+$quoted = '"' + $secret.Replace('"', '""') + '"'
+$read = ConvertFrom-PgConnectionString "Host=db.example.com; Port = 5433 ;User Id=$name;Password=$quoted;Database='my db';SSL Mode=VerifyFull"
+Check 'connection string: a quoted value keeps its ;, =, spaces, doubled quotes and Unicode; spaces around keys and values are not theirs' (
+    $read['host'] -ceq 'db.example.com' -and $read['port'] -ceq '5433' -and $read['username'] -ceq $name -and $read['password'] -ceq $secret -and $read['database'] -ceq 'my db' -and $read['ssl mode'] -ceq 'VerifyFull') "$($read['password'].Length)"
+foreach ($case in @(
+        @('Server=db;User Name=u;DB=pulsar;PWD=p4ss', 'db', 'u', 'pulsar', 'p4ss'),
+        @('HOST=db;UserId=u;Database=pulsar;PSW=p4ss', 'db', 'u', 'pulsar', 'p4ss'),
+        @('host=db;uid=u;db=pulsar;password=p4ss', 'db', 'u', 'pulsar', 'p4ss'),
+        @("Host=db;Username=u;Database=pulsar;Password='single ; quoted'", 'db', 'u', 'pulsar', 'single ; quoted'))) {
+    $read = ConvertFrom-PgConnectionString $case[0]
+    Check "connection string: $($case[0] -replace 'p4ss|single ; quoted', '...') reads host, user, database and password under any name Npgsql gives them" (
+        $read['host'] -ceq $case[1] -and $read['username'] -ceq $case[2] -and $read['database'] -ceq $case[3] -and $read['password'] -ceq $case[4])
+}
+Check 'connection string: the port is 5432 when not given' ((ConvertFrom-PgConnectionString 'Host=db;Username=u;Database=pulsar;Password=p4ss')['port'] -ceq '5432')
+$ssl = Get-PgSslEnvironment (ConvertFrom-PgConnectionString 'Host=db;SslMode=VerifyCA;RootCertificate=C:\certs\ca.crt')
+Check 'connection string: SslMode and RootCertificate are SSL Mode and Root Certificate (libpq gets them)' ($ssl['PGSSLMODE'] -ceq 'verify-ca' -and $ssl['PGSSLROOTCERT'] -ceq 'C:\certs\ca.crt')
+Check 'connection string: one key given twice under two names with the same value is that value' ((ConvertFrom-PgConnectionString 'Host=db;Password=same-one;PWD=same-one')['password'] -ceq 'same-one')
+$thrown = Get-Thrown { ConvertFrom-PgConnectionString 'Host=db;Password=first-secret;PWD=second-secret' }
+Check 'connection string: one key under two names with different values is refused, naming neither value' ($thrown -match 'password twice' -and $thrown -notmatch 'first-secret|second-secret') $thrown
+$thrown = Get-Thrown { ConvertFrom-PgConnectionString 'Host=db;Password="an-unclosed-secret' }
+Check 'connection string: one that is not well formed is refused, without its text' ($thrown -match 'not well formed' -and $thrown -notmatch 'unclosed-secret') $thrown
+Check 'connection string: neither script parses one by hand any more (only the secrets of one that does not parse are looked for, as written)' (
+    ([regex]::Matches($installText, "\.Split\(';'\)")).Count -eq 1 -and $installText -match "catch \{ foreach \(\`$part in \`$ConnectionString\.Split\(';'\)\)" -and
+    $backupText -notmatch "\.Split\(';'\)" -and $backupText -match 'ConvertFrom-PgConnectionString "\$\(\$settings\.ConnectionStrings\.Pulsar\)"' -and $backupText -match "-p \`$port" -and
+    $backupText -match "\`$port = \`$parts\['port'\]")
+# The install's own spots: a restore gets the default port (it had none before), the update's psql and the -ConnectionString check a quoted password.
+& {
+    $script:restoreCall = $null
+    function Find-PostgresBin { 'C:\pg\bin' }
+    function Invoke-Native { $script:restoreCall = @($args); [pscustomobject]@{ ExitCode = 0; Output = '' } }
+    . ([scriptblock]::Create((Get-ScriptParts $installScript @('Restore-PanelDatabase'))['Restore-PanelDatabase']))
+    Restore-PanelDatabase 'C:\x.dump' 'Server=db.example.com;UID=u;DB=pulsar;PWD="p;w"'
+    $call = $script:restoreCall -join ' '
+    Check 'connection string: a restore connects with the default port, the aliases'' values, and no password left in the environment' (
+        $call -match '-h db\.example\.com -p 5432 -U u -d pulsar' -and -not (Test-Path Env:PGPASSWORD)) $call
+}
+$SetupSecrets.Clear()
+$caught = Test-DatabaseVersion 'Host=db.example.com;Database=pulsar;Username=u;Password="semi;colon-pw"' ([pscustomobject]@{ ExitCode = 0; Output = '20261001154302_Alpha' }) @('20261001154302_Alpha')
+Check 'connection string: -ConnectionString''s check asks with the quoted password whole, on the default port, and keeps it secret' (
+    $null -eq $caught -and $script:psqlDb['password'] -ceq 'semi;colon-pw' -and $script:psqlDb['port'] -ceq '5432' -and $SetupSecrets.Contains('semi;colon-pw'))
+$SetupSecrets.Clear()
+& {
+    $ConnectionString = 'Host=db;Username=u;Database=pulsar;Password="semi;colon-secret"'
+    $AdminPassword = $null; $PostgresPassword = $null; $CertificatePassword = $null; $Token = $null; $NodeCode = $null
+    . ([scriptblock]::Create((Get-ScriptParts $installScript @('Use-SetupInputs'))['Use-SetupInputs']))
+    Use-SetupInputs @{}
+    Check 'connection string: the password of -ConnectionString is kept out of messages whole, as the panel reads it' ($SetupSecrets.Contains('semi;colon-secret'))
+    $SetupSecrets.Clear()
+    $ConnectionString = 'Host=db;Password="unclosed;pw-secret'
+    Use-SetupInputs @{}
+    Check 'connection string: ...and of one that does not parse, each password-like value as written' ($SetupSecrets.Contains('"unclosed'))
+}
+$SetupSecrets.Clear()
 
 # 9. The backup copies the panel's keys and certificates without following a link the panel's account could have planted.
 $planted = Join-Path $restoreRoot 'planted'
