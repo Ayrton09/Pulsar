@@ -1,0 +1,98 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "enshrouded",
+  "version": "1.0.0",
+  "name": "Enshrouded",
+  "description": "Enshrouded dedicated server, installed anonymously with SteamCMD. Its settings are in enshrouded_server.json and its world in the savegame folder of the server.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 8, "minMemoryMb": 8192 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Enshrouded", "maxLength": 64, "pattern": "^[^\"]{1,64}$" },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "slots", "label": "Slots", "type": "integer", "default": 16, "min": 1, "max": 16 },
+    { "key": "preset", "label": "Difficulty", "type": "enum",
+      "options": [
+        { "value": "Default", "label": "Default" },
+        { "value": "Relaxed", "label": "Relaxed" },
+        { "value": "Hard", "label": "Hard" },
+        { "value": "Survival", "label": "Survival" },
+        { "value": "Custom", "label": "Custom (the options below)" }
+      ],
+      "description": "The options below only apply with Custom." },
+    { "key": "voiceChat", "label": "Voice chat", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
+    { "key": "textChat", "label": "Text chat", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
+    { "key": "playerHealth", "label": "Player health", "type": "number", "min": 0.25, "max": 4 },
+    { "key": "playerStamina", "label": "Player stamina", "type": "number", "min": 0.25, "max": 4 },
+    { "key": "enemyDamage", "label": "Enemy damage", "type": "number", "min": 0.25, "max": 5 },
+    { "key": "enemyHealth", "label": "Enemy health", "type": "number", "min": 0.25, "max": 4 },
+    { "key": "miningDamage", "label": "Mining damage", "type": "number", "min": 0.5, "max": 2 },
+    { "key": "resourceDrops", "label": "Resources dropped", "type": "number", "min": 0.25, "max": 2 },
+    { "key": "combatXp", "label": "Combat XP", "type": "number", "min": 0, "max": 2 },
+    { "key": "durability", "label": "Item durability", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
+    { "key": "starving", "label": "Starving debuff", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
+    { "key": "pacifyEnemies", "label": "Pacify all enemies", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ],
+      "description": "Enemies never attack first." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 15637, "description": "Players connect here; the server list asks here too." }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 2278520 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 2278520 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "enshrouded_server.exe",
+      "arguments": [],
+      "allowExtraArguments": true,
+      "console": { "mode": "pty", "encoding": "utf-8" }
+    }
+  },
+
+  "configFiles": [
+    { "path": "enshrouded_server.json", "format": "json", "mode": "patch",
+      "set": {
+        "/name": "{{var.name}}",
+        "/password": "{{var.password}}",
+        "/saveDirectory": "./savegame",
+        "/logDirectory": "./logs",
+        "/ip": "{{port.game.ip}}",
+        "/queryPort": "{{port.game}}",
+        "/slotCount": "{{var.slots}}",
+        "/gameSettingsPreset": "{{var.preset}}",
+        "/enableVoiceChat": "{{var.voiceChat}}",
+        "/enableTextChat": "{{var.textChat}}",
+        "/gameSettings/playerHealthFactor": "{{var.playerHealth}}",
+        "/gameSettings/playerStaminaFactor": "{{var.playerStamina}}",
+        "/gameSettings/enemyDamageFactor": "{{var.enemyDamage}}",
+        "/gameSettings/enemyHealthFactor": "{{var.enemyHealth}}",
+        "/gameSettings/miningDamageFactor": "{{var.miningDamage}}",
+        "/gameSettings/resourceDropStackAmountFactor": "{{var.resourceDrops}}",
+        "/gameSettings/experienceCombatFactor": "{{var.combatXp}}",
+        "/gameSettings/enableDurability": "{{var.durability}}",
+        "/gameSettings/enableStarvingDebuff": "{{var.starving}}",
+        "/gameSettings/pacifyAllEnemies": "{{var.pacifyEnemies}}"
+      },
+      "keepIfEmpty": ["/gameSettingsPreset", "/enableVoiceChat", "/enableTextChat", "/gameSettings/playerHealthFactor", "/gameSettings/playerStaminaFactor",
+        "/gameSettings/enemyDamageFactor", "/gameSettings/enemyHealthFactor", "/gameSettings/miningDamageFactor", "/gameSettings/resourceDropStackAmountFactor",
+        "/gameSettings/experienceCombatFactor", "/gameSettings/enableDurability", "/gameSettings/enableStarvingDebuff", "/gameSettings/pacifyAllEnemies"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "game" },
+  "readiness": { "type": "logPattern", "pattern": "HostOnline", "timeoutSeconds": 600 },
+
+  "stop": {
+    "steps": [ { "type": "ctrlC" } ],
+    "timeoutSeconds": 90
+  },
+
+  "backup": {
+    "include": ["savegame/**", "enshrouded_server.json"]
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "arma-reforger",
+  "version": "1.0.0",
+  "name": "Arma Reforger",
+  "description": "Arma Reforger dedicated server, installed anonymously with SteamCMD. Its settings are in server.json and its logs, saves and mods in the profile folder of the server.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 12, "minMemoryMb": 8192 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Arma Reforger", "maxLength": 100, "pattern": "^[^\"]{1,100}$" },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "adminPassword", "label": "Admin password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ]{3,32}$",
+      "description": "Players become administrators with #login and this password." },
+    { "key": "scenario", "label": "Scenario", "type": "string", "default": "{ECC61978EDCC2B5A}Missions/23_Campaign.conf", "maxLength": 200,
+      "pattern": "^\\{[0-9A-F]{16}\\}[A-Za-z0-9_./-]{1,180}\\.conf$",
+      "description": "The mission's resource name: {ECC61978EDCC2B5A}Missions/23_Campaign.conf is Conflict on Everon." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 32, "min": 1, "max": 128 },
+    { "key": "visible", "label": "Server list", "type": "enum", "default": "true",
+      "options": [ { "value": "true", "label": "Listed (players find it)" }, { "value": "false", "label": "Not listed (join by address)" } ] },
+    { "key": "crossPlatform", "label": "Crossplay (Xbox and PlayStation)", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
+    { "key": "thirdPerson", "label": "Third person camera", "type": "enum",
+      "options": [ { "value": "false", "label": "Allowed" }, { "value": "true", "label": "Disabled" } ] },
+    { "key": "battlEye", "label": "BattlEye", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
+    { "key": "viewDistance", "label": "Max view distance (m)", "type": "integer", "min": 500, "max": 10000 },
+    { "key": "autoSave", "label": "Autosave every (min)", "type": "integer", "min": 0, "max": 120,
+      "description": "0: no autosave." },
+    { "key": "maxFps", "label": "Server FPS", "type": "integer", "default": 60, "min": 30, "max": 120 }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 2001, "description": "Players connect here." },
+    { "name": "query", "label": "Steam query", "protocols": ["udp"], "default": 17777, "description": "The server list asks here." }
+  ],
+
+  "install": { "steps": [
+    { "type": "steamcmd", "appId": 1874900 },
+    { "type": "writeFileIfMissing", "path": "server.json",
+      "content": "{\n  \"bindAddress\": \"0.0.0.0\",\n  \"bindPort\": 2001,\n  \"publicAddress\": \"\",\n  \"publicPort\": 2001,\n  \"a2s\": {\n    \"address\": \"0.0.0.0\",\n    \"port\": 17777\n  },\n  \"game\": {\n    \"name\": \"Pulsar Arma Reforger\",\n    \"password\": \"\",\n    \"passwordAdmin\": \"\",\n    \"scenarioId\": \"{ECC61978EDCC2B5A}Missions/23_Campaign.conf\",\n    \"maxPlayers\": 32,\n    \"visible\": true,\n    \"gameProperties\": {\n      \"serverMaxViewDistance\": 1600,\n      \"networkViewDistance\": 1500,\n      \"disableThirdPerson\": false,\n      \"fastValidation\": true,\n      \"battlEye\": true\n    },\n    \"mods\": []\n  }\n}\n" }
+  ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 1874900 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "ArmaReforgerServer.exe",
+      "arguments": [
+        "-config", "{{server.dir}}/server.json",
+        "-profile", "{{server.dir}}/profile",
+        "-maxFPS", "{{var.maxFps}}"
+      ],
+      "allowExtraArguments": true,
+      "console": { "mode": "pty", "encoding": "utf-8" }
+    }
+  },
+
+  "configFiles": [
+    { "path": "server.json", "format": "json", "mode": "patch",
+      "set": {
+        "/bindAddress": "{{port.game.ip}}",
+        "/bindPort": "{{port.game}}",
+        "/publicPort": "{{port.game}}",
+        "/a2s/address": "{{port.query.ip}}",
+        "/a2s/port": "{{port.query}}",
+        "/game/name": "{{var.name}}",
+        "/game/password": "{{var.password}}",
+        "/game/passwordAdmin": "{{var.adminPassword}}",
+        "/game/scenarioId": "{{var.scenario}}",
+        "/game/maxPlayers": "{{var.maxPlayers}}",
+        "/game/visible": "{{var.visible}}",
+        "/game/crossPlatform": "{{var.crossPlatform}}",
+        "/game/gameProperties/disableThirdPerson": "{{var.thirdPerson}}",
+        "/game/gameProperties/battlEye": "{{var.battlEye}}",
+        "/game/gameProperties/serverMaxViewDistance": "{{var.viewDistance}}",
+        "/persistence/autoSaveInterval": "{{var.autoSave}}"
+      },
+      "keepIfEmpty": ["/game/crossPlatform", "/game/gameProperties/disableThirdPerson", "/game/gameProperties/battlEye",
+        "/game/gameProperties/serverMaxViewDistance", "/persistence/autoSaveInterval"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "query" },
+  "readiness": { "type": "query", "timeoutSeconds": 900 },
+
+  "stop": {
+    "steps": [ { "type": "ctrlC" } ],
+    "timeoutSeconds": 90
+  },
+
+  "backup": {
+    "include": ["server.json", "profile/**"],
+    "exclude": ["profile/logs/**", "profile/addons/**"]
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "core-keeper",
+  "version": "1.0.0",
+  "name": "Core Keeper",
+  "description": "Core Keeper dedicated server, installed anonymously with SteamCMD. Its worlds live in the save folder of the server.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 4, "minMemoryMb": 4096 },
+
+  "variables": [
+    { "key": "worldName", "label": "World name", "type": "string", "default": "Pulsar", "maxLength": 32, "pattern": "^[A-Za-z0-9 _-]{1,32}$" },
+    { "key": "world", "label": "World slot", "type": "integer", "default": 0, "min": 0, "max": 29,
+      "description": "Each slot is its own world." },
+    { "key": "worldSeed", "label": "World seed", "type": "integer", "min": 0, "max": 2147483647,
+      "description": "Only for a new world. 0 or empty: random." },
+    { "key": "worldMode", "label": "World mode", "type": "enum", "default": "0",
+      "options": [ { "value": "0", "label": "Normal" }, { "value": "1", "label": "Hard" }, { "value": "2", "label": "Creative" }, { "value": "4", "label": "Casual" } ],
+      "description": "Only for a new world." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 8, "min": 1, "max": 100 },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 28, "pattern": "^[A-Za-z0-9_-]{1,28}$",
+      "description": "Players joining by address need it." },
+    { "key": "season", "label": "Season", "type": "enum",
+      "options": [
+        { "value": "0", "label": "None" }, { "value": "1", "label": "Easter" }, { "value": "2", "label": "Halloween" }, { "value": "3", "label": "Christmas" },
+        { "value": "4", "label": "Valentine's" }, { "value": "5", "label": "Anniversary" }, { "value": "6", "label": "Cherry blossom" }, { "value": "7", "label": "Lunar new year" }
+      ],
+      "description": "Empty: the season of the date." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 27015, "description": "Players connect here by address (Direct Connect)." }
+  ],
+
+  "install": { "steps": [
+    { "type": "steamcmd", "appId": 1963720 },
+    { "type": "ensureDirectory", "path": "save" }
+  ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 1963720 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "CoreKeeperServer.exe",
+      "arguments": [
+        "-batchmode", "-nographics",
+        "-logfile", "-",
+        "-datapath", "{{server.dir}}/save",
+        "-world", "{{var.world}}",
+        "-worldname", "{{var.worldName}}",
+        { "if": "var.worldSeed", "then": ["-worldseed", "{{var.worldSeed}}"] },
+        "-worldmode", "{{var.worldMode}}",
+        "-maxplayers", "{{var.maxPlayers}}",
+        "-ip", "{{port.game.ip}}",
+        "-port", "{{port.game}}",
+        { "if": "var.password", "then": ["-password", "{{var.password}}"] },
+        { "if": "var.season", "then": ["-season", "{{var.season}}"] }
+      ],
+      "allowExtraArguments": true,
+      "console": { "mode": "pty", "encoding": "utf-8" }
+    }
+  },
+
+  "readiness": { "type": "logPattern", "pattern": "Started session with info", "timeoutSeconds": 300 },
+
+  "stop": {
+    "steps": [ { "type": "ctrlC" } ],
+    "timeoutSeconds": 60
+  },
+
+  "backup": {
+    "include": ["save/**"],
+    "exclude": ["**/*.log"]
+  }
+}

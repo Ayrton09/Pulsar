@@ -1,0 +1,110 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "tf2",
+  "version": "1.0.0",
+  "name": "Team Fortress 2",
+  "description": "Team Fortress 2 dedicated server (srcds), installed anonymously with SteamCMD (about 10 GB).",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 16, "minMemoryMb": 2048 },
+
+  "variables": [
+    { "key": "hostname", "label": "Server name", "type": "string", "default": "Pulsar TF2", "maxLength": 64, "pattern": "^[^\";]{1,64}$" },
+    { "key": "map", "label": "Starting map", "type": "string", "default": "ctf_2fort", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$" },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 24, "min": 2, "max": 100 },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "timeLimit", "label": "Map time limit (min)", "type": "integer", "min": 0, "max": 1440,
+      "description": "Minutes before the map changes. 0: no limit." },
+    { "key": "winLimit", "label": "Win limit", "type": "integer", "min": 0, "max": 100,
+      "description": "Rounds a team must win to end the map. 0: no limit." },
+    { "key": "maxRounds", "label": "Max rounds", "type": "integer", "min": 0, "max": 100,
+      "description": "Rounds a map lasts. 0: no limit." },
+    { "key": "autoTeamBalance", "label": "Auto team balance", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "teamsUnbalanceLimit", "label": "Max team size difference", "type": "integer", "min": 0, "max": 30,
+      "description": "How many more players one team may have than the other. 0: no limit." },
+    { "key": "randomCrits", "label": "Random critical hits", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "fixedSpread", "label": "Fixed weapon spread", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
+      "description": "Shotguns and similar weapons always spread the same way." },
+    { "key": "friendlyFire", "label": "Friendly fire", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
+      "description": "Teammates can hurt each other." },
+    { "key": "allTalk", "label": "All talk", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
+      "description": "Both teams hear each other on voice chat." },
+    { "key": "instantRespawn", "label": "Instant respawn", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
+      "description": "Players come back at once instead of waiting for their wave." },
+    { "key": "bots", "label": "Bots", "type": "integer", "min": 0, "max": 32,
+      "description": "How many bots fill the server, on maps made for them." },
+    { "key": "botDifficulty", "label": "Bot difficulty", "type": "enum",
+      "options": [ { "value": "0", "label": "Easy" }, { "value": "1", "label": "Normal" }, { "value": "2", "label": "Hard" }, { "value": "3", "label": "Expert" } ] }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 27015,
+      "description": "Players connect over UDP. RCON listens on TCP on the same port and is only used by Pulsar on this machine." },
+    { "name": "tv", "label": "SourceTV", "protocols": ["udp"], "default": 27020, "required": false, "description": "Assign it to enable SourceTV." }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 232250 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 232250 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "srcds.exe",
+      "arguments": [
+        "-game", "tf",
+        "-console", "-condebug", "-nocrashdialog",
+        "-ip", "{{port.game.ip}}",
+        "-port", "{{port.game}}",
+        { "if": "port.tv", "then": ["+tv_enable", "1", "+tv_port", "{{port.tv}}"] },
+        "+maxplayers", "{{var.maxPlayers}}",
+        "+map", "{{var.map}}",
+        "+rcon_password", "{{rcon.password}}",
+        "+sv_rcon_maxfailures", "5",
+        "+sv_rcon_banpenalty", "30"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "tf/console.log",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["rcon_password", "sv_password"]
+      }
+    }
+  },
+
+  "configFiles": [
+    { "path": "tf/cfg/server.cfg", "format": "source-cfg", "mode": "patch",
+      "set": {
+        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}",
+        "mp_timelimit": "{{var.timeLimit}}",
+        "mp_winlimit": "{{var.winLimit}}",
+        "mp_maxrounds": "{{var.maxRounds}}",
+        "mp_autoteambalance": "{{var.autoTeamBalance}}",
+        "mp_teams_unbalance_limit": "{{var.teamsUnbalanceLimit}}",
+        "tf_weapon_criticals": "{{var.randomCrits}}",
+        "tf_use_fixed_weaponspreads": "{{var.fixedSpread}}",
+        "mp_friendlyfire": "{{var.friendlyFire}}",
+        "sv_alltalk": "{{var.allTalk}}",
+        "mp_disable_respawn_times": "{{var.instantRespawn}}",
+        "tf_bot_quota": "{{var.bots}}",
+        "tf_bot_difficulty": "{{var.botDifficulty}}"
+      },
+      "keepIfEmpty": ["mp_timelimit", "mp_winlimit", "mp_maxrounds", "mp_autoteambalance", "mp_teams_unbalance_limit", "tf_weapon_criticals",
+        "tf_use_fixed_weaponspreads", "mp_friendlyfire", "sv_alltalk", "mp_disable_respawn_times", "tf_bot_quota", "tf_bot_difficulty"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "game" },
+  "readiness": { "type": "rcon", "timeoutSeconds": 240 },
+
+  "stop": {
+    "steps": [ { "type": "rconCommand", "command": "quit" } ],
+    "timeoutSeconds": 30
+  },
+
+  "backup": {
+    "include": ["tf/cfg/**", "tf/addons/**", "tf/custom/**"],
+    "exclude": ["**/*.log", "**/*.dmp"]
+  }
+}

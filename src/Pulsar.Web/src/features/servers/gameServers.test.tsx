@@ -336,6 +336,38 @@ describe('the list of games', () => {
     expect(games.getAllByText('Counter-Strike: Source')).toHaveLength(1);
   });
 
+  it("describes a bundled game in the reader's language, and an imported one as its author did", async () => {
+    const bundled = { ...template, key: 'valheim', name: 'Valheim', description: 'Valheim dedicated server.' };
+    const imported = {
+      ...template,
+      id: '0192f1a0-0000-7000-8000-0000000000f6',
+      key: 'rust',
+      name: 'Rust (community)',
+      version: '9.0.0',
+      description: 'A community build of Rust.',
+      source: 'imported' as const,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/templates': () => json([bundled, imported]),
+      'GET /api/v1/appearance': () => json({ steamArtwork: false }),
+    });
+    const previous = i18next.language;
+    await loadLanguage('es');
+    await act(() => i18next.changeLanguage('es'));
+    try {
+      renderAt('/templates');
+
+      const spanish = i18next.getResource('es', 'common', 'gameText.valheim.description') as string;
+      expect(await screen.findByText(spanish)).toBeInTheDocument();
+      expect(screen.queryByText('Valheim dedicated server.')).not.toBeInTheDocument();
+      // Rust has a Spanish description too, but this version's is its author's.
+      expect(screen.getByText('A community build of Rust.')).toBeInTheDocument();
+    } finally {
+      await act(() => i18next.changeLanguage(previous));
+    }
+  });
+
   it('offers the newest version of each game, by its name alone', async () => {
     const newer = { ...template, id: '0192f1a0-0000-7000-8000-0000000000f3', version: '1.1.0' };
     const other = { ...template, id: '0192f1a0-0000-7000-8000-0000000000f4', key: 'valheim', name: 'Valheim' };

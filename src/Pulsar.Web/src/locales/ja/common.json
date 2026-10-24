@@ -2111,6 +2111,7 @@
   },
   "gameText": {
     "7dtd": {
+      "description": "7 Days to Die の専用サーバーです。SteamCMD で匿名インストールされます(約 17 GB)。設定は pulsar-serverconfig.xml にあります。これはゲーム本来の serverconfig.xml のコピーで、アップデートでは上書きされません。",
       "variables": {
         "serverName": {
           "label": "サーバー名"
@@ -2248,6 +2249,7 @@
       }
     },
     "ark-sa": {
+      "description": "ARK: Survival Ascended の専用サーバーです。SteamCMD で匿名インストールされます(約 12 GB)。専用サーバーは、パブリッシャーのライセンスがない限り個人の非商用利用に限られます。このゲームの README をお読みください。",
       "variables": {
         "sessionName": {
           "label": "サーバー名",
@@ -2355,7 +2357,132 @@
         }
       }
     },
+    "arma-reforger": {
+      "description": "Arma Reforger の専用サーバーです。SteamCMD で匿名インストールされます。設定は server.json に、ログ、セーブ、Mod はサーバーの profile フォルダーにあります。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。空欄にすると誰でも参加できる公開サーバーになります。"
+        },
+        "adminPassword": {
+          "label": "管理者パスワード",
+          "description": "プレイヤーは #login とこのパスワードで管理者になります。"
+        },
+        "scenario": {
+          "label": "シナリオ",
+          "description": "ミッションのリソース名です。{ECC61978EDCC2B5A}Missions/23_Campaign.conf は Everon の Conflict です。"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "visible": {
+          "label": "サーバーリスト",
+          "options": {
+            "true": "公開(プレイヤーが見つけられる)",
+            "false": "非公開(アドレスで参加)"
+          }
+        },
+        "crossPlatform": {
+          "label": "クロスプレイ(Xbox と PlayStation)",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "thirdPerson": {
+          "label": "三人称視点カメラ",
+          "options": {
+            "false": "許可",
+            "true": "無効"
+          }
+        },
+        "battlEye": {
+          "label": "BattlEye",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "viewDistance": {
+          "label": "最大描画距離(m)"
+        },
+        "autoSave": {
+          "label": "オートセーブの間隔(分)",
+          "description": "0:オートセーブなし。"
+        },
+        "maxFps": {
+          "label": "サーバー FPS"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
+        },
+        "query": {
+          "label": "Steamクエリ",
+          "description": "サーバーリストがここに問い合わせます。"
+        }
+      }
+    },
+    "core-keeper": {
+      "description": "Core Keeper の専用サーバーです。SteamCMD で匿名インストールされます。ワールドはサーバーの save フォルダーにあります。",
+      "variables": {
+        "worldName": {
+          "label": "ワールド名"
+        },
+        "world": {
+          "label": "ワールドスロット",
+          "description": "スロットごとに別のワールドです。"
+        },
+        "worldSeed": {
+          "label": "ワールドのシード値",
+          "description": "新しいワールドのみ。0 または空:ランダム。"
+        },
+        "worldMode": {
+          "label": "ワールドモード",
+          "description": "新しいワールドのみ。",
+          "options": {
+            "0": "ノーマル",
+            "1": "ハード",
+            "2": "クリエイティブ",
+            "4": "カジュアル"
+          }
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "アドレスで参加するプレイヤーに必要です。"
+        },
+        "season": {
+          "label": "シーズン",
+          "description": "空:日付に応じたシーズン。",
+          "options": {
+            "0": "なし",
+            "1": "イースター",
+            "2": "ハロウィン",
+            "3": "クリスマス",
+            "4": "バレンタイン",
+            "5": "アニバーサリー",
+            "6": "桜",
+            "7": "旧正月"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここにアドレスで接続します(Direct Connect)。"
+        }
+      }
+    },
     "cs2": {
+      "description": "Counter-Strike 2 の専用サーバーです。SteamCMD で匿名インストールされます(約 75 GB)。",
       "variables": {
         "hostname": {
           "label": "サーバー名"
@@ -2451,6 +2578,7 @@
       }
     },
     "css": {
+      "description": "Counter-Strike: Source の専用サーバー(srcds)です。SteamCMD で匿名インストールされます。",
       "variables": {
         "hostname": {
           "label": "サーバー名"
@@ -2542,7 +2670,165 @@
         }
       }
     },
+    "enshrouded": {
+      "description": "Enshrouded の専用サーバーです。SteamCMD で匿名インストールされます。設定は enshrouded_server.json に、ワールドはサーバーの savegame フォルダーにあります。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。空欄にすると誰でも参加できる公開サーバーになります。"
+        },
+        "slots": {
+          "label": "スロット数"
+        },
+        "preset": {
+          "label": "難易度",
+          "description": "以下のオプションはカスタムのときだけ適用されます。",
+          "options": {
+            "Default": "デフォルト",
+            "Relaxed": "リラックス",
+            "Hard": "ハード",
+            "Survival": "サバイバル",
+            "Custom": "カスタム(以下のオプション)"
+          }
+        },
+        "voiceChat": {
+          "label": "ボイスチャット",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "textChat": {
+          "label": "テキストチャット",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "playerHealth": {
+          "label": "プレイヤーの体力"
+        },
+        "playerStamina": {
+          "label": "プレイヤーのスタミナ"
+        },
+        "enemyDamage": {
+          "label": "敵のダメージ"
+        },
+        "enemyHealth": {
+          "label": "敵の体力"
+        },
+        "miningDamage": {
+          "label": "採掘ダメージ"
+        },
+        "resourceDrops": {
+          "label": "資源のドロップ量"
+        },
+        "combatXp": {
+          "label": "戦闘 XP"
+        },
+        "durability": {
+          "label": "アイテムの耐久度",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "starving": {
+          "label": "飢餓デバフ",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "pacifyEnemies": {
+          "label": "すべての敵を無害化",
+          "description": "敵が先に攻撃してきません。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。サーバーリストもここに問い合わせます。"
+        }
+      }
+    },
+    "l4d2": {
+      "description": "Left 4 Dead 2 の専用サーバー(srcds)です。SteamCMD で匿名インストールされます(約 12 GB)。",
+      "variables": {
+        "hostname": {
+          "label": "サーバー名"
+        },
+        "gameMode": {
+          "label": "ゲームモード",
+          "options": {
+            "coop": "キャンペーン",
+            "realism": "リアリズム",
+            "versus": "バーサス",
+            "survival": "サバイバル",
+            "scavenge": "スカベンジ"
+          }
+        },
+        "map": {
+          "label": "開始マップ",
+          "description": "c1m1_hotel は Dead Center から始まります。サバイバルとスカベンジには専用のマップが必要です。"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。空欄にすると誰でも参加できる公開サーバーになります。"
+        },
+        "lobbyOnly": {
+          "label": "参加方法",
+          "options": {
+            "0": "アドレスまたはロビーから",
+            "1": "ロビーからのみ"
+          }
+        },
+        "difficulty": {
+          "label": "難易度",
+          "description": "キャンペーンとリアリズムのみ。",
+          "options": {
+            "Easy": "イージー",
+            "Normal": "ノーマル",
+            "Hard": "アドバンス",
+            "Impossible": "エキスパート"
+          }
+        },
+        "allTalk": {
+          "label": "オールトーク",
+          "description": "ボイスチャットで両チームの声が聞こえます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "steamGroup": {
+          "label": "Steam グループ",
+          "description": "グループの番号(Steam のページにある ID)です。メンバーにサーバーが表示されます。"
+        },
+        "steamGroupOnly": {
+          "label": "Steam グループのメンバーのみ",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはUDPで接続します。RCONは同じポートでTCPを待ち受け、このマシン上のPulsarだけが使用します。"
+        }
+      }
+    },
     "minecraft": {
+      "description": "Minecraft: Java Edition の専用サーバーです。Mojang からダウンロードされ、バージョンに必要な Java ランタイム(Adoptium の Eclipse Temurin)が使われます。プレイヤーには同じバージョンの Minecraft: Java Edition が必要です。",
       "variables": {
         "eula": {
           "label": "Minecraft EULA",
@@ -2677,6 +2963,7 @@
       }
     },
     "palworld": {
+      "description": "Palworld の専用サーバーです。SteamCMD で匿名インストールされます(約 4 GB)。Pulsar は RCON で操作します。そのほかのワールド設定は PalWorldSettings.ini に手動で追加できます。",
       "variables": {
         "name": {
           "label": "サーバー名"
@@ -2766,6 +3053,7 @@
       }
     },
     "project-zomboid": {
+      "description": "Project Zomboid の専用サーバーです。SteamCMD で匿名インストールされ(約 7 GB)、同梱の Java ランタイムで動作します。ワールドと設定はサーバーの zomboid フォルダーにあります。",
       "variables": {
         "publicName": {
           "label": "サーバー名"
@@ -2884,6 +3172,7 @@
       }
     },
     "rust": {
+      "description": "Rust の専用サーバーです。SteamCMD で匿名インストールされます(約 6 GB)。新しいマップの生成には数分と多くのメモリが必要です。",
       "variables": {
         "hostname": {
           "label": "サーバー名"
@@ -2985,6 +3274,7 @@
       }
     },
     "scpsl": {
+      "description": "SCP: Secret Laboratory の専用サーバーです。LocalAdmin によって実行され、SteamCMD で匿名インストールされます(約 1 GB)。設定はサーバーフォルダーの config/config にあります(config_gameplay.txt はゲーム本来のテンプレートから始まります)。LocalAdmin は、サーバーを実行するアカウントのプロファイルに独自の設定とログを保存します。",
       "variables": {
         "eula": {
           "label": "SCP: Secret Laboratory EULA",
@@ -3067,7 +3357,253 @@
         }
       }
     },
+    "sotf": {
+      "description": "Sons of the Forest の専用サーバーです。SteamCMD で匿名インストールされます。設定、セーブ、管理者リストはサーバーの userdata フォルダーにあります。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。空欄にすると誰でも参加できる公開サーバーになります。"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "saveSlot": {
+          "label": "セーブスロット",
+          "description": "スロットごとに別のワールドです。"
+        },
+        "saveMode": {
+          "label": "開始時",
+          "options": {
+            "Continue": "スロットのワールドを続ける",
+            "New": "スロットで新しいワールドを始める"
+          }
+        },
+        "gameMode": {
+          "label": "ゲームモード",
+          "description": "新しいワールドに適用されます。",
+          "options": {
+            "Normal": "ノーマル",
+            "Hard": "ハード",
+            "HardSurvival": "ハードサバイバル",
+            "Peaceful": "ピースフル",
+            "Creative": "クリエイティブ",
+            "Custom": "カスタム"
+          }
+        },
+        "saveInterval": {
+          "label": "オートセーブの間隔(秒)"
+        },
+        "lanOnly": {
+          "label": "LAN のみ",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "treeRegrowth": {
+          "label": "木が再生する",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "structureDamage": {
+          "label": "建造物へのダメージ",
+          "description": "敵とプレイヤーが建物を壊せます。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
+        },
+        "query": {
+          "label": "Steamクエリ",
+          "description": "サーバーリストがここに問い合わせます。"
+        },
+        "blob_sync": {
+          "label": "Blob 同期",
+          "description": "ゲームはここでワールドのオブジェクトを同期します。"
+        }
+      }
+    },
+    "tf2": {
+      "description": "Team Fortress 2 の専用サーバー(srcds)です。SteamCMD で匿名インストールされます(約 10 GB)。",
+      "variables": {
+        "hostname": {
+          "label": "サーバー名"
+        },
+        "map": {
+          "label": "開始マップ"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。空欄にすると誰でも参加できる公開サーバーになります。"
+        },
+        "timeLimit": {
+          "label": "マップの制限時間(分)",
+          "description": "マップが切り替わるまでの分数です。0は無制限です。"
+        },
+        "winLimit": {
+          "label": "勝利ラウンド数",
+          "description": "マップを終了するためにチームが勝つ必要のあるラウンド数です。0は無制限です。"
+        },
+        "maxRounds": {
+          "label": "最大ラウンド数",
+          "description": "マップが続くラウンド数。0:制限なし。"
+        },
+        "autoTeamBalance": {
+          "label": "チーム自動バランス",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "teamsUnbalanceLimit": {
+          "label": "チーム人数差の上限",
+          "description": "一方のチームが他方より何人多くなれるかを指定します。0は無制限です。"
+        },
+        "randomCrits": {
+          "label": "ランダムクリティカル",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "fixedSpread": {
+          "label": "武器の拡散を固定",
+          "description": "ショットガンなどの武器は常に同じ拡散になります。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "friendlyFire": {
+          "label": "フレンドリーファイア",
+          "description": "味方同士でダメージを与えられます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "allTalk": {
+          "label": "オールトーク",
+          "description": "ボイスチャットで両チームの声が聞こえます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "instantRespawn": {
+          "label": "即時リスポーン",
+          "description": "ウェーブを待たず、すぐに復活します。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "bots": {
+          "label": "ボット",
+          "description": "ボット対応マップで、サーバーを埋めるボットの数。"
+        },
+        "botDifficulty": {
+          "label": "ボットの難易度",
+          "options": {
+            "0": "イージー",
+            "1": "ノーマル",
+            "2": "ハード",
+            "3": "エキスパート"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはUDPで接続します。RCONは同じポートでTCPを待ち受け、このマシン上のPulsarだけが使用します。"
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "割り当てるとSourceTVが有効になります。"
+        }
+      }
+    },
+    "unturned": {
+      "description": "Unturned の専用サーバーです。SteamCMD で匿名インストールされます。設定とワールドはサーバーフォルダーの Servers/pulsar にあります。インターネットに掲載するにはゲームサーバーのログイントークンが必要です。",
+      "variables": {
+        "name": {
+          "label": "サーバー名",
+          "description": "5〜50 文字。"
+        },
+        "map": {
+          "label": "マップ",
+          "description": "ゲームでの表記どおり、大文字も含めて入力します:PEI、Washington、Russia、Germany…"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。空欄にすると誰でも参加できる公開サーバーになります。"
+        },
+        "gslt": {
+          "label": "ゲームサーバーのログイントークン",
+          "description": "固定の Server Code でサーバーをインターネットに掲載します。steamcommunity.com/dev/managegameservers で app 304930 用に作成してください。"
+        },
+        "mode": {
+          "label": "難易度",
+          "options": {
+            "Easy": "イージー",
+            "Normal": "ノーマル",
+            "Hard": "ハード"
+          }
+        },
+        "perspective": {
+          "label": "カメラ",
+          "options": {
+            "First": "一人称",
+            "Third": "三人称",
+            "Both": "両方",
+            "Vehicle": "乗り物では三人称"
+          }
+        },
+        "combat": {
+          "label": "戦闘",
+          "options": {
+            "pvp": "PvP",
+            "pve": "PvE"
+          }
+        },
+        "owner": {
+          "label": "オーナー(SteamID64)",
+          "description": "このプレイヤーはサーバーの管理者です。"
+        },
+        "welcome": {
+          "label": "ウェルカムメッセージ"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。サーバーリストもここに問い合わせます。"
+        },
+        "data": {
+          "label": "ゲームデータ",
+          "description": "Unturned は常にゲームポート + 1 も開きます。Pulsar がその割り当てを行います。"
+        }
+      }
+    },
     "valheim": {
+      "description": "Valheim の専用サーバーです。SteamCMD で匿名インストールされます(約 2 GB)。ワールドはサーバーフォルダーに保存されます。",
       "variables": {
         "name": {
           "label": "サーバー名",
@@ -3178,6 +3714,120 @@
         "query": {
           "label": "Steamクエリ",
           "description": "Valheimはサーバーリスト用に、常にゲームポート+1を開きます。Pulsarはその割り当てを用意します。"
+        }
+      }
+    },
+    "vrising": {
+      "description": "V Rising の専用サーバーです。SteamCMD で匿名インストールされます。設定とセーブはサーバーの save-data フォルダーにあります。",
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "description": {
+          "label": "説明",
+          "description": "サーバーリストで名前の下に表示されます。"
+        },
+        "saveName": {
+          "label": "ワールド",
+          "description": "ワールドの名前です。新しい名前にすると新しいワールドが作られます。"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。空欄にすると誰でも参加できる公開サーバーになります。"
+        },
+        "listed": {
+          "label": "サーバーリスト",
+          "options": {
+            "public": "公開(プレイヤーが見つけられる)",
+            "private": "非公開(アドレスで参加)"
+          }
+        },
+        "gameMode": {
+          "label": "ゲームモード",
+          "options": {
+            "PvP": "PvP",
+            "PvE": "PvE"
+          }
+        },
+        "difficulty": {
+          "label": "難易度",
+          "options": {
+            "Difficulty_Easy": "リラックス",
+            "Difficulty_Normal": "ノーマル",
+            "Difficulty_Brutal": "ブルータル"
+          }
+        },
+        "autoSave": {
+          "label": "オートセーブの間隔(秒)"
+        },
+        "clanSize": {
+          "label": "クランの人数"
+        },
+        "castleDamage": {
+          "label": "城へのダメージ",
+          "options": {
+            "Always": "常に",
+            "Never": "なし",
+            "TimeRestricted": "レイド時間中のみ"
+          }
+        },
+        "bloodBound": {
+          "label": "血に縛られた装備",
+          "description": "死亡しても装備は持ち主のものです。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "teleportBound": {
+          "label": "アイテムでテレポート不可",
+          "description": "資源を持っているプレイヤーはウェイゲートを使えません。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "materialYield": {
+          "label": "資源の収量",
+          "description": "採集した資源の倍率。"
+        },
+        "craftRate": {
+          "label": "クラフト速度"
+        },
+        "buildCost": {
+          "label": "建築コスト"
+        },
+        "researchCost": {
+          "label": "研究コスト"
+        },
+        "bloodDrain": {
+          "label": "血の消費"
+        },
+        "durabilityDrain": {
+          "label": "耐久度の減少"
+        },
+        "sunDamage": {
+          "label": "日光ダメージ"
+        },
+        "castleDecay": {
+          "label": "城の劣化"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
+        },
+        "query": {
+          "label": "Steamクエリ",
+          "description": "サーバーリストがここに問い合わせます。"
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "このマシン上の Pulsar だけが使います:コンソールコマンドと正常な停止のため。"
         }
       }
     }

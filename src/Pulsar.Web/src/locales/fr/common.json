@@ -2111,6 +2111,7 @@
   },
   "gameText": {
     "7dtd": {
+      "description": "Serveur dédié de 7 Days to Die, installé anonymement avec SteamCMD (environ 17 Go). Ses réglages se trouvent dans pulsar-serverconfig.xml, une copie du serverconfig.xml du jeu que ses mises à jour ne modifient pas.",
       "variables": {
         "serverName": {
           "label": "Nom du serveur"
@@ -2248,6 +2249,7 @@
       }
     },
     "ark-sa": {
+      "description": "Serveur dédié d'ARK: Survival Ascended, installé anonymement avec SteamCMD (environ 12 Go). Les serveurs dédiés sont réservés à un usage personnel et non commercial, sauf licence de l'éditeur ; lisez le README de ce jeu.",
       "variables": {
         "sessionName": {
           "label": "Nom du serveur",
@@ -2355,7 +2357,132 @@
         }
       }
     },
+    "arma-reforger": {
+      "description": "Serveur dédié d'Arma Reforger, installé anonymement avec SteamCMD. Ses réglages sont dans server.json, et ses journaux, sauvegardes et mods dans le dossier profile du serveur.",
+      "variables": {
+        "name": {
+          "label": "Nom du serveur"
+        },
+        "password": {
+          "label": "Mot de passe d'accès",
+          "description": "Les joueurs en ont besoin pour rejoindre le serveur. Laissez vide pour un serveur public."
+        },
+        "adminPassword": {
+          "label": "Mot de passe administrateur",
+          "description": "Les joueurs deviennent administrateurs avec #login et ce mot de passe."
+        },
+        "scenario": {
+          "label": "Scénario",
+          "description": "Le nom de ressource de la mission : {ECC61978EDCC2B5A}Missions/23_Campaign.conf est Conflict sur Everon."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "visible": {
+          "label": "Liste des serveurs",
+          "options": {
+            "true": "Listé (les joueurs le trouvent)",
+            "false": "Non listé (on rejoint par l'adresse)"
+          }
+        },
+        "crossPlatform": {
+          "label": "Cross-play (Xbox et PlayStation)",
+          "options": {
+            "true": "Activé",
+            "false": "Désactivé"
+          }
+        },
+        "thirdPerson": {
+          "label": "Caméra à la troisième personne",
+          "options": {
+            "false": "Autorisée",
+            "true": "Désactivée"
+          }
+        },
+        "battlEye": {
+          "label": "BattlEye",
+          "options": {
+            "true": "Activé",
+            "false": "Désactivé"
+          }
+        },
+        "viewDistance": {
+          "label": "Distance de vue max. (m)"
+        },
+        "autoSave": {
+          "label": "Sauvegarde auto toutes les (min)",
+          "description": "0 : pas de sauvegarde auto."
+        },
+        "maxFps": {
+          "label": "FPS du serveur"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Jeu",
+          "description": "Les joueurs se connectent ici."
+        },
+        "query": {
+          "label": "Requête Steam",
+          "description": "La liste des serveurs interroge ici."
+        }
+      }
+    },
+    "core-keeper": {
+      "description": "Serveur dédié de Core Keeper, installé anonymement avec SteamCMD. Ses mondes se trouvent dans le dossier save du serveur.",
+      "variables": {
+        "worldName": {
+          "label": "Nom du monde"
+        },
+        "world": {
+          "label": "Emplacement du monde",
+          "description": "Chaque emplacement est un monde distinct."
+        },
+        "worldSeed": {
+          "label": "Graine du monde",
+          "description": "Uniquement pour un nouveau monde. 0 ou vide : aléatoire."
+        },
+        "worldMode": {
+          "label": "Mode du monde",
+          "description": "Uniquement pour un nouveau monde.",
+          "options": {
+            "0": "Normal",
+            "1": "Difficile",
+            "2": "Créatif",
+            "4": "Occasionnel"
+          }
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Mot de passe d'accès",
+          "description": "Les joueurs qui se connectent par adresse en ont besoin."
+        },
+        "season": {
+          "label": "Saison",
+          "description": "Vide : la saison de la date.",
+          "options": {
+            "0": "Aucun",
+            "1": "Pâques",
+            "2": "Halloween",
+            "3": "Noël",
+            "4": "Saint-Valentin",
+            "5": "Anniversaire",
+            "6": "Fleurs de cerisier",
+            "7": "Nouvel an lunaire"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Jeu",
+          "description": "Les joueurs se connectent ici par adresse (Direct Connect)."
+        }
+      }
+    },
     "cs2": {
+      "description": "Serveur dédié de Counter-Strike 2, installé anonymement avec SteamCMD (environ 75 Go).",
       "variables": {
         "hostname": {
           "label": "Nom du serveur"
@@ -2451,6 +2578,7 @@
       }
     },
     "css": {
+      "description": "Serveur dédié de Counter-Strike: Source (srcds), installé anonymement avec SteamCMD.",
       "variables": {
         "hostname": {
           "label": "Nom du serveur"
@@ -2542,7 +2670,165 @@
         }
       }
     },
+    "enshrouded": {
+      "description": "Serveur dédié d'Enshrouded, installé anonymement avec SteamCMD. Ses réglages sont dans enshrouded_server.json et son monde dans le dossier savegame du serveur.",
+      "variables": {
+        "name": {
+          "label": "Nom du serveur"
+        },
+        "password": {
+          "label": "Mot de passe d'accès",
+          "description": "Les joueurs en ont besoin pour rejoindre le serveur. Laissez vide pour un serveur public."
+        },
+        "slots": {
+          "label": "Slots"
+        },
+        "preset": {
+          "label": "Difficulté",
+          "description": "Les options ci-dessous ne s'appliquent qu'avec Personnalisé.",
+          "options": {
+            "Default": "Par défaut",
+            "Relaxed": "Détendu",
+            "Hard": "Difficile",
+            "Survival": "Survie",
+            "Custom": "Personnalisé (les options ci-dessous)"
+          }
+        },
+        "voiceChat": {
+          "label": "Chat vocal",
+          "options": {
+            "true": "Activé",
+            "false": "Désactivé"
+          }
+        },
+        "textChat": {
+          "label": "Chat textuel",
+          "options": {
+            "true": "Activé",
+            "false": "Désactivé"
+          }
+        },
+        "playerHealth": {
+          "label": "Santé du joueur"
+        },
+        "playerStamina": {
+          "label": "Endurance du joueur"
+        },
+        "enemyDamage": {
+          "label": "Dégâts des ennemis"
+        },
+        "enemyHealth": {
+          "label": "Santé des ennemis"
+        },
+        "miningDamage": {
+          "label": "Dégâts de minage"
+        },
+        "resourceDrops": {
+          "label": "Ressources obtenues"
+        },
+        "combatXp": {
+          "label": "XP de combat"
+        },
+        "durability": {
+          "label": "Durabilité des objets",
+          "options": {
+            "true": "Activé",
+            "false": "Désactivé"
+          }
+        },
+        "starving": {
+          "label": "Malus de famine",
+          "options": {
+            "true": "Activé",
+            "false": "Désactivé"
+          }
+        },
+        "pacifyEnemies": {
+          "label": "Pacifier tous les ennemis",
+          "description": "Les ennemis n'attaquent jamais en premier.",
+          "options": {
+            "true": "Activé",
+            "false": "Désactivé"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Jeu",
+          "description": "Les joueurs se connectent ici ; la liste des serveurs interroge aussi ici."
+        }
+      }
+    },
+    "l4d2": {
+      "description": "Serveur dédié de Left 4 Dead 2 (srcds), installé anonymement avec SteamCMD (environ 12 Go).",
+      "variables": {
+        "hostname": {
+          "label": "Nom du serveur"
+        },
+        "gameMode": {
+          "label": "Mode de jeu",
+          "options": {
+            "coop": "Campagne",
+            "realism": "Réalisme",
+            "versus": "Versus",
+            "survival": "Survie",
+            "scavenge": "Charognard"
+          }
+        },
+        "map": {
+          "label": "Carte de départ",
+          "description": "c1m1_hotel lance Dead Center ; survie et charognard demandent une carte conçue pour eux."
+        },
+        "password": {
+          "label": "Mot de passe d'accès",
+          "description": "Les joueurs en ont besoin pour rejoindre le serveur. Laissez vide pour un serveur public."
+        },
+        "lobbyOnly": {
+          "label": "Connexion",
+          "options": {
+            "0": "Par adresse ou depuis un salon",
+            "1": "Uniquement depuis un salon"
+          }
+        },
+        "difficulty": {
+          "label": "Difficulté",
+          "description": "Campagne et réalisme uniquement.",
+          "options": {
+            "Easy": "Facile",
+            "Normal": "Normal",
+            "Hard": "Avancé",
+            "Impossible": "Expert"
+          }
+        },
+        "allTalk": {
+          "label": "Chat vocal global",
+          "description": "Les deux équipes s'entendent sur le chat vocal.",
+          "options": {
+            "0": "Désactivé",
+            "1": "Activé"
+          }
+        },
+        "steamGroup": {
+          "label": "Groupe Steam",
+          "description": "Le numéro du groupe (son ID sur sa page Steam) : le serveur apparaît pour ses membres."
+        },
+        "steamGroupOnly": {
+          "label": "Membres du groupe Steam uniquement",
+          "options": {
+            "0": "Désactivé",
+            "1": "Activé"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Jeu",
+          "description": "Les joueurs se connectent en UDP. RCON écoute en TCP sur le même port et n'est utilisé que par Pulsar sur cette machine."
+        }
+      }
+    },
     "minecraft": {
+      "description": "Serveur dédié de Minecraft: Java Edition, téléchargé depuis Mojang, avec l'environnement Java dont sa version a besoin (Eclipse Temurin, d'Adoptium). Les joueurs ont besoin de Minecraft: Java Edition dans la même version.",
       "variables": {
         "eula": {
           "label": "CLUF de Minecraft",
@@ -2677,6 +2963,7 @@
       }
     },
     "palworld": {
+      "description": "Serveur dédié de Palworld, installé anonymement avec SteamCMD (environ 4 Go). Pulsar communique avec lui par RCON ; d'autres réglages du monde peuvent être ajoutés à la main dans PalWorldSettings.ini.",
       "variables": {
         "name": {
           "label": "Nom du serveur"
@@ -2766,6 +3053,7 @@
       }
     },
     "project-zomboid": {
+      "description": "Serveur dédié de Project Zomboid, installé anonymement avec SteamCMD (environ 7 Go), exécuté avec l'environnement Java qu'il fournit. Son monde et ses réglages se trouvent dans le dossier zomboid du serveur.",
       "variables": {
         "publicName": {
           "label": "Nom du serveur"
@@ -2884,6 +3172,7 @@
       }
     },
     "rust": {
+      "description": "Serveur dédié de Rust, installé anonymement avec SteamCMD (environ 6 Go). Générer une nouvelle carte prend plusieurs minutes et beaucoup de mémoire.",
       "variables": {
         "hostname": {
           "label": "Nom du serveur"
@@ -2985,6 +3274,7 @@
       }
     },
     "scpsl": {
+      "description": "Serveur dédié de SCP: Secret Laboratory exécuté par son LocalAdmin, installé anonymement avec SteamCMD (environ 1 Go). Sa configuration se trouve dans le dossier du serveur, dans config/config (config_gameplay.txt part du modèle du jeu) ; LocalAdmin garde ses propres réglages et journaux dans le profil du compte sous lequel le serveur s'exécute.",
       "variables": {
         "eula": {
           "label": "CLUF de SCP: Secret Laboratory",
@@ -3067,7 +3357,253 @@
         }
       }
     },
+    "sotf": {
+      "description": "Serveur dédié de Sons of the Forest, installé anonymement avec SteamCMD. Ses réglages, sauvegardes et liste d'administrateurs se trouvent dans le dossier userdata du serveur.",
+      "variables": {
+        "name": {
+          "label": "Nom du serveur"
+        },
+        "password": {
+          "label": "Mot de passe d'accès",
+          "description": "Les joueurs en ont besoin pour rejoindre le serveur. Laissez vide pour un serveur public."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "saveSlot": {
+          "label": "Emplacement de sauvegarde",
+          "description": "Chaque emplacement est un monde distinct."
+        },
+        "saveMode": {
+          "label": "Au démarrage",
+          "options": {
+            "Continue": "Continuer le monde de l'emplacement",
+            "New": "Démarrer un nouveau monde dans l'emplacement"
+          }
+        },
+        "gameMode": {
+          "label": "Mode de jeu",
+          "description": "S'applique à un nouveau monde.",
+          "options": {
+            "Normal": "Normal",
+            "Hard": "Difficile",
+            "HardSurvival": "Survie difficile",
+            "Peaceful": "Pacifique",
+            "Creative": "Créatif",
+            "Custom": "Personnalisé"
+          }
+        },
+        "saveInterval": {
+          "label": "Sauvegarde auto toutes les (s)"
+        },
+        "lanOnly": {
+          "label": "LAN uniquement",
+          "options": {
+            "true": "Activé",
+            "false": "Désactivé"
+          }
+        },
+        "treeRegrowth": {
+          "label": "Les arbres repoussent",
+          "options": {
+            "true": "Activé",
+            "false": "Désactivé"
+          }
+        },
+        "structureDamage": {
+          "label": "Dégâts aux structures",
+          "description": "Les ennemis et les joueurs peuvent détruire les constructions.",
+          "options": {
+            "true": "Activé",
+            "false": "Désactivé"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Jeu",
+          "description": "Les joueurs se connectent ici."
+        },
+        "query": {
+          "label": "Requête Steam",
+          "description": "La liste des serveurs interroge ici."
+        },
+        "blob_sync": {
+          "label": "Synchronisation des blobs",
+          "description": "Le jeu synchronise ici les objets du monde."
+        }
+      }
+    },
+    "tf2": {
+      "description": "Serveur dédié de Team Fortress 2 (srcds), installé anonymement avec SteamCMD (environ 10 Go).",
+      "variables": {
+        "hostname": {
+          "label": "Nom du serveur"
+        },
+        "map": {
+          "label": "Carte de départ"
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Mot de passe d'accès",
+          "description": "Les joueurs en ont besoin pour rejoindre le serveur. Laissez vide pour un serveur public."
+        },
+        "timeLimit": {
+          "label": "Limite de temps de la carte (min)",
+          "description": "Minutes avant le changement de carte. 0 : sans limite."
+        },
+        "winLimit": {
+          "label": "Limite de victoires",
+          "description": "Manches qu'une équipe doit gagner pour terminer la carte. 0 : sans limite."
+        },
+        "maxRounds": {
+          "label": "Manches max.",
+          "description": "Manches que dure une carte. 0 : pas de limite."
+        },
+        "autoTeamBalance": {
+          "label": "Équilibrage auto des équipes",
+          "options": {
+            "0": "Désactivé",
+            "1": "Activé"
+          }
+        },
+        "teamsUnbalanceLimit": {
+          "label": "Écart max. de taille entre équipes",
+          "description": "De combien de joueurs une équipe peut dépasser l'autre. 0 : sans limite."
+        },
+        "randomCrits": {
+          "label": "Coups critiques aléatoires",
+          "options": {
+            "0": "Désactivé",
+            "1": "Activé"
+          }
+        },
+        "fixedSpread": {
+          "label": "Dispersion fixe des armes",
+          "description": "Les fusils à pompe et armes similaires se dispersent toujours de la même façon.",
+          "options": {
+            "0": "Désactivé",
+            "1": "Activé"
+          }
+        },
+        "friendlyFire": {
+          "label": "Tir allié",
+          "description": "Les coéquipiers peuvent se blesser.",
+          "options": {
+            "0": "Désactivé",
+            "1": "Activé"
+          }
+        },
+        "allTalk": {
+          "label": "Chat vocal global",
+          "description": "Les deux équipes s'entendent sur le chat vocal.",
+          "options": {
+            "0": "Désactivé",
+            "1": "Activé"
+          }
+        },
+        "instantRespawn": {
+          "label": "Réapparition instantanée",
+          "description": "Les joueurs reviennent aussitôt au lieu d'attendre leur vague.",
+          "options": {
+            "0": "Désactivé",
+            "1": "Activé"
+          }
+        },
+        "bots": {
+          "label": "Bots",
+          "description": "Combien de bots remplissent le serveur, sur les cartes conçues pour eux."
+        },
+        "botDifficulty": {
+          "label": "Difficulté des bots",
+          "options": {
+            "0": "Facile",
+            "1": "Normal",
+            "2": "Difficile",
+            "3": "Expert"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Jeu",
+          "description": "Les joueurs se connectent en UDP. RCON écoute en TCP sur le même port et n'est utilisé que par Pulsar sur cette machine."
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "Attribuez-le pour activer SourceTV."
+        }
+      }
+    },
+    "unturned": {
+      "description": "Serveur dédié d'Unturned, installé anonymement avec SteamCMD. Ses réglages et son monde se trouvent dans Servers/pulsar du dossier du serveur ; pour être listé sur Internet, il faut un jeton de connexion de serveur de jeu.",
+      "variables": {
+        "name": {
+          "label": "Nom du serveur",
+          "description": "De 5 à 50 caractères."
+        },
+        "map": {
+          "label": "Carte",
+          "description": "Tel que le jeu le nomme, majuscules comprises : PEI, Washington, Russia, Germany…"
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Mot de passe d'accès",
+          "description": "Les joueurs en ont besoin pour rejoindre le serveur. Laissez vide pour un serveur public."
+        },
+        "gslt": {
+          "label": "Jeton de connexion de serveur de jeu",
+          "description": "Liste le serveur sur Internet avec un Server Code fixe : créez-en un pour l'app 304930 sur steamcommunity.com/dev/managegameservers."
+        },
+        "mode": {
+          "label": "Difficulté",
+          "options": {
+            "Easy": "Facile",
+            "Normal": "Normal",
+            "Hard": "Difficile"
+          }
+        },
+        "perspective": {
+          "label": "Caméra",
+          "options": {
+            "First": "Première personne",
+            "Third": "Troisième personne",
+            "Both": "Les deux",
+            "Vehicle": "Troisième personne dans les véhicules"
+          }
+        },
+        "combat": {
+          "label": "Combat",
+          "options": {
+            "pvp": "PvP",
+            "pve": "PvE"
+          }
+        },
+        "owner": {
+          "label": "Propriétaire (SteamID64)",
+          "description": "Ce joueur est administrateur du serveur."
+        },
+        "welcome": {
+          "label": "Message de bienvenue"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Jeu",
+          "description": "Les joueurs se connectent ici ; la liste des serveurs interroge aussi ici."
+        },
+        "data": {
+          "label": "Données du jeu",
+          "description": "Unturned ouvre toujours aussi le port du jeu + 1 : Pulsar lui donne cette allocation."
+        }
+      }
+    },
     "valheim": {
+      "description": "Serveur dédié de Valheim, installé anonymement avec SteamCMD (environ 2 Go). Le monde est enregistré dans le dossier du serveur.",
       "variables": {
         "name": {
           "label": "Nom du serveur",
@@ -3178,6 +3714,120 @@
         "query": {
           "label": "Requête Steam",
           "description": "Valheim ouvre toujours le port du jeu + 1 pour la liste des serveurs : Pulsar lui donne cette allocation."
+        }
+      }
+    },
+    "vrising": {
+      "description": "Serveur dédié de V Rising, installé anonymement avec SteamCMD. Ses réglages et sauvegardes se trouvent dans le dossier save-data du serveur.",
+      "variables": {
+        "name": {
+          "label": "Nom du serveur"
+        },
+        "description": {
+          "label": "Description",
+          "description": "Affichée sous le nom dans la liste des serveurs."
+        },
+        "saveName": {
+          "label": "Monde",
+          "description": "Son nom : un nouveau nom crée un nouveau monde."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Mot de passe d'accès",
+          "description": "Les joueurs en ont besoin pour rejoindre le serveur. Laissez vide pour un serveur public."
+        },
+        "listed": {
+          "label": "Liste des serveurs",
+          "options": {
+            "public": "Listé (les joueurs le trouvent)",
+            "private": "Non listé (on rejoint par l'adresse)"
+          }
+        },
+        "gameMode": {
+          "label": "Mode de jeu",
+          "options": {
+            "PvP": "PvP",
+            "PvE": "PvE"
+          }
+        },
+        "difficulty": {
+          "label": "Difficulté",
+          "options": {
+            "Difficulty_Easy": "Détendu",
+            "Difficulty_Normal": "Normal",
+            "Difficulty_Brutal": "Brutal"
+          }
+        },
+        "autoSave": {
+          "label": "Sauvegarde auto toutes les (s)"
+        },
+        "clanSize": {
+          "label": "Taille du clan"
+        },
+        "castleDamage": {
+          "label": "Dégâts au château",
+          "options": {
+            "Always": "Toujours",
+            "Never": "Jamais",
+            "TimeRestricted": "Pendant les heures de raid"
+          }
+        },
+        "bloodBound": {
+          "label": "Équipement lié au sang",
+          "description": "L'équipement reste à son propriétaire à sa mort.",
+          "options": {
+            "true": "Activé",
+            "false": "Désactivé"
+          }
+        },
+        "teleportBound": {
+          "label": "Les objets bloquent les téléportations",
+          "description": "Les joueurs qui portent des ressources ne peuvent pas utiliser les portails.",
+          "options": {
+            "true": "Activé",
+            "false": "Désactivé"
+          }
+        },
+        "materialYield": {
+          "label": "Rendement des ressources",
+          "description": "Multiplicateur des ressources récoltées."
+        },
+        "craftRate": {
+          "label": "Vitesse de fabrication"
+        },
+        "buildCost": {
+          "label": "Coût de construction"
+        },
+        "researchCost": {
+          "label": "Coût de recherche"
+        },
+        "bloodDrain": {
+          "label": "Consommation de sang"
+        },
+        "durabilityDrain": {
+          "label": "Perte de durabilité"
+        },
+        "sunDamage": {
+          "label": "Dégâts du soleil"
+        },
+        "castleDecay": {
+          "label": "Dégradation du château"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Jeu",
+          "description": "Les joueurs se connectent ici."
+        },
+        "query": {
+          "label": "Requête Steam",
+          "description": "La liste des serveurs interroge ici."
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "Seul Pulsar l'utilise, sur cette machine : commandes de console et arrêt propre."
         }
       }
     }

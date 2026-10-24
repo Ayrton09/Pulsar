@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface GameTexts {
+  description?: string;
   variables?: Record<string, { label?: string; description?: string; options?: Record<string, string> }>;
   ports?: Record<string, { label?: string; description?: string }>;
 }
@@ -30,6 +31,8 @@ export function useGameText(templateKey: string | undefined) {
   // The same functions while the language and its texts stay: screens memoize what they translate with them.
   return useMemo(
     () => ({
+      /** What the game is, in the reader's language. */
+      description: (text: string | null | undefined): string | null | undefined => texts?.description ?? text,
       /** The variables with their labels, descriptions and choices in the reader's language. */
       variables: <T extends VariableText>(variables: T[]): T[] =>
         variables.map((variable) => {

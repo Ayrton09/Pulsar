@@ -36,6 +36,7 @@ function panelOf(locale: unknown): unknown {
 
 interface Manifest {
   key: string;
+  description?: string;
   variables?: { key: string; label: string; description?: string; options?: { value: string; label: string }[] }[];
   ports?: { name: string; label: string; description?: string }[];
 }
@@ -53,6 +54,7 @@ function gameTexts(): Record<string, unknown> {
     manifests.map((manifest) => [
       manifest.key,
       {
+        ...(manifest.description ? { description: manifest.description } : {}),
         variables: Object.fromEntries(
           (manifest.variables ?? []).map((v) => [
             v.key,

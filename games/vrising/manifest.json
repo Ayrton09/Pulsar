@@ -1,0 +1,129 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "vrising",
+  "version": "1.0.0",
+  "name": "V Rising",
+  "description": "V Rising dedicated server, installed anonymously with SteamCMD. Its settings and saves live in the save-data folder of the server.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 6, "minMemoryMb": 4096 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar V Rising", "maxLength": 64, "pattern": "^[^\"]{1,64}$" },
+    { "key": "description", "label": "Description", "type": "string", "maxLength": 200, "pattern": "^[^\"]{1,200}$",
+      "description": "Shown under the name in the server list." },
+    { "key": "saveName", "label": "World", "type": "string", "default": "world1", "maxLength": 64, "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "description": "Its name: a new name makes a new world." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 40, "min": 1, "max": 128 },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "listed", "label": "Server list", "type": "enum", "default": "public",
+      "options": [
+        { "value": "public", "label": "Listed (players find it)", "map": { "steam": "true" } },
+        { "value": "private", "label": "Not listed (join by address)", "map": { "steam": "false" } }
+      ] },
+    { "key": "gameMode", "label": "Game mode", "type": "enum", "options": [ { "value": "PvP", "label": "PvP" }, { "value": "PvE", "label": "PvE" } ] },
+    { "key": "difficulty", "label": "Difficulty", "type": "enum",
+      "options": [ { "value": "Difficulty_Easy", "label": "Relaxed" }, { "value": "Difficulty_Normal", "label": "Normal" }, { "value": "Difficulty_Brutal", "label": "Brutal" } ] },
+    { "key": "autoSave", "label": "Autosave every (s)", "type": "integer", "min": 60, "max": 3600 },
+    { "key": "clanSize", "label": "Clan size", "type": "integer", "min": 1, "max": 10 },
+    { "key": "castleDamage", "label": "Castle damage", "type": "enum",
+      "options": [ { "value": "Always", "label": "Always" }, { "value": "Never", "label": "Never" }, { "value": "TimeRestricted", "label": "During raid hours" } ] },
+    { "key": "bloodBound", "label": "Blood-bound equipment", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ],
+      "description": "Equipment stays with its owner when they die." },
+    { "key": "teleportBound", "label": "Items block teleports", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ],
+      "description": "Players carrying resources cannot use waygates." },
+    { "key": "materialYield", "label": "Resource yield", "type": "number", "min": 0.25, "max": 5,
+      "description": "Multiplier of the resources gathered." },
+    { "key": "craftRate", "label": "Crafting speed", "type": "number", "min": 0.25, "max": 10 },
+    { "key": "buildCost", "label": "Building cost", "type": "number", "min": 0, "max": 4 },
+    { "key": "researchCost", "label": "Research cost", "type": "number", "min": 0, "max": 4 },
+    { "key": "bloodDrain", "label": "Blood drain", "type": "number", "min": 0, "max": 5 },
+    { "key": "durabilityDrain", "label": "Durability loss", "type": "number", "min": 0, "max": 5 },
+    { "key": "sunDamage", "label": "Sun damage", "type": "number", "min": 0, "max": 5 },
+    { "key": "castleDecay", "label": "Castle decay", "type": "number", "min": 0, "max": 5 }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 9876, "description": "Players connect here." },
+    { "name": "query", "label": "Steam query", "protocols": ["udp"], "default": 9877, "description": "The server list asks here." },
+    { "name": "rcon", "label": "RCON", "protocols": ["tcp"], "default": 25575, "internal": true,
+      "description": "Only Pulsar uses it, on this machine: console commands and a clean stop." }
+  ],
+
+  "install": { "steps": [
+    { "type": "steamcmd", "appId": 1829350 },
+    { "type": "ensureDirectory", "path": "save-data/Settings" },
+    { "type": "copyFileIfMissing", "from": "VRisingServer_Data/StreamingAssets/Settings/ServerHostSettings.json", "to": "save-data/Settings/ServerHostSettings.json" },
+    { "type": "copyFileIfMissing", "from": "VRisingServer_Data/StreamingAssets/Settings/ServerGameSettings.json", "to": "save-data/Settings/ServerGameSettings.json" }
+  ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 1829350 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "VRisingServer.exe",
+      "arguments": [
+        "-persistentDataPath", "save-data",
+        "-serverName", "{{var.name}}",
+        { "if": "var.description", "then": ["-description", "{{var.description}}"] },
+        "-saveName", "{{var.saveName}}",
+        "-address", "{{port.game.ip}}",
+        "-gamePort", "{{port.game}}",
+        "-queryPort", "{{port.query}}",
+        "-maxUsers", "{{var.maxPlayers}}",
+        "-listOnSteam", "{{var.listed.steam}}",
+        "-listOnEOS", "{{var.listed.steam}}",
+        { "if": "var.difficulty", "then": ["-difficultyPreset", "{{var.difficulty}}"] },
+        { "if": "var.autoSave", "then": ["-saveInterval", "{{var.autoSave}}"] },
+        "-rconPort", "{{port.rcon}}"
+      ],
+      "environment": { "SteamAppId": "1604030" },
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "pty",
+        "encoding": "utf-8",
+        "rcon": { "protocol": "source", "port": "rcon" },
+        "sensitiveCommandPrefixes": ["password"]
+      }
+    }
+  },
+
+  "configFiles": [
+    { "path": "save-data/Settings/ServerHostSettings.json", "format": "json", "mode": "patch",
+      "set": { "/Password": "{{var.password}}", "/Rcon/Enabled": "true", "/Rcon/BindAddress": "127.0.0.1", "/Rcon/Password": "{{rcon.password}}" } },
+    { "path": "save-data/Settings/ServerGameSettings.json", "format": "json", "mode": "patch",
+      "set": {
+        "/GameModeType": "{{var.gameMode}}",
+        "/ClanSize": "{{var.clanSize}}",
+        "/CastleDamageMode": "{{var.castleDamage}}",
+        "/BloodBoundEquipment": "{{var.bloodBound}}",
+        "/TeleportBoundItems": "{{var.teleportBound}}",
+        "/MaterialYieldModifier_Global": "{{var.materialYield}}",
+        "/CraftRateModifier": "{{var.craftRate}}",
+        "/BuildCostModifier": "{{var.buildCost}}",
+        "/ResearchCostModifier": "{{var.researchCost}}",
+        "/BloodDrainModifier": "{{var.bloodDrain}}",
+        "/DurabilityDrainModifier": "{{var.durabilityDrain}}",
+        "/SunDamageModifier": "{{var.sunDamage}}",
+        "/CastleDecayRateModifier": "{{var.castleDecay}}"
+      },
+      "keepIfEmpty": ["/GameModeType", "/ClanSize", "/CastleDamageMode", "/BloodBoundEquipment", "/TeleportBoundItems", "/MaterialYieldModifier_Global",
+        "/CraftRateModifier", "/BuildCostModifier", "/ResearchCostModifier", "/BloodDrainModifier", "/DurabilityDrainModifier", "/SunDamageModifier",
+        "/CastleDecayRateModifier"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "query" },
+  "readiness": { "type": "rcon", "timeoutSeconds": 600 },
+
+  "stop": {
+    "steps": [ { "type": "ctrlC" } ],
+    "timeoutSeconds": 90
+  },
+
+  "backup": {
+    "include": ["save-data/**"],
+    "exclude": ["**/*.log"]
+  }
+}

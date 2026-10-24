@@ -7,13 +7,21 @@
 const steamApps: Readonly<Record<string, number>> = {
   '7dtd': 251570,
   'ark-sa': 2399830,
+  'arma-reforger': 1874880,
+  'core-keeper': 1621690,
   cs2: 730,
   css: 240,
+  enshrouded: 1203620,
+  l4d2: 550,
   palworld: 1623730,
   'project-zomboid': 108600,
   rust: 252490,
   scpsl: 700330,
+  sotf: 1326470,
+  tf2: 440,
+  unturned: 304930,
   valheim: 892970,
+  vrising: 1604030,
 };
 
 /** A card's picture, the store header with the game's logo (460×215), or a page's wide banner (3840×1240). */

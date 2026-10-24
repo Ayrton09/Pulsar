@@ -1,0 +1,99 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "l4d2",
+  "version": "1.0.0",
+  "name": "Left 4 Dead 2",
+  "description": "Left 4 Dead 2 dedicated server (srcds), installed anonymously with SteamCMD (about 12 GB).",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 16, "minMemoryMb": 2048 },
+
+  "variables": [
+    { "key": "hostname", "label": "Server name", "type": "string", "default": "Pulsar L4D2", "maxLength": 64, "pattern": "^[^\";]{1,64}$" },
+    { "key": "gameMode", "label": "Game mode", "type": "enum", "default": "coop",
+      "options": [
+        { "value": "coop", "label": "Campaign" },
+        { "value": "realism", "label": "Realism" },
+        { "value": "versus", "label": "Versus" },
+        { "value": "survival", "label": "Survival" },
+        { "value": "scavenge", "label": "Scavenge" }
+      ] },
+    { "key": "map", "label": "Starting map", "type": "string", "default": "c1m1_hotel", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$",
+      "description": "c1m1_hotel starts Dead Center; survival and scavenge need a map made for them." },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "lobbyOnly", "label": "Joining", "type": "enum", "default": "0",
+      "options": [
+        { "value": "0", "label": "By address or from a lobby" },
+        { "value": "1", "label": "Only from a lobby" }
+      ] },
+    { "key": "difficulty", "label": "Difficulty", "type": "enum",
+      "options": [ { "value": "Easy", "label": "Easy" }, { "value": "Normal", "label": "Normal" }, { "value": "Hard", "label": "Advanced" }, { "value": "Impossible", "label": "Expert" } ],
+      "description": "Campaign and realism only." },
+    { "key": "allTalk", "label": "All talk", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
+      "description": "Both teams hear each other on voice chat." },
+    { "key": "steamGroup", "label": "Steam group", "type": "string", "maxLength": 20, "pattern": "^[0-9]{1,20}$",
+      "description": "The group's number (its ID on its Steam page): the server shows up for its members." },
+    { "key": "steamGroupOnly", "label": "Steam group members only", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 27015,
+      "description": "Players connect over UDP. RCON listens on TCP on the same port and is only used by Pulsar on this machine." }
+  ],
+
+  "install": { "steps": [ { "type": "steamcmd", "appId": 222860 } ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 222860 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "srcds.exe",
+      "arguments": [
+        "-game", "left4dead2",
+        "-console", "-condebug", "-nocrashdialog",
+        "-ip", "{{port.game.ip}}",
+        "-port", "{{port.game}}",
+        "+mp_gamemode", "{{var.gameMode}}",
+        "+map", "{{var.map}}",
+        "+rcon_password", "{{rcon.password}}",
+        "+sv_rcon_maxfailures", "5",
+        "+sv_rcon_banpenalty", "30"
+      ],
+      "allowExtraArguments": true,
+      "console": {
+        "mode": "logfile+rcon",
+        "logFile": "left4dead2/console.log",
+        "rcon": { "protocol": "source", "port": "game" },
+        "sensitiveCommandPrefixes": ["rcon_password", "sv_password"]
+      }
+    }
+  },
+
+  "configFiles": [
+    { "path": "left4dead2/cfg/server.cfg", "format": "source-cfg", "mode": "patch",
+      "set": {
+        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}",
+        "sv_allow_lobby_connect_only": "{{var.lobbyOnly}}",
+        "z_difficulty": "{{var.difficulty}}",
+        "sv_alltalk": "{{var.allTalk}}",
+        "sv_steamgroup": "{{var.steamGroup}}",
+        "sv_steamgroup_exclusive": "{{var.steamGroupOnly}}"
+      },
+      "keepIfEmpty": ["z_difficulty", "sv_alltalk", "sv_steamgroup", "sv_steamgroup_exclusive"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "game" },
+  "readiness": { "type": "rcon", "timeoutSeconds": 240 },
+
+  "stop": {
+    "steps": [ { "type": "rconCommand", "command": "quit" } ],
+    "timeoutSeconds": 30
+  },
+
+  "backup": {
+    "include": ["left4dead2/cfg/**", "left4dead2/addons/**"],
+    "exclude": ["**/*.log", "**/*.dmp", "left4dead2/addons/workshop/**"]
+  }
+}

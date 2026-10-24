@@ -1,0 +1,86 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "unturned",
+  "version": "1.0.0",
+  "name": "Unturned",
+  "description": "Unturned dedicated server, installed anonymously with SteamCMD. Its settings and world live in Servers/pulsar of the server folder; to be listed on the internet it needs a game server login token.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 8, "minMemoryMb": 2048 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Unturned", "maxLength": 50, "pattern": "^[^\"]{5,50}$",
+      "description": "5 to 50 characters." },
+    { "key": "map", "label": "Map", "type": "string", "default": "PEI", "maxLength": 64, "pattern": "^[A-Za-z0-9 _'-]{1,64}$",
+      "description": "As the game names it, capitals included: PEI, Washington, Russia, Germany…" },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 24, "min": 1, "max": 200 },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[^\" ]{1,32}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "gslt", "label": "Game server login token", "type": "string", "secret": true, "maxLength": 64, "pattern": "^[A-Fa-f0-9]{32}$",
+      "description": "Lists the server on the internet with a fixed Server Code: create one for app 304930 at steamcommunity.com/dev/managegameservers." },
+    { "key": "mode", "label": "Difficulty", "type": "enum",
+      "options": [ { "value": "Easy", "label": "Easy" }, { "value": "Normal", "label": "Normal" }, { "value": "Hard", "label": "Hard" } ] },
+    { "key": "perspective", "label": "Camera", "type": "enum",
+      "options": [ { "value": "First", "label": "First person" }, { "value": "Third", "label": "Third person" }, { "value": "Both", "label": "Both" }, { "value": "Vehicle", "label": "Third person in vehicles" } ] },
+    { "key": "combat", "label": "Combat", "type": "enum", "default": "pvp",
+      "options": [ { "value": "pvp", "label": "PvP", "map": { "pve": "" } }, { "value": "pve", "label": "PvE", "map": { "pve": "on" } } ] },
+    { "key": "owner", "label": "Owner (SteamID64)", "type": "string", "maxLength": 17, "pattern": "^7656119[0-9]{10}$",
+      "description": "This player is an administrator of the server." },
+    { "key": "welcome", "label": "Welcome message", "type": "string", "maxLength": 128, "pattern": "^[^\"/]{1,128}$" }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 27015, "description": "Players connect here; the server list asks here too." },
+    { "name": "data", "label": "Game data", "protocols": ["udp"], "default": 27016, "follows": { "port": "game", "offset": 1 },
+      "description": "Unturned always opens the game port + 1 too: Pulsar gives it that allocation." }
+  ],
+
+  "install": { "steps": [
+    { "type": "steamcmd", "appId": 1110390 },
+    { "type": "ensureDirectory", "path": "Servers/pulsar/Server" }
+  ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 1110390 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "Unturned.exe",
+      "arguments": ["-batchmode", "-nographics", "+InternetServer/pulsar"],
+      "allowExtraArguments": true,
+      "console": { "mode": "pty", "encoding": "utf-8", "sensitiveCommandPrefixes": ["password", "gslt"] }
+    }
+  },
+
+  "configFiles": [
+    { "path": "Servers/pulsar/Server/Commands.dat", "format": "space", "mode": "patch",
+      "set": {
+        "Name": "{{var.name}}",
+        "Map": "{{var.map}}",
+        "Bind": "{{port.game.ip}}",
+        "Port": "{{port.game}}",
+        "MaxPlayers": "{{var.maxPlayers}}",
+        "Password": "{{var.password}}",
+        "GSLT": "{{var.gslt}}",
+        "Mode": "{{var.mode}}",
+        "Perspective": "{{var.perspective}}",
+        "PvE": "{{var.combat.pve}}",
+        "Owner": "{{var.owner}}",
+        "Welcome": "{{var.welcome}}"
+      },
+      "keepIfEmpty": ["Mode", "Perspective", "Owner", "Welcome"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "game" },
+  "readiness": { "type": "logPattern", "pattern": "Loading level: 100%", "timeoutSeconds": 600 },
+
+  "stop": {
+    "steps": [ { "type": "consoleCommand", "command": "Shutdown" } ],
+    "timeoutSeconds": 60
+  },
+
+  "backup": {
+    "include": ["Servers/pulsar/**"],
+    "exclude": ["**/*.log"]
+  }
+}

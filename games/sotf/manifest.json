@@ -1,0 +1,93 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "sotf",
+  "version": "1.0.0",
+  "name": "Sons of the Forest",
+  "description": "Sons of the Forest dedicated server, installed anonymously with SteamCMD. Its settings, saves and admin list live in the userdata folder of the server.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 10, "minMemoryMb": 8192 },
+
+  "variables": [
+    { "key": "name", "label": "Server name", "type": "string", "default": "Pulsar Sons of the Forest", "maxLength": 64, "pattern": "^[^\"]{1,64}$" },
+    { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 40, "pattern": "^[^\" ]{1,40}$",
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 8, "min": 1, "max": 8 },
+    { "key": "saveSlot", "label": "Save slot", "type": "integer", "default": 1, "min": 1, "max": 30,
+      "description": "Each slot is its own world." },
+    { "key": "saveMode", "label": "At start", "type": "enum", "default": "Continue",
+      "options": [ { "value": "Continue", "label": "Continue the slot's world" }, { "value": "New", "label": "Start a new world in the slot" } ] },
+    { "key": "gameMode", "label": "Game mode", "type": "enum", "default": "Normal",
+      "options": [
+        { "value": "Normal", "label": "Normal" },
+        { "value": "Hard", "label": "Hard" },
+        { "value": "HardSurvival", "label": "Hard survival" },
+        { "value": "Peaceful", "label": "Peaceful" },
+        { "value": "Creative", "label": "Creative" },
+        { "value": "Custom", "label": "Custom" }
+      ],
+      "description": "Applies to a new world." },
+    { "key": "saveInterval", "label": "Autosave every (s)", "type": "integer", "min": 60, "max": 3600 },
+    { "key": "lanOnly", "label": "LAN only", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
+    { "key": "treeRegrowth", "label": "Trees grow back", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
+    { "key": "structureDamage", "label": "Structure damage", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ],
+      "description": "Enemies and players can break buildings." }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["udp"], "default": 8766, "description": "Players connect here." },
+    { "name": "query", "label": "Steam query", "protocols": ["udp"], "default": 27016, "description": "The server list asks here." },
+    { "name": "blob_sync", "label": "Blob sync", "protocols": ["udp"], "default": 9700, "description": "The game syncs the world's objects here." }
+  ],
+
+  "install": { "steps": [
+    { "type": "steamcmd", "appId": 2465200 },
+    { "type": "ensureDirectory", "path": "userdata" }
+  ] },
+  "update": { "steps": [ { "type": "steamcmd", "appId": 2465200 } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "SonsOfTheForestDS.exe",
+      "arguments": ["-userdatapath", "{{server.dir}}/userdata"],
+      "allowExtraArguments": true,
+      "console": { "mode": "pty", "encoding": "utf-8" }
+    }
+  },
+
+  "configFiles": [
+    { "path": "userdata/dedicatedserver.cfg", "format": "json", "mode": "patch",
+      "set": {
+        "/IpAddress": "{{port.game.ip}}",
+        "/GamePort": "{{port.game}}",
+        "/QueryPort": "{{port.query}}",
+        "/BlobSyncPort": "{{port.blob_sync}}",
+        "/ServerName": "{{var.name}}",
+        "/MaxPlayers": "{{var.maxPlayers}}",
+        "/Password": "{{var.password}}",
+        "/SaveSlot": "{{var.saveSlot}}",
+        "/SaveMode": "{{var.saveMode}}",
+        "/GameMode": "{{var.gameMode}}",
+        "/SaveInterval": "{{var.saveInterval}}",
+        "/LanOnly": "{{var.lanOnly}}",
+        "/GameSettings/Gameplay.TreeRegrowth": "{{var.treeRegrowth}}",
+        "/GameSettings/Structure.Damage": "{{var.structureDamage}}"
+      },
+      "keepIfEmpty": ["/SaveInterval", "/LanOnly", "/GameSettings/Gameplay.TreeRegrowth", "/GameSettings/Structure.Damage"] }
+  ],
+
+  "query": { "protocol": "a2s", "port": "query" },
+  "readiness": { "type": "logPattern", "pattern": "Server is up and running", "timeoutSeconds": 1800 },
+
+  "stop": {
+    "steps": [ { "type": "consoleCommand", "command": "stop" } ],
+    "timeoutSeconds": 120
+  },
+
+  "backup": {
+    "include": ["userdata/**"],
+    "exclude": ["userdata/logs/**"]
+  }
+}

@@ -2111,6 +2111,7 @@
   },
   "gameText": {
     "7dtd": {
+      "description": "7 Days to Die 전용 서버입니다. SteamCMD로 익명 설치됩니다(약 17 GB). 설정은 pulsar-serverconfig.xml에 있으며, 게임 자체의 serverconfig.xml을 복사한 것이라 업데이트해도 바뀌지 않습니다.",
       "variables": {
         "serverName": {
           "label": "서버 이름"
@@ -2248,6 +2249,7 @@
       }
     },
     "ark-sa": {
+      "description": "ARK: Survival Ascended 전용 서버입니다. SteamCMD로 익명 설치됩니다(약 12 GB). 전용 서버는 퍼블리셔의 라이선스가 없으면 개인 비상업적 용도로만 사용할 수 있습니다. 이 게임의 README를 읽어 보세요.",
       "variables": {
         "sessionName": {
           "label": "서버 이름",
@@ -2355,7 +2357,132 @@
         }
       }
     },
+    "arma-reforger": {
+      "description": "Arma Reforger 전용 서버입니다. SteamCMD로 익명 설치됩니다. 설정은 server.json에, 로그·저장 파일·모드는 서버의 profile 폴더에 있습니다.",
+      "variables": {
+        "name": {
+          "label": "서버 이름"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 비워 두면 누구나 접속할 수 있는 공개 서버가 됩니다."
+        },
+        "adminPassword": {
+          "label": "관리자 비밀번호",
+          "description": "플레이어는 #login과 이 비밀번호로 관리자가 됩니다."
+        },
+        "scenario": {
+          "label": "시나리오",
+          "description": "미션의 리소스 이름입니다. {ECC61978EDCC2B5A}Missions/23_Campaign.conf는 Everon의 Conflict입니다."
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "visible": {
+          "label": "서버 목록",
+          "options": {
+            "true": "공개(플레이어가 찾을 수 있음)",
+            "false": "비공개(주소로 접속)"
+          }
+        },
+        "crossPlatform": {
+          "label": "크로스플레이(Xbox 및 PlayStation)",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "thirdPerson": {
+          "label": "3인칭 카메라",
+          "options": {
+            "false": "허용",
+            "true": "사용 안 함"
+          }
+        },
+        "battlEye": {
+          "label": "BattlEye",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "viewDistance": {
+          "label": "최대 시야 거리(m)"
+        },
+        "autoSave": {
+          "label": "자동 저장 간격(분)",
+          "description": "0: 자동 저장 안 함."
+        },
+        "maxFps": {
+          "label": "서버 FPS"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어가 여기로 접속합니다."
+        },
+        "query": {
+          "label": "Steam 쿼리",
+          "description": "서버 목록이 여기로 조회합니다."
+        }
+      }
+    },
+    "core-keeper": {
+      "description": "Core Keeper 전용 서버입니다. SteamCMD로 익명 설치됩니다. 월드는 서버의 save 폴더에 있습니다.",
+      "variables": {
+        "worldName": {
+          "label": "월드 이름"
+        },
+        "world": {
+          "label": "월드 슬롯",
+          "description": "슬롯마다 별도의 월드입니다."
+        },
+        "worldSeed": {
+          "label": "월드 시드",
+          "description": "새 월드에만 적용됩니다. 0 또는 비움: 무작위."
+        },
+        "worldMode": {
+          "label": "월드 모드",
+          "description": "새 월드에만 적용됩니다.",
+          "options": {
+            "0": "보통",
+            "1": "어려움",
+            "2": "크리에이티브",
+            "4": "캐주얼"
+          }
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "주소로 참가하는 플레이어에게 필요합니다."
+        },
+        "season": {
+          "label": "시즌",
+          "description": "비움: 날짜에 맞는 시즌.",
+          "options": {
+            "0": "없음",
+            "1": "부활절",
+            "2": "할로윈",
+            "3": "크리스마스",
+            "4": "발렌타인데이",
+            "5": "기념일",
+            "6": "벚꽃",
+            "7": "설날"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어가 여기로 주소를 통해 접속합니다(Direct Connect)."
+        }
+      }
+    },
     "cs2": {
+      "description": "Counter-Strike 2 전용 서버입니다. SteamCMD로 익명 설치됩니다(약 75 GB).",
       "variables": {
         "hostname": {
           "label": "서버 이름"
@@ -2451,6 +2578,7 @@
       }
     },
     "css": {
+      "description": "Counter-Strike: Source 전용 서버(srcds)입니다. SteamCMD로 익명 설치됩니다.",
       "variables": {
         "hostname": {
           "label": "서버 이름"
@@ -2542,7 +2670,165 @@
         }
       }
     },
+    "enshrouded": {
+      "description": "Enshrouded 전용 서버입니다. SteamCMD로 익명 설치됩니다. 설정은 enshrouded_server.json에, 월드는 서버의 savegame 폴더에 있습니다.",
+      "variables": {
+        "name": {
+          "label": "서버 이름"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 비워 두면 누구나 접속할 수 있는 공개 서버가 됩니다."
+        },
+        "slots": {
+          "label": "슬롯"
+        },
+        "preset": {
+          "label": "난이도",
+          "description": "아래 옵션은 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "Default": "기본",
+            "Relaxed": "여유로움",
+            "Hard": "어려움",
+            "Survival": "서바이벌",
+            "Custom": "사용자 지정(아래 옵션)"
+          }
+        },
+        "voiceChat": {
+          "label": "음성 채팅",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "textChat": {
+          "label": "텍스트 채팅",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "playerHealth": {
+          "label": "플레이어 체력"
+        },
+        "playerStamina": {
+          "label": "플레이어 스태미나"
+        },
+        "enemyDamage": {
+          "label": "적 피해량"
+        },
+        "enemyHealth": {
+          "label": "적 체력"
+        },
+        "miningDamage": {
+          "label": "채굴 피해량"
+        },
+        "resourceDrops": {
+          "label": "자원 드롭량"
+        },
+        "combatXp": {
+          "label": "전투 XP"
+        },
+        "durability": {
+          "label": "아이템 내구도",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "starving": {
+          "label": "굶주림 디버프",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "pacifyEnemies": {
+          "label": "모든 적 무력화",
+          "description": "적이 먼저 공격하지 않습니다.",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어가 여기로 접속하며, 서버 목록도 여기로 조회합니다."
+        }
+      }
+    },
+    "l4d2": {
+      "description": "Left 4 Dead 2 전용 서버(srcds)입니다. SteamCMD로 익명 설치됩니다(약 12 GB).",
+      "variables": {
+        "hostname": {
+          "label": "서버 이름"
+        },
+        "gameMode": {
+          "label": "게임 모드",
+          "options": {
+            "coop": "캠페인",
+            "realism": "리얼리즘",
+            "versus": "대전",
+            "survival": "서바이벌",
+            "scavenge": "스캐빈지"
+          }
+        },
+        "map": {
+          "label": "시작 맵",
+          "description": "c1m1_hotel은 Dead Center에서 시작합니다. 생존과 스캐빈지는 전용 맵이 필요합니다."
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 비워 두면 누구나 접속할 수 있는 공개 서버가 됩니다."
+        },
+        "lobbyOnly": {
+          "label": "참가 방식",
+          "options": {
+            "0": "주소 또는 로비에서",
+            "1": "로비에서만"
+          }
+        },
+        "difficulty": {
+          "label": "난이도",
+          "description": "캠페인과 리얼리즘에만 적용됩니다.",
+          "options": {
+            "Easy": "쉬움",
+            "Normal": "보통",
+            "Hard": "어드밴스드",
+            "Impossible": "전문가"
+          }
+        },
+        "allTalk": {
+          "label": "전체 음성",
+          "description": "음성 채팅에서 양 팀이 서로의 목소리를 듣습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "steamGroup": {
+          "label": "Steam 그룹",
+          "description": "그룹 번호(Steam 페이지의 ID)입니다. 그룹 멤버에게 서버가 표시됩니다."
+        },
+        "steamGroupOnly": {
+          "label": "Steam 그룹 멤버만",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어는 UDP로 접속합니다. RCON은 같은 포트에서 TCP로 대기하며 이 컴퓨터의 Pulsar만 사용합니다."
+        }
+      }
+    },
     "minecraft": {
+      "description": "Minecraft: Java Edition 전용 서버입니다. Mojang에서 내려받으며, 해당 버전에 필요한 Java 런타임(Adoptium의 Eclipse Temurin)이 함께 사용됩니다. 플레이어는 같은 버전의 Minecraft: Java Edition이 필요합니다.",
       "variables": {
         "eula": {
           "label": "Minecraft EULA",
@@ -2677,6 +2963,7 @@
       }
     },
     "palworld": {
+      "description": "Palworld 전용 서버입니다. SteamCMD로 익명 설치됩니다(약 4 GB). Pulsar가 RCON으로 제어하며, 다른 월드 설정은 PalWorldSettings.ini에 직접 추가할 수 있습니다.",
       "variables": {
         "name": {
           "label": "서버 이름"
@@ -2766,6 +3053,7 @@
       }
     },
     "project-zomboid": {
+      "description": "Project Zomboid 전용 서버입니다. SteamCMD로 익명 설치되며(약 7 GB), 포함된 Java 런타임으로 실행됩니다. 월드와 설정은 서버의 zomboid 폴더에 있습니다.",
       "variables": {
         "publicName": {
           "label": "서버 이름"
@@ -2884,6 +3172,7 @@
       }
     },
     "rust": {
+      "description": "Rust 전용 서버입니다. SteamCMD로 익명 설치됩니다(약 6 GB). 새 맵을 생성하는 데 몇 분과 많은 메모리가 필요합니다.",
       "variables": {
         "hostname": {
           "label": "서버 이름"
@@ -2985,6 +3274,7 @@
       }
     },
     "scpsl": {
+      "description": "SCP: Secret Laboratory 전용 서버로, LocalAdmin이 실행하며 SteamCMD로 익명 설치됩니다(약 1 GB). 설정은 서버 폴더의 config/config에 있습니다(config_gameplay.txt는 게임 기본 템플릿으로 시작합니다). LocalAdmin은 서버를 실행하는 계정의 프로필에 자체 설정과 로그를 보관합니다.",
       "variables": {
         "eula": {
           "label": "SCP: Secret Laboratory EULA",
@@ -3067,7 +3357,253 @@
         }
       }
     },
+    "sotf": {
+      "description": "Sons of the Forest 전용 서버입니다. SteamCMD로 익명 설치됩니다. 설정, 저장 파일, 관리자 목록은 서버의 userdata 폴더에 있습니다.",
+      "variables": {
+        "name": {
+          "label": "서버 이름"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 비워 두면 누구나 접속할 수 있는 공개 서버가 됩니다."
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "saveSlot": {
+          "label": "저장 슬롯",
+          "description": "슬롯마다 별도의 월드입니다."
+        },
+        "saveMode": {
+          "label": "시작 시",
+          "options": {
+            "Continue": "슬롯의 월드 이어하기",
+            "New": "슬롯에서 새 월드 시작"
+          }
+        },
+        "gameMode": {
+          "label": "게임 모드",
+          "description": "새 월드에 적용됩니다.",
+          "options": {
+            "Normal": "보통",
+            "Hard": "어려움",
+            "HardSurvival": "하드 서바이벌",
+            "Peaceful": "평화로움",
+            "Creative": "크리에이티브",
+            "Custom": "사용자 지정"
+          }
+        },
+        "saveInterval": {
+          "label": "자동 저장 간격(초)"
+        },
+        "lanOnly": {
+          "label": "LAN 전용",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "treeRegrowth": {
+          "label": "나무가 다시 자람",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "structureDamage": {
+          "label": "구조물 피해",
+          "description": "적과 플레이어가 건물을 부술 수 있습니다.",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어가 여기로 접속합니다."
+        },
+        "query": {
+          "label": "Steam 쿼리",
+          "description": "서버 목록이 여기로 조회합니다."
+        },
+        "blob_sync": {
+          "label": "Blob 동기화",
+          "description": "게임이 여기서 월드의 오브젝트를 동기화합니다."
+        }
+      }
+    },
+    "tf2": {
+      "description": "Team Fortress 2 전용 서버(srcds)입니다. SteamCMD로 익명 설치됩니다(약 10 GB).",
+      "variables": {
+        "hostname": {
+          "label": "서버 이름"
+        },
+        "map": {
+          "label": "시작 맵"
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 비워 두면 누구나 접속할 수 있는 공개 서버가 됩니다."
+        },
+        "timeLimit": {
+          "label": "맵 제한 시간(분)",
+          "description": "맵이 바뀌기까지의 시간(분)입니다. 0은 제한 없음입니다."
+        },
+        "winLimit": {
+          "label": "승리 라운드 수",
+          "description": "맵을 끝내려면 한 팀이 이겨야 하는 라운드 수입니다. 0은 제한 없음입니다."
+        },
+        "maxRounds": {
+          "label": "최대 라운드 수",
+          "description": "맵이 진행되는 라운드 수. 0: 제한 없음."
+        },
+        "autoTeamBalance": {
+          "label": "자동 팀 밸런스",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "teamsUnbalanceLimit": {
+          "label": "팀 인원 차이 상한",
+          "description": "한 팀이 다른 팀보다 몇 명까지 많을 수 있는지 정합니다. 0은 제한 없음입니다."
+        },
+        "randomCrits": {
+          "label": "무작위 치명타",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "fixedSpread": {
+          "label": "무기 탄퍼짐 고정",
+          "description": "샷건 같은 무기는 항상 같은 방식으로 퍼집니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "friendlyFire": {
+          "label": "팀킬",
+          "description": "팀원끼리 피해를 줄 수 있습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "allTalk": {
+          "label": "전체 음성",
+          "description": "음성 채팅에서 양 팀이 서로의 목소리를 듣습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "instantRespawn": {
+          "label": "즉시 부활",
+          "description": "웨이브를 기다리지 않고 바로 돌아옵니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "bots": {
+          "label": "봇",
+          "description": "봇을 지원하는 맵에서 서버를 채울 봇의 수."
+        },
+        "botDifficulty": {
+          "label": "봇 난이도",
+          "options": {
+            "0": "쉬움",
+            "1": "보통",
+            "2": "어려움",
+            "3": "전문가"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어는 UDP로 접속합니다. RCON은 같은 포트에서 TCP로 대기하며 이 컴퓨터의 Pulsar만 사용합니다."
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "할당하면 SourceTV가 활성화됩니다."
+        }
+      }
+    },
+    "unturned": {
+      "description": "Unturned 전용 서버입니다. SteamCMD로 익명 설치됩니다. 설정과 월드는 서버 폴더의 Servers/pulsar에 있으며, 인터넷에 표시되려면 게임 서버 로그인 토큰이 필요합니다.",
+      "variables": {
+        "name": {
+          "label": "서버 이름",
+          "description": "5~50자."
+        },
+        "map": {
+          "label": "맵",
+          "description": "게임에서 부르는 이름 그대로, 대문자 포함: PEI, Washington, Russia, Germany…"
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 비워 두면 누구나 접속할 수 있는 공개 서버가 됩니다."
+        },
+        "gslt": {
+          "label": "게임 서버 로그인 토큰",
+          "description": "고정된 Server Code로 서버를 인터넷에 표시합니다. steamcommunity.com/dev/managegameservers에서 app 304930용으로 만드세요."
+        },
+        "mode": {
+          "label": "난이도",
+          "options": {
+            "Easy": "쉬움",
+            "Normal": "보통",
+            "Hard": "어려움"
+          }
+        },
+        "perspective": {
+          "label": "카메라",
+          "options": {
+            "First": "1인칭",
+            "Third": "3인칭",
+            "Both": "둘 다",
+            "Vehicle": "탈것에서는 3인칭"
+          }
+        },
+        "combat": {
+          "label": "전투",
+          "options": {
+            "pvp": "PvP",
+            "pve": "PvE"
+          }
+        },
+        "owner": {
+          "label": "소유자(SteamID64)",
+          "description": "이 플레이어는 서버 관리자입니다."
+        },
+        "welcome": {
+          "label": "환영 메시지"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어가 여기로 접속하며, 서버 목록도 여기로 조회합니다."
+        },
+        "data": {
+          "label": "게임 데이터",
+          "description": "Unturned는 항상 게임 포트 + 1도 엽니다. Pulsar가 그 할당을 부여합니다."
+        }
+      }
+    },
     "valheim": {
+      "description": "Valheim 전용 서버입니다. SteamCMD로 익명 설치됩니다(약 2 GB). 월드는 서버 폴더에 저장됩니다.",
       "variables": {
         "name": {
           "label": "서버 이름",
@@ -3178,6 +3714,120 @@
         "query": {
           "label": "Steam 쿼리",
           "description": "Valheim은 서버 목록을 위해 항상 게임 포트 + 1을 엽니다. Pulsar가 그 할당을 만들어 줍니다."
+        }
+      }
+    },
+    "vrising": {
+      "description": "V Rising 전용 서버입니다. SteamCMD로 익명 설치됩니다. 설정과 저장 파일은 서버의 save-data 폴더에 있습니다.",
+      "variables": {
+        "name": {
+          "label": "서버 이름"
+        },
+        "description": {
+          "label": "설명",
+          "description": "서버 목록에서 이름 아래에 표시됩니다."
+        },
+        "saveName": {
+          "label": "월드",
+          "description": "월드의 이름입니다. 새 이름을 쓰면 새 월드가 만들어집니다."
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 비워 두면 누구나 접속할 수 있는 공개 서버가 됩니다."
+        },
+        "listed": {
+          "label": "서버 목록",
+          "options": {
+            "public": "공개(플레이어가 찾을 수 있음)",
+            "private": "비공개(주소로 접속)"
+          }
+        },
+        "gameMode": {
+          "label": "게임 모드",
+          "options": {
+            "PvP": "PvP",
+            "PvE": "PvE"
+          }
+        },
+        "difficulty": {
+          "label": "난이도",
+          "options": {
+            "Difficulty_Easy": "여유로움",
+            "Difficulty_Normal": "보통",
+            "Difficulty_Brutal": "잔혹"
+          }
+        },
+        "autoSave": {
+          "label": "자동 저장 간격(초)"
+        },
+        "clanSize": {
+          "label": "클랜 규모"
+        },
+        "castleDamage": {
+          "label": "성 피해",
+          "options": {
+            "Always": "항상",
+            "Never": "안 함",
+            "TimeRestricted": "습격 시간 동안"
+          }
+        },
+        "bloodBound": {
+          "label": "혈맹 장비",
+          "description": "죽어도 장비가 주인에게 남습니다.",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "teleportBound": {
+          "label": "아이템이 순간이동을 막음",
+          "description": "자원을 든 플레이어는 웨이게이트를 사용할 수 없습니다.",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "materialYield": {
+          "label": "자원 수확량",
+          "description": "채집한 자원의 배율."
+        },
+        "craftRate": {
+          "label": "제작 속도"
+        },
+        "buildCost": {
+          "label": "건설 비용"
+        },
+        "researchCost": {
+          "label": "연구 비용"
+        },
+        "bloodDrain": {
+          "label": "피 소모량"
+        },
+        "durabilityDrain": {
+          "label": "내구도 감소"
+        },
+        "sunDamage": {
+          "label": "햇빛 피해"
+        },
+        "castleDecay": {
+          "label": "성 노후화"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어가 여기로 접속합니다."
+        },
+        "query": {
+          "label": "Steam 쿼리",
+          "description": "서버 목록이 여기로 조회합니다."
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "이 컴퓨터의 Pulsar만 사용합니다. 콘솔 명령과 정상 종료용입니다."
         }
       }
     }

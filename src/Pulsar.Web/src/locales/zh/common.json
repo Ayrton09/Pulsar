@@ -2111,6 +2111,7 @@
   },
   "gameText": {
     "7dtd": {
+      "description": "7 Days to Die 专用服务器，通过 SteamCMD 匿名安装（约 17 GB）。其设置位于 pulsar-serverconfig.xml，这是游戏自带 serverconfig.xml 的副本，更新不会覆盖它。",
       "variables": {
         "serverName": {
           "label": "服务器名称"
@@ -2248,6 +2249,7 @@
       }
     },
     "ark-sa": {
+      "description": "ARK: Survival Ascended 专用服务器，通过 SteamCMD 匿名安装（约 12 GB）。除非获得发行商的许可，专用服务器仅限个人非商业用途；请阅读此游戏的 README。",
       "variables": {
         "sessionName": {
           "label": "服务器名称",
@@ -2355,7 +2357,132 @@
         }
       }
     },
+    "arma-reforger": {
+      "description": "Arma Reforger 专用服务器，通过 SteamCMD 匿名安装。其设置位于 server.json，日志、存档和模组位于服务器的 profile 文件夹。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入。留空则为公开服务器。"
+        },
+        "adminPassword": {
+          "label": "管理员密码",
+          "description": "玩家通过 #login 和此密码成为管理员。"
+        },
+        "scenario": {
+          "label": "场景",
+          "description": "任务的资源名称：{ECC61978EDCC2B5A}Missions/23_Campaign.conf 是 Everon 上的 Conflict。"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "visible": {
+          "label": "服务器列表",
+          "options": {
+            "true": "公开（玩家可以找到）",
+            "false": "不公开（通过地址加入）"
+          }
+        },
+        "crossPlatform": {
+          "label": "跨平台游玩（Xbox 和 PlayStation）",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "thirdPerson": {
+          "label": "第三人称视角",
+          "options": {
+            "false": "允许",
+            "true": "禁用"
+          }
+        },
+        "battlEye": {
+          "label": "BattlEye",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "viewDistance": {
+          "label": "最大视距（m）"
+        },
+        "autoSave": {
+          "label": "自动存档间隔（分钟）",
+          "description": "0：不自动保存。"
+        },
+        "maxFps": {
+          "label": "服务器 FPS"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家在此连接。"
+        },
+        "query": {
+          "label": "Steam 查询",
+          "description": "服务器列表在此查询。"
+        }
+      }
+    },
+    "core-keeper": {
+      "description": "Core Keeper 专用服务器，通过 SteamCMD 匿名安装。其世界位于服务器的 save 文件夹。",
+      "variables": {
+        "worldName": {
+          "label": "世界名称"
+        },
+        "world": {
+          "label": "世界槽位",
+          "description": "每个槽位是一个独立的世界。"
+        },
+        "worldSeed": {
+          "label": "世界种子",
+          "description": "仅用于新世界。0 或留空：随机。"
+        },
+        "worldMode": {
+          "label": "世界模式",
+          "description": "仅用于新世界。",
+          "options": {
+            "0": "普通",
+            "1": "困难",
+            "2": "创造",
+            "4": "休闲"
+          }
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "通过地址加入的玩家需要它。"
+        },
+        "season": {
+          "label": "季节",
+          "description": "留空：按日期对应的季节。",
+          "options": {
+            "0": "无",
+            "1": "复活节",
+            "2": "万圣节",
+            "3": "圣诞节",
+            "4": "情人节",
+            "5": "周年纪念",
+            "6": "樱花",
+            "7": "农历新年"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家在此通过地址连接（Direct Connect）。"
+        }
+      }
+    },
     "cs2": {
+      "description": "Counter-Strike 2 专用服务器，通过 SteamCMD 匿名安装（约 75 GB）。",
       "variables": {
         "hostname": {
           "label": "服务器名称"
@@ -2451,6 +2578,7 @@
       }
     },
     "css": {
+      "description": "Counter-Strike: Source 专用服务器（srcds），通过 SteamCMD 匿名安装。",
       "variables": {
         "hostname": {
           "label": "服务器名称"
@@ -2542,7 +2670,165 @@
         }
       }
     },
+    "enshrouded": {
+      "description": "Enshrouded 专用服务器，通过 SteamCMD 匿名安装。其设置位于 enshrouded_server.json，世界位于服务器的 savegame 文件夹。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入。留空则为公开服务器。"
+        },
+        "slots": {
+          "label": "玩家名额"
+        },
+        "preset": {
+          "label": "难度",
+          "description": "下方选项仅在选择自定义时生效。",
+          "options": {
+            "Default": "默认",
+            "Relaxed": "轻松",
+            "Hard": "困难",
+            "Survival": "生存",
+            "Custom": "自定义（下方选项）"
+          }
+        },
+        "voiceChat": {
+          "label": "语音聊天",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "textChat": {
+          "label": "文字聊天",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "playerHealth": {
+          "label": "玩家生命值"
+        },
+        "playerStamina": {
+          "label": "玩家耐力"
+        },
+        "enemyDamage": {
+          "label": "敌人伤害"
+        },
+        "enemyHealth": {
+          "label": "敌人生命值"
+        },
+        "miningDamage": {
+          "label": "采矿伤害"
+        },
+        "resourceDrops": {
+          "label": "资源掉落"
+        },
+        "combatXp": {
+          "label": "战斗经验"
+        },
+        "durability": {
+          "label": "物品耐久度",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "starving": {
+          "label": "饥饿减益",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "pacifyEnemies": {
+          "label": "安抚所有敌人",
+          "description": "敌人不会先发起攻击。",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家在此连接；服务器列表也在此查询。"
+        }
+      }
+    },
+    "l4d2": {
+      "description": "Left 4 Dead 2 专用服务器（srcds），通过 SteamCMD 匿名安装（约 12 GB）。",
+      "variables": {
+        "hostname": {
+          "label": "服务器名称"
+        },
+        "gameMode": {
+          "label": "游戏模式",
+          "options": {
+            "coop": "战役",
+            "realism": "写实",
+            "versus": "对抗",
+            "survival": "生存",
+            "scavenge": "清道夫"
+          }
+        },
+        "map": {
+          "label": "起始地图",
+          "description": "c1m1_hotel 从 Dead Center 开始；生存和清道夫需要专为其制作的地图。"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入。留空则为公开服务器。"
+        },
+        "lobbyOnly": {
+          "label": "加入方式",
+          "options": {
+            "0": "通过地址或从大厅",
+            "1": "仅从大厅"
+          }
+        },
+        "difficulty": {
+          "label": "难度",
+          "description": "仅限战役和写实。",
+          "options": {
+            "Easy": "简单",
+            "Normal": "普通",
+            "Hard": "高级",
+            "Impossible": "专家"
+          }
+        },
+        "allTalk": {
+          "label": "全员语音",
+          "description": "双方队伍可以在语音聊天中互相听到。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "steamGroup": {
+          "label": "Steam 组",
+          "description": "组的编号（其 Steam 页面上的 ID）：服务器会显示给组成员。"
+        },
+        "steamGroupOnly": {
+          "label": "仅 Steam 组成员",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家通过 UDP 连接。RCON 在同一端口上通过 TCP 监听，仅由本机上的 Pulsar 使用。"
+        }
+      }
+    },
     "minecraft": {
+      "description": "Minecraft: Java Edition 专用服务器，从 Mojang 下载，并使用其版本所需的 Java 运行时（来自 Adoptium 的 Eclipse Temurin）。玩家需要相同版本的 Minecraft: Java Edition。",
       "variables": {
         "eula": {
           "label": "Minecraft EULA",
@@ -2677,6 +2963,7 @@
       }
     },
     "palworld": {
+      "description": "Palworld 专用服务器，通过 SteamCMD 匿名安装（约 4 GB）。Pulsar 通过 RCON 与其通信；其他世界设置可手动添加到 PalWorldSettings.ini。",
       "variables": {
         "name": {
           "label": "服务器名称"
@@ -2766,6 +3053,7 @@
       }
     },
     "project-zomboid": {
+      "description": "Project Zomboid 专用服务器，通过 SteamCMD 匿名安装（约 7 GB），使用其自带的 Java 运行时运行。其世界和设置位于服务器的 zomboid 文件夹。",
       "variables": {
         "publicName": {
           "label": "服务器名称"
@@ -2884,6 +3172,7 @@
       }
     },
     "rust": {
+      "description": "Rust 专用服务器，通过 SteamCMD 匿名安装（约 6 GB）。生成新地图需要几分钟和大量内存。",
       "variables": {
         "hostname": {
           "label": "服务器名称"
@@ -2985,6 +3274,7 @@
       }
     },
     "scpsl": {
+      "description": "SCP: Secret Laboratory 专用服务器，由其 LocalAdmin 运行，通过 SteamCMD 匿名安装（约 1 GB）。其配置保存在服务器文件夹的 config/config 中（config_gameplay.txt 以游戏自带模板为起点）；LocalAdmin 将自己的设置和日志保存在服务器运行账户的配置文件中。",
       "variables": {
         "eula": {
           "label": "SCP: Secret Laboratory EULA",
@@ -3067,7 +3357,253 @@
         }
       }
     },
+    "sotf": {
+      "description": "Sons of the Forest 专用服务器，通过 SteamCMD 匿名安装。其设置、存档和管理员列表位于服务器的 userdata 文件夹。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入。留空则为公开服务器。"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "saveSlot": {
+          "label": "存档槽位",
+          "description": "每个槽位是一个独立的世界。"
+        },
+        "saveMode": {
+          "label": "启动时",
+          "options": {
+            "Continue": "继续槽位中的世界",
+            "New": "在槽位中开始新世界"
+          }
+        },
+        "gameMode": {
+          "label": "游戏模式",
+          "description": "适用于新世界。",
+          "options": {
+            "Normal": "普通",
+            "Hard": "困难",
+            "HardSurvival": "困难生存",
+            "Peaceful": "和平",
+            "Creative": "创造",
+            "Custom": "自定义"
+          }
+        },
+        "saveInterval": {
+          "label": "自动存档间隔（秒）"
+        },
+        "lanOnly": {
+          "label": "仅局域网",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "treeRegrowth": {
+          "label": "树木再生",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "structureDamage": {
+          "label": "建筑损坏",
+          "description": "敌人和玩家可以破坏建筑。",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家在此连接。"
+        },
+        "query": {
+          "label": "Steam 查询",
+          "description": "服务器列表在此查询。"
+        },
+        "blob_sync": {
+          "label": "Blob 同步",
+          "description": "游戏在此同步世界中的物体。"
+        }
+      }
+    },
+    "tf2": {
+      "description": "Team Fortress 2 专用服务器（srcds），通过 SteamCMD 匿名安装（约 10 GB）。",
+      "variables": {
+        "hostname": {
+          "label": "服务器名称"
+        },
+        "map": {
+          "label": "起始地图"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入。留空则为公开服务器。"
+        },
+        "timeLimit": {
+          "label": "地图时间限制（分钟）",
+          "description": "切换地图前的分钟数。0 表示不限制。"
+        },
+        "winLimit": {
+          "label": "获胜回合数",
+          "description": "一支队伍需要赢下多少回合才能结束该地图。0 表示不限制。"
+        },
+        "maxRounds": {
+          "label": "最大回合数",
+          "description": "一张地图持续的回合数。0：无限制。"
+        },
+        "autoTeamBalance": {
+          "label": "自动平衡队伍",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "teamsUnbalanceLimit": {
+          "label": "队伍人数差上限",
+          "description": "一支队伍比另一支最多可多出的人数。0 表示不限制。"
+        },
+        "randomCrits": {
+          "label": "随机暴击",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "fixedSpread": {
+          "label": "固定武器散布",
+          "description": "霰弹枪等武器的散布始终相同。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "friendlyFire": {
+          "label": "友军伤害",
+          "description": "队友之间可以互相伤害。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "allTalk": {
+          "label": "全员语音",
+          "description": "双方队伍可以在语音聊天中互相听到。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "instantRespawn": {
+          "label": "立即重生",
+          "description": "玩家立即复活，而不是等待下一波。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "bots": {
+          "label": "机器人",
+          "description": "在支持机器人的地图上，用多少机器人填充服务器。"
+        },
+        "botDifficulty": {
+          "label": "机器人难度",
+          "options": {
+            "0": "简单",
+            "1": "普通",
+            "2": "困难",
+            "3": "专家"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家通过 UDP 连接。RCON 在同一端口上通过 TCP 监听，仅由本机上的 Pulsar 使用。"
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "分配后即可启用 SourceTV。"
+        }
+      }
+    },
+    "unturned": {
+      "description": "Unturned 专用服务器，通过 SteamCMD 匿名安装。其设置和世界位于服务器文件夹的 Servers/pulsar；要在互联网上列出，需要游戏服务器登录令牌。",
+      "variables": {
+        "name": {
+          "label": "服务器名称",
+          "description": "5 到 50 个字符。"
+        },
+        "map": {
+          "label": "地图",
+          "description": "按游戏中的名称填写，包括大小写：PEI、Washington、Russia、Germany…"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入。留空则为公开服务器。"
+        },
+        "gslt": {
+          "label": "游戏服务器登录令牌",
+          "description": "以固定的 Server Code 在互联网上列出服务器：请在 steamcommunity.com/dev/managegameservers 为 app 304930 创建一个。"
+        },
+        "mode": {
+          "label": "难度",
+          "options": {
+            "Easy": "简单",
+            "Normal": "普通",
+            "Hard": "困难"
+          }
+        },
+        "perspective": {
+          "label": "视角",
+          "options": {
+            "First": "第一人称",
+            "Third": "第三人称",
+            "Both": "两者皆可",
+            "Vehicle": "载具内第三人称"
+          }
+        },
+        "combat": {
+          "label": "战斗",
+          "options": {
+            "pvp": "PvP",
+            "pve": "PvE"
+          }
+        },
+        "owner": {
+          "label": "所有者（SteamID64）",
+          "description": "此玩家是服务器的管理员。"
+        },
+        "welcome": {
+          "label": "欢迎消息"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家在此连接；服务器列表也在此查询。"
+        },
+        "data": {
+          "label": "游戏数据",
+          "description": "Unturned 还会始终开放游戏端口 + 1：Pulsar 会为其分配该端口。"
+        }
+      }
+    },
     "valheim": {
+      "description": "Valheim 专用服务器，通过 SteamCMD 匿名安装（约 2 GB）。世界保存在服务器文件夹中。",
       "variables": {
         "name": {
           "label": "服务器名称",
@@ -3178,6 +3714,120 @@
         "query": {
           "label": "Steam 查询",
           "description": "Valheim 总会为服务器列表打开游戏端口 + 1：Pulsar 会为其提供该分配。"
+        }
+      }
+    },
+    "vrising": {
+      "description": "V Rising 专用服务器，通过 SteamCMD 匿名安装。其设置和存档位于服务器的 save-data 文件夹。",
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "description": {
+          "label": "描述",
+          "description": "显示在服务器列表中名称的下方。"
+        },
+        "saveName": {
+          "label": "世界",
+          "description": "世界的名称：使用新名称会创建新世界。"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入。留空则为公开服务器。"
+        },
+        "listed": {
+          "label": "服务器列表",
+          "options": {
+            "public": "公开（玩家可以找到）",
+            "private": "不公开（通过地址加入）"
+          }
+        },
+        "gameMode": {
+          "label": "游戏模式",
+          "options": {
+            "PvP": "PvP",
+            "PvE": "PvE"
+          }
+        },
+        "difficulty": {
+          "label": "难度",
+          "options": {
+            "Difficulty_Easy": "轻松",
+            "Difficulty_Normal": "普通",
+            "Difficulty_Brutal": "残酷"
+          }
+        },
+        "autoSave": {
+          "label": "自动存档间隔（秒）"
+        },
+        "clanSize": {
+          "label": "氏族规模"
+        },
+        "castleDamage": {
+          "label": "城堡伤害",
+          "options": {
+            "Always": "始终",
+            "Never": "从不",
+            "TimeRestricted": "突袭时段内"
+          }
+        },
+        "bloodBound": {
+          "label": "血契装备",
+          "description": "玩家死亡时装备仍归其所有者。",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "teleportBound": {
+          "label": "物品阻止传送",
+          "description": "携带资源的玩家无法使用传送门。",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "materialYield": {
+          "label": "资源产量",
+          "description": "所采集资源的倍率。"
+        },
+        "craftRate": {
+          "label": "制作速度"
+        },
+        "buildCost": {
+          "label": "建造成本"
+        },
+        "researchCost": {
+          "label": "研究成本"
+        },
+        "bloodDrain": {
+          "label": "鲜血消耗"
+        },
+        "durabilityDrain": {
+          "label": "耐久度损失"
+        },
+        "sunDamage": {
+          "label": "阳光伤害"
+        },
+        "castleDecay": {
+          "label": "城堡衰败"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家在此连接。"
+        },
+        "query": {
+          "label": "Steam 查询",
+          "description": "服务器列表在此查询。"
+        },
+        "rcon": {
+          "label": "RCON",
+          "description": "仅 Pulsar 在本机上使用：控制台命令和正常停止。"
         }
       }
     }

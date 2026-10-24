@@ -3,12 +3,17 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { GameArt } from '../games/GameArt';
 import type { Schemas } from '../../api/client';
+import { useGameText } from './gameText';
 
 type TemplateView = Schemas['TemplateView'];
 
 /** One game template: its picture, what it is and, for those who may, a shortcut to create a server with it. */
 export function GameCard({ template, onCreate }: { template: TemplateView; onCreate?: (() => void) | undefined }) {
   const { t } = useTranslation();
+  // A bundled game's description in the reader's language; an imported version of it says what its author wrote.
+  const description = useGameText(template.source === 'bundled' ? template.key : undefined).description(
+    template.description,
+  );
   return (
     <article
       aria-labelledby={`game-card-${template.id}`}
@@ -37,7 +42,7 @@ export function GameCard({ template, onCreate }: { template: TemplateView; onCre
             <code>{template.key}</code> · {t('templates.versionValue', { version: template.version })}
           </p>
         </div>
-        {template.description && <p className="line-clamp-3 text-sm text-muted">{template.description}</p>}
+        {description && <p className="line-clamp-3 text-sm text-muted">{description}</p>}
         {onCreate && (
           <div className="mt-auto pt-1">
             <Button
