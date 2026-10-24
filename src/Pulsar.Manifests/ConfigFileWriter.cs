@@ -462,9 +462,11 @@ public static partial class ConfigFileWriter
         return output;
     }
 
-    /// <summary>Strings are quoted; numbers and booleans are not, as Unreal writes them.</summary>
+    /// <summary>Strings are quoted; numbers, booleans and an enum's words are not, as Unreal writes them.</summary>
     private static string UnrealMember(ConfigEntry entry) =>
-        UnrealLiteral().IsMatch(entry.Value) ? $"{entry.Key}={entry.Value}" : $"{entry.Key}=\"{entry.Value}\"";
+        UnrealLiteral().IsMatch(entry.Value) || (entry.Bare && LaunchPlanRenderer.UnrealWord().IsMatch(entry.Value))
+            ? $"{entry.Key}={entry.Value}"
+            : $"{entry.Key}=\"{entry.Value}\"";
 
     private static string? UnrealKey(string text)
     {

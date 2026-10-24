@@ -67,6 +67,12 @@ public sealed record ConfigEntry(string Key, string Value, bool Secret)
     /// <summary>An empty value is written as an empty string rather than removing the member (JSON files only).</summary>
     public bool WriteEmpty { get; init; }
 
+    /// <summary>
+    /// A choice that is a plain word (an enum's value, or what it maps to), which an Unreal Engine struct line takes
+    /// without quotes as the game's own files have it (Palworld's <c>DeathPenalty=All</c>); other text is quoted (1.0.8).
+    /// </summary>
+    public bool Bare { get; init; }
+
     public override string ToString() => Secret ? $"{Key}=***" : $"{Key}={Value}";
 }
 
@@ -304,6 +310,22 @@ public static partial class LaunchPlanRenderer
             };
         }
 
+        // A lone placeholder of an enum whose every choice (or what each maps to) is a plain word.
+        bool IsWordChoice(string template)
+        {
+            var placeholders = Placeholders.Parse(template, out _);
+            if (placeholders.Count != 1 || Placeholders.Strip(template).Length > 0
+                || placeholders[0] is not ["var", var key, ..] || definitions.GetValueOrDefault(key) is not { Type: VariableType.Enum } variable)
+            {
+                return false;
+            }
+
+            var values = placeholders[0] is [_, _, var sub]
+                ? (variable.Options ?? []).Select(o => o.Map?.GetValueOrDefault(sub))
+                : (variable.Options ?? []).Select(o => (string?)o.Value);
+            return values.All(v => v is not null && UnrealWord().IsMatch(v));
+        }
+
         // Values (a choice's, or what they map to) that are all true or false are a boolean, all plain numbers a number.
         static ConfigValueKind KindOfChoices(IReadOnlyList<string?> values) =>
             values.Count == 0 ? ConfigValueKind.Text
@@ -398,6 +420,7 @@ public static partial class LaunchPlanRenderer
                 {
                     Kind = file.Format == ConfigFileFormat.Json ? KindOf(entry.Value) : ConfigValueKind.Text,
                     WriteEmpty = file.WriteIfEmpty?.Contains(entry.Key, StringComparer.Ordinal) == true,
+                    Bare = file.Format == ConfigFileFormat.UnrealIni && file.Struct is not null && IsWordChoice(entry.Value),
                 };
             }),
         ])
@@ -625,4 +648,8 @@ public static partial class LaunchPlanRenderer
     /// <summary>A plain JSON number: an optional minus, no leading zeros, up to 6 decimals.</summary>
     [GeneratedRegex(@"^-?(0|[1-9][0-9]{0,17})(\.[0-9]{1,6})?\z", RegexOptions.CultureInvariant)]
     private static partial Regex JsonNumber();
+
+    /// <summary>A word Unreal reads as an enum's value without quotes: a letter, then letters, digits or underscores.</summary>
+    [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9_]{0,63}\z", RegexOptions.CultureInvariant)]
+    internal static partial Regex UnrealWord();
 }

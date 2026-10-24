@@ -85,7 +85,16 @@
     { "key": "allowClientMods", "label": "Players with mods", "type": "enum", "options": [ { "value": "True", "label": "Allowed" }, { "value": "False", "label": "Blocked" } ],
       "description": "Whether players using client mods may join." },
     { "key": "publicIp", "label": "Public IP", "type": "string", "maxLength": 45, "pattern": "^[0-9.]{7,15}$",
-      "description": "For community servers behind NAT: the address players see." }
+      "description": "For community servers behind NAT: the address players see." },
+    { "key": "deathPenalty", "label": "Death penalty", "type": "enum",
+      "options": [
+        { "value": "None", "label": "Lose nothing" }, { "value": "Item", "label": "Lose items, not equipment" },
+        { "value": "ItemAndEquipment", "label": "Lose items and equipment" }, { "value": "All", "label": "Lose items, equipment and Pals" }
+      ],
+      "description": "What players drop when they die." },
+    { "key": "randomizer", "label": "Pal randomizer", "type": "enum",
+      "options": [ { "value": "None", "label": "Off" }, { "value": "Region", "label": "By region" }, { "value": "All", "label": "Everywhere" } ],
+      "description": "Wild Pals appear at random instead of where they live. Set it before the world is created." }
   ],
 
   "ports": [
@@ -146,6 +155,8 @@
         "BaseCampWorkerMaxNum": "{{var.workersPerBase}}",
         "GuildPlayerMaxNum": "{{var.guildSize}}",
         "AutoSaveSpan": "{{var.autoSave}}",
+        "DeathPenalty": "{{var.deathPenalty}}",
+        "RandomizerType": "{{var.randomizer}}",
         "bEnablePlayerToPlayerDamage": "{{var.pvpDamage}}",
         "bEnableFriendlyFire": "{{var.friendlyFire}}",
         "bEnableInvaderEnemy": "{{var.invaders}}",
@@ -171,7 +182,7 @@
         "bAllowClientMod": "{{var.allowClientMods}}",
         "PublicIP": "{{var.publicIp}}"
       },
-      "keepIfEmpty": ["ExpRate", "PalCaptureRate", "PalSpawnNumRate", "CollectionDropRate", "EnemyDropItemRate", "WorkSpeedRate", "DayTimeSpeedRate", "NightTimeSpeedRate", "PalEggDefaultHatchingTime", "bIsPvP", "bEnableFastTravel", "BaseCampMaxNumInGuild", "BaseCampWorkerMaxNum", "GuildPlayerMaxNum", "AutoSaveSpan", "bEnablePlayerToPlayerDamage", "bEnableFriendlyFire", "bEnableInvaderEnemy", "bHardcore", "bPalLost", "PalDamageRateAttack", "PalDamageRateDefense", "PlayerDamageRateAttack", "PlayerDamageRateDefense", "PlayerStomachDecreaceRate", "PlayerStaminaDecreaceRate", "PalStomachDecreaceRate", "PalStaminaDecreaceRate", "BuildObjectDeteriorationDamageRate", "ItemWeightRate", "EquipmentDurabilityDamageRate", "BaseCampMaxNum", "MaxBuildingLimitNum", "SupplyDropSpan", "BlockRespawnTime", "bIsUseBackupSaveData", "bShowPlayerList", "bAllowClientMod", "PublicIP"] }
+      "keepIfEmpty": ["DeathPenalty", "RandomizerType", "ExpRate", "PalCaptureRate", "PalSpawnNumRate", "CollectionDropRate", "EnemyDropItemRate", "WorkSpeedRate", "DayTimeSpeedRate", "NightTimeSpeedRate", "PalEggDefaultHatchingTime", "bIsPvP", "bEnableFastTravel", "BaseCampMaxNumInGuild", "BaseCampWorkerMaxNum", "GuildPlayerMaxNum", "AutoSaveSpan", "bEnablePlayerToPlayerDamage", "bEnableFriendlyFire", "bEnableInvaderEnemy", "bHardcore", "bPalLost", "PalDamageRateAttack", "PalDamageRateDefense", "PlayerDamageRateAttack", "PlayerDamageRateDefense", "PlayerStomachDecreaceRate", "PlayerStaminaDecreaceRate", "PalStomachDecreaceRate", "PalStaminaDecreaceRate", "BuildObjectDeteriorationDamageRate", "ItemWeightRate", "EquipmentDurabilityDamageRate", "BaseCampMaxNum", "MaxBuildingLimitNum", "SupplyDropSpan", "BlockRespawnTime", "bIsUseBackupSaveData", "bShowPlayerList", "bAllowClientMod", "PublicIP"] }
   ],
 
   "readiness": { "type": "rcon", "timeoutSeconds": 600 },

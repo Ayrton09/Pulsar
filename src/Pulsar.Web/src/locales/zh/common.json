@@ -3805,6 +3805,25 @@
         "publicIp": {
           "label": "公网 IP",
           "description": "适用于 NAT 后的社区服务器：玩家看到的地址。"
+        },
+        "deathPenalty": {
+          "label": "死亡惩罚",
+          "description": "玩家死亡时会失去的东西。",
+          "options": {
+            "None": "不失去任何东西",
+            "Item": "失去物品，保留装备",
+            "ItemAndEquipment": "失去物品和装备",
+            "All": "失去物品、装备和帕鲁"
+          }
+        },
+        "randomizer": {
+          "label": "帕鲁随机化",
+          "description": "野生帕鲁随机出现，而不是在其栖息地。请在创建世界前设置。",
+          "options": {
+            "None": "关闭",
+            "Region": "按区域",
+            "All": "所有地方"
+          }
         }
       },
       "ports": {

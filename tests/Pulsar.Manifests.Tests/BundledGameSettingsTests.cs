@@ -60,6 +60,20 @@ public sealed class BundledGameSettingsTests
         }
     }
 
+    [Fact]
+    public void PalworldsChoicesThatAreWordsAreWrittenWithoutQuotesAndItsTextsWithThem()
+    {
+        // Its own file and documentation have DeathPenalty=All; a server name that happens to read "All" is still text.
+        var plan = Render(TestManifests.Load("palworld"), new Dictionary<string, string?> { ["name"] = "All", ["deathPenalty"] = "All", ["randomizer"] = "Region" });
+        var file = plan.ConfigFiles.Single(f => f.Path.EndsWith("PalWorldSettings.ini", StringComparison.Ordinal));
+
+        var line = ConfigFileWriter.Apply(file, null).Split('\n').Single(l => l.StartsWith("OptionSettings=", StringComparison.Ordinal));
+
+        Assert.Matches(@"[(,]DeathPenalty=All[,)]", line);
+        Assert.Matches(@"[(,]RandomizerType=Region[,)]", line);
+        Assert.Contains("ServerName=\"All\"", line, StringComparison.Ordinal);
+    }
+
     private static LaunchPlan Render(GameManifest manifest, IReadOnlyDictionary<string, string?> values)
     {
         // Every port, optional ones too, on its usual number.

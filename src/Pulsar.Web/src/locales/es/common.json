@@ -3805,6 +3805,25 @@
         "publicIp": {
           "label": "IP pública",
           "description": "Para servidores de la comunidad detrás de un NAT: la dirección que ven los jugadores."
+        },
+        "deathPenalty": {
+          "label": "Penalización por muerte",
+          "description": "Lo que pierden los jugadores al morir.",
+          "options": {
+            "None": "No pierden nada",
+            "Item": "Pierden objetos, no el equipo",
+            "ItemAndEquipment": "Pierden objetos y equipo",
+            "All": "Pierden objetos, equipo y Pals"
+          }
+        },
+        "randomizer": {
+          "label": "Aleatorizador de Pals",
+          "description": "Los Pals salvajes aparecen al azar en vez de donde viven. Definilo antes de crear el mundo.",
+          "options": {
+            "None": "Desactivado",
+            "Region": "Por región",
+            "All": "En todas partes"
+          }
         }
       },
       "ports": {

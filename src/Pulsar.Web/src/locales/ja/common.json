@@ -3805,6 +3805,25 @@
         "publicIp": {
           "label": "パブリックIP",
           "description": "NATの内側にあるコミュニティサーバー用です。プレイヤーに見えるアドレスを指定します。"
+        },
+        "deathPenalty": {
+          "label": "デスペナルティ",
+          "description": "プレイヤーが死んだときに失うもの。",
+          "options": {
+            "None": "何も失わない",
+            "Item": "アイテムを失う（装備は残る）",
+            "ItemAndEquipment": "アイテムと装備を失う",
+            "All": "アイテム・装備・パルを失う"
+          }
+        },
+        "randomizer": {
+          "label": "パルのランダム化",
+          "description": "野生のパルが生息地ではなくランダムに出現します。ワールドを作る前に設定してください。",
+          "options": {
+            "None": "オフ",
+            "Region": "地域ごと",
+            "All": "すべての場所"
+          }
         }
       },
       "ports": {
