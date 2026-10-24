@@ -1136,10 +1136,12 @@
       "range": "From {{min}} to {{max}}.",
       "secretSet": "A value is set; type a new one to replace it.",
       "protected": "Only users who can edit server settings can change it.",
-      "unset": "Not set",
+      "unset": "Game's own",
       "choose": "Choose…",
       "outOfRange": "Out of the allowed range.",
-      "notANumber": "Type a whole number."
+      "notANumber": "Type a number.",
+      "options": "More game options ({{count}})",
+      "optionsHint": "Left empty, Pulsar does not change them in the game's files: the game's own values, or yours, stay."
     },
     "workshop": {
       "empty": "No Workshop items.",

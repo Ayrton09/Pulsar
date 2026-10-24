@@ -51,6 +51,7 @@ import {
 } from './api';
 import { NodeDisconnectedBadge, ServerStateBadge, StateReason } from './components';
 import { ConsoleTab } from './ConsoleTab';
+import { useGameText } from './gameText';
 import { PowerButtons } from './PowerButtons';
 import { AddressChip } from './ServerCard';
 import { NetworkTab, OperationProgress, SettingsTab } from './ServerTabs';
@@ -414,6 +415,7 @@ function Facts({ items }: { items: [string, ReactNode][] }) {
 
 function OverviewCard({ details }: { details: ServerDetails }) {
   const { t } = useTranslation();
+  const gameText = useGameText(details.server.templateKey);
   const formatDate = useFormatDate();
   const { server } = details;
   const when = (iso: string | null) =>
@@ -428,7 +430,8 @@ function OverviewCard({ details }: { details: ServerDetails }) {
             t('servers.game'),
             t('servers.gameWithTemplateVersion', { name: server.templateName, version: details.templateVersion }),
           ],
-          ...details.ports
+          ...gameText
+            .ports(details.ports)
             .filter((port) => port.port !== null)
             .map((port): [string, ReactNode] => [
               port.label,

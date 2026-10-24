@@ -29,18 +29,71 @@ function placeholders(text: string): string[] {
 
 const translations = supportedLanguages.filter((language) => language !== 'en');
 
+/** A locale without its games' texts, which English takes from the templates themselves. */
+function panelOf(locale: unknown): unknown {
+  return Object.fromEntries(Object.entries(locale as Record<string, unknown>).filter(([key]) => key !== 'gameText'));
+}
+
+interface Manifest {
+  key: string;
+  variables?: { key: string; label: string; description?: string; options?: { value: string; label: string }[] }[];
+  ports?: { name: string; label: string; description?: string }[];
+}
+
+// The bundled games' templates: the English of every game text.
+const manifests = Object.values(
+  import.meta.glob<{ default: Manifest }>('../../../../games/*/manifest.json', { eager: true }),
+)
+  .map((module) => module.default)
+  .filter((manifest) => manifest.key !== 'pulsar-test');
+
+/** The texts a language must have for the bundled games, with their English, as the templates have them. */
+function gameTexts(): Record<string, unknown> {
+  return Object.fromEntries(
+    manifests.map((manifest) => [
+      manifest.key,
+      {
+        variables: Object.fromEntries(
+          (manifest.variables ?? []).map((v) => [
+            v.key,
+            {
+              label: v.label,
+              ...(v.description ? { description: v.description } : {}),
+              ...(v.options ? { options: Object.fromEntries(v.options.map((o) => [o.value, o.label])) } : {}),
+            },
+          ]),
+        ),
+        ports: Object.fromEntries(
+          (manifest.ports ?? []).map((p) => [
+            p.name,
+            { label: p.label, ...(p.description ? { description: p.description } : {}) },
+          ]),
+        ),
+      },
+    ]),
+  );
+}
+
 describe('locales', () => {
   it('are all there', () => {
     expect(Object.keys(resources).sort()).toEqual([...supportedLanguages].sort());
   });
 
   it.each(translations)('translate the same keys in %s as in English', (language) => {
-    expect(keys(resources[language]?.common)).toEqual(keys(en));
+    expect(keys(panelOf(resources[language]?.common))).toEqual(keys(panelOf(en)));
+  });
+
+  it.each(translations)("translate every bundled game's settings and ports in %s, and nothing else", (language) => {
+    const translated = (resources[language]?.common as { gameText?: unknown }).gameText;
+    expect(keys(translated).sort()).toEqual(keys(gameTexts()).sort());
+    for (const path of keys(translated)) {
+      expect.soft(at(translated, path).trim(), path).not.toBe('');
+    }
   });
 
   it.each(translations)('keep every placeholder of a message in %s, and leave none empty', (language) => {
     const locale = resources[language]?.common;
-    for (const path of keys(en)) {
+    for (const path of keys(panelOf(en))) {
       expect.soft(placeholders(at(locale, path)), path).toEqual(placeholders(at(en, path)));
       if (at(en, path).trim() !== '') {
         expect.soft(at(locale, path).trim(), path).not.toBe('');

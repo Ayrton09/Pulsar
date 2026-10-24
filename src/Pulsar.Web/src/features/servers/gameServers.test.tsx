@@ -5,7 +5,8 @@ import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Schemas } from '../../api/client';
 import { App } from '../../app/App';
-import { initI18n } from '../../app/i18n';
+import i18next from 'i18next';
+import { initI18n, loadLanguage } from '../../app/i18n';
 import { routes } from '../../app/routes';
 import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
 
@@ -449,6 +450,120 @@ describe('changing the node of a server being created', () => {
   });
 });
 
+/** The folded section a game's options are in. */
+function optionsSection(summary: HTMLElement): HTMLElement {
+  const section = summary.closest('details');
+  if (!section) {
+    throw new Error('The options are not in a section of their own.');
+  }
+  return section;
+}
+
+describe("a game's options", () => {
+  const friendlyFire = variable({
+    key: 'friendlyFire',
+    label: 'Friendly fire',
+    type: 'enum',
+    options: [
+      { value: '1', label: 'On' },
+      { value: '0', label: 'Off' },
+    ],
+  });
+  const roundTime = variable({ key: 'roundTime', label: 'Round time (min)', type: 'number', min: 1, max: 9 });
+
+  it('are folded when creating a server, sent only when set, and checked as decimals', async () => {
+    let body: unknown;
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([]),
+      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/templates': () => json([template]),
+      [`GET /api/v1/templates/${templateId}`]: () =>
+        json({ ...templateDetails, variables: [hostname, friendlyFire, roundTime] }),
+      [`GET /api/v1/nodes/${nodeId}/allocations`]: () => json(allocations),
+      'POST /api/v1/servers': async (request) => {
+        body = await request.json();
+        return json(details({ ...summary, installState: 'installing' }), 201);
+      },
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Create server' }));
+    await user.type(screen.getByLabelText('Name'), 'Retakes');
+    await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
+    await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source');
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+
+    const section = optionsSection(await screen.findByText('More game options (2)'));
+    expect(section).not.toHaveAttribute('open');
+    expect(within(section).getByLabelText('Friendly fire')).toHaveDisplayValue("Game's own");
+    await user.click(screen.getByText('More game options (2)'));
+    await user.type(within(section).getByLabelText('Round time (min)'), '1.5');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.click(await screen.findByRole('button', { name: 'Create' }));
+
+    await vi.waitFor(() => expect(body).toBeDefined());
+    // The friendly fire left to the game is not sent: Pulsar leaves its line as the server's files have it.
+    expect((body as { variables: unknown }).variables).toEqual({ roundTime: '1.5' });
+  });
+
+  it('are open in the settings tab', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/settings`]: () =>
+        json({
+          variables: [
+            { definition: friendlyFire, value: '0', hasValue: true },
+            { definition: roundTime, value: null, hasValue: false },
+          ],
+          extraArguments: [],
+          allowExtraArguments: false,
+          autoStart: false,
+          restartOnCrash: true,
+        }),
+    });
+    renderAt(`/servers/${serverId}?tab=settings`);
+
+    const section = optionsSection(await screen.findByText('More game options (2)'));
+    expect(section).toHaveAttribute('open');
+    expect(within(section).getByLabelText('Friendly fire')).toHaveDisplayValue('Off');
+    expect(screen.getByText(/Pulsar does not change them in the game's files/)).toBeInTheDocument();
+  });
+
+  it("are named in the reader's language, the template's English being the fallback", async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/servers/${serverId}/settings`]: () =>
+        json({
+          variables: [
+            { definition: friendlyFire, value: '0', hasValue: true },
+            // Not one of the game's: an imported template's own text.
+            { definition: variable({ key: 'custom', label: 'Custom setting' }), value: null, hasValue: false },
+          ],
+          extraArguments: [],
+          allowExtraArguments: false,
+          autoStart: false,
+          restartOnCrash: true,
+        }),
+    });
+    await loadLanguage('es');
+    await act(() => i18next.changeLanguage('es'));
+    try {
+      renderAt(`/servers/${serverId}?tab=settings`);
+
+      const fire = await screen.findByLabelText('Fuego amigo');
+      expect(fire).toHaveDisplayValue('Desactivado');
+      expect(screen.getByText('Los compañeros de equipo pueden hacerse daño.')).toBeInTheDocument();
+      expect(screen.getByLabelText('Custom setting')).toBeInTheDocument();
+    } finally {
+      await act(() => i18next.changeLanguage('en'));
+    }
+  });
+});
+
 describe('a game server page', () => {
   it('shows install progress live and cancels an update', async () => {
     const cancel = vi.fn(() => json(details()));
@@ -733,7 +848,7 @@ describe('a game server page', () => {
     await user.clear(slots);
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(await screen.findByText('Type a whole number.')).toBeInTheDocument();
+    expect(await screen.findByText('Type a number.')).toBeInTheDocument();
     expect(slots).toHaveAttribute('aria-invalid', 'true');
     expect(bodies).toEqual([]);
   });

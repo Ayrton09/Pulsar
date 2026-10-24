@@ -1136,10 +1136,12 @@
       "range": "Da {{min}} a {{max}}.",
       "secretSet": "Un valore è impostato; digitarne uno nuovo per sostituirlo.",
       "protected": "Solo gli utenti che possono modificare le impostazioni del server possono cambiarlo.",
-      "unset": "Non impostato",
+      "unset": "Valore del gioco",
       "choose": "Scegli…",
       "outOfRange": "Fuori dall'intervallo consentito.",
-      "notANumber": "Digitare un numero intero."
+      "notANumber": "Inserire un numero.",
+      "options": "Altre opzioni del gioco ({{count}})",
+      "optionsHint": "Se lasciate vuote, Pulsar non le modifica nei file del gioco: restano i valori del gioco, o quelli impostati a mano."
     },
     "workshop": {
       "empty": "Nessun elemento Workshop.",
@@ -2105,6 +2107,1012 @@
       "succeeded": "Aggiornato",
       "rolled_back": "Ripristinata la versione precedente",
       "failed": "Non riuscito"
+    }
+  },
+  "gameText": {
+    "7dtd": {
+      "variables": {
+        "serverName": {
+          "label": "Nome del server"
+        },
+        "password": {
+          "label": "Password di accesso",
+          "description": "I giocatori ne hanno bisogno per entrare. Lasciare vuoto per un server aperto."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "world": {
+          "label": "Mondo",
+          "description": "Navezgane, un mondo pregenerato (Pregen06k01…) o RWG per uno casuale."
+        },
+        "gameName": {
+          "label": "Nome del salvataggio",
+          "description": "Dà un nome al salvataggio. Un nome nuovo avvia una nuova partita nello stesso mondo."
+        },
+        "visibility": {
+          "label": "Elenco dei server",
+          "options": {
+            "public": "Pubblico",
+            "friends": "Solo amici",
+            "hidden": "Non in elenco"
+          }
+        },
+        "eac": {
+          "label": "EasyAntiCheat",
+          "description": "La maggior parte delle mod di codice richiede che sia disattivato."
+        },
+        "difficulty": {
+          "label": "Difficoltà",
+          "options": {
+            "0": "Spazzino",
+            "1": "Avventuriero",
+            "2": "Nomade",
+            "3": "Guerriero",
+            "4": "Sopravvissuto",
+            "5": "Folle"
+          }
+        },
+        "dayLength": {
+          "label": "Durata del giorno (minuti reali)",
+          "description": "Minuti reali che dura un intero giorno di gioco."
+        },
+        "dayLightHours": {
+          "label": "Ore di luce",
+          "description": "Ore di gioco di luce in un giorno."
+        },
+        "bloodMoonFrequency": {
+          "label": "Luna di sangue ogni (giorni)",
+          "description": "0 disattiva le lune di sangue."
+        },
+        "bloodMoonEnemies": {
+          "label": "Zombie della luna di sangue per giocatore"
+        },
+        "zombieSpeedDay": {
+          "label": "Velocità degli zombie di giorno",
+          "options": {
+            "0": "Camminata",
+            "1": "Corsetta",
+            "2": "Corsa",
+            "3": "Sprint",
+            "4": "Incubo"
+          }
+        },
+        "zombieSpeedNight": {
+          "label": "Velocità degli zombie di notte",
+          "options": {
+            "0": "Camminata",
+            "1": "Corsetta",
+            "2": "Corsa",
+            "3": "Sprint",
+            "4": "Incubo"
+          }
+        },
+        "maxZombies": {
+          "label": "Zombie max.",
+          "description": "Zombie vivi contemporaneamente su tutta la mappa. Oltre 90 rallenta la maggior parte dei server."
+        },
+        "playerKilling": {
+          "label": "Uccisione tra giocatori",
+          "options": {
+            "0": "Nessuna uccisione",
+            "1": "Uccidere solo gli alleati",
+            "2": "Uccidere solo gli sconosciuti",
+            "3": "Uccidere tutti"
+          }
+        },
+        "dropOnDeath": {
+          "label": "Cosa si perde alla morte",
+          "options": {
+            "0": "Niente",
+            "1": "Tutto",
+            "2": "Solo la barra rapida",
+            "3": "Solo lo zaino",
+            "4": "Elimina tutto"
+          }
+        },
+        "lootAbundance": {
+          "label": "Abbondanza di bottino (%)"
+        },
+        "lootRespawnDays": {
+          "label": "Riapparizione del bottino (giorni)"
+        },
+        "xp": {
+          "label": "Esperienza (%)"
+        },
+        "airDropHours": {
+          "label": "Lancio aereo ogni (ore di gioco)",
+          "description": "0 disattiva i lanci aerei."
+        },
+        "description": {
+          "label": "Descrizione"
+        },
+        "website": {
+          "label": "Sito web"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco"
+        },
+        "net2": {
+          "label": "Gioco (seconda porta)"
+        },
+        "net3": {
+          "label": "Gioco (terza porta)"
+        },
+        "telnet": {
+          "label": "Console (telnet)",
+          "description": "La console del gioco, usata solo da Pulsar su questa macchina (con una password generata da Pulsar)."
+        }
+      }
+    },
+    "ark-sa": {
+      "variables": {
+        "sessionName": {
+          "label": "Nome del server",
+          "description": "Come lo vedono i giocatori nell'elenco dei server."
+        },
+        "map": {
+          "label": "Mappa",
+          "description": "Il nome della mappa con il suffisso _WP: TheIsland_WP, ScorchedEarth_WP, TheCenter_WP, Aberration_WP, Extinction_WP…"
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Password di accesso",
+          "description": "I giocatori ne hanno bisogno per entrare. Lasciare vuoto per un server aperto."
+        },
+        "mods": {
+          "label": "Mod",
+          "description": "ID di progetti CurseForge, separati da virgole (\"928548,929420\"). Il server li scarica e li aggiorna da solo all'avvio."
+        },
+        "battleye": {
+          "label": "Anti-cheat BattlEye"
+        },
+        "pve": {
+          "label": "PvE",
+          "description": "I giocatori e i loro dino non possono farsi del male a vicenda.",
+          "options": {
+            "True": "Sì",
+            "False": "No"
+          }
+        },
+        "tamingSpeed": {
+          "label": "Velocità di addomesticamento",
+          "description": "1 è quella del gioco; 3 addomestica tre volte più in fretta."
+        },
+        "harvestAmount": {
+          "label": "Quantità di raccolta",
+          "description": "Risorse ottenute per colpo. 1 è quella del gioco."
+        },
+        "xp": {
+          "label": "Esperienza",
+          "description": "Esperienza guadagnata. 1 è quella del gioco."
+        },
+        "difficulty": {
+          "label": "Difficoltà",
+          "description": "Imposta il livello massimo dei dino selvatici: 5 per il livello 150, 1 per il livello 30."
+        },
+        "dayCycleSpeed": {
+          "label": "Velocità del ciclo giorno/notte",
+          "description": "Quanto in fretta passa il tempo. 1 è quella del gioco."
+        },
+        "dayTimeSpeed": {
+          "label": "Velocità del giorno",
+          "description": "Quanto in fretta passa il giorno, in aggiunta alla velocità del ciclo."
+        },
+        "nightTimeSpeed": {
+          "label": "Velocità della notte",
+          "description": "Quanto in fretta passa la notte, in aggiunta alla velocità del ciclo."
+        },
+        "autoSave": {
+          "label": "Salvataggio automatico ogni (min)"
+        },
+        "maxTamedDinos": {
+          "label": "Dino addomesticati max.",
+          "description": "Per tutto il server."
+        },
+        "crosshair": {
+          "label": "Mirino",
+          "options": {
+            "True": "Sì",
+            "False": "No"
+          }
+        },
+        "mapPlayerLocation": {
+          "label": "Mostra i giocatori sulla mappa",
+          "options": {
+            "True": "Sì",
+            "False": "No"
+          }
+        },
+        "thirdPerson": {
+          "label": "Vista in terza persona",
+          "options": {
+            "True": "Sì",
+            "False": "No"
+          }
+        },
+        "eggHatchSpeed": {
+          "label": "Velocità di schiusa delle uova",
+          "description": "Più alto, le uova si schiudono più in fretta. 1 è quella del gioco."
+        },
+        "matingInterval": {
+          "label": "Intervallo di accoppiamento",
+          "description": "Tempo tra un accoppiamento e l'altro: più basso, prima. 1 è quello del gioco."
+        },
+        "babyMatureSpeed": {
+          "label": "Velocità di maturazione dei cuccioli",
+          "description": "Più alto, i cuccioli crescono più in fretta. 1 è quella del gioco."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco",
+          "description": "I giocatori si connettono via UDP. RCON ascolta via TCP sulla stessa porta ed è usato solo da Pulsar su questa macchina."
+        }
+      }
+    },
+    "cs2": {
+      "variables": {
+        "hostname": {
+          "label": "Nome del server"
+        },
+        "map": {
+          "label": "Mappa iniziale"
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "gameMode": {
+          "label": "Modalità di gioco",
+          "options": {
+            "casual": "Casual",
+            "competitive": "Competitiva",
+            "wingman": "Coppia",
+            "armsrace": "Corsa agli armamenti",
+            "deathmatch": "Deathmatch"
+          }
+        },
+        "password": {
+          "label": "Password di accesso",
+          "description": "I giocatori ne hanno bisogno per entrare. Lasciare vuoto per un server pubblico."
+        },
+        "gslt": {
+          "label": "Token di accesso del server di gioco",
+          "description": "Serve perché i giocatori fuori dalla tua rete trovino il server e vi entrino. Creane uno su https://steamcommunity.com/dev/managegameservers (app 730)."
+        },
+        "friendlyFire": {
+          "label": "Fuoco amico",
+          "description": "I compagni di squadra possono farsi del male.",
+          "options": {
+            "0": "Disattivato",
+            "1": "Attivato"
+          }
+        },
+        "maxRounds": {
+          "label": "Round max.",
+          "description": "Round che dura una partita. 0: nessun limite."
+        },
+        "roundTime": {
+          "label": "Durata del round (min)",
+          "description": "Minuti che dura un round, su ogni tipo di mappa."
+        },
+        "freezeTime": {
+          "label": "Tempo di blocco (s)",
+          "description": "Secondi in cui i giocatori non possono muoversi all'inizio del round."
+        },
+        "buyTime": {
+          "label": "Tempo di acquisto (s)",
+          "description": "Secondi in cui i giocatori possono acquistare all'inizio del round."
+        },
+        "startMoney": {
+          "label": "Denaro iniziale"
+        },
+        "warmupTime": {
+          "label": "Riscaldamento (s)",
+          "description": "Secondi di riscaldamento prima della partita."
+        },
+        "autoTeamBalance": {
+          "label": "Bilanciamento automatico delle squadre",
+          "options": {
+            "0": "Disattivato",
+            "1": "Attivato"
+          }
+        },
+        "limitTeams": {
+          "label": "Differenza max. di dimensione tra squadre",
+          "description": "Di quanti giocatori una squadra può superare l'altra. 0: nessun limite."
+        },
+        "allTalk": {
+          "label": "Chat vocale globale",
+          "description": "Le due squadre si sentono nella chat vocale.",
+          "options": {
+            "0": "Disattivato",
+            "1": "Attivato"
+          }
+        },
+        "bots": {
+          "label": "Bot",
+          "description": "Quanti bot riempiono il server."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco",
+          "description": "I giocatori si connettono via UDP. RCON ascolta via TCP sulla stessa porta ed è usato solo da Pulsar su questa macchina."
+        },
+        "tv": {
+          "label": "CSTV",
+          "description": "Assegnarla per attivare CSTV."
+        }
+      }
+    },
+    "css": {
+      "variables": {
+        "hostname": {
+          "label": "Nome del server"
+        },
+        "map": {
+          "label": "Mappa iniziale"
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "password": {
+          "label": "Password di accesso",
+          "description": "I giocatori ne hanno bisogno per entrare. Lasciare vuoto per un server pubblico."
+        },
+        "tickrate": {
+          "label": "Tick rate",
+          "description": "Aggiornamenti al secondo. 100 è più fluido e usa più CPU e banda.",
+          "options": {
+            "66": "66 (quello del gioco)",
+            "100": "100"
+          }
+        },
+        "friendlyFire": {
+          "label": "Fuoco amico",
+          "description": "I compagni di squadra possono farsi del male.",
+          "options": {
+            "0": "Disattivato",
+            "1": "Attivato"
+          }
+        },
+        "maxRounds": {
+          "label": "Round max.",
+          "description": "Round che dura una partita. 0: nessun limite."
+        },
+        "timeLimit": {
+          "label": "Limite di tempo della mappa (min)",
+          "description": "Minuti prima del cambio mappa. 0: nessun limite."
+        },
+        "winLimit": {
+          "label": "Limite di vittorie",
+          "description": "Round che una squadra deve vincere per concludere la mappa. 0: nessun limite."
+        },
+        "roundTime": {
+          "label": "Durata del round (min)",
+          "description": "Minuti che dura un round."
+        },
+        "freezeTime": {
+          "label": "Tempo di blocco (s)",
+          "description": "Secondi in cui i giocatori non possono muoversi all'inizio del round."
+        },
+        "startMoney": {
+          "label": "Denaro iniziale"
+        },
+        "autoTeamBalance": {
+          "label": "Bilanciamento automatico delle squadre",
+          "options": {
+            "0": "Disattivato",
+            "1": "Attivato"
+          }
+        },
+        "limitTeams": {
+          "label": "Differenza max. di dimensione tra squadre",
+          "description": "Di quanti giocatori una squadra può superare l'altra. 0: nessun limite."
+        },
+        "c4Timer": {
+          "label": "Timer del C4 (s)"
+        },
+        "allTalk": {
+          "label": "Chat vocale globale",
+          "description": "Le due squadre si sentono nella chat vocale.",
+          "options": {
+            "0": "Disattivato",
+            "1": "Attivato"
+          }
+        },
+        "bots": {
+          "label": "Bot",
+          "description": "Quanti bot riempiono il server."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco",
+          "description": "I giocatori si connettono via UDP. RCON ascolta via TCP sulla stessa porta ed è usato solo da Pulsar su questa macchina."
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "Assegnarla per attivare SourceTV."
+        }
+      }
+    },
+    "minecraft": {
+      "variables": {
+        "eula": {
+          "label": "EULA di Minecraft",
+          "description": "I termini di Mojang: https://aka.ms/MinecraftEULA. Il suo server non parte senza accettarli.",
+          "options": {
+            "accepted": "Li accetto"
+          }
+        },
+        "version": {
+          "label": "Versione di Minecraft",
+          "description": "'latest' per l'ultima versione stabile, oppure una versione come 1.21.4. Cambiarla richiede un aggiornamento; tornare a una versione precedente può danneggiare il mondo."
+        },
+        "motd": {
+          "label": "Messaggio del giorno"
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "memoryMb": {
+          "label": "Memoria (MB)",
+          "description": "La massima memoria che Java può usare per il server."
+        },
+        "difficulty": {
+          "label": "Difficoltà",
+          "options": {
+            "peaceful": "Pacifica",
+            "easy": "Facile",
+            "normal": "Normale",
+            "hard": "Difficile"
+          }
+        },
+        "gamemode": {
+          "label": "Modalità di gioco",
+          "options": {
+            "survival": "Sopravvivenza",
+            "creative": "Creativa",
+            "adventure": "Avventura",
+            "spectator": "Spettatore"
+          }
+        },
+        "onlineMode": {
+          "label": "Verifica gli account con Mojang",
+          "description": "Disattivare solo dietro un proxy che li verifichi: chiunque potrebbe entrare con qualsiasi nome."
+        },
+        "whitelist": {
+          "label": "Solo giocatori nella whitelist"
+        },
+        "pvp": {
+          "label": "I giocatori possono farsi del male"
+        },
+        "seed": {
+          "label": "Seed del mondo",
+          "description": "Usato solo alla creazione del mondo."
+        },
+        "viewDistance": {
+          "label": "Distanza di visualizzazione (chunk)"
+        },
+        "simulationDistance": {
+          "label": "Distanza di simulazione (chunk)",
+          "description": "A quale distanza dai giocatori i mob si muovono e le colture crescono. Meno usa meno CPU."
+        },
+        "hardcore": {
+          "label": "Hardcore",
+          "description": "I giocatori che muoiono diventano spettatori. Impostarlo prima di creare il mondo.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "spawnProtection": {
+          "label": "Protezione dello spawn (blocchi)",
+          "description": "Solo gli operatori costruiscono così vicino allo spawn. 0 la disattiva."
+        },
+        "allowFlight": {
+          "label": "Consenti il volo",
+          "description": "I giocatori che volano in sopravvivenza (con mod) non vengono espulsi.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "forceGamemode": {
+          "label": "Forza la modalità di gioco",
+          "description": "I giocatori ricevono la modalità di gioco del server a ogni accesso.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "enforceWhitelist": {
+          "label": "Espelli i giocatori fuori dalla whitelist",
+          "description": "Quando la whitelist viene ricaricata, i giocatori che non ne fanno più parte vengono espulsi.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "generateStructures": {
+          "label": "Genera strutture",
+          "description": "Villaggi, templi e altre strutture. Solo nei chunk generati da quel momento.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "idleTimeout": {
+          "label": "Espelli i giocatori inattivi dopo (min)",
+          "description": "0: mai."
+        },
+        "opPermissionLevel": {
+          "label": "Livello di permessi dell'operatore",
+          "options": {
+            "1": "1: costruire nello spawn",
+            "2": "2: comandi cheat",
+            "3": "3: espellere e bandire",
+            "4": "4: tutti i comandi"
+          }
+        },
+        "hideOnlinePlayers": {
+          "label": "Nascondi i giocatori online",
+          "description": "L'elenco dei server non mostra chi sta giocando.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco"
+        }
+      }
+    },
+    "palworld": {
+      "variables": {
+        "name": {
+          "label": "Nome del server"
+        },
+        "description": {
+          "label": "Descrizione"
+        },
+        "password": {
+          "label": "Password di accesso",
+          "description": "Lasciare vuoto per un server aperto."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "community": {
+          "label": "Mostra come server della community"
+        },
+        "expRate": {
+          "label": "Esperienza",
+          "description": "1 è quella del gioco."
+        },
+        "captureRate": {
+          "label": "Tasso di cattura",
+          "description": "Più alto, i Pal si catturano più facilmente. 1 è quello del gioco."
+        },
+        "spawnRate": {
+          "label": "Tasso di comparsa dei Pal",
+          "description": "Quanti Pal compaiono. Più alto usa più CPU. 1 è quello del gioco."
+        },
+        "gatheringRate": {
+          "label": "Tasso di raccolta",
+          "description": "Oggetti da alberi, rocce e simili. 1 è quello del gioco."
+        },
+        "enemyDropRate": {
+          "label": "Bottino dei nemici",
+          "description": "Oggetti che i nemici lasciano cadere. 1 è quello del gioco."
+        },
+        "workSpeed": {
+          "label": "Velocità di lavoro",
+          "description": "Quanto in fretta i Pal lavorano nelle basi. 1 è quella del gioco."
+        },
+        "dayTimeSpeed": {
+          "label": "Velocità del giorno",
+          "description": "1 è quella del gioco."
+        },
+        "nightTimeSpeed": {
+          "label": "Velocità della notte",
+          "description": "1 è quella del gioco."
+        },
+        "eggHatchHours": {
+          "label": "Tempo di schiusa delle uova (h)",
+          "description": "Per le uova più grandi; le più piccole richiedono meno."
+        },
+        "pvp": {
+          "label": "PvP",
+          "description": "I giocatori possono farsi del male.",
+          "options": {
+            "True": "Sì",
+            "False": "No"
+          }
+        },
+        "fastTravel": {
+          "label": "Viaggio rapido",
+          "options": {
+            "True": "Sì",
+            "False": "No"
+          }
+        },
+        "basesPerGuild": {
+          "label": "Basi per gilda"
+        },
+        "workersPerBase": {
+          "label": "Pal che lavorano per base"
+        },
+        "guildSize": {
+          "label": "Giocatori per gilda"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco",
+          "description": "I giocatori si connettono via UDP. RCON ascolta via TCP sulla stessa porta ed è usato solo da Pulsar su questa macchina."
+        },
+        "query": {
+          "label": "Query Steam"
+        }
+      }
+    },
+    "project-zomboid": {
+      "variables": {
+        "publicName": {
+          "label": "Nome del server"
+        },
+        "adminPassword": {
+          "label": "Password amministratore",
+          "description": "Per l'account \"admin\" del gioco. Reimpostata a ogni avvio."
+        },
+        "password": {
+          "label": "Password di accesso",
+          "description": "I giocatori ne hanno bisogno per entrare. Lasciare vuoto per un server aperto."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "memoryGb": {
+          "label": "Memoria Java (GB)",
+          "description": "L'heap di Java. Tenerlo sotto il limite di memoria del server, se ne ha uno."
+        },
+        "public": {
+          "label": "In elenco nel browser dei server"
+        },
+        "workshopItems": {
+          "label": "Elementi del Workshop",
+          "description": "ID di elementi del Workshop di Steam, separati da punto e virgola. Il server li scarica all'avvio."
+        },
+        "mods": {
+          "label": "ID delle mod",
+          "description": "Le mod da caricare, tramite il loro ID mod (non l'ID del Workshop), separati da punto e virgola. La build 42 scrive ciascuno come \\ModId."
+        },
+        "pvp": {
+          "label": "PvP",
+          "description": "I giocatori possono farsi del male.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "safetySystem": {
+          "label": "Interruttore di sicurezza PvP",
+          "description": "Ogni giocatore sceglie se partecipare al PvP.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "pauseEmpty": {
+          "label": "Pausa quando vuoto",
+          "description": "Il tempo si ferma finché nessuno gioca.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "open": {
+          "label": "Chiunque può entrare",
+          "description": "No: entrano solo gli account nella whitelist del server.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "autoWhitelist": {
+          "label": "Aggiungi i nuovi giocatori alla whitelist",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "globalChat": {
+          "label": "Chat globale",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "voice": {
+          "label": "Chat vocale",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "vac": {
+          "label": "Steam VAC",
+          "description": "L'anti-cheat di Valve.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "saveMinutes": {
+          "label": "Salvataggio automatico ogni (min)",
+          "description": "0: quello del gioco."
+        },
+        "pingLimit": {
+          "label": "Limite di ping (ms)",
+          "description": "I giocatori con un ping più alto vengono espulsi. 0 lo disattiva."
+        },
+        "description": {
+          "label": "Descrizione",
+          "description": "Mostrata nel browser dei server."
+        },
+        "welcome": {
+          "label": "Messaggio di benvenuto",
+          "description": "Mostrato nella chat quando un giocatore entra."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco"
+        },
+        "udp": {
+          "label": "Gioco (seconda porta)"
+        }
+      }
+    },
+    "rust": {
+      "variables": {
+        "hostname": {
+          "label": "Nome del server"
+        },
+        "description": {
+          "label": "Descrizione"
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "worldSize": {
+          "label": "Dimensione della mappa",
+          "description": "In metri per lato. Le mappe più grandi richiedono più tempo per generarsi e più memoria."
+        },
+        "seed": {
+          "label": "Seed della mappa",
+          "description": "Lo stesso seed e la stessa dimensione creano la stessa mappa."
+        },
+        "pve": {
+          "label": "PvE",
+          "description": "I giocatori non possono farsi del male.",
+          "options": {
+            "on": "Attivato",
+            "off": "Disattivato"
+          }
+        },
+        "globalChat": {
+          "label": "Chat globale",
+          "options": {
+            "on": "Attivata",
+            "off": "Disattivata"
+          }
+        },
+        "saveInterval": {
+          "label": "Salvataggio automatico ogni (s)"
+        },
+        "decayScale": {
+          "label": "Velocità di degrado",
+          "description": "1 è quella del gioco; 0 disattiva il degrado."
+        },
+        "upkeep": {
+          "label": "Manutenzione",
+          "description": "Le basi costano risorse per essere mantenute.",
+          "options": {
+            "on": "Attivata",
+            "off": "Disattivata"
+          }
+        },
+        "stability": {
+          "label": "Stabilità delle costruzioni",
+          "options": {
+            "on": "Attivata",
+            "off": "Disattivata"
+          }
+        },
+        "secure": {
+          "label": "Easy Anti-Cheat",
+          "description": "Disattivato, possono entrare giocatori con cheat e il server non risulta sicuro.",
+          "options": {
+            "on": "Attivato",
+            "off": "Disattivato"
+          }
+        },
+        "instantCraft": {
+          "label": "Creazione istantanea",
+          "options": {
+            "on": "Attivata",
+            "off": "Disattivata"
+          }
+        },
+        "airdropMinPlayers": {
+          "label": "Giocatori per i lanci aerei",
+          "description": "I lanci aerei arrivano solo con questo numero di giocatori online."
+        },
+        "tags": {
+          "label": "Tag dell'elenco dei server",
+          "description": "Separati da virgole, come monthly,vanilla,eu."
+        },
+        "url": {
+          "label": "Sito web"
+        },
+        "headerImage": {
+          "label": "URL dell'immagine di intestazione",
+          "description": "Un JPG di 512 × 256 mostrato nel browser dei server."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco",
+          "description": "I giocatori si connettono via UDP. RCON ascolta via TCP sulla stessa porta ed è usato solo da Pulsar su questa macchina."
+        },
+        "query": {
+          "label": "Query dell'elenco dei server"
+        },
+        "app": {
+          "label": "App companion Rust+",
+          "description": "Assegnarla per consentire ai giocatori di associare l'app Rust+."
+        }
+      }
+    },
+    "scpsl": {
+      "variables": {
+        "eula": {
+          "label": "EULA di SCP: Secret Laboratory",
+          "description": "I termini del gioco per i server: https://link.scpslgame.com/eula. Il suo server non parte senza accettarli.",
+          "options": {
+            "accepted": "Li accetto"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco"
+        }
+      }
+    },
+    "valheim": {
+      "variables": {
+        "name": {
+          "label": "Nome del server",
+          "description": "Mostrato nell'elenco dei server. Non può contenere la password."
+        },
+        "world": {
+          "label": "Mondo",
+          "description": "Il suo nome: un nome nuovo crea un mondo nuovo."
+        },
+        "password": {
+          "label": "Password di accesso",
+          "description": "I giocatori ne hanno bisogno per entrare: almeno 5 caratteri, e che non faccia parte del nome del server."
+        },
+        "visibility": {
+          "label": "Elenco dei server",
+          "options": {
+            "public": "In elenco (i giocatori lo trovano)",
+            "private": "Non in elenco (si entra tramite indirizzo)"
+          }
+        },
+        "crossplay": {
+          "label": "Crossplay (giocatori Xbox e Game Pass)",
+          "description": "Passa dal relay di PlayFab invece che dalle porte del server."
+        },
+        "preset": {
+          "label": "Difficoltà",
+          "options": {
+            "normal": "Normale",
+            "casual": "Casual",
+            "easy": "Facile",
+            "hard": "Difficile",
+            "hardcore": "Hardcore",
+            "immersive": "Immersiva",
+            "hammer": "Martello (modalità costruzione)"
+          }
+        },
+        "combat": {
+          "label": "Combattimento",
+          "description": "Quanto forte colpiscono i nemici. Modifica la difficoltà qui sopra.",
+          "options": {
+            "veryeasy": "Molto facile",
+            "easy": "Facile",
+            "hard": "Difficile",
+            "veryhard": "Molto difficile"
+          }
+        },
+        "deathPenalty": {
+          "label": "Penalità di morte",
+          "options": {
+            "casual": "Casual",
+            "veryeasy": "Molto facile",
+            "easy": "Facile",
+            "hard": "Difficile",
+            "hardcore": "Hardcore"
+          }
+        },
+        "resources": {
+          "label": "Risorse",
+          "options": {
+            "muchless": "Molto meno",
+            "less": "Meno",
+            "more": "Più",
+            "muchmore": "Molto più",
+            "most": "Il massimo"
+          }
+        },
+        "raids": {
+          "label": "Raid",
+          "options": {
+            "none": "Nessuno",
+            "muchless": "Molto meno",
+            "less": "Meno",
+            "more": "Più",
+            "muchmore": "Molto più"
+          }
+        },
+        "portals": {
+          "label": "Portali",
+          "options": {
+            "casual": "Passa tutto",
+            "hard": "Niente metalli",
+            "veryhard": "Niente portali"
+          }
+        },
+        "noMap": {
+          "label": "Niente mappa"
+        },
+        "noBuildCost": {
+          "label": "Nessun costo di costruzione"
+        },
+        "passiveMobs": {
+          "label": "Nemici passivi",
+          "description": "I nemici si limitano a reagire."
+        },
+        "playerEvents": {
+          "label": "Raid in base ai progressi del giocatore",
+          "description": "I raid seguono i progressi di ogni giocatore invece di quelli del mondo."
+        },
+        "saveInterval": {
+          "label": "Salvataggio automatico ogni (s)"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco",
+          "description": "I giocatori si connettono qui."
+        },
+        "query": {
+          "label": "Query Steam",
+          "description": "Valheim apre sempre la porta del gioco + 1 per l'elenco dei server: Pulsar le assegna quell'allocazione."
+        }
+      }
     }
   }
 }

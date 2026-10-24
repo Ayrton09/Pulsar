@@ -11,6 +11,7 @@ import { useCurrentUser } from '../auth/api';
 import { useWatchNodes } from '../live/hooks';
 import { useAllocations, useNodes } from '../nodes/api';
 import { useCreateServer, useTemplate, useTemplates, type TemplateDetails, type TemplateVariable } from './api';
+import { useGameText } from './gameText';
 import { PortNumberFields } from './PortFields';
 import {
   checkPorts,
@@ -64,7 +65,17 @@ export function CreateServerDialog({
   // The nodes listed include those the user only sees: they may create servers on some of them.
   const connected =
     nodes.data?.filter((node) => node.connected && canOnNode(me, node.id, Permission.ServerCreate)) ?? [];
-  const details = template.data;
+  // The game's labels in the reader's language (the template's own English for an imported game).
+  const gameText = useGameText(template.data?.template.key);
+  const details = useMemo(
+    () =>
+      template.data && {
+        ...template.data,
+        variables: gameText.variables(template.data.variables),
+        ports: gameText.ports(template.data.ports),
+      },
+    [template.data, gameText],
+  );
   // Whoever manages the node types port numbers (added to its allocations when missing); others choose allocations.
   const canAddPorts = nodeId !== '' && canOnNode(me, nodeId, Permission.NodeManage);
   const nodeAllocations: NodeAllocation[] = useMemo(() => allocations.data ?? [], [allocations.data]);

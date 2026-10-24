@@ -1136,10 +1136,12 @@
       "range": "{{min}}~{{max}}。",
       "secretSet": "値が設定されています。置き換えるには新しい値を入力してください。",
       "protected": "サーバー設定を編集できるユーザーのみ変更できます。",
-      "unset": "未設定",
+      "unset": "ゲームの既定値",
       "choose": "選択…",
       "outOfRange": "許可された範囲外です。",
-      "notANumber": "整数を入力してください。"
+      "notANumber": "数値を入力してください。",
+      "options": "その他のゲームオプション（{{count}}）",
+      "optionsHint": "空欄のままにすると、Pulsar はゲームのファイル内の値を変更しません。ゲームの値、または自分で設定した値がそのまま使われます。"
     },
     "workshop": {
       "empty": "Workshopのアイテムはありません。",
@@ -2105,6 +2107,1012 @@
       "succeeded": "更新完了",
       "rolled_back": "元に戻しました",
       "failed": "失敗"
+    }
+  },
+  "gameText": {
+    "7dtd": {
+      "variables": {
+        "serverName": {
+          "label": "サーバー名"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。空欄にすると誰でも参加できます。"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "world": {
+          "label": "ワールド",
+          "description": "Navezgane、生成済みワールド(Pregen06k01…)、またはランダム生成のRWG。"
+        },
+        "gameName": {
+          "label": "セーブ名",
+          "description": "セーブに付ける名前です。新しい名前にすると同じワールドで新規ゲームが始まります。"
+        },
+        "visibility": {
+          "label": "サーバーリスト",
+          "options": {
+            "public": "公開",
+            "friends": "フレンドのみ",
+            "hidden": "非公開"
+          }
+        },
+        "eac": {
+          "label": "EasyAntiCheat",
+          "description": "コードを変更するMODの多くは、オフにする必要があります。"
+        },
+        "difficulty": {
+          "label": "難易度",
+          "options": {
+            "0": "スカベンジャー",
+            "1": "アドベンチャラー",
+            "2": "ノマド",
+            "3": "ウォリアー",
+            "4": "サバイバリスト",
+            "5": "インセイン"
+          }
+        },
+        "dayLength": {
+          "label": "1日の長さ(実時間・分)",
+          "description": "ゲーム内の1日が実時間で何分かを指定します。"
+        },
+        "dayLightHours": {
+          "label": "昼の時間",
+          "description": "1日のうち昼間のゲーム内時間です。"
+        },
+        "bloodMoonFrequency": {
+          "label": "ブラッドムーンの間隔(日)",
+          "description": "0にするとブラッドムーンが発生しません。"
+        },
+        "bloodMoonEnemies": {
+          "label": "ブラッドムーンのゾンビ数(1人あたり)"
+        },
+        "zombieSpeedDay": {
+          "label": "昼のゾンビの速度",
+          "options": {
+            "0": "歩く",
+            "1": "ジョギング",
+            "2": "走る",
+            "3": "ダッシュ",
+            "4": "ナイトメア"
+          }
+        },
+        "zombieSpeedNight": {
+          "label": "夜のゾンビの速度",
+          "options": {
+            "0": "歩く",
+            "1": "ジョギング",
+            "2": "走る",
+            "3": "ダッシュ",
+            "4": "ナイトメア"
+          }
+        },
+        "maxZombies": {
+          "label": "ゾンビの最大数",
+          "description": "マップ全体で同時に存在するゾンビの数です。90を超えると多くのサーバーで動作が重くなります。"
+        },
+        "playerKilling": {
+          "label": "プレイヤーキル",
+          "options": {
+            "0": "キル不可",
+            "1": "味方のみキル可",
+            "2": "他人のみキル可",
+            "3": "全員キル可"
+          }
+        },
+        "dropOnDeath": {
+          "label": "死亡時のドロップ",
+          "options": {
+            "0": "なし",
+            "1": "すべて",
+            "2": "ツールベルトのみ",
+            "3": "バックパックのみ",
+            "4": "すべて削除"
+          }
+        },
+        "lootAbundance": {
+          "label": "ルートの量(%)"
+        },
+        "lootRespawnDays": {
+          "label": "ルートの再出現(日)"
+        },
+        "xp": {
+          "label": "経験値(%)"
+        },
+        "airDropHours": {
+          "label": "エアドロップの間隔(ゲーム内時間)",
+          "description": "0にするとエアドロップが発生しません。"
+        },
+        "description": {
+          "label": "説明"
+        },
+        "website": {
+          "label": "ウェブサイト"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム"
+        },
+        "net2": {
+          "label": "ゲーム(2番目のポート)"
+        },
+        "net3": {
+          "label": "ゲーム(3番目のポート)"
+        },
+        "telnet": {
+          "label": "コンソール(telnet)",
+          "description": "ゲームのコンソールです。このマシン上のPulsarだけが(Pulsarが生成したパスワードで)使用します。"
+        }
+      }
+    },
+    "ark-sa": {
+      "variables": {
+        "sessionName": {
+          "label": "サーバー名",
+          "description": "サーバーリストでプレイヤーに表示される名前です。"
+        },
+        "map": {
+          "label": "マップ",
+          "description": "接尾辞_WPを付けたマップ名: TheIsland_WP、ScorchedEarth_WP、TheCenter_WP、Aberration_WP、Extinction_WP…"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。空欄にすると誰でも参加できます。"
+        },
+        "mods": {
+          "label": "MOD",
+          "description": "CurseForgeのプロジェクトIDをカンマで区切って指定します(\"928548,929420\")。サーバーが起動時に自動でダウンロードと更新を行います。"
+        },
+        "battleye": {
+          "label": "BattlEyeチート対策"
+        },
+        "pve": {
+          "label": "PvE",
+          "description": "プレイヤーとそのディノは互いにダメージを与えられません。",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "tamingSpeed": {
+          "label": "テイム速度",
+          "description": "1がゲームの標準です。3にすると3倍速でテイムできます。"
+        },
+        "harvestAmount": {
+          "label": "採取量",
+          "description": "1回の採取で得られる資源の量です。1がゲームの標準です。"
+        },
+        "xp": {
+          "label": "経験値",
+          "description": "獲得できる経験値です。1がゲームの標準です。"
+        },
+        "difficulty": {
+          "label": "難易度",
+          "description": "野生ディノの最大レベルを決めます。5でレベル150、1でレベル30です。"
+        },
+        "dayCycleSpeed": {
+          "label": "昼夜サイクルの速度",
+          "description": "時間が進む速さです。1がゲームの標準です。"
+        },
+        "dayTimeSpeed": {
+          "label": "昼の速度",
+          "description": "昼が進む速さで、昼夜サイクルの速度に上乗せされます。"
+        },
+        "nightTimeSpeed": {
+          "label": "夜の速度",
+          "description": "夜が進む速さで、昼夜サイクルの速度に上乗せされます。"
+        },
+        "autoSave": {
+          "label": "オートセーブの間隔(分)"
+        },
+        "maxTamedDinos": {
+          "label": "テイム済みディノの上限",
+          "description": "サーバー全体での上限です。"
+        },
+        "crosshair": {
+          "label": "照準",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "mapPlayerLocation": {
+          "label": "マップにプレイヤーを表示",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "thirdPerson": {
+          "label": "三人称視点",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "eggHatchSpeed": {
+          "label": "卵の孵化速度",
+          "description": "大きいほど卵が早く孵化します。1がゲームの標準です。"
+        },
+        "matingInterval": {
+          "label": "交配の間隔",
+          "description": "交配までの時間です。小さいほど早くなります。1がゲームの標準です。"
+        },
+        "babyMatureSpeed": {
+          "label": "幼体の成長速度",
+          "description": "大きいほど幼体が早く成長します。1がゲームの標準です。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはUDPで接続します。RCONは同じポートでTCPを待ち受け、このマシン上のPulsarだけが使用します。"
+        }
+      }
+    },
+    "cs2": {
+      "variables": {
+        "hostname": {
+          "label": "サーバー名"
+        },
+        "map": {
+          "label": "開始マップ"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "gameMode": {
+          "label": "ゲームモード",
+          "options": {
+            "casual": "カジュアル",
+            "competitive": "コンペティティブ",
+            "wingman": "ウイングマン",
+            "armsrace": "アームズレース",
+            "deathmatch": "デスマッチ"
+          }
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。空欄にすると誰でも参加できる公開サーバーになります。"
+        },
+        "gslt": {
+          "label": "Game Server Login Token",
+          "description": "ネットワーク外のプレイヤーがサーバーを見つけて参加するために必要です。https://steamcommunity.com/dev/managegameservers で作成してください(アプリ730)。"
+        },
+        "friendlyFire": {
+          "label": "フレンドリーファイア",
+          "description": "味方同士でダメージを与えられます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "maxRounds": {
+          "label": "最大ラウンド数",
+          "description": "1試合のラウンド数です。0は無制限です。"
+        },
+        "roundTime": {
+          "label": "ラウンド時間(分)",
+          "description": "1ラウンドの長さ(分)で、すべてのマップに適用されます。"
+        },
+        "freezeTime": {
+          "label": "フリーズタイム(秒)",
+          "description": "ラウンド開始時にプレイヤーが動けない秒数です。"
+        },
+        "buyTime": {
+          "label": "購入時間(秒)",
+          "description": "ラウンド開始時にプレイヤーが購入できる秒数です。"
+        },
+        "startMoney": {
+          "label": "初期所持金"
+        },
+        "warmupTime": {
+          "label": "ウォームアップ(秒)",
+          "description": "試合前のウォームアップの秒数です。"
+        },
+        "autoTeamBalance": {
+          "label": "チーム自動バランス",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "limitTeams": {
+          "label": "チーム人数差の上限",
+          "description": "一方のチームが他方より何人多くなれるかを指定します。0は無制限です。"
+        },
+        "allTalk": {
+          "label": "オールトーク",
+          "description": "ボイスチャットで両チームの声が聞こえます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "bots": {
+          "label": "ボット",
+          "description": "サーバーを埋めるボットの数です。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはUDPで接続します。RCONは同じポートでTCPを待ち受け、このマシン上のPulsarだけが使用します。"
+        },
+        "tv": {
+          "label": "CSTV",
+          "description": "割り当てるとCSTVが有効になります。"
+        }
+      }
+    },
+    "css": {
+      "variables": {
+        "hostname": {
+          "label": "サーバー名"
+        },
+        "map": {
+          "label": "開始マップ"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。空欄にすると誰でも参加できる公開サーバーになります。"
+        },
+        "tickrate": {
+          "label": "ティックレート",
+          "description": "1秒あたりの更新回数です。100の方が滑らかですが、CPUと帯域を多く使います。",
+          "options": {
+            "66": "66(ゲームの標準)",
+            "100": "100"
+          }
+        },
+        "friendlyFire": {
+          "label": "フレンドリーファイア",
+          "description": "味方同士でダメージを与えられます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "maxRounds": {
+          "label": "最大ラウンド数",
+          "description": "1試合のラウンド数です。0は無制限です。"
+        },
+        "timeLimit": {
+          "label": "マップの制限時間(分)",
+          "description": "マップが切り替わるまでの分数です。0は無制限です。"
+        },
+        "winLimit": {
+          "label": "勝利ラウンド数",
+          "description": "マップを終了するためにチームが勝つ必要のあるラウンド数です。0は無制限です。"
+        },
+        "roundTime": {
+          "label": "ラウンド時間(分)",
+          "description": "1ラウンドの長さ(分)です。"
+        },
+        "freezeTime": {
+          "label": "フリーズタイム(秒)",
+          "description": "ラウンド開始時にプレイヤーが動けない秒数です。"
+        },
+        "startMoney": {
+          "label": "初期所持金"
+        },
+        "autoTeamBalance": {
+          "label": "チーム自動バランス",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "limitTeams": {
+          "label": "チーム人数差の上限",
+          "description": "一方のチームが他方より何人多くなれるかを指定します。0は無制限です。"
+        },
+        "c4Timer": {
+          "label": "C4タイマー(秒)"
+        },
+        "allTalk": {
+          "label": "オールトーク",
+          "description": "ボイスチャットで両チームの声が聞こえます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "bots": {
+          "label": "ボット",
+          "description": "サーバーを埋めるボットの数です。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはUDPで接続します。RCONは同じポートでTCPを待ち受け、このマシン上のPulsarだけが使用します。"
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "割り当てるとSourceTVが有効になります。"
+        }
+      }
+    },
+    "minecraft": {
+      "variables": {
+        "eula": {
+          "label": "Minecraft EULA",
+          "description": "Mojangの利用規約: https://aka.ms/MinecraftEULA。同意しないとサーバーは起動しません。",
+          "options": {
+            "accepted": "同意します"
+          }
+        },
+        "version": {
+          "label": "Minecraftのバージョン",
+          "description": "最新版なら'latest'、または1.21.4のようなバージョンを指定します。変更にはアップデートが必要です。古いバージョンに戻すとワールドが壊れることがあります。"
+        },
+        "motd": {
+          "label": "サーバーのメッセージ(MOTD)"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "memoryMb": {
+          "label": "メモリ(MB)",
+          "description": "Javaがサーバーに使用できるメモリの上限です。"
+        },
+        "difficulty": {
+          "label": "難易度",
+          "options": {
+            "peaceful": "ピースフル",
+            "easy": "イージー",
+            "normal": "ノーマル",
+            "hard": "ハード"
+          }
+        },
+        "gamemode": {
+          "label": "ゲームモード",
+          "options": {
+            "survival": "サバイバル",
+            "creative": "クリエイティブ",
+            "adventure": "アドベンチャー",
+            "spectator": "スペクテイター"
+          }
+        },
+        "onlineMode": {
+          "label": "Mojangでアカウントを確認",
+          "description": "アカウントを確認するプロキシの背後でのみオフにしてください。オフだと誰でも好きな名前で参加できます。"
+        },
+        "whitelist": {
+          "label": "ホワイトリストのプレイヤーのみ"
+        },
+        "pvp": {
+          "label": "プレイヤー同士でダメージを与えられる"
+        },
+        "seed": {
+          "label": "ワールドのシード値",
+          "description": "ワールドの作成時にのみ使われます。"
+        },
+        "viewDistance": {
+          "label": "描画距離(チャンク)"
+        },
+        "simulationDistance": {
+          "label": "シミュレーション距離(チャンク)",
+          "description": "プレイヤーからどこまでの範囲でモブが動き、作物が育つかを指定します。小さいほどCPUの負荷が下がります。"
+        },
+        "hardcore": {
+          "label": "ハードコア",
+          "description": "死亡したプレイヤーはスペクテイターになります。ワールドの作成前に設定してください。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "spawnProtection": {
+          "label": "スポーン保護(ブロック)",
+          "description": "スポーン地点のこの範囲内ではオペレーターだけが建築できます。0でオフになります。"
+        },
+        "allowFlight": {
+          "label": "飛行を許可",
+          "description": "サバイバルで飛行する(MODを使った)プレイヤーがキックされなくなります。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "forceGamemode": {
+          "label": "ゲームモードを強制",
+          "description": "参加するたびにサーバーのゲームモードが適用されます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "enforceWhitelist": {
+          "label": "ホワイトリスト外のプレイヤーをキック",
+          "description": "ホワイトリストの再読み込み時に、登録されていないプレイヤーがキックされます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "generateStructures": {
+          "label": "構造物を生成",
+          "description": "村や神殿などの構造物です。以降に生成されるチャンクにのみ適用されます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "idleTimeout": {
+          "label": "放置プレイヤーをキックするまで(分)",
+          "description": "0は無効です。"
+        },
+        "opPermissionLevel": {
+          "label": "オペレーター権限レベル",
+          "options": {
+            "1": "1: スポーン地点で建築",
+            "2": "2: チートコマンド",
+            "3": "3: キックとBAN",
+            "4": "4: すべてのコマンド"
+          }
+        },
+        "hideOnlinePlayers": {
+          "label": "オンラインのプレイヤーを隠す",
+          "description": "サーバーリストにプレイ中の人が表示されなくなります。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム"
+        }
+      }
+    },
+    "palworld": {
+      "variables": {
+        "name": {
+          "label": "サーバー名"
+        },
+        "description": {
+          "label": "説明"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "空欄にすると誰でも参加できます。"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "community": {
+          "label": "コミュニティサーバーとして公開"
+        },
+        "expRate": {
+          "label": "経験値",
+          "description": "1がゲームの標準です。"
+        },
+        "captureRate": {
+          "label": "捕獲率",
+          "description": "大きいほどパルを捕まえやすくなります。1がゲームの標準です。"
+        },
+        "spawnRate": {
+          "label": "パルの出現率",
+          "description": "出現するパルの数です。大きいほどCPUを多く使います。1がゲームの標準です。"
+        },
+        "gatheringRate": {
+          "label": "採集量",
+          "description": "木や岩などから得られるアイテムの量です。1がゲームの標準です。"
+        },
+        "enemyDropRate": {
+          "label": "敵のドロップ",
+          "description": "敵が落とすアイテムの量です。1がゲームの標準です。"
+        },
+        "workSpeed": {
+          "label": "作業速度",
+          "description": "拠点でパルが働く速さです。1がゲームの標準です。"
+        },
+        "dayTimeSpeed": {
+          "label": "昼の速度",
+          "description": "1がゲームの標準です。"
+        },
+        "nightTimeSpeed": {
+          "label": "夜の速度",
+          "description": "1がゲームの標準です。"
+        },
+        "eggHatchHours": {
+          "label": "卵の孵化時間(時間)",
+          "description": "最大サイズの卵の時間です。小さい卵はそれより短くなります。"
+        },
+        "pvp": {
+          "label": "PvP",
+          "description": "プレイヤー同士でダメージを与えられます。",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "fastTravel": {
+          "label": "ファストトラベル",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "basesPerGuild": {
+          "label": "ギルドあたりの拠点数"
+        },
+        "workersPerBase": {
+          "label": "拠点あたりの作業パル数"
+        },
+        "guildSize": {
+          "label": "ギルドあたりのプレイヤー数"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはUDPで接続します。RCONは同じポートでTCPを待ち受け、このマシン上のPulsarだけが使用します。"
+        },
+        "query": {
+          "label": "Steamクエリ"
+        }
+      }
+    },
+    "project-zomboid": {
+      "variables": {
+        "publicName": {
+          "label": "サーバー名"
+        },
+        "adminPassword": {
+          "label": "管理者パスワード",
+          "description": "ゲーム内の\"admin\"アカウント用です。起動のたびに設定し直されます。"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。空欄にすると誰でも参加できます。"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "memoryGb": {
+          "label": "Javaメモリ(GB)",
+          "description": "Javaのヒープです。サーバーにメモリ上限がある場合は、それ以下にしてください。"
+        },
+        "public": {
+          "label": "サーバーブラウザに掲載"
+        },
+        "workshopItems": {
+          "label": "Workshopアイテム",
+          "description": "SteamワークショップのアイテムIDをセミコロンで区切って指定します。サーバーが起動時にダウンロードします。"
+        },
+        "mods": {
+          "label": "MOD ID",
+          "description": "読み込むMODを(Workshop IDではなく)MOD IDで、セミコロン区切りで指定します。Build 42では各IDを\\ModIdの形式で記述します。"
+        },
+        "pvp": {
+          "label": "PvP",
+          "description": "プレイヤー同士でダメージを与えられます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "safetySystem": {
+          "label": "PvPセーフティ切り替え",
+          "description": "PvPに参加するかどうかを各プレイヤーが選べます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "pauseEmpty": {
+          "label": "無人時に一時停止",
+          "description": "誰もプレイしていない間は時間が止まります。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "open": {
+          "label": "誰でも参加可能",
+          "description": "いいえの場合、サーバーのホワイトリストにあるアカウントだけが参加できます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "autoWhitelist": {
+          "label": "新規プレイヤーをホワイトリストに追加",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "globalChat": {
+          "label": "グローバルチャット",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "voice": {
+          "label": "ボイスチャット",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "vac": {
+          "label": "Steam VAC",
+          "description": "Valveのチート対策です。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "saveMinutes": {
+          "label": "オートセーブの間隔(分)",
+          "description": "0はゲームの標準です。"
+        },
+        "pingLimit": {
+          "label": "Ping上限(ms)",
+          "description": "Pingがこれを超えるプレイヤーはキックされます。0でオフになります。"
+        },
+        "description": {
+          "label": "説明",
+          "description": "サーバーブラウザに表示されます。"
+        },
+        "welcome": {
+          "label": "ウェルカムメッセージ",
+          "description": "プレイヤーが参加したときにチャットに表示されます。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム"
+        },
+        "udp": {
+          "label": "ゲーム(2番目のポート)"
+        }
+      }
+    },
+    "rust": {
+      "variables": {
+        "hostname": {
+          "label": "サーバー名"
+        },
+        "description": {
+          "label": "説明"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "worldSize": {
+          "label": "マップサイズ",
+          "description": "1辺のメートル数です。大きいマップは生成に時間がかかり、メモリも多く必要です。"
+        },
+        "seed": {
+          "label": "マップのシード値",
+          "description": "シード値とサイズが同じなら同じマップになります。"
+        },
+        "pve": {
+          "label": "PvE",
+          "description": "プレイヤー同士でダメージを与えられません。",
+          "options": {
+            "on": "オン",
+            "off": "オフ"
+          }
+        },
+        "globalChat": {
+          "label": "グローバルチャット",
+          "options": {
+            "on": "オン",
+            "off": "オフ"
+          }
+        },
+        "saveInterval": {
+          "label": "オートセーブの間隔(秒)"
+        },
+        "decayScale": {
+          "label": "劣化の速度",
+          "description": "1がゲームの標準です。0にすると劣化しません。"
+        },
+        "upkeep": {
+          "label": "維持費",
+          "description": "拠点の維持に資源が必要になります。",
+          "options": {
+            "on": "オン",
+            "off": "オフ"
+          }
+        },
+        "stability": {
+          "label": "建築の安定性",
+          "options": {
+            "on": "オン",
+            "off": "オフ"
+          }
+        },
+        "secure": {
+          "label": "Easy Anti-Cheat",
+          "description": "オフにするとチート使用者も参加でき、サーバーはセキュアとして掲載されません。",
+          "options": {
+            "on": "オン",
+            "off": "オフ"
+          }
+        },
+        "instantCraft": {
+          "label": "即時クラフト",
+          "options": {
+            "on": "オン",
+            "off": "オフ"
+          }
+        },
+        "airdropMinPlayers": {
+          "label": "エアドロップに必要な人数",
+          "description": "オンラインの人数がこれ以上のときだけエアドロップが来ます。"
+        },
+        "tags": {
+          "label": "サーバーリストのタグ",
+          "description": "monthly,vanilla,euのようにカンマで区切ります。"
+        },
+        "url": {
+          "label": "ウェブサイト"
+        },
+        "headerImage": {
+          "label": "ヘッダー画像のURL",
+          "description": "サーバーブラウザに表示される512 × 256のJPGです。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはUDPで接続します。RCONは同じポートでTCPを待ち受け、このマシン上のPulsarだけが使用します。"
+        },
+        "query": {
+          "label": "サーバーリストのクエリ"
+        },
+        "app": {
+          "label": "Rust+コンパニオンアプリ",
+          "description": "割り当てると、プレイヤーがRust+アプリとペアリングできます。"
+        }
+      }
+    },
+    "scpsl": {
+      "variables": {
+        "eula": {
+          "label": "SCP: Secret Laboratory EULA",
+          "description": "サーバー向けのゲームの利用規約: https://link.scpslgame.com/eula。同意しないとサーバーは起動しません。",
+          "options": {
+            "accepted": "同意します"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム"
+        }
+      }
+    },
+    "valheim": {
+      "variables": {
+        "name": {
+          "label": "サーバー名",
+          "description": "サーバーリストに表示されます。パスワードを含めることはできません。"
+        },
+        "world": {
+          "label": "ワールド",
+          "description": "ワールドの名前です。新しい名前にすると新しいワールドが作られます。"
+        },
+        "password": {
+          "label": "参加パスワード",
+          "description": "参加するには必要です。5文字以上で、サーバー名の一部であってはいけません。"
+        },
+        "visibility": {
+          "label": "サーバーリスト",
+          "options": {
+            "public": "公開(プレイヤーが見つけられる)",
+            "private": "非公開(アドレスで参加)"
+          }
+        },
+        "crossplay": {
+          "label": "クロスプレイ(XboxとGame Passのプレイヤー)",
+          "description": "サーバーのポートではなく、PlayFabのリレー経由で接続します。"
+        },
+        "preset": {
+          "label": "難易度",
+          "options": {
+            "normal": "ノーマル",
+            "casual": "カジュアル",
+            "easy": "イージー",
+            "hard": "ハード",
+            "hardcore": "ハードコア",
+            "immersive": "没入型",
+            "hammer": "ハンマー(建築モード)"
+          }
+        },
+        "combat": {
+          "label": "戦闘",
+          "description": "敵の攻撃の強さです。上の難易度を変更します。",
+          "options": {
+            "veryeasy": "とても簡単",
+            "easy": "簡単",
+            "hard": "難しい",
+            "veryhard": "とても難しい"
+          }
+        },
+        "deathPenalty": {
+          "label": "死亡ペナルティ",
+          "options": {
+            "casual": "カジュアル",
+            "veryeasy": "とても簡単",
+            "easy": "簡単",
+            "hard": "難しい",
+            "hardcore": "ハードコア"
+          }
+        },
+        "resources": {
+          "label": "資源",
+          "options": {
+            "muchless": "かなり少ない",
+            "less": "少ない",
+            "more": "多い",
+            "muchmore": "かなり多い",
+            "most": "最大"
+          }
+        },
+        "raids": {
+          "label": "襲撃",
+          "options": {
+            "none": "なし",
+            "muchless": "かなり少ない",
+            "less": "少ない",
+            "more": "多い",
+            "muchmore": "かなり多い"
+          }
+        },
+        "portals": {
+          "label": "ポータル",
+          "options": {
+            "casual": "何でも通れる",
+            "hard": "金属は不可",
+            "veryhard": "ポータルなし"
+          }
+        },
+        "noMap": {
+          "label": "マップなし"
+        },
+        "noBuildCost": {
+          "label": "建築コストなし"
+        },
+        "passiveMobs": {
+          "label": "受け身の敵",
+          "description": "敵は反撃するだけになります。"
+        },
+        "playerEvents": {
+          "label": "プレイヤーの進行度による襲撃",
+          "description": "襲撃がワールドではなく、各プレイヤーの進行度に応じて発生します。"
+        },
+        "saveInterval": {
+          "label": "オートセーブの間隔(秒)"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに接続します。"
+        },
+        "query": {
+          "label": "Steamクエリ",
+          "description": "Valheimはサーバーリスト用に、常にゲームポート+1を開きます。Pulsarはその割り当てを用意します。"
+        }
+      }
     }
   }
 }

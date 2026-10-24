@@ -18,6 +18,7 @@ import {
   type ServerDetails,
   type ServerSettings,
 } from './api';
+import { useGameText } from './gameText';
 import { PortNumberFields } from './PortFields';
 import { checkPorts, chosenPorts, parsePort, portsReady, type TemplatePort } from './portChoices';
 import { VariableFields } from './VariableFields';
@@ -243,10 +244,11 @@ function LimitsCard({ details, save }: { details: ServerDetails; save: ReturnTyp
   );
 }
 
-/** A server as permission checks need it. */
+/** A server as permission checks need it, and its game (for its labels in the reader's language). */
 interface ServerRef {
   id: string;
   nodeId: string;
+  templateKey?: string;
 }
 
 interface SettingsFormProps {
@@ -260,7 +262,8 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
   const me = useCurrentUser();
   const canEdit = canOnServer(me, server, Permission.ServerStartupEdit);
   const canEditProtected = canOnServer(me, server, Permission.ServerSettingsEdit);
-  const definitions = settings.variables.map((v) => v.definition);
+  const gameText = useGameText(server.templateKey);
+  const definitions = gameText.variables(settings.variables.map((v) => v.definition));
   const stored = Object.fromEntries(
     settings.variables.map((v) => [
       v.definition.key,
@@ -340,6 +343,7 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
         variables={definitions}
         values={values}
         onChange={(key, value) => setValues((current) => ({ ...current, [key]: value }))}
+        optionsOpen
         secretsSet={secretsSet}
         errors={showErrors ? errors : undefined}
         onUnreadable={unreadable.mark}
@@ -412,8 +416,11 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
  * The server's ports and the node allocations they use; changed only while the server is stopped. Whoever manages the
  * node types numbers (as when creating a server); others choose among the node's free allocations.
  */
-export function NetworkTab({ details }: { details: ServerDetails }) {
+export function NetworkTab(props: { details: ServerDetails }) {
   const { t } = useTranslation();
+  // The ports' labels in the reader's language.
+  const gameText = useGameText(props.details.server.templateKey);
+  const details = { ...props.details, ports: gameText.ports(props.details.ports) };
   const me = useCurrentUser();
   // The node's allocations are for those who may list them (the API refuses anyone else).
   const canListAllocations = canOnNode(

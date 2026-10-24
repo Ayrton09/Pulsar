@@ -1136,10 +1136,12 @@
       "range": "{{min}}에서 {{max}}까지.",
       "secretSet": "값이 설정되어 있습니다. 바꾸려면 새 값을 입력하세요.",
       "protected": "서버 설정을 편집할 수 있는 사용자만 변경할 수 있습니다.",
-      "unset": "설정 안 됨",
+      "unset": "게임 기본값",
       "choose": "선택…",
       "outOfRange": "허용 범위를 벗어났습니다.",
-      "notANumber": "정수를 입력하세요."
+      "notANumber": "숫자를 입력하세요.",
+      "options": "기타 게임 옵션 ({{count}})",
+      "optionsHint": "비워 두면 Pulsar가 게임 파일에서 변경하지 않습니다. 게임의 값이나 직접 설정한 값이 그대로 유지됩니다."
     },
     "workshop": {
       "empty": "Workshop 항목이 없습니다.",
@@ -2105,6 +2107,1012 @@
       "succeeded": "업데이트됨",
       "rolled_back": "되돌림",
       "failed": "실패"
+    }
+  },
+  "gameText": {
+    "7dtd": {
+      "variables": {
+        "serverName": {
+          "label": "서버 이름"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 비워 두면 누구나 접속할 수 있습니다."
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "world": {
+          "label": "월드",
+          "description": "Navezgane, 미리 생성된 월드(Pregen06k01…) 또는 무작위 생성용 RWG입니다."
+        },
+        "gameName": {
+          "label": "저장 이름",
+          "description": "저장 데이터의 이름입니다. 새 이름을 쓰면 같은 월드에서 새 게임이 시작됩니다."
+        },
+        "visibility": {
+          "label": "서버 목록",
+          "options": {
+            "public": "공개",
+            "friends": "친구만",
+            "hidden": "비공개"
+          }
+        },
+        "eac": {
+          "label": "EasyAntiCheat",
+          "description": "코드 모드 대부분은 끄는 것이 필요합니다."
+        },
+        "difficulty": {
+          "label": "난이도",
+          "options": {
+            "0": "스캐빈저",
+            "1": "어드벤처러",
+            "2": "노마드",
+            "3": "워리어",
+            "4": "서바이벌리스트",
+            "5": "인세인"
+          }
+        },
+        "dayLength": {
+          "label": "하루 길이(실제 분)",
+          "description": "게임 속 하루가 실제로 몇 분인지 정합니다."
+        },
+        "dayLightHours": {
+          "label": "낮 시간",
+          "description": "하루 중 낮이 지속되는 게임 내 시간입니다."
+        },
+        "bloodMoonFrequency": {
+          "label": "블러드 문 주기(일)",
+          "description": "0이면 블러드 문이 나타나지 않습니다."
+        },
+        "bloodMoonEnemies": {
+          "label": "플레이어당 블러드 문 좀비 수"
+        },
+        "zombieSpeedDay": {
+          "label": "낮 좀비 속도",
+          "options": {
+            "0": "걷기",
+            "1": "조깅",
+            "2": "달리기",
+            "3": "전력 질주",
+            "4": "악몽"
+          }
+        },
+        "zombieSpeedNight": {
+          "label": "밤 좀비 속도",
+          "options": {
+            "0": "걷기",
+            "1": "조깅",
+            "2": "달리기",
+            "3": "전력 질주",
+            "4": "악몽"
+          }
+        },
+        "maxZombies": {
+          "label": "최대 좀비 수",
+          "description": "맵 전체에서 동시에 존재하는 좀비 수입니다. 90을 넘으면 대부분의 서버가 느려집니다."
+        },
+        "playerKilling": {
+          "label": "플레이어 킬",
+          "options": {
+            "0": "킬 불가",
+            "1": "아군만 킬 가능",
+            "2": "낯선 사람만 킬 가능",
+            "3": "모두 킬 가능"
+          }
+        },
+        "dropOnDeath": {
+          "label": "사망 시 드롭",
+          "options": {
+            "0": "없음",
+            "1": "전부",
+            "2": "툴벨트만",
+            "3": "배낭만",
+            "4": "전부 삭제"
+          }
+        },
+        "lootAbundance": {
+          "label": "전리품 양(%)"
+        },
+        "lootRespawnDays": {
+          "label": "전리품 리스폰(일)"
+        },
+        "xp": {
+          "label": "경험치(%)"
+        },
+        "airDropHours": {
+          "label": "에어드롭 주기(게임 시간)",
+          "description": "0이면 에어드롭이 나타나지 않습니다."
+        },
+        "description": {
+          "label": "설명"
+        },
+        "website": {
+          "label": "웹사이트"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임"
+        },
+        "net2": {
+          "label": "게임(두 번째 포트)"
+        },
+        "net3": {
+          "label": "게임(세 번째 포트)"
+        },
+        "telnet": {
+          "label": "콘솔(telnet)",
+          "description": "게임의 콘솔입니다. 이 컴퓨터의 Pulsar만 (Pulsar가 생성한 비밀번호로) 사용합니다."
+        }
+      }
+    },
+    "ark-sa": {
+      "variables": {
+        "sessionName": {
+          "label": "서버 이름",
+          "description": "서버 목록에서 플레이어에게 보이는 이름입니다."
+        },
+        "map": {
+          "label": "맵",
+          "description": "_WP 접미사가 붙은 맵 이름입니다: TheIsland_WP, ScorchedEarth_WP, TheCenter_WP, Aberration_WP, Extinction_WP…"
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 비워 두면 누구나 접속할 수 있습니다."
+        },
+        "mods": {
+          "label": "모드",
+          "description": "CurseForge 프로젝트 ID를 쉼표로 구분해 입력합니다(\"928548,929420\"). 서버가 시작할 때 직접 내려받고 업데이트합니다."
+        },
+        "battleye": {
+          "label": "BattlEye 치트 방지"
+        },
+        "pve": {
+          "label": "PvE",
+          "description": "플레이어와 그 공룡은 서로에게 피해를 줄 수 없습니다.",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "tamingSpeed": {
+          "label": "길들이기 속도",
+          "description": "1이 게임 기본값이며, 3이면 세 배 빠르게 길들입니다."
+        },
+        "harvestAmount": {
+          "label": "채집량",
+          "description": "한 번 채집할 때 얻는 자원의 양입니다. 1이 게임 기본값입니다."
+        },
+        "xp": {
+          "label": "경험치",
+          "description": "얻는 경험치입니다. 1이 게임 기본값입니다."
+        },
+        "difficulty": {
+          "label": "난이도",
+          "description": "야생 공룡의 최고 레벨을 정합니다. 5는 150레벨, 1은 30레벨입니다."
+        },
+        "dayCycleSpeed": {
+          "label": "낮밤 주기 속도",
+          "description": "시간이 흐르는 속도입니다. 1이 게임 기본값입니다."
+        },
+        "dayTimeSpeed": {
+          "label": "낮 속도",
+          "description": "낮이 흐르는 속도이며 낮밤 주기 속도에 추가로 적용됩니다."
+        },
+        "nightTimeSpeed": {
+          "label": "밤 속도",
+          "description": "밤이 흐르는 속도이며 낮밤 주기 속도에 추가로 적용됩니다."
+        },
+        "autoSave": {
+          "label": "자동 저장 간격(분)"
+        },
+        "maxTamedDinos": {
+          "label": "길들인 공룡 최대 수",
+          "description": "서버 전체 기준입니다."
+        },
+        "crosshair": {
+          "label": "조준선",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "mapPlayerLocation": {
+          "label": "지도에 플레이어 표시",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "thirdPerson": {
+          "label": "3인칭 시점",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "eggHatchSpeed": {
+          "label": "알 부화 속도",
+          "description": "높을수록 알이 빨리 부화합니다. 1이 게임 기본값입니다."
+        },
+        "matingInterval": {
+          "label": "교배 간격",
+          "description": "교배 사이의 시간이며 낮을수록 빨라집니다. 1이 게임 기본값입니다."
+        },
+        "babyMatureSpeed": {
+          "label": "새끼 성장 속도",
+          "description": "높을수록 새끼가 빨리 자랍니다. 1이 게임 기본값입니다."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어는 UDP로 접속합니다. RCON은 같은 포트에서 TCP로 대기하며 이 컴퓨터의 Pulsar만 사용합니다."
+        }
+      }
+    },
+    "cs2": {
+      "variables": {
+        "hostname": {
+          "label": "서버 이름"
+        },
+        "map": {
+          "label": "시작 맵"
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "gameMode": {
+          "label": "게임 모드",
+          "options": {
+            "casual": "캐주얼",
+            "competitive": "경쟁전",
+            "wingman": "윙맨",
+            "armsrace": "무기 경쟁",
+            "deathmatch": "데스매치"
+          }
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 비워 두면 누구나 접속할 수 있는 공개 서버가 됩니다."
+        },
+        "gslt": {
+          "label": "Game Server Login Token",
+          "description": "네트워크 밖의 플레이어가 서버를 찾아 접속하려면 필요합니다. https://steamcommunity.com/dev/managegameservers 에서 만드세요(앱 730)."
+        },
+        "friendlyFire": {
+          "label": "팀킬",
+          "description": "팀원끼리 피해를 줄 수 있습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "maxRounds": {
+          "label": "최대 라운드 수",
+          "description": "한 경기의 라운드 수입니다. 0은 제한 없음입니다."
+        },
+        "roundTime": {
+          "label": "라운드 시간(분)",
+          "description": "한 라운드의 길이(분)이며 모든 맵에 적용됩니다."
+        },
+        "freezeTime": {
+          "label": "프리즈 타임(초)",
+          "description": "라운드 시작 시 플레이어가 움직일 수 없는 시간(초)입니다."
+        },
+        "buyTime": {
+          "label": "구매 시간(초)",
+          "description": "라운드 시작 시 플레이어가 구매할 수 있는 시간(초)입니다."
+        },
+        "startMoney": {
+          "label": "시작 자금"
+        },
+        "warmupTime": {
+          "label": "워밍업(초)",
+          "description": "경기 전 워밍업 시간(초)입니다."
+        },
+        "autoTeamBalance": {
+          "label": "자동 팀 밸런스",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "limitTeams": {
+          "label": "팀 인원 차이 상한",
+          "description": "한 팀이 다른 팀보다 몇 명까지 많을 수 있는지 정합니다. 0은 제한 없음입니다."
+        },
+        "allTalk": {
+          "label": "전체 음성",
+          "description": "음성 채팅에서 양 팀이 서로의 목소리를 듣습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "bots": {
+          "label": "봇",
+          "description": "서버를 채우는 봇의 수입니다."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어는 UDP로 접속합니다. RCON은 같은 포트에서 TCP로 대기하며 이 컴퓨터의 Pulsar만 사용합니다."
+        },
+        "tv": {
+          "label": "CSTV",
+          "description": "할당하면 CSTV가 활성화됩니다."
+        }
+      }
+    },
+    "css": {
+      "variables": {
+        "hostname": {
+          "label": "서버 이름"
+        },
+        "map": {
+          "label": "시작 맵"
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 비워 두면 누구나 접속할 수 있는 공개 서버가 됩니다."
+        },
+        "tickrate": {
+          "label": "틱 레이트",
+          "description": "초당 업데이트 횟수입니다. 100이 더 부드럽지만 CPU와 대역폭을 더 사용합니다.",
+          "options": {
+            "66": "66(게임 기본값)",
+            "100": "100"
+          }
+        },
+        "friendlyFire": {
+          "label": "팀킬",
+          "description": "팀원끼리 피해를 줄 수 있습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "maxRounds": {
+          "label": "최대 라운드 수",
+          "description": "한 경기의 라운드 수입니다. 0은 제한 없음입니다."
+        },
+        "timeLimit": {
+          "label": "맵 제한 시간(분)",
+          "description": "맵이 바뀌기까지의 시간(분)입니다. 0은 제한 없음입니다."
+        },
+        "winLimit": {
+          "label": "승리 라운드 수",
+          "description": "맵을 끝내려면 한 팀이 이겨야 하는 라운드 수입니다. 0은 제한 없음입니다."
+        },
+        "roundTime": {
+          "label": "라운드 시간(분)",
+          "description": "한 라운드의 길이(분)입니다."
+        },
+        "freezeTime": {
+          "label": "프리즈 타임(초)",
+          "description": "라운드 시작 시 플레이어가 움직일 수 없는 시간(초)입니다."
+        },
+        "startMoney": {
+          "label": "시작 자금"
+        },
+        "autoTeamBalance": {
+          "label": "자동 팀 밸런스",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "limitTeams": {
+          "label": "팀 인원 차이 상한",
+          "description": "한 팀이 다른 팀보다 몇 명까지 많을 수 있는지 정합니다. 0은 제한 없음입니다."
+        },
+        "c4Timer": {
+          "label": "C4 타이머(초)"
+        },
+        "allTalk": {
+          "label": "전체 음성",
+          "description": "음성 채팅에서 양 팀이 서로의 목소리를 듣습니다.",
+          "options": {
+            "0": "끔",
+            "1": "켬"
+          }
+        },
+        "bots": {
+          "label": "봇",
+          "description": "서버를 채우는 봇의 수입니다."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어는 UDP로 접속합니다. RCON은 같은 포트에서 TCP로 대기하며 이 컴퓨터의 Pulsar만 사용합니다."
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "할당하면 SourceTV가 활성화됩니다."
+        }
+      }
+    },
+    "minecraft": {
+      "variables": {
+        "eula": {
+          "label": "Minecraft EULA",
+          "description": "Mojang의 약관: https://aka.ms/MinecraftEULA. 동의하지 않으면 서버가 실행되지 않습니다.",
+          "options": {
+            "accepted": "동의합니다"
+          }
+        },
+        "version": {
+          "label": "Minecraft 버전",
+          "description": "최신 정식 버전은 'latest', 또는 1.21.4 같은 버전을 입력하세요. 변경하려면 업데이트가 필요하며, 이전 버전으로 되돌리면 월드가 손상될 수 있습니다."
+        },
+        "motd": {
+          "label": "서버 메시지(MOTD)"
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "memoryMb": {
+          "label": "메모리(MB)",
+          "description": "Java가 서버에 사용할 수 있는 최대 메모리입니다."
+        },
+        "difficulty": {
+          "label": "난이도",
+          "options": {
+            "peaceful": "평화로움",
+            "easy": "쉬움",
+            "normal": "보통",
+            "hard": "어려움"
+          }
+        },
+        "gamemode": {
+          "label": "게임 모드",
+          "options": {
+            "survival": "서바이벌",
+            "creative": "크리에이티브",
+            "adventure": "모험",
+            "spectator": "관전"
+          }
+        },
+        "onlineMode": {
+          "label": "Mojang으로 계정 확인",
+          "description": "계정을 확인하는 프록시 뒤에서만 끄세요. 끄면 누구나 아무 이름으로 접속할 수 있습니다."
+        },
+        "whitelist": {
+          "label": "화이트리스트의 플레이어만"
+        },
+        "pvp": {
+          "label": "플레이어끼리 피해를 줄 수 있음"
+        },
+        "seed": {
+          "label": "월드 시드",
+          "description": "월드를 만들 때만 사용됩니다."
+        },
+        "viewDistance": {
+          "label": "시야 거리(청크)"
+        },
+        "simulationDistance": {
+          "label": "시뮬레이션 거리(청크)",
+          "description": "플레이어로부터 어디까지 몹이 움직이고 작물이 자라는지 정합니다. 낮을수록 CPU를 덜 사용합니다."
+        },
+        "hardcore": {
+          "label": "하드코어",
+          "description": "죽은 플레이어는 관전자가 됩니다. 월드를 만들기 전에 설정하세요.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "spawnProtection": {
+          "label": "스폰 보호(블록)",
+          "description": "스폰 지점에서 이 범위 안에서는 관리자만 건축할 수 있습니다. 0이면 끕니다."
+        },
+        "allowFlight": {
+          "label": "비행 허용",
+          "description": "서바이벌에서 (모드로) 비행하는 플레이어가 추방되지 않습니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "forceGamemode": {
+          "label": "게임 모드 강제",
+          "description": "접속할 때마다 서버의 게임 모드가 적용됩니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "enforceWhitelist": {
+          "label": "화이트리스트에 없는 플레이어 추방",
+          "description": "화이트리스트를 다시 불러올 때, 더 이상 목록에 없는 플레이어가 추방됩니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "generateStructures": {
+          "label": "구조물 생성",
+          "description": "마을, 사원 등의 구조물입니다. 이후에 생성되는 청크에만 적용됩니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "idleTimeout": {
+          "label": "자리 비운 플레이어 추방 시간(분)",
+          "description": "0은 추방하지 않음입니다."
+        },
+        "opPermissionLevel": {
+          "label": "관리자 권한 레벨",
+          "options": {
+            "1": "1: 스폰 지점에서 건축",
+            "2": "2: 치트 명령어",
+            "3": "3: 추방 및 차단",
+            "4": "4: 모든 명령어"
+          }
+        },
+        "hideOnlinePlayers": {
+          "label": "접속 중인 플레이어 숨기기",
+          "description": "서버 목록에 누가 플레이 중인지 표시되지 않습니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임"
+        }
+      }
+    },
+    "palworld": {
+      "variables": {
+        "name": {
+          "label": "서버 이름"
+        },
+        "description": {
+          "label": "설명"
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "비워 두면 누구나 접속할 수 있습니다."
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "community": {
+          "label": "커뮤니티 서버로 등록"
+        },
+        "expRate": {
+          "label": "경험치",
+          "description": "1이 게임 기본값입니다."
+        },
+        "captureRate": {
+          "label": "포획률",
+          "description": "높을수록 팰을 더 쉽게 잡습니다. 1이 게임 기본값입니다."
+        },
+        "spawnRate": {
+          "label": "팰 출현율",
+          "description": "등장하는 팰의 수입니다. 높을수록 CPU를 더 사용합니다. 1이 게임 기본값입니다."
+        },
+        "gatheringRate": {
+          "label": "채집량",
+          "description": "나무, 바위 등에서 얻는 아이템의 양입니다. 1이 게임 기본값입니다."
+        },
+        "enemyDropRate": {
+          "label": "적 드롭",
+          "description": "적이 떨어뜨리는 아이템의 양입니다. 1이 게임 기본값입니다."
+        },
+        "workSpeed": {
+          "label": "작업 속도",
+          "description": "거점에서 팰이 일하는 속도입니다. 1이 게임 기본값입니다."
+        },
+        "dayTimeSpeed": {
+          "label": "낮 속도",
+          "description": "1이 게임 기본값입니다."
+        },
+        "nightTimeSpeed": {
+          "label": "밤 속도",
+          "description": "1이 게임 기본값입니다."
+        },
+        "eggHatchHours": {
+          "label": "알 부화 시간(시간)",
+          "description": "가장 큰 알 기준이며, 작은 알은 더 짧게 걸립니다."
+        },
+        "pvp": {
+          "label": "PvP",
+          "description": "플레이어끼리 피해를 줄 수 있습니다.",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "fastTravel": {
+          "label": "빠른 이동",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "basesPerGuild": {
+          "label": "길드당 거점 수"
+        },
+        "workersPerBase": {
+          "label": "거점당 일하는 팰 수"
+        },
+        "guildSize": {
+          "label": "길드당 플레이어 수"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어는 UDP로 접속합니다. RCON은 같은 포트에서 TCP로 대기하며 이 컴퓨터의 Pulsar만 사용합니다."
+        },
+        "query": {
+          "label": "Steam 쿼리"
+        }
+      }
+    },
+    "project-zomboid": {
+      "variables": {
+        "publicName": {
+          "label": "서버 이름"
+        },
+        "adminPassword": {
+          "label": "관리자 비밀번호",
+          "description": "게임 내 \"admin\" 계정용입니다. 시작할 때마다 다시 설정됩니다."
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 비워 두면 누구나 접속할 수 있습니다."
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "memoryGb": {
+          "label": "Java 메모리(GB)",
+          "description": "Java 힙 크기입니다. 서버에 메모리 제한이 있다면 그 이하로 설정하세요."
+        },
+        "public": {
+          "label": "서버 브라우저에 등록"
+        },
+        "workshopItems": {
+          "label": "워크숍 아이템",
+          "description": "Steam 워크숍 아이템 ID를 세미콜론으로 구분해 입력합니다. 서버가 시작할 때 내려받습니다."
+        },
+        "mods": {
+          "label": "모드 ID",
+          "description": "불러올 모드를 (워크숍 ID가 아닌) 모드 ID로, 세미콜론으로 구분해 입력합니다. 빌드 42에서는 각각 \\ModId 형식으로 씁니다."
+        },
+        "pvp": {
+          "label": "PvP",
+          "description": "플레이어끼리 피해를 줄 수 있습니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "safetySystem": {
+          "label": "PvP 안전 토글",
+          "description": "각 플레이어가 PvP 참여 여부를 직접 선택합니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "pauseEmpty": {
+          "label": "비었을 때 일시 정지",
+          "description": "아무도 플레이하지 않는 동안 시간이 멈춥니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "open": {
+          "label": "누구나 접속 가능",
+          "description": "아니요이면 서버 화이트리스트에 있는 계정만 접속할 수 있습니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "autoWhitelist": {
+          "label": "새 플레이어를 화이트리스트에 추가",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "globalChat": {
+          "label": "전체 채팅",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "voice": {
+          "label": "음성 채팅",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "vac": {
+          "label": "Steam VAC",
+          "description": "Valve의 치트 방지 시스템입니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "saveMinutes": {
+          "label": "자동 저장 간격(분)",
+          "description": "0은 게임 기본값입니다."
+        },
+        "pingLimit": {
+          "label": "핑 제한(ms)",
+          "description": "핑이 이보다 높은 플레이어는 추방됩니다. 0이면 끕니다."
+        },
+        "description": {
+          "label": "설명",
+          "description": "서버 브라우저에 표시됩니다."
+        },
+        "welcome": {
+          "label": "환영 메시지",
+          "description": "플레이어가 접속하면 채팅에 표시됩니다."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임"
+        },
+        "udp": {
+          "label": "게임(두 번째 포트)"
+        }
+      }
+    },
+    "rust": {
+      "variables": {
+        "hostname": {
+          "label": "서버 이름"
+        },
+        "description": {
+          "label": "설명"
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "worldSize": {
+          "label": "맵 크기",
+          "description": "한 변의 길이(미터)입니다. 큰 맵은 생성에 시간이 더 걸리고 메모리도 더 필요합니다."
+        },
+        "seed": {
+          "label": "맵 시드",
+          "description": "시드와 크기가 같으면 같은 맵이 만들어집니다."
+        },
+        "pve": {
+          "label": "PvE",
+          "description": "플레이어끼리 피해를 줄 수 없습니다.",
+          "options": {
+            "on": "켬",
+            "off": "끔"
+          }
+        },
+        "globalChat": {
+          "label": "전체 채팅",
+          "options": {
+            "on": "켬",
+            "off": "끔"
+          }
+        },
+        "saveInterval": {
+          "label": "자동 저장 간격(초)"
+        },
+        "decayScale": {
+          "label": "부식 속도",
+          "description": "1이 게임 기본값이며, 0이면 부식이 없습니다."
+        },
+        "upkeep": {
+          "label": "유지비",
+          "description": "기지를 유지하는 데 자원이 듭니다.",
+          "options": {
+            "on": "켬",
+            "off": "끔"
+          }
+        },
+        "stability": {
+          "label": "건축 안정성",
+          "options": {
+            "on": "켬",
+            "off": "끔"
+          }
+        },
+        "secure": {
+          "label": "Easy Anti-Cheat",
+          "description": "끄면 치트 사용자도 접속할 수 있고 서버가 보안 서버로 표시되지 않습니다.",
+          "options": {
+            "on": "켬",
+            "off": "끔"
+          }
+        },
+        "instantCraft": {
+          "label": "즉시 제작",
+          "options": {
+            "on": "켬",
+            "off": "끔"
+          }
+        },
+        "airdropMinPlayers": {
+          "label": "에어드롭 필요 인원",
+          "description": "접속 중인 인원이 이 수 이상일 때만 에어드롭이 옵니다."
+        },
+        "tags": {
+          "label": "서버 목록 태그",
+          "description": "monthly,vanilla,eu처럼 쉼표로 구분합니다."
+        },
+        "url": {
+          "label": "웹사이트"
+        },
+        "headerImage": {
+          "label": "헤더 이미지 URL",
+          "description": "서버 브라우저에 표시되는 512 × 256 JPG입니다."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어는 UDP로 접속합니다. RCON은 같은 포트에서 TCP로 대기하며 이 컴퓨터의 Pulsar만 사용합니다."
+        },
+        "query": {
+          "label": "서버 목록 쿼리"
+        },
+        "app": {
+          "label": "Rust+ 컴패니언 앱",
+          "description": "할당하면 플레이어가 Rust+ 앱을 연동할 수 있습니다."
+        }
+      }
+    },
+    "scpsl": {
+      "variables": {
+        "eula": {
+          "label": "SCP: Secret Laboratory EULA",
+          "description": "서버에 대한 게임의 약관: https://link.scpslgame.com/eula. 동의하지 않으면 서버가 실행되지 않습니다.",
+          "options": {
+            "accepted": "동의합니다"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임"
+        }
+      }
+    },
+    "valheim": {
+      "variables": {
+        "name": {
+          "label": "서버 이름",
+          "description": "서버 목록에 표시됩니다. 비밀번호를 포함할 수 없습니다."
+        },
+        "world": {
+          "label": "월드",
+          "description": "월드의 이름입니다. 새 이름을 쓰면 새 월드가 만들어집니다."
+        },
+        "password": {
+          "label": "접속 비밀번호",
+          "description": "접속하려면 필요합니다. 5자 이상이어야 하며 서버 이름의 일부이면 안 됩니다."
+        },
+        "visibility": {
+          "label": "서버 목록",
+          "options": {
+            "public": "공개(플레이어가 찾을 수 있음)",
+            "private": "비공개(주소로 접속)"
+          }
+        },
+        "crossplay": {
+          "label": "크로스플레이(Xbox 및 Game Pass 플레이어)",
+          "description": "서버의 포트 대신 PlayFab의 릴레이를 통해 접속합니다."
+        },
+        "preset": {
+          "label": "난이도",
+          "options": {
+            "normal": "보통",
+            "casual": "캐주얼",
+            "easy": "쉬움",
+            "hard": "어려움",
+            "hardcore": "하드코어",
+            "immersive": "몰입형",
+            "hammer": "해머(건축 모드)"
+          }
+        },
+        "combat": {
+          "label": "전투",
+          "description": "적의 공격이 얼마나 강한지 정합니다. 위의 난이도를 변경합니다.",
+          "options": {
+            "veryeasy": "매우 쉬움",
+            "easy": "쉬움",
+            "hard": "어려움",
+            "veryhard": "매우 어려움"
+          }
+        },
+        "deathPenalty": {
+          "label": "사망 페널티",
+          "options": {
+            "casual": "캐주얼",
+            "veryeasy": "매우 쉬움",
+            "easy": "쉬움",
+            "hard": "어려움",
+            "hardcore": "하드코어"
+          }
+        },
+        "resources": {
+          "label": "자원",
+          "options": {
+            "muchless": "훨씬 적게",
+            "less": "적게",
+            "more": "많이",
+            "muchmore": "훨씬 많이",
+            "most": "최대"
+          }
+        },
+        "raids": {
+          "label": "습격",
+          "options": {
+            "none": "없음",
+            "muchless": "훨씬 적게",
+            "less": "적게",
+            "more": "많이",
+            "muchmore": "훨씬 많이"
+          }
+        },
+        "portals": {
+          "label": "포털",
+          "options": {
+            "casual": "무엇이든 통과",
+            "hard": "금속 불가",
+            "veryhard": "포털 없음"
+          }
+        },
+        "noMap": {
+          "label": "지도 없음"
+        },
+        "noBuildCost": {
+          "label": "건축 비용 없음"
+        },
+        "passiveMobs": {
+          "label": "수동적인 적",
+          "description": "적은 반격만 합니다."
+        },
+        "playerEvents": {
+          "label": "플레이어 진행도에 따른 습격",
+          "description": "습격이 월드가 아닌 각 플레이어의 진행도를 따릅니다."
+        },
+        "saveInterval": {
+          "label": "자동 저장 간격(초)"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어가 여기로 접속합니다."
+        },
+        "query": {
+          "label": "Steam 쿼리",
+          "description": "Valheim은 서버 목록을 위해 항상 게임 포트 + 1을 엽니다. Pulsar가 그 할당을 만들어 줍니다."
+        }
+      }
     }
   }
 }

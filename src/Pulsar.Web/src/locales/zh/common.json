@@ -1136,10 +1136,12 @@
       "range": "范围 {{min}} 到 {{max}}。",
       "secretSet": "已设置值；输入新值可替换。",
       "protected": "只有能编辑服务器设置的用户才能更改。",
-      "unset": "未设置",
+      "unset": "游戏默认值",
       "choose": "请选择…",
       "outOfRange": "超出允许范围。",
-      "notANumber": "请输入整数。"
+      "notANumber": "请输入数字。",
+      "options": "更多游戏选项（{{count}}）",
+      "optionsHint": "留空时，Pulsar 不会更改游戏文件中的这些设置：保留游戏的默认值或你自己的设置。"
     },
     "workshop": {
       "empty": "没有 Workshop 项目。",
@@ -2105,6 +2107,1012 @@
       "succeeded": "已更新",
       "rolled_back": "已回退",
       "failed": "失败"
+    }
+  },
+  "gameText": {
+    "7dtd": {
+      "variables": {
+        "serverName": {
+          "label": "服务器名称"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入。留空则为开放服务器。"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "world": {
+          "label": "世界",
+          "description": "Navezgane、预生成世界（Pregen06k01…），或使用 RWG 随机生成。"
+        },
+        "gameName": {
+          "label": "存档名称",
+          "description": "存档的名称。使用新名称会在同一世界中开始新游戏。"
+        },
+        "visibility": {
+          "label": "服务器列表",
+          "options": {
+            "public": "公开",
+            "friends": "仅好友",
+            "hidden": "不公开"
+          }
+        },
+        "eac": {
+          "label": "EasyAntiCheat",
+          "description": "大多数代码类模组需要将其关闭。"
+        },
+        "difficulty": {
+          "label": "难度",
+          "options": {
+            "0": "拾荒者",
+            "1": "冒险家",
+            "2": "游牧者",
+            "3": "战士",
+            "4": "生存专家",
+            "5": "疯狂"
+          }
+        },
+        "dayLength": {
+          "label": "一天时长（现实分钟）",
+          "description": "游戏内一整天对应的现实分钟数。"
+        },
+        "dayLightHours": {
+          "label": "白天小时数",
+          "description": "一天中白天持续的游戏内小时数。"
+        },
+        "bloodMoonFrequency": {
+          "label": "血月间隔（天）",
+          "description": "设为 0 则关闭血月。"
+        },
+        "bloodMoonEnemies": {
+          "label": "血月僵尸数（每名玩家）"
+        },
+        "zombieSpeedDay": {
+          "label": "白天僵尸速度",
+          "options": {
+            "0": "行走",
+            "1": "慢跑",
+            "2": "奔跑",
+            "3": "冲刺",
+            "4": "噩梦"
+          }
+        },
+        "zombieSpeedNight": {
+          "label": "夜间僵尸速度",
+          "options": {
+            "0": "行走",
+            "1": "慢跑",
+            "2": "奔跑",
+            "3": "冲刺",
+            "4": "噩梦"
+          }
+        },
+        "maxZombies": {
+          "label": "最大僵尸数",
+          "description": "整张地图上同时存在的僵尸数量。超过 90 会拖慢大多数服务器。"
+        },
+        "playerKilling": {
+          "label": "玩家击杀",
+          "options": {
+            "0": "禁止击杀",
+            "1": "仅可击杀盟友",
+            "2": "仅可击杀陌生人",
+            "3": "可击杀所有人"
+          }
+        },
+        "dropOnDeath": {
+          "label": "死亡掉落",
+          "options": {
+            "0": "无",
+            "1": "全部",
+            "2": "仅快捷栏",
+            "3": "仅背包",
+            "4": "全部删除"
+          }
+        },
+        "lootAbundance": {
+          "label": "战利品丰富度（%）"
+        },
+        "lootRespawnDays": {
+          "label": "战利品刷新（天）"
+        },
+        "xp": {
+          "label": "经验（%）"
+        },
+        "airDropHours": {
+          "label": "空投间隔（游戏小时）",
+          "description": "设为 0 则关闭空投。"
+        },
+        "description": {
+          "label": "描述"
+        },
+        "website": {
+          "label": "网站"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏"
+        },
+        "net2": {
+          "label": "游戏（第二个端口）"
+        },
+        "net3": {
+          "label": "游戏（第三个端口）"
+        },
+        "telnet": {
+          "label": "控制台（telnet）",
+          "description": "游戏的控制台，仅由本机上的 Pulsar 使用（使用 Pulsar 生成的密码）。"
+        }
+      }
+    },
+    "ark-sa": {
+      "variables": {
+        "sessionName": {
+          "label": "服务器名称",
+          "description": "玩家在服务器列表中看到的名称。"
+        },
+        "map": {
+          "label": "地图",
+          "description": "带 _WP 后缀的地图名：TheIsland_WP、ScorchedEarth_WP、TheCenter_WP、Aberration_WP、Extinction_WP…"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入。留空则为开放服务器。"
+        },
+        "mods": {
+          "label": "模组",
+          "description": "CurseForge 项目 ID，以英文逗号分隔（\"928548,929420\"）。服务器会在启动时自行下载并更新。"
+        },
+        "battleye": {
+          "label": "BattlEye 反作弊"
+        },
+        "pve": {
+          "label": "PvE",
+          "description": "玩家及其恐龙无法互相伤害。",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "tamingSpeed": {
+          "label": "驯服速度",
+          "description": "1 为游戏默认值；3 表示驯服速度为三倍。"
+        },
+        "harvestAmount": {
+          "label": "采集量",
+          "description": "每次采集获得的资源量。1 为游戏默认值。"
+        },
+        "xp": {
+          "label": "经验",
+          "description": "获得的经验。1 为游戏默认值。"
+        },
+        "difficulty": {
+          "label": "难度",
+          "description": "决定野生恐龙的最高等级：5 为 150 级，1 为 30 级。"
+        },
+        "dayCycleSpeed": {
+          "label": "昼夜循环速度",
+          "description": "时间流逝的快慢。1 为游戏默认值。"
+        },
+        "dayTimeSpeed": {
+          "label": "白天速度",
+          "description": "白天流逝的快慢，在昼夜循环速度的基础上叠加。"
+        },
+        "nightTimeSpeed": {
+          "label": "夜晚速度",
+          "description": "夜晚流逝的快慢，在昼夜循环速度的基础上叠加。"
+        },
+        "autoSave": {
+          "label": "自动存档间隔（分钟）"
+        },
+        "maxTamedDinos": {
+          "label": "已驯服恐龙上限",
+          "description": "针对整个服务器。"
+        },
+        "crosshair": {
+          "label": "准星",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "mapPlayerLocation": {
+          "label": "在地图上显示玩家",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "thirdPerson": {
+          "label": "第三人称视角",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "eggHatchSpeed": {
+          "label": "孵蛋速度",
+          "description": "数值越高，蛋孵化越快。1 为游戏默认值。"
+        },
+        "matingInterval": {
+          "label": "交配间隔",
+          "description": "两次交配之间的时间：数值越低越快。1 为游戏默认值。"
+        },
+        "babyMatureSpeed": {
+          "label": "幼崽成熟速度",
+          "description": "数值越高，幼崽成长越快。1 为游戏默认值。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家通过 UDP 连接。RCON 在同一端口上通过 TCP 监听，仅由本机上的 Pulsar 使用。"
+        }
+      }
+    },
+    "cs2": {
+      "variables": {
+        "hostname": {
+          "label": "服务器名称"
+        },
+        "map": {
+          "label": "起始地图"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "gameMode": {
+          "label": "游戏模式",
+          "options": {
+            "casual": "休闲",
+            "competitive": "竞技",
+            "wingman": "搭档",
+            "armsrace": "军备竞赛",
+            "deathmatch": "死亡竞赛"
+          }
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入。留空则为公开服务器。"
+        },
+        "gslt": {
+          "label": "Game Server Login Token",
+          "description": "网络之外的玩家要找到并加入服务器时需要。请在 https://steamcommunity.com/dev/managegameservers 创建（应用 730）。"
+        },
+        "friendlyFire": {
+          "label": "友军伤害",
+          "description": "队友之间可以互相伤害。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "maxRounds": {
+          "label": "最大回合数",
+          "description": "一场比赛的回合数。0 表示不限制。"
+        },
+        "roundTime": {
+          "label": "回合时间（分钟）",
+          "description": "一个回合的时长（分钟），适用于所有类型的地图。"
+        },
+        "freezeTime": {
+          "label": "冻结时间（秒）",
+          "description": "回合开始时玩家无法移动的秒数。"
+        },
+        "buyTime": {
+          "label": "购买时间（秒）",
+          "description": "回合开始时玩家可以购买的秒数。"
+        },
+        "startMoney": {
+          "label": "初始金钱"
+        },
+        "warmupTime": {
+          "label": "热身（秒）",
+          "description": "比赛前的热身秒数。"
+        },
+        "autoTeamBalance": {
+          "label": "自动平衡队伍",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "limitTeams": {
+          "label": "队伍人数差上限",
+          "description": "一支队伍比另一支最多可多出的人数。0 表示不限制。"
+        },
+        "allTalk": {
+          "label": "全员语音",
+          "description": "双方队伍可以在语音聊天中互相听到。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "bots": {
+          "label": "机器人",
+          "description": "用来填充服务器的机器人数量。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家通过 UDP 连接。RCON 在同一端口上通过 TCP 监听，仅由本机上的 Pulsar 使用。"
+        },
+        "tv": {
+          "label": "CSTV",
+          "description": "分配后即可启用 CSTV。"
+        }
+      }
+    },
+    "css": {
+      "variables": {
+        "hostname": {
+          "label": "服务器名称"
+        },
+        "map": {
+          "label": "起始地图"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入。留空则为公开服务器。"
+        },
+        "tickrate": {
+          "label": "Tick 速率",
+          "description": "每秒更新次数。100 更流畅，但占用更多 CPU 和带宽。",
+          "options": {
+            "66": "66（游戏默认）",
+            "100": "100"
+          }
+        },
+        "friendlyFire": {
+          "label": "友军伤害",
+          "description": "队友之间可以互相伤害。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "maxRounds": {
+          "label": "最大回合数",
+          "description": "一场比赛的回合数。0 表示不限制。"
+        },
+        "timeLimit": {
+          "label": "地图时间限制（分钟）",
+          "description": "切换地图前的分钟数。0 表示不限制。"
+        },
+        "winLimit": {
+          "label": "获胜回合数",
+          "description": "一支队伍需要赢下多少回合才能结束该地图。0 表示不限制。"
+        },
+        "roundTime": {
+          "label": "回合时间（分钟）",
+          "description": "一个回合的时长（分钟）。"
+        },
+        "freezeTime": {
+          "label": "冻结时间（秒）",
+          "description": "回合开始时玩家无法移动的秒数。"
+        },
+        "startMoney": {
+          "label": "初始金钱"
+        },
+        "autoTeamBalance": {
+          "label": "自动平衡队伍",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "limitTeams": {
+          "label": "队伍人数差上限",
+          "description": "一支队伍比另一支最多可多出的人数。0 表示不限制。"
+        },
+        "c4Timer": {
+          "label": "C4 倒计时（秒）"
+        },
+        "allTalk": {
+          "label": "全员语音",
+          "description": "双方队伍可以在语音聊天中互相听到。",
+          "options": {
+            "0": "关",
+            "1": "开"
+          }
+        },
+        "bots": {
+          "label": "机器人",
+          "description": "用来填充服务器的机器人数量。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家通过 UDP 连接。RCON 在同一端口上通过 TCP 监听，仅由本机上的 Pulsar 使用。"
+        },
+        "tv": {
+          "label": "SourceTV",
+          "description": "分配后即可启用 SourceTV。"
+        }
+      }
+    },
+    "minecraft": {
+      "variables": {
+        "eula": {
+          "label": "Minecraft EULA",
+          "description": "Mojang 的条款：https://aka.ms/MinecraftEULA。不接受条款，其服务器无法运行。",
+          "options": {
+            "accepted": "我接受"
+          }
+        },
+        "version": {
+          "label": "Minecraft 版本",
+          "description": "填 'latest' 使用最新正式版，或填写如 1.21.4 的版本。更改版本需要更新；回退到旧版本可能损坏世界。"
+        },
+        "motd": {
+          "label": "每日消息（MOTD）"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "memoryMb": {
+          "label": "内存（MB）",
+          "description": "Java 可为服务器使用的最大内存。"
+        },
+        "difficulty": {
+          "label": "难度",
+          "options": {
+            "peaceful": "和平",
+            "easy": "简单",
+            "normal": "普通",
+            "hard": "困难"
+          }
+        },
+        "gamemode": {
+          "label": "游戏模式",
+          "options": {
+            "survival": "生存",
+            "creative": "创造",
+            "adventure": "冒险",
+            "spectator": "旁观"
+          }
+        },
+        "onlineMode": {
+          "label": "通过 Mojang 验证账户",
+          "description": "仅在代理服务器负责验证账户时才关闭：否则任何人都能用任意名字加入。"
+        },
+        "whitelist": {
+          "label": "仅限白名单玩家"
+        },
+        "pvp": {
+          "label": "玩家之间可以互相伤害"
+        },
+        "seed": {
+          "label": "世界种子",
+          "description": "仅在创建世界时使用。"
+        },
+        "viewDistance": {
+          "label": "视距（区块）"
+        },
+        "simulationDistance": {
+          "label": "模拟距离（区块）",
+          "description": "距离玩家多远范围内生物会活动、作物会生长。数值越低，占用 CPU 越少。"
+        },
+        "hardcore": {
+          "label": "极限模式",
+          "description": "死亡的玩家会变为旁观者。请在创建世界前设置。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "spawnProtection": {
+          "label": "出生点保护（方块）",
+          "description": "在距出生点这个范围内，只有管理员可以建造。设为 0 则关闭。"
+        },
+        "allowFlight": {
+          "label": "允许飞行",
+          "description": "在生存模式下飞行的玩家（使用模组时）不会被踢出。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "forceGamemode": {
+          "label": "强制游戏模式",
+          "description": "玩家每次加入时都会采用服务器的游戏模式。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "enforceWhitelist": {
+          "label": "踢出不在白名单中的玩家",
+          "description": "重新加载白名单时，不再在名单中的玩家会被踢出。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "generateStructures": {
+          "label": "生成建筑结构",
+          "description": "村庄、神殿等结构。仅对此后生成的区块有效。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "idleTimeout": {
+          "label": "挂机踢出时间（分钟）",
+          "description": "0 表示从不踢出。"
+        },
+        "opPermissionLevel": {
+          "label": "管理员权限等级",
+          "options": {
+            "1": "1：可在出生点建造",
+            "2": "2：作弊指令",
+            "3": "3：踢出与封禁",
+            "4": "4：所有指令"
+          }
+        },
+        "hideOnlinePlayers": {
+          "label": "隐藏在线玩家",
+          "description": "服务器列表不显示谁在游戏。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏"
+        }
+      }
+    },
+    "palworld": {
+      "variables": {
+        "name": {
+          "label": "服务器名称"
+        },
+        "description": {
+          "label": "描述"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "留空则为开放服务器。"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "community": {
+          "label": "列为社区服务器"
+        },
+        "expRate": {
+          "label": "经验",
+          "description": "1 为游戏默认值。"
+        },
+        "captureRate": {
+          "label": "捕获率",
+          "description": "数值越高，越容易捕捉帕鲁。1 为游戏默认值。"
+        },
+        "spawnRate": {
+          "label": "帕鲁刷新率",
+          "description": "出现的帕鲁数量。数值越高，占用 CPU 越多。1 为游戏默认值。"
+        },
+        "gatheringRate": {
+          "label": "采集率",
+          "description": "从树木、岩石等处获得的物品量。1 为游戏默认值。"
+        },
+        "enemyDropRate": {
+          "label": "敌人掉落",
+          "description": "敌人掉落的物品量。1 为游戏默认值。"
+        },
+        "workSpeed": {
+          "label": "工作速度",
+          "description": "帕鲁在基地中的工作快慢。1 为游戏默认值。"
+        },
+        "dayTimeSpeed": {
+          "label": "白天速度",
+          "description": "1 为游戏默认值。"
+        },
+        "nightTimeSpeed": {
+          "label": "夜晚速度",
+          "description": "1 为游戏默认值。"
+        },
+        "eggHatchHours": {
+          "label": "孵蛋时间（小时）",
+          "description": "针对最大的蛋；较小的蛋用时更短。"
+        },
+        "pvp": {
+          "label": "PvP",
+          "description": "玩家之间可以互相伤害。",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "fastTravel": {
+          "label": "快速旅行",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "basesPerGuild": {
+          "label": "每个公会的基地数"
+        },
+        "workersPerBase": {
+          "label": "每个基地的工作帕鲁数"
+        },
+        "guildSize": {
+          "label": "每个公会的玩家数"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家通过 UDP 连接。RCON 在同一端口上通过 TCP 监听，仅由本机上的 Pulsar 使用。"
+        },
+        "query": {
+          "label": "Steam 查询"
+        }
+      }
+    },
+    "project-zomboid": {
+      "variables": {
+        "publicName": {
+          "label": "服务器名称"
+        },
+        "adminPassword": {
+          "label": "管理员密码",
+          "description": "用于游戏中的 \"admin\" 账户。每次启动时都会重新设置。"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入。留空则为开放服务器。"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "memoryGb": {
+          "label": "Java 内存（GB）",
+          "description": "Java 堆内存。如果服务器设有内存上限，请保持在其以下。"
+        },
+        "public": {
+          "label": "在服务器浏览器中列出"
+        },
+        "workshopItems": {
+          "label": "创意工坊物品",
+          "description": "Steam 创意工坊物品 ID，以英文分号分隔。服务器会在启动时下载。"
+        },
+        "mods": {
+          "label": "模组 ID",
+          "description": "要加载的模组，按其模组 ID（而非创意工坊 ID）填写，以英文分号分隔。Build 42 中每个 ID 写作 \\ModId。"
+        },
+        "pvp": {
+          "label": "PvP",
+          "description": "玩家之间可以互相伤害。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "safetySystem": {
+          "label": "PvP 安全开关",
+          "description": "每位玩家自行选择是否参与 PvP。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "pauseEmpty": {
+          "label": "无人时暂停",
+          "description": "没有人游戏时时间会停止。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "open": {
+          "label": "任何人都可加入",
+          "description": "选“否”：只有服务器白名单中的账户可以加入。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "autoWhitelist": {
+          "label": "将新玩家加入白名单",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "globalChat": {
+          "label": "全局聊天",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "voice": {
+          "label": "语音聊天",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "vac": {
+          "label": "Steam VAC",
+          "description": "Valve 的反作弊系统。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "saveMinutes": {
+          "label": "自动存档间隔（分钟）",
+          "description": "0 表示使用游戏默认值。"
+        },
+        "pingLimit": {
+          "label": "延迟上限（ms）",
+          "description": "延迟更高的玩家会被踢出。设为 0 则关闭。"
+        },
+        "description": {
+          "label": "描述",
+          "description": "显示在服务器浏览器中。"
+        },
+        "welcome": {
+          "label": "欢迎消息",
+          "description": "玩家加入时显示在聊天中。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏"
+        },
+        "udp": {
+          "label": "游戏（第二个端口）"
+        }
+      }
+    },
+    "rust": {
+      "variables": {
+        "hostname": {
+          "label": "服务器名称"
+        },
+        "description": {
+          "label": "描述"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "worldSize": {
+          "label": "地图大小",
+          "description": "每边的米数。更大的地图生成耗时更长，也需要更多内存。"
+        },
+        "seed": {
+          "label": "地图种子",
+          "description": "相同的种子和大小会生成相同的地图。"
+        },
+        "pve": {
+          "label": "PvE",
+          "description": "玩家之间无法互相伤害。",
+          "options": {
+            "on": "开",
+            "off": "关"
+          }
+        },
+        "globalChat": {
+          "label": "全局聊天",
+          "options": {
+            "on": "开",
+            "off": "关"
+          }
+        },
+        "saveInterval": {
+          "label": "自动存档间隔（秒）"
+        },
+        "decayScale": {
+          "label": "腐朽速度",
+          "description": "1 为游戏默认值；0 则关闭腐朽。"
+        },
+        "upkeep": {
+          "label": "维护费",
+          "description": "维持基地需要消耗资源。",
+          "options": {
+            "on": "开",
+            "off": "关"
+          }
+        },
+        "stability": {
+          "label": "建筑稳定性",
+          "options": {
+            "on": "开",
+            "off": "关"
+          }
+        },
+        "secure": {
+          "label": "Easy Anti-Cheat",
+          "description": "关闭后，使用作弊的玩家也能加入，服务器不会被列为安全服务器。",
+          "options": {
+            "on": "开",
+            "off": "关"
+          }
+        },
+        "instantCraft": {
+          "label": "即时制作",
+          "options": {
+            "on": "开",
+            "off": "关"
+          }
+        },
+        "airdropMinPlayers": {
+          "label": "空投所需玩家数",
+          "description": "只有在线玩家达到这个数量时才会有空投。"
+        },
+        "tags": {
+          "label": "服务器列表标签",
+          "description": "以英文逗号分隔，例如 monthly,vanilla,eu。"
+        },
+        "url": {
+          "label": "网站"
+        },
+        "headerImage": {
+          "label": "头图 URL",
+          "description": "显示在服务器浏览器中的 512 × 256 JPG 图片。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家通过 UDP 连接。RCON 在同一端口上通过 TCP 监听，仅由本机上的 Pulsar 使用。"
+        },
+        "query": {
+          "label": "服务器列表查询"
+        },
+        "app": {
+          "label": "Rust+ 配套应用",
+          "description": "分配后，玩家即可配对 Rust+ 应用。"
+        }
+      }
+    },
+    "scpsl": {
+      "variables": {
+        "eula": {
+          "label": "SCP: Secret Laboratory EULA",
+          "description": "游戏针对服务器的条款：https://link.scpslgame.com/eula。不接受条款，其服务器无法运行。",
+          "options": {
+            "accepted": "我接受"
+          }
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏"
+        }
+      }
+    },
+    "valheim": {
+      "variables": {
+        "name": {
+          "label": "服务器名称",
+          "description": "显示在服务器列表中。不能包含密码。"
+        },
+        "world": {
+          "label": "世界",
+          "description": "世界的名称：使用新名称会创建新世界。"
+        },
+        "password": {
+          "label": "加入密码",
+          "description": "玩家需要输入密码才能加入：至少 5 个字符，且不能是服务器名称的一部分。"
+        },
+        "visibility": {
+          "label": "服务器列表",
+          "options": {
+            "public": "公开（玩家可以找到）",
+            "private": "不公开（通过地址加入）"
+          }
+        },
+        "crossplay": {
+          "label": "跨平台游玩（Xbox 和 Game Pass 玩家）",
+          "description": "通过 PlayFab 的中继加入，而不是服务器的端口。"
+        },
+        "preset": {
+          "label": "难度",
+          "options": {
+            "normal": "普通",
+            "casual": "休闲",
+            "easy": "简单",
+            "hard": "困难",
+            "hardcore": "极限",
+            "immersive": "沉浸",
+            "hammer": "锤子（建造模式）"
+          }
+        },
+        "combat": {
+          "label": "战斗",
+          "description": "敌人的攻击力度。会改变上方的难度。",
+          "options": {
+            "veryeasy": "非常简单",
+            "easy": "简单",
+            "hard": "困难",
+            "veryhard": "非常困难"
+          }
+        },
+        "deathPenalty": {
+          "label": "死亡惩罚",
+          "options": {
+            "casual": "休闲",
+            "veryeasy": "非常简单",
+            "easy": "简单",
+            "hard": "困难",
+            "hardcore": "极限"
+          }
+        },
+        "resources": {
+          "label": "资源",
+          "options": {
+            "muchless": "少很多",
+            "less": "较少",
+            "more": "较多",
+            "muchmore": "多很多",
+            "most": "最多"
+          }
+        },
+        "raids": {
+          "label": "袭击",
+          "options": {
+            "none": "无",
+            "muchless": "少很多",
+            "less": "较少",
+            "more": "较多",
+            "muchmore": "多很多"
+          }
+        },
+        "portals": {
+          "label": "传送门",
+          "options": {
+            "casual": "任何物品均可通过",
+            "hard": "禁止金属",
+            "veryhard": "无传送门"
+          }
+        },
+        "noMap": {
+          "label": "无地图"
+        },
+        "noBuildCost": {
+          "label": "无建造消耗"
+        },
+        "passiveMobs": {
+          "label": "被动敌人",
+          "description": "敌人只会还击。"
+        },
+        "playerEvents": {
+          "label": "按玩家进度触发袭击",
+          "description": "袭击依据每位玩家的进度，而不是世界的进度。"
+        },
+        "saveInterval": {
+          "label": "自动存档间隔（秒）"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家在此连接。"
+        },
+        "query": {
+          "label": "Steam 查询",
+          "description": "Valheim 总会为服务器列表打开游戏端口 + 1：Pulsar 会为其提供该分配。"
+        }
+      }
     }
   }
 }

@@ -4,6 +4,13 @@ import type { TemplateVariable } from './api';
 /** Values by variable key, in the API's text form ("10", "true", "competitive"). */
 export type VariableValues = Record<string, string>;
 
+/**
+ * A game option: a value the game reads that the template gives none of its own, so Pulsar leaves the game's files
+ * alone until it is set (the template marks those lines keepIfEmpty). Secrets and Workshop lists are not.
+ */
+export const isGameOption = (variable: TemplateVariable) =>
+  !variable.required && variable.default == null && !variable.secret && !variable.workshop;
+
 /** The manifest default, or what a field starts with when there is none. */
 export function initialValue(variable: TemplateVariable): string {
   return variable.default ?? (variable.type === 'boolean' ? 'false' : '');
