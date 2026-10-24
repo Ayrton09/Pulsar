@@ -68,6 +68,12 @@ public static class ServerErrors
     public static DomainError AllocationUnavailable { get; } =
         new("server.allocation_unavailable", "That allocation is not free on the server's node.");
 
+    public static DomainError PortTaken(int port) =>
+        new("server.port_taken", $"Port {port} is used by another server of the node.");
+
+    public static DomainError PortNotAllocated(int port) =>
+        new("server.port_not_allocated", $"Port {port} is not one of the node's allocations: ask whoever manages the node to add it, or choose a free one.");
+
     public static DomainError OperationNotFound { get; } = new("operation.not_found", "The operation does not exist.");
 
     public static DomainError OperationNotCancellable { get; } =

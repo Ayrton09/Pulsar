@@ -18,6 +18,8 @@ import {
   type ServerDetails,
   type ServerSettings,
 } from './api';
+import { PortNumberFields } from './PortFields';
+import { checkPorts, chosenPorts, parsePort, portsReady, type TemplatePort } from './portChoices';
 import { VariableFields } from './VariableFields';
 import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
 import { SteamAccountCard } from '../steam/SteamServerCards';
@@ -406,7 +408,10 @@ function SettingsForm({ server, settings, save }: SettingsFormProps) {
   );
 }
 
-/** The server's ports and the node allocations they use; changed only while the server is stopped. */
+/**
+ * The server's ports and the node allocations they use; changed only while the server is stopped. Whoever manages the
+ * node types numbers (as when creating a server); others choose among the node's free allocations.
+ */
 export function NetworkTab({ details }: { details: ServerDetails }) {
   const { t } = useTranslation();
   const me = useCurrentUser();
@@ -425,6 +430,24 @@ export function NetworkTab({ details }: { details: ServerDetails }) {
   const stopped = server.runtimeState === 'offline' || server.runtimeState === 'crashed';
   const canEdit = canOnServer(me, server, Permission.ServerSettingsEdit) && stopped && server.activeOperation === null;
   const options = (allocations.data ?? []).filter((a) => !a.inUse || a.serverId === server.id);
+  const canAddPorts = canOnNode(me, server.nodeId, Permission.NodeManage);
+  const templatePorts: TemplatePort[] = details.ports.map((port) => ({
+    name: port.name,
+    label: port.label,
+    required: port.required,
+    follows: port.follows ?? null,
+    offset: port.offset ?? null,
+    default: port.default,
+    protocols: port.protocols ?? [],
+    description: port.description ?? null,
+  }));
+  // The numbers it has, then what was typed over them.
+  const numbers: Record<string, string> = {
+    ...Object.fromEntries(details.ports.map((port) => [port.name, port.port === null ? '' : String(port.port)])),
+    ...chosen,
+  };
+  const numbersReady =
+    allocations.isSuccess && portsReady(checkPorts(templatePorts, numbers, allocations.data, true, server.id));
 
   if (details.ports.length === 0) {
     return (
@@ -444,68 +467,86 @@ export function NetworkTab({ details }: { details: ServerDetails }) {
       </div>
       {save.isError && <Alert>{errorMessage(t, save.error)}</Alert>}
       {allocations.isError && <Alert>{errorMessage(t, allocations.error)}</Alert>}
-      {details.ports.map((port) => {
-        const current = port.allocationId ?? '';
-        if (port.follows) {
-          // Not chosen: it comes with the port it follows.
-          return (
-            <p key={port.name} className="text-sm">
-              <span className="font-medium">{port.label}</span>{' '}
-              {port.ipAddress && (
-                <span>
-                  {port.ipAddress}:{port.port}{' '}
-                </span>
-              )}
-              <span className="text-muted">
-                {t('servers.network.follows', {
-                  port: details.ports.find((p) => p.name === port.follows)?.label ?? port.follows,
-                })}
-              </span>
-            </p>
-          );
-        }
-        return (
-          <Field key={port.name} label={port.required ? `${port.label} *` : port.label}>
-            {(ids) => (
-              <Select
-                {...ids}
-                value={chosen[port.name] ?? current}
-                disabled={!canEdit}
-                onChange={(e) => setChosen((c) => ({ ...c, [port.name]: e.target.value }))}
-              >
-                {!port.required && <option value="">{t('servers.wizard.noPort')}</option>}
-                {port.required && current === '' && <option value="">—</option>}
-                {/* The allocation it has is always there: the list may be missing (not allowed) or still loading. */}
-                {current !== '' && !options.some((a) => a.id === current) && (
-                  <option value={current}>
-                    {port.ipAddress}:{port.port}
-                  </option>
+      {canAddPorts && allocations.isSuccess && (
+        <PortNumberFields
+          ports={templatePorts}
+          values={numbers}
+          onChange={(port, value) => setChosen((c) => ({ ...c, [port]: value }))}
+          allocations={allocations.data}
+          serverId={server.id}
+          disabled={!canEdit}
+        />
+      )}
+      {!canAddPorts &&
+        details.ports.map((port) => {
+          const current = port.allocationId ?? '';
+          if (port.follows) {
+            // Not chosen: it comes with the port it follows.
+            return (
+              <p key={port.name} className="text-sm">
+                <span className="font-medium">{port.label}</span>{' '}
+                {port.ipAddress && (
+                  <span>
+                    {port.ipAddress}:{port.port}{' '}
+                  </span>
                 )}
-                {options.map((allocation) => (
-                  <option key={allocation.id} value={allocation.id}>
-                    {allocation.ipAddress}:{allocation.port}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-        );
-      })}
+                <span className="text-muted">
+                  {t('servers.network.follows', {
+                    port: details.ports.find((p) => p.name === port.follows)?.label ?? port.follows,
+                  })}
+                </span>
+              </p>
+            );
+          }
+          return (
+            <Field key={port.name} label={port.required ? `${port.label} *` : port.label}>
+              {(ids) => (
+                <Select
+                  {...ids}
+                  value={chosen[port.name] ?? current}
+                  disabled={!canEdit}
+                  onChange={(e) => setChosen((c) => ({ ...c, [port.name]: e.target.value }))}
+                >
+                  {!port.required && <option value="">{t('servers.wizard.noPort')}</option>}
+                  {port.required && current === '' && <option value="">—</option>}
+                  {/* The allocation it has is always there: the list may be missing (not allowed) or still loading. */}
+                  {current !== '' && !options.some((a) => a.id === current) && (
+                    <option value={current}>
+                      {port.ipAddress}:{port.port}
+                    </option>
+                  )}
+                  {options.map((allocation) => (
+                    <option key={allocation.id} value={allocation.id}>
+                      {allocation.ipAddress}:{allocation.port}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          );
+        })}
       {canEdit && (
         <div className="flex justify-end">
           <Button
             busy={save.isPending}
-            disabled={Object.keys(chosen).length === 0}
+            disabled={Object.keys(chosen).length === 0 || (canAddPorts && !numbersReady)}
             onClick={() =>
               save.mutate(
-                {
-                  id: server.id,
-                  ports: Object.fromEntries(
-                    details.ports
-                      .filter((p) => !p.follows)
-                      .map((p) => [p.name, (chosen[p.name] ?? p.allocationId ?? '') || null]),
-                  ),
-                },
+                canAddPorts
+                  ? {
+                      id: server.id,
+                      portNumbers: Object.fromEntries(
+                        chosenPorts(templatePorts).map((p) => [p.name, parsePort(numbers[p.name] ?? '')]),
+                      ),
+                    }
+                  : {
+                      id: server.id,
+                      ports: Object.fromEntries(
+                        details.ports
+                          .filter((p) => !p.follows)
+                          .map((p) => [p.name, (chosen[p.name] ?? p.allocationId ?? '') || null]),
+                      ),
+                    },
                 { onSuccess: () => setChosen({}) },
               )
             }

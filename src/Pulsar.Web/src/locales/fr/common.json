@@ -563,6 +563,8 @@
       "update_unsupported": "Ce jeu ne peut pas être mis à jour.",
       "no_free_allocation": "Le nœud n'a aucune allocation libre pour l'un des ports du jeu. Ajoutez des allocations au nœud.",
       "allocation_unavailable": "Cette allocation n'est pas libre sur le nœud du serveur.",
+      "port_taken": "Ce port est utilisé par un autre serveur du nœud : choisissez-en un autre.",
+      "port_not_allocated": "Ce port ne fait pas partie des allocations du nœud : choisissez-en une libre, ou demandez aux gestionnaires du nœud de l’ajouter.",
       "invalid_settings": "Vérifiez les paramètres : {{detail}}",
       "variable_protected": "Vous ne pouvez pas modifier ce paramètre : {{detail}}",
       "limits_unsupported": "L'agent du nœud ne peut pas limiter le CPU et la mémoire d'un serveur : mettez l'agent à jour.",
@@ -1124,9 +1126,7 @@
       "requirements": "Ce jeu nécessite environ {{disk}} Go de disque et {{memory}} Go de mémoire sur le nœud.",
       "noPorts": "Ce jeu n'écoute sur aucun port.",
       "noAllocations": "Le nœud n'a aucune allocation libre pour les ports du jeu.",
-      "addAllocations": "Ajouter des allocations au nœud",
       "portDefault": "Généralement {{port}} ({{protocols}}).",
-      "automatic": "Automatique (un port libre, le port habituel en premier)",
       "noPort": "Aucun",
       "followsPort": "suit {{port}} : son port + {{offset}}."
     },
@@ -1207,6 +1207,19 @@
       "stopFirst": "Arrêtez le serveur pour modifier ses ports.",
       "none": "Ce jeu n'écoute sur aucun port.",
       "follows": "(suit {{port}})"
+    },
+    "ports": {
+      "existing": "Utilise l'allocation {{address}} du nœud.",
+      "added": "Nouvelle : Pulsar ajoute {{address}} aux allocations du nœud.",
+      "off": "Désactivé. Saisissez un port pour l’activer.",
+      "taken": "{{server}} utilise le port {{port}}.",
+      "takenByOther": "Un autre serveur utilise le port {{port}}.",
+      "otherAddress": "Le port {{port}} est une allocation d’une autre adresse du nœud.",
+      "notAllocated": "Le port {{port}} ne fait pas partie des allocations du nœud.",
+      "invalid": "Les ports vont de 1 à 65535.",
+      "duplicate": "Deux ports de ce serveur utilisent {{port}}.",
+      "follower": "{{label}} : {{port}}",
+      "fromAllocations": "Seuls les gestionnaires du nœud peuvent lui ajouter des ports : voici ses allocations libres."
     },
     "console": {
       "title": "Console",

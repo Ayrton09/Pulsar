@@ -16,13 +16,18 @@ namespace Pulsar.Api.Servers;
 
 /// <param name="Variables">Values of the template's variables (missing ones take their default).</param>
 /// <param name="Ports">Allocation per template port (missing required ports get a free one of the node).</param>
+/// <param name="PortNumbers">
+/// Port number per template port, instead of an allocation: the node's allocation on that number, added to the node
+/// when it has none and the user may manage the node. Ports that follow one come with it.
+/// </param>
 public sealed record CreateServerRequest(
     Guid NodeId,
     Guid TemplateId,
     [property: Required, StringLength(Server.MaxNameLength)] string Name,
     [property: StringLength(Server.MaxDescriptionLength)] string? Description,
     Dictionary<string, string?>? Variables = null,
-    Dictionary<string, Guid?>? Ports = null);
+    Dictionary<string, Guid?>? Ports = null,
+    Dictionary<string, int?>? PortNumbers = null);
 
 /// <param name="Variables">Only the variables to change; null or empty puts the default back (or clears a secret).</param>
 public sealed record UpdateServerSettingsRequest(
@@ -31,8 +36,9 @@ public sealed record UpdateServerSettingsRequest(
     bool AutoStart,
     bool RestartOnCrash);
 
-/// <param name="Ports">Allocation per template port; null leaves an optional port without one.</param>
-public sealed record UpdateServerPortsRequest([property: Required] Dictionary<string, Guid?> Ports);
+/// <param name="Ports">Allocation per template port; null leaves an optional port without one, a port left out keeps its own.</param>
+/// <param name="PortNumbers">Port number per template port, instead of an allocation (as when creating a server).</param>
+public sealed record UpdateServerPortsRequest(Dictionary<string, Guid?>? Ports = null, Dictionary<string, int?>? PortNumbers = null);
 
 /// <param name="SteamGuardCode">The code Steam asked for when the last update signed in with the server's account.</param>
 public sealed record UpdateGameRequest(bool Validate, [property: StringLength(16)] string? SteamGuardCode = null);
@@ -103,7 +109,7 @@ public static class ServerEndpoints
                 (await m.UpdateSettingsAsync(new ServerId(id), request.Variables, request.ExtraArguments, request.AutoStart, request.RestartOnCrash, ct)).ToHttp())
             .RequirePermission(Permissions.Server.StartupEdit);
         servers.MapPut("/{id:guid}/ports", (Guid id, UpdateServerPortsRequest request, ServerManagement m, CancellationToken ct) =>
-                DetailsAsync(m.UpdatePortsAsync(new ServerId(id), request.Ports, ct)))
+                DetailsAsync(m.UpdatePortsAsync(new ServerId(id), request.Ports ?? [], ct, request.PortNumbers)))
             .RequirePermission(Permissions.Server.SettingsEdit);
         servers.MapPut("/{id:guid}/template", (Guid id, UpgradeTemplateRequest request, ServerManagement m, CancellationToken ct) =>
                 DetailsAsync(m.UpgradeTemplateAsync(new ServerId(id), request.TemplateId, ct)))
@@ -177,7 +183,7 @@ public static class ServerEndpoints
         CreateServerRequest request, ServerManagement servers, CancellationToken ct)
     {
         var result = await servers.CreateAsync(new NodeId(request.NodeId), request.TemplateId, request.Name, request.Description, request.Variables,
-            request.Ports, ct);
+            request.Ports, ct, request.PortNumbers);
         if (!result.IsSuccess)
         {
             return ApiProblems.FromDomainError(result.Error!);

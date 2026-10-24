@@ -563,6 +563,8 @@
       "update_unsupported": "このゲームは更新できません。",
       "no_free_allocation": "ノードに、ゲームのポート用の空き割り当てがありません。ノードに割り当てを追加してください。",
       "allocation_unavailable": "その割り当ては、サーバーのノードで空いていません。",
+      "port_taken": "そのポートはノードの別のサーバーが使用しています。別のポートを選択してください。",
+      "port_not_allocated": "そのポートはノードの割り当てにありません。空いている割り当てを選択するか、ノードの管理者に追加を依頼してください。",
       "invalid_settings": "設定を確認してください: {{detail}}",
       "variable_protected": "その設定は変更できません: {{detail}}",
       "limits_unsupported": "ノードのエージェントはサーバーのCPUとメモリを制限できません。エージェントを更新してください。",
@@ -1124,9 +1126,7 @@
       "requirements": "このゲームには、ノード上で約{{disk}} GBのディスクと{{memory}} GBのメモリが必要です。",
       "noPorts": "このゲームはポートで待ち受けません。",
       "noAllocations": "ノードに、ゲームのポート用の空き割り当てがありません。",
-      "addAllocations": "ノードに割り当てを追加",
       "portDefault": "通常は{{port}}({{protocols}})。",
-      "automatic": "自動(空いているものを、通常のポートを優先して選択)",
       "noPort": "なし",
       "followsPort": "{{port}}に連動: そのポート+{{offset}}。"
     },
@@ -1207,6 +1207,19 @@
       "stopFirst": "ポートを変更するにはサーバーを停止してください。",
       "none": "このゲームはポートで待ち受けません。",
       "follows": "({{port}}に連動)"
+    },
+    "ports": {
+      "existing": "ノードの割り当て {{address}} を使用します。",
+      "added": "新規: Pulsar が {{address}} をノードの割り当てに追加します。",
+      "off": "オフ。有効にするにはポートを入力してください。",
+      "taken": "{{server}} がポート {{port}} を使用しています。",
+      "takenByOther": "別のサーバーがポート {{port}} を使用しています。",
+      "otherAddress": "ポート {{port}} は、ノードの別のアドレスの割り当てです。",
+      "notAllocated": "ポート {{port}} はノードの割り当てにありません。",
+      "invalid": "ポートは 1 から 65535 までです。",
+      "duplicate": "このサーバーの2つのポートが {{port}} を使用しています。",
+      "follower": "{{label}}: {{port}}",
+      "fromAllocations": "ノードにポートを追加できるのはノードの管理者だけです。以下はノードの空き割り当てです。"
     },
     "console": {
       "title": "コンソール",

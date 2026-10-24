@@ -12561,6 +12561,9 @@ export interface components {
             ports?: null | {
                 [key: string]: null | string;
             };
+            portNumbers?: null | {
+                [key: string]: null | number;
+            };
         };
         CreateUserRequest: {
             userName: string;
@@ -13259,6 +13262,15 @@ export interface components {
             /** Format: int32 */
             port: null | number;
             follows?: null | string;
+            /** Format: int32 */
+            offset?: null | number;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            default: number;
+            protocols?: null | components["schemas"]["PortProtocol"][];
+            description?: null | string;
         };
         /** @enum {unknown} */
         ServerRuntimeState: "offline" | "starting" | "running" | "stopping" | "crashed";
@@ -13532,8 +13544,11 @@ export interface components {
             permissions: string[];
         };
         UpdateServerPortsRequest: {
-            ports: {
+            ports?: null | {
                 [key: string]: null | string;
+            };
+            portNumbers?: null | {
+                [key: string]: null | number;
             };
         };
         UpdateServerSettingsRequest: {

@@ -13737,6 +13737,19 @@
               ],
               "format": "uuid"
             }
+          },
+          "portNumbers": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": {
+              "type": [
+                "null",
+                "integer"
+              ],
+              "format": "int32"
+            }
           }
         }
       },
@@ -16590,6 +16603,33 @@
               "null",
               "string"
             ]
+          },
+          "offset": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "default": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          "protocols": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PortProtocol"
+            }
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -17799,19 +17839,32 @@
         }
       },
       "UpdateServerPortsRequest": {
-        "required": [
-          "ports"
-        ],
         "type": "object",
         "properties": {
           "ports": {
-            "type": "object",
+            "type": [
+              "null",
+              "object"
+            ],
             "additionalProperties": {
               "type": [
                 "null",
                 "string"
               ],
               "format": "uuid"
+            }
+          },
+          "portNumbers": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": {
+              "type": [
+                "null",
+                "integer"
+              ],
+              "format": "int32"
             }
           }
         }

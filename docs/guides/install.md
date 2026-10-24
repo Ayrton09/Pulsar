@@ -1002,10 +1002,12 @@ was given): delete the folder once read.
 
 1. **Account → Two-factor authentication**: set it up with an authenticator app and keep the recovery codes. In
    **Roles**, *Require two-factor* on the Administrator role makes it mandatory for administrators.
-2. **Nodes → your node → Allocations**: add the IP addresses and ports game servers may use (for example
-   `0.0.0.0`, ports `27015-27030`).
-3. **Servers → New server**: choose the node and the game (Counter-Strike 2, Counter-Strike: Source), name it, and
-   set its variables. The node downloads the game with SteamCMD; the progress shows on the server's page.
+2. **Servers → New server**: choose the node and the game, name it, and set its variables. Its ports start on the
+   game's own (the next free ones for a second server of that game); as an administrator you can type others, and a
+   port the node has no allocation for is added to it. The node downloads the game with SteamCMD; the progress shows on
+   the server's page.
+3. **Nodes → your node → Allocations** (optional): the ports game servers may use, for example `0.0.0.0`, ports
+   `27015-27030`. Users who create servers without managing the node choose among these.
 4. Open the game's ports to players: in Windows Firewall on the node (or let the agent manage rules for its servers:
    add `"Pulsar": { "ManageFirewall": true }` to `C:\Program Files\Pulsar\Agent\appsettings.Production.json` and
    restart the PulsarAgent service), and in your router if players come from the internet. The agent's rules apply to

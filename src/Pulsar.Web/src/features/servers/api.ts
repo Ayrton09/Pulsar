@@ -167,8 +167,8 @@ export function useSetServerLimits() {
 export function useUpdateServerPorts() {
   const changed = useServersChanged();
   return useMutation({
-    mutationFn: ({ id, ports }: { id: string; ports: Record<string, string | null> }) =>
-      unwrap(api.PUT('/api/v1/servers/{id}/ports', { params: { path: { id } }, body: { ports } })),
+    mutationFn: ({ id, ...body }: { id: string } & Schemas['UpdateServerPortsRequest']) =>
+      unwrap(api.PUT('/api/v1/servers/{id}/ports', { params: { path: { id } }, body })),
     onSuccess: changed,
   });
 }

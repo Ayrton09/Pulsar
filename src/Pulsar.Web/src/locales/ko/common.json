@@ -563,6 +563,8 @@
       "update_unsupported": "이 게임은 업데이트할 수 없습니다.",
       "no_free_allocation": "노드에 게임 포트 중 하나에 사용할 수 있는 여유 할당이 없습니다. 노드에 할당을 추가하세요.",
       "allocation_unavailable": "해당 할당은 서버의 노드에서 사용할 수 없습니다.",
+      "port_taken": "해당 포트는 노드의 다른 서버가 사용 중입니다. 다른 포트를 선택하세요.",
+      "port_not_allocated": "해당 포트는 노드의 할당에 없습니다. 여유 할당을 선택하거나 노드 관리자에게 추가를 요청하세요.",
       "invalid_settings": "설정을 확인하세요: {{detail}}",
       "variable_protected": "해당 설정은 변경할 수 없습니다: {{detail}}",
       "limits_unsupported": "노드의 에이전트가 서버의 CPU와 메모리를 제한할 수 없습니다. 에이전트를 업데이트하세요.",
@@ -1124,9 +1126,7 @@
       "requirements": "이 게임은 노드에서 디스크 약 {{disk}} GB와 메모리 {{memory}} GB가 필요합니다.",
       "noPorts": "이 게임은 어떤 포트도 사용하지 않습니다.",
       "noAllocations": "노드에 게임 포트에 사용할 수 있는 여유 할당이 없습니다.",
-      "addAllocations": "노드에 할당 추가",
       "portDefault": "보통 {{port}} ({{protocols}}).",
-      "automatic": "자동 (사용 가능한 포트, 기본 포트 우선)",
       "noPort": "없음",
       "followsPort": "{{port}}에 연동됨: 해당 포트 + {{offset}}."
     },
@@ -1207,6 +1207,19 @@
       "stopFirst": "포트를 변경하려면 서버를 중지하세요.",
       "none": "이 게임은 어떤 포트도 사용하지 않습니다.",
       "follows": "({{port}}에 연동됨)"
+    },
+    "ports": {
+      "existing": "노드의 할당 {{address}}을(를) 사용합니다.",
+      "added": "새 할당: Pulsar가 {{address}}을(를) 노드의 할당에 추가합니다.",
+      "off": "꺼짐. 켜려면 포트를 입력하세요.",
+      "taken": "{{server}}이(가) 포트 {{port}}을(를) 사용 중입니다.",
+      "takenByOther": "다른 서버가 포트 {{port}}을(를) 사용 중입니다.",
+      "otherAddress": "포트 {{port}}은(는) 노드의 다른 주소에 대한 할당입니다.",
+      "notAllocated": "포트 {{port}}은(는) 노드의 할당에 없습니다.",
+      "invalid": "포트는 1부터 65535까지입니다.",
+      "duplicate": "이 서버의 포트 두 개가 {{port}}을(를) 사용합니다.",
+      "follower": "{{label}}: {{port}}",
+      "fromAllocations": "노드를 관리하는 사용자만 노드에 포트를 추가할 수 있습니다. 다음은 노드의 여유 할당입니다."
     },
     "console": {
       "title": "콘솔",

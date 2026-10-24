@@ -53,7 +53,10 @@ public sealed record ServerAddressView(string IpAddress, int Port);
 
 /// <summary>A manifest port of the server and the allocation it has (none for an unassigned optional port).</summary>
 /// <param name="Follows">The port this one comes with: it is not chosen on its own.</param>
-public sealed record ServerPortView(string Name, string Label, bool Required, Guid? AllocationId, string? IpAddress, int? Port, string? Follows = null);
+/// <param name="Offset">How far above the port it follows it is.</param>
+/// <param name="Default">The game's usual port; Protocols and Description as the template says.</param>
+public sealed record ServerPortView(string Name, string Label, bool Required, Guid? AllocationId, string? IpAddress, int? Port, string? Follows = null,
+    int? Offset = null, int Default = 0, IReadOnlyList<PortProtocol>? Protocols = null, string? Description = null);
 
 public sealed record ServerDetails(
     ServerSummary Server,
@@ -108,6 +111,7 @@ public sealed partial class ServerManagement(
     VisibleResources visible,
     IAuditLog audit,
     IRequestContext request,
+    IRowLocks locks,
     TimeProvider clock,
     ILogger<ServerManagement> logger)
 {
@@ -143,8 +147,11 @@ public sealed partial class ServerManagement(
     /// Creates the server and starts provisioning it on its node (directory, Windows account), followed by its install.
     /// The node must be connected: there is nothing useful to create on a node that cannot hear about it.
     /// </summary>
+    /// <param name="ports">Allocation per port; a required port left out gets a free one.</param>
+    /// <param name="portNumbers">Port number per port, the other way to choose one (see <see cref="ResolvePortsAsync"/>).</param>
     public async Task<Result<ServerDetails>> CreateAsync(NodeId nodeId, Guid templateId, string name, string? description,
-        IReadOnlyDictionary<string, string?>? variables, IReadOnlyDictionary<string, Guid?>? ports, CancellationToken cancellationToken)
+        IReadOnlyDictionary<string, string?>? variables, IReadOnlyDictionary<string, Guid?>? ports, CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, int?>? portNumbers = null)
     {
         if (!await db.Nodes.AnyAsync(n => n.Id == nodeId, cancellationToken))
         {
@@ -201,7 +208,14 @@ public sealed partial class ServerManagement(
         }
 
         db.Servers.Add(server);
-        var assigned = await specs.AssignPortsAsync(server, manifest, ports, cancellationToken);
+        await using var transaction = portNumbers is { Count: > 0 } ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
+        var resolved = await ResolvePortsAsync(server, manifest, ports, portNumbers, cancellationToken);
+        if (!resolved.IsSuccess)
+        {
+            return resolved.Error!;
+        }
+
+        var assigned = await specs.AssignPortsAsync(server, manifest, resolved.Value.Ports, cancellationToken);
         if (!assigned.IsSuccess)
         {
             return assigned.Error!;
@@ -215,9 +229,14 @@ public sealed partial class ServerManagement(
 
         audit.Record(AuditActions.Server.Created, metadata: new { server.Name, template = $"{template.Key}@{template.Version}" })
             .WithServer(server.Id, nodeId);
+        RecordAddedAllocations(server, resolved.Value.Added);
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
         }
         catch (DbUpdateException)
         {
@@ -567,7 +586,10 @@ public sealed partial class ServerManagement(
     }
 
     /// <summary>Gives the server other allocations of its node (stopped servers only: the game listens on them).</summary>
-    public async Task<Result<ServerDetails>> UpdatePortsAsync(ServerId id, IReadOnlyDictionary<string, Guid?> ports, CancellationToken cancellationToken)
+    /// <param name="ports">Allocation per port; null leaves an optional port out, a port left out keeps its allocation.</param>
+    /// <param name="portNumbers">Port number per port, the other way to choose one (see <see cref="ResolvePortsAsync"/>).</param>
+    public async Task<Result<ServerDetails>> UpdatePortsAsync(ServerId id, IReadOnlyDictionary<string, Guid?> ports, CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, int?>? portNumbers = null)
     {
         ArgumentNullException.ThrowIfNull(ports);
         var server = await db.Servers.Include(s => s.Variables).SingleOrDefaultAsync(s => s.Id == id, cancellationToken);
@@ -582,7 +604,14 @@ public sealed partial class ServerManagement(
         }
 
         var manifest = ServerSpecs.Parse(await db.GameTemplates.AsNoTracking().SingleAsync(t => t.Id == server.TemplateId, cancellationToken));
-        var assigned = await specs.AssignPortsAsync(server, manifest, ports, cancellationToken);
+        await using var transaction = portNumbers is { Count: > 0 } ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
+        var resolved = await ResolvePortsAsync(server, manifest, ports, portNumbers, cancellationToken);
+        if (!resolved.IsSuccess)
+        {
+            return resolved.Error!;
+        }
+
+        var assigned = await specs.AssignPortsAsync(server, manifest, resolved.Value.Ports, cancellationToken);
         if (!assigned.IsSuccess)
         {
             return assigned.Error!;
@@ -598,9 +627,14 @@ public sealed partial class ServerManagement(
         {
             ports = db.NodeAllocations.Local.Where(a => a.ServerId == server.Id).ToDictionary(a => a.PortName!, a => $"{a.IpAddress}:{a.Port}"),
         }).WithServer(server.Id, server.NodeId);
+        RecordAddedAllocations(server, resolved.Value.Added);
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
         }
         catch (DbUpdateException)
         {
@@ -609,6 +643,54 @@ public sealed partial class ServerManagement(
 
         await SyncSpecAsync(id, cancellationToken);
         return await DetailsAsync(server, cancellationToken);
+    }
+
+    /// <summary>
+    /// The allocation per port of <paramref name="ports"/> and <paramref name="numbers"/> together (a port named in both
+    /// is refused). A number without an allocation gets a new one when the user manages the node: that is choosing a port
+    /// in the create dialog, without adding it to the node first. The caller opened a transaction when there are numbers:
+    /// the node's row stays locked until it saves, as when allocations are added from the node's page.
+    /// </summary>
+    private async Task<Result<PortNumberAllocations>> ResolvePortsAsync(Server server, GameManifest manifest,
+        IReadOnlyDictionary<string, Guid?>? ports, IReadOnlyDictionary<string, int?>? numbers, CancellationToken cancellationToken)
+    {
+        if (numbers is not { Count: > 0 })
+        {
+            return new PortNumberAllocations(ports ?? new Dictionary<string, Guid?>(), []);
+        }
+
+        if (ports?.Keys.FirstOrDefault(numbers.ContainsKey) is { } both)
+        {
+            return ServerErrors.InvalidSettings($"Port '{both}' is chosen both by allocation and by number.");
+        }
+
+        var canAdd = request.UserId is not { } user
+            || (await permissions.GetAsync(user, cancellationToken)).Has(Permissions.Node.Manage, AccessTarget.ForNode(server.NodeId));
+        await locks.LockNodeAsync(server.NodeId, cancellationToken);
+        var resolved = await specs.AllocationsForNumbersAsync(server, manifest, numbers, canAdd, clock.GetUtcNow(), cancellationToken);
+        if (!resolved.IsSuccess)
+        {
+            return resolved.Error!;
+        }
+
+        var all = new Dictionary<string, Guid?>(ports ?? new Dictionary<string, Guid?>(), StringComparer.Ordinal);
+        foreach (var (name, allocation) in resolved.Value.Ports)
+        {
+            all[name] = allocation;
+        }
+
+        return resolved.Value with { Ports = all };
+    }
+
+    /// <summary>Allocations added for a server's port numbers are audited as the node's, as if added from its page.</summary>
+    private void RecordAddedAllocations(Server server, IReadOnlyList<NodeAllocation> added)
+    {
+        foreach (var address in added.GroupBy(a => a.IpAddress))
+        {
+            var ports = string.Join(',', address.Select(a => a.Port).Order());
+            audit.Record(AuditActions.Node.AllocationsCreated, metadata: new { address = address.Key, ports, count = address.Count(), server = server.Name })
+                .WithNode(server.NodeId);
+        }
     }
 
     /// <summary>Updates the game (the manifest's update steps: SteamCMD), optionally verifying every file.</summary>
@@ -899,8 +981,8 @@ public sealed partial class ServerManagement(
         var allocations = (await db.NodeAllocations.AsNoTracking().Where(a => a.ServerId == server.Id).ToListAsync(cancellationToken))
             .ToDictionary(a => a.PortName!);
         var ports = manifest.PortList.Select(p => allocations.GetValueOrDefault(p.Name) is { } a
-            ? new ServerPortView(p.Name, p.Label, p.Required, a.Id.Value, a.IpAddress, a.Port, p.Follows?.Port)
-            : new ServerPortView(p.Name, p.Label, p.Required, null, null, null, p.Follows?.Port)).ToList();
+            ? new ServerPortView(p.Name, p.Label, p.Required, a.Id.Value, a.IpAddress, a.Port, p.Follows?.Port, p.Follows?.Offset, p.Default, p.Protocols, p.Description)
+            : new ServerPortView(p.Name, p.Label, p.Required, null, null, null, p.Follows?.Port, p.Follows?.Offset, p.Default, p.Protocols, p.Description)).ToList();
         var newer = (await db.GameTemplates.AsNoTracking().Where(t => t.Key == template.Key).Select(t => new { t.Id, t.Version }).ToListAsync(cancellationToken))
             .Where(t => GameTemplate.CompareVersions(t.Version, template.Version) > 0)
             .OrderByDescending(t => t.Version, Comparer<string>.Create(GameTemplate.CompareVersions))

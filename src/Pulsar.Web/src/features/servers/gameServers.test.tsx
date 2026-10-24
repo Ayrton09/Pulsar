@@ -168,8 +168,24 @@ function details(server: Schemas['ServerSummary'] = summary): Schemas['ServerDet
     templateVersion: '1.0.0',
     canUpdate: true,
     ports: [
-      { name: 'game', label: 'Game', required: true, allocationId: allocationA, ipAddress: '0.0.0.0', port: 27015 },
-      { name: 'tv', label: 'SourceTV', required: false, allocationId: null, ipAddress: null, port: null },
+      {
+        name: 'game',
+        label: 'Game',
+        required: true,
+        allocationId: allocationA,
+        ipAddress: '0.0.0.0',
+        port: 27015,
+        default: 27015,
+      },
+      {
+        name: 'tv',
+        label: 'SourceTV',
+        required: false,
+        allocationId: null,
+        ipAddress: null,
+        port: null,
+        default: 27020,
+      },
     ],
     recentOperations: [],
     limits: { cpuPercent: null, memoryMb: null, databases: 2 },
@@ -233,22 +249,70 @@ describe('creating a game server', () => {
     await user.selectOptions(screen.getByLabelText('Mode *'), 'Competitive');
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
+    // Whoever manages the node types numbers: the game's own to start with, saying where each lands.
     const game = await screen.findByLabelText('Game *');
-    expect(within(game).getByRole('option', { name: /Automatic/ })).toBeInTheDocument();
-    expect(within(game).queryByRole('option', { name: '0.0.0.0:27025' })).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText('SourceTV'), '0.0.0.0:27020');
+    expect(game).toHaveValue('27015');
+    expect(screen.getByText(/Uses the node's allocation 0\.0\.0\.0:27015\./)).toBeInTheDocument();
+    const tv = screen.getByLabelText('SourceTV');
+    expect(tv).toHaveValue('');
+    expect(screen.getByText(/Off\. Type a port to turn it on\./)).toBeInTheDocument();
+    // Another server's port (one the user cannot see) is refused before anything is sent.
+    await user.type(tv, '27025');
+    expect(screen.getByText('Another server uses port 27025.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(body).toBeUndefined();
+    await user.clear(tv);
+    await user.type(tv, '27021');
+    expect(screen.getByText(/New: Pulsar adds 0\.0\.0\.0:27021 to the node's allocations\./)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(await screen.findByRole('heading', { name: 'Retakes' })).toBeInTheDocument();
-    // Only what differs from the defaults; the game port is left to the panel.
+    // Only what differs from the defaults, and every port by number.
     expect(body).toEqual({
       name: 'Retakes',
       description: null,
       nodeId,
       templateId,
       variables: { maxPlayers: '24', mode: 'competitive', password: 'join-me' },
-      ports: { tv: allocationB },
+      portNumbers: { game: 27015, tv: 27021 },
     });
+  });
+
+  it("offers the node's free allocations to whoever cannot add ports to it, the game's own first", async () => {
+    let body: unknown;
+    fakeApi({
+      'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['server.view', 'server.create'] }),
+      'GET /api/v1/servers': () => json([]),
+      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/templates': () => json([template]),
+      [`GET /api/v1/templates/${templateId}`]: () => json(templateDetails),
+      [`GET /api/v1/nodes/${nodeId}/allocations`]: () => json(allocations),
+      'POST /api/v1/servers': async (request) => {
+        body = await request.json();
+        return json(details({ ...summary, installState: 'installing' }), 201);
+      },
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Create server' }));
+    await user.type(screen.getByLabelText('Name'), 'Retakes');
+    await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
+    await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source');
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+    await user.click(await screen.findByRole('button', { name: 'Next' }));
+
+    const game = await screen.findByLabelText('Game *');
+    expect(screen.getByText(/Only whoever manages the node can add ports to it/)).toBeInTheDocument();
+    expect(game).toHaveDisplayValue('0.0.0.0:27015');
+    expect(within(game).queryByRole('option', { name: '0.0.0.0:27025' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('SourceTV')).toHaveValue('');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    await vi.waitFor(() => expect(body).toBeDefined());
+    expect(body).toMatchObject({ ports: { game: allocationA } });
+    expect(body).not.toHaveProperty('portNumbers');
   });
 });
 
@@ -364,8 +428,8 @@ describe('changing the node of a server being created', () => {
     await user.click(await screen.findByRole('button', { name: 'Next' }));
     await user.click(await screen.findByRole('button', { name: 'Next' }));
     const first = await screen.findByLabelText('SourceTV');
-    await within(first).findByRole('option', { name: '0.0.0.0:27020' });
-    await user.selectOptions(first, '0.0.0.0:27020');
+    await user.type(first, '27020');
+    expect(screen.getByText(/Uses the node's allocation 0\.0\.0\.0:27020\./)).toBeInTheDocument();
 
     // Back to the first step and another node.
     await user.click(screen.getByRole('button', { name: 'Back' }));
@@ -374,13 +438,14 @@ describe('changing the node of a server being created', () => {
     await user.click(screen.getByRole('button', { name: 'Next' }));
     await user.click(await screen.findByRole('button', { name: 'Next' }));
     const second = await screen.findByLabelText('SourceTV');
-    await within(second).findByRole('option', { name: '10.0.0.2:27020' });
     expect(second).toHaveValue('');
+    // That node has no allocation on the game's port: it gets one.
+    expect(screen.getByLabelText('Game *')).toHaveValue('27015');
+    expect(screen.getByText(/New: Pulsar adds 0\.0\.0\.0:27015/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     await vi.waitFor(() => expect(body).toBeDefined());
-    expect(body).toMatchObject({ nodeId: otherNode });
-    expect((body as { ports: unknown }).ports).toEqual({});
+    expect(body).toMatchObject({ nodeId: otherNode, portNumbers: { game: 27015, tv: null } });
   });
 });
 
@@ -744,6 +809,43 @@ describe('a game server page', () => {
     let body: unknown;
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+      [`GET /api/v1/nodes/${nodeId}/allocations`]: () =>
+        json([
+          { ...allocations[0], serverId, serverName: 'Retakes', portName: 'game', inUse: true },
+          allocations[1],
+          allocations[2],
+        ]),
+      [`PUT /api/v1/servers/${serverId}/ports`]: async (request) => {
+        body = await request.json();
+        return json(details());
+      },
+    });
+    renderAt(`/servers/${serverId}?tab=network`);
+    const user = userEvent.setup();
+
+    // Its own allocation is its own, not another server's.
+    const game = await screen.findByLabelText('Game *');
+    expect(game).toHaveValue('27015');
+    expect(screen.getByText(/Uses the node's allocation 0\.0\.0\.0:27015\./)).toBeInTheDocument();
+    const tv = screen.getByLabelText('SourceTV');
+    await user.type(tv, '27025');
+    expect(screen.getByText('Another server uses port 27025.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await user.clear(tv);
+    await user.type(tv, '27020');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await vi.waitFor(() => expect(body).toEqual({ portNumbers: { game: 27015, tv: 27020 } }));
+  });
+
+  it("offers the node's free allocations to whoever cannot add ports to it", async () => {
+    let body: unknown;
+    fakeApi({
+      'GET /api/v1/auth/session': session({
+        ...adminUser,
+        permissions: ['server.view', 'server.settings.edit', 'node.view'],
+      }),
       [`GET /api/v1/servers/${serverId}`]: () => json(details()),
       [`GET /api/v1/nodes/${nodeId}/allocations`]: () =>
         json([

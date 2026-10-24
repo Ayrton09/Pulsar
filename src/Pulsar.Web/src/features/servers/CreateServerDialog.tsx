@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Alert } from '../../components/ui/Display';
@@ -11,6 +11,16 @@ import { useCurrentUser } from '../auth/api';
 import { useWatchNodes } from '../live/hooks';
 import { useAllocations, useNodes } from '../nodes/api';
 import { useCreateServer, useTemplate, useTemplates, type TemplateDetails, type TemplateVariable } from './api';
+import { PortNumberFields } from './PortFields';
+import {
+  checkPorts,
+  chosenPorts,
+  parsePort,
+  portsReady,
+  suggestAllocations,
+  suggestNumbers,
+  type NodeAllocation,
+} from './portChoices';
 import { newestOfEachGame } from './templateVersions';
 import { VariableFields } from './VariableFields';
 import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
@@ -18,13 +28,11 @@ import { initialValue, useUnreadableNumbers, variableError, type VariableValues 
 const steps = ['basics', 'settings', 'ports'] as const;
 type Step = (typeof steps)[number];
 
-/** "auto" lets the panel pick a free allocation (the port's default first); "" leaves an optional port out. */
-const AUTOMATIC = 'auto';
-
 /**
- * Creating a server (docs/architecture/07): name, node and game; then the game's variables; then its ports from the
- * node's free allocations. The panel then provisions and installs it; the server page shows the progress.
- * `templateId` starts it with that game chosen (the Games page's cards).
+ * Creating a server (docs/architecture/07): name, node and game; then the game's variables; then its ports, which
+ * start on the game's own (or the next free ones): whoever manages the node types any number, added to the node's
+ * allocations when it has none; others choose among its free allocations. The panel then provisions and installs it;
+ * the server page shows the progress. `templateId` starts it with that game chosen (the Games page's cards).
  */
 export function CreateServerDialog({
   onClose,
@@ -46,7 +54,8 @@ export function CreateServerDialog({
   const [nodeId, setNodeId] = useState('');
   const [templateId, setTemplateId] = useState(initialTemplate ?? '');
   const [values, setValues] = useState<VariableValues>({});
-  const [ports, setPorts] = useState<Record<string, string>>({});
+  // Null until the user changes one: the suggestion follows the node's allocations meanwhile.
+  const [ports, setPorts] = useState<Record<string, string> | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const unreadable = useUnreadableNumbers();
   const template = useTemplate(templateId || undefined);
@@ -56,12 +65,25 @@ export function CreateServerDialog({
   const connected =
     nodes.data?.filter((node) => node.connected && canOnNode(me, node.id, Permission.ServerCreate)) ?? [];
   const details = template.data;
+  // Whoever manages the node types port numbers (added to its allocations when missing); others choose allocations.
+  const canAddPorts = nodeId !== '' && canOnNode(me, nodeId, Permission.NodeManage);
+  const nodeAllocations: NodeAllocation[] = useMemo(() => allocations.data ?? [], [allocations.data]);
+  const suggested = useMemo(
+    () =>
+      !details
+        ? {}
+        : canAddPorts
+          ? suggestNumbers(details.ports, nodeAllocations)
+          : suggestAllocations(details.ports, nodeAllocations),
+    [details, canAddPorts, nodeAllocations],
+  );
+  const portValues = ports ?? suggested;
 
   const chooseTemplate = (id: string) => {
     setTemplateId(id);
     setValues({});
     unreadable.reset();
-    setPorts({});
+    setPorts(null);
   };
 
   const valueOf = (variable: TemplateVariable) => values[variable.key] ?? initialValue(variable);
@@ -74,12 +96,17 @@ export function CreateServerDialog({
   const settingsErrors = Object.fromEntries(
     (details?.variables ?? []).map((v) => [v.key, variableError(v, valueOf(v), false, unreadable.keys.has(v.key))]),
   ) as Record<string, string | null>;
+  const portsValid =
+    !!details &&
+    (canAddPorts
+      ? portsReady(checkPorts(details.ports, portValues, nodeAllocations, true))
+      : chosenPorts(details.ports).every((port) => !port.required || (portValues[port.name] ?? '') !== ''));
   const stepValid = (current: Step) =>
     current === 'basics'
       ? Object.values(basicsErrors).every((e) => e === null) && !!details
       : current === 'settings'
         ? Object.values(settingsErrors).every((e) => e === null)
-        : true;
+        : portsValid;
 
   const next = () => {
     if (!stepValid(step)) {
@@ -91,7 +118,8 @@ export function CreateServerDialog({
   };
 
   const submit = () => {
-    if (!details) {
+    if (!details || !stepValid('ports')) {
+      setShowErrors(true);
       return;
     }
     // Only what differs from the manifest: defaults stay defaults (a later manifest default applies on reinstall).
@@ -100,15 +128,22 @@ export function CreateServerDialog({
         .filter((v) => valueOf(v) !== '' && valueOf(v) !== initialValue(v))
         .map((v) => [v.key, valueOf(v)]),
     );
-    const chosen = Object.fromEntries(
-      details.ports
-        .filter((port) => !port.follows)
-        .map((port) => [port.name, ports[port.name] ?? (port.required ? AUTOMATIC : '')] as const)
-        .filter(([, value]) => value !== AUTOMATIC && value !== '')
-        .map(([key, value]) => [key, value]),
-    );
+    // Numbers for whoever manages the node (null: an optional port off), allocations for the others.
+    const portChoice = canAddPorts
+      ? {
+          portNumbers: Object.fromEntries(
+            chosenPorts(details.ports).map((port) => [port.name, parsePort(portValues[port.name] ?? '')]),
+          ),
+        }
+      : {
+          ports: Object.fromEntries(
+            chosenPorts(details.ports)
+              .map((port) => [port.name, portValues[port.name] ?? ''] as const)
+              .filter(([, value]) => value !== ''),
+          ),
+        };
     create.mutate(
-      { name: name.trim(), description: description.trim() || null, nodeId, templateId, variables, ports: chosen },
+      { name: name.trim(), description: description.trim() || null, nodeId, templateId, variables, ...portChoice },
       { onSuccess: (created) => void navigate(`/servers/${created.server.id}`) },
     );
   };
@@ -146,8 +181,8 @@ export function CreateServerDialog({
                   value={nodeId}
                   onChange={(e) => {
                     setNodeId(e.target.value);
-                    // The ports chosen are allocations of the node that was.
-                    setPorts({});
+                    // The ports chosen were for the node that was.
+                    setPorts(null);
                   }}
                 >
                   <option value="">{t('servers.chooseNode')}</option>
@@ -224,11 +259,13 @@ export function CreateServerDialog({
         {step === 'ports' && details && (
           <PortsStep
             details={details}
-            nodeId={nodeId}
-            allocations={allocations.data ?? []}
+            canAdd={canAddPorts}
+            allocations={nodeAllocations}
             loading={allocations.isPending}
-            ports={ports}
-            onChange={(port, value) => setPorts((current) => ({ ...current, [port]: value }))}
+            error={allocations.error}
+            ports={portValues}
+            showErrors={showErrors}
+            onChange={(port, value) => setPorts({ ...portValues, [port]: value })}
           />
         )}
 
@@ -272,36 +309,35 @@ function Requirements({ details }: { details: TemplateDetails }) {
 
 interface PortsStepProps {
   details: TemplateDetails;
-  nodeId: string;
-  allocations: { id: string; ipAddress: string; port: number; inUse: boolean }[];
+  canAdd: boolean;
+  allocations: NodeAllocation[];
   loading: boolean;
+  error: Error | null;
   ports: Record<string, string>;
+  showErrors: boolean;
   onChange: (port: string, value: string) => void;
 }
 
-function PortsStep({ details, nodeId, allocations, loading, ports, onChange }: PortsStepProps) {
+function PortsStep({ details, canAdd, allocations, loading, error, ports, showErrors, onChange }: PortsStepProps) {
   const { t } = useTranslation();
-  const me = useCurrentUser();
   if (details.ports.length === 0) {
     return <p className="text-sm text-muted">{t('servers.wizard.noPorts')}</p>;
   }
+  if (error) {
+    return <Alert>{errorMessage(t, error)}</Alert>;
+  }
   if (loading) {
     return <Spinner label={t('common.loading')} />;
+  }
+  if (canAdd) {
+    return <PortNumberFields ports={details.ports} values={ports} onChange={onChange} allocations={allocations} />;
   }
 
   const free = allocations.filter((a) => !a.inUse);
   return (
     <div className="space-y-4">
-      {free.length === 0 && (
-        <Alert>
-          {t('servers.wizard.noAllocations')}{' '}
-          {canOnNode(me, nodeId, Permission.NodeManage) && (
-            <Link to={`/nodes/${nodeId}`} className="underline">
-              {t('servers.wizard.addAllocations')}
-            </Link>
-          )}
-        </Alert>
-      )}
+      <p className="text-sm text-muted">{t('servers.ports.fromAllocations')}</p>
+      {free.length === 0 && <Alert>{t('servers.wizard.noAllocations')}</Alert>}
       {details.ports.map((port) =>
         port.follows ? (
           <p key={port.name} className="text-sm">
@@ -317,6 +353,9 @@ function PortsStep({ details, nodeId, allocations, loading, ports, onChange }: P
           <Field
             key={port.name}
             label={port.required ? `${port.label} *` : port.label}
+            error={
+              showErrors && port.required && (ports[port.name] ?? '') === '' ? t('validation.required') : undefined
+            }
             hint={[
               port.description,
               t('servers.wizard.portDefault', {
@@ -328,16 +367,8 @@ function PortsStep({ details, nodeId, allocations, loading, ports, onChange }: P
               .join(' ')}
           >
             {(ids) => (
-              <Select
-                {...ids}
-                value={ports[port.name] ?? (port.required ? AUTOMATIC : '')}
-                onChange={(e) => onChange(port.name, e.target.value)}
-              >
-                {port.required ? (
-                  <option value={AUTOMATIC}>{t('servers.wizard.automatic')}</option>
-                ) : (
-                  <option value="">{t('servers.wizard.noPort')}</option>
-                )}
+              <Select {...ids} value={ports[port.name] ?? ''} onChange={(e) => onChange(port.name, e.target.value)}>
+                <option value="">{port.required ? '—' : t('servers.wizard.noPort')}</option>
                 {free.map((allocation) => (
                   <option key={allocation.id} value={allocation.id}>
                     {allocation.ipAddress}:{allocation.port}

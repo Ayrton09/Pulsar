@@ -563,6 +563,8 @@
       "update_unsupported": "此游戏无法更新。",
       "no_free_allocation": "该节点没有可用于此游戏某个端口的空闲端口分配。请为节点添加端口分配。",
       "allocation_unavailable": "该端口分配在服务器所在节点上不可用。",
+      "port_taken": "该端口已被节点上的另一台服务器使用，请选择其他端口。",
+      "port_not_allocated": "该端口不在节点的端口分配中：请选择一个空闲的端口分配，或请节点管理员添加它。",
       "invalid_settings": "请检查设置：{{detail}}",
       "variable_protected": "你无法更改该设置：{{detail}}",
       "limits_unsupported": "该节点的代理无法限制服务器的 CPU 和内存：请更新代理。",
@@ -1124,9 +1126,7 @@
       "requirements": "此游戏需要节点上约 {{disk}} GB 磁盘空间和 {{memory}} GB 内存。",
       "noPorts": "此游戏不监听任何端口。",
       "noAllocations": "该节点没有可用于此游戏端口的空闲端口分配。",
-      "addAllocations": "为节点添加端口分配",
       "portDefault": "通常为 {{port}}（{{protocols}}）。",
-      "automatic": "自动（选一个空闲的，优先常用端口）",
       "noPort": "无",
       "followsPort": "随 {{port}} 附带：其端口 + {{offset}}。"
     },
@@ -1207,6 +1207,19 @@
       "stopFirst": "请先停止服务器再更改端口。",
       "none": "此游戏不监听任何端口。",
       "follows": "（随 {{port}} 附带）"
+    },
+    "ports": {
+      "existing": "使用节点的端口分配 {{address}}。",
+      "added": "新增：Pulsar 会将 {{address}} 添加到节点的端口分配中。",
+      "off": "已关闭。输入端口即可启用。",
+      "taken": "{{server}} 正在使用端口 {{port}}。",
+      "takenByOther": "另一台服务器正在使用端口 {{port}}。",
+      "otherAddress": "端口 {{port}} 是节点另一个地址的端口分配。",
+      "notAllocated": "端口 {{port}} 不在节点的端口分配中。",
+      "invalid": "端口范围为 1 到 65535。",
+      "duplicate": "此服务器有两个端口使用 {{port}}。",
+      "follower": "{{label}}：{{port}}",
+      "fromAllocations": "只有管理该节点的用户才能为其添加端口：以下是节点的空闲端口分配。"
     },
     "console": {
       "title": "控制台",

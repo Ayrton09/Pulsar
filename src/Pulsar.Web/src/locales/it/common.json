@@ -563,6 +563,8 @@
       "update_unsupported": "Questo gioco non può essere aggiornato.",
       "no_free_allocation": "Il nodo non ha un'allocazione libera per una delle porte del gioco. Aggiungere allocazioni al nodo.",
       "allocation_unavailable": "Questa allocazione non è libera sul nodo del server.",
+      "port_taken": "Questa porta è usata da un altro server del nodo: sceglierne un’altra.",
+      "port_not_allocated": "Questa porta non è tra le allocazioni del nodo: sceglierne una libera, o chiedere a chi gestisce il nodo di aggiungerla.",
       "invalid_settings": "Controllare le impostazioni: {{detail}}",
       "variable_protected": "Non puoi modificare questa impostazione: {{detail}}",
       "limits_unsupported": "L'agent del nodo non può limitare CPU e memoria di un server: aggiornare l'agent.",
@@ -1124,9 +1126,7 @@
       "requirements": "Questo gioco richiede circa {{disk}} GB di disco e {{memory}} GB di memoria sul nodo.",
       "noPorts": "Questo gioco non è in ascolto su nessuna porta.",
       "noAllocations": "Il nodo non ha allocazioni libere per le porte del gioco.",
-      "addAllocations": "Aggiungi allocazioni al nodo",
       "portDefault": "Di solito {{port}} ({{protocols}}).",
-      "automatic": "Automatica (una libera, prima la porta abituale)",
       "noPort": "Nessuna",
       "followsPort": "segue {{port}}: la sua porta + {{offset}}."
     },
@@ -1207,6 +1207,19 @@
       "stopFirst": "Arrestare il server per cambiarne le porte.",
       "none": "Questo gioco non è in ascolto su nessuna porta.",
       "follows": "(segue {{port}})"
+    },
+    "ports": {
+      "existing": "Usa l'allocazione {{address}} del nodo.",
+      "added": "Nuova: Pulsar aggiunge {{address}} alle allocazioni del nodo.",
+      "off": "Disattivata. Inserire una porta per attivarla.",
+      "taken": "{{server}} usa la porta {{port}}.",
+      "takenByOther": "Un altro server usa la porta {{port}}.",
+      "otherAddress": "La porta {{port}} è un'allocazione di un altro indirizzo del nodo.",
+      "notAllocated": "La porta {{port}} non è tra le allocazioni del nodo.",
+      "invalid": "Le porte vanno da 1 a 65535.",
+      "duplicate": "Due porte di questo server usano {{port}}.",
+      "follower": "{{label}}: {{port}}",
+      "fromAllocations": "Solo chi gestisce il nodo può aggiungervi porte: queste sono le sue allocazioni libere."
     },
     "console": {
       "title": "Console",

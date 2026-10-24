@@ -563,6 +563,8 @@
       "update_unsupported": "This game cannot be updated.",
       "no_free_allocation": "The node has no free allocation for one of the game's ports. Add allocations to the node.",
       "allocation_unavailable": "That allocation is not free on the server's node.",
+      "port_taken": "That port is used by another server of the node: choose another one.",
+      "port_not_allocated": "That port is not one of the node's allocations: choose one of its free ones, or ask whoever manages the node to add it.",
       "invalid_settings": "Check the settings: {{detail}}",
       "variable_protected": "You cannot change that setting: {{detail}}",
       "limits_unsupported": "The node's agent cannot limit a server's CPU and memory: update the agent.",
@@ -1124,9 +1126,7 @@
       "requirements": "This game needs about {{disk}} GB of disk and {{memory}} GB of memory on the node.",
       "noPorts": "This game does not listen on any port.",
       "noAllocations": "The node has no free allocations for the game's ports.",
-      "addAllocations": "Add allocations to the node",
       "portDefault": "Usually {{port}} ({{protocols}}).",
-      "automatic": "Automatic (a free one, the usual port first)",
       "noPort": "None",
       "followsPort": "comes with {{port}}: its port + {{offset}}."
     },
@@ -1207,6 +1207,19 @@
       "stopFirst": "Stop the server to change its ports.",
       "none": "This game does not listen on any port.",
       "follows": "(comes with {{port}})"
+    },
+    "ports": {
+      "existing": "Uses the node's allocation {{address}}.",
+      "added": "New: Pulsar adds {{address}} to the node's allocations.",
+      "off": "Off. Type a port to turn it on.",
+      "taken": "{{server}} uses port {{port}}.",
+      "takenByOther": "Another server uses port {{port}}.",
+      "otherAddress": "Port {{port}} is an allocation of another address of the node.",
+      "notAllocated": "Port {{port}} is not one of the node's allocations.",
+      "invalid": "Ports go from 1 to 65535.",
+      "duplicate": "Two ports of this server use {{port}}.",
+      "follower": "{{label}}: {{port}}",
+      "fromAllocations": "Only whoever manages the node can add ports to it: these are its free allocations."
     },
     "console": {
       "title": "Console",

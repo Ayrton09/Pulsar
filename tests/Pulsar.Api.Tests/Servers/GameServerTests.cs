@@ -8,6 +8,7 @@ using Pulsar.Api.Realtime;
 using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Abstractions;
+using Pulsar.Application.Audit;
 using Pulsar.Application.Nodes;
 using Pulsar.Application.Servers;
 using Pulsar.Contracts;
@@ -314,6 +315,99 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
             Variables: password));
         Assert.Equal(HttpStatusCode.Conflict, third.StatusCode);
         Assert.Contains("server.no_free_allocation", await third.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+    }
+
+    [DatabaseFact]
+    public async Task APortChosenByNumberUsesTheNodesAllocationOrAddsIt()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "numbers");
+        var nodeId = agent.Config!.NodeId;
+        var css = await TemplateAsync(admin, "css");
+        var valheim = await TemplateAsync(admin, "valheim");
+        var existing = await AllocateAsync(admin, nodeId, "0.0.0.0", "27015");
+
+        // The node's own allocation on that number, not a new one.
+        var first = await CreateAsync(admin, new CreateServerRequest(nodeId, css.Template.Id, "First", null,
+            PortNumbers: new Dictionary<string, int?> { ["game"] = 27015 }));
+        Assert.Equal(existing[0].Id, first.Ports.Single(p => p.Name == "game").AllocationId);
+
+        // A number the node has no allocation for is added to it, by whoever manages the node; an optional port too.
+        var second = await CreateAsync(admin, new CreateServerRequest(nodeId, css.Template.Id, "Second", null,
+            PortNumbers: new Dictionary<string, int?> { ["game"] = 27016, ["tv"] = 27021 }));
+        Assert.Equal((27016, 27021), (Port(second, "game"), Port(second, "tv")));
+        // A following port comes with its own, on the next number.
+        var withFollower = await CreateAsync(admin, new CreateServerRequest(nodeId, valheim.Template.Id, "Valheim", null,
+            Variables: new Dictionary<string, string?> { ["password"] = "secret123" }, PortNumbers: new Dictionary<string, int?> { ["game"] = 2500 }));
+        Assert.Equal((2500, 2501), (Port(withFollower, "game"), Port(withFollower, "query")));
+
+        var allocations = await admin.Http.GetFromJsonAsync<List<AllocationView>>(
+            new Uri($"/api/v1/nodes/{nodeId}/allocations", UriKind.Relative), AccessScenario.Json, Ct);
+        Assert.Equal([(2500, "Valheim"), (2501, "Valheim"), (27015, "First"), (27016, "Second"), (27021, "Second")],
+            allocations!.Select(a => (a.Port, a.ServerName)));
+        Assert.All(allocations!, a => Assert.Equal("0.0.0.0", a.IpAddress));
+        var audit = await admin.Http.GetFromJsonAsync<AuditPage>(new Uri("/api/v1/audit?limit=50", UriKind.Relative), AccessScenario.Json, Ct);
+        // Recorded as allocations added to the node, saying for which server (others' tests share the log).
+        var added = audit!.Entries.Where(e => e.Action == "node.allocations_created" && e.Metadata.TryGetProperty("server", out _))
+            .Select(e => (e.Metadata.GetProperty("ports").GetString(), e.Metadata.GetProperty("server").GetString()))
+            .Where(e => e.Item2 is "Second" or "Valheim").ToList();
+        Assert.Equal([("2500,2501", "Valheim"), ("27016,27021", "Second")], added);
+
+        foreach (var (numbers, status, code) in new (Dictionary<string, int?>, HttpStatusCode, string)[]
+                 {
+                     (new() { ["game"] = 27015 }, HttpStatusCode.Conflict, "server.port_taken"),
+                     (new() { ["game"] = 2501 }, HttpStatusCode.Conflict, "server.port_taken"), // another server's following port
+                     (new() { ["game"] = 70000 }, HttpStatusCode.BadRequest, "node.allocation_port_invalid"),
+                     (new() { ["game"] = 27030, ["tv"] = 27030 }, HttpStatusCode.BadRequest, "server.invalid_settings"),
+                     (new() { ["sourcetv"] = 27030 }, HttpStatusCode.BadRequest, "server.invalid_settings"),
+                 })
+        {
+            using var refused = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(nodeId, css.Template.Id, "Refused", null,
+                PortNumbers: numbers));
+            Assert.Equal(status, refused.StatusCode);
+            Assert.Contains($"\"{code}\"", await refused.Content.ReadAsStringAsync(Ct), StringComparison.Ordinal);
+        }
+
+        // Following ports are not chosen; a port is chosen one way.
+        using (var follower = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(nodeId, valheim.Template.Id, "Follower", null,
+                   Variables: new Dictionary<string, string?> { ["password"] = "secret123" }, PortNumbers: new Dictionary<string, int?> { ["query"] = 2601 })))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, follower.StatusCode);
+        }
+
+        using (var both = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(nodeId, css.Template.Id, "Both", null,
+                   Ports: new Dictionary<string, Guid?> { ["game"] = existing[0].Id }, PortNumbers: new Dictionary<string, int?> { ["game"] = 27040 })))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, both.StatusCode);
+        }
+
+        // Nothing refused added an allocation.
+        var after = await admin.Http.GetFromJsonAsync<List<AllocationView>>(
+            new Uri($"/api/v1/nodes/{nodeId}/allocations", UriKind.Relative), AccessScenario.Json, Ct);
+        Assert.Equal(5, after!.Count);
+    }
+
+    [DatabaseFact]
+    public async Task AStoppedServerMovesToAnotherPortByNumber()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "move-number");
+        var nodeId = agent.Config!.NodeId;
+        var css = await TemplateAsync(admin, "css");
+        var server = await CreateAsync(admin, new CreateServerRequest(nodeId, css.Template.Id, "Mover", null,
+            PortNumbers: new Dictionary<string, int?> { ["game"] = 27015, ["tv"] = 27020 }));
+        await ServerApi.WaitForAsync(admin, server.Server.Id, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null,
+            "installed");
+
+        var moved = await PutAsync<ServerDetails>(admin, $"/api/v1/servers/{server.Server.Id}/ports",
+            new UpdateServerPortsRequest(PortNumbers: new Dictionary<string, int?> { ["game"] = 27115, ["tv"] = null }));
+
+        Assert.Equal(27115, Port(moved, "game"));
+        Assert.Null(Port(moved, "tv"));
+        var allocations = await admin.Http.GetFromJsonAsync<List<AllocationView>>(
+            new Uri($"/api/v1/nodes/{nodeId}/allocations", UriKind.Relative), AccessScenario.Json, Ct);
+        // The ports it left stay the node's, free for another server.
+        Assert.Equal([(27015, false), (27020, false), (27115, true)], allocations!.Select(a => (a.Port, a.InUse)));
     }
 
     [DatabaseFact]

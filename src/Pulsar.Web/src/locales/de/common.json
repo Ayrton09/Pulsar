@@ -563,6 +563,8 @@
       "update_unsupported": "Dieses Spiel kann nicht aktualisiert werden.",
       "no_free_allocation": "Der Node hat keine freie Zuweisung für einen der Ports des Spiels. Fügen Sie dem Node Zuweisungen hinzu.",
       "allocation_unavailable": "Diese Zuweisung ist auf dem Node des Servers nicht frei.",
+      "port_taken": "Dieser Port wird von einem anderen Server des Nodes verwendet: Wählen Sie einen anderen.",
+      "port_not_allocated": "Dieser Port gehört nicht zu den Zuweisungen des Nodes: Wählen Sie eine freie oder bitten Sie die Verwaltung des Nodes, ihn hinzuzufügen.",
       "invalid_settings": "Prüfen Sie die Einstellungen: {{detail}}",
       "variable_protected": "Sie können diese Einstellung nicht ändern: {{detail}}",
       "limits_unsupported": "Der Agent des Nodes kann CPU und Speicher eines Servers nicht begrenzen: Aktualisieren Sie den Agent.",
@@ -1124,9 +1126,7 @@
       "requirements": "Dieses Spiel benötigt auf dem Node etwa {{disk}} GB Speicherplatz und {{memory}} GB Arbeitsspeicher.",
       "noPorts": "Dieses Spiel lauscht auf keinem Port.",
       "noAllocations": "Der Node hat keine freien Zuweisungen für die Ports des Spiels.",
-      "addAllocations": "Dem Node Zuweisungen hinzufügen",
       "portDefault": "Üblicherweise {{port}} ({{protocols}}).",
-      "automatic": "Automatisch (ein freier, zuerst der übliche Port)",
       "noPort": "Keiner",
       "followsPort": "gehört zu {{port}}: dessen Port + {{offset}}."
     },
@@ -1207,6 +1207,19 @@
       "stopFirst": "Stoppen Sie den Server, um seine Ports zu ändern.",
       "none": "Dieses Spiel lauscht auf keinem Port.",
       "follows": "(gehört zu {{port}})"
+    },
+    "ports": {
+      "existing": "Verwendet die Zuweisung {{address}} des Nodes.",
+      "added": "Neu: Pulsar fügt {{address}} zu den Zuweisungen des Nodes hinzu.",
+      "off": "Aus. Geben Sie einen Port ein, um ihn zu aktivieren.",
+      "taken": "{{server}} verwendet Port {{port}}.",
+      "takenByOther": "Ein anderer Server verwendet Port {{port}}.",
+      "otherAddress": "Port {{port}} ist eine Zuweisung einer anderen Adresse des Nodes.",
+      "notAllocated": "Port {{port}} gehört nicht zu den Zuweisungen des Nodes.",
+      "invalid": "Ports reichen von 1 bis 65535.",
+      "duplicate": "Zwei Ports dieses Servers verwenden {{port}}.",
+      "follower": "{{label}}: {{port}}",
+      "fromAllocations": "Nur wer den Node verwaltet, kann ihm Ports hinzufügen: Dies sind seine freien Zuweisungen."
     },
     "console": {
       "title": "Konsole",

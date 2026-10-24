@@ -9,6 +9,9 @@ using Pulsar.Manifests;
 
 namespace Pulsar.Application.Servers;
 
+/// <summary>The allocation for each port asked for by number (null: left out), and those added to the node for them.</summary>
+public sealed record PortNumberAllocations(IReadOnlyDictionary<string, Guid?> Ports, IReadOnlyList<NodeAllocation> Added);
+
 /// <summary>
 /// What a server is made of beyond its row: its variable values and its port allocations, checked against its
 /// manifest, and the runtime spec the agent receives (docs/architecture/03). Secret values are decrypted only here,
@@ -121,6 +124,124 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
     }
 
     /// <summary>
+    /// The allocations of the port numbers asked for (<paramref name="numbers"/>; null leaves an optional port out), for
+    /// <see cref="AssignPortsAsync"/>: the server's own on that number, otherwise a free one of the node (every interface
+    /// first), otherwise a new one on every interface when <paramref name="canAdd"/> (the user manages the node). The
+    /// ports that follow one get theirs the same way, on its address. New allocations are added to the context unsaved:
+    /// the caller saves them with the server, its node's row locked (two of them must not overlap).
+    /// </summary>
+    public async Task<Result<PortNumberAllocations>> AllocationsForNumbersAsync(Server server, GameManifest manifest,
+        IReadOnlyDictionary<string, int?> numbers, bool canAdd, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(manifest);
+        ArgumentNullException.ThrowIfNull(numbers);
+        var definitions = manifest.PortList.ToDictionary(p => p.Name, StringComparer.Ordinal);
+        foreach (var name in numbers.Keys)
+        {
+            if (!definitions.TryGetValue(name, out var definition))
+            {
+                return ServerErrors.InvalidSettings($"Unknown port '{name}'.");
+            }
+
+            if (definition.Follows is { } follows)
+            {
+                return ServerErrors.InvalidSettings($"{definition.Label} is not chosen: it comes with {definitions[follows.Port].Label}.");
+            }
+        }
+
+        // Every number the server would listen on, the followers' too, once.
+        var wanted = numbers.Where(n => n.Value is not null).SelectMany(n => manifest.PortList
+                .Where(p => p.Follows?.Port == n.Key).Select(f => n.Value!.Value + f.Follows!.Offset).Prepend(n.Value!.Value))
+            .ToList();
+        if (wanted.Any(port => port is < 1 or > 65535))
+        {
+            return NodeErrors.AllocationPortInvalid;
+        }
+
+        if (wanted.Distinct().Count() != wanted.Count)
+        {
+            return ServerErrors.InvalidSettings("Two ports of the server cannot use the same port number.");
+        }
+
+        var nodeAllocations = await db.NodeAllocations.Where(a => a.NodeId == server.NodeId).ToListAsync(cancellationToken);
+        var added = new List<NodeAllocation>();
+
+        // The allocation of `port`: on `address` when given (a follower's, on its port's address).
+        Result<NodeAllocation> Allocation(int port, string? address)
+        {
+            var onPort = nodeAllocations.Where(a => a.Port == port).ToList();
+            var usable = onPort.Where(a => (a.ServerId is null || a.ServerId == server.Id) && (address is null || a.IpAddress == address))
+                .OrderBy(a => a.ServerId == server.Id ? 0 : 1)
+                .ThenBy(a => a.IpAddress == NodeAllocation.AnyAddress ? 0 : 1)
+                .ThenBy(a => a.IpAddress, StringComparer.Ordinal)
+                .FirstOrDefault();
+            if (usable is not null)
+            {
+                return usable;
+            }
+
+            // A new allocation must not overlap one there is: another server's, or a free one on another address (a
+            // follower stays on its port's address).
+            var overlapping = onPort.Where(a => a.Overlaps(address ?? NodeAllocation.AnyAddress, port)).ToList();
+            if (overlapping.Any(a => a.ServerId is not null && a.ServerId != server.Id))
+            {
+                return ServerErrors.PortTaken(port);
+            }
+
+            if (overlapping.Count > 0)
+            {
+                return NodeErrors.AllocationTaken;
+            }
+
+            if (!canAdd)
+            {
+                return ServerErrors.PortNotAllocated(port);
+            }
+
+            var created = NodeAllocation.Create(server.NodeId, address ?? NodeAllocation.AnyAddress, port, notes: null, now);
+            if (!created.IsSuccess)
+            {
+                return created.Error!;
+            }
+
+            nodeAllocations.Add(created.Value);
+            added.Add(created.Value);
+            return created.Value;
+        }
+
+        var chosen = new Dictionary<string, Guid?>(StringComparer.Ordinal);
+        foreach (var (name, number) in numbers)
+        {
+            if (number is not { } port)
+            {
+                chosen[name] = null;
+                continue;
+            }
+
+            var allocation = Allocation(port, address: null);
+            if (!allocation.IsSuccess)
+            {
+                return allocation.Error!;
+            }
+
+            foreach (var follower in manifest.PortList.Where(p => p.Follows?.Port == name))
+            {
+                var next = Allocation(port + follower.Follows!.Offset, allocation.Value.IpAddress);
+                if (!next.IsSuccess)
+                {
+                    return next.Error!;
+                }
+            }
+
+            chosen[name] = allocation.Value.Id.Value;
+        }
+
+        db.NodeAllocations.AddRange(added);
+        return new PortNumberAllocations(chosen, added);
+    }
+
+    /// <summary>
     /// Gives the server one free allocation of its node per manifest port: <paramref name="requested"/> ones where
     /// given (null releases an optional port), otherwise the current one, otherwise the free allocation on the port's
     /// default (or the lowest free port) for required ports.
@@ -137,6 +258,8 @@ public sealed class ServerSpecs(IPulsarDbContext db, IVariableProtector protecto
         }
 
         var nodeAllocations = await db.NodeAllocations.Where(a => a.NodeId == server.NodeId).ToListAsync(cancellationToken);
+        // Those added for this request's port numbers are not saved yet (AllocationsForNumbersAsync).
+        nodeAllocations.AddRange(db.NodeAllocations.Local.Where(a => a.NodeId == server.NodeId && db.Entry(a).State == EntityState.Added));
         var mine = nodeAllocations.Where(a => a.ServerId == server.Id).ToList();
         var chosen = new Dictionary<string, NodeAllocation>(StringComparer.Ordinal);
         var followers = manifest.PortList.Where(p => p.Follows is not null).ToList();

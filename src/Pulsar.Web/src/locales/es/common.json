@@ -563,6 +563,8 @@
       "update_unsupported": "Este juego no se puede actualizar.",
       "no_free_allocation": "El nodo no tiene una asignación libre para alguno de los puertos del juego. Agregá asignaciones al nodo.",
       "allocation_unavailable": "Esa asignación no está libre en el nodo del servidor.",
+      "port_taken": "Ese puerto lo usa otro servidor del nodo: elegí otro.",
+      "port_not_allocated": "Ese puerto no es una de las asignaciones del nodo: elegí una libre, o pedile a quien administra el nodo que lo agregue.",
       "invalid_settings": "Revisá la configuración: {{detail}}",
       "variable_protected": "No podés cambiar esa opción: {{detail}}",
       "limits_unsupported": "El agente del nodo no puede limitar la CPU y la memoria de un servidor: actualizá el agente.",
@@ -1124,9 +1126,7 @@
       "requirements": "Este juego necesita unos {{disk}} GB de disco y {{memory}} GB de memoria en el nodo.",
       "noPorts": "Este juego no escucha en ningún puerto.",
       "noAllocations": "El nodo no tiene asignaciones libres para los puertos del juego.",
-      "addAllocations": "Agregá asignaciones al nodo",
       "portDefault": "Normalmente {{port}} ({{protocols}}).",
-      "automatic": "Automático (una libre, primero el puerto habitual)",
       "noPort": "Ninguno",
       "followsPort": "va con {{port}}: su puerto + {{offset}}."
     },
@@ -1207,6 +1207,19 @@
       "stopFirst": "Detené el servidor para cambiar sus puertos.",
       "none": "Este juego no escucha en ningún puerto.",
       "follows": "(va con {{port}})"
+    },
+    "ports": {
+      "existing": "Usa la asignación {{address}} del nodo.",
+      "added": "Nueva: Pulsar agrega {{address}} a las asignaciones del nodo.",
+      "off": "Apagado. Escribí un puerto para activarlo.",
+      "taken": "{{server}} usa el puerto {{port}}.",
+      "takenByOther": "Otro servidor usa el puerto {{port}}.",
+      "otherAddress": "El puerto {{port}} es una asignación de otra dirección del nodo.",
+      "notAllocated": "El puerto {{port}} no es una de las asignaciones del nodo.",
+      "invalid": "Los puertos van del 1 al 65535.",
+      "duplicate": "Dos puertos de este servidor usan el {{port}}.",
+      "follower": "{{label}}: {{port}}",
+      "fromAllocations": "Solo quien administra el nodo puede agregarle puertos: estas son sus asignaciones libres."
     },
     "console": {
       "title": "Consola",

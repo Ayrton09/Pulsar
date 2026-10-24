@@ -77,9 +77,11 @@ Compatibility matrix (active operation vs requested action):
 ## Full creation flow (v1)
 
 ```
-1. POST /api/v1/servers {nodeId, templateId, name, variables?, ports?}
+1. POST /api/v1/servers {nodeId, templateId, name, variables?, ports?, portNumbers?}
    - authorizes server.create; validates variables against the manifest (secrets encrypted)
-   - assigns allocations (the requested ones, or the free one on each required port's default, else the lowest free)
+   - assigns allocations (the requested ones, or the free one on each required port's default, else the lowest free);
+     a port asked by number gets the node's allocation on it, added to the node when it has none and the user holds
+     node.manage there (its following ports too, on its address)
    - renders the whole manifest once (values, ports) before anything reaches the node
    - generates short_id; creates Server(NotInstalled, Offline, Stopped); audits server.created
 2. Operation server_provision → ProvisionServerCommand
@@ -129,11 +131,11 @@ Cases:
 
 ## Implementation (Phase 4)
 
-- **Allocations.** A node's `ip:port` pairs (IPv4; `0.0.0.0` is every interface and cannot coexist with the same port on a specific address), added by ranges on the node page (`node.manage`). A server holds one per manifest port; they are freed when it is deleted, and changed only while it is stopped (`server.settings.edit`).
+- **Allocations.** A node's `ip:port` pairs (IPv4; `0.0.0.0` is every interface and cannot coexist with the same port on a specific address), added by ranges on the node page (`node.manage`), or one at a time when a server is given a port by number (`portNumbers` when creating it or changing its ports): the server's own allocation on that number, else a free one (every interface first), else a new one on every interface, made only for whoever holds `node.manage` on the node (others get `server.port_not_allocated`, 409; a number another server holds is `server.port_taken`, 409). Those are added with the node's row locked, as from its page, and audited as `node.allocations_created` naming the server. A server holds one per manifest port; they are freed when it is deleted (the allocations stay the node's), and changed only while it is stopped (`server.settings.edit`).
 - **Settings.** Variables, extra arguments (when the manifest allows them) and the restart policy (`server.startup.edit`; variables a manifest marks not user-editable need `server.settings.edit`). Secret values are encrypted with Data Protection and never returned. Changes are stored by the panel and reach the agent before the next start, even if its node was disconnected when they were made: `ApplyServerSpecCommand` precedes every start and restart. A running process keeps the spec it started with.
 - **Update and cancel.** The update operation runs the manifest's `update` steps (optionally validating every file); installs and updates can be cancelled (the agent kills SteamCMD's Job and reports `cancelled`). Progress is shown live (the panel's memory) and written to the database on stage changes or every 15 seconds.
 - **Templates.** Bundled ones register at startup; administrators (`template.manage`) import others after a preview of what they would run, download and write, and of the sections that differ from the previous version. Versions never change. A stored version that a later panel's checks refuse (they may get stricter, for safety) is not used: what needs it answers `server.template_invalid` (409, and a scheduled run fails with it) until its servers move to a newer version, which stays possible.
-- **UI:** a creation wizard (game and node; the game's settings; its ports), Settings and Network tabs, a progress bar with Cancel, Update game, node allocations and a Games page with the import preview.
+- **UI:** a creation wizard (game and node; the game's settings; its ports: the game's own, or the next free numbers for a second server, which whoever manages the node can change to any number, each saying whether it uses one of the node's allocations, is added to them or is another server's; others choose among the free allocations), Settings and Network tabs (the same port numbers), a progress bar with Cancel, Update game, node allocations and a Games page with the import preview.
 
 ## Implementation (Phase 7)
 

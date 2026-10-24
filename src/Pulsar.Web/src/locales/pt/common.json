@@ -563,6 +563,8 @@
       "update_unsupported": "Este jogo não pode ser atualizado.",
       "no_free_allocation": "O nó não tem alocação livre para uma das portas do jogo. Adicione alocações ao nó.",
       "allocation_unavailable": "Essa alocação não está livre no nó do servidor.",
+      "port_taken": "Essa porta é usada por outro servidor do nó: escolha outra.",
+      "port_not_allocated": "Essa porta não é uma das alocações do nó: escolha uma livre ou peça a quem gerencia o nó para adicioná-la.",
       "invalid_settings": "Verifique as configurações: {{detail}}",
       "variable_protected": "Você não pode alterar essa configuração: {{detail}}",
       "limits_unsupported": "O agente do nó não pode limitar a CPU e a memória de um servidor: atualize o agente.",
@@ -1124,9 +1126,7 @@
       "requirements": "Este jogo precisa de cerca de {{disk}} GB de disco e {{memory}} GB de memória no nó.",
       "noPorts": "Este jogo não escuta em nenhuma porta.",
       "noAllocations": "O nó não tem alocações livres para as portas do jogo.",
-      "addAllocations": "Adicionar alocações ao nó",
       "portDefault": "Normalmente {{port}} ({{protocols}}).",
-      "automatic": "Automática (uma livre, começando pela porta usual)",
       "noPort": "Nenhuma",
       "followsPort": "acompanha {{port}}: a porta dela + {{offset}}."
     },
@@ -1207,6 +1207,19 @@
       "stopFirst": "Pare o servidor para alterar suas portas.",
       "none": "Este jogo não escuta em nenhuma porta.",
       "follows": "(acompanha {{port}})"
+    },
+    "ports": {
+      "existing": "Usa a alocação {{address}} do nó.",
+      "added": "Nova: o Pulsar adiciona {{address}} às alocações do nó.",
+      "off": "Desativada. Digite uma porta para ativá-la.",
+      "taken": "{{server}} usa a porta {{port}}.",
+      "takenByOther": "Outro servidor usa a porta {{port}}.",
+      "otherAddress": "A porta {{port}} é uma alocação de outro endereço do nó.",
+      "notAllocated": "A porta {{port}} não é uma das alocações do nó.",
+      "invalid": "As portas vão de 1 a 65535.",
+      "duplicate": "Duas portas deste servidor usam {{port}}.",
+      "follower": "{{label}}: {{port}}",
+      "fromAllocations": "Só quem gerencia o nó pode adicionar portas a ele: estas são as alocações livres dele."
     },
     "console": {
       "title": "Console",

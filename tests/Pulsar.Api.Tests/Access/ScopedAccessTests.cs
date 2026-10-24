@@ -88,6 +88,35 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task CreatingServersOnANodeChoosesAmongItsAllocationsOnly()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(scenario.Admin, "numbers");
+        var node = agent.Config!.NodeId;
+        using (var allocated = await scenario.Admin.PostAsync($"/api/v1/nodes/{node}/allocations", new CreateAllocationsRequest("0.0.0.0", "27400", null)))
+        {
+            await AccessScenario.EnsureSuccessAsync(allocated);
+        }
+
+        var role = await CreateRoleAsync(scenario, "number-creator", PermissionScope.Node, Permissions.Server.Create);
+        var creator = await scenario.CreateUserAsync("number-creator-user");
+        await GrantAsync(scenario.Admin, creator.Id, "nodes", node, role.Id);
+        using var client = await scenario.SignInAsync("number-creator-user");
+        var templates = await ListAsync<TemplateView>(client, "/api/v1/templates");
+        var css = templates.Single(t => t.Key == "css" && t.Source == TemplateSource.Bundled);
+
+        // The node's ports are its managers' to add: a number it has no allocation for is refused, and adds nothing.
+        await AssertCodeAsync(client.PostAsync("/api/v1/servers", new CreateServerRequest(node, css.Id, "Elsewhere", null,
+            PortNumbers: new Dictionary<string, int?> { ["game"] = 27401 })), HttpStatusCode.Conflict, "server.port_not_allocated");
+        var created = await CreatedAsync(client, new CreateServerRequest(node, css.Id, "On its port", null,
+            PortNumbers: new Dictionary<string, int?> { ["game"] = 27400 }));
+
+        Assert.Equal(27400, created.Ports.Single(p => p.Name == "game").Port);
+        var allocations = await ListAsync<AllocationView>(scenario.Admin, $"/api/v1/nodes/{node}/allocations");
+        Assert.Equal([27400], allocations.Select(a => a.Port));
+    }
+
+    [DatabaseFact]
     public async Task CreatingServersOnANodeShowsItsNameAndStateOnly()
     {
         var scenario = await AccessScenario.CreateAsync(factory);
