@@ -165,9 +165,13 @@ export function CreateServerDialog({
               {(ids) => (
                 <Select {...ids} value={templateId} onChange={(e) => chooseTemplate(e.target.value)}>
                   <option value="">{t('servers.chooseGame')}</option>
-                  {templates.data?.map((option) => (
+                  {/* The game alone: a template's version read as the game's. Two of one name (a newer version imported)
+                      say which template they are. */}
+                  {templates.data?.map((option, _, all) => (
                     <option key={option.id} value={option.id}>
-                      {option.name} {option.version}
+                      {all.some((other) => other.id !== option.id && other.name === option.name)
+                        ? t('servers.gameWithTemplateVersion', { name: option.name, version: option.version })
+                        : option.name}
                     </option>
                   ))}
                 </Select>

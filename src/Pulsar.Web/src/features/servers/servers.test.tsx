@@ -253,7 +253,7 @@ describe('servers page', () => {
     const nodes = screen.getByLabelText('Node');
     expect(within(nodes).queryByRole('option', { name: 'Offline box' })).not.toBeInTheDocument();
     await user.selectOptions(nodes, 'Buenos Aires 1');
-    await user.selectOptions(await screen.findByLabelText('Game'), 'Pulsar test server 1.0.0');
+    await user.selectOptions(await screen.findByLabelText('Game'), 'Pulsar test server');
     await user.click(await screen.findByRole('button', { name: 'Next' }));
     expect(await screen.findByText('This game has no settings.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Next' }));
@@ -309,7 +309,7 @@ describe('servers page', () => {
     await user.click(await screen.findByRole('button', { name: 'Create server' }));
     await user.type(screen.getByLabelText('Name'), 'Fresh');
     await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
-    await user.selectOptions(await screen.findByLabelText('Game'), 'Pulsar test server 1.0.0');
+    await user.selectOptions(await screen.findByLabelText('Game'), 'Pulsar test server');
 
     const dialog = screen.getByRole('dialog');
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Something went wrong');
@@ -391,7 +391,7 @@ describe('servers page', () => {
     await user.click(await screen.findByRole('button', { name: 'Create server' }));
     await user.type(screen.getByLabelText('Name'), 'Viking');
     await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
-    await user.selectOptions(await screen.findByLabelText('Game'), 'Valheim 1.0.0');
+    await user.selectOptions(await screen.findByLabelText('Game'), 'Valheim');
     await user.click(await screen.findByRole('button', { name: 'Next' }));
     await user.click(await screen.findByRole('button', { name: 'Next' }));
     await user.selectOptions(await screen.findByLabelText('Game *'), '0.0.0.0:2456');

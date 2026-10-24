@@ -215,7 +215,7 @@ describe('creating a game server', () => {
     await user.click(await screen.findByRole('button', { name: 'Create server' }));
     await user.type(screen.getByLabelText('Name'), 'Retakes');
     await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
-    await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source 1.0.0');
+    await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source');
     expect(await screen.findByText(/about 4 GB of disk and 1 GB of memory/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
@@ -252,6 +252,27 @@ describe('creating a game server', () => {
   });
 });
 
+describe('the list of games', () => {
+  it('names each game alone, and only templates of one name by their version', async () => {
+    const newer = { ...template, id: '0192f1a0-0000-7000-8000-0000000000f3', version: '1.1.0' };
+    const other = { ...template, id: '0192f1a0-0000-7000-8000-0000000000f4', key: 'valheim', name: 'Valheim' };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([]),
+      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/templates': () => json([template, newer, other]),
+    });
+    renderAt('/servers');
+    await userEvent.click(await screen.findByRole('button', { name: 'Create server' }));
+
+    const games = within(screen.getByLabelText('Game'));
+    // A template's own version would read as the game's.
+    expect(await games.findByRole('option', { name: 'Valheim' })).toBeInTheDocument();
+    expect(games.getByRole('option', { name: 'Counter-Strike: Source (template 1.0.0)' })).toBeInTheDocument();
+    expect(games.getByRole('option', { name: 'Counter-Strike: Source (template 1.1.0)' })).toBeInTheDocument();
+  });
+});
+
 describe('a required choice', () => {
   it('starts unchosen, so a terms of use with one option can be accepted (and must be)', async () => {
     let body: unknown;
@@ -280,7 +301,7 @@ describe('a required choice', () => {
     await user.click(await screen.findByRole('button', { name: 'Create server' }));
     await user.type(screen.getByLabelText('Name'), 'Retakes');
     await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
-    await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source 1.0.0');
+    await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source');
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
     // Not shown as accepted while it is not.
@@ -330,7 +351,7 @@ describe('changing the node of a server being created', () => {
     await user.click(await screen.findByRole('button', { name: 'Create server' }));
     await user.type(screen.getByLabelText('Name'), 'Retakes');
     await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
-    await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source 1.0.0');
+    await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source');
     await user.click(await screen.findByRole('button', { name: 'Next' }));
     await user.click(await screen.findByRole('button', { name: 'Next' }));
     const first = await screen.findByLabelText('SourceTV');

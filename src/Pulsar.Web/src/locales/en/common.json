@@ -996,6 +996,7 @@
     "chooseNode": "Choose a node…",
     "game": "Game",
     "chooseGame": "Choose a game…",
+    "gameWithTemplateVersion": "{{name}} (template {{version}})",
     "name": "Name",
     "descriptionLabel": "Description (optional)",
     "lastStarted": "Last started",

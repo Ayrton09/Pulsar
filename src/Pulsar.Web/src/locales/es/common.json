@@ -996,6 +996,7 @@
     "chooseNode": "Elegí un nodo…",
     "game": "Juego",
     "chooseGame": "Elegí un juego…",
+    "gameWithTemplateVersion": "{{name}} (plantilla {{version}})",
     "name": "Nombre",
     "descriptionLabel": "Descripción (opcional)",
     "lastStarted": "Último inicio",
