@@ -111,7 +111,9 @@ function VariableField({
           />
         ) : variable.type === 'enum' ? (
           <Select {...ids} value={value} disabled={disabled} onChange={(e) => onChange(variable.key, e.target.value)}>
-            {!variable.required && <option value="">{t('servers.variables.unset')}</option>}
+            {/* Left to the game only when the template has no value of its own: with a default, the choice is one of
+                the options (the default until another is chosen). */}
+            {!variable.required && variable.default == null && <option value="">{t('servers.variables.unset')}</option>}
             {/* A required choice with no value yet: shown as such, never as its first option, which the browser
                 would show chosen while it is not (choosing it then changes nothing: an EULA with one option could
                 never be accepted). */}

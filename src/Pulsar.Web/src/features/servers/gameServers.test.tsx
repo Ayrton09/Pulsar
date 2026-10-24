@@ -470,6 +470,16 @@ describe("a game's options", () => {
     ],
   });
   const roundTime = variable({ key: 'roundTime', label: 'Round time (min)', type: 'number', min: 1, max: 9 });
+  const gameMode = variable({
+    key: 'gameMode',
+    label: 'Game mode',
+    type: 'enum',
+    default: 'casual',
+    options: [
+      { value: 'casual', label: 'Casual' },
+      { value: 'competitive', label: 'Competitive' },
+    ],
+  });
 
   it('are folded when creating a server, sent only when set, and checked as decimals', async () => {
     let body: unknown;
@@ -479,7 +489,7 @@ describe("a game's options", () => {
       'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
       'GET /api/v1/templates': () => json([template]),
       [`GET /api/v1/templates/${templateId}`]: () =>
-        json({ ...templateDetails, variables: [hostname, friendlyFire, roundTime] }),
+        json({ ...templateDetails, variables: [hostname, gameMode, friendlyFire, roundTime] }),
       [`GET /api/v1/nodes/${nodeId}/allocations`]: () => json(allocations),
       'POST /api/v1/servers': async (request) => {
         body = await request.json();
@@ -495,6 +505,10 @@ describe("a game's options", () => {
     await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source');
     await user.click(await screen.findByRole('button', { name: 'Next' }));
 
+    // A choice with a value of the template's own is always one of its options, never left to the game.
+    const mode = await screen.findByLabelText('Game mode');
+    expect(mode).toHaveDisplayValue('Casual');
+    expect(within(mode).queryByRole('option', { name: "Game's own" })).not.toBeInTheDocument();
     const section = optionsSection(await screen.findByText('More game options (2)'));
     expect(section).not.toHaveAttribute('open');
     expect(within(section).getByLabelText('Friendly fire')).toHaveDisplayValue("Game's own");
