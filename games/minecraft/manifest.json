@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "minecraft",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "Minecraft: Java Edition",
   "description": "Minecraft: Java Edition's dedicated server, downloaded from Mojang, with the Java runtime its version needs (Eclipse Temurin, from Adoptium). Players need Minecraft: Java Edition of the same version.",
   "authors": ["Pulsar contributors"],
@@ -35,7 +35,8 @@
     { "key": "onlineMode", "label": "Check accounts with Mojang", "type": "boolean", "default": true,
       "description": "Turn it off only behind a proxy that checks them: anyone could join with any name." },
     { "key": "whitelist", "label": "Only players on the whitelist", "type": "boolean", "default": false },
-    { "key": "pvp", "label": "Players can hurt each other", "type": "boolean", "default": true },
+    { "key": "pvp", "label": "Players can hurt each other", "type": "boolean", "default": true,
+      "description": "Only applies to Minecraft 1.21.8 and older: newer versions use the pvp game rule instead." },
     { "key": "seed", "label": "World seed", "type": "string", "default": "", "maxLength": 64, "pattern": "^[^\\\\]{0,64}$",
       "description": "Only used when the world is created." },
     { "key": "viewDistance", "label": "View distance (chunks)", "type": "integer", "default": 10, "min": 3, "max": 32 },
@@ -61,7 +62,25 @@
         { "value": "3", "label": "3: kick and ban" }, { "value": "4", "label": "4: every command" }
       ] },
     { "key": "hideOnlinePlayers", "label": "Hide online players", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
-      "description": "The server list does not show who is playing." }
+      "description": "The server list does not show who is playing." },
+    { "key": "maxTickTime", "label": "Max tick time (ms)", "type": "integer", "min": -1, "max": 2147483647,
+      "description": "A tick longer than this stops the server. -1: never." },
+    { "key": "secureProfile", "label": "Require signed chat keys", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Players need Mojang-signed chat keys to join." },
+    { "key": "maxWorldSize", "label": "World border radius", "type": "integer", "min": 1, "max": 29999984,
+      "description": "Blocks from the center." },
+    { "key": "entityRange", "label": "Entity range (%)", "type": "integer", "min": 10, "max": 1000,
+      "description": "How far away entities are sent to players, as a percentage." },
+    { "key": "pauseWhenEmpty", "label": "Pause when empty (s)", "type": "integer", "min": -1, "max": 86400,
+      "description": "Seconds with nobody online before the server pauses (1.21.2 and newer). -1: never." },
+    { "key": "resourcePack", "label": "Resource pack URL", "type": "string", "maxLength": 255, "pattern": "^https?://[^\\s\\\\]{1,240}$",
+      "description": "Players are offered this resource pack when they join." },
+    { "key": "resourcePackSha1", "label": "Resource pack SHA-1", "type": "string", "maxLength": 40, "pattern": "^[A-Fa-f0-9]{40}$",
+      "description": "The pack's SHA-1 hash, so clients can check it." },
+    { "key": "requireResourcePack", "label": "Require the resource pack", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Players who decline the pack are disconnected." },
+    { "key": "resourcePackPrompt", "label": "Resource pack message", "type": "string", "maxLength": 120, "pattern": "^[^\\\\]{1,120}$",
+      "description": "Text shown to players when the pack is offered." }
   ],
 
   "ports": [
@@ -108,10 +127,20 @@
         "generate-structures": "{{var.generateStructures}}",
         "player-idle-timeout": "{{var.idleTimeout}}",
         "op-permission-level": "{{var.opPermissionLevel}}",
-        "hide-online-players": "{{var.hideOnlinePlayers}}"
+        "hide-online-players": "{{var.hideOnlinePlayers}}",
+        "max-tick-time": "{{var.maxTickTime}}",
+        "enforce-secure-profile": "{{var.secureProfile}}",
+        "max-world-size": "{{var.maxWorldSize}}",
+        "entity-broadcast-range-percentage": "{{var.entityRange}}",
+        "pause-when-empty-seconds": "{{var.pauseWhenEmpty}}",
+        "resource-pack": "{{var.resourcePack}}",
+        "resource-pack-sha1": "{{var.resourcePackSha1}}",
+        "require-resource-pack": "{{var.requireResourcePack}}",
+        "resource-pack-prompt": "{{var.resourcePackPrompt}}"
       },
       "keepIfEmpty": ["level-seed", "simulation-distance", "hardcore", "spawn-protection", "allow-flight", "force-gamemode", "enforce-whitelist",
-        "generate-structures", "player-idle-timeout", "op-permission-level", "hide-online-players"] }
+        "generate-structures", "player-idle-timeout", "op-permission-level", "hide-online-players",
+        "max-tick-time", "enforce-secure-profile", "max-world-size", "entity-broadcast-range-percentage", "pause-when-empty-seconds", "resource-pack", "resource-pack-sha1", "require-resource-pack", "resource-pack-prompt"] }
   ],
 
   "query": { "protocol": "minecraft", "port": "game" },

@@ -15,3 +15,9 @@ Checked again on 2026-10-05 (Phase 11, build 2634, release#166652): the panel sh
 the map from the A2S query on the query port (Rust counts past 255 in its keywords, which the agent reads). The first
 start of a fresh install crashed inside Unity while loading the world configuration; the agent restarted it and the
 second start was ready.
+
+## Options added in 1.0.8
+
+Map type (the map is now a choice, Procedural by default as before), game mode, tick rate, map salt, custom map URL, max team size, radiation, upkeep period, save backups kept and Rust+ logo URL, all launch arguments.
+
+They come from LinuxGSM's configuration, the Facepunch wiki and public server guides; none was tried on a real server.

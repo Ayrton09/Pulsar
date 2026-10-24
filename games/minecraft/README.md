@@ -12,3 +12,9 @@ development panel and agent:
 
 Checked again on 2026-10-05 (Phase 11): the panel shows the message of the day, the version (26.3) and the player
 count from the Server List Ping the agent sends every 10 seconds (`query`, on the game port).
+
+## Options added in 1.0.8
+
+Max tick time, signed chat keys, world border radius, entity range, pause when empty, and the resource pack (URL, SHA-1, required, message), in `server.properties`. The description of `pvp` now says it only applies to 1.21.8 and older: newer versions moved it to a game rule that Pulsar cannot patch.
+
+They come from the Minecraft wiki's `server.properties` table; none was tried on a real server.
