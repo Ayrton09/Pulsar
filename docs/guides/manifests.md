@@ -76,7 +76,8 @@ Then:
    `json` files (Pulsar 1.0.7 agents) name each member by its JSON Pointer (`"/gameSettings/enemyDamageFactor"`); a
    lone `{{var.x}}` of an integer, number or boolean variable, or a lone `{{port.x}}`, is written as a JSON number or
    boolean, as is an enum whose options are all `true`/`false` (or all numbers) and a literal `true`, `false` or number;
-   anything else is a string.
+   anything else is a string. Array elements are named by index (`"/userGroups/0/password"`), and keys listed in
+   `"writeIfEmpty"` are written as an empty string instead of being removed.
    `space` (`Key value` lines, Unturned's `Commands.dat`) needs 1.0.7 agents too.
 8. **Readiness and stop**: how the agent knows the game is ready (a console pattern, RCON answering, the query
    answering) and how to stop it cleanly (a console or RCON command, then a wait) before it is killed.
