@@ -6,6 +6,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The notifications' texts, one file per language (NotificationTexts). -->
+    <EmbeddedResource Include="Notifications\Texts\*.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pulsar.Api.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Pulsar.Domain\Pulsar.Domain.csproj" />
     <ProjectReference Include="..\Pulsar.Manifests\Pulsar.Manifests.csproj" />
     <ProjectReference Include="..\Pulsar.Contracts\Pulsar.Contracts.csproj" />

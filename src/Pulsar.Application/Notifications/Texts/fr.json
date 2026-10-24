@@ -1,0 +1,76 @@
+{
+  "fields": {
+    "server": "Serveur",
+    "game": "Jeu",
+    "node": "Nœud",
+    "exitCode": "Code de sortie",
+    "backup": "Sauvegarde",
+    "task": "Tâche",
+    "error": "Erreur",
+    "lastSeen": "Vu pour la dernière fois",
+    "address": "Adresse",
+    "currentCertificateExpires": "Le certificat actuel expire",
+    "expires": "Expire"
+  },
+  "serverOutOfMemory": {
+    "title": "{server} n'a plus de mémoire",
+    "text": "Il a atteint la limite de mémoire du serveur et s'est arrêté. Augmentez la limite ou réduisez ce qu'il utilise (joueurs, carte, mods)."
+  },
+  "serverCrashLoop": {
+    "title": "{server} plante sans cesse",
+    "text": "Il a planté plusieurs fois de suite et Pulsar a cessé de le redémarrer : il est arrêté. Consultez sa console."
+  },
+  "serverCrashed": {
+    "title": "{server} a planté",
+    "text": "Le serveur s'est arrêté sans que personne ne le demande. S'il redémarre automatiquement, Pulsar le relance."
+  },
+  "serverNotReady": {
+    "title": "{server} n'est pas prêt",
+    "text": "Il a démarré mais n'a pas signalé qu'il était prêt à temps : il est peut-être bloqué. Consultez sa console."
+  },
+  "serverStartFailed": {
+    "title": "{server} n'a pas démarré",
+    "text": "Windows n'a pas pu le démarrer."
+  },
+  "backupCopyFailed": {
+    "title": "La copie distante d'une sauvegarde de {server} a échoué",
+    "text": "La sauvegarde est sur le nœud, mais elle n'a pas pu être envoyée vers le stockage distant."
+  },
+  "backupFailed": {
+    "title": "Une sauvegarde de {server} a échoué",
+    "text": "La sauvegarde ne s'est pas terminée."
+  },
+  "scheduledTaskFailed": {
+    "title": "La tâche planifiée « {task} » de {server} a échoué",
+    "text": "La tâche n'a pas pu effectuer son action."
+  },
+  "nodeOffline": {
+    "title": "Le nœud {node} est hors ligne",
+    "text": "Ses serveurs de jeu continuent de tourner, mais le panneau ne peut pas les contrôler tant qu'il ne s'est pas reconnecté."
+  },
+  "nodeOnline": {
+    "title": "Le nœud {node} est de nouveau en ligne",
+    "text": "Le panneau contrôle de nouveau ses serveurs de jeu."
+  },
+  "nodeDiskLow": {
+    "title": "Le nœud {node} manque d'espace disque",
+    "text": "Un disque plein fait échouer les mises à jour, les sauvegardes et les serveurs de jeu eux-mêmes. Libérez de l'espace ou supprimez d'anciennes sauvegardes.",
+    "drive": "{free} libres sur {total} ({percent} %)"
+  },
+  "publicIpCertificateFailed": {
+    "title": "Le certificat de l'IP publique n'a pas pu être renouvelé",
+    "text": "Let's Encrypt n'a pas délivré le certificat du panneau. Pulsar réessaie de lui-même, de moins en moins souvent. Vérifiez que le routeur redirige les ports 80 et 8443 vers ce PC."
+  },
+  "publicIpCertificateExpiring": {
+    "title": "Le certificat de l'IP publique va bientôt expirer",
+    "text": "Aucun nouveau certificat n'est encore arrivé. Une fois expiré, les visiteurs venant d'Internet verront un avertissement de sécurité jusqu'à son renouvellement."
+  },
+  "publicIpCertificateRenewed": {
+    "title": "Le certificat de l'IP publique a été renouvelé",
+    "text": "Let's Encrypt a de nouveau délivré le certificat du panneau."
+  },
+  "test": {
+    "title": "Notification de test de Pulsar",
+    "text": "Si vous lisez ceci, le canal fonctionne."
+  }
+}

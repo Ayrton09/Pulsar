@@ -77,7 +77,14 @@ public sealed class NotificationTests
         Assert.Equal(NotificationErrors.NameInvalid, Email(name: new string('x', 65)).Error);
         Assert.Equal(NotificationErrors.EventsRequired, Email(events: []).Error);
         Assert.Equal(NotificationErrors.EventsRequired, Email(events: [(NotificationEvent)99]).Error);
-        Assert.Equal(NotificationErrors.LanguageInvalid, Email(language: "fr").Error);
+        // The panel's languages, as its codes: no other code, region or casing.
+        foreach (var language in new[] { "xx", "pt-BR", "zh-CN", "ES", "" })
+        {
+            Assert.Equal(NotificationErrors.LanguageInvalid, Email(language: language).Error);
+        }
+
+        Assert.All(NotificationChannel.Languages, language => Assert.Null(Email(language: language).Error));
+        Assert.Equal(["en", "es", "pt", "fr", "it", "de", "ja", "ko", "zh"], NotificationChannel.Languages);
         Assert.Equal(NotificationErrors.ServersInvalid, Email(servers: []).Error);
         Assert.Equal(NotificationErrors.ServersInvalid, Email(servers: [Guid.Empty]).Error);
     }

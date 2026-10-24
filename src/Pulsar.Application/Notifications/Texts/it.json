@@ -1,0 +1,76 @@
+{
+  "fields": {
+    "server": "Server",
+    "game": "Gioco",
+    "node": "Nodo",
+    "exitCode": "Codice di uscita",
+    "backup": "Backup",
+    "task": "Attività",
+    "error": "Errore",
+    "lastSeen": "Visto l'ultima volta",
+    "address": "Indirizzo",
+    "currentCertificateExpires": "Il certificato attuale scade",
+    "expires": "Scade"
+  },
+  "serverOutOfMemory": {
+    "title": "{server} ha esaurito la memoria",
+    "text": "Ha raggiunto il limite di memoria del server e si è chiuso. Aumenta il limite o riduci ciò che usa (giocatori, mappa, mod)."
+  },
+  "serverCrashLoop": {
+    "title": "{server} continua ad andare in crash",
+    "text": "È andato in crash più volte di seguito e Pulsar ha smesso di riavviarlo: ora è fermo. Controlla la sua console."
+  },
+  "serverCrashed": {
+    "title": "{server} è andato in crash",
+    "text": "Il server si è chiuso senza che nessuno lo chiedesse. Se il riavvio automatico è attivo, Pulsar lo riavvia."
+  },
+  "serverNotReady": {
+    "title": "{server} non è pronto",
+    "text": "È partito ma non ha segnalato di essere pronto in tempo: potrebbe essere bloccato. Controlla la sua console."
+  },
+  "serverStartFailed": {
+    "title": "{server} non è partito",
+    "text": "Windows non è riuscito ad avviarlo."
+  },
+  "backupCopyFailed": {
+    "title": "Copia remota di un backup di {server} non riuscita",
+    "text": "Il backup è sul nodo, ma non è stato possibile caricarlo nell'archiviazione remota."
+  },
+  "backupFailed": {
+    "title": "Un backup di {server} non è riuscito",
+    "text": "Il backup non è stato completato."
+  },
+  "scheduledTaskFailed": {
+    "title": "Attività pianificata «{task}» di {server} non riuscita",
+    "text": "L'attività non è riuscita a eseguire la sua azione."
+  },
+  "nodeOffline": {
+    "title": "Il nodo {node} è offline",
+    "text": "I suoi server di gioco continuano a funzionare, ma il pannello non può controllarli finché non si riconnette."
+  },
+  "nodeOnline": {
+    "title": "Il nodo {node} è di nuovo online",
+    "text": "Il pannello controlla di nuovo i suoi server di gioco."
+  },
+  "nodeDiskLow": {
+    "title": "Il nodo {node} sta esaurendo lo spazio su disco",
+    "text": "Un disco pieno fa fallire aggiornamenti, backup e gli stessi server di gioco. Libera spazio o elimina i backup vecchi.",
+    "drive": "{free} liberi su {total} ({percent} %)"
+  },
+  "publicIpCertificateFailed": {
+    "title": "Impossibile rinnovare il certificato dell'IP pubblico",
+    "text": "Let's Encrypt non ha emesso il certificato del pannello. Pulsar riprova da solo, a intervalli sempre più lunghi. Verifica che il router inoltri le porte 80 e 8443 a questo PC."
+  },
+  "publicIpCertificateExpiring": {
+    "title": "Il certificato dell'IP pubblico sta per scadere",
+    "text": "Non ne è ancora arrivato uno nuovo. Quando scadrà, chi accede da Internet vedrà un avviso di sicurezza finché non verrà rinnovato."
+  },
+  "publicIpCertificateRenewed": {
+    "title": "Il certificato dell'IP pubblico è stato rinnovato",
+    "text": "Let's Encrypt ha emesso di nuovo il certificato del pannello."
+  },
+  "test": {
+    "title": "Notifica di prova di Pulsar",
+    "text": "Se leggi questo messaggio, il canale funziona."
+  }
+}

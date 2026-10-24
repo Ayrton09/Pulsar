@@ -1,0 +1,76 @@
+{
+  "fields": {
+    "server": "服务器",
+    "game": "游戏",
+    "node": "节点",
+    "exitCode": "退出代码",
+    "backup": "备份",
+    "task": "任务",
+    "error": "错误",
+    "lastSeen": "最后在线",
+    "address": "地址",
+    "currentCertificateExpires": "当前证书到期时间",
+    "expires": "到期时间"
+  },
+  "serverOutOfMemory": {
+    "title": "{server} 内存不足",
+    "text": "已达到服务器的内存上限并退出。请提高上限，或减少其占用（玩家数、地图、模组）。"
+  },
+  "serverCrashLoop": {
+    "title": "{server} 反复崩溃",
+    "text": "连续崩溃多次，Pulsar 已停止重启它：服务器目前已停止。请查看其控制台。"
+  },
+  "serverCrashed": {
+    "title": "{server} 已崩溃",
+    "text": "服务器在无人要求的情况下退出。如果启用了自动重启，Pulsar 会再次启动它。"
+  },
+  "serverNotReady": {
+    "title": "{server} 未就绪",
+    "text": "已启动，但未在规定时间内报告就绪：可能已卡住。请查看其控制台。"
+  },
+  "serverStartFailed": {
+    "title": "{server} 未能启动",
+    "text": "Windows 无法启动它。"
+  },
+  "backupCopyFailed": {
+    "title": "{server} 的备份远程复制失败",
+    "text": "备份已保存在节点上，但无法上传到远程存储。"
+  },
+  "backupFailed": {
+    "title": "{server} 的备份失败",
+    "text": "备份未完成。"
+  },
+  "scheduledTaskFailed": {
+    "title": "{server} 的计划任务“{task}”失败",
+    "text": "任务未能执行其操作。"
+  },
+  "nodeOffline": {
+    "title": "节点 {node} 已离线",
+    "text": "其游戏服务器仍在运行，但在节点重新连接之前，面板无法控制它们。"
+  },
+  "nodeOnline": {
+    "title": "节点 {node} 已重新上线",
+    "text": "面板已恢复对其游戏服务器的控制。"
+  },
+  "nodeDiskLow": {
+    "title": "节点 {node} 磁盘空间不足",
+    "text": "磁盘已满会导致更新、备份以及游戏服务器本身失败。请释放空间或删除旧备份。",
+    "drive": "共 {total}，可用 {free}（{percent} %）"
+  },
+  "publicIpCertificateFailed": {
+    "title": "公网 IP 证书续期失败",
+    "text": "Let's Encrypt 未签发面板的证书。Pulsar 会自动重试，间隔逐渐延长。请检查路由器是否已将 80 和 8443 端口转发到这台电脑。"
+  },
+  "publicIpCertificateExpiring": {
+    "title": "公网 IP 证书即将到期",
+    "text": "尚未获得新证书。证书到期后，在续期之前，从互联网访问的用户会看到安全警告。"
+  },
+  "publicIpCertificateRenewed": {
+    "title": "公网 IP 证书已续期",
+    "text": "Let's Encrypt 已重新签发面板的证书。"
+  },
+  "test": {
+    "title": "来自 Pulsar 的测试通知",
+    "text": "如果你能看到这条消息，说明该频道工作正常。"
+  }
+}

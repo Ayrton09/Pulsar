@@ -16,7 +16,7 @@ public static class NotificationErrors
 
     public static DomainError ServerUnknown { get; } = new("notifications.server_unknown", "One of the chosen servers does not exist.");
 
-    public static DomainError LanguageInvalid { get; } = new("notifications.language_invalid", "The language is 'en' or 'es'.");
+    public static DomainError LanguageInvalid { get; } = new("notifications.language_invalid", "The language is one of the panel's: en, es, pt, fr, it, de, ja, ko or zh.");
 
     public static DomainError WebhookInvalid { get; } =
         new("notifications.webhook_invalid", "The webhook is not a Discord webhook address (https://discord.com/api/webhooks/…).");

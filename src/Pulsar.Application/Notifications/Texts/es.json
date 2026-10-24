@@ -1,0 +1,76 @@
+{
+  "fields": {
+    "server": "Servidor",
+    "game": "Juego",
+    "node": "Nodo",
+    "exitCode": "Código de salida",
+    "backup": "Backup",
+    "task": "Tarea",
+    "error": "Error",
+    "lastSeen": "Visto por última vez",
+    "address": "Dirección",
+    "currentCertificateExpires": "El certificado actual vence",
+    "expires": "Vence"
+  },
+  "serverOutOfMemory": {
+    "title": "{server} se quedó sin memoria",
+    "text": "Llegó al límite de memoria del servidor y se cerró. Subí el límite o bajá lo que usa (jugadores, mapa, mods)."
+  },
+  "serverCrashLoop": {
+    "title": "{server} se cae una y otra vez",
+    "text": "Se cayó varias veces seguidas y Pulsar dejó de reiniciarlo: quedó detenido. Revisá su consola."
+  },
+  "serverCrashed": {
+    "title": "{server} se cayó",
+    "text": "El servidor se cerró sin que nadie lo pidiera. Si tiene el reinicio automático activado, Pulsar lo vuelve a iniciar."
+  },
+  "serverNotReady": {
+    "title": "{server} no quedó listo",
+    "text": "Arrancó, pero no avisó que estaba listo a tiempo: puede estar trabado. Revisá su consola."
+  },
+  "serverStartFailed": {
+    "title": "{server} no arrancó",
+    "text": "Windows no pudo iniciarlo."
+  },
+  "backupCopyFailed": {
+    "title": "Falló la copia remota de un backup de {server}",
+    "text": "El backup quedó en el nodo, pero no se pudo subir al almacenamiento remoto."
+  },
+  "backupFailed": {
+    "title": "Falló un backup de {server}",
+    "text": "El backup no se completó."
+  },
+  "scheduledTaskFailed": {
+    "title": "Falló la tarea programada “{task}” de {server}",
+    "text": "La tarea no pudo hacer su acción."
+  },
+  "nodeOffline": {
+    "title": "El nodo {node} está desconectado",
+    "text": "Sus servidores siguen funcionando, pero el panel no puede controlarlos hasta que vuelva a conectarse."
+  },
+  "nodeOnline": {
+    "title": "El nodo {node} volvió a conectarse",
+    "text": "El panel vuelve a controlar sus servidores."
+  },
+  "nodeDiskLow": {
+    "title": "Al nodo {node} le queda poco espacio en disco",
+    "text": "Con el disco lleno fallan las actualizaciones, los backups y los mismos servidores. Liberá espacio o borrá backups viejos.",
+    "drive": "{free} libres de {total} ({percent} %)"
+  },
+  "publicIpCertificateFailed": {
+    "title": "No se pudo renovar el certificado de la IP pública",
+    "text": "Let's Encrypt no emitió el certificado del panel. Pulsar vuelve a intentar solo, cada vez más espaciado. Revisá que el router reenvíe los puertos 80 y 8443 a esta PC."
+  },
+  "publicIpCertificateExpiring": {
+    "title": "El certificado de la IP pública está por vencer",
+    "text": "Todavía no llegó uno nuevo. Cuando venza, quienes entren desde internet van a ver un aviso de seguridad hasta que se renueve."
+  },
+  "publicIpCertificateRenewed": {
+    "title": "Se renovó el certificado de la IP pública",
+    "text": "Let's Encrypt volvió a emitir el certificado del panel."
+  },
+  "test": {
+    "title": "Notificación de prueba de Pulsar",
+    "text": "Si leés esto, el canal funciona."
+  }
+}

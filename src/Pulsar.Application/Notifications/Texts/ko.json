@@ -1,0 +1,76 @@
+{
+  "fields": {
+    "server": "서버",
+    "game": "게임",
+    "node": "노드",
+    "exitCode": "종료 코드",
+    "backup": "백업",
+    "task": "작업",
+    "error": "오류",
+    "lastSeen": "마지막 확인",
+    "address": "주소",
+    "currentCertificateExpires": "현재 인증서 만료",
+    "expires": "만료"
+  },
+  "serverOutOfMemory": {
+    "title": "{server}의 메모리가 부족합니다",
+    "text": "서버의 메모리 제한에 도달하여 종료되었습니다. 제한을 늘리거나 사용량(플레이어, 맵, 모드)을 줄이세요."
+  },
+  "serverCrashLoop": {
+    "title": "{server}이(가) 계속 충돌합니다",
+    "text": "연속으로 여러 번 충돌하여 Pulsar가 재시작을 중단했습니다. 서버는 중지된 상태입니다. 콘솔을 확인하세요."
+  },
+  "serverCrashed": {
+    "title": "{server}이(가) 충돌했습니다",
+    "text": "요청하지 않았는데 서버가 종료되었습니다. 자동 재시작이 켜져 있으면 Pulsar가 다시 시작합니다."
+  },
+  "serverNotReady": {
+    "title": "{server}이(가) 준비되지 않았습니다",
+    "text": "시작되었지만 제시간에 준비 완료를 알리지 않았습니다. 멈춰 있을 수 있습니다. 콘솔을 확인하세요."
+  },
+  "serverStartFailed": {
+    "title": "{server}이(가) 시작되지 않았습니다",
+    "text": "Windows가 서버를 시작하지 못했습니다."
+  },
+  "backupCopyFailed": {
+    "title": "{server} 백업의 원격 복사에 실패했습니다",
+    "text": "백업은 노드에 있지만 원격 저장소에 업로드하지 못했습니다."
+  },
+  "backupFailed": {
+    "title": "{server} 백업에 실패했습니다",
+    "text": "백업이 완료되지 않았습니다."
+  },
+  "scheduledTaskFailed": {
+    "title": "{server}의 예약 작업 “{task}”에 실패했습니다",
+    "text": "작업이 동작을 수행하지 못했습니다."
+  },
+  "nodeOffline": {
+    "title": "노드 {node}이(가) 오프라인입니다",
+    "text": "게임 서버는 계속 실행되지만, 노드가 다시 연결될 때까지 패널에서 제어할 수 없습니다."
+  },
+  "nodeOnline": {
+    "title": "노드 {node}이(가) 다시 온라인입니다",
+    "text": "패널에서 다시 게임 서버를 제어할 수 있습니다."
+  },
+  "nodeDiskLow": {
+    "title": "노드 {node}의 디스크 공간이 부족합니다",
+    "text": "디스크가 가득 차면 업데이트, 백업, 게임 서버 자체가 실패합니다. 공간을 확보하거나 오래된 백업을 삭제하세요.",
+    "drive": "{total} 중 {free} 사용 가능 ({percent} %)"
+  },
+  "publicIpCertificateFailed": {
+    "title": "공인 IP 인증서를 갱신하지 못했습니다",
+    "text": "Let's Encrypt가 패널의 인증서를 발급하지 않았습니다. Pulsar가 점점 간격을 늘리며 자동으로 다시 시도합니다. 라우터가 포트 80과 8443을 이 PC로 포워딩하는지 확인하세요."
+  },
+  "publicIpCertificateExpiring": {
+    "title": "공인 IP 인증서가 곧 만료됩니다",
+    "text": "아직 새 인증서가 도착하지 않았습니다. 만료되면 갱신될 때까지 인터넷에서 접속하는 사용자에게 보안 경고가 표시됩니다."
+  },
+  "publicIpCertificateRenewed": {
+    "title": "공인 IP 인증서가 갱신되었습니다",
+    "text": "Let's Encrypt가 패널의 인증서를 다시 발급했습니다."
+  },
+  "test": {
+    "title": "Pulsar 테스트 알림",
+    "text": "이 메시지가 보이면 채널이 정상적으로 작동하는 것입니다."
+  }
+}

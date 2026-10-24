@@ -40,8 +40,8 @@ public enum NotificationEvent
 
 /// <summary>
 /// Where notifications go: a Discord webhook or email addresses, the events it wants, optionally only for some servers,
-/// in English or Spanish. A Discord webhook URL is a secret (whoever has it can post to the channel): the application
-/// encrypts it before it reaches the channel.
+/// in one of the panel's languages. A Discord webhook URL is a secret (whoever has it can post to the channel): the
+/// application encrypts it before it reaches the channel.
 /// </summary>
 public sealed class NotificationChannel
 {
@@ -51,7 +51,7 @@ public sealed class NotificationChannel
     public const int MaxServers = 200;
     public const int MaxChannels = 50;
 
-    public static IReadOnlyList<string> Languages { get; } = ["en", "es"];
+    public static IReadOnlyList<string> Languages { get; } = ["en", "es", "pt", "fr", "it", "de", "ja", "ko", "zh"];
 
     private static readonly string[] s_discordHosts = ["discord.com", "discordapp.com", "ptb.discord.com", "canary.discord.com"];
 

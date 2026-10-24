@@ -1,161 +1,94 @@
+using System.Collections.Frozen;
 using System.Globalization;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Notifications;
 
 namespace Pulsar.Application.Notifications;
 
 /// <summary>
-/// The messages, in the channel's language (English or Spanish, as the panel's UI). Built when the event happens, so a
-/// delivery retried later says what was true then.
+/// The messages, in the channel's language (one of the panel's: <see cref="NotificationChannel.Languages"/>). The texts are
+/// the JSON files in Notifications/Texts, one per language, embedded in this assembly; a text a language lacks is the
+/// English one. Built when the event happens, so a delivery retried later says what was true then.
 /// </summary>
-public static class NotificationTexts
+public static partial class NotificationTexts
 {
+    private static readonly FrozenDictionary<string, FrozenDictionary<string, string>> s_texts = Load();
+
     public static NotificationMessage ServerCrashed(string language, ServerFacts server, int? exitCode, bool crashLoop, string? link,
         bool memoryLimit = false)
     {
-        var es = IsSpanish(language);
         var code = exitCode?.ToString(CultureInfo.InvariantCulture) ?? "?";
-        if (memoryLimit && !crashLoop)
-        {
-            return new NotificationMessage(
-                es ? $"{server.Name} se quedó sin memoria" : $"{server.Name} ran out of memory",
-                es ? "Llegó al límite de memoria del servidor y se cerró. Subí el límite o bajá lo que usa (jugadores, mapa, mods)."
-                    : "It reached the server's memory limit and exited. Raise the limit or lower what it uses (players, map, mods).",
-                NotificationSeverity.Error, ServerFields(es, server, (es ? "Código de salida" : "Exit code", code)), link);
-        }
-
-        return crashLoop
-            ? new NotificationMessage(
-                es ? $"{server.Name} se cae una y otra vez" : $"{server.Name} keeps crashing",
-                es ? "Se cayó varias veces seguidas y Pulsar dejó de reiniciarlo: quedó detenido. Revisá su consola."
-                    : "It crashed several times in a row and Pulsar stopped restarting it: it is stopped. Check its console.",
-                NotificationSeverity.Error, ServerFields(es, server, (es ? "Código de salida" : "Exit code", code)), link)
-            : new NotificationMessage(
-                es ? $"{server.Name} se cayó" : $"{server.Name} crashed",
-                es ? "El servidor se cerró sin que nadie lo pidiera. Si tiene el reinicio automático activado, Pulsar lo vuelve a iniciar."
-                    : "The server exited without being asked to. If it restarts automatically, Pulsar starts it again.",
-                NotificationSeverity.Error, ServerFields(es, server, (es ? "Código de salida" : "Exit code", code)), link);
+        var kind = memoryLimit && !crashLoop ? "serverOutOfMemory" : crashLoop ? "serverCrashLoop" : "serverCrashed";
+        return new NotificationMessage(Text(language, $"{kind}.title", ("server", server.Name)), Text(language, $"{kind}.text"),
+            NotificationSeverity.Error, ServerFields(language, server, (Text(language, "fields.exitCode"), code)), link);
     }
 
-    public static NotificationMessage ServerStartFailed(string language, ServerFacts server, bool notReady, string? detail, string? link)
-    {
-        var es = IsSpanish(language);
-        return notReady
-            ? new NotificationMessage(
-                es ? $"{server.Name} no quedó listo" : $"{server.Name} is not ready",
-                es ? "Arrancó, pero no avisó que estaba listo a tiempo: puede estar trabado. Revisá su consola."
-                    : "It started but did not report ready in time: it may be stuck. Check its console.",
-                NotificationSeverity.Warning, ServerFields(es, server), link)
-            : new NotificationMessage(
-                es ? $"{server.Name} no arrancó" : $"{server.Name} did not start",
-                es ? "Windows no pudo iniciarlo." : "Windows could not start it.",
-                NotificationSeverity.Error, ServerFields(es, server, ("Error", detail)), link);
-    }
+    public static NotificationMessage ServerStartFailed(string language, ServerFacts server, bool notReady, string? detail, string? link) =>
+        notReady
+            ? new NotificationMessage(Text(language, "serverNotReady.title", ("server", server.Name)), Text(language, "serverNotReady.text"),
+                NotificationSeverity.Warning, ServerFields(language, server), link)
+            : new NotificationMessage(Text(language, "serverStartFailed.title", ("server", server.Name)), Text(language, "serverStartFailed.text"),
+                NotificationSeverity.Error, ServerFields(language, server, (Text(language, "fields.error"), detail)), link);
 
     public static NotificationMessage BackupFailed(string language, ServerFacts server, string backupName, string? error, bool remoteCopy, string? link)
     {
-        var es = IsSpanish(language);
-        return new NotificationMessage(
-            remoteCopy
-                ? es ? $"Falló la copia remota de un backup de {server.Name}" : $"Remote copy of a backup of {server.Name} failed"
-                : es ? $"Falló un backup de {server.Name}" : $"A backup of {server.Name} failed",
-            remoteCopy
-                ? es ? "El backup quedó en el nodo, pero no se pudo subir al almacenamiento remoto." : "The backup is on the node, but it could not be uploaded to remote storage."
-                : es ? "El backup no se completó." : "The backup did not complete.",
-            NotificationSeverity.Error, ServerFields(es, server, ("Backup", backupName), ("Error", error)), link);
+        var kind = remoteCopy ? "backupCopyFailed" : "backupFailed";
+        return new NotificationMessage(Text(language, $"{kind}.title", ("server", server.Name)), Text(language, $"{kind}.text"),
+            NotificationSeverity.Error,
+            ServerFields(language, server, (Text(language, "fields.backup"), backupName), (Text(language, "fields.error"), error)), link);
     }
 
-    public static NotificationMessage ScheduledTaskFailed(string language, ServerFacts server, string taskName, string? error, string? link)
-    {
-        var es = IsSpanish(language);
-        return new NotificationMessage(
-            es ? $"Falló la tarea programada “{taskName}” de {server.Name}" : $"Scheduled task “{taskName}” of {server.Name} failed",
-            es ? "La tarea no pudo hacer su acción." : "The task could not do its action.",
-            NotificationSeverity.Error, ServerFields(es, server, (es ? "Tarea" : "Task", taskName), ("Error", error)), link);
-    }
+    public static NotificationMessage ScheduledTaskFailed(string language, ServerFacts server, string taskName, string? error, string? link) =>
+        new(Text(language, "scheduledTaskFailed.title", ("task", taskName), ("server", server.Name)), Text(language, "scheduledTaskFailed.text"),
+            NotificationSeverity.Error,
+            ServerFields(language, server, (Text(language, "fields.task"), taskName), (Text(language, "fields.error"), error)), link);
 
-    public static NotificationMessage NodeOffline(string language, string nodeName, DateTimeOffset since, string? link)
-    {
-        var es = IsSpanish(language);
-        var at = since.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
-        return new NotificationMessage(
-            es ? $"El nodo {nodeName} está desconectado" : $"Node {nodeName} is offline",
-            es ? "Sus servidores siguen funcionando, pero el panel no puede controlarlos hasta que vuelva a conectarse."
-                : "Its game servers keep running, but the panel cannot control them until it connects again.",
-            NotificationSeverity.Warning, [new(es ? "Nodo" : "Node", nodeName), new(es ? "Visto por última vez" : "Last seen", at)], link);
-    }
+    public static NotificationMessage NodeOffline(string language, string nodeName, DateTimeOffset since, string? link) =>
+        new(Text(language, "nodeOffline.title", ("node", nodeName)), Text(language, "nodeOffline.text"), NotificationSeverity.Warning,
+            [new(Text(language, "fields.node"), nodeName), new(Text(language, "fields.lastSeen"), Moment(since))], link);
 
-    public static NotificationMessage NodeOnline(string language, string nodeName, string? link)
-    {
-        var es = IsSpanish(language);
-        return new NotificationMessage(
-            es ? $"El nodo {nodeName} volvió a conectarse" : $"Node {nodeName} is back online",
-            es ? "El panel vuelve a controlar sus servidores." : "The panel controls its game servers again.",
-            NotificationSeverity.Recovered, [new(es ? "Nodo" : "Node", nodeName)], link);
-    }
+    public static NotificationMessage NodeOnline(string language, string nodeName, string? link) =>
+        new(Text(language, "nodeOnline.title", ("node", nodeName)), Text(language, "nodeOnline.text"), NotificationSeverity.Recovered,
+            [new(Text(language, "fields.node"), nodeName)], link);
 
     public static NotificationMessage NodeDiskLow(string language, string nodeName, IReadOnlyList<(string Root, long Free, long Total)> drives, string? link)
     {
-        var es = IsSpanish(language);
-        var fields = new List<NotificationField> { new(es ? "Nodo" : "Node", nodeName) };
+        var fields = new List<NotificationField> { new(Text(language, "fields.node"), nodeName) };
         foreach (var (root, free, total) in drives)
         {
             var percent = total > 0 ? (double)free / total * 100 : 0;
-            fields.Add(new(root, es
-                ? $"{Size(free, language)} libres de {Size(total, language)} ({percent.ToString("0.#", Culture(language))} %)"
-                : $"{Size(free, language)} free of {Size(total, language)} ({percent.ToString("0.#", Culture(language))} %)"));
+            fields.Add(new(root, Text(language, "nodeDiskLow.drive", ("free", Size(free, language)), ("total", Size(total, language)),
+                ("percent", percent.ToString("0.#", Culture(language))))));
         }
 
-        return new NotificationMessage(
-            es ? $"Al nodo {nodeName} le queda poco espacio en disco" : $"Node {nodeName} is running out of disk space",
-            es ? "Con el disco lleno fallan las actualizaciones, los backups y los mismos servidores. Liberá espacio o borrá backups viejos."
-                : "A full drive breaks updates, backups and the game servers themselves. Free some space or delete old backups.",
+        return new NotificationMessage(Text(language, "nodeDiskLow.title", ("node", nodeName)), Text(language, "nodeDiskLow.text"),
             NotificationSeverity.Warning, fields, link);
     }
 
     public static NotificationMessage PublicIpCertificateFailed(string language, string ip, string error, DateTimeOffset? expiresAt, string? link)
     {
-        var es = IsSpanish(language);
-        var fields = new List<NotificationField> { new(es ? "Dirección" : "Address", ip), new("Error", Clip(error)) };
+        var fields = new List<NotificationField> { new(Text(language, "fields.address"), ip), new(Text(language, "fields.error"), Clip(error)) };
         if (expiresAt is { } at)
         {
-            fields.Add(new(es ? "El certificado actual vence" : "The current certificate expires", Moment(at)));
+            fields.Add(new(Text(language, "fields.currentCertificateExpires"), Moment(at)));
         }
 
-        return new NotificationMessage(
-            es ? "No se pudo renovar el certificado de la IP pública" : "The public IP certificate could not be renewed",
-            es ? "Let's Encrypt no emitió el certificado del panel. Pulsar vuelve a intentar solo, cada vez más espaciado. Revisá que el router reenvíe los puertos 80 y 8443 a esta PC."
-                : "Let's Encrypt did not issue the panel's certificate. Pulsar tries again on its own, less and less often. Check that the router forwards ports 80 and 8443 to this PC.",
+        return new NotificationMessage(Text(language, "publicIpCertificateFailed.title"), Text(language, "publicIpCertificateFailed.text"),
             NotificationSeverity.Error, fields, link);
     }
 
-    public static NotificationMessage PublicIpCertificateExpiring(string language, string ip, DateTimeOffset expiresAt, string? link)
-    {
-        var es = IsSpanish(language);
-        return new NotificationMessage(
-            es ? "El certificado de la IP pública está por vencer" : "The public IP certificate is about to expire",
-            es ? "Todavía no llegó uno nuevo. Cuando venza, quienes entren desde internet van a ver un aviso de seguridad hasta que se renueve."
-                : "No new one has come yet. Once it expires, visitors from the internet see a security warning until it is renewed.",
-            NotificationSeverity.Warning, [new(es ? "Dirección" : "Address", ip), new(es ? "Vence" : "Expires", Moment(expiresAt))], link);
-    }
+    public static NotificationMessage PublicIpCertificateExpiring(string language, string ip, DateTimeOffset expiresAt, string? link) =>
+        new(Text(language, "publicIpCertificateExpiring.title"), Text(language, "publicIpCertificateExpiring.text"), NotificationSeverity.Warning,
+            [new(Text(language, "fields.address"), ip), new(Text(language, "fields.expires"), Moment(expiresAt))], link);
 
-    public static NotificationMessage PublicIpCertificateRenewed(string language, string ip, DateTimeOffset expiresAt, string? link)
-    {
-        var es = IsSpanish(language);
-        return new NotificationMessage(
-            es ? "Se renovó el certificado de la IP pública" : "The public IP certificate was renewed",
-            es ? "Let's Encrypt volvió a emitir el certificado del panel." : "Let's Encrypt issued the panel's certificate again.",
-            NotificationSeverity.Recovered, [new(es ? "Dirección" : "Address", ip), new(es ? "Vence" : "Expires", Moment(expiresAt))], link);
-    }
+    public static NotificationMessage PublicIpCertificateRenewed(string language, string ip, DateTimeOffset expiresAt, string? link) =>
+        new(Text(language, "publicIpCertificateRenewed.title"), Text(language, "publicIpCertificateRenewed.text"), NotificationSeverity.Recovered,
+            [new(Text(language, "fields.address"), ip), new(Text(language, "fields.expires"), Moment(expiresAt))], link);
 
-    public static NotificationMessage Test(string language, string? link)
-    {
-        var es = IsSpanish(language);
-        return new NotificationMessage(
-            es ? "Notificación de prueba de Pulsar" : "Test notification from Pulsar",
-            es ? "Si leés esto, el canal funciona." : "If you can read this, the channel works.",
-            NotificationSeverity.Recovered, [], link);
-    }
+    public static NotificationMessage Test(string language, string? link) =>
+        new(Text(language, "test.title"), Text(language, "test.text"), NotificationSeverity.Recovered, [], link);
 
     /// <summary>1 decimal, binary units, as the UI shows sizes, with the language's decimal separator.</summary>
     public static string Size(long bytes, string language = "en")
@@ -172,21 +105,77 @@ public static class NotificationTexts
         return $"{value.ToString(unit == 0 ? "0" : "0.#", Culture(language))} {units[unit]}";
     }
 
-    private static bool IsSpanish(string language) => language == "es";
+    /// <summary>The language's text for <paramref name="key"/> (English when it has none), its {placeholders} filled.</summary>
+    internal static string Text(string language, string key, params (string Name, string Value)[] values)
+    {
+        var text = (s_texts.TryGetValue(language, out var texts) && texts.TryGetValue(key, out var own) ? own : null)
+            ?? s_texts["en"].GetValueOrDefault(key)
+            ?? throw new InvalidOperationException($"No notification text {key}.");
+        return Placeholder().Replace(text, match =>
+        {
+            var name = match.Groups[1].Value;
+            foreach (var (candidate, value) in values)
+            {
+                if (candidate == name)
+                {
+                    return value;
+                }
+            }
+
+            return match.Value;
+        });
+    }
+
+    /// <summary>Every language's texts, flattened to "section.key": loaded once from the embedded files.</summary>
+    internal static FrozenDictionary<string, FrozenDictionary<string, string>> Texts => s_texts;
+
+    private static FrozenDictionary<string, FrozenDictionary<string, string>> Load()
+    {
+        var assembly = typeof(NotificationTexts).Assembly;
+        var languages = new Dictionary<string, FrozenDictionary<string, string>>(StringComparer.Ordinal);
+        foreach (var language in NotificationChannel.Languages)
+        {
+            using var stream = assembly.GetManifestResourceStream($"Pulsar.Application.Notifications.Texts.{language}.json")
+                ?? throw new InvalidOperationException($"The notification texts of {language} are not in the assembly.");
+            using var document = JsonDocument.Parse(stream);
+            var texts = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var section in document.RootElement.EnumerateObject())
+            {
+                foreach (var entry in section.Value.EnumerateObject())
+                {
+                    texts[$"{section.Name}.{entry.Name}"] = entry.Value.GetString()!;
+                }
+            }
+
+            languages[language] = texts.ToFrozenDictionary(StringComparer.Ordinal);
+        }
+
+        return languages.ToFrozenDictionary(StringComparer.Ordinal);
+    }
 
     private static string Moment(DateTimeOffset at) => at.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
 
-    private static CultureInfo Culture(string language) => IsSpanish(language) ? CultureInfo.GetCultureInfo("es") : CultureInfo.InvariantCulture;
+    // Numbers as the language writes them (English: the invariant culture, as before).
+    private static CultureInfo Culture(string language) => language switch
+    {
+        "en" or "" => CultureInfo.InvariantCulture,
+        "pt" => CultureInfo.GetCultureInfo("pt-BR"),
+        "zh" => CultureInfo.GetCultureInfo("zh-CN"),
+        _ => NotificationChannel.Languages.Contains(language, StringComparer.Ordinal) ? CultureInfo.GetCultureInfo(language) : CultureInfo.InvariantCulture,
+    };
 
-    private static NotificationField[] ServerFields(bool es, ServerFacts server, params (string Name, string? Value)[] extra) =>
+    private static NotificationField[] ServerFields(string language, ServerFacts server, params (string Name, string? Value)[] extra) =>
     [
-        new(es ? "Servidor" : "Server", server.Name),
-        new(es ? "Juego" : "Game", server.Game),
-        new(es ? "Nodo" : "Node", server.NodeName),
+        new(Text(language, "fields.server"), server.Name),
+        new(Text(language, "fields.game"), server.Game),
+        new(Text(language, "fields.node"), server.NodeName),
         .. extra.Where(f => !string.IsNullOrWhiteSpace(f.Value)).Select(f => new NotificationField(f.Name, Clip(f.Value!))),
     ];
 
     private static string Clip(string value) => value.Length > 300 ? TextLimits.Truncate(value, 300) + "…" : value;
+
+    [GeneratedRegex(@"\{(\w+)\}", RegexOptions.CultureInvariant)]
+    private static partial Regex Placeholder();
 }
 
 /// <summary>What messages say about a server.</summary>

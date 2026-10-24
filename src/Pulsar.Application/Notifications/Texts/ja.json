@@ -1,0 +1,76 @@
+{
+  "fields": {
+    "server": "サーバー",
+    "game": "ゲーム",
+    "node": "ノード",
+    "exitCode": "終了コード",
+    "backup": "バックアップ",
+    "task": "タスク",
+    "error": "エラー",
+    "lastSeen": "最終確認",
+    "address": "アドレス",
+    "currentCertificateExpires": "現在の証明書の有効期限",
+    "expires": "有効期限"
+  },
+  "serverOutOfMemory": {
+    "title": "{server} のメモリが不足しました",
+    "text": "サーバーのメモリ上限に達したため終了しました。上限を引き上げるか、使用量（プレイヤー数、マップ、Mod）を減らしてください。"
+  },
+  "serverCrashLoop": {
+    "title": "{server} がクラッシュを繰り返しています",
+    "text": "続けて何度もクラッシュしたため、Pulsar は再起動を停止しました。サーバーは停止しています。コンソールを確認してください。"
+  },
+  "serverCrashed": {
+    "title": "{server} がクラッシュしました",
+    "text": "要求されていないのにサーバーが終了しました。自動再起動が有効な場合は、Pulsar が再び起動します。"
+  },
+  "serverNotReady": {
+    "title": "{server} の準備が完了しません",
+    "text": "起動しましたが、時間内に準備完了を報告しませんでした。応答していない可能性があります。コンソールを確認してください。"
+  },
+  "serverStartFailed": {
+    "title": "{server} を起動できませんでした",
+    "text": "Windows がサーバーを起動できませんでした。"
+  },
+  "backupCopyFailed": {
+    "title": "{server} のバックアップのリモートコピーに失敗しました",
+    "text": "バックアップはノード上にありますが、リモートストレージにアップロードできませんでした。"
+  },
+  "backupFailed": {
+    "title": "{server} のバックアップに失敗しました",
+    "text": "バックアップが完了しませんでした。"
+  },
+  "scheduledTaskFailed": {
+    "title": "{server} のスケジュールタスク「{task}」に失敗しました",
+    "text": "タスクがアクションを実行できませんでした。"
+  },
+  "nodeOffline": {
+    "title": "ノード {node} がオフラインです",
+    "text": "ゲームサーバーは動き続けていますが、再接続するまでパネルから操作できません。"
+  },
+  "nodeOnline": {
+    "title": "ノード {node} がオンラインに戻りました",
+    "text": "パネルから再びゲームサーバーを操作できます。"
+  },
+  "nodeDiskLow": {
+    "title": "ノード {node} のディスク容量が不足しています",
+    "text": "ディスクがいっぱいになると、アップデート、バックアップ、ゲームサーバー自体が失敗します。空き容量を確保するか、古いバックアップを削除してください。",
+    "drive": "{total} 中 {free} 空き（{percent} %）"
+  },
+  "publicIpCertificateFailed": {
+    "title": "パブリック IP の証明書を更新できませんでした",
+    "text": "Let's Encrypt がパネルの証明書を発行しませんでした。Pulsar は間隔を空けながら自動で再試行します。ルーターがポート 80 と 8443 をこの PC に転送していることを確認してください。"
+  },
+  "publicIpCertificateExpiring": {
+    "title": "パブリック IP の証明書の有効期限が近づいています",
+    "text": "新しい証明書はまだ届いていません。有効期限が切れると、更新されるまでインターネットからのアクセスでセキュリティ警告が表示されます。"
+  },
+  "publicIpCertificateRenewed": {
+    "title": "パブリック IP の証明書を更新しました",
+    "text": "Let's Encrypt がパネルの証明書を再発行しました。"
+  },
+  "test": {
+    "title": "Pulsar からのテスト通知",
+    "text": "このメッセージが読めれば、チャンネルは正常に動作しています。"
+  }
+}

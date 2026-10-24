@@ -1,0 +1,76 @@
+{
+  "fields": {
+    "server": "Server",
+    "game": "Game",
+    "node": "Node",
+    "exitCode": "Exit code",
+    "backup": "Backup",
+    "task": "Task",
+    "error": "Error",
+    "lastSeen": "Last seen",
+    "address": "Address",
+    "currentCertificateExpires": "The current certificate expires",
+    "expires": "Expires"
+  },
+  "serverOutOfMemory": {
+    "title": "{server} ran out of memory",
+    "text": "It reached the server's memory limit and exited. Raise the limit or lower what it uses (players, map, mods)."
+  },
+  "serverCrashLoop": {
+    "title": "{server} keeps crashing",
+    "text": "It crashed several times in a row and Pulsar stopped restarting it: it is stopped. Check its console."
+  },
+  "serverCrashed": {
+    "title": "{server} crashed",
+    "text": "The server exited without being asked to. If it restarts automatically, Pulsar starts it again."
+  },
+  "serverNotReady": {
+    "title": "{server} is not ready",
+    "text": "It started but did not report ready in time: it may be stuck. Check its console."
+  },
+  "serverStartFailed": {
+    "title": "{server} did not start",
+    "text": "Windows could not start it."
+  },
+  "backupCopyFailed": {
+    "title": "Remote copy of a backup of {server} failed",
+    "text": "The backup is on the node, but it could not be uploaded to remote storage."
+  },
+  "backupFailed": {
+    "title": "A backup of {server} failed",
+    "text": "The backup did not complete."
+  },
+  "scheduledTaskFailed": {
+    "title": "Scheduled task “{task}” of {server} failed",
+    "text": "The task could not do its action."
+  },
+  "nodeOffline": {
+    "title": "Node {node} is offline",
+    "text": "Its game servers keep running, but the panel cannot control them until it connects again."
+  },
+  "nodeOnline": {
+    "title": "Node {node} is back online",
+    "text": "The panel controls its game servers again."
+  },
+  "nodeDiskLow": {
+    "title": "Node {node} is running out of disk space",
+    "text": "A full drive breaks updates, backups and the game servers themselves. Free some space or delete old backups.",
+    "drive": "{free} free of {total} ({percent} %)"
+  },
+  "publicIpCertificateFailed": {
+    "title": "The public IP certificate could not be renewed",
+    "text": "Let's Encrypt did not issue the panel's certificate. Pulsar tries again on its own, less and less often. Check that the router forwards ports 80 and 8443 to this PC."
+  },
+  "publicIpCertificateExpiring": {
+    "title": "The public IP certificate is about to expire",
+    "text": "No new one has come yet. Once it expires, visitors from the internet see a security warning until it is renewed."
+  },
+  "publicIpCertificateRenewed": {
+    "title": "The public IP certificate was renewed",
+    "text": "Let's Encrypt issued the panel's certificate again."
+  },
+  "test": {
+    "title": "Test notification from Pulsar",
+    "text": "If you can read this, the channel works."
+  }
+}

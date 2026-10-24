@@ -1,0 +1,76 @@
+{
+  "fields": {
+    "server": "Server",
+    "game": "Spiel",
+    "node": "Node",
+    "exitCode": "Exitcode",
+    "backup": "Backup",
+    "task": "Aufgabe",
+    "error": "Fehler",
+    "lastSeen": "Zuletzt gesehen",
+    "address": "Adresse",
+    "currentCertificateExpires": "Das aktuelle Zertifikat läuft ab",
+    "expires": "Läuft ab"
+  },
+  "serverOutOfMemory": {
+    "title": "{server} hat keinen Speicher mehr",
+    "text": "Der Server hat sein Speicherlimit erreicht und wurde beendet. Erhöhen Sie das Limit oder verringern Sie, was er braucht (Spieler, Karte, Mods)."
+  },
+  "serverCrashLoop": {
+    "title": "{server} stürzt immer wieder ab",
+    "text": "Der Server ist mehrmals hintereinander abgestürzt, und Pulsar startet ihn nicht mehr neu: Er ist gestoppt. Prüfen Sie seine Konsole."
+  },
+  "serverCrashed": {
+    "title": "{server} ist abgestürzt",
+    "text": "Der Server wurde beendet, ohne dass es jemand verlangt hat. Wenn er automatisch neu startet, startet Pulsar ihn wieder."
+  },
+  "serverNotReady": {
+    "title": "{server} ist nicht bereit",
+    "text": "Der Server ist gestartet, hat aber nicht rechtzeitig gemeldet, dass er bereit ist: Er hängt möglicherweise. Prüfen Sie seine Konsole."
+  },
+  "serverStartFailed": {
+    "title": "{server} wurde nicht gestartet",
+    "text": "Windows konnte ihn nicht starten."
+  },
+  "backupCopyFailed": {
+    "title": "Remote-Kopie eines Backups von {server} fehlgeschlagen",
+    "text": "Das Backup liegt auf dem Node, konnte aber nicht in den Remote-Speicher hochgeladen werden."
+  },
+  "backupFailed": {
+    "title": "Ein Backup von {server} ist fehlgeschlagen",
+    "text": "Das Backup wurde nicht abgeschlossen."
+  },
+  "scheduledTaskFailed": {
+    "title": "Geplante Aufgabe „{task}“ von {server} fehlgeschlagen",
+    "text": "Die Aufgabe konnte ihre Aktion nicht ausführen."
+  },
+  "nodeOffline": {
+    "title": "Node {node} ist offline",
+    "text": "Seine Spielserver laufen weiter, aber das Panel kann sie erst wieder steuern, wenn der Node erneut verbunden ist."
+  },
+  "nodeOnline": {
+    "title": "Node {node} ist wieder online",
+    "text": "Das Panel steuert seine Spielserver wieder."
+  },
+  "nodeDiskLow": {
+    "title": "Auf Node {node} wird der Speicherplatz knapp",
+    "text": "Ein volles Laufwerk lässt Updates, Backups und die Spielserver selbst scheitern. Geben Sie Speicher frei oder löschen Sie alte Backups.",
+    "drive": "{free} von {total} frei ({percent} %)"
+  },
+  "publicIpCertificateFailed": {
+    "title": "Das Zertifikat der öffentlichen IP konnte nicht erneuert werden",
+    "text": "Let's Encrypt hat das Zertifikat des Panels nicht ausgestellt. Pulsar versucht es selbstständig erneut, in immer größeren Abständen. Prüfen Sie, ob der Router die Ports 80 und 8443 an diesen PC weiterleitet."
+  },
+  "publicIpCertificateExpiring": {
+    "title": "Das Zertifikat der öffentlichen IP läuft bald ab",
+    "text": "Es ist noch kein neues eingetroffen. Sobald es abläuft, sehen Besucher aus dem Internet eine Sicherheitswarnung, bis es erneuert ist."
+  },
+  "publicIpCertificateRenewed": {
+    "title": "Das Zertifikat der öffentlichen IP wurde erneuert",
+    "text": "Let's Encrypt hat das Zertifikat des Panels wieder ausgestellt."
+  },
+  "test": {
+    "title": "Testbenachrichtigung von Pulsar",
+    "text": "Wenn Sie das lesen, funktioniert der Kanal."
+  }
+}
