@@ -386,9 +386,11 @@ public sealed class NodeManagement(
             return new NodePortsInUse(false, [], false);
         }
 
+        // As this panel writes them: an address without padding or an IPv6 scope, at most as many as an agent sends.
         var ports = (result.Ports ?? [])
-            .Where(p => p is { Port: >= 1 and <= 65535, Protocol: "tcp" or "udp" } && System.Net.IPAddress.TryParse(p.Address, out _))
             .Take(PortsInUseResult.MaxPorts)
+            .Where(p => p is { Port: >= 1 and <= 65535, Protocol: "tcp" or "udp", Address.Length: <= 64 } && System.Net.IPAddress.TryParse(p.Address, out _))
+            .Select(p => p with { Address = new System.Net.IPAddress(System.Net.IPAddress.Parse(p.Address).GetAddressBytes()).ToString() })
             .ToList();
         return new NodePortsInUse(true, ports, result.Truncated);
     }

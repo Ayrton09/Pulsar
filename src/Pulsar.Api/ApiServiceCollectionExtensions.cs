@@ -304,6 +304,10 @@ internal static class ApiServiceCollectionExtensions
             options.AddPolicy(AgentEndpoints.AuthRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
                 ClientAddress.PartitionOf(context.Connection.RemoteIpAddress),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            // Per node, whoever asks: each answer is the agent listing its machine's ports.
+            options.AddPolicy(NodeEndpoints.PortsInUseRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.GetRouteValue("id")?.ToString() ?? "",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = NodeEndpoints.PortsInUsePermitLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
             // The agent's setup, anonymous and a whole program each time: so many at once and an hour per address.
             options.AddPolicy(DownloadEndpoints.RateLimitPolicy, context => RateLimitPartition.Get(
                 ClientAddress.PartitionOf(context.Connection.RemoteIpAddress), _ => DownloadEndpoints.CreateLimiter(downloads)));

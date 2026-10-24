@@ -43,6 +43,11 @@ public sealed record ApproveNodesRequest([property: Required, MinLength(1), MaxL
 
 public static class NodeEndpoints
 {
+    /// <summary>Asks per node and minute (each asks the agent to list the machine's ports): <see cref="PortsInUsePermitLimit"/>.</summary>
+    public const string PortsInUseRateLimit = "nodes.ports-in-use";
+
+    public const int PortsInUsePermitLimit = 30;
+
     public static RouteGroupBuilder MapNodeEndpoints(this RouteGroupBuilder api)
     {
         var nodes = api.MapGroup("/nodes").WithTags("Nodes");
@@ -77,9 +82,11 @@ public static class NodeEndpoints
         nodes.MapGet("/{id:guid}/allocations", async (Guid id, NodeAllocations allocations, CancellationToken ct) =>
                 (await allocations.ListAsync(new NodeId(id), ct)).ToHttp())
             .RequirePermission(Permissions.Node.View, Permissions.Node.Manage, Permissions.Server.Create);
-        // The ports any program uses on the node's machine (1.0.7), for those who choose a server's ports by number.
+        // The ports any program uses on the node's machine (1.0.7), for those who see the node itself: they tell what else
+        // runs there, more than its allocations do.
         nodes.MapGet("/{id:guid}/ports-in-use", async (Guid id, NodeManagement m, CancellationToken ct) => (await m.PortsInUseAsync(new NodeId(id), ct)).ToHttp())
-            .RequirePermission(Permissions.Node.View, Permissions.Node.Manage, Permissions.Server.Create);
+            .RequirePermission(Permissions.Node.View, Permissions.Node.Manage)
+            .RequireRateLimiting(PortsInUseRateLimit);
         nodes.MapPost("/{id:guid}/allocations", async (Guid id, CreateAllocationsRequest request, NodeAllocations allocations, CancellationToken ct) =>
                 (await allocations.CreateAsync(new NodeId(id), request.IpAddress, request.Ports, request.Notes, ct)).ToHttp())
             .RequirePermission(Permissions.Node.Manage);

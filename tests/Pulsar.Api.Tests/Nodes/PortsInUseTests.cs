@@ -53,18 +53,37 @@ public sealed class PortsInUseTests(PulsarApiFactory factory) : IClassFixture<Pu
     }
 
     [DatabaseFact]
-    public async Task OnlyThoseWhoChoosePortsOnTheNodeSeeThem()
+    public async Task OnlyThoseWhoSeeTheNodeSeeThem()
     {
         var scenario = await AccessScenario.CreateAsync(factory);
         var created = await NodeApi.CreateAsync(scenario.Admin, "ports-hidden");
         using var nobody = await scenario.SignedInWithAsync("ports-nobody");
         using var viewer = await scenario.SignedInWithAsync("ports-server-viewer", "server.view");
+        // They choose among the node's allocations; what else runs on the machine is the node's business.
+        using var creator = await scenario.SignedInWithAsync("ports-server-creator", "server.create");
 
-        foreach (var client in new[] { nobody, viewer })
+        foreach (var client in new[] { nobody, viewer, creator })
         {
             using var response = await client.GetAsync($"/api/v1/nodes/{created.Node.Id}/ports-in-use");
             Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         }
+    }
+
+    [DatabaseFact]
+    public async Task EachNodeIsAskedAtMostSoManyTimesAMinute()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var created = await NodeApi.CreateAsync(admin, "ports-limited");
+        var other = await NodeApi.CreateAsync(admin, "ports-not-limited");
+
+        for (var i = 0; i < Pulsar.Api.Nodes.NodeEndpoints.PortsInUsePermitLimit; i++)
+        {
+            await GetAsync(admin, created.Node.Id);
+        }
+
+        using var refused = await admin.GetAsync($"/api/v1/nodes/{created.Node.Id}/ports-in-use");
+        Assert.Equal(HttpStatusCode.TooManyRequests, refused.StatusCode);
+        Assert.False((await GetAsync(admin, other.Node.Id)).Known);
     }
 
     private static async Task<NodePortsInUse> GetAsync(PanelClient client, Guid nodeId)
