@@ -2,13 +2,13 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "ark-sa",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": "ARK: Survival Ascended",
   "description": "ARK: Survival Ascended dedicated server, installed anonymously with SteamCMD (about 12 GB). Dedicated servers are for personal, non-commercial use unless you have a licence from its publisher; read this game's README.",
   "authors": ["Pulsar contributors"],
   "platforms": ["windows-x64"],
 
-  "requirements": { "minDiskGb": 30, "minMemoryMb": 16384 },
+  "requirements": { "minDiskGb": 25, "minMemoryMb": 16384 },
 
   "variables": [
     { "key": "sessionName", "label": "Server name", "type": "string", "default": "Pulsar ARK", "maxLength": 63, "pattern": "^[^?\";\\\\]{1,63}$",

@@ -11,6 +11,7 @@ import { useCurrentUser } from '../auth/api';
 import { useWatchNodes } from '../live/hooks';
 import { useAllocations, useNodes } from '../nodes/api';
 import { useCreateServer, useTemplate, useTemplates, type TemplateDetails, type TemplateVariable } from './api';
+import { newestOfEachGame } from './templateVersions';
 import { VariableFields } from './VariableFields';
 import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
 
@@ -165,9 +166,9 @@ export function CreateServerDialog({
               {(ids) => (
                 <Select {...ids} value={templateId} onChange={(e) => chooseTemplate(e.target.value)}>
                   <option value="">{t('servers.chooseGame')}</option>
-                  {/* The game alone: a template's version read as the game's. Two of one name (a newer version imported)
-                      say which template they are. */}
-                  {templates.data?.map((option, _, all) => (
+                  {/* The newest version of each game, by its name alone: a template's version read as the game's. Two
+                      games of one name (imported under another key) say which template they are. */}
+                  {newestOfEachGame(templates.data ?? []).map((option, _, all) => (
                     <option key={option.id} value={option.id}>
                       {all.some((other) => other.id !== option.id && other.name === option.name)
                         ? t('servers.gameWithTemplateVersion', { name: option.name, version: option.version })

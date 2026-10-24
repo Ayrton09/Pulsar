@@ -253,23 +253,32 @@ describe('creating a game server', () => {
 });
 
 describe('the list of games', () => {
-  it('names each game alone, and only templates of one name by their version', async () => {
+  it('offers the newest version of each game, by its name alone', async () => {
     const newer = { ...template, id: '0192f1a0-0000-7000-8000-0000000000f3', version: '1.1.0' };
     const other = { ...template, id: '0192f1a0-0000-7000-8000-0000000000f4', key: 'valheim', name: 'Valheim' };
+    // Another game that took the same name (imported under a key of its own).
+    const namesake = {
+      ...template,
+      id: '0192f1a0-0000-7000-8000-0000000000f5',
+      key: 'css-community',
+      version: '2.0.0',
+      source: 'imported' as const,
+    };
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
       'GET /api/v1/servers': () => json([]),
       'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
-      'GET /api/v1/templates': () => json([template, newer, other]),
+      'GET /api/v1/templates': () => json([template, newer, other, namesake]),
     });
     renderAt('/servers');
     await userEvent.click(await screen.findByRole('button', { name: 'Create server' }));
 
     const games = within(screen.getByLabelText('Game'));
-    // A template's own version would read as the game's.
+    // A template's own version would read as the game's; an older one is for the servers made from it.
     expect(await games.findByRole('option', { name: 'Valheim' })).toBeInTheDocument();
-    expect(games.getByRole('option', { name: 'Counter-Strike: Source (template 1.0.0)' })).toBeInTheDocument();
-    expect(games.getByRole('option', { name: 'Counter-Strike: Source (template 1.1.0)' })).toBeInTheDocument();
+    expect(games.getByRole('option', { name: 'Counter-Strike: Source (template 1.1.0)' })).toHaveValue(newer.id);
+    expect(games.getByRole('option', { name: 'Counter-Strike: Source (template 2.0.0)' })).toHaveValue(namesake.id);
+    expect(games.queryByRole('option', { name: /1\.0\.0/ })).not.toBeInTheDocument();
   });
 });
 
