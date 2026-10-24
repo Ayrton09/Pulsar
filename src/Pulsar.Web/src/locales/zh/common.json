@@ -2373,7 +2373,31 @@
         },
         "scenario": {
           "label": "场景",
-          "description": "任务的资源名称：{ECC61978EDCC2B5A}Missions/23_Campaign.conf 是 Everon 上的 Conflict。"
+          "description": "游戏的多人场景，即 -listScenarios 列出的那些。",
+          "options": {
+            "conflict-everon": "Conflict - Everon",
+            "conflict-north": "Conflict - Northern Everon",
+            "conflict-south": "Conflict - Southern Everon",
+            "conflict-west": "Conflict - Western Everon",
+            "conflict-montignac": "Conflict - Montignac",
+            "conflict-arland": "Conflict - Arland",
+            "hqc-everon": "Conflict: HQ Commander - Everon",
+            "hqc-arland": "Conflict: HQ Commander - Arland",
+            "hqc-kolguyev": "Conflict: HQ Commander - Kolguyev",
+            "gm-everon": "Game Master - Everon",
+            "gm-arland": "Game Master - Arland",
+            "gm-kolguyev": "Game Master - Kolguyev",
+            "combatops-arland": "Combat Ops - Arland",
+            "combatops-everon": "Combat Ops - Everon",
+            "cah-briars": "Capture & Hold - Briars",
+            "cah-castle": "Capture & Hold - Montfort Castle",
+            "cah-concrete": "Capture & Hold - Concrete Plant",
+            "cah-factory": "Capture & Hold - Almara Factory",
+            "cah-forest": "Capture & Hold - Simon's Wood",
+            "cah-lemoule": "Capture & Hold - Le Moule",
+            "cah-base": "Capture & Hold - Camp Blake",
+            "cah-morton": "Capture & Hold - Morton"
+          }
         },
         "maxPlayers": {
           "label": "玩家名额"
@@ -2408,10 +2432,6 @@
         },
         "viewDistance": {
           "label": "最大视距（m）"
-        },
-        "autoSave": {
-          "label": "自动存档间隔（分钟）",
-          "description": "0：不自动保存。"
         },
         "maxFps": {
           "label": "服务器 FPS"
@@ -2707,24 +2727,14 @@
       }
     },
     "l4d2": {
-      "description": "Left 4 Dead 2 专用服务器（srcds），通过 SteamCMD 匿名安装（约 12 GB）。",
+      "description": "Left 4 Dead 2 专用服务器（srcds），通过 SteamCMD 匿名安装（约 10 GB）。",
       "variables": {
         "hostname": {
           "label": "服务器名称"
         },
-        "gameMode": {
-          "label": "游戏模式",
-          "options": {
-            "coop": "战役",
-            "realism": "写实",
-            "versus": "对抗",
-            "survival": "生存",
-            "scavenge": "清道夫"
-          }
-        },
         "map": {
           "label": "起始地图",
-          "description": "c1m1_hotel 从 Dead Center 开始；生存和清道夫需要专为其制作的地图。"
+          "description": "c1m1_hotel 从 Dead Center 开始。游戏模式由玩家在大厅中选择。"
         },
         "password": {
           "label": "加入密码",
@@ -2745,14 +2755,6 @@
             "Normal": "普通",
             "Hard": "高级",
             "Impossible": "专家"
-          }
-        },
-        "allTalk": {
-          "label": "全员语音",
-          "description": "双方队伍可以在语音聊天中互相听到。",
-          "options": {
-            "0": "关",
-            "1": "开"
           }
         },
         "steamGroup": {
@@ -3382,7 +3384,7 @@
       }
     },
     "tf2": {
-      "description": "Team Fortress 2 专用服务器（srcds），通过 SteamCMD 匿名安装（约 10 GB）。",
+      "description": "Team Fortress 2 专用服务器（srcds 的 64 位版本），通过 SteamCMD 匿名安装（约 15 GB）。",
       "variables": {
         "hostname": {
           "label": "服务器名称"

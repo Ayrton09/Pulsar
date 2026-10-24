@@ -2373,7 +2373,31 @@
         },
         "scenario": {
           "label": "シナリオ",
-          "description": "ミッションのリソース名です。{ECC61978EDCC2B5A}Missions/23_Campaign.conf は Everon の Conflict です。"
+          "description": "ゲームのマルチプレイシナリオです(-listScenarios が表示するもの)。",
+          "options": {
+            "conflict-everon": "Conflict - Everon",
+            "conflict-north": "Conflict - Northern Everon",
+            "conflict-south": "Conflict - Southern Everon",
+            "conflict-west": "Conflict - Western Everon",
+            "conflict-montignac": "Conflict - Montignac",
+            "conflict-arland": "Conflict - Arland",
+            "hqc-everon": "Conflict: HQ Commander - Everon",
+            "hqc-arland": "Conflict: HQ Commander - Arland",
+            "hqc-kolguyev": "Conflict: HQ Commander - Kolguyev",
+            "gm-everon": "Game Master - Everon",
+            "gm-arland": "Game Master - Arland",
+            "gm-kolguyev": "Game Master - Kolguyev",
+            "combatops-arland": "Combat Ops - Arland",
+            "combatops-everon": "Combat Ops - Everon",
+            "cah-briars": "Capture & Hold - Briars",
+            "cah-castle": "Capture & Hold - Montfort Castle",
+            "cah-concrete": "Capture & Hold - Concrete Plant",
+            "cah-factory": "Capture & Hold - Almara Factory",
+            "cah-forest": "Capture & Hold - Simon's Wood",
+            "cah-lemoule": "Capture & Hold - Le Moule",
+            "cah-base": "Capture & Hold - Camp Blake",
+            "cah-morton": "Capture & Hold - Morton"
+          }
         },
         "maxPlayers": {
           "label": "スロット数"
@@ -2408,10 +2432,6 @@
         },
         "viewDistance": {
           "label": "最大描画距離(m)"
-        },
-        "autoSave": {
-          "label": "オートセーブの間隔(分)",
-          "description": "0:オートセーブなし。"
         },
         "maxFps": {
           "label": "サーバー FPS"
@@ -2707,24 +2727,14 @@
       }
     },
     "l4d2": {
-      "description": "Left 4 Dead 2 の専用サーバー(srcds)です。SteamCMD で匿名インストールされます(約 12 GB)。",
+      "description": "Left 4 Dead 2 の専用サーバー(srcds)です。SteamCMD で匿名インストールされます(約 10 GB)。",
       "variables": {
         "hostname": {
           "label": "サーバー名"
         },
-        "gameMode": {
-          "label": "ゲームモード",
-          "options": {
-            "coop": "キャンペーン",
-            "realism": "リアリズム",
-            "versus": "バーサス",
-            "survival": "サバイバル",
-            "scavenge": "スカベンジ"
-          }
-        },
         "map": {
           "label": "開始マップ",
-          "description": "c1m1_hotel は Dead Center から始まります。サバイバルとスカベンジには専用のマップが必要です。"
+          "description": "c1m1_hotel は Dead Center から始まります。ゲームモードはプレイヤーがロビーで選びます。"
         },
         "password": {
           "label": "参加パスワード",
@@ -2745,14 +2755,6 @@
             "Normal": "ノーマル",
             "Hard": "アドバンス",
             "Impossible": "エキスパート"
-          }
-        },
-        "allTalk": {
-          "label": "オールトーク",
-          "description": "ボイスチャットで両チームの声が聞こえます。",
-          "options": {
-            "0": "オフ",
-            "1": "オン"
           }
         },
         "steamGroup": {
@@ -3382,7 +3384,7 @@
       }
     },
     "tf2": {
-      "description": "Team Fortress 2 の専用サーバー(srcds)です。SteamCMD で匿名インストールされます(約 10 GB)。",
+      "description": "Team Fortress 2 の専用サーバー(srcds の 64 ビット版)です。SteamCMD で匿名インストールされます(約 15 GB)。",
       "variables": {
         "hostname": {
           "label": "サーバー名"

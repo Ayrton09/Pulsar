@@ -2373,7 +2373,31 @@
         },
         "scenario": {
           "label": "시나리오",
-          "description": "미션의 리소스 이름입니다. {ECC61978EDCC2B5A}Missions/23_Campaign.conf는 Everon의 Conflict입니다."
+          "description": "게임의 멀티플레이어 시나리오입니다(-listScenarios가 보여 주는 목록).",
+          "options": {
+            "conflict-everon": "Conflict - Everon",
+            "conflict-north": "Conflict - Northern Everon",
+            "conflict-south": "Conflict - Southern Everon",
+            "conflict-west": "Conflict - Western Everon",
+            "conflict-montignac": "Conflict - Montignac",
+            "conflict-arland": "Conflict - Arland",
+            "hqc-everon": "Conflict: HQ Commander - Everon",
+            "hqc-arland": "Conflict: HQ Commander - Arland",
+            "hqc-kolguyev": "Conflict: HQ Commander - Kolguyev",
+            "gm-everon": "Game Master - Everon",
+            "gm-arland": "Game Master - Arland",
+            "gm-kolguyev": "Game Master - Kolguyev",
+            "combatops-arland": "Combat Ops - Arland",
+            "combatops-everon": "Combat Ops - Everon",
+            "cah-briars": "Capture & Hold - Briars",
+            "cah-castle": "Capture & Hold - Montfort Castle",
+            "cah-concrete": "Capture & Hold - Concrete Plant",
+            "cah-factory": "Capture & Hold - Almara Factory",
+            "cah-forest": "Capture & Hold - Simon's Wood",
+            "cah-lemoule": "Capture & Hold - Le Moule",
+            "cah-base": "Capture & Hold - Camp Blake",
+            "cah-morton": "Capture & Hold - Morton"
+          }
         },
         "maxPlayers": {
           "label": "슬롯"
@@ -2408,10 +2432,6 @@
         },
         "viewDistance": {
           "label": "최대 시야 거리(m)"
-        },
-        "autoSave": {
-          "label": "자동 저장 간격(분)",
-          "description": "0: 자동 저장 안 함."
         },
         "maxFps": {
           "label": "서버 FPS"
@@ -2707,24 +2727,14 @@
       }
     },
     "l4d2": {
-      "description": "Left 4 Dead 2 전용 서버(srcds)입니다. SteamCMD로 익명 설치됩니다(약 12 GB).",
+      "description": "Left 4 Dead 2 전용 서버(srcds)입니다. SteamCMD로 익명 설치됩니다(약 10 GB).",
       "variables": {
         "hostname": {
           "label": "서버 이름"
         },
-        "gameMode": {
-          "label": "게임 모드",
-          "options": {
-            "coop": "캠페인",
-            "realism": "리얼리즘",
-            "versus": "대전",
-            "survival": "서바이벌",
-            "scavenge": "스캐빈지"
-          }
-        },
         "map": {
           "label": "시작 맵",
-          "description": "c1m1_hotel은 Dead Center에서 시작합니다. 생존과 스캐빈지는 전용 맵이 필요합니다."
+          "description": "c1m1_hotel은 Dead Center로 시작합니다. 게임 모드는 플레이어가 로비에서 고릅니다."
         },
         "password": {
           "label": "접속 비밀번호",
@@ -2745,14 +2755,6 @@
             "Normal": "보통",
             "Hard": "어드밴스드",
             "Impossible": "전문가"
-          }
-        },
-        "allTalk": {
-          "label": "전체 음성",
-          "description": "음성 채팅에서 양 팀이 서로의 목소리를 듣습니다.",
-          "options": {
-            "0": "끔",
-            "1": "켬"
           }
         },
         "steamGroup": {
@@ -3382,7 +3384,7 @@
       }
     },
     "tf2": {
-      "description": "Team Fortress 2 전용 서버(srcds)입니다. SteamCMD로 익명 설치됩니다(약 10 GB).",
+      "description": "Team Fortress 2 전용 서버(srcds 64비트 버전)이며, SteamCMD로 익명 설치됩니다(약 15GB).",
       "variables": {
         "hostname": {
           "label": "서버 이름"

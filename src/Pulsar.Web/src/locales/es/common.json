@@ -2373,7 +2373,31 @@
         },
         "scenario": {
           "label": "Escenario",
-          "description": "El nombre de recurso de la misión: {ECC61978EDCC2B5A}Missions/23_Campaign.conf es Conflict en Everon."
+          "description": "Los escenarios multijugador del juego, como los lista -listScenarios.",
+          "options": {
+            "conflict-everon": "Conflict - Everon",
+            "conflict-north": "Conflict - Northern Everon",
+            "conflict-south": "Conflict - Southern Everon",
+            "conflict-west": "Conflict - Western Everon",
+            "conflict-montignac": "Conflict - Montignac",
+            "conflict-arland": "Conflict - Arland",
+            "hqc-everon": "Conflict: HQ Commander - Everon",
+            "hqc-arland": "Conflict: HQ Commander - Arland",
+            "hqc-kolguyev": "Conflict: HQ Commander - Kolguyev",
+            "gm-everon": "Game Master - Everon",
+            "gm-arland": "Game Master - Arland",
+            "gm-kolguyev": "Game Master - Kolguyev",
+            "combatops-arland": "Combat Ops - Arland",
+            "combatops-everon": "Combat Ops - Everon",
+            "cah-briars": "Capture & Hold - Briars",
+            "cah-castle": "Capture & Hold - Montfort Castle",
+            "cah-concrete": "Capture & Hold - Concrete Plant",
+            "cah-factory": "Capture & Hold - Almara Factory",
+            "cah-forest": "Capture & Hold - Simon's Wood",
+            "cah-lemoule": "Capture & Hold - Le Moule",
+            "cah-base": "Capture & Hold - Camp Blake",
+            "cah-morton": "Capture & Hold - Morton"
+          }
         },
         "maxPlayers": {
           "label": "Slots"
@@ -2408,10 +2432,6 @@
         },
         "viewDistance": {
           "label": "Distancia de visión máx. (m)"
-        },
-        "autoSave": {
-          "label": "Autoguardado cada (min)",
-          "description": "0: sin autoguardado."
         },
         "maxFps": {
           "label": "FPS del servidor"
@@ -2707,24 +2727,14 @@
       }
     },
     "l4d2": {
-      "description": "Servidor dedicado de Left 4 Dead 2 (srcds), instalado de forma anónima con SteamCMD (unos 12 GB).",
+      "description": "Servidor dedicado de Left 4 Dead 2 (srcds), instalado de forma anónima con SteamCMD (unos 10 GB).",
       "variables": {
         "hostname": {
           "label": "Nombre del servidor"
         },
-        "gameMode": {
-          "label": "Modo de juego",
-          "options": {
-            "coop": "Campaña",
-            "realism": "Realismo",
-            "versus": "Versus",
-            "survival": "Supervivencia",
-            "scavenge": "Carroñero"
-          }
-        },
         "map": {
           "label": "Mapa inicial",
-          "description": "c1m1_hotel inicia Dead Center; supervivencia y carroñero necesitan un mapa hecho para ellos."
+          "description": "c1m1_hotel arranca Dead Center. Los jugadores eligen el modo de juego en su lobby."
         },
         "password": {
           "label": "Contraseña de acceso",
@@ -2745,14 +2755,6 @@
             "Normal": "Normal",
             "Hard": "Avanzado",
             "Impossible": "Experto"
-          }
-        },
-        "allTalk": {
-          "label": "Chat de voz global",
-          "description": "Ambos equipos se escuchan por el chat de voz.",
-          "options": {
-            "0": "Desactivado",
-            "1": "Activado"
           }
         },
         "steamGroup": {
@@ -3382,7 +3384,7 @@
       }
     },
     "tf2": {
-      "description": "Servidor dedicado de Team Fortress 2 (srcds), instalado de forma anónima con SteamCMD (unos 10 GB).",
+      "description": "Servidor dedicado de Team Fortress 2 (srcds, el de 64 bits), instalado de forma anónima con SteamCMD (unos 15 GB).",
       "variables": {
         "hostname": {
           "label": "Nombre del servidor"

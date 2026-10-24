@@ -448,6 +448,8 @@ Linux agent. (Server hosts and bulk enrollment: Phase 14; backups of running gam
 
 A stop step that closes a game's window (`WM_CLOSE`, as `taskkill` without `/F` does), for games whose server is a windowed program that neither reads its console nor takes Ctrl+C: Core Keeper (checked on 2026-10-24: `CoreKeeperServer.exe` is a GUI program, Ctrl+C left it running until the stop timed out, and its own launch script stops it with `taskkill`). The host would post the message on the game's own desktop, which needs checking with servers run as their own accounts by the agent's service.
 
+Satisfactory, once its worlds can live in the server folder: its dedicated server keeps them in the running account's `%LOCALAPPDATA%\FactoryGame\Saved\SaveGames` (no argument moves them, and manifests may not redirect that variable), so backups would miss them; its name and passwords are set in the game when it is claimed.
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).
