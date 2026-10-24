@@ -75,7 +75,7 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
             try
             {
                 await using (var copy = File.Create(verified))
-                await using (var content = executable.Open())
+                await using (var content = BoundedEntryStream.Open(executable))
                 {
                     await content.CopyToAsync(copy, cancellationToken);
                 }
@@ -102,7 +102,7 @@ public sealed partial class MinecraftBedrockInstaller(IServerFiles files, HttpMe
                         continue; // the server's own settings
                     }
 
-                    await using var content = entry.Open();
+                    await using var content = BoundedEntryStream.Open(entry);
                     files.Write(serverDirectory, relative, content);
                 }
             }

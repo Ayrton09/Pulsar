@@ -536,7 +536,8 @@ public sealed partial class SteamCmdRunner(
     /// <summary>
     /// Text for the server's console, which whoever may read the server's console sees: the run's secrets and, with an
     /// account, its user name and Steam ID are blanked out (the panel shows the account's name only to those who manage
-    /// the panel's settings).
+    /// the panel's settings). Each line is matched whole: a secret the pseudo console wrapped across two lines would show
+    /// its parts, which SteamCMD's short login lines never need (residual).
     /// </summary>
     internal static string ForConsole(SteamCmdJob job, string text)
     {

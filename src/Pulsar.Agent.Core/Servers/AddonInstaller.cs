@@ -247,7 +247,7 @@ public sealed class AddonInstaller(IServerFiles files, HttpMessageHandler handle
             [.. ownedBefore.Union(added, StringComparer.OrdinalIgnoreCase).Except(replacing, StringComparer.OrdinalIgnoreCase)], replacing));
         foreach (var (entry, path) in entries)
         {
-            using var content = entry.Open();
+            using var content = BoundedEntryStream.Open(entry);
             files.Write(serverDirectory, path, content);
         }
 

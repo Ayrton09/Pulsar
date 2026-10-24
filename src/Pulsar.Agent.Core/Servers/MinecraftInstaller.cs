@@ -119,7 +119,7 @@ public sealed class MinecraftInstaller(IServerFiles files, HttpMessageHandler ha
         }
         foreach (var (entry, relative) in entries)
         {
-            await using var content = entry.Open();
+            await using var content = BoundedEntryStream.Open(entry);
             files.Write(serverDirectory, $"{JavaDirectory}/{relative}", content);
         }
 
