@@ -176,6 +176,7 @@
     "permissions": "Permisos",
     "assignedUsers": "Usuarios",
     "builtIn": "Incluido",
+    "builtInDescription": "Acceso total a todo. Rol incluido.",
     "allPermissions": "Todos los permisos",
     "permissionCount_one": "{{count}} permiso",
     "permissionCount_other": "{{count}} permisos",

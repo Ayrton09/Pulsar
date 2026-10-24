@@ -11,6 +11,7 @@ import { errorMessage } from '../../lib/errors';
 import { can, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { groupPermissions } from './permissionGroups';
+import { roleDescription } from './roleText';
 import {
   useCreateRole,
   useDeleteRole,
@@ -73,7 +74,7 @@ export function RolesPage() {
                     {role.name}
                     {role.isSystem && <Badge tone="accent">{t('roles.builtIn')}</Badge>}
                   </div>
-                  {role.description && <p className="mt-0.5 text-xs text-muted">{role.description}</p>}
+                  {roleDescription(t, role) && <p className="mt-0.5 text-xs text-muted">{roleDescription(t, role)}</p>}
                 </Td>
                 <Td>{t(`roles.scopes.${role.scope}`)}</Td>
                 <Td>

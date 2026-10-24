@@ -176,6 +176,7 @@
     "permissions": "Permissions",
     "assignedUsers": "Users",
     "builtIn": "Built-in",
+    "builtInDescription": "Full access to everything. Built-in role.",
     "allPermissions": "All permissions",
     "permissionCount_one": "{{count}} permission",
     "permissionCount_other": "{{count}} permissions",

@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import i18next from 'i18next';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Schemas } from '../../api/client';
@@ -40,6 +41,33 @@ beforeAll(async () => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe('the built-in role', () => {
+  it("is described in the reader's language, not with the English text stored with it", async () => {
+    const administrator: Schemas['RoleSummary'] = {
+      ...operator,
+      id: '0192f1a0-0000-7000-8000-0000000000c2',
+      name: 'Administrator',
+      description: 'Stored when the database was made.',
+      scope: 'global',
+      isSystem: true,
+    };
+    fakeApi({
+      'GET /api/v1/auth/session': session(adminUser),
+      'GET /api/v1/roles': () => json([administrator, { ...operator, description: 'Runs the servers.' }]),
+      'GET /api/v1/permissions': () => json(catalog),
+    });
+    renderAt('/admin/roles');
+
+    expect(await screen.findByText('Full access to everything. Built-in role.')).toBeInTheDocument();
+    expect(screen.queryByText('Stored when the database was made.')).not.toBeInTheDocument();
+    // The others' are what their administrators wrote.
+    expect(screen.getByText('Runs the servers.')).toBeInTheDocument();
+    await act(() => i18next.changeLanguage('es'));
+    expect(await screen.findByText('Acceso total a todo. Rol incluido.')).toBeInTheDocument();
+    await act(() => i18next.changeLanguage('en-US'));
+  });
 });
 
 describe('editing a role', () => {

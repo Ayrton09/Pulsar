@@ -30,6 +30,7 @@ import {
   type Role,
   type User,
 } from './api';
+import { roleDescription } from './roleText';
 
 export function UsersPage() {
   const { t } = useTranslation();
@@ -144,7 +145,7 @@ function RoleChecklist({
           label={
             <>
               {role.name}
-              {role.description && <span className="block text-xs text-muted">{role.description}</span>}
+              {roleDescription(t, role) && <span className="block text-xs text-muted">{roleDescription(t, role)}</span>}
             </>
           }
           checked={selected.has(role.id)}
