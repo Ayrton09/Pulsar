@@ -270,29 +270,43 @@ public static partial class LaunchPlanRenderer
             _ => throw new LaunchPlanException($"Unsupported placeholder {string.Join('.', parts)}."),
         };
 
-        // A lone placeholder gives its type to a JSON value: "{{port.game}}" is a number, "{{var.name}}" a string.
-        ConfigValueKind KindOf(string template) => Placeholders.Strip(template).Length > 0 ? ConfigValueKind.Text : Placeholders.Parse(template, out _) switch
+        // A JSON value's type: a lone placeholder gives its own ("{{port.game}}" is a number, "{{var.name}}" a string), a
+        // literal true, false or plain number is one; mixed text is a string.
+        ConfigValueKind KindOf(string template)
         {
-            [["port", _]] => ConfigValueKind.Number,
-            [["var", var key]] => definitions[key].Type switch
+            var placeholders = Placeholders.Parse(template, out _);
+            if (placeholders.Count == 0)
             {
-                VariableType.Integer or VariableType.Number => ConfigValueKind.Number,
-                VariableType.Boolean => ConfigValueKind.Boolean,
-                VariableType.Enum => KindOfChoices(definitions[key].Options!.Select(o => o.Value)),
-                _ => ConfigValueKind.Text,
-            },
-            [["var", var key, var sub]] => KindOfChoices(definitions[key].Options!.Select(o => o.Map?.GetValueOrDefault(sub))),
-            _ => ConfigValueKind.Text,
-        };
+                return KindOfChoices([template]);
+            }
 
-        // A choice's values (or what they map to) that are all true or false are a boolean, all plain numbers a number.
-        static ConfigValueKind KindOfChoices(IEnumerable<string?> values)
-        {
-            var list = values.ToList();
-            return list.All(v => v is "true" or "false") ? ConfigValueKind.Boolean
-                : list.All(v => v is not null && JsonNumber().IsMatch(v)) ? ConfigValueKind.Number
-                : ConfigValueKind.Text;
+            if (placeholders.Count > 1 || Placeholders.Strip(template).Length > 0)
+            {
+                return ConfigValueKind.Text;
+            }
+
+            var variable = placeholders[0] is ["var", var key, ..] ? definitions.GetValueOrDefault(key) : null;
+            return placeholders[0] switch
+            {
+                ["port", _] => ConfigValueKind.Number,
+                ["var", _] => variable?.Type switch
+                {
+                    VariableType.Integer or VariableType.Number => ConfigValueKind.Number,
+                    VariableType.Boolean => ConfigValueKind.Boolean,
+                    VariableType.Enum => KindOfChoices([.. (variable.Options ?? []).Select(o => o.Value)]),
+                    _ => ConfigValueKind.Text,
+                },
+                ["var", _, var sub] => KindOfChoices([.. (variable?.Options ?? []).Select(o => o.Map?.GetValueOrDefault(sub))]),
+                _ => ConfigValueKind.Text,
+            };
         }
+
+        // Values (a choice's, or what they map to) that are all true or false are a boolean, all plain numbers a number.
+        static ConfigValueKind KindOfChoices(IReadOnlyList<string?> values) =>
+            values.Count == 0 ? ConfigValueKind.Text
+            : values.All(v => v is "true" or "false") ? ConfigValueKind.Boolean
+            : values.All(v => v is not null && JsonNumber().IsMatch(v)) ? ConfigValueKind.Number
+            : ConfigValueKind.Text;
 
         bool IsSecret(string template) => Placeholders.Parse(template, out _).Any(p => p is ["rcon", "password"]
             || (p is ["var", var key, ..] && definitions.TryGetValue(key, out var variable) && variable.Secret));

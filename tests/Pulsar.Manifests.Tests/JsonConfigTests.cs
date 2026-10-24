@@ -100,6 +100,20 @@ public sealed class JsonConfigTests
         Assert.Throws<LaunchPlanException>(() => ConfigFileWriter.Apply(Json(("/game/name", "Mine", ConfigValueKind.Text)), existing));
     }
 
+    [Theory]
+    [InlineData(63)]
+    [InlineData(64)]
+    [InlineData(65)]
+    public void AFileNestedAsDeepAsTheReaderGoesIsWrittenOrRefusedCleanly(int depth)
+    {
+        var existing = string.Concat(Enumerable.Repeat("""{"a":""", depth - 1)) + "{}" + new string('}', depth - 1);
+        var file = Json(("/a/a/a/a/a/a/a/b", "x", ConfigValueKind.Text), ("/b", "y", ConfigValueKind.Text));
+
+        var exception = Record.Exception(() => ConfigFileWriter.Apply(file, existing));
+
+        Assert.True(exception is null or LaunchPlanException, exception?.ToString());
+    }
+
     [Fact]
     public void AByteOrderMarkIsReadAndNotWrittenBack()
     {
@@ -107,7 +121,7 @@ public sealed class JsonConfigTests
     }
 
     [Fact]
-    public void ALonePlaceholderGivesItsTypeToTheValue()
+    public void ALonePlaceholderOrALiteralGivesItsTypeToTheValue()
     {
         var manifest = TestManifests.Parse(WithJsonFile(new JsonObject
         {
@@ -117,6 +131,9 @@ public sealed class JsonConfigTests
             ["/greeting"] = "{{var.message}}",
             ["/address"] = "{{port.game.ip}}:{{port.game}}",
             ["/literal"] = "16",
+            ["/flag"] = "true",
+            ["/folder"] = "./savegame",
+            ["/version"] = "016",
         }));
 
         var file = Assert.Single(LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, new ServerBinding("abcd1234",
@@ -124,13 +141,16 @@ public sealed class JsonConfigTests
 
         Assert.Equal(
             [("/port", ConfigValueKind.Number), ("/delay", ConfigValueKind.Number), ("/quiet", ConfigValueKind.Boolean), ("/greeting", ConfigValueKind.Text),
-                ("/address", ConfigValueKind.Text), ("/literal", ConfigValueKind.Text)],
+                ("/address", ConfigValueKind.Text), ("/literal", ConfigValueKind.Number), ("/flag", ConfigValueKind.Boolean),
+                ("/folder", ConfigValueKind.Text), ("/version", ConfigValueKind.Text)],
             file.Entries.Select(e => (e.Key, e.Kind)));
         var written = JsonNode.Parse(ConfigFileWriter.Apply(file, null))!;
         Assert.Equal(27015, written["port"]!.GetValue<int>());
         Assert.False(written["quiet"]!.GetValue<bool>());
         Assert.Equal("0.0.0.0:27015", written["address"]!.GetValue<string>());
-        Assert.Equal("16", written["literal"]!.GetValue<string>());
+        Assert.Equal(16, written["literal"]!.GetValue<int>());
+        Assert.True(written["flag"]!.GetValue<bool>());
+        Assert.Equal("016", written["version"]!.GetValue<string>());
     }
 
     [Fact]

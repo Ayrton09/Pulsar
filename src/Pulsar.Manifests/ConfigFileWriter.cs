@@ -346,7 +346,15 @@ public static partial class ConfigFileWriter
             // A file, not a web page: letters stay as they are typed, quotes and control characters are still escaped.
             Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         };
-        return root.ToJsonString(options) + newline;
+        try
+        {
+            return root.ToJsonString(options) + newline;
+        }
+        catch (JsonException)
+        {
+            // Members added under a file already nested near the writer's depth limit.
+            throw new LaunchPlanException($"{file.Path} is nested too deeply to add the settings to; fix it or delete the file.");
+        }
     }
 
     private static JsonValue JsonValueOf(RenderedConfigFile file, ConfigEntry entry) => entry.Kind switch

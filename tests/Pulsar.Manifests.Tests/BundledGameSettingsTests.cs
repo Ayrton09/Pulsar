@@ -83,7 +83,8 @@ public sealed class BundledGameSettingsTests
             VariableType.Enum => [variable.Options![0].Value],
             VariableType.Integer or VariableType.Number => [(variable.Max == variable.Min ? variable.Min!.Value : variable.Min!.Value + 1).ToString(CultureInfo.InvariantCulture)],
             VariableType.Boolean => ["true"],
-            _ => new[] { "Pulsar test 1", "pulsar1", "Passw0rd-123", "monthly,vanilla", "https://example.com/pulsar", "12345678", "admin@example.com" },
+            _ => new[] { "Pulsar test 1", "pulsar1", "Passw0rd-123", "monthly,vanilla", "https://example.com/pulsar", "12345678", "admin@example.com",
+                "76561197960287930", "0123456789abcdef0123456789ABCDEF" },
         };
         return candidates.FirstOrDefault(c => VariableValues.Check(variable, c) is null)
             ?? throw new InvalidOperationException($"No sample value for {variable.Key}.");
