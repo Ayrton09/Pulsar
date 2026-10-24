@@ -16,7 +16,9 @@ public static partial class ConfigFileWriter
     public static string? ValueError(ConfigFileFormat format, string value)
     {
         ArgumentNullException.ThrowIfNull(value);
-        if (value.Any(char.IsControl))
+        // Unicode's line and paragraph separators are no control characters, but YAML readers (SCP: Secret Laboratory's)
+        // break lines at them.
+        if (value.Any(c => char.IsControl(c) || c is '\u2028' or '\u2029'))
         {
             return "Line breaks and control characters are not allowed.";
         }

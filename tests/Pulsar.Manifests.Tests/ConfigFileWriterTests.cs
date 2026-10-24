@@ -197,6 +197,9 @@ public sealed class ConfigFileWriterTests
     [InlineData("&anchor")]
     [InlineData("*alias")]
     [InlineData("|")]
+    [InlineData("name\u2028enable_whitelist: false")] // a line separator, which YAML readers break lines at
+    [InlineData("name\u2029x")]
+    [InlineData("name\u0085x")]
     public void ColonValuesAreTakenAsTheyAreTyped(string value)
     {
         Assert.NotNull(ConfigFileWriter.ValueError(ConfigFileFormat.Colon, value));
