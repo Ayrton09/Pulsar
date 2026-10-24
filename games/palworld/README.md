@@ -12,3 +12,9 @@ panel and agent:
   writes only its keys and keeps any others added by hand.
 - Ready when RCON answers (about 6 s). `Save` then `Shutdown 1` stop it with code 0 in 4 to 6 s.
 - `-QueryPort` moves the Steam query port; worlds are in `Pal/Saved/SaveGames`.
+
+## Options added in 1.0.8
+
+Version 1.2.0 adds 25 options: autosave interval, player-to-player damage, friendly fire, base raids, hardcore, Pals lost on death, Pal and player damage rates, player and Pal hunger and stamina rates, structure decay, item weight, equipment wear, bases on the server, buildings per player, supply drop interval, respawn delay, world backups, player list, client mods and public IP. The settings whose value is a bare word in the ini (`DeathPenalty`, `RandomizerType`, `LogFormatType`, `Difficulty`) are not offered yet: the struct writer quotes text values.
+
+They come from AMP's template for the game (and, where noted, other panels' templates or the game's documentation); they were not each tried on a real server. The test suite checks that they are written to the right file and key, and that an option left empty changes nothing.

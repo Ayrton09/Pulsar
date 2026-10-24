@@ -15,3 +15,9 @@ through a development panel and agent:
   on loopback); it does not say whether a password is needed.
 - It reads no commands from its console (`help` prints nothing). Ctrl+C saves the world (`Sigterm: Emergency
   Shutdown`, then `Autosave complete`) and exits with code 0 in about 4 s.
+
+## Options added in 1.0.8
+
+Version 1.1.0 adds the 15 Custom game mode settings (`CustomGameModeSettings`: enemies, animals, seasons, day length, survival rules), which the game reads only with the `Custom` game mode and when a new save is created, and the idle day cycle speed and the active and idle frame rates. The json writer creates `CustomGameModeSettings` when the file does not have it.
+
+They come from AMP's template for the game (and, where noted, other panels' templates or the game's documentation); they were not each tried on a real server. The test suite checks that they are written to the right file and key, and that an option left empty changes nothing.
