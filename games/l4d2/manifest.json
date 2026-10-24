@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "l4d2",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Left 4 Dead 2",
   "description": "Left 4 Dead 2 dedicated server (srcds), installed anonymously with SteamCMD (about 10 GB).",
   "authors": ["Pulsar contributors"],
@@ -26,7 +26,28 @@
       "description": "Campaign and realism only." },
     { "key": "steamGroup", "label": "Steam group", "type": "string", "maxLength": 20, "pattern": "^[0-9]{1,20}$",
       "description": "The group's number (its ID on its Steam page): the server shows up for its members." },
-    { "key": "steamGroupOnly", "label": "Steam group members only", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] }
+    { "key": "steamGroupOnly", "label": "Steam group members only", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "tags", "label": "Server tags", "type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9_,-]{1,128}$",
+      "description": "Comma-separated tags shown in the server browser." },
+    { "key": "region", "label": "Region", "type": "enum",
+      "options": [ { "value": "-1", "label": "None" }, { "value": "0", "label": "US East" }, { "value": "1", "label": "US West" }, { "value": "2", "label": "South America" },
+                   { "value": "3", "label": "Europe" }, { "value": "4", "label": "Asia" }, { "value": "5", "label": "Australia" }, { "value": "6", "label": "Middle East" }, { "value": "7", "label": "Africa" }, { "value": "255", "label": "World" } ],
+      "description": "Region shown in the server browser." },
+    { "key": "searchKey", "label": "Lobby search key", "type": "string", "maxLength": 64, "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "description": "Players can find the server in lobbies with this key." },
+    { "key": "lan", "label": "LAN only", "type": "enum", "options": [ { "value": "0", "label": "Off" }, { "value": "1", "label": "On" } ],
+      "description": "Not listed on the internet and players are not authenticated." },
+    { "key": "cheats", "label": "Cheats", "type": "enum", "options": [ { "value": "0", "label": "Off" }, { "value": "1", "label": "On" } ],
+      "description": "Players can use cheat commands." },
+    { "key": "voice", "label": "Voice chat", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "visibleMaxPlayers", "label": "Slots shown in the browser", "type": "integer", "min": -1, "max": 32,
+      "description": "-1: the real slots." },
+    { "key": "pure", "label": "Pure server", "type": "enum",
+      "options": [ { "value": "0", "label": "Off" }, { "value": "1", "label": "Files must match, except the whitelist" }, { "value": "2", "label": "Files must come from Steam" } ] },
+    { "key": "consistency", "label": "Check critical files", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "downloadUrl", "label": "Fast download URL", "type": "string", "maxLength": 200, "pattern": "^https?://[A-Za-z0-9._~:/?#@!$&'()*+,=%-]{1,190}$",
+      "description": "Where players download custom content instead of the server." },
+    { "key": "pausable", "label": "Players can pause", "type": "enum", "options": [ { "value": "0", "label": "Off" }, { "value": "1", "label": "On" } ] }
   ],
 
   "ports": [
@@ -67,9 +88,21 @@
         "sv_allow_lobby_connect_only": "{{var.lobbyOnly}}",
         "z_difficulty": "{{var.difficulty}}",
         "sv_steamgroup": "{{var.steamGroup}}",
-        "sv_steamgroup_exclusive": "{{var.steamGroupOnly}}"
+        "sv_steamgroup_exclusive": "{{var.steamGroupOnly}}",
+        "sv_tags": "{{var.tags}}",
+        "sv_region": "{{var.region}}",
+        "sv_search_key": "{{var.searchKey}}",
+        "sv_lan": "{{var.lan}}",
+        "sv_cheats": "{{var.cheats}}",
+        "sv_voiceenable": "{{var.voice}}",
+        "sv_visiblemaxplayers": "{{var.visibleMaxPlayers}}",
+        "sv_pure": "{{var.pure}}",
+        "sv_consistency": "{{var.consistency}}",
+        "sv_downloadurl": "{{var.downloadUrl}}",
+        "sv_pausable": "{{var.pausable}}"
       },
-      "keepIfEmpty": ["z_difficulty", "sv_steamgroup", "sv_steamgroup_exclusive"] }
+      "keepIfEmpty": ["z_difficulty", "sv_steamgroup", "sv_steamgroup_exclusive",
+        "sv_tags", "sv_region", "sv_search_key", "sv_lan", "sv_cheats", "sv_voiceenable", "sv_visiblemaxplayers", "sv_pure", "sv_consistency", "sv_downloadurl", "sv_pausable"] }
   ],
 
   "query": { "protocol": "a2s", "port": "game" },

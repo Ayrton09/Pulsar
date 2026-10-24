@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "cs2",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "Counter-Strike 2",
   "description": "Counter-Strike 2 dedicated server, installed anonymously with SteamCMD (about 75 GB).",
   "authors": ["Pulsar contributors"],
@@ -45,7 +45,30 @@
     { "key": "allTalk", "label": "All talk", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
       "description": "Both teams hear each other on voice chat." },
     { "key": "bots", "label": "Bots", "type": "integer", "min": 0, "max": 64,
-      "description": "How many bots fill the server." }
+      "description": "How many bots fill the server." },
+    { "key": "tags", "label": "Server tags", "type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9_,-]{1,128}$",
+      "description": "Comma-separated tags shown in the server browser." },
+    { "key": "lan", "label": "LAN only", "type": "enum", "options": [ { "value": "0", "label": "Off" }, { "value": "1", "label": "On" } ],
+      "description": "Not listed on the internet and players are not authenticated." },
+    { "key": "cheats", "label": "Cheats", "type": "enum", "options": [ { "value": "0", "label": "Off" }, { "value": "1", "label": "On" } ],
+      "description": "Players can use cheat commands." },
+    { "key": "voice", "label": "Voice chat", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "workshopMap", "label": "Workshop map ID", "type": "integer", "min": 1, "max": 4294967295,
+      "description": "Starts on this Steam Workshop map instead of the starting map." },
+    { "key": "workshopCollection", "label": "Workshop collection ID", "type": "integer", "min": 1, "max": 4294967295,
+      "description": "Hosts the maps of this Steam Workshop collection." },
+    { "key": "mapGroup", "label": "Map group", "type": "string", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$",
+      "description": "Map group from gamemodes_server.txt that sets the map rotation." },
+    { "key": "overtime", "label": "Overtime", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
+      "description": "Play overtime when the score is tied after the last round." },
+    { "key": "overtimeRounds", "label": "Overtime rounds", "type": "integer", "min": 2, "max": 30 },
+    { "key": "halftime", "label": "Halftime", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
+      "description": "Teams swap sides in the middle of the match." },
+    { "key": "matchClinch", "label": "End when clinched", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
+      "description": "The match ends as soon as one team cannot be caught." },
+    { "key": "c4Timer", "label": "C4 timer (s)", "type": "integer", "min": 10, "max": 90 },
+    { "key": "botDifficulty", "label": "Bot difficulty", "type": "enum",
+      "options": [ { "value": "0", "label": "Easy" }, { "value": "1", "label": "Normal" }, { "value": "2", "label": "Hard" }, { "value": "3", "label": "Expert" } ] }
   ],
 
   "ports": [
@@ -69,7 +92,9 @@
         "-maxplayers", "{{var.maxPlayers}}",
         "+game_type", "{{var.gameMode.gameType}}",
         "+game_mode", "{{var.gameMode.gameMode}}",
-        "+map", "{{var.map}}",
+        { "if": "var.workshopMap", "then": ["+host_workshop_map", "{{var.workshopMap}}"], "else": ["+map", "{{var.map}}"] },
+        { "if": "var.workshopCollection", "then": ["+host_workshop_collection", "{{var.workshopCollection}}"] },
+        { "if": "var.mapGroup", "then": ["+mapgroup", "{{var.mapGroup}}"] },
         "+rcon_password", "{{rcon.password}}",
         { "if": "var.gslt", "then": ["+sv_setsteamaccount", "{{var.gslt}}"] }
       ],
@@ -85,7 +110,11 @@
 
   "configFiles": [
     { "path": "game/csgo/cfg/server.cfg", "format": "source-cfg", "mode": "patch",
-      "set": { "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}" } },
+      "set": {
+        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}",
+        "sv_tags": "{{var.tags}}", "sv_lan": "{{var.lan}}", "sv_cheats": "{{var.cheats}}", "sv_voiceenable": "{{var.voice}}"
+      },
+      "keepIfEmpty": ["sv_tags", "sv_lan", "sv_cheats", "sv_voiceenable"] },
     { "path": "game/csgo/cfg/gamemode_casual_server.cfg", "format": "source-cfg", "mode": "patch",
       "set": {
         "mp_friendlyfire": "{{var.friendlyFire}}",
@@ -100,9 +129,15 @@
         "mp_autoteambalance": "{{var.autoTeamBalance}}",
         "mp_limitteams": "{{var.limitTeams}}",
         "sv_alltalk": "{{var.allTalk}}",
-        "bot_quota": "{{var.bots}}"
+        "bot_quota": "{{var.bots}}",
+        "mp_overtime_enable": "{{var.overtime}}",
+        "mp_overtime_maxrounds": "{{var.overtimeRounds}}",
+        "mp_halftime": "{{var.halftime}}",
+        "mp_match_can_clinch": "{{var.matchClinch}}",
+        "mp_c4timer": "{{var.c4Timer}}",
+        "bot_difficulty": "{{var.botDifficulty}}"
       },
-      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_roundtime", "mp_roundtime_defuse", "mp_roundtime_hostage", "mp_freezetime", "mp_buytime", "mp_startmoney", "mp_warmuptime", "mp_autoteambalance", "mp_limitteams", "sv_alltalk", "bot_quota"] },
+      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_roundtime", "mp_roundtime_defuse", "mp_roundtime_hostage", "mp_freezetime", "mp_buytime", "mp_startmoney", "mp_warmuptime", "mp_autoteambalance", "mp_limitteams", "sv_alltalk", "bot_quota", "mp_overtime_enable", "mp_overtime_maxrounds", "mp_halftime", "mp_match_can_clinch", "mp_c4timer", "bot_difficulty"] },
     { "path": "game/csgo/cfg/gamemode_competitive_server.cfg", "format": "source-cfg", "mode": "patch",
       "set": {
         "mp_friendlyfire": "{{var.friendlyFire}}",
@@ -117,9 +152,15 @@
         "mp_autoteambalance": "{{var.autoTeamBalance}}",
         "mp_limitteams": "{{var.limitTeams}}",
         "sv_alltalk": "{{var.allTalk}}",
-        "bot_quota": "{{var.bots}}"
+        "bot_quota": "{{var.bots}}",
+        "mp_overtime_enable": "{{var.overtime}}",
+        "mp_overtime_maxrounds": "{{var.overtimeRounds}}",
+        "mp_halftime": "{{var.halftime}}",
+        "mp_match_can_clinch": "{{var.matchClinch}}",
+        "mp_c4timer": "{{var.c4Timer}}",
+        "bot_difficulty": "{{var.botDifficulty}}"
       },
-      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_roundtime", "mp_roundtime_defuse", "mp_roundtime_hostage", "mp_freezetime", "mp_buytime", "mp_startmoney", "mp_warmuptime", "mp_autoteambalance", "mp_limitteams", "sv_alltalk", "bot_quota"] },
+      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_roundtime", "mp_roundtime_defuse", "mp_roundtime_hostage", "mp_freezetime", "mp_buytime", "mp_startmoney", "mp_warmuptime", "mp_autoteambalance", "mp_limitteams", "sv_alltalk", "bot_quota", "mp_overtime_enable", "mp_overtime_maxrounds", "mp_halftime", "mp_match_can_clinch", "mp_c4timer", "bot_difficulty"] },
     { "path": "game/csgo/cfg/gamemode_competitive2v2_server.cfg", "format": "source-cfg", "mode": "patch",
       "set": {
         "mp_friendlyfire": "{{var.friendlyFire}}",
@@ -134,9 +175,15 @@
         "mp_autoteambalance": "{{var.autoTeamBalance}}",
         "mp_limitteams": "{{var.limitTeams}}",
         "sv_alltalk": "{{var.allTalk}}",
-        "bot_quota": "{{var.bots}}"
+        "bot_quota": "{{var.bots}}",
+        "mp_overtime_enable": "{{var.overtime}}",
+        "mp_overtime_maxrounds": "{{var.overtimeRounds}}",
+        "mp_halftime": "{{var.halftime}}",
+        "mp_match_can_clinch": "{{var.matchClinch}}",
+        "mp_c4timer": "{{var.c4Timer}}",
+        "bot_difficulty": "{{var.botDifficulty}}"
       },
-      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_roundtime", "mp_roundtime_defuse", "mp_roundtime_hostage", "mp_freezetime", "mp_buytime", "mp_startmoney", "mp_warmuptime", "mp_autoteambalance", "mp_limitteams", "sv_alltalk", "bot_quota"] },
+      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_roundtime", "mp_roundtime_defuse", "mp_roundtime_hostage", "mp_freezetime", "mp_buytime", "mp_startmoney", "mp_warmuptime", "mp_autoteambalance", "mp_limitteams", "sv_alltalk", "bot_quota", "mp_overtime_enable", "mp_overtime_maxrounds", "mp_halftime", "mp_match_can_clinch", "mp_c4timer", "bot_difficulty"] },
     { "path": "game/csgo/cfg/gamemode_armsrace_server.cfg", "format": "source-cfg", "mode": "patch",
       "set": {
         "mp_friendlyfire": "{{var.friendlyFire}}",
@@ -151,9 +198,15 @@
         "mp_autoteambalance": "{{var.autoTeamBalance}}",
         "mp_limitteams": "{{var.limitTeams}}",
         "sv_alltalk": "{{var.allTalk}}",
-        "bot_quota": "{{var.bots}}"
+        "bot_quota": "{{var.bots}}",
+        "mp_overtime_enable": "{{var.overtime}}",
+        "mp_overtime_maxrounds": "{{var.overtimeRounds}}",
+        "mp_halftime": "{{var.halftime}}",
+        "mp_match_can_clinch": "{{var.matchClinch}}",
+        "mp_c4timer": "{{var.c4Timer}}",
+        "bot_difficulty": "{{var.botDifficulty}}"
       },
-      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_roundtime", "mp_roundtime_defuse", "mp_roundtime_hostage", "mp_freezetime", "mp_buytime", "mp_startmoney", "mp_warmuptime", "mp_autoteambalance", "mp_limitteams", "sv_alltalk", "bot_quota"] },
+      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_roundtime", "mp_roundtime_defuse", "mp_roundtime_hostage", "mp_freezetime", "mp_buytime", "mp_startmoney", "mp_warmuptime", "mp_autoteambalance", "mp_limitteams", "sv_alltalk", "bot_quota", "mp_overtime_enable", "mp_overtime_maxrounds", "mp_halftime", "mp_match_can_clinch", "mp_c4timer", "bot_difficulty"] },
     { "path": "game/csgo/cfg/gamemode_deathmatch_server.cfg", "format": "source-cfg", "mode": "patch",
       "set": {
         "mp_friendlyfire": "{{var.friendlyFire}}",
@@ -168,9 +221,15 @@
         "mp_autoteambalance": "{{var.autoTeamBalance}}",
         "mp_limitteams": "{{var.limitTeams}}",
         "sv_alltalk": "{{var.allTalk}}",
-        "bot_quota": "{{var.bots}}"
+        "bot_quota": "{{var.bots}}",
+        "mp_overtime_enable": "{{var.overtime}}",
+        "mp_overtime_maxrounds": "{{var.overtimeRounds}}",
+        "mp_halftime": "{{var.halftime}}",
+        "mp_match_can_clinch": "{{var.matchClinch}}",
+        "mp_c4timer": "{{var.c4Timer}}",
+        "bot_difficulty": "{{var.botDifficulty}}"
       },
-      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_roundtime", "mp_roundtime_defuse", "mp_roundtime_hostage", "mp_freezetime", "mp_buytime", "mp_startmoney", "mp_warmuptime", "mp_autoteambalance", "mp_limitteams", "sv_alltalk", "bot_quota"] }
+      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_roundtime", "mp_roundtime_defuse", "mp_roundtime_hostage", "mp_freezetime", "mp_buytime", "mp_startmoney", "mp_warmuptime", "mp_autoteambalance", "mp_limitteams", "sv_alltalk", "bot_quota", "mp_overtime_enable", "mp_overtime_maxrounds", "mp_halftime", "mp_match_can_clinch", "mp_c4timer", "bot_difficulty"] }
   ],
 
   "query": { "protocol": "a2s", "port": "game" },

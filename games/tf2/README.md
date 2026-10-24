@@ -13,3 +13,9 @@ through a development panel and agent:
   `tf_weapon_criticals`, `tf_bot_quota`…). Bots join once a player is on: an empty server hibernates.
 - `quit` over RCON stops it in about 2 s; both servers end with exit code 0xC0000409 when they quit, which Pulsar
   records as the requested stop it is.
+
+## Options added in 1.0.8
+
+Server tags, region, LAN only, cheats, stalemate (sudden death and its time), spectators, dead-player camera, no damage spread, fast download URL, allow downloads, pure server and slots shown in the browser, all in `tf/cfg/server.cfg`.
+
+They come from AMP's template; none was tried on a real server.
