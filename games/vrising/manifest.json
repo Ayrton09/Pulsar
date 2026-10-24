@@ -92,7 +92,7 @@
 
   "configFiles": [
     { "path": "save-data/Settings/ServerHostSettings.json", "format": "json", "mode": "patch",
-      "set": { "/Password": "{{var.password}}", "/Rcon/Enabled": "true", "/Rcon/BindAddress": "127.0.0.1", "/Rcon/Password": "{{rcon.password}}" } },
+      "set": { "/Password": "{{var.password}}", "/Rcon/Enabled": "true", "/Rcon/BindAddress": "127.0.0.1", "/Rcon/Port": "{{port.rcon}}", "/Rcon/Password": "{{rcon.password}}" } },
     { "path": "save-data/Settings/ServerGameSettings.json", "format": "json", "mode": "patch",
       "set": {
         "/GameModeType": "{{var.gameMode}}",
