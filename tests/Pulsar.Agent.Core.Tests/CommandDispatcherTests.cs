@@ -37,7 +37,7 @@ public sealed class CommandDispatcherTests : IDisposable
     [Fact]
     public void TheAgentAnnouncesWhatItHandles()
     {
-        Assert.Equal([AgentCapabilities.Ping, AgentCapabilities.RotateCredential, AgentCapabilities.UpdatePanelKeys, AgentCapabilities.UseAgentsAddress],
+        Assert.Equal([AgentCapabilities.Ping, AgentCapabilities.ListPortsInUse, AgentCapabilities.RotateCredential, AgentCapabilities.UpdatePanelKeys, AgentCapabilities.UseAgentsAddress],
             _dispatcher.SupportedCommands.Order(StringComparer.Ordinal).ToArray().Order(StringComparer.Ordinal));
     }
 
