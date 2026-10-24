@@ -163,8 +163,8 @@ public sealed class JsonConfigTests
     {
         var manifest = TestManifests.Parse(WithJsonFile(new JsonObject { ["/a"] = "{{var.message}}" }));
 
-        Assert.True(ManifestFeatures.UsesJsonConfig(manifest));
-        Assert.False(ManifestFeatures.UsesJsonConfig(TestManifests.Load("_test")));
+        Assert.True(ManifestFeatures.UsesMoreConfigFormats(manifest));
+        Assert.False(ManifestFeatures.UsesMoreConfigFormats(TestManifests.Load("_test")));
     }
 
     private static RenderedConfigFile Json(params (string Key, string Value, ConfigValueKind Kind)[] entries) =>

@@ -222,6 +222,21 @@ public sealed class ConfigFileWriterTests
     }
 
     [Fact]
+    public void SpaceFilesChangeTheirCommandsAndKeepTheRest()
+    {
+        const string existing = "// Port 27015\r\nName Old name\r\nMap PEI\r\nWelcome Hi/255/0/0\r\nPvE\r\nMaxPlayers\t8\r\n";
+        var file = new RenderedConfigFile("Servers/pulsar/Server/Commands.dat", ConfigFileFormat.Space, ConfigFileMode.Patch,
+            [new ConfigEntry("Name", "My Unturned server", Secret: false), new ConfigEntry("MaxPlayers", "24", Secret: false),
+                new ConfigEntry("PvE", "", Secret: false), new ConfigEntry("Port", "27020", Secret: false)]);
+
+        // A commented-out command stays a comment; the one written goes at the end. Line ends stay.
+        Assert.Equal("// Port 27015\r\nName My Unturned server\r\nMap PEI\r\nWelcome Hi/255/0/0\r\nMaxPlayers 24\r\nPort 27020\r\n",
+            ConfigFileWriter.Apply(file, existing));
+        Assert.Null(ConfigFileWriter.KeyOf(ConfigFileFormat.Space, "//Name x"));
+        Assert.Equal("PvE", ConfigFileWriter.KeyOf(ConfigFileFormat.Space, "PvE"));
+    }
+
+    [Fact]
     public void XmlPropertiesChangeTheirValueAndKeepTheGamesComments()
     {
         const string existing = """

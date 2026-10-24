@@ -575,8 +575,11 @@ public static class AgentCapabilities
     /// </summary>
     public const string GameSettings = "manifest.game_settings";
 
-    /// <summary>Not a command: the agent writes Pulsar 1.0.7's JSON configuration files; an older one refuses their manifests.</summary>
-    public const string JsonConfig = "manifest.json_config";
+    /// <summary>
+    /// Not a command: the agent writes Pulsar 1.0.7's configuration formats (<c>json</c>, <c>space</c>); an older one refuses
+    /// manifests that use them.
+    /// </summary>
+    public const string MoreConfigFormats = "manifest.more_config_formats";
 
     /// <summary>Not a command: the agent enforces <see cref="ServerRuntimeSpec.Limits"/> (CPU and memory caps of a server's Job).</summary>
     public const string Limits = "server.limits";

@@ -148,7 +148,7 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
         foreach (var (name, capabilities, refused) in new[]
         {
             ("json-old", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings }, true),
-            ("json-new", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.JsonConfig }, false),
+            ("json-new", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats }, false),
         })
         {
             var node = await NodeApi.CreateAsync(admin, name);

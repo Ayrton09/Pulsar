@@ -103,7 +103,7 @@ public static partial class ConfigFileWriter
         }
         else if (file.Mode == ConfigFileMode.Managed)
         {
-            output.Add(file.Format == ConfigFileFormat.SourceCfg
+            output.Add(file.Format is ConfigFileFormat.SourceCfg or ConfigFileFormat.Space
                 ? "// Written by Pulsar before every start: changes made here are lost."
                 : "# Written by Pulsar before every start: changes made here are lost.");
         }
@@ -494,6 +494,7 @@ public static partial class ConfigFileWriter
         ConfigFileFormat.SourceCfg => $"{entry.Key} \"{entry.Value}\"",
         ConfigFileFormat.KeyValue => $"{entry.Key}={entry.Value}",
         ConfigFileFormat.Colon => $"{entry.Key}: {entry.Value}",
+        ConfigFileFormat.Space => $"{entry.Key} {entry.Value}",
         _ => $"{entry.Key}={entry.Value.Replace("\\", "\\\\", StringComparison.Ordinal)}",
     };
 
@@ -508,6 +509,8 @@ public static partial class ConfigFileWriter
 
         switch (format)
         {
+            case ConfigFileFormat.Space:
+                return text.StartsWith("//", StringComparison.Ordinal) ? null : text.Split([' ', '\t'], 2)[0];
             case ConfigFileFormat.SourceCfg:
                 if (text.StartsWith("//", StringComparison.Ordinal))
                 {

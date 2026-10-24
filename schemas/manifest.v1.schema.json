@@ -308,7 +308,7 @@
       "required": ["path", "format", "mode", "set"],
       "properties": {
         "path": { "$ref": "#/$defs/RelativePath" },
-        "format": { "enum": ["source-cfg", "properties", "unreal-ini", "key-value", "xml-properties", "colon", "json"], "description": "colon: key: value per line, # comments (SCP: Secret Laboratory). json: members of a JSON object, each key a JSON Pointer (/gameSettings/enemyDamageFactor); patch mode only." },
+        "format": { "enum": ["source-cfg", "properties", "unreal-ini", "key-value", "xml-properties", "colon", "json", "space"], "description": "colon: key: value per line, # comments (SCP: Secret Laboratory). space: Key value per line, // comments (Unturned). json: members of a JSON object, each key a JSON Pointer (/gameSettings/enemyDamageFactor); patch mode only." },
         "mode": { "enum": ["patch", "managed"], "description": "patch: only the declared keys change; managed: the whole file is written by Pulsar." },
         "set": { "type": "object", "minProperties": 1, "maxProperties": 128, "additionalProperties": { "type": "string" } },
         "section": { "type": "string", "pattern": "^[A-Za-z0-9_./:-]{1,128}$", "description": "unreal-ini: the [section] the keys go into, without its brackets. xml-properties: the root element." },

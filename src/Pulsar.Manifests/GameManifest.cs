@@ -351,6 +351,9 @@ public enum ConfigFileFormat
     /// <c>false</c>, anything else a string. Patch mode only (1.0.7).
     /// </summary>
     Json,
+
+    /// <summary><c>Key value</c> per line, <c>//</c> starting a comment (Unturned's <c>Commands.dat</c>); values as typed (1.0.7).</summary>
+    Space,
 }
 
 public enum ConfigFileMode

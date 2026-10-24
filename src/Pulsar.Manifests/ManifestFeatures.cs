@@ -20,11 +20,11 @@ public static class ManifestFeatures
                 c.If.Split('.') is ["var", var key] && types.TryGetValue(key, out var type) && type is not (VariableType.Boolean or VariableType.String));
     }
 
-    /// <summary>The JSON configuration files of Pulsar 1.0.7.</summary>
-    public static bool UsesJsonConfig(GameManifest manifest)
+    /// <summary>The configuration formats of Pulsar 1.0.7: <c>json</c> and <c>space</c>.</summary>
+    public static bool UsesMoreConfigFormats(GameManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
-        return manifest.ConfigFileList.Any(f => f.Format == ConfigFileFormat.Json);
+        return manifest.ConfigFileList.Any(f => f.Format is ConfigFileFormat.Json or ConfigFileFormat.Space);
     }
 
     private static IEnumerable<ArgumentCondition> Conditions(IEnumerable<ArgumentTemplate> arguments) =>
