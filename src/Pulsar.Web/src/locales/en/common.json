@@ -1128,6 +1128,7 @@
       "secretSet": "A value is set; type a new one to replace it.",
       "protected": "Only users who can edit server settings can change it.",
       "unset": "Not set",
+      "choose": "Choose…",
       "outOfRange": "Out of the allowed range.",
       "notANumber": "Type a whole number."
     },

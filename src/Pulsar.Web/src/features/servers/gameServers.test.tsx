@@ -252,6 +252,55 @@ describe('creating a game server', () => {
   });
 });
 
+describe('a required choice', () => {
+  it('starts unchosen, so a terms of use with one option can be accepted (and must be)', async () => {
+    let body: unknown;
+    const eula = variable({
+      key: 'eula',
+      label: 'Game EULA',
+      type: 'enum',
+      required: true,
+      options: [{ value: 'accepted', label: 'I accept it' }],
+    });
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/servers': () => json([]),
+      'GET /api/v1/nodes': () => json([{ id: nodeId, name: 'Buenos Aires 1', connected: true, status: 'active' }]),
+      'GET /api/v1/templates': () => json([template]),
+      [`GET /api/v1/templates/${templateId}`]: () => json({ ...templateDetails, variables: [eula] }),
+      [`GET /api/v1/nodes/${nodeId}/allocations`]: () => json(allocations),
+      'POST /api/v1/servers': async (request) => {
+        body = await request.json();
+        return json(details({ ...summary, installState: 'installing' }), 201);
+      },
+      [`GET /api/v1/servers/${serverId}`]: () => json(details()),
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Create server' }));
+    await user.type(screen.getByLabelText('Name'), 'Retakes');
+    await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
+    await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source 1.0.0');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    // Not shown as accepted while it is not.
+    const choice = await screen.findByLabelText('Game EULA *');
+    expect(choice).toHaveValue('');
+    expect(within(choice).getByRole('option', { name: 'Choose…' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Required.')).toBeInTheDocument();
+
+    await user.selectOptions(choice, 'I accept it');
+    expect(choice).toHaveValue('accepted');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByLabelText('Game *');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(await screen.findByRole('heading', { name: 'Retakes' })).toBeInTheDocument();
+    expect(body).toMatchObject({ variables: { eula: 'accepted' } });
+  });
+});
+
 describe('changing the node of a server being created', () => {
   it('forgets the ports chosen on the other node, whose allocations are not this one', async () => {
     let body: unknown;

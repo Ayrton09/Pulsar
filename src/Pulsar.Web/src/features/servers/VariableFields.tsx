@@ -83,6 +83,14 @@ export function VariableFields({
                   onChange={(e) => onChange(variable.key, e.target.value)}
                 >
                   {!variable.required && <option value="">{t('servers.variables.unset')}</option>}
+                  {/* A required choice with no value yet: shown as such, never as its first option, which the browser
+                      would show chosen while it is not (choosing it then changes nothing: an EULA with one option could
+                      never be accepted). */}
+                  {variable.required && value === '' && (
+                    <option value="" disabled>
+                      {t('servers.variables.choose')}
+                    </option>
+                  )}
                   {variable.options.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}

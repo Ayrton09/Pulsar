@@ -1128,6 +1128,7 @@
       "secretSet": "Ya tiene un valor; escribí uno nuevo para reemplazarlo.",
       "protected": "Solo quienes pueden editar la configuración del servidor pueden cambiarlo.",
       "unset": "Sin definir",
+      "choose": "Elegí…",
       "outOfRange": "Fuera del rango permitido.",
       "notANumber": "Escribí un número entero."
     },
