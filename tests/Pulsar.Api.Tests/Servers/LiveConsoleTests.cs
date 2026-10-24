@@ -53,6 +53,27 @@ public sealed class LiveConsoleTests(PulsarApiFactory factory) : IClassFixture<P
     }
 
     [DatabaseFact]
+    public async Task ABrowserWatchingFromTheCreateDialogSeesTheInstall()
+    {
+        // The create dialog opens the console at once: maybe before the node knows the server, which it refuses then.
+        using var admin = await factory.CreateAdminClientAsync();
+        await using var agent = await ConnectedAgentAsync(admin, "install-console");
+        await using var browser = await BrowserHub.ConnectAsync(factory, admin);
+        using var hold = new ManualResetEventSlim(false);
+        agent.Provisioner.HoldProvision = hold;
+        var created = await ServerApi.CreateAsync(admin, agent.Config!.NodeId, "Install console");
+
+        var snapshot = (await browser.Connection.InvokeAsync<ConsoleSnapshot?>("WatchConsole", created.Server.Id, null, Ct))!;
+        await Task.Delay(200, Ct); // the subscription is refused meanwhile
+        hold.Set();
+
+        await EventuallyAsync(
+            () => BrowserHub.Text([.. snapshot.Entries, .. browser.Console]).Contains("[Pulsar] Installing the game: done", StringComparison.Ordinal),
+            () => BrowserHub.Text([.. snapshot.Entries, .. browser.Console]));
+        Assert.Contains("[Pulsar] Installing the game…", BrowserHub.Text([.. snapshot.Entries, .. browser.Console]), StringComparison.Ordinal);
+    }
+
+    [DatabaseFact]
     public async Task ABrowserThatReconnectsGetsWhatItMissedAndNothingTwice()
     {
         using var admin = await factory.CreateAdminClientAsync();

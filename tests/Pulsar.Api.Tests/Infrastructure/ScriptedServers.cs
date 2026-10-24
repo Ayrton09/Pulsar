@@ -213,8 +213,12 @@ public sealed class FolderProvisioner : IServerProvisioner
 {
     public ConcurrentDictionary<string, bool> Provisioned { get; } = new();
 
+    /// <summary>Set: provisioning waits until it is set again (the node does not know the server meanwhile).</summary>
+    public ManualResetEventSlim? HoldProvision { get; set; }
+
     public ProvisionedServer Provision(string serversRoot, string shortId)
     {
+        HoldProvision?.Wait(TimeSpan.FromSeconds(30));
         var server = Describe(serversRoot, shortId);
         Directory.CreateDirectory(server.Directory);
         Provisioned[shortId] = true;

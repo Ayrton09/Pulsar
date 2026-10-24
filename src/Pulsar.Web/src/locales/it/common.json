@@ -1093,7 +1093,8 @@
         "cancelled": "Annullata",
         "interrupted": "Interrotta"
       },
-      "cancelling": "Annullamento…"
+      "cancelling": "Annullamento…",
+      "showConsole": "Vedi nella console"
     },
     "administration": "Amministrazione",
     "administrationHint": "Reinstallare prepara di nuovo la cartella e l'account del server ed esegue la sua installazione. Eliminare rimuove dal nodo i suoi file, i suoi backup e il suo account Windows.",
@@ -1120,7 +1121,7 @@
     "wizard": {
       "steps": "Passaggi",
       "basics": "Gioco e nodo",
-      "settings": "Impostazioni del gioco",
+      "settings": "Cosa richiede il gioco",
       "ports": "Porte",
       "next": "Avanti",
       "back": "Indietro",
@@ -1129,7 +1130,9 @@
       "noAllocations": "Il nodo non ha allocazioni libere per le porte del gioco.",
       "portDefault": "Di solito {{port}} ({{protocols}}).",
       "noPort": "Nessuna",
-      "followsPort": "segue {{port}}: la sua porta + {{offset}}."
+      "followsPort": "segue {{port}}: la sua porta + {{offset}}.",
+      "neededHint": "Il server non può essere creato senza questi dati. Le altre opzioni sono nella sua scheda Impostazioni una volta creato.",
+      "settingsLater": "Nome del server, mappa, slot e le altre opzioni del gioco si cambiano nella scheda Impostazioni una volta creato. La sua console mostra l'installazione."
     },
     "variables": {
       "none": "Questo gioco non ha impostazioni.",

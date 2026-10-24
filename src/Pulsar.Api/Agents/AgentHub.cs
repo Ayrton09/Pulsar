@@ -378,6 +378,8 @@ internal sealed partial class AgentHub(
             }
             else
             {
+                // Provisioned: whoever watches its console from the start sees the install.
+                consoles.Provisioned(followUp.ServerId);
                 await scope.ServiceProvider.GetRequiredService<ServerManagement>().ContinueInstallAsync(followUp.ServerId, followUp.RequestedBy,
                     CancellationToken.None);
             }

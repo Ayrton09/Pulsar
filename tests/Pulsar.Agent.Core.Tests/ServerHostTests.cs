@@ -173,6 +173,30 @@ public sealed class ServerHostTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task AnInstallIsNotedInTheServersConsoleStepByStep()
+    {
+        // As other panels show an install: what it does, then how it ended (SteamCMD's own lines come in between).
+        var serverId = Stored("abcd2345", Manifest.Replace("\"runtime\"", """
+            "install": { "steps": [ { "type": "ensureDirectory", "path": "saves" }, { "type": "copyFileIfMissing", "from": "missing.txt", "to": "copy.txt" } ] },
+            "runtime"
+            """, StringComparison.Ordinal));
+        var host = Host();
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        var operation = Guid.NewGuid();
+        Assert.Equal(AckStatus.Accepted, (await host.ExecuteAsync(Envelope(new InstallServerCommand(serverId), operation))).Status);
+
+        Assert.Equal(OperationOutcome.Failed, (await ResultAsync(operation)).Outcome);
+        Assert.Equal(
+            [
+                "[Pulsar] Installing the game…", "[Pulsar] Creating the folder saves", "[Pulsar] Copying missing.txt to copy.txt if it is missing",
+                "[Pulsar] Installing the game: failed. 'missing.txt' does not exist; the game's install did not create it.",
+            ],
+            Text(host, serverId).Replace("\u001b[2m", "", StringComparison.Ordinal).Replace("\u001b[0m", "", StringComparison.Ordinal)
+                .Split("\r\n", StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [Fact]
     public async Task ARunningServerIsNotProvisionedAgain()
     {
         // Provisioning makes a new RCON password: the running game was started with the old one.

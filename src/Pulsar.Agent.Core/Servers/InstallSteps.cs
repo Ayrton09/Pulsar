@@ -49,6 +49,25 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files)
         await Task.Run(() => Run(step, serverDirectory), cancellationToken);
     }
 
+    /// <summary>What a step that is not a SteamCMD step does, for the server's console.</summary>
+    public static string Describe(InstallStep step, IReadOnlyDictionary<string, string?> variables)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+        ArgumentNullException.ThrowIfNull(variables);
+        return step switch
+        {
+            MinecraftServerStep minecraft => minecraft.VersionVar is { } key && variables.GetValueOrDefault(key) is { Length: > 0 } version
+                && version != MinecraftServerStep.Latest
+                    ? $"Downloading the Minecraft {version} server from Mojang, then its Java runtime"
+                    : "Downloading the latest Minecraft server from Mojang, then its Java runtime",
+            EnsureDirectoryStep ensure => $"Creating the folder {ensure.Path}",
+            WriteFileIfMissingStep write => $"Writing {write.Path} if it is missing",
+            CopyFileIfMissingStep copy => $"Copying {copy.From} to {copy.To} if it is missing",
+            TestGameServerStep => "Copying Pulsar's test game server",
+            _ => step.GetType().Name,
+        };
+    }
+
     /// <summary>Runs one step that is not a SteamCMD step.</summary>
     public void Run(InstallStep step, string serverDirectory)
     {

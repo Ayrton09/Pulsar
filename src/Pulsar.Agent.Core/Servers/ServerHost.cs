@@ -832,27 +832,32 @@ public sealed partial class ServerHost(
 
     /// <summary>Installs one of the manifest's addons, or brings it to its latest release (docs/architecture/04, "Addons").</summary>
     private CommandAck InstallAddon(CommandEnvelope envelope, InstallAddonCommand command) =>
-        AddonOperation(envelope, command.ServerId, command.AddonKey, async (server, addon, directory, operationId, cancellationToken) =>
-        {
-            var record = await Addons.InstallAsync(directory, addon, force: false, (stage, percent) => SendProgressAsync(operationId, stage, percent),
-                cancellationToken);
-            LogAddonInstalled(command.ServerId, addon.Key, record.Release);
-            return new AddonsResult([new AddonRelease(addon.Key, record.Release)]);
-        });
+        AddonOperation(envelope, command.ServerId, command.AddonKey, (server, addon, directory, operationId, cancellationToken) =>
+            NotedAsync<CommandResult?>(server, $"Installing {addon.Name}", login: null, async () =>
+            {
+                var record = await Addons.InstallAsync(directory, addon, force: false,
+                    new InstallConsole(server.Supervisor.Console, clock, (stage, percent) => SendProgressAsync(operationId, stage, percent)).ReportAsync,
+                    cancellationToken);
+                LogAddonInstalled(command.ServerId, addon.Key, record.Release);
+                return new AddonsResult([new AddonRelease(addon.Key, record.Release)]);
+            }, cancellationToken));
 
     /// <summary>Removes an addon; game files it had replaced come back with a validating update.</summary>
     private CommandAck RemoveAddon(CommandEnvelope envelope, RemoveAddonCommand command) =>
-        AddonOperation(envelope, command.ServerId, command.AddonKey, async (server, addon, directory, operationId, cancellationToken) =>
-        {
-            var replaced = Addons.Remove(directory, addon);
-            if (replaced.Count > 0 && server.Manifest.Update is { } update)
+        AddonOperation(envelope, command.ServerId, command.AddonKey, (server, addon, directory, operationId, cancellationToken) =>
+            NotedAsync<CommandResult?>(server, $"Removing {addon.Name}", command.Login, async () =>
             {
-                await RunStepsAsync(server, operationId, update.Steps, validate: true, command.Login, cancellationToken);
-            }
+                var replaced = Addons.Remove(directory, addon);
+                if (replaced.Count > 0 && server.Manifest.Update is { } update)
+                {
+                    // The game's own files it had replaced come back.
+                    server.Supervisor.Console.Note("Updating the game, checking every file, to bring back the files it had replaced", clock.GetUtcNow());
+                    await RunStepsAsync(server, operationId, update.Steps, validate: true, command.Login, cancellationToken);
+                }
 
-            LogAddonRemoved(command.ServerId, addon.Key, replaced.Count);
-            return new AddonsResult([new AddonRelease(addon.Key, null)]);
-        });
+                LogAddonRemoved(command.ServerId, addon.Key, replaced.Count);
+                return new AddonsResult([new AddonRelease(addon.Key, null)]);
+            }, cancellationToken));
 
     private CommandAck AddonOperation(CommandEnvelope envelope, Guid serverId, string key,
         Func<Server, AddonDefinition, string, Guid, CancellationToken, Task<CommandResult?>> work)
@@ -907,28 +912,32 @@ public sealed partial class ServerHost(
             return Rejected(envelope, "server.running", stopFirst);
         }
 
-        return RunOperation(envelope, serverId, operationId, exclusive: true, stoppedMessage: stopFirst, work: async cancellationToken =>
-        {
-            var directory = await RunStepsAsync(server, operationId, steps(server), validate, login, cancellationToken);
-            LogInstalled(serverId);
-            if (!update)
+        var what = !update ? "Installing the game" : validate == true ? "Updating the game, checking every file" : "Updating the game";
+        return RunOperation(envelope, serverId, operationId, exclusive: true, stoppedMessage: stopFirst, work: cancellationToken =>
+            NotedAsync<CommandResult?>(server, what, login, async () =>
             {
-                return null;
-            }
+                var directory = await RunStepsAsync(server, operationId, steps(server), validate, login, cancellationToken);
+                LogInstalled(serverId);
+                if (!update)
+                {
+                    return null;
+                }
 
-            // Oxide and the like: the game's update put its own files back. What is installed is what this node recorded
-            // (the spec catches up only at the next start).
-            var reinstalled = new List<AddonRelease>();
-            foreach (var addon in server.Manifest.AddonList.Where(a => a.ReinstallAfterUpdate && Addons.Read(directory, a.Key) is not null))
-            {
-                var record = await Addons.InstallAsync(directory, addon, force: true, (stage, percent) => SendProgressAsync(operationId, stage, percent),
-                    cancellationToken);
-                LogAddonInstalled(serverId, addon.Key, record.Release);
-                reinstalled.Add(new AddonRelease(addon.Key, record.Release));
-            }
+                // Oxide and the like: the game's update put its own files back. What is installed is what this node recorded
+                // (the spec catches up only at the next start).
+                var reinstalled = new List<AddonRelease>();
+                foreach (var addon in server.Manifest.AddonList.Where(a => a.ReinstallAfterUpdate && Addons.Read(directory, a.Key) is not null))
+                {
+                    server.Supervisor.Console.Note($"Installing {addon.Name} again: the update put the game's own files back", clock.GetUtcNow());
+                    var record = await Addons.InstallAsync(directory, addon, force: true,
+                        new InstallConsole(server.Supervisor.Console, clock, (stage, percent) => SendProgressAsync(operationId, stage, percent)).ReportAsync,
+                        cancellationToken);
+                    LogAddonInstalled(serverId, addon.Key, record.Release);
+                    reinstalled.Add(new AddonRelease(addon.Key, record.Release));
+                }
 
-            return reinstalled.Count > 0 ? new AddonsResult(reinstalled) : null;
-        });
+                return reinstalled.Count > 0 ? new AddonsResult(reinstalled) : null;
+            }, cancellationToken));
     }
 
     /// <summary>Runs install or update steps; returns the server's folder.</summary>
@@ -937,6 +946,7 @@ public sealed partial class ServerHost(
         CancellationToken cancellationToken)
     {
         var serverId = server.Supervisor.ServerId;
+        var console = server.Supervisor.Console;
         var provisioned = provisioner.Describe(_config!.ServersRootOrDefault(configs.Paths), server.ShortId);
         TerminateStrays(serverId, provisioned.Identity);
         foreach (var step in steps)
@@ -951,16 +961,47 @@ public sealed partial class ServerHost(
                 var betaPassword = steam.BetaPasswordVar is { } key ? server.Spec.Variables.GetValueOrDefault(key) : null;
                 var job = new SteamCmdJob(serverId, provisioned.Directory, provisioned.Identity, steam.AppId, steam.Beta, betaPassword,
                     validate ?? steam.Validate, login);
-                await steamCmd.RunAsync(job, (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
+                await steamCmd.RunAsync(job, (stage, percent) => SendProgressAsync(operationId, stage, percent), console, cancellationToken);
             }
             else
             {
-                await installSteps.RunAsync(step, provisioned.Directory, VariableValues.Resolve(server.Manifest, server.Spec.Variables),
-                    (stage, percent) => SendProgressAsync(operationId, stage, percent), cancellationToken);
+                var variables = VariableValues.Resolve(server.Manifest, server.Spec.Variables);
+                console.Note(InstallSteps.Describe(step, variables), clock.GetUtcNow());
+                await installSteps.RunAsync(step, provisioned.Directory, variables,
+                    new InstallConsole(console, clock, (stage, percent) => SendProgressAsync(operationId, stage, percent)).ReportAsync, cancellationToken);
             }
         }
 
         return provisioned.Directory;
+    }
+
+    /// <summary>
+    /// Runs an install, an update or an addon change with its start and its end noted in the server's console, as other
+    /// panels show them (what SteamCMD prints goes there too): the console shows what the server is doing while it cannot
+    /// run.
+    /// </summary>
+    /// <param name="what">What is done, as the notes say it ("Installing the game").</param>
+    /// <param name="login">The Steam account SteamCMD signs in with: its name is kept out of the console (SteamCMD's failures quote it).</param>
+    private async Task<T> NotedAsync<T>(Server server, string what, SteamLogin? login, Func<Task<T>> work, CancellationToken cancellationToken)
+    {
+        var console = server.Supervisor.Console;
+        console.Note($"{what}…", clock.GetUtcNow());
+        try
+        {
+            var result = await work();
+            console.Note($"{what}: done", clock.GetUtcNow());
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            console.Note($"{what}: cancelled", clock.GetUtcNow());
+            throw;
+        }
+        catch (Exception ex)
+        {
+            console.Note($"{what}: failed. {SteamCmdRunner.HideAccount(login, ex.Message)}", clock.GetUtcNow());
+            throw;
+        }
     }
 
     /// <summary>New variables, ports, arguments or restart policy for the next start; never a different manifest.</summary>

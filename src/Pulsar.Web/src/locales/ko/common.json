@@ -1093,7 +1093,8 @@
         "cancelled": "취소됨",
         "interrupted": "중단됨"
       },
-      "cancelling": "취소 중…"
+      "cancelling": "취소 중…",
+      "showConsole": "콘솔에서 보기"
     },
     "administration": "관리",
     "administrationHint": "재설치하면 서버의 폴더와 계정을 다시 준비하고 설치를 실행합니다. 삭제하면 노드에서 서버의 파일, 백업, Windows 계정이 제거됩니다.",
@@ -1120,7 +1121,7 @@
     "wizard": {
       "steps": "단계",
       "basics": "게임 및 노드",
-      "settings": "게임 설정",
+      "settings": "게임에 필요한 항목",
       "ports": "포트",
       "next": "다음",
       "back": "이전",
@@ -1129,7 +1130,9 @@
       "noAllocations": "노드에 게임 포트에 사용할 수 있는 여유 할당이 없습니다.",
       "portDefault": "보통 {{port}} ({{protocols}}).",
       "noPort": "없음",
-      "followsPort": "{{port}}에 연동됨: 해당 포트 + {{offset}}."
+      "followsPort": "{{port}}에 연동됨: 해당 포트 + {{offset}}.",
+      "neededHint": "이 항목이 없으면 서버를 만들 수 없습니다. 다른 옵션은 서버를 만든 뒤 설정 탭에서 바꿀 수 있습니다.",
+      "settingsLater": "서버 이름, 맵, 슬롯 수 등 게임 옵션은 서버를 만든 뒤 설정 탭에서 바꿀 수 있습니다. 설치 과정은 콘솔에 표시됩니다."
     },
     "variables": {
       "none": "이 게임에는 설정이 없습니다.",

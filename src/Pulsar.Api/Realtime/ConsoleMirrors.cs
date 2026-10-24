@@ -127,6 +127,30 @@ internal sealed partial class ConsoleMirrors(
         return subscriptions;
     }
 
+    /// <summary>
+    /// The node knows the server now (it was just provisioned): browsers that watched its console before (the create
+    /// dialog opens it) were refused then, and are subscribed now, so they see the install as it runs.
+    /// </summary>
+    public void Provisioned(ServerId server)
+    {
+        if (!_mirrors.TryGetValue(server, out var mirror))
+        {
+            return;
+        }
+
+        lock (mirror.Sync)
+        {
+            if (mirror.Subscribed || mirror.Watchers.Count == 0)
+            {
+                return;
+            }
+
+            mirror.Subscribed = true;
+        }
+
+        _ = SubscribeAsync(mirror);
+    }
+
     /// <summary>The node's connection ended: its subscriptions ended with it.</summary>
     public void NodeDisconnected(NodeId node)
     {

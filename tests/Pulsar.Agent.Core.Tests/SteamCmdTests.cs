@@ -144,6 +144,64 @@ public sealed class SteamCmdRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task WhatSteamCmdPrintsGoesToTheServersConsoleWithoutTheAccount()
+    {
+        // As other panels show an install: line by line, as printed; the account's name, Steam ID and secrets stay out.
+        var login = new SteamLogin(Guid.NewGuid(), "Servers", "hunter2-password", "F7K2Q");
+        _processes.OnStarted = (process, _) =>
+        {
+            process.Print("Logging in user 'servers' [U:1:1234567] to Steam Public...OK\r\n");
+            process.Print("echo hunter2-password F7K2Q beta-secret\r\n\r\n");
+            process.Print(" Update state (0x61) downloading, progress: 10.00 (10 / 100)\r\n");
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+        var console = new Servers.ServerConsole(new Servers.ConsoleBuffer(TimeProvider.System));
+
+        await runner.RunAsync(Job() with { Login = login, Beta = "staging", BetaPassword = "beta-secret" }, Report, console,
+            TestContext.Current.CancellationToken);
+
+        var text = string.Concat(console.Buffer.Read(null, int.MaxValue).Select(e => e.Text));
+        Assert.Contains("SteamCMD downloads app 232330 with the panel's Steam account", text, StringComparison.Ordinal);
+        Assert.Contains("Logging in user '***' [***] to Steam Public...OK\r\n", text, StringComparison.Ordinal);
+        Assert.Contains("echo *** *** ***\r\n", text, StringComparison.Ordinal);
+        Assert.Contains(" Update state (0x61) downloading, progress: 10.00 (10 / 100)\r\n", text, StringComparison.Ordinal);
+        Assert.Contains("Success! App '232330' fully installed.\r\n", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("\r\n\r\n", text, StringComparison.Ordinal);
+        foreach (var hidden in (string[])["servers", "Servers", "1234567", "hunter2", "F7K2Q", "beta-secret"])
+        {
+            Assert.DoesNotContain(hidden, text, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task ARetryIsNotedInTheServersConsole()
+    {
+        _processes.OnStarted = (process, _) =>
+        {
+            if (_processes.Started.Count == 1)
+            {
+                process.Print("ERROR! Failed to install app '232330' (Missing configuration)\r\n");
+                process.Exit(8);
+                return;
+            }
+
+            process.Print("Success! App '232330' fully installed.\r\n");
+            process.Exit(0);
+        };
+        using var runner = Runner();
+        var console = new Servers.ServerConsole(new Servers.ConsoleBuffer(TimeProvider.System));
+
+        await runner.RunAsync(Job(), Report, console, TestContext.Current.CancellationToken);
+
+        var text = string.Concat(console.Buffer.Read(null, int.MaxValue).Select(e => e.Text));
+        Assert.Contains("[Pulsar] SteamCMD downloads app 232330 anonymously", text, StringComparison.Ordinal);
+        Assert.Contains("[Pulsar] ERROR! Failed to install app '232330' (Missing configuration) Trying again in 0 s (attempt 2 of 3)", text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheCommandLineSetsTheDirectoryBeforeLoggingIn()
     {
         var arguments = SteamCmdRunner.Arguments(Job() with { Beta = "public_beta", BetaPassword = "pw", Validate = true });

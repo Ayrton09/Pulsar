@@ -27,14 +27,22 @@ import { newestOfEachGame } from './templateVersions';
 import { VariableFields } from './VariableFields';
 import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
 
-const steps = ['basics', 'settings', 'ports'] as const;
-type Step = (typeof steps)[number];
+const allSteps = ['basics', 'settings', 'ports'] as const;
+type Step = (typeof allSteps)[number];
 
 /**
- * Creating a server (docs/architecture/07): name, node and game; then the game's variables; then its ports, which
- * start on the game's own (or the next free ones): whoever manages the node types any number, added to the node's
- * allocations when it has none; others choose among its free allocations. The panel then provisions and installs it;
- * the server page shows the progress. `templateId` starts it with that game chosen (the Games page's cards).
+ * What the game cannot be created without: a required value the template has none of its own for (an EULA to accept,
+ * an admin password). Everything else (its name, map, slots, the game's options) starts as the template says and is
+ * changed in the server's Settings tab once it exists.
+ */
+const neededToCreate = (variable: TemplateVariable) => variable.required && variable.default == null;
+
+/**
+ * Creating a server (docs/architecture/07): name, node and game; then what the game cannot do without, when it has
+ * any; then its ports, which start on the game's own (or the next free ones): whoever manages the node types any
+ * number, added to the node's allocations when it has none; others choose among its free allocations. The panel then
+ * provisions and installs it, and the server's console shows the install. `templateId` starts it with that game
+ * chosen (the Games page's cards).
  */
 export function CreateServerDialog({
   onClose,
@@ -102,6 +110,8 @@ export function CreateServerDialog({
   };
 
   const valueOf = (variable: TemplateVariable) => values[variable.key] ?? initialValue(variable);
+  const needed = useMemo(() => (details?.variables ?? []).filter(neededToCreate), [details]);
+  const steps = allSteps.filter((s) => s !== 'settings' || needed.length > 0);
   const basicsErrors = {
     name: name.trim() === '' ? 'validation.required' : name.trim().length > 64 ? 'validation.tooLong' : null,
     node: nodeId === '' ? 'validation.required' : null,
@@ -109,7 +119,7 @@ export function CreateServerDialog({
     description: description.trim().length > 512 ? 'validation.tooLong' : null,
   };
   const settingsErrors = Object.fromEntries(
-    (details?.variables ?? []).map((v) => [v.key, variableError(v, valueOf(v), false, unreadable.keys.has(v.key))]),
+    needed.map((v) => [v.key, variableError(v, valueOf(v), false, unreadable.keys.has(v.key))]),
   ) as Record<string, string | null>;
   const portsValid =
     !!details &&
@@ -137,11 +147,9 @@ export function CreateServerDialog({
       setShowErrors(true);
       return;
     }
-    // Only what differs from the manifest: defaults stay defaults (a later manifest default applies on reinstall).
+    // Only what was asked for: the rest stays as the template says (a later default applies on reinstall).
     const variables = Object.fromEntries(
-      details.variables
-        .filter((v) => valueOf(v) !== '' && valueOf(v) !== initialValue(v))
-        .map((v) => [v.key, valueOf(v)]),
+      needed.filter((v) => valueOf(v) !== '' && valueOf(v) !== initialValue(v)).map((v) => [v.key, valueOf(v)]),
     );
     // Numbers for whoever manages the node (null: an optional port off), allocations for the others.
     const portChoice = canAddPorts
@@ -159,7 +167,8 @@ export function CreateServerDialog({
         };
     create.mutate(
       { name: name.trim(), description: description.trim() || null, nodeId, templateId, variables, ...portChoice },
-      { onSuccess: (created) => void navigate(`/servers/${created.server.id}`) },
+      // To its console, which shows the install as it runs (the overview for whoever may not see the console).
+      { onSuccess: (created) => void navigate(`/servers/${created.server.id}?tab=console`) },
     );
   };
 
@@ -262,13 +271,16 @@ export function CreateServerDialog({
         )}
 
         {step === 'settings' && details && (
-          <VariableFields
-            variables={details.variables}
-            values={Object.fromEntries(details.variables.map((v) => [v.key, valueOf(v)]))}
-            onChange={(key, value) => setValues((current) => ({ ...current, [key]: value }))}
-            errors={showErrors ? settingsErrors : undefined}
-            onUnreadable={unreadable.mark}
-          />
+          <>
+            <p className="text-sm text-muted">{t('servers.wizard.neededHint')}</p>
+            <VariableFields
+              variables={needed}
+              values={Object.fromEntries(needed.map((v) => [v.key, valueOf(v)]))}
+              onChange={(key, value) => setValues((current) => ({ ...current, [key]: value }))}
+              errors={showErrors ? settingsErrors : undefined}
+              onUnreadable={unreadable.mark}
+            />
+          </>
         )}
 
         {step === 'ports' && details && (
@@ -283,6 +295,11 @@ export function CreateServerDialog({
             showErrors={showErrors}
             onChange={(port, value) => setPorts({ ...portValues, [port]: value })}
           />
+        )}
+        {step === 'ports' && details && details.variables.length > needed.length && (
+          <p className="rounded-md border border-border bg-bg px-3 py-2 text-xs text-muted">
+            {t('servers.wizard.settingsLater')}
+          </p>
         )}
 
         <div className="flex justify-between gap-2 pt-2">

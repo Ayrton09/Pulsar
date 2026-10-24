@@ -165,7 +165,7 @@ function ServerView({ id }: { id: string }) {
       )}
       {server.activeOperation && (
         <div className="mt-4">
-          <OperationProgress server={server} operation={server.activeOperation} />
+          <OperationProgress server={server} operation={server.activeOperation} inConsole={tab === 'console'} />
         </div>
       )}
       <SteamGuardPrompt details={details.data} />

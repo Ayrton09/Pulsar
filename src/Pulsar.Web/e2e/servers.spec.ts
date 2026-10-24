@@ -102,12 +102,14 @@ test('a server is created, started, restarted, stopped, killed and deleted from 
   await createServer.getByLabel('Name').fill(serverName);
   await createServer.getByLabel('Node').selectOption({ label: nodeName });
   await createServer.getByLabel('Game').selectOption({ label: 'Pulsar test server' });
-  // The wizard: the test game's settings keep their defaults; it listens on no port.
+  // The wizard: the test game needs nothing to be created (its settings come later) and listens on no port.
   await createServer.getByRole('button', { name: 'Next' }).click();
-  await expect(createServer.getByLabel('Startup time (ms)')).toHaveValue('1000');
-  await createServer.getByRole('button', { name: 'Next' }).click();
+  await expect(createServer.getByLabel('Startup time (ms)')).toHaveCount(0);
   await createServer.getByRole('button', { name: 'Create' }).click();
   await expect(page.getByRole('heading', { name: serverName })).toBeVisible();
+  // It opens on its console, which shows the install as it runs.
+  await expect(page.getByTestId('console-output')).toContainText('Installing the game: done', { timeout: 30_000 });
+  await page.getByRole('tab', { name: 'Overview' }).click();
   await expectStatus(page, 'Offline');
   const operations = page.getByRole('table', { name: 'Recent operations' });
   await expect(operations.getByRole('row', { name: /Install/ })).toContainText('Done');

@@ -1093,7 +1093,8 @@
         "cancelled": "Cancelled",
         "interrupted": "Interrupted"
       },
-      "cancelling": "Cancelling…"
+      "cancelling": "Cancelling…",
+      "showConsole": "Show in the console"
     },
     "administration": "Administration",
     "administrationHint": "Reinstalling prepares the server's folder and account again and runs its install. Deleting removes its files, its backups and its Windows account from the node.",
@@ -1120,7 +1121,7 @@
     "wizard": {
       "steps": "Steps",
       "basics": "Game and node",
-      "settings": "Game settings",
+      "settings": "What the game needs",
       "ports": "Ports",
       "next": "Next",
       "back": "Back",
@@ -1129,7 +1130,9 @@
       "noAllocations": "The node has no free allocations for the game's ports.",
       "portDefault": "Usually {{port}} ({{protocols}}).",
       "noPort": "None",
-      "followsPort": "comes with {{port}}: its port + {{offset}}."
+      "followsPort": "comes with {{port}}: its port + {{offset}}.",
+      "neededHint": "The server cannot be created without these. Its other options are in its Settings tab once it is created.",
+      "settingsLater": "The server's name, map, slots and the rest of the game's options are changed in its Settings tab once it is created. Its console shows the install."
     },
     "variables": {
       "none": "This game has no settings.",

@@ -254,14 +254,16 @@ describe('servers page', () => {
     expect(within(nodes).queryByRole('option', { name: 'Offline box' })).not.toBeInTheDocument();
     await user.selectOptions(nodes, 'Buenos Aires 1');
     await user.selectOptions(await screen.findByLabelText('Game'), 'Pulsar test server');
+    // A game that needs nothing to be created goes straight to its ports: its options come once it exists.
+    expect(screen.getAllByRole('listitem').map((step) => step.textContent)).toEqual(['1. Game and node', '2. Ports']);
     await user.click(await screen.findByRole('button', { name: 'Next' }));
-    expect(await screen.findByText('This game has no settings.')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText('This game does not listen on any port.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(await screen.findByRole('heading', { name: 'Fresh' })).toBeInTheDocument();
+    // On its console, which shows the install.
     expect(router.state.location.pathname).toBe(`/servers/${installing.id}`);
+    expect(router.state.location.search).toBe('?tab=console');
     expect(body).toEqual({
       name: 'Fresh',
       description: null,
@@ -317,7 +319,7 @@ describe('servers page', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: 'Next' }));
-    expect(await screen.findByText('This game has no settings.')).toBeInTheDocument();
+    expect(await screen.findByText('This game does not listen on any port.')).toBeInTheDocument();
   });
 
   it('does not ask for a port that comes with another one', async () => {
@@ -392,7 +394,6 @@ describe('servers page', () => {
     await user.type(screen.getByLabelText('Name'), 'Viking');
     await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
     await user.selectOptions(await screen.findByLabelText('Game'), 'Valheim');
-    await user.click(await screen.findByRole('button', { name: 'Next' }));
     await user.click(await screen.findByRole('button', { name: 'Next' }));
     await user.selectOptions(await screen.findByLabelText('Game *'), '0.0.0.0:2456');
 

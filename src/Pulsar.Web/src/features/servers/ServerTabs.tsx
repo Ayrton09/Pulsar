@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import { Button, Spinner } from '../../components/ui/Button';
 import { Alert, Card } from '../../components/ui/Display';
 import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
@@ -25,8 +26,23 @@ import { VariableFields } from './VariableFields';
 import { initialValue, useUnreadableNumbers, variableError, type VariableValues } from './variables';
 import { SteamAccountCard } from '../steam/SteamServerCards';
 
-/** The running operation: its stage, a progress bar when the agent reports one, and Cancel for installs and updates. */
-export function OperationProgress({ server, operation }: { server: ServerRef; operation: OperationView }) {
+/** Operations whose work the server's console shows as it runs (what SteamCMD prints, among others). */
+const shownInConsole = new Set(['serverInstall', 'serverUpdate', 'addonInstall', 'addonRemove']);
+
+/**
+ * The running operation: its stage, a progress bar when the agent reports one, Cancel for installs and updates, and a
+ * way to the console that shows an install as it runs.
+ */
+export function OperationProgress({
+  server,
+  operation,
+  inConsole = false,
+}: {
+  server: ServerRef;
+  operation: OperationView;
+  /** The console is the open tab: no way to it. */
+  inConsole?: boolean;
+}) {
   const { t } = useTranslation();
   const me = useCurrentUser();
   const cancel = useCancelOperation();
@@ -46,16 +62,25 @@ export function OperationProgress({ server, operation }: { server: ServerRef; op
           )}
           {percent !== null && <span className="ml-2 tabular-nums">{percent}%</span>}
         </p>
-        {operation.cancellable && canOnServer(me, server, cancelPermission) && (
-          <Button
-            variant="secondary"
-            disabled={operation.cancelRequested}
-            busy={cancel.isPending}
-            onClick={() => cancel.mutate({ id: server.id, operationId: operation.id })}
-          >
-            {operation.cancelRequested ? t('servers.operations.cancelling') : t('actions.cancel')}
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {!inConsole &&
+            shownInConsole.has(operation.type) &&
+            canOnServer(me, server, Permission.ServerConsoleView) && (
+              <Link to={{ search: '?tab=console' }} className="text-sm text-accent hover:underline">
+                {t('servers.operations.showConsole')}
+              </Link>
+            )}
+          {operation.cancellable && canOnServer(me, server, cancelPermission) && (
+            <Button
+              variant="secondary"
+              disabled={operation.cancelRequested}
+              busy={cancel.isPending}
+              onClick={() => cancel.mutate({ id: server.id, operationId: operation.id })}
+            >
+              {operation.cancelRequested ? t('servers.operations.cancelling') : t('actions.cancel')}
+            </Button>
+          )}
+        </div>
       </div>
       <div
         role="progressbar"

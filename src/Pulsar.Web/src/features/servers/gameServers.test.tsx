@@ -211,7 +211,7 @@ afterEach(() => {
 });
 
 describe('creating a game server', () => {
-  it('asks for the game settings and ports, checking values before sending them', async () => {
+  it('asks for the ports alone when the game needs nothing else, checking them before sending', async () => {
     let body: unknown;
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
@@ -234,21 +234,11 @@ describe('creating a game server', () => {
     await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
     await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source');
     expect(await screen.findByText(/about 4 GB of disk and 1 GB of memory/)).toBeInTheDocument();
+    // Its name, slots, mode and password have values of the template's own: they are changed once it exists.
+    expect(screen.getAllByRole('listitem').map((step) => step.textContent)).toEqual(['1. Game and node', '2. Ports']);
     await user.click(screen.getByRole('button', { name: 'Next' }));
-
-    const slots = await screen.findByLabelText('Slots');
-    expect(slots).toHaveValue(16);
-    await user.clear(slots);
-    await user.type(slots, '99');
-    await user.click(screen.getByRole('button', { name: 'Next' }));
-    expect(screen.getByText('Out of the allowed range.')).toBeInTheDocument();
-
-    await user.clear(slots);
-    await user.type(slots, '24');
-    // Its pattern is the panel's to check (without backtracking), when saving.
-    await user.type(screen.getByLabelText('Join password'), 'join-me');
-    await user.selectOptions(screen.getByLabelText('Mode *'), 'Competitive');
-    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.queryByLabelText('Slots')).not.toBeInTheDocument();
+    expect(screen.getByText(/rest of the game's options are changed in its Settings tab/)).toBeInTheDocument();
 
     // Whoever manages the node types numbers: the game's own to start with, saying where each lands.
     const game = await screen.findByLabelText('Game *');
@@ -268,13 +258,13 @@ describe('creating a game server', () => {
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(await screen.findByRole('heading', { name: 'Retakes' })).toBeInTheDocument();
-    // Only what differs from the defaults, and every port by number.
+    // The template's own values, and every port by number.
     expect(body).toEqual({
       name: 'Retakes',
       description: null,
       nodeId,
       templateId,
-      variables: { maxPlayers: '24', mode: 'competitive', password: 'join-me' },
+      variables: {},
       portNumbers: { game: 27015, tv: 27021 },
     });
   });
@@ -301,7 +291,6 @@ describe('creating a game server', () => {
     await user.type(screen.getByLabelText('Name'), 'Retakes');
     await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
     await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source');
-    await user.click(await screen.findByRole('button', { name: 'Next' }));
     await user.click(await screen.findByRole('button', { name: 'Next' }));
 
     const game = await screen.findByLabelText('Game *');
@@ -477,17 +466,14 @@ describe('changing the node of a server being created', () => {
     await user.selectOptions(screen.getByLabelText('Node'), 'Buenos Aires 1');
     await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source');
     await user.click(await screen.findByRole('button', { name: 'Next' }));
-    await user.click(await screen.findByRole('button', { name: 'Next' }));
     const first = await screen.findByLabelText('SourceTV');
     await user.type(first, '27020');
     expect(screen.getByText(/Uses the node's allocation 0\.0\.0\.0:27020\./)).toBeInTheDocument();
 
     // Back to the first step and another node.
     await user.click(screen.getByRole('button', { name: 'Back' }));
-    await user.click(screen.getByRole('button', { name: 'Back' }));
     await user.selectOptions(screen.getByLabelText('Node'), 'Córdoba 1');
     await user.click(screen.getByRole('button', { name: 'Next' }));
-    await user.click(await screen.findByRole('button', { name: 'Next' }));
     const second = await screen.findByLabelText('SourceTV');
     expect(second).toHaveValue('');
     // That node has no allocation on the game's port: it gets one.
@@ -531,7 +517,7 @@ describe("a game's options", () => {
     ],
   });
 
-  it('are folded when creating a server, sent only when set, and checked as decimals', async () => {
+  it('are not asked for when creating a server', async () => {
     let body: unknown;
     fakeApi({
       'GET /api/v1/auth/session': session(operator),
@@ -555,21 +541,15 @@ describe("a game's options", () => {
     await user.selectOptions(screen.getByLabelText('Game'), 'Counter-Strike: Source');
     await user.click(await screen.findByRole('button', { name: 'Next' }));
 
-    // A choice with a value of the template's own is always one of its options, never left to the game.
-    const mode = await screen.findByLabelText('Game mode');
-    expect(mode).toHaveDisplayValue('Casual');
-    expect(within(mode).queryByRole('option', { name: "Game's own" })).not.toBeInTheDocument();
-    const section = optionsSection(await screen.findByText('More game options (2)'));
-    expect(section).not.toHaveAttribute('open');
-    expect(within(section).getByLabelText('Friendly fire')).toHaveDisplayValue("Game's own");
-    await user.click(screen.getByText('More game options (2)'));
-    await user.type(within(section).getByLabelText('Round time (min)'), '1.5');
-    await user.click(screen.getByRole('button', { name: 'Next' }));
-    await user.click(await screen.findByRole('button', { name: 'Create' }));
+    // Straight to the ports: the server's Settings tab has them once it exists.
+    await screen.findByLabelText('Game *');
+    expect(screen.queryByText(/More game options/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Game mode')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Create' }));
 
     await vi.waitFor(() => expect(body).toBeDefined());
-    // The friendly fire left to the game is not sent: Pulsar leaves its line as the server's files have it.
-    expect((body as { variables: unknown }).variables).toEqual({ roundTime: '1.5' });
+    // Nothing set: Pulsar leaves the game's lines as the server's files have them.
+    expect((body as { variables: unknown }).variables).toEqual({});
   });
 
   it('are open in the settings tab', async () => {

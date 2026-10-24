@@ -1093,7 +1093,8 @@
         "cancelled": "Abgebrochen",
         "interrupted": "Unterbrochen"
       },
-      "cancelling": "Wird abgebrochen…"
+      "cancelling": "Wird abgebrochen…",
+      "showConsole": "In der Konsole ansehen"
     },
     "administration": "Verwaltung",
     "administrationHint": "Beim Neuinstallieren werden Ordner und Konto des Servers erneut vorbereitet und seine Installation ausgeführt. Beim Löschen werden seine Dateien, seine Backups und sein Windows-Konto vom Node entfernt.",
@@ -1120,7 +1121,7 @@
     "wizard": {
       "steps": "Schritte",
       "basics": "Spiel und Node",
-      "settings": "Spieleinstellungen",
+      "settings": "Was das Spiel braucht",
       "ports": "Ports",
       "next": "Weiter",
       "back": "Zurück",
@@ -1129,7 +1130,9 @@
       "noAllocations": "Der Node hat keine freien Zuweisungen für die Ports des Spiels.",
       "portDefault": "Üblicherweise {{port}} ({{protocols}}).",
       "noPort": "Keiner",
-      "followsPort": "gehört zu {{port}}: dessen Port + {{offset}}."
+      "followsPort": "gehört zu {{port}}: dessen Port + {{offset}}.",
+      "neededHint": "Ohne diese Angaben kann der Server nicht erstellt werden. Die übrigen Optionen findest du nach dem Erstellen im Tab Einstellungen.",
+      "settingsLater": "Name, Karte, Slots und die übrigen Spieloptionen änderst du nach dem Erstellen im Tab Einstellungen. Die Konsole zeigt die Installation."
     },
     "variables": {
       "none": "Dieses Spiel hat keine Einstellungen.",

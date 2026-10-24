@@ -1093,7 +1093,8 @@
         "cancelled": "キャンセル済み",
         "interrupted": "中断"
       },
-      "cancelling": "キャンセル中…"
+      "cancelling": "キャンセル中…",
+      "showConsole": "コンソールで見る"
     },
     "administration": "管理",
     "administrationHint": "再インストールすると、サーバーのフォルダーとアカウントを再び準備し、インストールを実行します。削除すると、ノードからファイル、バックアップ、Windowsアカウントが削除されます。",
@@ -1120,7 +1121,7 @@
     "wizard": {
       "steps": "ステップ",
       "basics": "ゲームとノード",
-      "settings": "ゲーム設定",
+      "settings": "ゲームに必要な項目",
       "ports": "ポート",
       "next": "次へ",
       "back": "戻る",
@@ -1129,7 +1130,9 @@
       "noAllocations": "ノードに、ゲームのポート用の空き割り当てがありません。",
       "portDefault": "通常は{{port}}({{protocols}})。",
       "noPort": "なし",
-      "followsPort": "{{port}}に連動: そのポート+{{offset}}。"
+      "followsPort": "{{port}}に連動: そのポート+{{offset}}。",
+      "neededHint": "これがないとサーバーを作成できません。その他のオプションは作成後に「設定」タブで変更できます。",
+      "settingsLater": "サーバー名、マップ、スロット数などのゲームのオプションは、作成後に「設定」タブで変更できます。インストールの様子はコンソールに表示されます。"
     },
     "variables": {
       "none": "このゲームには設定がありません。",

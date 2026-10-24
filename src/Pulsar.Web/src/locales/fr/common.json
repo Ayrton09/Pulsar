@@ -1093,7 +1093,8 @@
         "cancelled": "Annulée",
         "interrupted": "Interrompue"
       },
-      "cancelling": "Annulation…"
+      "cancelling": "Annulation…",
+      "showConsole": "Voir dans la console"
     },
     "administration": "Administration",
     "administrationHint": "La réinstallation prépare de nouveau le dossier et le compte du serveur, puis exécute son installation. La suppression retire du nœud ses fichiers, ses sauvegardes et son compte Windows.",
@@ -1120,7 +1121,7 @@
     "wizard": {
       "steps": "Étapes",
       "basics": "Jeu et nœud",
-      "settings": "Paramètres du jeu",
+      "settings": "Ce que le jeu demande",
       "ports": "Ports",
       "next": "Suivant",
       "back": "Retour",
@@ -1129,7 +1130,9 @@
       "noAllocations": "Le nœud n'a aucune allocation libre pour les ports du jeu.",
       "portDefault": "Généralement {{port}} ({{protocols}}).",
       "noPort": "Aucun",
-      "followsPort": "suit {{port}} : son port + {{offset}}."
+      "followsPort": "suit {{port}} : son port + {{offset}}.",
+      "neededHint": "Le serveur ne peut pas être créé sans cela. Ses autres options se trouvent dans son onglet Paramètres une fois créé.",
+      "settingsLater": "Le nom du serveur, la carte, les places et les autres options du jeu se modifient dans son onglet Paramètres une fois créé. Sa console affiche l'installation."
     },
     "variables": {
       "none": "Ce jeu n'a aucun paramètre.",

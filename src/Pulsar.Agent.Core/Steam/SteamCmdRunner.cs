@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core.Files;
 using Pulsar.Agent.Core.Processes;
@@ -87,7 +88,15 @@ public sealed partial class SteamCmdRunner(
     /// <param name="progress">Stage and percent (null when unknown), throttled; awaited, so keep it quick.</param>
     /// <exception cref="GameProcessException">The install failed (<c>steamcmd.*</c> codes).</exception>
     /// <exception cref="OperationCanceledException">Cancelled; SteamCMD was killed.</exception>
-    public async Task RunAsync(SteamCmdJob job, Func<string, double?, Task> progress, CancellationToken cancellationToken)
+    public Task RunAsync(SteamCmdJob job, Func<string, double?, Task> progress, CancellationToken cancellationToken) =>
+        RunAsync(job, progress, console: null, cancellationToken);
+
+    /// <param name="console">
+    /// The server's console: each line SteamCMD prints goes there as printed (as other panels show an install), with the
+    /// account's password, Steam Guard code, user name and Steam ID and the beta password blanked out, and a note when a
+    /// run is tried again. Null: nowhere.
+    /// </param>
+    public async Task RunAsync(SteamCmdJob job, Func<string, double?, Task> progress, ServerConsole? console, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(job);
         ArgumentNullException.ThrowIfNull(progress);
@@ -106,7 +115,7 @@ public sealed partial class SteamCmdRunner(
             await _slots.WaitAsync(cancellationToken);
             try
             {
-                await RunJobAsync(job, progress, cancellationToken);
+                await RunJobAsync(job, progress, console, cancellationToken);
             }
             finally
             {
@@ -119,7 +128,7 @@ public sealed partial class SteamCmdRunner(
         }
     }
 
-    private async Task RunJobAsync(SteamCmdJob job, Func<string, double?, Task> progress, CancellationToken cancellationToken)
+    private async Task RunJobAsync(SteamCmdJob job, Func<string, double?, Task> progress, ServerConsole? console, CancellationToken cancellationToken)
     {
         await progress(InstallStages.Preparing, null);
         await PrepareCopyAsync(job, cancellationToken);
@@ -129,9 +138,12 @@ public sealed partial class SteamCmdRunner(
         var dropped = false;
         // A Steam Guard code answers a challenge: that run signs in afresh. Otherwise the cached login spares the password.
         var cached = job.Login is { GuardCode: null } login ? logins.Load(login) : null;
+        console?.Note(job.Login is null
+            ? $"SteamCMD downloads app {job.AppId.ToString(CultureInfo.InvariantCulture)} anonymously"
+            : $"SteamCMD downloads app {job.AppId.ToString(CultureInfo.InvariantCulture)} with the panel's Steam account", clock.GetUtcNow());
         while (true)
         {
-            var result = await RunOnceAsync(job, cached, progress, cancellationToken);
+            var result = await RunOnceAsync(job, cached, progress, console, cancellationToken);
             if (result.Succeeded)
             {
                 Keep(job.Login, result.CachedLogin);
@@ -143,6 +155,7 @@ public sealed partial class SteamCmdRunner(
             {
                 // SteamCMD only updated itself and signed nobody in: the account's login stays as it was.
                 LogSelfUpdated(job.ServerId);
+                console?.Note("SteamCMD updated itself; running it again", clock.GetUtcNow());
                 continue;
             }
 
@@ -157,6 +170,7 @@ public sealed partial class SteamCmdRunner(
                     if (cached is not null && !dropped)
                     {
                         LogCachedLoginDropped(job.ServerId, account.UserName);
+                        console?.Note("The Steam account's saved sign-in did not work; signing in with its password", clock.GetUtcNow());
                         cached = null;
                         dropped = true;
                         continue;
@@ -189,10 +203,13 @@ public sealed partial class SteamCmdRunner(
                 job = job with { Validate = true };
                 reset = true;
                 LogReset(job.ServerId, job.AppId);
+                console?.Note("The download was stuck (state 0x6); SteamCMD runs again checking every file", clock.GetUtcNow());
                 continue;
             }
 
             var delay = options.RetryDelays.Count == 0 ? TimeSpan.Zero : options.RetryDelays[Math.Min(attempts - 1, options.RetryDelays.Count - 1)];
+            console?.Note(string.Create(CultureInfo.InvariantCulture,
+                $"{ForConsole(job, message)} Trying again in {delay.TotalSeconds:0} s (attempt {attempts + 1} of {options.MaxAttempts})"), clock.GetUtcNow());
             await Task.Delay(delay, clock, cancellationToken);
         }
     }
@@ -347,18 +364,19 @@ public sealed partial class SteamCmdRunner(
     }
 
     /// <param name="cached">The account's cached login, lent to this run; null signs in with the password (or anonymously).</param>
-    private async Task<RunResult> RunOnceAsync(SteamCmdJob job, byte[]? cached, Func<string, double?, Task> progress, CancellationToken cancellationToken)
+    private async Task<RunResult> RunOnceAsync(SteamCmdJob job, byte[]? cached, Func<string, double?, Task> progress, ServerConsole? console,
+        CancellationToken cancellationToken)
     {
         if (job.Login is null)
         {
-            return await RunProcessAsync(job, cachedLogin: false, progress, cancellationToken);
+            return await RunProcessAsync(job, cachedLogin: false, progress, console, cancellationToken);
         }
 
         Lend(job, cached);
         RunResult result;
         try
         {
-            result = await RunProcessAsync(job, cached is not null, progress, cancellationToken);
+            result = await RunProcessAsync(job, cached is not null, progress, console, cancellationToken);
         }
         catch
         {
@@ -399,7 +417,7 @@ public sealed partial class SteamCmdRunner(
         return cached;
     }
 
-    private async Task<RunResult> RunProcessAsync(SteamCmdJob job, bool cachedLogin, Func<string, double?, Task> progress,
+    private async Task<RunResult> RunProcessAsync(SteamCmdJob job, bool cachedLogin, Func<string, double?, Task> progress, ServerConsole? console,
         CancellationToken cancellationToken)
     {
         var spec = new ProcessLaunchSpec(job.ServerId, job.ServerRoot, Executable, Arguments(job, cachedLogin), WorkingDirectory,
@@ -409,7 +427,8 @@ public sealed partial class SteamCmdRunner(
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stall.Token);
         // Everything secret that went on the command line, should SteamCMD echo it (the beta password too, with or without an account).
         string[] secrets = [job.Login?.Password ?? string.Empty, job.Login?.GuardCode ?? string.Empty, job.BetaPassword ?? string.Empty];
-        var output = new RunOutput(new ProgressReporter(progress, clock), secrets);
+        Action<string>? echo = console is null ? null : line => console.Write(ForConsole(job, line) + "\r\n", clock.GetUtcNow());
+        var output = new RunOutput(new ProgressReporter(progress, clock), secrets, echo);
         // A pseudo console's output ends only when it is closed (disposing the process): read it alongside.
         var pump = PumpAsync(process, output, stall);
         try
@@ -515,11 +534,46 @@ public sealed partial class SteamCmdRunner(
     }
 
     /// <summary>
+    /// Text for the server's console, which whoever may read the server's console sees: the run's secrets and, with an
+    /// account, its user name and Steam ID are blanked out (the panel shows the account's name only to those who manage
+    /// the panel's settings).
+    /// </summary>
+    internal static string ForConsole(SteamCmdJob job, string text)
+    {
+        foreach (var hidden in (string?[])[job.Login?.Password, job.Login?.GuardCode, job.BetaPassword])
+        {
+            if (hidden is { Length: > 0 })
+            {
+                text = text.Replace(hidden, "***", StringComparison.Ordinal);
+            }
+        }
+
+        return HideAccount(job.Login, text);
+    }
+
+    /// <summary>The account's user name and Steam ID blanked out of a text for the server's console; anonymous: as it is.</summary>
+    public static string HideAccount(SteamLogin? login, string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (login is not { UserName.Length: > 0 })
+        {
+            return text;
+        }
+
+        // Steam names are not case-sensitive: SteamCMD may print it otherwise than it was typed.
+        return SteamId().Replace(text.Replace(login.UserName, "***", StringComparison.OrdinalIgnoreCase), "[***]");
+    }
+
+    [GeneratedRegex(@"\[U:[0-9]:[0-9]{1,12}\]", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex SteamId();
+
+    /// <summary>
     /// What a run printed that matters. Lines are read as printed (a one-letter password or a five-digit code also appears
     /// in "Success!" or a progress line), and kept with the account's password and code, should SteamCMD echo them,
     /// blanked out: <see cref="Tail"/> and <see cref="Message"/> are what gets logged and reported.
     /// </summary>
-    private sealed class RunOutput(ProgressReporter reporter, IReadOnlyList<string> secrets)
+    /// <param name="echo">Each line printed, as printed, for the server's console (which blanks out what it must).</param>
+    private sealed class RunOutput(ProgressReporter reporter, IReadOnlyList<string> secrets, Action<string>? echo)
     {
         private const int MaxMessageLength = 300;
 
@@ -542,6 +596,7 @@ public sealed partial class SteamCmdRunner(
                 return;
             }
 
+            echo?.Invoke(line);
             Tail.Enqueue(Redact(line));
             if (Tail.Count > 20)
             {
