@@ -59,9 +59,17 @@ public sealed class ServerHostTests : IAsyncDisposable
             await _launcher.DisposeAsync();
         }
 
-        if (Directory.Exists(_root))
+        // Windows may still hold a file the stopped host was writing (panel-addresses.json.tmp): try again briefly.
+        for (var attempt = 1; Directory.Exists(_root); attempt++)
         {
-            Directory.Delete(_root, recursive: true);
+            try
+            {
+                Directory.Delete(_root, recursive: true);
+            }
+            catch (IOException) when (attempt < 20)
+            {
+                await Task.Delay(100);
+            }
         }
     }
 
