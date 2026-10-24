@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "valheim",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "Valheim",
   "description": "Valheim dedicated server, installed anonymously with SteamCMD (about 2 GB). The world is saved in the server folder.",
   "authors": ["Pulsar contributors"],
@@ -51,7 +51,17 @@
       "description": "Enemies only fight back." },
     { "key": "playerEvents", "label": "Raids by player progress", "type": "boolean", "default": false,
       "description": "Raids follow each player's progress instead of the world's." },
-    { "key": "saveInterval", "label": "Autosave every (s)", "type": "integer", "min": 300, "max": 7200 }
+    { "key": "saveInterval", "label": "Autosave every (s)", "type": "integer", "min": 300, "max": 7200 },
+    { "key": "backups", "label": "Backups kept", "type": "integer", "min": 0, "max": 50,
+      "description": "How many automatic world backups the game keeps. 4 is the game's own." },
+    { "key": "backupShort", "label": "First backup after (s)", "type": "integer", "min": 300, "max": 86400,
+      "description": "Seconds between the first automatic backups. 7200 is the game's own." },
+    { "key": "backupLong", "label": "Later backups every (s)", "type": "integer", "min": 600, "max": 604800,
+      "description": "Seconds between the later automatic backups. 43200 is the game's own." },
+    { "key": "fireHazards", "label": "Fire hazards", "type": "boolean", "default": false,
+      "description": "Fire spreads realistically." },
+    { "key": "instanceId", "label": "Crossplay instance id", "type": "string", "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
+      "description": "Only when several crossplay servers share one public address." }
   ],
 
   "ports": [
@@ -84,6 +94,11 @@
         { "if": "var.passiveMobs", "then": ["-setkey", "passivemobs"] },
         { "if": "var.playerEvents", "then": ["-setkey", "playerevents"] },
         { "if": "var.saveInterval", "then": ["-saveinterval", "{{var.saveInterval}}"] },
+        { "if": "var.backups", "then": ["-backups", "{{var.backups}}"] },
+        { "if": "var.backupShort", "then": ["-backupshort", "{{var.backupShort}}"] },
+        { "if": "var.backupLong", "then": ["-backuplong", "{{var.backupLong}}"] },
+        { "if": "var.fireHazards", "then": ["-setkey", "fire"] },
+        { "if": "var.instanceId", "then": ["-instanceid", "{{var.instanceId}}"] },
         "-savedir", "saves",
         { "if": "var.crossplay", "then": ["-crossplay"] }
       ],

@@ -12,3 +12,9 @@ development panel and agent:
 
 Checked again on 2026-10-05 (Phase 11): listed (`-public 1`), the server answers the agent's A2S query on its query
 port and the panel shows the player count; Valheim puts the server name where A2S has the map.
+
+## Options added in 1.0.8
+
+Version 1.2.0 adds backups kept, first and later backup intervals (`-backups`, `-backupshort`, `-backuplong`), fire hazards (`-setkey fire`) and the crossplay instance id (`-instanceid`). The backup arguments come from the Pelican egg and the game's own server documentation, the others from AMP's template.
+
+They come from AMP's template for the game (and, where noted, other panels' templates or the game's documentation); they were not each tried on a real server. The test suite checks that they are written to the right file and key, and that an option left empty changes nothing.
