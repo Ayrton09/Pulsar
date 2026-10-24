@@ -569,6 +569,12 @@ public static class AgentCapabilities
     public const string InstallAddon = InstallAddonCommand.Type;
     public const string RemoveAddon = RemoveAddonCommand.Type;
 
+    /// <summary>
+    /// Not a command: the agent reads manifests with Pulsar 1.0.5's game settings (number variables, keys kept when empty,
+    /// conditions on any variable); an older one refuses them, so the panel gives them only to agents that announce this.
+    /// </summary>
+    public const string GameSettings = "manifest.game_settings";
+
     /// <summary>Not a command: the agent enforces <see cref="ServerRuntimeSpec.Limits"/> (CPU and memory caps of a server's Job).</summary>
     public const string Limits = "server.limits";
 

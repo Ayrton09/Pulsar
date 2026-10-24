@@ -52,10 +52,14 @@ export function variableError(
   if (value === '') {
     return variable.required && !secretIsSet ? 'validation.required' : null;
   }
-  if (variable.type === 'integer') {
+  // A number is a plain decimal with up to 6 decimals, as the panel takes it ("1.5"; not "1e3").
+  if (variable.type === 'number' && !/^[+-]?\d+(\.\d{1,6})?$/.test(value)) {
+    return 'servers.variables.outOfRange';
+  }
+  if (variable.type === 'integer' || variable.type === 'number') {
     const number = Number(value);
     if (
-      !Number.isInteger(number) ||
+      (variable.type === 'integer' ? !Number.isInteger(number) : !Number.isFinite(number)) ||
       (variable.min != null && number < variable.min) ||
       (variable.max != null && number > variable.max)
     ) {

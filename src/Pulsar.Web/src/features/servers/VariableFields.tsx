@@ -39,9 +39,10 @@ export function VariableFields({
         const disabled = readOnly?.(variable) ?? false;
         const error = errors?.[variable.key];
         const label = variable.required ? `${variable.label} *` : variable.label;
+        const numeric = variable.type === 'integer' || variable.type === 'number';
         const hint = [
           variable.description,
-          variable.type === 'integer' && variable.min != null && variable.max != null
+          (variable.type === 'integer' || variable.type === 'number') && variable.min != null && variable.max != null
             ? t('servers.variables.range', { min: variable.min, max: variable.max })
             : null,
           variable.secret && secretsSet?.has(variable.key) ? t('servers.variables.secretSet') : null,
@@ -100,8 +101,11 @@ export function VariableFields({
               ) : (
                 <Input
                   {...ids}
-                  type={variable.secret ? 'password' : variable.type === 'integer' ? 'number' : 'text'}
-                  inputMode={variable.type === 'integer' ? 'numeric' : undefined}
+                  type={variable.secret ? 'password' : numeric ? 'number' : 'text'}
+                  inputMode={
+                    variable.type === 'integer' ? 'numeric' : variable.type === 'number' ? 'decimal' : undefined
+                  }
+                  step={variable.type === 'number' ? 'any' : undefined}
                   min={variable.min ?? undefined}
                   max={variable.max ?? undefined}
                   maxLength={variable.maxLength ?? undefined}
@@ -111,7 +115,7 @@ export function VariableFields({
                   disabled={disabled}
                   onChange={(e) => {
                     onChange(variable.key, e.target.value);
-                    if (variable.type === 'integer') {
+                    if (numeric) {
                       onUnreadable?.(variable.key, e.target.validity.badInput);
                     }
                   }}

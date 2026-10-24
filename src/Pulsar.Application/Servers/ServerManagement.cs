@@ -200,6 +200,11 @@ public sealed partial class ServerManagement(
 
         var server = created.Value;
         var manifest = ServerSpecs.Parse(template);
+        if (!AgentReads(connection, manifest))
+        {
+            return ServerErrors.TemplateUnsupported;
+        }
+
         // Whoever can create a server sets its first values, protected variables included.
         var configured = specs.SetVariables(server, manifest, variables ?? new Dictionary<string, string?>(), canEditProtected: true, request.UserId, now);
         if (!configured.IsSuccess)
@@ -330,6 +335,11 @@ public sealed partial class ServerManagement(
         }
 
         var manifest = ServerSpecs.Parse(next);
+        if (!AgentReads(Connection(server.NodeId), manifest))
+        {
+            return ServerErrors.TemplateUnsupported;
+        }
+
         if (await steamAccounts.LoginForAsync(server, manifest, Connection(server.NodeId), null, cancellationToken) is { IsSuccess: false } login)
         {
             return login.Error!;
@@ -689,6 +699,10 @@ public sealed partial class ServerManagement(
 
         return resolved.Value with { Ports = all };
     }
+
+    /// <summary>Whether the node's agent reads <paramref name="manifest"/>: game settings need an agent of Pulsar 1.0.5 or newer.</summary>
+    private static bool AgentReads(AgentConnectionInfo? connection, GameManifest manifest) =>
+        !ManifestFeatures.UsesGameSettings(manifest) || connection?.Capabilities.Contains(AgentCapabilities.GameSettings, StringComparer.Ordinal) == true;
 
     /// <summary>Allocations added for a server's port numbers are audited as the node's, as if added from its page.</summary>
     private void RecordAddedAllocations(Server server, IReadOnlyList<NodeAllocation> added)

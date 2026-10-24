@@ -421,9 +421,18 @@ public static partial class ManifestValidator
 
                     break;
                 case VariableType.Integer:
-                    if (variable.Min is null || variable.Max is null || variable.Min > variable.Max)
+                    if (variable.Min is null || variable.Max is null || variable.Min > variable.Max
+                        || decimal.Truncate(variable.Min.Value) != variable.Min || decimal.Truncate(variable.Max.Value) != variable.Max
+                        || variable.Min < long.MinValue || variable.Max > long.MaxValue)
                     {
-                        error(path, "Integer variables need 'min' and 'max' (min ≤ max).");
+                        error(path, "Integer variables need whole 'min' and 'max' (min ≤ max).");
+                    }
+
+                    break;
+                case VariableType.Number:
+                    if (variable.Min is null || variable.Max is null || variable.Min > variable.Max || variable.Min.Value.Scale > 6 || variable.Max.Value.Scale > 6)
+                    {
+                        error(path, "Number variables need 'min' and 'max' (min ≤ max, up to 6 decimals).");
                     }
 
                     break;
@@ -710,13 +719,14 @@ public static partial class ManifestValidator
                     var guarded = guardedPorts;
                     switch (condition.If.Split('.'))
                     {
-                        case ["var", var key] when context.Variables.TryGetValue(key, out var variable) && variable.Type is VariableType.Boolean or VariableType.String:
+                        // A boolean holds when true; any other variable when it has a value (an option left unset does not).
+                        case ["var", var key] when context.Variables.ContainsKey(key):
                             break;
                         case ["port", var name] when context.Ports.ContainsKey(name):
                             guarded = new HashSet<string>(guardedPorts, StringComparer.Ordinal) { name };
                             break;
                         default:
-                            context.Error($"{path}[{i}].if", "Must be 'var.<key>' of a boolean or string variable, or 'port.<name>'.");
+                            context.Error($"{path}[{i}].if", "Must be 'var.<key>' of a variable, or 'port.<name>'.");
                             break;
                     }
 
@@ -830,6 +840,11 @@ public static partial class ManifestValidator
             if (file.Set.Keys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != file.Set.Count)
             {
                 context.Error($"{path}.set", "Keys differ only by case.");
+            }
+
+            if (file.KeepIfEmpty is { } kept && (kept.Count > 128 || kept.Any(k => !file.Set.ContainsKey(k)) || kept.Distinct(StringComparer.OrdinalIgnoreCase).Count() != kept.Count))
+            {
+                context.Error($"{path}.keepIfEmpty", "Keys of 'set', each once.");
             }
 
             if (file.Format == ConfigFileFormat.UnrealIni)

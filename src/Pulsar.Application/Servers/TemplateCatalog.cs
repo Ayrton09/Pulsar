@@ -43,8 +43,8 @@ public sealed record TemplateVariable(
     bool UserEditable,
     string? Pattern,
     int? MaxLength,
-    long? Min,
-    long? Max,
+    decimal? Min,
+    decimal? Max,
     IReadOnlyList<TemplateOption> Options,
     string? Description,
     TemplateWorkshop? Workshop = null);

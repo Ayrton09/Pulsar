@@ -154,6 +154,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.SteamAccounts;
             yield return AgentCapabilities.InstallAddon;
             yield return AgentCapabilities.RemoveAddon;
+            yield return AgentCapabilities.GameSettings;
             if (installOptions.TestGameAvailable)
             {
                 yield return AgentCapabilities.TestGame;

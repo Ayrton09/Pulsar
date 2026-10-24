@@ -52,6 +52,9 @@ public enum VariableType
     Integer,
     Boolean,
     Enum,
+
+    /// <summary>A decimal number between <c>min</c> and <c>max</c> ("1.5"): the multipliers games take.</summary>
+    Number,
 }
 #pragma warning restore CA1720
 
@@ -66,8 +69,8 @@ public sealed record VariableDefinition(
     bool UserEditable = true,
     string? Pattern = null,
     int? MaxLength = null,
-    long? Min = null,
-    long? Max = null,
+    decimal? Min = null,
+    decimal? Max = null,
     IReadOnlyList<EnumOption>? Options = null,
     string? Description = null,
     WorkshopList? Workshop = null);
@@ -353,8 +356,12 @@ public enum ConfigFileMode
 /// <see cref="ConfigFileFormat.XmlProperties"/> file (to create it when it is missing).
 /// </param>
 /// <param name="Struct">The struct line the keys are members of, when they are not plain lines (<see cref="ConfigFileFormat.UnrealIni"/> only).</param>
+/// <param name="KeepIfEmpty">
+/// Keys of <see cref="Set"/> whose line stays as the file has it when their value is empty: an option left unset in
+/// the panel changes nothing (an empty value of another key removes its line).
+/// </param>
 public sealed record ConfigFileDefinition(string Path, ConfigFileFormat Format, ConfigFileMode Mode, IReadOnlyDictionary<string, string> Set,
-    string? Section = null, string? Struct = null);
+    string? Section = null, string? Struct = null, IReadOnlyList<string>? KeepIfEmpty = null);
 
 /// <summary>
 /// What a backup contains: globs relative to the server directory (Phase 7); and how a running game is asked to write

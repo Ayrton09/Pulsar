@@ -13469,9 +13469,9 @@ export interface components {
             pattern: null | string;
             /** Format: int32 */
             maxLength: null | number;
-            /** Format: int64 */
+            /** Format: double */
             min: null | number;
-            /** Format: int64 */
+            /** Format: double */
             max: null | number;
             options: components["schemas"]["TemplateOption"][];
             description: null | string;
@@ -13613,7 +13613,7 @@ export interface components {
             sshKeys: number;
         };
         /** @enum {unknown} */
-        VariableType: "string" | "integer" | "boolean" | "enum";
+        VariableType: "string" | "integer" | "boolean" | "enum" | "number";
         WorkshopItemView: {
             id: string;
             found: boolean;

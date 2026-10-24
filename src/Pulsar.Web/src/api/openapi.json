@@ -17500,16 +17500,16 @@
           "min": {
             "type": [
               "null",
-              "integer"
+              "number"
             ],
-            "format": "int64"
+            "format": "double"
           },
           "max": {
             "type": [
               "null",
-              "integer"
+              "number"
             ],
-            "format": "int64"
+            "format": "double"
           },
           "options": {
             "type": "array",
@@ -18107,7 +18107,8 @@
           "string",
           "integer",
           "boolean",
-          "enum"
+          "enum",
+          "number"
         ]
       },
       "WorkshopItemView": {

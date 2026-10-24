@@ -134,10 +134,14 @@ public static class VariableValues
                 throw new LaunchPlanException($"{variable.Key}: {error}");
             }
 
-            // Integers in their plain form: "+8" after "+maxplayers" would be read as a command of its own.
+            // Numbers in their plain form: "+8" after "+maxplayers" would be read as a command of its own.
             if (variable.Type == VariableType.Integer && !string.IsNullOrEmpty(value))
             {
                 value = long.Parse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+            }
+            else if (variable.Type == VariableType.Number && !string.IsNullOrEmpty(value))
+            {
+                value = decimal.Parse(value, DecimalStyles, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
             }
 
             resolved[variable.Key] = value;
@@ -188,7 +192,14 @@ public static class VariableValues
                 return long.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var number)
                     && number >= variable.Min && number <= variable.Max
                     ? null
-                    : $"An integer between {variable.Min} and {variable.Max}.";
+                    : $"An integer between {variable.Min?.ToString(CultureInfo.InvariantCulture)} and {variable.Max?.ToString(CultureInfo.InvariantCulture)}.";
+            case VariableType.Number:
+                // A plain decimal ("1.5", "-2", "0.25"): no exponent, no thousands separator, at most 6 decimals.
+                return value.Length <= 32
+                    && decimal.TryParse(value, DecimalStyles, CultureInfo.InvariantCulture, out var number2)
+                    && number2.Scale <= 6 && number2 >= variable.Min && number2 <= variable.Max
+                    ? null
+                    : $"A number between {variable.Min?.ToString(CultureInfo.InvariantCulture)} and {variable.Max?.ToString(CultureInfo.InvariantCulture)}, with up to 6 decimals.";
             case VariableType.Boolean:
                 return value is "true" or "false" ? null : "Either true or false.";
             case VariableType.Enum:
@@ -197,6 +208,9 @@ public static class VariableValues
                 return "Unknown variable type.";
         }
     }
+
+    /// <summary>What a number variable's value may look like: a sign and a decimal point, nothing else.</summary>
+    private const NumberStyles DecimalStyles = NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint;
 
     /// <summary>
     /// A string variable's pattern as it runs: the whole value, anchored or not (a substring match would accept
@@ -315,9 +329,12 @@ public static class LaunchPlanRenderer
         var environment = (runtime.Environment ?? new Dictionary<string, string>())
             .ToDictionary(e => e.Key, e => Placeholders.Replace(e.Value, Placeholder), StringComparer.OrdinalIgnoreCase);
 
+        // A key kept when empty (an option left unset) is not written at all: its line stays as the file has it.
         var configFiles = manifest.ConfigFileList.Select(file => new RenderedConfigFile(file.Path, file.Format, file.Mode,
         [
-            .. file.Set.Select(entry =>
+            .. file.Set.Where(entry => file.KeepIfEmpty?.Contains(entry.Key, StringComparer.OrdinalIgnoreCase) != true
+                    || Placeholders.Replace(entry.Value, Placeholder).Length > 0)
+                .Select(entry =>
             {
                 var value = Placeholders.Replace(entry.Value, Placeholder);
                 var secret = IsSecret(entry.Value);

@@ -32,4 +32,17 @@ describe('variableError', () => {
     expect(variableError({ ...map, maxLength: 3 }, 'dust')).toBe('validation.tooLong');
     expect(variableError(map, 'de dust2')).toBeNull();
   });
+
+  it('takes a number as the panel does: a plain decimal in its range, up to 6 decimals', () => {
+    const rate: TemplateVariable = { ...map, key: 'rate', type: 'number', pattern: null, min: 0.1, max: 100 };
+
+    for (const value of ['1', '1.5', '0.1', '100', '99.999999', '+2']) {
+      expect(variableError(rate, value), value).toBeNull();
+    }
+    for (const value of ['0.05', '100.5', '1e2', '1,5', '1.1234567', 'NaN', 'Infinity', '.5']) {
+      expect(variableError(rate, value), value).toBe('servers.variables.outOfRange');
+    }
+    // Left empty, an option keeps the game's own value.
+    expect(variableError(rate, '')).toBeNull();
+  });
 });
