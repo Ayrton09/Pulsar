@@ -49,7 +49,7 @@
 
 ## Decisions already taken
 
-- **Language:** code, comments, commits, issues and public documentation in English. The UI ships in English and Spanish from day one.
+- **Language:** code, comments, commits, issues and public documentation in English. The UI shipped in English and Spanish from day one; it now speaks nine languages (docs 07, "i18n"), and so do notifications.
 - **Licensing:** AGPL-3.0-only for the core; MIT for `games/` and `schemas/`; contributions under the DCO (ADR-0013).
 - **Isolation:** one Windows account per game server, implemented in Phase 3 together with process management (ADR-0005).
 - **Starting point:** Phase 0 = repository skeleton + Windows spikes in parallel (see [roadmap](09-roadmap.md)).

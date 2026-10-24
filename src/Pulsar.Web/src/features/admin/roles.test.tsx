@@ -6,7 +6,7 @@ import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Schemas } from '../../api/client';
 import { App } from '../../app/App';
-import { initI18n } from '../../app/i18n';
+import { initI18n, loadLanguage } from '../../app/i18n';
 import { routes } from '../../app/routes';
 import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
 
@@ -64,6 +64,7 @@ describe('the built-in role', () => {
     expect(screen.queryByText('Stored when the database was made.')).not.toBeInTheDocument();
     // The others' are what their administrators wrote.
     expect(screen.getByText('Runs the servers.')).toBeInTheDocument();
+    await loadLanguage('es');
     await act(() => i18next.changeLanguage('es'));
     expect(await screen.findByText('Acceso total a todo. Rol incluido.')).toBeInTheDocument();
     await act(() => i18next.changeLanguage('en-US'));

@@ -6,6 +6,7 @@ import { Alert, Badge, Card, PageHeader, Table, Td, Th } from '../../components/
 import { Checkbox, Field, Input, Select } from '../../components/ui/Form';
 import { errorMessage } from '../../lib/errors';
 import { useFormatDate } from '../../lib/format';
+import { languageNames, resolveLanguage, supportedLanguages, type SupportedLanguage } from '../../app/i18n';
 import { useServers } from '../servers/api';
 import {
   notificationEvents,
@@ -87,7 +88,7 @@ export function NotificationsPage() {
                         ? t('notifications.webhook', { id: channel.webhook ?? '?' })
                         : channel.recipients.join(', ')}
                       {' · '}
-                      {t(`notifications.languages.${channel.language}`)}
+                      {languageNames[channel.language as SupportedLanguage] ?? channel.language}
                     </p>
                   </Td>
                   <Td>
@@ -380,7 +381,7 @@ function ChannelDialog({
   emailConfigured: boolean;
   onClose: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const servers = useServers();
   const create = useCreateChannel();
   const update = useUpdateChannel();
@@ -394,7 +395,8 @@ function ChannelDialog({
   );
   const [someServers, setSomeServers] = useState(channel?.serverIds != null);
   const [serverIds, setServerIds] = useState<Set<string>>(new Set(channel?.serverIds ?? []));
-  const [language, setLanguage] = useState(channel?.language ?? 'en');
+  // A new channel starts in the language its author reads the panel in.
+  const [language, setLanguage] = useState(channel?.language ?? resolveLanguage(i18n.language));
   const [enabled, setEnabled] = useState(channel?.enabled ?? true);
   const saving = create.isPending || update.isPending;
   const error = create.error ?? update.error ?? remove.error;
@@ -525,8 +527,11 @@ function ChannelDialog({
           <Field label={t('notifications.language')}>
             {(control) => (
               <Select {...control} value={language} onChange={(e) => setLanguage(e.target.value)}>
-                <option value="en">{t('notifications.languages.en')}</option>
-                <option value="es">{t('notifications.languages.es')}</option>
+                {supportedLanguages.map((code) => (
+                  <option key={code} value={code} lang={code}>
+                    {languageNames[code]}
+                  </option>
+                ))}
               </Select>
             )}
           </Field>

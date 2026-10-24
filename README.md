@@ -69,7 +69,8 @@ best-effort basis). The panel needs about 1 GB of RAM; each node needs the disk 
 - HTTPS from the first start, with a certificate for your PC's names and addresses, or a free Let's Encrypt
   certificate for your public IP.
 
-The panel speaks **English and Spanish**.
+The panel and its notifications speak **English, Spanish, Brazilian Portuguese, French, Italian, German, Japanese,
+Korean and Simplified Chinese**: each user picks theirs in My account (until then, the browser's).
 
 ## Supported games
 

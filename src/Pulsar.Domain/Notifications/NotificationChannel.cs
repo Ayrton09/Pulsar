@@ -88,7 +88,7 @@ public sealed class NotificationChannel
     /// <summary>Server events only for these servers; null for every server. Node events are not filtered.</summary>
     public IReadOnlyList<Guid>? ServerIds { get; private set; }
 
-    /// <summary>"en" or "es".</summary>
+    /// <summary>One of <see cref="Languages"/> (Portuguese is Brazil's, Chinese is Simplified).</summary>
     public string Language { get; private set; }
 
     /// <summary>The Discord webhook URL, encrypted (Discord channels only).</summary>

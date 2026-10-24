@@ -660,7 +660,7 @@
       "events_required": "Choose at least one event.",
       "servers_invalid": "Choose up to 200 servers, or every server.",
       "server_unknown": "One of the chosen servers no longer exists.",
-      "language_invalid": "Choose English or Spanish.",
+      "language_invalid": "Choose one of the panel's languages.",
       "webhook_invalid": "That is not a Discord webhook address (https://discord.com/api/webhooks/…).",
       "recipients_invalid": "Write 1 to 10 valid email addresses.",
       "too_many": "The panel has as many channels as it can (50).",
@@ -837,6 +837,12 @@
     "profile": "Profile",
     "userNameFixed": "The user name cannot be changed.",
     "emailHint": "Optional. Not shown to other users.",
+    "language": {
+      "title": "Language",
+      "label": "Panel language",
+      "hint": "Saved in this browser. Each notification channel keeps its own language.",
+      "loadFailed": "That language could not be loaded. Reload the page and try again."
+    },
     "password": "Password",
     "currentPassword": "Current password",
     "changePassword": "Change password",
@@ -1685,10 +1691,6 @@
     "onlySomeServers": "Only some servers",
     "serversHint": "Server events only for the chosen servers. Node events go to every channel that wants them.",
     "language": "Language",
-    "languages": {
-      "en": "English",
-      "es": "Español"
-    },
     "enabled": "Enabled",
     "off": "Off",
     "webhookUrl": "Discord webhook URL",

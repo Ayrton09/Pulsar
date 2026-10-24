@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import i18next from 'i18next';
 import type { ReactNode } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { initI18n } from '../../app/i18n';
+import { initI18n, loadLanguage } from '../../app/i18n';
 import { fakeApi, json, problem } from '../../test/fakeApi';
 import { formatFingerprint, type PanelCertificate } from './api';
 import { PanelCertificateSection } from './PanelCertificateSection';
@@ -73,6 +73,7 @@ describe('the panel certificate on the account page', () => {
   });
 
   it('says in Spanish, with voseo, why and how', async () => {
+    await loadLanguage('es');
     await i18next.changeLanguage('es');
     fakeApi({ 'GET /api/v1/panel/certificate': () => json(installers) });
     renderWithClient(<PanelCertificateSection />);

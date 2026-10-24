@@ -8,7 +8,7 @@
 |---|---|---|---|
 | Build | Vite + React + TypeScript (strict) | Requirement. No SSR. Type checking runs on TypeScript 7 (native compiler, `@typescript/native` → `tsc`); the `typescript` package is an alias of `@typescript/typescript6`, the TS 6 API that typescript-eslint and openapi-typescript still need (Microsoft's side-by-side setup). Drop the alias once those tools support TS 7. | In place |
 | Styles | Tailwind CSS v4 | No CSS-in-JS runtime. | In place |
-| i18n | i18next (en + es from day one) | Adding it later means touching every screen. | In place |
+| i18n | i18next: English and Spanish from day one; Brazilian Portuguese, French, Italian, German, Japanese, Korean and Simplified Chinese added after 1.0.4 | Adding it later means touching every screen. | In place |
 | Tests | Vitest + Testing Library; Playwright for E2E | Requirement. | In place |
 | Routing | React Router (SPA/library mode) | Standard, no Node server. | Phase 1 |
 | Server state | TanStack Query | Caching, invalidation, dedup; SignalR events write into the same cache. | Phase 1 |
@@ -35,7 +35,7 @@ src/Pulsar.Web/
    ├─ app/                   App, route table, query client, i18n setup
    ├─ api/                   openapi.json (committed copy of the API document), schema.d.ts (generated),
    │                         client.ts (openapi-fetch + antiforgery middleware + ApiError)
-   ├─ locales/en, es
+   ├─ locales/               en, es, pt (Brazil), fr, it, de, ja, ko, zh (Simplified): the same keys in each
    ├─ test/                  Vitest setup and a fake API (routes keyed by "METHOD /path")
    ├─ components/ui/         Button, Form (Field, Input, Select, Checkbox), Dialog (Radix), Display (Table,
    │                         Badge, Alert, PageHeader…): no business logic
@@ -57,7 +57,7 @@ Each `feature` holds `api.ts` (TanStack Query hooks), its pages/components and t
 /nodes                             list; new nodes are created in a dialog (also open to node.credentials.manage and settings.manage, for their sections)
 /nodes/:id                         one page: usage, drives, allocations, credentials, administration
 /admin/{users|roles|audit|notifications|backup-storage}
-/account                           profile, password, 2FA, SFTP access and SSH keys, panel certificate, API keys
+/account                           profile, language, password, 2FA, SFTP access and SSH keys, panel certificate, API keys
 ```
 
 The server page has a fixed header (name, status, power actions, live CPU/RAM) and tabs (`?tab=`); tabs without permission are hidden. Why an operation failed (Recent operations) and why the node refused a power action are shown in the user's language from their codes (`errors.*`), the code itself only as a tooltip, and the agent's own words when a code has no translation. The node page is one page of sections. There is no settings page: the panel's own settings are in its `appsettings.Production.json` (docs/guides/install.md), notification settings in `/admin/notifications`.
@@ -146,7 +146,7 @@ The server page has a fixed header (name, status, power actions, live CPU/RAM) a
 *Phase 10.*
 
 - `/admin/notifications` (`settings.manage`):
-  - Channels: a Discord webhook or 1 to 10 email addresses; the events each wants (server crashed, did not start, backup failed, scheduled task failed, node offline and back, node low on disk); every server or some; English or Spanish; on or off.
+  - Channels: a Discord webhook or 1 to 10 email addresses; the events each wants (server crashed, did not start, backup failed, scheduled task failed, node offline and back, node low on disk); every server or some; one of the panel's languages (a new channel starts in its author's); on or off.
   - A Discord webhook is shown by its id only: its address is a secret and never comes back. "Send test" sends a message at once and says whether it went, or why not.
   - Settings: the panel's address (for links in messages), the low-disk threshold (% free) and how long a node may be away before it counts as offline. The SMTP server: host, port, STARTTLS, TLS or none, user, a password that is never shown (left empty it is kept, but only for the same server and user), sender.
   - Recent messages: the last 100, with their status, attempts and last error; refreshed while some are pending.
@@ -211,7 +211,8 @@ The server page's Administration section says when a newer version of the server
 - A button that cannot be used loses its variant's fill (a faded accent still reads as "click me"). A busy one keeps its look, with a spinner. Killing a server is an outlined danger button, so it does not outshout the everyday actions.
 - One theme, dark (the light one was dropped in the UI pass after the audit). Design tokens are CSS variables mapped into Tailwind's `@theme`. `color-scheme: dark` makes the browser's own controls (scrollbars, date pickers) dark too.
 - States shown with color **and** text/icon (accessibility).
-- The page's `lang` follows the interface's language, so screen readers read Spanish as Spanish.
+- The interface's language is the browser's (the first of the nine the panel speaks that matches, else English) until the user chooses one in My account, which this browser keeps (`localStorage` `pulsar.language`; a browser that refuses storage keeps it for the visit). Languages are listed by their own names. English is in the bundle and is every language's fallback; the others are fetched when used, so a browser downloads one language, not nine (a language that cannot be fetched leaves the interface in English at start, and says so in My account). A message's translation keeps every `{{placeholder}}` of the English one, which the locale tests check for every language.
+- The page's `lang` follows the interface's language, so screen readers read Spanish as Spanish: `zh-CN` and `pt-BR` for Chinese and Portuguese, so browsers draw Chinese characters in their mainland forms.
 - Second UI pass (look of commercial panels, Pterodactyl and AMP mixed):
   - Servers are cards: their game's picture with the status over it, live CPU, memory and players while they run (each card watches its server), where players connect (copied with a click; a server listening on every address shows its port only) and icon power buttons for what applies now. The list has a search box and All / Running / Stopped filters. The dashboard shows up to six of them, the running ones first.
   - A server's page opens with its game's wide banner behind its name, status, game, node and address, and the power buttons (start green, stop red, restart neutral, kill outlined); its usage is a row of tiles with bars. The console is framed like a terminal, its search and the command line inside the frame.

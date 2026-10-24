@@ -5,7 +5,14 @@ import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { Button } from '../../components/ui/Button';
 import { Alert, Card, PageHeader } from '../../components/ui/Display';
-import { Field, Input } from '../../components/ui/Form';
+import { Field, Input, Select } from '../../components/ui/Form';
+import {
+  chooseLanguage,
+  languageNames,
+  resolveLanguage,
+  supportedLanguages,
+  type SupportedLanguage,
+} from '../../app/i18n';
 import { errorMessage, fieldErrors } from '../../lib/errors';
 import { useChangePassword, useCurrentUser, useUpdateProfile } from './api';
 import { MIN_PASSWORD_LENGTH } from './SetupPage';
@@ -39,6 +46,7 @@ export function AccountPage() {
       <PageHeader title={t('account.title')} description={t('account.description')} />
       <div className="grid max-w-3xl gap-6">
         <ProfileForm />
+        <LanguageSection />
         <PasswordForm />
         <TwoFactorSection />
         <SftpAccessSection />
@@ -47,6 +55,45 @@ export function AccountPage() {
         <ApiKeysSection />
       </div>
     </>
+  );
+}
+
+/** The interface's language in this browser: the browser's own until one is chosen here. */
+function LanguageSection() {
+  const { t, i18n } = useTranslation();
+  const [failed, setFailed] = useState(false);
+  const choose = async (language: SupportedLanguage) => {
+    setFailed(false);
+    try {
+      await chooseLanguage(language);
+    } catch {
+      setFailed(true); // its texts could not be fetched (offline, or the panel was updated): nothing changed
+    }
+  };
+  return (
+    <Card className="p-6">
+      <h2 className="mb-4 text-lg font-semibold">{t('account.language.title')}</h2>
+      {failed && (
+        <div className="mb-4">
+          <Alert>{t('account.language.loadFailed')}</Alert>
+        </div>
+      )}
+      <Field label={t('account.language.label')} hint={t('account.language.hint')}>
+        {(ids) => (
+          <Select
+            {...ids}
+            value={resolveLanguage(i18n.language)}
+            onChange={(e) => void choose(e.target.value as SupportedLanguage)}
+          >
+            {supportedLanguages.map((language) => (
+              <option key={language} value={language} lang={language}>
+                {languageNames[language]}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+    </Card>
   );
 }
 

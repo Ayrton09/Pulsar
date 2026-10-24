@@ -6,7 +6,7 @@ import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Schemas } from '../../api/client';
 import { App } from '../../app/App';
-import { initI18n } from '../../app/i18n';
+import { initI18n, loadLanguage } from '../../app/i18n';
 import { routes } from '../../app/routes';
 import { adminUser, fakeApi, json, problem, session } from '../../test/fakeApi';
 import { answerNext, connections, openedConnection, refuseNext } from '../../test/fakeSignalR';
@@ -254,6 +254,7 @@ describe('server console', () => {
     await waitFor(() => expect(consoleText()).toBe('one\r\n'));
 
     try {
+      await loadLanguage('es');
       await act(() => i18next.changeLanguage('es'));
       live.emit('ConsoleOutput', { serverId: server.id, entries: [entry(2, 'a\x1b]0;title\nnext\r\n')] });
 

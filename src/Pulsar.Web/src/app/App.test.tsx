@@ -1,13 +1,20 @@
 import { QueryClient } from '@tanstack/react-query';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import i18next from 'i18next';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { safeReturnTo } from '../features/auth/returnTo';
 import { adminUser, fakeApi, json, problem, session } from '../test/fakeApi';
 import { App } from './App';
+import de from '../locales/de/common.json';
 import { initI18n, resolveLanguage } from './i18n';
 import { routes } from './routes';
+
+// Korean's texts cannot be fetched (offline, or the panel was updated since this tab loaded it).
+vi.mock('../locales/ko/common.json', () => {
+  throw new TypeError('Failed to fetch dynamically imported module');
+});
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -29,7 +36,17 @@ describe('resolveLanguage', () => {
     ['es-AR', 'es'],
     ['es', 'es'],
     ['EN-us', 'en'],
-    ['fr-FR', 'en'],
+    ['fr-FR', 'fr'],
+    ['de-CH', 'de'],
+    ['it-IT', 'it'],
+    ['ja-JP', 'ja'],
+    ['ko-KR', 'ko'],
+    // Portugal's and Taiwan's browsers get Brazil's Portuguese and Simplified Chinese: closer than English.
+    ['pt-PT', 'pt'],
+    ['zh-CN', 'zh'],
+    ['zh-TW', 'zh'],
+    ['nl-NL', 'en'],
+    ['', 'en'],
     [undefined, 'en'],
   ])('maps %s to %s', (tag, expected) => {
     expect(resolveLanguage(tag)).toBe(expected);
@@ -217,5 +234,55 @@ describe('account', () => {
 
     expect(await screen.findByText('The passwords do not match.')).toBeInTheDocument();
     expect(api.mock.calls.map(([request]) => (request as Request).method)).not.toContain('POST');
+  });
+
+  it('changes the language of the interface and keeps it in this browser for the next visits', async () => {
+    const api = fakeApi({
+      'GET /api/v1/auth/session': session(adminUser),
+      'GET /api/v1/auth/two-factor': () => json({ enabled: false, required: false, recoveryCodesLeft: 0 }),
+      'GET /api/v1/account/api-keys': () => json([]),
+    });
+    renderAt('/account');
+    const user = userEvent.setup();
+
+    try {
+      const select = await screen.findByLabelText('Panel language');
+      // Each language by its own name, whatever the interface's language.
+      expect(within(select).getByRole('option', { name: '简体中文' })).toHaveAttribute('lang', 'zh');
+      await user.selectOptions(select, 'de');
+
+      const german = de.account;
+      expect(await screen.findByRole('heading', { name: german.title })).toBeInTheDocument();
+      expect(screen.getByLabelText(german.language.label)).toHaveValue('de');
+      expect(document.documentElement.lang).toBe('de');
+      expect(localStorage.getItem('pulsar.language')).toBe('de');
+      // The choice is this browser's: nothing is sent to the panel.
+      expect(api.mock.calls.map(([request]) => (request as Request).method)).not.toContain('PUT');
+
+      // The next visit starts in it, whatever the browser's language.
+      await initI18n('es-AR');
+      expect(i18next.language).toBe('de');
+    } finally {
+      localStorage.removeItem('pulsar.language');
+      await i18next.changeLanguage('en');
+    }
+  });
+
+  it('says so, and changes nothing, when a language cannot be fetched', async () => {
+    fakeApi({
+      'GET /api/v1/auth/session': session(adminUser),
+      'GET /api/v1/auth/two-factor': () => json({ enabled: false, required: false, recoveryCodesLeft: 0 }),
+      'GET /api/v1/account/api-keys': () => json([]),
+    });
+    renderAt('/account');
+    const user = userEvent.setup();
+
+    const select = await screen.findByLabelText('Panel language');
+    await user.selectOptions(select, 'ko');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('That language could not be loaded.');
+    expect(select).toHaveValue('en');
+    expect(i18next.language).toBe('en');
+    expect(localStorage.getItem('pulsar.language')).toBeNull();
   });
 });

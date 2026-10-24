@@ -621,7 +621,7 @@ CREATE TABLE notification_channels (
     is_enabled            boolean NOT NULL,
     events                text[] NOT NULL,          -- server_crashed, server_start_failed, backup_failed, scheduled_task_failed, node_offline, node_disk_low
     server_ids            uuid[],                   -- server events only for these; NULL = every server
-    language              varchar(8) NOT NULL,      -- en | es
+    language              varchar(8) NOT NULL,      -- en | es | pt | fr | it | de | ja | ko | zh
     webhook_url_protected bytea,                    -- Discord: the webhook URL, Data Protection
     recipients            text[] NOT NULL,          -- email: 1..10 addresses
     created_at            timestamptz NOT NULL,
