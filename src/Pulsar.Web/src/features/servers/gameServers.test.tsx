@@ -318,6 +318,24 @@ describe('creating a game server', () => {
 });
 
 describe('the list of games', () => {
+  it('shows each game once on the Games page, at its newest version', async () => {
+    const newer = { ...template, id: '0192f1a0-0000-7000-8000-0000000000f3', version: '1.1.0' };
+    const other = { ...template, id: '0192f1a0-0000-7000-8000-0000000000f4', key: 'valheim', name: 'Valheim' };
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/templates': () => json([template, newer, other]),
+      'GET /api/v1/appearance': () => json({ steamArtwork: true }),
+    });
+    renderAt('/templates');
+
+    const games = within(await screen.findByRole('list', { name: 'Games' }));
+    // The older version stays for the servers made from it, not as a second card.
+    expect(await games.findAllByRole('listitem')).toHaveLength(2);
+    const source = within(games.getByText('Counter-Strike: Source').closest('li') ?? document.body);
+    expect(source.getByText(/1\.1\.0/)).toBeInTheDocument();
+    expect(games.getAllByText('Counter-Strike: Source')).toHaveLength(1);
+  });
+
   it('offers the newest version of each game, by its name alone', async () => {
     const newer = { ...template, id: '0192f1a0-0000-7000-8000-0000000000f3', version: '1.1.0' };
     const other = { ...template, id: '0192f1a0-0000-7000-8000-0000000000f4', key: 'valheim', name: 'Valheim' };

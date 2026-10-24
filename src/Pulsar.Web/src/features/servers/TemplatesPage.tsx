@@ -11,9 +11,13 @@ import { useCurrentUser } from '../auth/api';
 import { useImportTemplate, useTemplatePreview, useTemplates } from './api';
 import { CreateServerDialog } from './CreateServerDialog';
 import { GameCard } from './GameCard';
+import { newestOfEachGame } from './templateVersions';
 import { ArtworkSetting } from '../games/ArtworkSetting';
 
-/** Game templates (docs/architecture/04): the ones shipped with Pulsar and the ones administrators imported. */
+/**
+ * Game templates (docs/architecture/04): the ones shipped with Pulsar and the ones administrators imported, the newest
+ * version of each game (older ones stay for the servers made from them, which their overview offers to move).
+ */
 export function TemplatesPage() {
   const { t } = useTranslation();
   const me = useCurrentUser();
@@ -45,7 +49,7 @@ export function TemplatesPage() {
           aria-label={t('templates.title')}
           className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
         >
-          {templates.data.map((template) => (
+          {newestOfEachGame(templates.data).map((template) => (
             <li key={template.id} className="flex min-w-0">
               <GameCard
                 template={template}
