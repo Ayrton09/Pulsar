@@ -3783,6 +3783,132 @@
           "description": "仅 Pulsar 在本机上使用：控制台命令和正常停止。"
         }
       }
+    },
+    "minecraft-bedrock": {
+      "description": "Minecraft: Bedrock Edition 专用服务器，从 Mojang 下载（程序由 Microsoft 签名）。Windows、主机和手机上的玩家使用相同版本的游戏加入。",
+      "variables": {
+        "eula": {
+          "label": "Minecraft 最终用户许可协议",
+          "description": "Mojang 的条款和隐私政策：https://aka.ms/MinecraftEULA 和 https://go.microsoft.com/fwlink/?LinkId=521839。使用服务器即表示接受它们。",
+          "options": {
+            "accepted": "我接受"
+          }
+        },
+        "version": {
+          "label": "Minecraft 版本",
+          "description": "'latest' 表示最新正式版，或填写 1.21.50.07 这样的版本。玩家需要相同版本。更改后需要更新。"
+        },
+        "serverName": {
+          "label": "服务器名称",
+          "description": "玩家会在服务器列表中看到它。"
+        },
+        "maxPlayers": {
+          "label": "人数上限"
+        },
+        "gamemode": {
+          "label": "游戏模式",
+          "options": {
+            "survival": "生存",
+            "creative": "创造",
+            "adventure": "冒险"
+          }
+        },
+        "difficulty": {
+          "label": "难度",
+          "options": {
+            "peaceful": "和平",
+            "easy": "简单",
+            "normal": "普通",
+            "hard": "困难"
+          }
+        },
+        "onlineMode": {
+          "label": "通过 Xbox 验证账户",
+          "description": "每位玩家都用 Microsoft 账户登录。关闭后，任何人都能用任意名字加入。"
+        },
+        "allowList": {
+          "label": "仅限允许列表中的玩家",
+          "description": "在控制台中用 'allowlist add <玩家代号>' 添加玩家。"
+        },
+        "lanVisibility": {
+          "label": "在局域网中可见",
+          "description": "该网络中的玩家会在“好友”标签中看到它。它会占用 UDP 端口 7551：本机最多只为一台服务器开启。"
+        },
+        "levelName": {
+          "label": "世界",
+          "description": "worlds/ 中的世界文件夹。新名字会开始一个新世界。"
+        },
+        "levelSeed": {
+          "label": "世界种子",
+          "description": "仅在创建世界时使用。"
+        },
+        "viewDistance": {
+          "label": "视距（区块）",
+          "description": "玩家能看到的最远距离。越低占用的内存和带宽越少。"
+        },
+        "tickDistance": {
+          "label": "模拟距离（区块）",
+          "description": "离玩家多远范围内生物会移动、作物会生长。越低占用的 CPU 越少。"
+        },
+        "allowCheats": {
+          "label": "允许作弊",
+          "description": "/give 和 /tp 等命令对管理员可用。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "forceGamemode": {
+          "label": "强制游戏模式",
+          "description": "玩家每次加入时都会使用服务器的游戏模式。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "defaultPermission": {
+          "label": "新玩家身份",
+          "options": {
+            "visitor": "访客：只能四处看看",
+            "member": "成员",
+            "operator": "管理员"
+          }
+        },
+        "idleTimeout": {
+          "label": "踢出闲置玩家（分钟）",
+          "description": "0：从不。"
+        },
+        "maxThreads": {
+          "label": "线程数",
+          "description": "服务器最多使用的 CPU 线程数。0：尽可能多。"
+        },
+        "texturepackRequired": {
+          "label": "强制使用世界的材质包",
+          "description": "玩家必须接受世界的资源包才能加入。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "chatRestriction": {
+          "label": "聊天",
+          "options": {
+            "None": "开放",
+            "Dropped": "消息被静默丢弃",
+            "Disabled": "对所有人关闭"
+          }
+        },
+        "udpPorts": {
+          "label": "UDP 端口",
+          "description": "游戏流量使用的 UDP 端口，例如 49152-49200；留空表示任意空闲端口。如果在路由器或防火墙之后，请在那里为网络外的玩家开放该范围。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "游戏",
+          "description": "玩家通过 TCP（IPv4 和 IPv6）连接到这里，之后游戏流量走 UDP（见 UDP 端口）。"
+        }
+      }
     }
   }
 }

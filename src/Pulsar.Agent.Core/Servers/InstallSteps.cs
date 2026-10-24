@@ -20,6 +20,22 @@ public sealed class InstallOptions
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
         ConnectTimeout = TimeSpan.FromSeconds(30),
     };
+
+    /// <summary>
+    /// Checks who signed a downloaded executable (Windows: Authenticode). Null where nothing can: the agent then does not
+    /// install what only a signature vouches for (<see cref="MinecraftBedrockStep"/>).
+    /// </summary>
+    public ICodeSignatures? CodeSignatures { get; init; }
+}
+
+/// <summary>Who signed an executable.</summary>
+public interface ICodeSignatures
+{
+    /// <summary>
+    /// Whether <paramref name="path"/> has a valid code signature (a chain to a trusted root, the file unmodified) whose
+    /// signer's organization is <paramref name="organization"/>.
+    /// </summary>
+    bool IsSignedBy(string path, string organization);
 }
 
 /// <summary>
@@ -45,6 +61,15 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files)
             return;
         }
 
+        if (step is MinecraftBedrockStep bedrock)
+        {
+            var version = bedrock.VersionVar is { } key ? variables.GetValueOrDefault(key) : null;
+            var signatures = options.CodeSignatures
+                ?? throw new GameProcessException("bedrock.untrusted", "This agent cannot check code signatures, so it does not install the Bedrock server.");
+            await new MinecraftBedrockInstaller(files, options.HttpHandler, signatures).InstallAsync(serverDirectory, version, progress, cancellationToken);
+            return;
+        }
+
         await progress(Steam.InstallStages.Installing, null);
         await Task.Run(() => Run(step, serverDirectory), cancellationToken);
     }
@@ -60,6 +85,10 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files)
                 && version != MinecraftServerStep.Latest
                     ? $"Downloading the Minecraft {version} server from Mojang, then its Java runtime"
                     : "Downloading the latest Minecraft server from Mojang, then its Java runtime",
+            MinecraftBedrockStep bedrock => bedrock.VersionVar is { } key && variables.GetValueOrDefault(key) is { Length: > 0 } version
+                && version != MinecraftBedrockStep.Latest
+                    ? $"Downloading the Minecraft Bedrock {version} server from Mojang"
+                    : "Downloading the latest Minecraft Bedrock server from Mojang",
             EnsureDirectoryStep ensure => $"Creating the folder {ensure.Path}",
             WriteFileIfMissingStep write => $"Writing {write.Path} if it is missing",
             CopyFileIfMissingStep copy => $"Copying {copy.From} to {copy.To} if it is missing",

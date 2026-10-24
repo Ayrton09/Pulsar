@@ -1,7 +1,7 @@
 import { Box, Gamepad2 } from 'lucide-react';
 import { useState } from 'react';
 import { useAppearance } from './api';
-import { gameArtwork, tileGradient, type ArtworkKind } from './artwork';
+import { artworkPosition, gameArtwork, tileGradient, type ArtworkKind } from './artwork';
 
 /**
  * A game's picture, decorative (the game's name is always written next to it). Its artwork when the panel shows it,
@@ -31,7 +31,7 @@ export function GameArt({
         decoding="async"
         draggable={false}
         onError={() => setFailed(src)}
-        className={`object-cover ${className}`}
+        className={`object-cover ${artworkPosition(templateKey, kind)} ${className}`}
       />
     );
   }

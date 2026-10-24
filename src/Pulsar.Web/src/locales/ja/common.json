@@ -3783,6 +3783,132 @@
           "description": "このマシン上の Pulsar だけが使います:コンソールコマンドと正常な停止のため。"
         }
       }
+    },
+    "minecraft-bedrock": {
+      "description": "Mojang からダウンロードする Minecraft: Bedrock Edition の専用サーバー（プログラムは Microsoft の署名付き）。Windows、ゲーム機、スマートフォンのプレイヤーが同じバージョンのゲームで参加します。",
+      "variables": {
+        "eula": {
+          "label": "Minecraft EULA",
+          "description": "Mojang の利用規約とプライバシーポリシー: https://aka.ms/MinecraftEULA と https://go.microsoft.com/fwlink/?LinkId=521839。サーバーを使うとこれらに同意したことになります。",
+          "options": {
+            "accepted": "同意する"
+          }
+        },
+        "version": {
+          "label": "Minecraft のバージョン",
+          "description": "最新の安定版なら 'latest'、または 1.21.50.07 のようなバージョン。プレイヤーには同じバージョンが必要です。変更するには更新が必要です。"
+        },
+        "serverName": {
+          "label": "サーバー名",
+          "description": "サーバー一覧でプレイヤーに表示されます。"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "gamemode": {
+          "label": "ゲームモード",
+          "options": {
+            "survival": "サバイバル",
+            "creative": "クリエイティブ",
+            "adventure": "アドベンチャー"
+          }
+        },
+        "difficulty": {
+          "label": "難易度",
+          "options": {
+            "peaceful": "ピース",
+            "easy": "イージー",
+            "normal": "ノーマル",
+            "hard": "ハード"
+          }
+        },
+        "onlineMode": {
+          "label": "Xbox でアカウントを確認する",
+          "description": "すべてのプレイヤーが Microsoft アカウントでサインインします。オフにすると、誰でも好きな名前で参加できます。"
+        },
+        "allowList": {
+          "label": "許可リストのプレイヤーのみ",
+          "description": "コンソールで 'allowlist add <ゲーマータグ>' を使ってプレイヤーを追加します。"
+        },
+        "lanVisibility": {
+          "label": "ローカルネットワークに表示",
+          "description": "このネットワークのプレイヤーは「フレンド」タブで見つけられます。UDP ポート 7551 を使うため、オンにするのはこのマシンのサーバー 1 台までにしてください。"
+        },
+        "levelName": {
+          "label": "ワールド",
+          "description": "worlds/ 内のワールドのフォルダー。新しい名前にすると新しいワールドが始まります。"
+        },
+        "levelSeed": {
+          "label": "ワールドのシード",
+          "description": "ワールドを作成するときだけ使われます。"
+        },
+        "viewDistance": {
+          "label": "描画距離（チャンク）",
+          "description": "プレイヤーが見られる最大距離。小さいほどメモリと帯域を使いません。"
+        },
+        "tickDistance": {
+          "label": "シミュレーション距離（チャンク）",
+          "description": "プレイヤーからどこまでの範囲で Mob が動き作物が育つか。小さいほど CPU を使いません。"
+        },
+        "allowCheats": {
+          "label": "チートを許可",
+          "description": "/give や /tp などのコマンドがオペレーターに使えます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "forceGamemode": {
+          "label": "ゲームモードを強制",
+          "description": "プレイヤーは参加するたびにサーバーのゲームモードになります。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "defaultPermission": {
+          "label": "新しいプレイヤーの権限",
+          "options": {
+            "visitor": "訪問者: 見るだけ",
+            "member": "メンバー",
+            "operator": "オペレーター"
+          }
+        },
+        "idleTimeout": {
+          "label": "放置プレイヤーを追い出すまで（分）",
+          "description": "0: しない。"
+        },
+        "maxThreads": {
+          "label": "スレッド数",
+          "description": "サーバーが使う CPU スレッドの上限。0: 使えるだけ。"
+        },
+        "texturepackRequired": {
+          "label": "ワールドのテクスチャパックを必須にする",
+          "description": "プレイヤーは参加するためにワールドのリソースパックを受け入れる必要があります。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "chatRestriction": {
+          "label": "チャット",
+          "options": {
+            "None": "制限なし",
+            "Dropped": "メッセージを黙って破棄",
+            "Disabled": "全員オフ"
+          }
+        },
+        "udpPorts": {
+          "label": "UDP ポート",
+          "description": "ゲーム通信に使う UDP ポート（例: 49152-49200）。空欄なら空いている任意のポート。ルーターやファイアウォールの内側では、ネットワーク外のプレイヤーのためにその範囲を開けてください。"
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "ゲーム",
+          "description": "プレイヤーはここに TCP（IPv4 と IPv6）で接続し、その後のゲーム通信は UDP で行われます（UDP ポートを参照）。"
+        }
+      }
     }
   }
 }

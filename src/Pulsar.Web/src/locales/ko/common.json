@@ -3783,6 +3783,132 @@
           "description": "이 컴퓨터의 Pulsar만 사용합니다. 콘솔 명령과 정상 종료용입니다."
         }
       }
+    },
+    "minecraft-bedrock": {
+      "description": "Mojang에서 내려받는 Minecraft: Bedrock Edition 전용 서버(프로그램은 Microsoft 서명). Windows, 콘솔, 휴대폰 플레이어가 같은 버전의 게임으로 접속합니다.",
+      "variables": {
+        "eula": {
+          "label": "Minecraft EULA",
+          "description": "Mojang의 약관과 개인정보 처리방침: https://aka.ms/MinecraftEULA 및 https://go.microsoft.com/fwlink/?LinkId=521839. 서버를 사용하면 이에 동의하는 것입니다.",
+          "options": {
+            "accepted": "동의합니다"
+          }
+        },
+        "version": {
+          "label": "Minecraft 버전",
+          "description": "최신 안정 버전은 'latest', 또는 1.21.50.07 같은 버전. 플레이어도 같은 버전이 필요합니다. 바꾸려면 업데이트가 필요합니다."
+        },
+        "serverName": {
+          "label": "서버 이름",
+          "description": "서버 목록에서 플레이어에게 보입니다."
+        },
+        "maxPlayers": {
+          "label": "슬롯"
+        },
+        "gamemode": {
+          "label": "게임 모드",
+          "options": {
+            "survival": "서바이벌",
+            "creative": "크리에이티브",
+            "adventure": "모험"
+          }
+        },
+        "difficulty": {
+          "label": "난이도",
+          "options": {
+            "peaceful": "평화로움",
+            "easy": "쉬움",
+            "normal": "보통",
+            "hard": "어려움"
+          }
+        },
+        "onlineMode": {
+          "label": "Xbox로 계정 확인",
+          "description": "모든 플레이어가 Microsoft 계정으로 로그인합니다. 끄면 누구나 아무 이름으로 접속할 수 있습니다."
+        },
+        "allowList": {
+          "label": "허용 목록의 플레이어만",
+          "description": "콘솔에서 'allowlist add <게이머태그>'로 플레이어를 추가합니다."
+        },
+        "lanVisibility": {
+          "label": "로컬 네트워크에 표시",
+          "description": "이 네트워크의 플레이어는 친구 탭에서 볼 수 있습니다. UDP 포트 7551을 사용하므로 이 컴퓨터에서 서버 하나에만 켜세요."
+        },
+        "levelName": {
+          "label": "월드",
+          "description": "worlds/ 안의 월드 폴더. 새 이름이면 새 월드가 시작됩니다."
+        },
+        "levelSeed": {
+          "label": "월드 시드",
+          "description": "월드를 만들 때만 사용됩니다."
+        },
+        "viewDistance": {
+          "label": "시야 거리(청크)",
+          "description": "플레이어가 볼 수 있는 최대 거리. 낮을수록 메모리와 대역폭을 덜 씁니다."
+        },
+        "tickDistance": {
+          "label": "시뮬레이션 거리(청크)",
+          "description": "플레이어로부터 어느 거리까지 몹이 움직이고 작물이 자라는지. 낮을수록 CPU를 덜 씁니다."
+        },
+        "allowCheats": {
+          "label": "치트 허용",
+          "description": "/give, /tp 같은 명령을 운영자가 쓸 수 있습니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "forceGamemode": {
+          "label": "게임 모드 강제",
+          "description": "플레이어가 접속할 때마다 서버의 게임 모드가 적용됩니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "defaultPermission": {
+          "label": "새 플레이어 권한",
+          "options": {
+            "visitor": "방문자: 둘러보기만 가능",
+            "member": "멤버",
+            "operator": "운영자"
+          }
+        },
+        "idleTimeout": {
+          "label": "활동 없는 플레이어 추방(분)",
+          "description": "0: 안 함."
+        },
+        "maxThreads": {
+          "label": "스레드",
+          "description": "서버가 쓰는 최대 CPU 스레드 수. 0: 가능한 만큼."
+        },
+        "texturepackRequired": {
+          "label": "월드 텍스처 팩 필수",
+          "description": "플레이어가 접속하려면 월드의 리소스 팩을 받아야 합니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "chatRestriction": {
+          "label": "채팅",
+          "options": {
+            "None": "열림",
+            "Dropped": "메시지를 조용히 버림",
+            "Disabled": "모두에게 꺼짐"
+          }
+        },
+        "udpPorts": {
+          "label": "UDP 포트",
+          "description": "게임 트래픽이 쓰는 UDP 포트(예: 49152-49200). 비우면 비어 있는 아무 포트. 라우터나 방화벽 뒤에 있다면 네트워크 밖 플레이어를 위해 그 범위를 열어 두세요."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "게임",
+          "description": "플레이어는 여기로 TCP(IPv4와 IPv6)로 접속하고, 그다음 게임은 UDP로 진행됩니다(UDP 포트 참고)."
+        }
+      }
     }
   }
 }

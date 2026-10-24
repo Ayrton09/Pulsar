@@ -163,6 +163,34 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
         }
     }
 
+    [DatabaseFact]
+    public async Task MinecraftBedrockGoesOnlyToAgentsThatInstallIt()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Single(t => t.Key == "minecraft-bedrock");
+
+        // An agent before 1.0.8, or one that cannot check Microsoft's signature, would fail its install.
+        foreach (var (name, capabilities, refused) in new[]
+        {
+            ("bedrock-old", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats }, true),
+            ("bedrock-new", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.MoreConfigFormats,
+                AgentCapabilities.MinecraftBedrock }, false),
+        })
+        {
+            var node = await NodeApi.CreateAsync(admin, name);
+            await using var agent = new TestAgent(factory);
+            await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+            await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, capabilities);
+
+            using var response = await admin.PostAsync("/api/v1/servers",
+                new CreateServerRequest(node.Node.Id, template.Id, "Bedrock", null, new Dictionary<string, string?> { ["eula"] = "accepted" }));
+
+            var body = await response.Content.ReadAsStringAsync(Ct);
+            Assert.Equal(refused, body.Contains("server.template_unsupported", StringComparison.Ordinal));
+        }
+    }
+
     private static async Task<TemplateImportPreview> PreviewAsync(PanelClient client, string content)
     {
         using var response = await client.PostAsync("/api/v1/templates/preview", new TemplateContentRequest(content));

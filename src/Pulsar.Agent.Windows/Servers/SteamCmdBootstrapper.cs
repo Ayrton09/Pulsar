@@ -1,12 +1,8 @@
 using System.IO.Compression;
-using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using Pulsar.Agent.Core;
 using Pulsar.Agent.Core.Processes;
 using Pulsar.Agent.Core.Steam;
-using Windows.Win32;
-using Windows.Win32.Foundation;
-using Windows.Win32.Security.WinTrust;
 
 namespace Pulsar.Agent.Windows.Servers;
 
@@ -23,7 +19,6 @@ public sealed partial class SteamCmdBootstrapper(AgentPaths paths, ILogger<Steam
     public static readonly Uri DownloadUrl = new("https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip");
 
     private const long MaximumDownload = 16 * 1024 * 1024;
-    private const string OrganizationOid = "2.5.4.10";
 
     // The organization of Valve's code signing certificates: "Valve" (2025, spike 0001), then "Valve Corp." (2026).
     private static readonly HashSet<string> s_valveOrganizations = new(StringComparer.Ordinal) { "Valve", "Valve Corp." };
@@ -71,21 +66,15 @@ public sealed partial class SteamCmdBootstrapper(AgentPaths paths, ILogger<Steam
     /// <exception cref="GameProcessException"><c>steamcmd.untrusted</c> otherwise.</exception>
     public static void VerifyValveSignature(string path)
     {
-        if (!HasValidSignature(path))
+        if (!AuthenticodeSignatures.HasValidSignature(path))
         {
             throw new GameProcessException("steamcmd.untrusted", $"{Path.GetFileName(path)} does not have a valid Authenticode signature.");
         }
 
-#pragma warning disable SYSLIB0057 // Reads the signer of a signed file, which X509CertificateLoader does not do.
-        using var signer = new X509Certificate2(X509Certificate.CreateFromSignedFile(path));
-#pragma warning restore SYSLIB0057
-        var organization = signer.SubjectName.EnumerateRelativeDistinguishedNames()
-            .Where(n => n.GetSingleElementType().Value == OrganizationOid)
-            .Select(n => n.GetSingleElementValue())
-            .SingleOrDefault();
-        if (organization is null || !s_valveOrganizations.Contains(organization))
+        if (AuthenticodeSignatures.SignerOrganization(path) is not { } organization || !s_valveOrganizations.Contains(organization))
         {
-            throw new GameProcessException("steamcmd.untrusted", $"{Path.GetFileName(path)} is signed by '{signer.Subject}', not by Valve.");
+            throw new GameProcessException("steamcmd.untrusted",
+                $"{Path.GetFileName(path)} is signed by '{AuthenticodeSignatures.SignerSubject(path)}', not by Valve.");
         }
     }
 
@@ -120,29 +109,6 @@ public sealed partial class SteamCmdBootstrapper(AgentPaths paths, ILogger<Steam
                                        && !cancellationToken.IsCancellationRequested)
         {
             throw new GameProcessException("steamcmd.download_failed", $"SteamCMD could not be downloaded from Valve: {ex.Message}", ex);
-        }
-    }
-
-    private static unsafe bool HasValidSignature(string path)
-    {
-        fixed (char* file = path)
-        {
-            var fileInfo = new WINTRUST_FILE_INFO { cbStruct = (uint)sizeof(WINTRUST_FILE_INFO), pcwszFilePath = file };
-            var data = new WINTRUST_DATA
-            {
-                cbStruct = (uint)sizeof(WINTRUST_DATA),
-                dwUIChoice = WINTRUST_DATA_UICHOICE.WTD_UI_NONE,
-                // Revocation needs the network at every check; the chain and the file's integrity do not.
-                fdwRevocationChecks = WINTRUST_DATA_REVOCATION_CHECKS.WTD_REVOKE_NONE,
-                dwUnionChoice = WINTRUST_DATA_UNION_CHOICE.WTD_CHOICE_FILE,
-                dwStateAction = WINTRUST_DATA_STATE_ACTION.WTD_STATEACTION_VERIFY,
-            };
-            data.Anonymous.pFile = &fileInfo;
-            var action = PInvoke.WINTRUST_ACTION_GENERIC_VERIFY_V2;
-            var result = PInvoke.WinVerifyTrust(HWND.Null, &action, &data);
-            data.dwStateAction = WINTRUST_DATA_STATE_ACTION.WTD_STATEACTION_CLOSE;
-            _ = PInvoke.WinVerifyTrust(HWND.Null, &action, &data);
-            return result == 0;
         }
     }
 

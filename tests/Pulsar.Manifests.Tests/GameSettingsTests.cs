@@ -154,6 +154,8 @@ public sealed class GameSettingsTests
     [Fact]
     public void OlderAgentsAreToldApartByWhatAManifestUses()
     {
+        Assert.True(ManifestFeatures.UsesMinecraftBedrock(TestManifests.Load("minecraft-bedrock")));
+        Assert.False(ManifestFeatures.UsesMinecraftBedrock(TestManifests.Load("minecraft")));
         Assert.False(ManifestFeatures.UsesGameSettings(TestManifests.Load("_test")));
         Assert.True(ManifestFeatures.UsesGameSettings(TestManifests.Parse(WithFriendlyFire(keep: true))));
         Assert.True(ManifestFeatures.UsesGameSettings(TestManifests.Parse(TestManifests.Change("_test", m =>

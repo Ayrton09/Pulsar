@@ -156,6 +156,12 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.RemoveAddon;
             yield return AgentCapabilities.GameSettings;
             yield return AgentCapabilities.MoreConfigFormats;
+            // Its install accepts the server only signed by Microsoft: an agent that cannot check signatures does not offer it.
+            if (installOptions.CodeSignatures is not null)
+            {
+                yield return AgentCapabilities.MinecraftBedrock;
+            }
+
             if (installOptions.TestGameAvailable)
             {
                 yield return AgentCapabilities.TestGame;

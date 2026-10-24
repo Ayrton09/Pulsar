@@ -700,10 +700,14 @@ public sealed partial class ServerManagement(
         return resolved.Value with { Ports = all };
     }
 
-    /// <summary>Whether the node's agent reads <paramref name="manifest"/>: game settings need an agent of Pulsar 1.0.5 or newer.</summary>
+    /// <summary>
+    /// Whether the node's agent reads <paramref name="manifest"/>: game settings need an agent of Pulsar 1.0.5 or newer, the
+    /// json and space formats 1.0.7, Minecraft: Bedrock Edition 1.0.8.
+    /// </summary>
     private static bool AgentReads(AgentConnectionInfo? connection, GameManifest manifest) =>
         (!ManifestFeatures.UsesGameSettings(manifest) || Announces(connection, AgentCapabilities.GameSettings))
-        && (!ManifestFeatures.UsesMoreConfigFormats(manifest) || Announces(connection, AgentCapabilities.MoreConfigFormats));
+        && (!ManifestFeatures.UsesMoreConfigFormats(manifest) || Announces(connection, AgentCapabilities.MoreConfigFormats))
+        && (!ManifestFeatures.UsesMinecraftBedrock(manifest) || Announces(connection, AgentCapabilities.MinecraftBedrock));
 
     private static bool Announces(AgentConnectionInfo? connection, string capability) =>
         connection?.Capabilities.Contains(capability, StringComparer.Ordinal) == true;

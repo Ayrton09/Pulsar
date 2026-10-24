@@ -594,9 +594,11 @@ public static partial class ManifestValidator
 
                     break;
                 case MinecraftServerStep { VersionVar: { } versionVar }
-                    when !context.Variables.TryGetValue(versionVar, out var version) || version.Secret
-                         || version.Type is not (VariableType.String or VariableType.Enum)
-                         || (version.Type == VariableType.String && version.Pattern is null):
+                    when !IsVersionVariable(versionVar, context):
+                    context.Error($"{path}.versionVar", "Must name a string variable with a 'pattern', or an enum.");
+                    break;
+                case MinecraftBedrockStep { VersionVar: { } versionVar }
+                    when !IsVersionVariable(versionVar, context):
                     context.Error($"{path}.versionVar", "Must name a string variable with a 'pattern', or an enum.");
                     break;
                 case TestGameServerStep step:
@@ -610,6 +612,11 @@ public static partial class ManifestValidator
             }
         }
     }
+
+    /// <summary>A version a download step puts in an address: a non-secret enum, or a string the panel checks with a pattern.</summary>
+    private static bool IsVersionVariable(string key, Context context) =>
+        context.Variables.TryGetValue(key, out var version) && !version.Secret
+        && (version.Type == VariableType.Enum || (version.Type == VariableType.String && version.Pattern is not null));
 
     private static void ValidateRuntime(string path, RuntimeDefinition runtime, Context context)
     {

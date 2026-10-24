@@ -168,13 +168,14 @@
     "InstallStep": {
       "type": "object",
       "required": ["type"],
-      "properties": { "type": { "enum": ["steamcmd", "ensureDirectory", "writeFileIfMissing", "testGameServer", "minecraftServer", "copyFileIfMissing"] } },
+      "properties": { "type": { "enum": ["steamcmd", "ensureDirectory", "writeFileIfMissing", "testGameServer", "minecraftServer", "minecraftBedrock", "copyFileIfMissing"] } },
       "oneOf": [
         { "$ref": "#/$defs/SteamCmdStep" },
         { "$ref": "#/$defs/EnsureDirectoryStep" },
         { "$ref": "#/$defs/WriteFileIfMissingStep" },
         { "$ref": "#/$defs/TestGameServerStep" },
         { "$ref": "#/$defs/MinecraftServerStep" },
+        { "$ref": "#/$defs/MinecraftBedrockStep" },
         { "$ref": "#/$defs/CopyFileIfMissingStep" }
       ]
     },
@@ -227,6 +228,16 @@
       "properties": {
         "type": { "const": "minecraftServer" },
         "versionVar": { "type": "string", "description": "A variable holding the version ('1.21.4', or 'latest' for the latest release)." }
+      }
+    },
+    "MinecraftBedrockStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "Minecraft: Bedrock Edition's dedicated server for Windows from Mojang (Pulsar 1.0.8), its bedrock_server.exe accepted only signed by Microsoft; an update keeps server.properties, allowlist.json, permissions.json and packetlimitconfig.json.",
+      "properties": {
+        "type": { "const": "minecraftBedrock" },
+        "versionVar": { "type": "string", "description": "A variable holding the version ('1.21.50.07', or 'latest' for the latest release)." }
       }
     },
     "CopyFileIfMissingStep": {

@@ -3783,6 +3783,132 @@
           "description": "Lo usa solo Pulsar, su questa macchina: comandi della console e arresto pulito."
         }
       }
+    },
+    "minecraft-bedrock": {
+      "description": "Server dedicato di Minecraft: Bedrock Edition, scaricato da Mojang (il programma è firmato da Microsoft). I giocatori su Windows, console e telefoni entrano con la stessa versione del gioco.",
+      "variables": {
+        "eula": {
+          "label": "EULA di Minecraft",
+          "description": "I termini e l'informativa sulla privacy di Mojang: https://aka.ms/MinecraftEULA e https://go.microsoft.com/fwlink/?LinkId=521839. Usare il server significa accettarli.",
+          "options": {
+            "accepted": "Li accetto"
+          }
+        },
+        "version": {
+          "label": "Versione di Minecraft",
+          "description": "'latest' per l'ultima versione stabile, oppure una versione come 1.21.50.07. I giocatori devono avere la stessa versione. Cambiarla richiede un aggiornamento."
+        },
+        "serverName": {
+          "label": "Nome del server",
+          "description": "I giocatori lo vedono nell'elenco dei server."
+        },
+        "maxPlayers": {
+          "label": "Slot"
+        },
+        "gamemode": {
+          "label": "Modalità di gioco",
+          "options": {
+            "survival": "Sopravvivenza",
+            "creative": "Creativa",
+            "adventure": "Avventura"
+          }
+        },
+        "difficulty": {
+          "label": "Difficoltà",
+          "options": {
+            "peaceful": "Pacifica",
+            "easy": "Facile",
+            "normal": "Normale",
+            "hard": "Difficile"
+          }
+        },
+        "onlineMode": {
+          "label": "Verifica gli account con Xbox",
+          "description": "Ogni giocatore accede con un account Microsoft. Se disattivato, chiunque può entrare con qualsiasi nome."
+        },
+        "allowList": {
+          "label": "Solo i giocatori nella lista consentiti",
+          "description": "Aggiungi giocatori con 'allowlist add <gamertag>' nella console."
+        },
+        "lanVisibility": {
+          "label": "Visibile nella rete locale",
+          "description": "I giocatori di questa rete lo vedono nella scheda Amici. Occupa la porta UDP 7551: attivalo al massimo per un server della macchina."
+        },
+        "levelName": {
+          "label": "Mondo",
+          "description": "La cartella del mondo in worlds/. Un nome nuovo inizia un nuovo mondo."
+        },
+        "levelSeed": {
+          "label": "Seme del mondo",
+          "description": "Usato solo quando il mondo viene creato."
+        },
+        "viewDistance": {
+          "label": "Distanza visiva (chunk)",
+          "description": "La distanza massima che i giocatori possono vedere. Meno usa meno memoria e banda."
+        },
+        "tickDistance": {
+          "label": "Distanza di simulazione (chunk)",
+          "description": "A che distanza dai giocatori si muovono i mob e crescono le colture. Meno usa meno CPU."
+        },
+        "allowCheats": {
+          "label": "Consenti i trucchi",
+          "description": "I comandi come /give e /tp funzionano per gli operatori.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "forceGamemode": {
+          "label": "Forza la modalità di gioco",
+          "description": "I giocatori ricevono la modalità del server ogni volta che entrano.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "defaultPermission": {
+          "label": "I nuovi giocatori sono",
+          "options": {
+            "visitor": "Visitatori: possono solo guardare",
+            "member": "Membri",
+            "operator": "Operatori"
+          }
+        },
+        "idleTimeout": {
+          "label": "Espelli i giocatori inattivi dopo (min)",
+          "description": "0: mai."
+        },
+        "maxThreads": {
+          "label": "Thread",
+          "description": "Il numero massimo di thread CPU usati dal server. 0: quanti più possibile."
+        },
+        "texturepackRequired": {
+          "label": "Richiedi i pacchetti texture del mondo",
+          "description": "I giocatori devono accettare i pacchetti di risorse del mondo per entrare.",
+          "options": {
+            "true": "Sì",
+            "false": "No"
+          }
+        },
+        "chatRestriction": {
+          "label": "Chat",
+          "options": {
+            "None": "Aperta",
+            "Dropped": "Messaggi scartati in silenzio",
+            "Disabled": "Disattivata per tutti"
+          }
+        },
+        "udpPorts": {
+          "label": "Porte UDP",
+          "description": "Le porte UDP usate dal traffico di gioco, ad esempio 49152-49200; vuoto: qualsiasi porta libera. Dietro un router o un firewall, apri lì quell'intervallo per i giocatori fuori dalla tua rete."
+        }
+      },
+      "ports": {
+        "game": {
+          "label": "Gioco",
+          "description": "I giocatori si connettono qui via TCP, IPv4 e IPv6; il gioco poi passa via UDP (vedi Porte UDP)."
+        }
+      }
     }
   }
 }

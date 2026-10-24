@@ -93,6 +93,7 @@ Korean and Simplified Chinese**: each user picks theirs in My account (until the
 | Unturned | SteamCMD | console | |
 | SCP: Secret Laboratory | SteamCMD | console | |
 | Minecraft: Java Edition | Mojang's server, the version you choose | console | |
+| Minecraft: Bedrock Edition | Mojang's server (signed by Microsoft), the version you choose | console | |
 
 Each game is a declarative [manifest](games/): how to install, start, stop, back up and query it. Adding one needs no
 change to Pulsar ([guide](docs/guides/manifests.md)).

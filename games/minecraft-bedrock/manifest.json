@@ -1,0 +1,128 @@
+{
+  "$schema": "../../schemas/manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "key": "minecraft-bedrock",
+  "version": "1.0.0",
+  "name": "Minecraft: Bedrock Edition",
+  "description": "Minecraft: Bedrock Edition's dedicated server, downloaded from Mojang (its program signed by Microsoft). Players on Windows, consoles and phones join with the same version of the game.",
+  "authors": ["Pulsar contributors"],
+  "platforms": ["windows-x64"],
+
+  "requirements": { "minDiskGb": 2, "minMemoryMb": 2048 },
+
+  "variables": [
+    { "key": "eula", "label": "Minecraft EULA", "type": "enum", "required": true,
+      "options": [ { "value": "accepted", "label": "I accept it" } ],
+      "description": "Mojang's terms and privacy policy: https://aka.ms/MinecraftEULA and https://go.microsoft.com/fwlink/?LinkId=521839. Using the server means accepting them." },
+    { "key": "version", "label": "Minecraft version", "type": "string", "default": "latest", "maxLength": 24,
+      "pattern": "^(latest|[0-9]{1,4}(\\.[0-9]{1,4}){2,3})$",
+      "description": "'latest' for the latest release, or a version such as 1.21.50.07. Players need the same version. Changing it takes an update." },
+    { "key": "serverName", "label": "Server name", "type": "string", "default": "Pulsar Bedrock", "maxLength": 64, "pattern": "^[^;\\\\]{1,64}$",
+      "description": "Shown to players in the server list." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 10, "min": 1, "max": 200 },
+    { "key": "gamemode", "label": "Game mode", "type": "enum", "default": "survival",
+      "options": [
+        { "value": "survival", "label": "Survival" }, { "value": "creative", "label": "Creative" }, { "value": "adventure", "label": "Adventure" }
+      ] },
+    { "key": "difficulty", "label": "Difficulty", "type": "enum", "default": "easy",
+      "options": [
+        { "value": "peaceful", "label": "Peaceful" }, { "value": "easy", "label": "Easy" },
+        { "value": "normal", "label": "Normal" }, { "value": "hard", "label": "Hard" }
+      ] },
+    { "key": "onlineMode", "label": "Check accounts with Xbox", "type": "boolean", "default": true,
+      "description": "Every player signs in with a Microsoft account. Turned off, anyone can join with any name." },
+    { "key": "allowList", "label": "Only players on the allowlist", "type": "boolean", "default": false,
+      "description": "Add players with 'allowlist add <gamertag>' in the console." },
+    { "key": "lanVisibility", "label": "Visible on the local network", "type": "boolean", "default": false,
+      "description": "Players on this network see it in their Friends tab. It takes UDP port 7551: turn it on for one server of the machine at most." },
+    { "key": "udpPorts", "label": "UDP ports", "type": "string", "maxLength": 200,
+      "pattern": "^[0-9A-Fa-f.:\\[\\]-]{1,100}(,[0-9A-Fa-f.:\\[\\]-]{1,100}){0,7}$",
+      "description": "The UDP ports the game traffic uses, such as 49152-49200; empty: any free port. Behind a router or firewall, open that range there for players outside your network." },
+    { "key": "levelName", "label": "World", "type": "string", "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9 _-]{0,63}$",
+      "description": "The world's folder in worlds/. A new name starts a new world." },
+    { "key": "levelSeed", "label": "World seed", "type": "string", "maxLength": 64, "pattern": "^[^\\\\]{1,64}$",
+      "description": "Only used when the world is created." },
+    { "key": "viewDistance", "label": "View distance (chunks)", "type": "integer", "min": 5, "max": 96,
+      "description": "The farthest players may see. Lower uses less memory and bandwidth." },
+    { "key": "tickDistance", "label": "Simulation distance (chunks)", "type": "integer", "min": 4, "max": 12,
+      "description": "How far from players mobs move and crops grow. Lower uses less CPU." },
+    { "key": "allowCheats", "label": "Allow cheats", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Commands such as /give and /tp work for operators." },
+    { "key": "forceGamemode", "label": "Force the game mode", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Players get the server's game mode every time they join." },
+    { "key": "defaultPermission", "label": "New players are", "type": "enum",
+      "options": [
+        { "value": "visitor", "label": "Visitors: can look around only" }, { "value": "member", "label": "Members" },
+        { "value": "operator", "label": "Operators" }
+      ] },
+    { "key": "idleTimeout", "label": "Kick idle players after (min)", "type": "integer", "min": 0, "max": 1440,
+      "description": "0: never." },
+    { "key": "maxThreads", "label": "Threads", "type": "integer", "min": 0, "max": 64,
+      "description": "The most CPU threads the server uses. 0: as many as it can." },
+    { "key": "texturepackRequired", "label": "Require the world's texture packs", "type": "enum",
+      "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Players must take the world's resource packs to join." },
+    { "key": "chatRestriction", "label": "Chat", "type": "enum",
+      "options": [
+        { "value": "None", "label": "Open" }, { "value": "Dropped", "label": "Messages dropped silently" },
+        { "value": "Disabled", "label": "Turned off for everyone" }
+      ] }
+  ],
+
+  "ports": [
+    { "name": "game", "label": "Game", "protocols": ["tcp"], "default": 19132,
+      "description": "Players connect here over TCP, IPv4 and IPv6; the game itself then goes over UDP (see UDP ports)." }
+  ],
+
+  "install": { "steps": [ { "type": "minecraftBedrock", "versionVar": "version" } ] },
+  "update": { "steps": [ { "type": "minecraftBedrock", "versionVar": "version" } ] },
+
+  "runtime": {
+    "windows-x64": {
+      "executable": "bedrock_server.exe",
+      "allowExtraArguments": false,
+      "console": { "mode": "pty" }
+    }
+  },
+
+  "configFiles": [
+    { "path": "server.properties", "format": "properties", "mode": "patch",
+      "set": {
+        "transport": "nethernet",
+        "server-port": "{{port.game}}",
+        "server-udp-ports": "{{var.udpPorts}}",
+        "enable-lan-visibility": "{{var.lanVisibility}}",
+        "server-name": "{{var.serverName}}",
+        "max-players": "{{var.maxPlayers}}",
+        "gamemode": "{{var.gamemode}}",
+        "difficulty": "{{var.difficulty}}",
+        "online-mode": "{{var.onlineMode}}",
+        "allow-list": "{{var.allowList}}",
+        "level-name": "{{var.levelName}}",
+        "level-seed": "{{var.levelSeed}}",
+        "view-distance": "{{var.viewDistance}}",
+        "tick-distance": "{{var.tickDistance}}",
+        "allow-cheats": "{{var.allowCheats}}",
+        "force-gamemode": "{{var.forceGamemode}}",
+        "default-player-permission-level": "{{var.defaultPermission}}",
+        "player-idle-timeout": "{{var.idleTimeout}}",
+        "max-threads": "{{var.maxThreads}}",
+        "texturepack-required": "{{var.texturepackRequired}}",
+        "chat-restriction": "{{var.chatRestriction}}"
+      },
+      "keepIfEmpty": ["server-udp-ports", "level-name", "level-seed", "view-distance", "tick-distance", "allow-cheats", "force-gamemode", "default-player-permission-level",
+        "player-idle-timeout", "max-threads", "texturepack-required", "chat-restriction"] }
+  ],
+
+  "readiness": { "type": "logPattern", "pattern": "Server started\\.", "timeoutSeconds": 300 },
+
+  "stop": {
+    "steps": [ { "type": "consoleCommand", "command": "stop" } ],
+    "timeoutSeconds": 60
+  },
+
+  "backup": {
+    "include": ["worlds/**", "server.properties", "allowlist.json", "permissions.json"],
+    "save": { "commands": ["save hold"], "confirmation": "Saving\\.\\.\\.", "timeoutSeconds": 60, "resume": ["save resume"] }
+  }
+}

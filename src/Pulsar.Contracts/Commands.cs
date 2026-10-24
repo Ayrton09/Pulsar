@@ -604,6 +604,11 @@ public static class AgentCapabilities
     /// </summary>
     public const string MoreConfigFormats = "manifest.more_config_formats";
 
+    /// <summary>
+    /// Not a command: the agent installs Minecraft: Bedrock Edition (Pulsar 1.0.8); an older one refuses manifests that do.
+    /// </summary>
+    public const string MinecraftBedrock = "manifest.minecraft_bedrock";
+
     /// <summary>Not a command: the agent enforces <see cref="ServerRuntimeSpec.Limits"/> (CPU and memory caps of a server's Job).</summary>
     public const string Limits = "server.limits";
 

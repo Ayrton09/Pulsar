@@ -131,7 +131,11 @@ internal static class AgentHost
                 return keeper;
             });
             // Development and CI only: enables the pulsar-test manifest.
-            builder.Services.AddSingleton(new InstallOptions { TestGameDirectory = builder.Configuration["Pulsar:TestGameDirectory"] });
+            builder.Services.AddSingleton(new InstallOptions
+            {
+                TestGameDirectory = builder.Configuration["Pulsar:TestGameDirectory"],
+                CodeSignatures = new AuthenticodeSignatures(),
+            });
             builder.Services.AddSingleton<IServerFiles, WindowsServerFiles>();
             // Like the process manager, only a development agent acts as itself for a server without an account of its own.
             builder.Services.AddSingleton<IServerImpersonation>(services => new ServerImpersonation(services.GetRequiredService<WindowsServerAccounts>(),

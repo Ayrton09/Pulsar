@@ -44,7 +44,8 @@ Then:
    A game whose dedicated server only an account that owns it may download says `"login": "account"`: its servers need
    a Steam account chosen in their settings (administrators add them under Steam accounts). `ensureDirectory` creates folders a game expects to
    exist; `copyFileIfMissing` makes a game's shipped settings file the server's own; `minecraftServer` installs
-   Minecraft: Java Edition. There is no step that runs a script or downloads an arbitrary file.
+   Minecraft: Java Edition, and `minecraftBedrock` Minecraft: Bedrock Edition. There is no step that runs a script or
+   downloads an arbitrary file.
 3. **Runtime**: the executable (relative to the server's folder, `.exe`), its working directory and its arguments.
    Arguments are a list, one element per argv entry, with placeholders: `{{var.<key>}}` for settings,
    `{{port.<name>}}` and `{{port.<name>.ip}}` for allocated ports, `{{rcon.password}}` for the RCON password the agent

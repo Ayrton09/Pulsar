@@ -43,6 +43,14 @@ const otherArtwork: Readonly<Record<string, string>> = {
   'minecraft-bedrock': minecraftCover,
 };
 
+/**
+ * How a picture sits in its frame when the frame crops it: Minecraft's cover has its logo at the top, which a card's
+ * wider frame would cut, so the card keeps the top and crops the bottom.
+ */
+export function artworkPosition(templateKey: string, kind: ArtworkKind): string {
+  return kind === 'header' && Object.hasOwn(otherArtwork, templateKey) ? 'object-top' : 'object-center';
+}
+
 export function gameArtwork(templateKey: string, kind: ArtworkKind): string | null {
   if (Object.hasOwn(otherArtwork, templateKey)) {
     return otherArtwork[templateKey] ?? null;

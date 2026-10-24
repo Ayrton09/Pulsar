@@ -124,6 +124,7 @@ public sealed record InstallDefinition(IReadOnlyList<InstallStep> Steps);
 [JsonDerivedType(typeof(WriteFileIfMissingStep), "writeFileIfMissing")]
 [JsonDerivedType(typeof(TestGameServerStep), "testGameServer")]
 [JsonDerivedType(typeof(MinecraftServerStep), "minecraftServer")]
+[JsonDerivedType(typeof(MinecraftBedrockStep), "minecraftBedrock")]
 [JsonDerivedType(typeof(CopyFileIfMissingStep), "copyFileIfMissing")]
 public abstract record InstallStep;
 
@@ -179,6 +180,21 @@ public sealed record TestGameServerStep(string Path) : InstallStep;
 public sealed record MinecraftServerStep(string? VersionVar = null) : InstallStep
 {
     public const string Latest = "latest";
+}
+
+/// <summary>
+/// Installs Minecraft: Bedrock Edition's dedicated server from Mojang (1.0.8): the Windows build of the chosen version,
+/// unpacked into the server directory. Mojang publishes no checksum for it, so the agent takes it only from Mojang's
+/// hosts and accepts its <c>bedrock_server.exe</c> only with a valid Authenticode signature of Microsoft's. An update
+/// leaves the server's own settings files (<see cref="KeptFiles"/>) and its worlds as they are.
+/// </summary>
+/// <param name="VersionVar">A variable holding the version ("1.21.50.07", or "latest" for the latest release); latest without one.</param>
+public sealed record MinecraftBedrockStep(string? VersionVar = null) : InstallStep
+{
+    public const string Latest = "latest";
+
+    /// <summary>Files of the download that are the server's settings: written only when missing.</summary>
+    public static readonly IReadOnlyList<string> KeptFiles = ["server.properties", "allowlist.json", "permissions.json", "packetlimitconfig.json"];
 }
 
 /// <summary>How the game runs on one platform (<c>windows-x64</c>).</summary>
