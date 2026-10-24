@@ -2,9 +2,11 @@ import { Check, Copy, Cpu, MemoryStick, Users } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+import { Spinner } from '../../components/ui/Button';
 import { Meter } from '../../components/ui/Display';
 import { copyText } from '../../lib/clipboard';
 import { useFormatBytes, useFormatDate } from '../../lib/format';
+import { useArtworkShown } from '../games/api';
 import { GameArt } from '../games/GameArt';
 import { useServerMetrics } from '../live/hooks';
 import type { ServerSummary } from './api';
@@ -75,6 +77,102 @@ export function ServerCard({ server, headingLevel = 2 }: { server: ServerSummary
           <div className="relative z-10">
             <PowerButtons server={server} compact />
           </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+/**
+ * Servers as cards with their game's picture or, when the panel shows no game artwork, as a list without pictures
+ * (rows with the same contents). Waits until the panel says which.
+ */
+export function ServerCollection({
+  servers,
+  label,
+  headingLevel = 2,
+  gridClassName,
+}: {
+  servers: ServerSummary[];
+  label?: string | undefined;
+  headingLevel?: 2 | 3;
+  /** The cards' columns. */
+  gridClassName: string;
+}) {
+  const { t } = useTranslation();
+  const artwork = useArtworkShown();
+  if (artwork === undefined) {
+    return <Spinner label={t('common.loading')} />;
+  }
+  if (!artwork) {
+    return (
+      <ul
+        aria-label={label}
+        className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface/90 shadow-lg shadow-black/20"
+      >
+        {servers.map((server) => (
+          <li key={server.id}>
+            <ServerRow server={server} headingLevel={headingLevel} />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <ul aria-label={label} className={`grid grid-cols-1 gap-5 ${gridClassName}`}>
+      {servers.map((server) => (
+        <li key={server.id} className="flex min-w-0">
+          <ServerCard server={server} headingLevel={headingLevel} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** One server as a row of the list shown without game artwork: what its card says, without the picture. */
+export function ServerRow({ server, headingLevel = 2 }: { server: ServerSummary; headingLevel?: 2 | 3 }) {
+  const { t } = useTranslation();
+  const formatDate = useFormatDate();
+  const alive = server.runtimeState === 'running' || server.runtimeState === 'starting';
+  const Heading = headingLevel === 3 ? 'h3' : 'h2';
+  return (
+    <article
+      aria-labelledby={`server-card-${server.id}`}
+      className="relative flex flex-col gap-3 px-4 py-3 transition-colors focus-within:bg-surface-raised/40 hover:bg-surface-raised/40 md:flex-row md:items-center md:gap-6"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Heading id={`server-card-${server.id}`} className="min-w-0 truncate text-base font-semibold">
+            <Link
+              to={`/servers/${server.id}`}
+              className="after:absolute after:inset-0 hover:text-accent focus-visible:outline-none"
+            >
+              {server.name}
+            </Link>
+          </Heading>
+          <ServerStatusPill server={server} />
+          {!server.nodeConnected && <NodeDisconnectedBadge />}
+        </div>
+        <p className="truncate text-xs text-muted">
+          {server.templateName} · {server.nodeName}
+        </p>
+        <StateReason server={server} />
+      </div>
+      <div className="md:w-72 md:shrink-0">
+        {alive && server.nodeConnected ? (
+          <CardUsage serverId={server.id} />
+        ) : (
+          <p className="text-xs text-muted">
+            {server.lastStartedAt
+              ? t('servers.card.lastStarted', { when: formatDate(server.lastStartedAt) })
+              : t('servers.card.neverStarted')}
+          </p>
+        )}
+      </div>
+      <div className="flex min-h-9 items-center justify-between gap-2 md:shrink-0 md:justify-end">
+        <AddressChip address={server.gameAddress} />
+        <div className="relative z-10">
+          <PowerButtons server={server} compact />
         </div>
       </div>
     </article>

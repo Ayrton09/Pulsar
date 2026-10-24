@@ -131,6 +131,7 @@ public sealed class SecurityHeadersTests(NoDatabaseApiFactory factory) : IClassF
         Assert.Equal(SecurityHeaders.ContentSecurityPolicyWithoutSteamArtwork, csp);
         Assert.Contains("img-src 'self' data:;", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("steamstatic", csp, StringComparison.Ordinal);
+        Assert.DoesNotContain("minecraft", csp, StringComparison.Ordinal);
         Assert.DoesNotContain("unsafe-eval", csp, StringComparison.Ordinal);
         Assert.Equal(1, csp.Split("unsafe-inline").Length - 1); // only style-src-elem (see SecurityHeaders)
         Assert.Equal("nosniff", Assert.Single(response.Headers.GetValues("X-Content-Type-Options")));
@@ -139,11 +140,12 @@ public sealed class SecurityHeadersTests(NoDatabaseApiFactory factory) : IClassF
     }
 
     [Fact]
-    public void TheArtworkAddsSteamsCdnToImagesAndNothingElse()
+    public void TheArtworkAddsSteamsCdnAndMinecraftsSiteToImagesAndNothingElse()
     {
-        Assert.Contains("img-src 'self' data: https://shared.akamai.steamstatic.com;", SecurityHeaders.ContentSecurityPolicyWithSteamArtwork,
-            StringComparison.Ordinal);
+        Assert.Contains("img-src 'self' data: https://shared.akamai.steamstatic.com https://www.minecraft.net;",
+            SecurityHeaders.ContentSecurityPolicyWithSteamArtwork, StringComparison.Ordinal);
         Assert.Equal(SecurityHeaders.ContentSecurityPolicyWithoutSteamArtwork,
-            SecurityHeaders.ContentSecurityPolicyWithSteamArtwork.Replace(" " + SecurityHeaders.SteamArtworkOrigin, string.Empty, StringComparison.Ordinal));
+            SecurityHeaders.ContentSecurityPolicyWithSteamArtwork.Replace(" " + SecurityHeaders.SteamArtworkOrigin, string.Empty, StringComparison.Ordinal)
+                .Replace(" " + SecurityHeaders.MinecraftArtworkOrigin, string.Empty, StringComparison.Ordinal));
     }
 }

@@ -18,6 +18,16 @@ export function useAppearance() {
   });
 }
 
+/**
+ * Whether the game artwork is shown: cards with pictures when it is, lists without any when it is not (or the setting
+ * could not be read). Undefined until the panel says: pages wait for it instead of drawing one layout and then the
+ * other.
+ */
+export function useArtworkShown(): boolean | undefined {
+  const appearance = useAppearance();
+  return appearance.isError ? false : appearance.data?.steamArtwork;
+}
+
 export function useUpdateAppearance() {
   const queryClient = useQueryClient();
   return useMutation({

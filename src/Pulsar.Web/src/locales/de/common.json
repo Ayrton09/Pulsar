@@ -2069,10 +2069,10 @@
   },
   "appearance": {
     "title": "Spielgrafiken",
-    "hint": "Server- und Spielkarten zeigen die offiziellen Grafiken jedes Spiels, die der Browser jedes Besuchers von Steam herunterlädt: Steam sieht dessen Adresse und welche Spiele das Panel betreibt. Ist die Option aus, erhält jedes Spiel eine gezeichnete Kachel und kein Browser kontaktiert Steam.",
-    "steamArtwork": "Spielgrafiken von Steam anzeigen",
+    "hint": "Server- und Spielkarten zeigen das offizielle Bild jedes Spiels, das der Browser jedes Besuchers von Steam lädt (das von Minecraft von minecraft.net): Diese Seiten sehen seine Adresse und welche Spiele das Panel betreibt. Ausgeschaltet werden Server und Spiele als Liste ohne Bilder gezeigt, und kein Browser kontaktiert sie.",
+    "steamArtwork": "Spielbilder anzeigen (Steam und minecraft.net)",
     "turnedOn": "Grafiken aktiviert. Ab jetzt geöffnete Seiten zeigen sie an.",
-    "turnedOff": "Grafiken deaktiviert. Geöffnete Seiten fragen sie sofort nicht mehr bei Steam an."
+    "turnedOff": "Bilder ausgeschaltet. Offene Seiten fragen sofort nicht mehr danach und zeigen Server und Spiele als Liste ohne Bilder."
   },
   "updates": {
     "title": "Updates",

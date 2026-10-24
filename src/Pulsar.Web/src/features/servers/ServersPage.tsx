@@ -9,7 +9,7 @@ import { useCurrentUser } from '../auth/api';
 import { useWatchServers } from '../live/hooks';
 import { useServers, type ServerSummary } from './api';
 import { CreateServerDialog } from './CreateServerDialog';
-import { ServerCard } from './ServerCard';
+import { ServerCollection } from './ServerCard';
 
 const filters = ['all', 'online', 'offline'] as const;
 type Filter = (typeof filters)[number];
@@ -100,16 +100,11 @@ export function ServersPage() {
           {shown.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted">{t('servers.noMatch')}</p>
           ) : (
-            <ul
-              aria-label={t('servers.title')}
-              className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
-            >
-              {shown.map((server) => (
-                <li key={server.id} className="flex min-w-0">
-                  <ServerCard server={server} />
-                </li>
-              ))}
-            </ul>
+            <ServerCollection
+              servers={shown}
+              label={t('servers.title')}
+              gridClassName="sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+            />
           )}
         </>
       )}

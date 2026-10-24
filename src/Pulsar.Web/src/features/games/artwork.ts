@@ -1,8 +1,8 @@
 /**
- * Game artwork from Steam's store CDN, the one image origin the panel's Content-Security-Policy allows besides its own.
- * Addresses are built only from this fixed table of Steam app numbers, keyed by the built-in templates' keys: nothing a
- * user typed ever becomes an image address. Games that are not on Steam (Minecraft) and templates not listed here get
- * a drawn tile instead.
+ * Game artwork from Steam's store CDN, and Minecraft's cover from minecraft.net (it is not on Steam): the image origins
+ * the panel's Content-Security-Policy allows besides its own while the artwork is on. Addresses come only from these
+ * fixed tables, keyed by the built-in templates' keys: nothing a user typed ever becomes an image address. Templates not
+ * listed here get a drawn tile instead.
  */
 const steamApps: Readonly<Record<string, number>> = {
   '7dtd': 251570,
@@ -33,7 +33,20 @@ const files: Record<ArtworkKind, string> = {
 
 export const steamArtworkOrigin = 'https://shared.akamai.steamstatic.com';
 
-export function steamArtwork(templateKey: string, kind: ArtworkKind): string | null {
+/** Minecraft's cover on its own store page (Java & Bedrock), for the cards and the page banner alike. */
+const minecraftCover =
+  'https://www.minecraft.net/content/dam/minecraftnet/games/minecraft/key-art/Hero-Image_Vanilla_Standard_1200x675.jpg';
+
+/** Games that are not on Steam, by template key. */
+const otherArtwork: Readonly<Record<string, string>> = {
+  minecraft: minecraftCover,
+  'minecraft-bedrock': minecraftCover,
+};
+
+export function gameArtwork(templateKey: string, kind: ArtworkKind): string | null {
+  if (Object.hasOwn(otherArtwork, templateKey)) {
+    return otherArtwork[templateKey] ?? null;
+  }
   const app = Object.hasOwn(steamApps, templateKey) ? steamApps[templateKey] : undefined;
   return app === undefined ? null : `${steamArtworkOrigin}/store_item_assets/steam/apps/${app}/${files[kind]}`;
 }
@@ -49,7 +62,7 @@ const tiles = [
 
 /** The gradient of a game's drawn tile: Minecraft's green, otherwise one picked by its key, the same every time. */
 export function tileGradient(templateKey: string): string {
-  if (templateKey === 'minecraft') {
+  if (templateKey === 'minecraft' || templateKey === 'minecraft-bedrock') {
     return 'from-emerald-600/70 to-green-950';
   }
   let hash = 0;

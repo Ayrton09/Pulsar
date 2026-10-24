@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 import { appearanceKeys } from './api';
 import { GameArt } from './GameArt';
-import { steamArtwork } from './artwork';
+import { gameArtwork } from './artwork';
 
 /** Renders with the panel's artwork setting already known. */
 function withArtwork(steamArtwork: boolean | undefined) {
@@ -18,13 +18,16 @@ function withArtwork(steamArtwork: boolean | undefined) {
 }
 
 describe('game artwork', () => {
-  it('builds Steam addresses only from its own table of games', () => {
-    expect(steamArtwork('rust', 'hero')).toBe(
+  it('builds addresses only from its own tables of games', () => {
+    expect(gameArtwork('rust', 'hero')).toBe(
       'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/252490/library_hero.jpg',
     );
-    expect(steamArtwork('minecraft', 'header')).toBeNull();
-    expect(steamArtwork('constructor', 'header')).toBeNull();
-    expect(steamArtwork('https://example.com/x', 'header')).toBeNull();
+    // Not on Steam: its cover on its own site.
+    expect(gameArtwork('minecraft', 'header')).toMatch(/^https:\/\/www\.minecraft\.net\/content\/dam\//);
+    expect(gameArtwork('minecraft-bedrock', 'hero')).toBe(gameArtwork('minecraft', 'header'));
+    expect(gameArtwork('constructor', 'header')).toBeNull();
+    expect(gameArtwork('toString', 'header')).toBeNull();
+    expect(gameArtwork('https://example.com/x', 'header')).toBeNull();
   });
 
   it('draws a tile when the game has no artwork or it does not load', () => {
@@ -42,7 +45,7 @@ describe('game artwork', () => {
     // Another game is tried again.
     rerender(<GameArt templateKey="valheim" kind="header" />);
     expect(container.querySelector('img')).not.toBeNull();
-    rerender(<GameArt templateKey="minecraft" kind="header" />);
+    rerender(<GameArt templateKey="imported-game" kind="header" />);
     expect(container.querySelector('img')).toBeNull();
   });
 

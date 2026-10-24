@@ -1122,7 +1122,7 @@ describe('game templates', () => {
     ).toBeInTheDocument();
   });
 
-  it('lets an administrator turn the Steam artwork off, and the cards then ask nothing of Steam', async () => {
+  it('lets an administrator turn the artwork off: the games are then a list without pictures', async () => {
     let sent: unknown;
     fakeApi({
       'GET /api/v1/auth/session': session({ ...adminUser, permissions: ['template.view', 'settings.manage'] }),
@@ -1137,12 +1137,16 @@ describe('game templates', () => {
 
     const card = within(await screen.findByRole('list', { name: 'Games' })).getByRole('listitem');
     await vi.waitFor(() => expect(card.querySelector('img')).not.toBeNull());
-    await user.click(await screen.findByLabelText('Show the game artwork from Steam'));
+    await user.click(await screen.findByLabelText('Show the game artwork (Steam and minecraft.net)'));
 
     expect(await screen.findByRole('status')).toHaveTextContent('Artwork turned off.');
     expect(sent).toEqual({ steamArtwork: false });
-    expect(screen.getByLabelText('Show the game artwork from Steam')).not.toBeChecked();
-    expect(card.querySelector('img')).toBeNull();
+    expect(screen.getByLabelText('Show the game artwork (Steam and minecraft.net)')).not.toBeChecked();
+    // Not cards without their picture: a list, with neither pictures nor drawn tiles.
+    const row = within(screen.getByRole('list', { name: 'Games' })).getByRole('listitem');
+    expect(within(row).getByRole('heading', { name: 'Counter-Strike: Source' })).toBeInTheDocument();
+    expect(row.querySelector('img')).toBeNull();
+    expect(row.querySelector('svg')).toBeNull();
   });
 
   it('shows the artwork setting only to whoever manages the settings', async () => {
@@ -1153,7 +1157,7 @@ describe('game templates', () => {
     renderAt('/templates');
 
     expect(await screen.findByRole('list', { name: 'Games' })).toBeInTheDocument();
-    expect(screen.queryByLabelText('Show the game artwork from Steam')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Show the game artwork (Steam and minecraft.net)')).not.toBeInTheDocument();
   });
 
   it('offers no server creation to whoever may only view the games', async () => {

@@ -2069,10 +2069,10 @@
   },
   "appearance": {
     "title": "Portadas de los juegos",
-    "hint": "Las tarjetas de servidores y juegos muestran la portada oficial de cada juego, que el navegador de cada visitante baja de Steam: Steam ve su dirección y qué juegos tiene el panel. Apagadas, cada juego lleva un dibujo propio y ningún navegador se conecta a Steam.",
-    "steamArtwork": "Mostrar las portadas de los juegos desde Steam",
+    "hint": "Las tarjetas de servidores y juegos muestran la imagen oficial de cada juego, que el navegador de cada visitante descarga de Steam (la de Minecraft, de minecraft.net): esos sitios ven su dirección y qué juegos tiene el panel. Si se apaga, los servidores y los juegos se listan sin imágenes y ningún navegador se conecta con ellos.",
+    "steamArtwork": "Mostrar las imágenes de los juegos (Steam y minecraft.net)",
     "turnedOn": "Portadas encendidas. Se ven en las páginas que se abran desde ahora.",
-    "turnedOff": "Portadas apagadas. Las páginas abiertas dejan de pedírselas a Steam al instante."
+    "turnedOff": "Imágenes apagadas. Las páginas abiertas dejan de pedirlas al instante y listan servidores y juegos sin imágenes."
   },
   "updates": {
     "title": "Actualizaciones",

@@ -124,7 +124,7 @@ describe('dashboard', () => {
     render(<App router={createMemoryRouter(routes, { initialEntries: ['/'] })} queryClient={new QueryClient()} />);
 
     const section = await screen.findByRole('region', { name: 'Your servers' });
-    const cards = within(section).getAllByRole('listitem');
+    const cards = await within(section).findAllByRole('listitem');
     expect(cards).toHaveLength(6);
     expect(within(cards[0] as HTMLElement).getByRole('heading', { level: 3 })).toHaveTextContent('Surf');
     expect(within(section).getByRole('link', { name: 'All servers (7)' })).toHaveAttribute('href', '/servers');

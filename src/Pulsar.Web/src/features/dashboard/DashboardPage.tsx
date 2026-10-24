@@ -11,7 +11,7 @@ import { useWatchNodes, useWatchServers } from '../live/hooks';
 import { useNodes, type NodeSummary } from '../nodes/api';
 import { nodeState, seesNodeDetails } from '../nodes/nodeStatus';
 import { useServers, type ServerSummary } from '../servers/api';
-import { ServerCard } from '../servers/ServerCard';
+import { ServerCollection } from '../servers/ServerCard';
 
 /**
  * Dashboard v1 (docs/architecture/07): servers and nodes at a glance, the nodes' combined usage, what needs attention
@@ -219,7 +219,7 @@ function Alerts({ servers, nodes }: { servers: ServerSummary[]; nodes: NodeSumma
   );
 }
 
-/** The servers as cards, the running ones first, up to six; the Servers page has them all. */
+/** The servers as cards (a list without game artwork), the running ones first, up to six; the Servers page has them all. */
 function ServerCards({ servers }: { servers: ServerSummary[] }) {
   const { t } = useTranslation();
   const alive = (server: ServerSummary) => server.runtimeState === 'running' || server.runtimeState === 'starting';
@@ -234,13 +234,7 @@ function ServerCards({ servers }: { servers: ServerSummary[] }) {
           {t('dashboard.allServers', { count: servers.length })}
         </Link>
       </div>
-      <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {shown.map((server) => (
-          <li key={server.id} className="flex min-w-0">
-            <ServerCard server={server} headingLevel={3} />
-          </li>
-        ))}
-      </ul>
+      <ServerCollection servers={shown} headingLevel={3} gridClassName="sm:grid-cols-2 xl:grid-cols-3" />
     </section>
   );
 }

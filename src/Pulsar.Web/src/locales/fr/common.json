@@ -2069,10 +2069,10 @@
   },
   "appearance": {
     "title": "Visuels des jeux",
-    "hint": "Les cartes de serveurs et de jeux affichent le visuel officiel de chaque jeu, que le navigateur de chaque visiteur télécharge depuis Steam : Steam voit leur adresse et les jeux que le panneau exécute. Désactivé, chaque jeu reçoit une vignette dessinée et aucun navigateur ne contacte Steam.",
-    "steamArtwork": "Afficher les visuels des jeux depuis Steam",
+    "hint": "Les cartes des serveurs et des jeux affichent l'image officielle de chaque jeu, que le navigateur de chaque visiteur télécharge depuis Steam (celle de Minecraft depuis minecraft.net) : ces sites voient son adresse et les jeux du panneau. Désactivées, les serveurs et les jeux s'affichent en liste sans images et aucun navigateur ne les contacte.",
+    "steamArtwork": "Afficher les images des jeux (Steam et minecraft.net)",
     "turnedOn": "Visuels activés. Les pages ouvertes à partir de maintenant les affichent.",
-    "turnedOff": "Visuels désactivés. Les pages ouvertes cessent aussitôt de les demander à Steam."
+    "turnedOff": "Images désactivées. Les pages ouvertes cessent aussitôt de les demander et listent serveurs et jeux sans images."
   },
   "updates": {
     "title": "Mises à jour",

@@ -2069,10 +2069,10 @@
   },
   "appearance": {
     "title": "Imagens dos jogos",
-    "hint": "Os cartões de servidores e jogos mostram a arte oficial de cada jogo, que o navegador de cada visitante baixa da Steam: a Steam vê o endereço deles e quais jogos o painel executa. Desativado, cada jogo recebe um bloco desenhado e o navegador de ninguém contata a Steam.",
-    "steamArtwork": "Mostrar as imagens dos jogos da Steam",
+    "hint": "Os cartões de servidores e jogos mostram a imagem oficial de cada jogo, que o navegador de cada visitante baixa da Steam (a do Minecraft, do minecraft.net): esses sites veem o endereço dele e quais jogos o painel roda. Desligado, servidores e jogos aparecem em lista sem imagens e nenhum navegador se conecta a eles.",
+    "steamArtwork": "Mostrar as imagens dos jogos (Steam e minecraft.net)",
     "turnedOn": "Imagens ativadas. As páginas abertas a partir de agora as mostram.",
-    "turnedOff": "Imagens desativadas. As páginas abertas deixam de pedi-las à Steam de imediato."
+    "turnedOff": "Imagens desligadas. As páginas abertas deixam de pedi-las na hora e listam servidores e jogos sem imagens."
   },
   "updates": {
     "title": "Atualizações",

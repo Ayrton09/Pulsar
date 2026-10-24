@@ -2069,10 +2069,10 @@
   },
   "appearance": {
     "title": "Immagini dei giochi",
-    "hint": "Le schede dei server e dei giochi mostrano le immagini ufficiali di ogni gioco, che il browser di ogni visitatore scarica da Steam: Steam vede il loro indirizzo e quali giochi esegue il pannello. Se disattivate, ogni gioco ha un riquadro disegnato e nessun browser contatta Steam.",
-    "steamArtwork": "Mostra le immagini dei giochi da Steam",
+    "hint": "Le schede di server e giochi mostrano l'immagine ufficiale di ogni gioco, che il browser di ogni visitatore scarica da Steam (quella di Minecraft da minecraft.net): quei siti vedono il suo indirizzo e quali giochi ha il pannello. Se disattivate, server e giochi sono elencati senza immagini e nessun browser li contatta.",
+    "steamArtwork": "Mostra le immagini dei giochi (Steam e minecraft.net)",
     "turnedOn": "Immagini attivate. Le pagine aperte da ora in poi le mostrano.",
-    "turnedOff": "Immagini disattivate. Le pagine aperte smettono subito di richiederle a Steam."
+    "turnedOff": "Immagini disattivate. Le pagine aperte smettono subito di chiederle ed elencano server e giochi senza immagini."
   },
   "updates": {
     "title": "Aggiornamenti",

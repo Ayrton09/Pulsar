@@ -33,6 +33,7 @@ import { useCurrentUser } from '../auth/api';
 import { AddonsTab } from '../addons/AddonsTab';
 import { BackupsTab } from '../backups/BackupsTab';
 import { DatabasesTab } from '../databases/DatabasesTab';
+import { useArtworkShown } from '../games/api';
 import { GameArt } from '../games/GameArt';
 import { SteamGuardPrompt } from '../steam/SteamServerCards';
 import { FilesTab } from '../files/FilesTab';
@@ -279,17 +280,25 @@ function SectionTabs({ tabs, current, onOpen }: { tabs: Tab[]; current: Tab; onO
 }
 
 /**
- * The top of the server's page: its game's banner behind its name and status, the game, the node and where players
- * connect, and the power buttons.
+ * The top of the server's page: its game's banner behind its name and status (no picture without game artwork), the
+ * game, the node and where players connect, and the power buttons.
  */
 function ServerHero({ details }: { details: ServerDetails }) {
   const { t } = useTranslation();
   const { server } = details;
+  const artwork = useArtworkShown();
   return (
     <header className="relative mb-6 overflow-hidden rounded-2xl border border-border bg-surface shadow-xl shadow-black/30">
-      <GameArt templateKey={details.templateKey} kind="hero" className="absolute inset-0 size-full opacity-60" />
-      <div aria-hidden="true" className="absolute inset-0 bg-linear-to-r from-bg via-bg/85 to-bg/30" />
-      <div aria-hidden="true" className="absolute inset-0 bg-linear-to-t from-bg/90 via-transparent to-transparent" />
+      {artwork && (
+        <>
+          <GameArt templateKey={details.templateKey} kind="hero" className="absolute inset-0 size-full opacity-60" />
+          <div aria-hidden="true" className="absolute inset-0 bg-linear-to-r from-bg via-bg/85 to-bg/30" />
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-linear-to-t from-bg/90 via-transparent to-transparent"
+          />
+        </>
+      )}
       <div className="relative flex flex-col gap-6 p-5 sm:p-7 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <Link to="/servers" className="text-sm text-muted hover:text-text">

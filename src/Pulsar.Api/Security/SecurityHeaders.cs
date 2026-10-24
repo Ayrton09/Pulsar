@@ -6,18 +6,22 @@ namespace Pulsar.Api.Security;
 /// (style-src-elem), which the dialog's scroll lock injects at runtime with content that varies (scrollbar width), so
 /// neither a hash nor a nonce on the static index.html can cover it. Inline style attributes stay blocked and scripts
 /// stay strict; exploiting it would first require HTML injection, which React prevents. Images may also come from
-/// Steam's store CDN while an administrator leaves the game artwork on (<see cref="SteamArtworkPolicy"/>): the artwork on
-/// server cards and pages. The browser asks Steam for them with no referrer, and the SPA only builds those addresses from
-/// a fixed table of app numbers, never from data a user typed. With the artwork off, or the setting not read yet, the
-/// policy names no Steam origin, so no browser contacts Steam.
+/// Steam's store CDN, and Minecraft's cover from minecraft.net (1.0.8: Minecraft is not on Steam), while an administrator
+/// leaves the game artwork on (<see cref="SteamArtworkPolicy"/>): the artwork on server cards and pages. The browser asks
+/// for them with no referrer, and the SPA only builds those addresses from a fixed table, never from data a user typed.
+/// With the artwork off, or the setting not read yet, the policy names neither origin, so no browser contacts them.
 /// </summary>
 internal static class SecurityHeaders
 {
     /// <summary>Steam's store CDN, where the game artwork comes from.</summary>
     public const string SteamArtworkOrigin = "https://shared.akamai.steamstatic.com";
 
-    /// <summary>The policy while the game artwork is on: images from the panel and Steam's store CDN.</summary>
-    public const string ContentSecurityPolicyWithSteamArtwork = PolicyStart + "img-src 'self' data: " + SteamArtworkOrigin + "; " + PolicyEnd;
+    /// <summary>Minecraft's site, where its cover comes from (the game is not on Steam).</summary>
+    public const string MinecraftArtworkOrigin = "https://www.minecraft.net";
+
+    /// <summary>The policy while the game artwork is on: images from the panel, Steam's store CDN and Minecraft's site.</summary>
+    public const string ContentSecurityPolicyWithSteamArtwork =
+        PolicyStart + "img-src 'self' data: " + SteamArtworkOrigin + " " + MinecraftArtworkOrigin + "; " + PolicyEnd;
 
     /// <summary>The policy while it is off or not read yet: images from the panel only.</summary>
     public const string ContentSecurityPolicyWithoutSteamArtwork = PolicyStart + "img-src 'self' data:; " + PolicyEnd;

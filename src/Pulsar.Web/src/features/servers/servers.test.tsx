@@ -443,6 +443,31 @@ describe('server cards', () => {
     expect(screen.getByText('No server matches.')).toBeInTheDocument();
   });
 
+  it('lists the servers without pictures when the panel shows no game artwork', async () => {
+    const start = vi.fn(() => json({ status: 'accepted', errorCode: null }));
+    fakeApi({
+      'GET /api/v1/auth/session': session(operator),
+      'GET /api/v1/appearance': () => json({ steamArtwork: false }),
+      'GET /api/v1/servers': () => json([{ ...installedOffline, templateKey: 'valheim' }, running]),
+      [`POST /api/v1/servers/${installedOffline.id}/start`]: start,
+    });
+    renderAt('/servers');
+    const user = userEvent.setup();
+
+    const rows = within(await screen.findByRole('list', { name: 'Servers' })).getAllByRole('listitem');
+    expect(rows).toHaveLength(2);
+    const row = rows[0] as HTMLElement;
+    // The card's contents, without its picture or a drawn tile in its place.
+    expect(within(row).getByRole('link', { name: 'Retakes' })).toHaveAttribute(
+      'href',
+      `/servers/${installedOffline.id}`,
+    );
+    expect(row.querySelector('img')).toBeNull();
+    expect(row.querySelector('.bg-linear-to-br')).toBeNull();
+    await user.click(within(row).getByRole('button', { name: 'Start Retakes' }));
+    expect(start).toHaveBeenCalledOnce();
+  });
+
   it('starts a server from its card, shows its game and copies where players connect', async () => {
     const start = vi.fn(() => json({ status: 'accepted', errorCode: null }));
     const valheim = {

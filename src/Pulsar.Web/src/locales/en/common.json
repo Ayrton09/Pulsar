@@ -2069,10 +2069,10 @@
   },
   "appearance": {
     "title": "Game artwork",
-    "hint": "Server and game cards show each game's official artwork, which every visitor's browser downloads from Steam: Steam sees their address and which games the panel runs. Turned off, each game gets a drawn tile and nobody's browser contacts Steam.",
-    "steamArtwork": "Show the game artwork from Steam",
+    "hint": "Server and game cards show each game's official artwork, which every visitor's browser downloads from Steam (Minecraft's from minecraft.net): those sites see their address and which games the panel runs. Turned off, servers and games are listed without pictures and nobody's browser contacts them.",
+    "steamArtwork": "Show the game artwork (Steam and minecraft.net)",
     "turnedOn": "Artwork turned on. Pages opened from now on show it.",
-    "turnedOff": "Artwork turned off. Open pages stop asking Steam for it at once."
+    "turnedOff": "Artwork turned off. Open pages stop asking for it at once and list servers and games without pictures."
   },
   "updates": {
     "title": "Updates",

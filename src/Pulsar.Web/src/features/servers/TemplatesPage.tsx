@@ -10,8 +10,9 @@ import { can, canAnywhere, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useImportTemplate, useTemplatePreview, useTemplates } from './api';
 import { CreateServerDialog } from './CreateServerDialog';
-import { GameCard } from './GameCard';
+import { GameCard, GameRow } from './GameCard';
 import { newestOfEachGame } from './templateVersions';
+import { useArtworkShown } from '../games/api';
 import { ArtworkSetting } from '../games/ArtworkSetting';
 
 /**
@@ -22,6 +23,7 @@ export function TemplatesPage() {
   const { t } = useTranslation();
   const me = useCurrentUser();
   const templates = useTemplates();
+  const artwork = useArtworkShown();
   const [importing, setImporting] = useState(false);
   const canImport = can(me, Permission.TemplateManage);
   const canCreateServer = canAnywhere(me, Permission.ServerCreate);
@@ -44,7 +46,24 @@ export function TemplatesPage() {
       {can(me, Permission.SettingsManage) && <ArtworkSetting />}
       {templates.isPending && <Spinner label={t('common.loading')} />}
       {templates.isError && <Alert>{errorMessage(t, templates.error)}</Alert>}
-      {templates.data && (
+      {templates.data && artwork === undefined && <Spinner label={t('common.loading')} />}
+      {/* Cards with each game's picture; without game artwork, a list without pictures. */}
+      {templates.data && artwork === false && (
+        <ul
+          aria-label={t('templates.title')}
+          className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface/90 shadow-lg shadow-black/20"
+        >
+          {newestOfEachGame(templates.data).map((template) => (
+            <li key={template.id}>
+              <GameRow
+                template={template}
+                onCreate={canCreateServer ? () => setCreatingWith(template.id) : undefined}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      {templates.data && artwork === true && (
         <ul
           aria-label={t('templates.title')}
           className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"

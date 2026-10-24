@@ -1,10 +1,10 @@
 import { Box, Gamepad2 } from 'lucide-react';
 import { useState } from 'react';
 import { useAppearance } from './api';
-import { steamArtwork, tileGradient, type ArtworkKind } from './artwork';
+import { gameArtwork, tileGradient, type ArtworkKind } from './artwork';
 
 /**
- * A game's picture, decorative (the game's name is always written next to it). Steam's artwork when the panel shows it,
+ * A game's picture, decorative (the game's name is always written next to it). Its artwork when the panel shows it,
  * the game has it and it loads; otherwise a tile in the game's color with an icon. Until the panel says whether it
  * shows artwork, the tile: nothing is asked of Steam before that.
  */
@@ -18,7 +18,7 @@ export function GameArt({
   className?: string;
 }) {
   const appearance = useAppearance();
-  const src = appearance.data?.steamArtwork === true ? steamArtwork(templateKey, kind) : null;
+  const src = appearance.data?.steamArtwork === true ? gameArtwork(templateKey, kind) : null;
   // Remembers which address failed, so a different game shown here later is tried again.
   const [failed, setFailed] = useState<string | null>(null);
   if (src !== null && failed !== src) {
@@ -36,7 +36,7 @@ export function GameArt({
     );
   }
 
-  const Icon = templateKey === 'minecraft' ? Box : Gamepad2;
+  const Icon = templateKey === 'minecraft' || templateKey === 'minecraft-bedrock' ? Box : Gamepad2;
   return (
     <div
       aria-hidden="true"
