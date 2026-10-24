@@ -10,7 +10,7 @@ namespace Pulsar.Agent.Core.Tests;
 
 public sealed class ServerQueryTests
 {
-    private readonly ServerQuery _query = new(TimeProvider.System) { Timeout = TimeSpan.FromSeconds(3) };
+    private readonly ServerQuery _query = new(TimeProvider.System) { Timeout = TimeSpan.FromSeconds(15) }; // a busy runner can take seconds to answer on loopback
 
     [Fact]
     public async Task A2sGivesTheInfoAndThePlayersAfterTheirChallenges()

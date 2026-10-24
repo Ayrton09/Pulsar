@@ -517,13 +517,22 @@ public sealed class SftpPublicKeyTests(SftpApiFactory factory) : IClassFixture<S
                 e.AuthenticationTask = Task.FromResult<ClaimsPrincipal?>(new ClaimsPrincipal());
             }
         };
+        // The server ending the connection can leave an attempt in flight unanswered: that is the answer.
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        session.Closed += (_, _) => closed.TrySetResult();
         await session.ConnectAsync(tcp.GetStream(), Ct).WaitAsync(SftpApiFactory.Timeout, Ct);
         try
         {
             var signedIn = false;
-            for (var i = 0; i < attempts && !signedIn; i++)
+            for (var i = 0; i < attempts && !signedIn && !session.IsClosed; i++)
             {
-                signedIn = await session.AuthenticateAsync(new SshClientCredentials(login, pair)).WaitAsync(SftpApiFactory.Timeout, Ct);
+                var attempt = session.AuthenticateAsync(new SshClientCredentials(login, pair));
+                if (await Task.WhenAny(attempt, closed.Task).WaitAsync(SftpApiFactory.Timeout, Ct) != attempt)
+                {
+                    break;
+                }
+
+                signedIn = await attempt;
             }
 
             return (signedIn, !session.IsClosed);
