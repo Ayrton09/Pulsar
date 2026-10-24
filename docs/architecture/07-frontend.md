@@ -17,7 +17,7 @@
 | Real time | `@microsoft/signalr` | Same protocol as the backend. | Phase 2 |
 | Console | `@xterm/xterm` + `@xterm/addon-fit`, `@xterm/addon-search`, `@xterm/addon-web-links` | Requirement. The clipboard addon (OSC 52) is not loaded. | Phase 5 |
 | Components | Own shadcn-style components (copied into the repo) on Radix primitives | Accessibility without a full component library. | Phase 1 |
-| Icons | lucide-react (ISC) | One consistent stroke set; only the icons imported end up in the bundle. Icons are decoration (`aria-hidden`): a label always names the control. | UI pass after the audit |
+| Icons | lucide-react (ISC) | One consistent stroke set; only the icons imported end up in the bundle. Icons are decoration (`aria-hidden`): a label always names the control. The tab and bookmark icon (`public/favicon.svg`, and `favicon.ico` at 16 and 32 px for browsers without SVG icons) is the sidebar's mark: its pulse line is lucide's `activity`. | UI pass after the audit |
 | Forms | react-hook-form + zod | Client validation (the server always re-validates). | Phase 1 |
 | Charts | uPlot (only for live CPU/RAM) | Very light and fast for time series. | Phase 5 |
 

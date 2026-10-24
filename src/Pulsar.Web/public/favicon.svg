@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Pulsar's mark, as components/ui/Logo.tsx draws it. The pulse line is Lucide's "activity" icon (ISC license). -->
+  <defs>
+    <linearGradient id="fill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a08cff" />
+      <stop offset="1" stop-color="#7c63ff" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#fill)" />
+  <path
+    transform="translate(4 4)"
+    d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"
+    fill="none"
+    stroke="#0b0d12"
+    stroke-width="2.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
