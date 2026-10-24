@@ -565,6 +565,7 @@
       "allocation_unavailable": "Cette allocation n'est pas libre sur le nœud du serveur.",
       "port_taken": "Ce port est utilisé par un autre serveur du nœud : choisissez-en un autre.",
       "port_not_allocated": "Ce port ne fait pas partie des allocations du nœud : choisissez-en une libre, ou demandez aux gestionnaires du nœud de l’ajouter.",
+      "port_numbers_forbidden": "Vous ne pouvez pas choisir les ports de ce nœud par numéro : choisissez l’une de ses allocations.",
       "invalid_settings": "Vérifiez les paramètres : {{detail}}",
       "variable_protected": "Vous ne pouvez pas modifier ce paramètre : {{detail}}",
       "limits_unsupported": "L'agent du nœud ne peut pas limiter le CPU et la mémoire d'un serveur : mettez l'agent à jour.",

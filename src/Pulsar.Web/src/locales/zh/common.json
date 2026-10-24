@@ -565,6 +565,7 @@
       "allocation_unavailable": "该端口分配在服务器所在节点上不可用。",
       "port_taken": "该端口已被节点上的另一台服务器使用，请选择其他端口。",
       "port_not_allocated": "该端口不在节点的端口分配中：请选择一个空闲的端口分配，或请节点管理员添加它。",
+      "port_numbers_forbidden": "你无法按编号选择此节点的端口：请从其端口分配中选择。",
       "invalid_settings": "请检查设置：{{detail}}",
       "variable_protected": "你无法更改该设置：{{detail}}",
       "limits_unsupported": "该节点的代理无法限制服务器的 CPU 和内存：请更新代理。",

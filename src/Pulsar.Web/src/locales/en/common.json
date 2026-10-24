@@ -565,6 +565,7 @@
       "allocation_unavailable": "That allocation is not free on the server's node.",
       "port_taken": "That port is used by another server of the node: choose another one.",
       "port_not_allocated": "That port is not one of the node's allocations: choose one of its free ones, or ask whoever manages the node to add it.",
+      "port_numbers_forbidden": "You may not choose this node's ports by number: choose one of its allocations.",
       "invalid_settings": "Check the settings: {{detail}}",
       "variable_protected": "You cannot change that setting: {{detail}}",
       "limits_unsupported": "The node's agent cannot limit a server's CPU and memory: update the agent.",

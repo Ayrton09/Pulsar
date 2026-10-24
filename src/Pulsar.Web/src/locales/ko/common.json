@@ -565,6 +565,7 @@
       "allocation_unavailable": "해당 할당은 서버의 노드에서 사용할 수 없습니다.",
       "port_taken": "해당 포트는 노드의 다른 서버가 사용 중입니다. 다른 포트를 선택하세요.",
       "port_not_allocated": "해당 포트는 노드의 할당에 없습니다. 여유 할당을 선택하거나 노드 관리자에게 추가를 요청하세요.",
+      "port_numbers_forbidden": "이 노드의 포트를 번호로 선택할 수 없습니다. 노드의 할당 중 하나를 선택하세요.",
       "invalid_settings": "설정을 확인하세요: {{detail}}",
       "variable_protected": "해당 설정은 변경할 수 없습니다: {{detail}}",
       "limits_unsupported": "노드의 에이전트가 서버의 CPU와 메모리를 제한할 수 없습니다. 에이전트를 업데이트하세요.",

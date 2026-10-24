@@ -565,6 +565,7 @@
       "allocation_unavailable": "Essa alocação não está livre no nó do servidor.",
       "port_taken": "Essa porta é usada por outro servidor do nó: escolha outra.",
       "port_not_allocated": "Essa porta não é uma das alocações do nó: escolha uma livre ou peça a quem gerencia o nó para adicioná-la.",
+      "port_numbers_forbidden": "Você não pode escolher as portas deste nó por número: escolha uma das alocações dele.",
       "invalid_settings": "Verifique as configurações: {{detail}}",
       "variable_protected": "Você não pode alterar essa configuração: {{detail}}",
       "limits_unsupported": "O agente do nó não pode limitar a CPU e a memória de um servidor: atualize o agente.",

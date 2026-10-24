@@ -71,6 +71,9 @@ public static class ServerErrors
     public static DomainError PortTaken(int port) =>
         new("server.port_taken", $"Port {port} is used by another server of the node.");
 
+    public static DomainError PortNumbersForbidden { get; } =
+        new("server.port_numbers_forbidden", "You may not choose this node's ports by number: choose one of its allocations.");
+
     public static DomainError PortNotAllocated(int port) =>
         new("server.port_not_allocated", $"Port {port} is not one of the node's allocations: ask whoever manages the node to add it, or choose a free one.");
 

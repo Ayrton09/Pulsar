@@ -565,6 +565,7 @@
       "allocation_unavailable": "Diese Zuweisung ist auf dem Node des Servers nicht frei.",
       "port_taken": "Dieser Port wird von einem anderen Server des Nodes verwendet: Wählen Sie einen anderen.",
       "port_not_allocated": "Dieser Port gehört nicht zu den Zuweisungen des Nodes: Wählen Sie eine freie oder bitten Sie die Verwaltung des Nodes, ihn hinzuzufügen.",
+      "port_numbers_forbidden": "Sie dürfen die Ports dieses Nodes nicht per Nummer wählen: Wählen Sie eine seiner Zuweisungen.",
       "invalid_settings": "Prüfen Sie die Einstellungen: {{detail}}",
       "variable_protected": "Sie können diese Einstellung nicht ändern: {{detail}}",
       "limits_unsupported": "Der Agent des Nodes kann CPU und Speicher eines Servers nicht begrenzen: Aktualisieren Sie den Agent.",

@@ -565,6 +565,7 @@
       "allocation_unavailable": "Esa asignación no está libre en el nodo del servidor.",
       "port_taken": "Ese puerto lo usa otro servidor del nodo: elegí otro.",
       "port_not_allocated": "Ese puerto no es una de las asignaciones del nodo: elegí una libre, o pedile a quien administra el nodo que lo agregue.",
+      "port_numbers_forbidden": "No podés elegir los puertos de este nodo por número: elegí una de sus asignaciones.",
       "invalid_settings": "Revisá la configuración: {{detail}}",
       "variable_protected": "No podés cambiar esa opción: {{detail}}",
       "limits_unsupported": "El agente del nodo no puede limitar la CPU y la memoria de un servidor: actualizá el agente.",

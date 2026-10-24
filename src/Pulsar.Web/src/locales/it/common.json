@@ -565,6 +565,7 @@
       "allocation_unavailable": "Questa allocazione non è libera sul nodo del server.",
       "port_taken": "Questa porta è usata da un altro server del nodo: sceglierne un’altra.",
       "port_not_allocated": "Questa porta non è tra le allocazioni del nodo: sceglierne una libera, o chiedere a chi gestisce il nodo di aggiungerla.",
+      "port_numbers_forbidden": "Non è consentito scegliere le porte di questo nodo per numero: scegliere una delle sue allocazioni.",
       "invalid_settings": "Controllare le impostazioni: {{detail}}",
       "variable_protected": "Non puoi modificare questa impostazione: {{detail}}",
       "limits_unsupported": "L'agent del nodo non può limitare CPU e memoria di un server: aggiornare l'agent.",

@@ -664,8 +664,16 @@ public sealed partial class ServerManagement(
             return ServerErrors.InvalidSettings($"Port '{both}' is chosen both by allocation and by number.");
         }
 
-        var canAdd = request.UserId is not { } user
-            || (await permissions.GetAsync(user, cancellationToken)).Has(Permissions.Node.Manage, AccessTarget.ForNode(server.NodeId));
+        // A number's answer says whether another server uses it: only for those who may list the node's allocations
+        // anyway (as GET /nodes/{id}/allocations), and adding one is managing the node. Without a user, neither.
+        var granted = request.UserId is { } user ? await permissions.GetAsync(user, cancellationToken) : null;
+        var node = AccessTarget.ForNode(server.NodeId);
+        if (granted is null || !new[] { Permissions.Node.View, Permissions.Node.Manage, Permissions.Server.Create }.Any(p => granted.Has(p, node)))
+        {
+            return ServerErrors.PortNumbersForbidden;
+        }
+
+        var canAdd = granted.Has(Permissions.Node.Manage, node);
         await locks.LockNodeAsync(server.NodeId, cancellationToken);
         var resolved = await specs.AllocationsForNumbersAsync(server, manifest, numbers, canAdd, clock.GetUtcNow(), cancellationToken);
         if (!resolved.IsSuccess)

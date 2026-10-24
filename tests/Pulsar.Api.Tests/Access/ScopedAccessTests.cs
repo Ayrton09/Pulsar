@@ -117,6 +117,26 @@ public sealed class ScopedAccessTests(PulsarApiFactory factory) : IClassFixture<
     }
 
     [DatabaseFact]
+    public async Task ChoosingPortsByNumberNeedsSeeingTheNodesAllocations()
+    {
+        var scenario = await AccessScenario.CreateAsync(factory);
+        await using var agent = await ConnectedAgentAsync(scenario.Admin, "numbers-hidden");
+        var server = (await ServerApi.CreateAsync(scenario.Admin, agent.Config!.NodeId, "Edited")).Server.Id;
+        var role = await CreateRoleAsync(scenario, "number-editor", PermissionScope.Server, Permissions.Server.View, Permissions.Server.SettingsEdit);
+        var editor = await scenario.CreateUserAsync("number-editor-user");
+        await GrantAsync(scenario.Admin, editor.Id, "servers", server, role.Id);
+        using var client = await scenario.SignInAsync("number-editor-user");
+
+        // The answers would say which ports the node's other servers use, which this user cannot list: refused for any number.
+        foreach (var port in new[] { 27015, 27016 })
+        {
+            await AssertCodeAsync(client.PutAsync($"/api/v1/servers/{server}/ports",
+                new UpdateServerPortsRequest(PortNumbers: new Dictionary<string, int?> { ["game"] = port })),
+                HttpStatusCode.Forbidden, "server.port_numbers_forbidden");
+        }
+    }
+
+    [DatabaseFact]
     public async Task CreatingServersOnANodeShowsItsNameAndStateOnly()
     {
         var scenario = await AccessScenario.CreateAsync(factory);
