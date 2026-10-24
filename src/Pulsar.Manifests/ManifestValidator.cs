@@ -849,6 +849,12 @@ public static partial class ManifestValidator
                 context.Error($"{path}.keepIfEmpty", "Keys of 'set', each once.");
             }
 
+            if (file.WriteIfEmpty is { } written && (file.Format != ConfigFileFormat.Json || written.Count > 128 || written.Any(k => !file.Set.ContainsKey(k))
+                || written.Distinct(StringComparer.OrdinalIgnoreCase).Count() != written.Count || written.Any(k => file.KeepIfEmpty?.Contains(k, StringComparer.OrdinalIgnoreCase) == true)))
+            {
+                context.Error($"{path}.writeIfEmpty", "Keys of a 'json' file's 'set', each once, and none kept when empty.");
+            }
+
             if (file.Format == ConfigFileFormat.UnrealIni)
             {
                 if (file.Section is null || !UnrealSectionPattern().IsMatch(file.Section))

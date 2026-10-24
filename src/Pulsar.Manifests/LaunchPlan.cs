@@ -64,6 +64,9 @@ public sealed record ConfigEntry(string Key, string Value, bool Secret)
     /// <summary>What the value is in a JSON file; every other format writes it as text.</summary>
     public ConfigValueKind Kind { get; init; }
 
+    /// <summary>An empty value is written as an empty string rather than removing the member (JSON files only).</summary>
+    public bool WriteEmpty { get; init; }
+
     public override string ToString() => Secret ? $"{Key}=***" : $"{Key}={Value}";
 }
 
@@ -391,7 +394,11 @@ public static partial class LaunchPlanRenderer
                     throw new LaunchPlanException(secret ? $"{file.Path} {entry.Key}: {error}" : $"{file.Path} {entry.Key}: {error} ('{value}')");
                 }
 
-                return new ConfigEntry(entry.Key, value, secret) { Kind = file.Format == ConfigFileFormat.Json ? KindOf(entry.Value) : ConfigValueKind.Text };
+                return new ConfigEntry(entry.Key, value, secret)
+                {
+                    Kind = file.Format == ConfigFileFormat.Json ? KindOf(entry.Value) : ConfigValueKind.Text,
+                    WriteEmpty = file.WriteIfEmpty?.Contains(entry.Key, StringComparer.Ordinal) == true,
+                };
             }),
         ])
         { Section = file.Section, Struct = file.Struct }).ToList();

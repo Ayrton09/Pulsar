@@ -378,8 +378,12 @@ public enum ConfigFileMode
 /// Keys of <see cref="Set"/> whose line stays as the file has it when their value is empty: an option left unset in
 /// the panel changes nothing (an empty value of another key removes its line).
 /// </param>
+/// <param name="WriteIfEmpty">
+/// Keys of <see cref="Set"/> of a <see cref="ConfigFileFormat.Json"/> file whose empty value is written as an empty
+/// string instead of removing the member: Enshrouded makes up a password for a group that has none (1.0.7).
+/// </param>
 public sealed record ConfigFileDefinition(string Path, ConfigFileFormat Format, ConfigFileMode Mode, IReadOnlyDictionary<string, string> Set,
-    string? Section = null, string? Struct = null, IReadOnlyList<string>? KeepIfEmpty = null);
+    string? Section = null, string? Struct = null, IReadOnlyList<string>? KeepIfEmpty = null, IReadOnlyList<string>? WriteIfEmpty = null);
 
 /// <summary>
 /// What a backup contains: globs relative to the server directory (Phase 7); and how a running game is asked to write

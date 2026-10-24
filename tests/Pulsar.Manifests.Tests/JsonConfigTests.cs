@@ -68,6 +68,54 @@ public sealed class JsonConfigTests
     }
 
     [Fact]
+    public void AnArraysElementIsPatchedByItsIndexAndAnEmptyValueCanBeWritten()
+    {
+        // Enshrouded makes up a password for a group without one: "no password" is an empty one.
+        const string existing = """{"userGroups": [{"name": "Default", "password": "W4cyVsFx", "canKickBan": false}, {"name": "Admin", "password": "own"}]}""";
+        var cleared = new ConfigEntry("/userGroups/0/password", "", Secret: true) { WriteEmpty = true };
+        var set = cleared with { Value = "s3cret" };
+
+        var open = JsonNode.Parse(ConfigFileWriter.Apply(Json(cleared), existing))!;
+        var closed = JsonNode.Parse(ConfigFileWriter.Apply(Json(set), existing))!;
+
+        Assert.Equal("""[{"name":"Default","password":"","canKickBan":false},{"name":"Admin","password":"own"}]""", open["userGroups"]!.ToJsonString());
+        Assert.Equal("s3cret", closed["userGroups"]![0]!["password"]!.GetValue<string>());
+        // A missing file gets the array, with the element after its last.
+        Assert.Equal("""{"userGroups":[{"password":""}]}""", JsonNode.Parse(ConfigFileWriter.Apply(Json(cleared), null))!.ToJsonString());
+    }
+
+    [Fact]
+    public void AnArrayKeepsItsElementsAndItsIndexesHoldNoGaps()
+    {
+        const string existing = """{"tags": ["pve", "eu"], "groups": [{"name": "Default"}]}""";
+
+        // An empty value does not remove an element: the next ones would move to other indexes.
+        Assert.Equal("""{"tags":["pve","eu"],"groups":[{"name":"Default"}]}""",
+            JsonNode.Parse(ConfigFileWriter.Apply(Json(("/tags/0", "", ConfigValueKind.Text)), existing))!.ToJsonString());
+        Assert.Equal("""["pve","eu","new"]""",
+            JsonNode.Parse(ConfigFileWriter.Apply(Json(("/tags/2", "new", ConfigValueKind.Text)), existing))!["tags"]!.ToJsonString());
+        Assert.Throws<LaunchPlanException>(() => ConfigFileWriter.Apply(Json(("/tags/3", "gap", ConfigValueKind.Text)), existing));
+        Assert.Throws<LaunchPlanException>(() => ConfigFileWriter.Apply(Json(("/groups/name", "x", ConfigValueKind.Text)), existing));
+        Assert.Throws<LaunchPlanException>(() => ConfigFileWriter.Apply(Json(("/groups/01/name", "x", ConfigValueKind.Text)), existing));
+    }
+
+    [Fact]
+    public void OnlyAJsonFilesOwnKeysAreWrittenWhenEmpty()
+    {
+        Assert.NotNull(TestManifests.Parse(WithJsonFile(new JsonObject { ["/a"] = "{{var.message}}" }, writeIfEmpty: ["/a"])));
+        Assert.Contains(TestManifests.Errors(WithJsonFile(new JsonObject { ["/a"] = "{{var.message}}" }, writeIfEmpty: ["/b"])),
+            e => e.Path == "configFiles[0].writeIfEmpty");
+        Assert.Contains(TestManifests.Errors(TestManifests.Change("_test", m => m["configFiles"] = new JsonArray(new JsonObject
+        {
+            ["path"] = "data/server.cfg",
+            ["format"] = "source-cfg",
+            ["mode"] = "patch",
+            ["set"] = new JsonObject { ["hostname"] = "{{var.message}}" },
+            ["writeIfEmpty"] = new JsonArray("hostname"),
+        }))), e => e.Path == "configFiles[0].writeIfEmpty");
+    }
+
+    [Fact]
     public void TextIsEscapedAndKeepsItsLetters()
     {
         var written = ConfigFileWriter.Apply(Json(("/name", "Ñandú \"quoted\" back\\slash </script>", ConfigValueKind.Text)), "{}");
@@ -231,14 +279,21 @@ public sealed class JsonConfigTests
         new("enshrouded_server.json", ConfigFileFormat.Json, ConfigFileMode.Patch,
             [.. entries.Select(e => new ConfigEntry(e.Key, e.Value, Secret: false) { Kind = e.Kind })]);
 
+    private static RenderedConfigFile Json(params ConfigEntry[] entries) => new("enshrouded_server.json", ConfigFileFormat.Json, ConfigFileMode.Patch, entries);
+
     /// <summary>The test game with one JSON file and a game port.</summary>
-    private static string WithJsonFile(JsonObject set, string mode = "patch", string? section = null) => TestManifests.Change("_test", m =>
+    private static string WithJsonFile(JsonObject set, string mode = "patch", string? section = null, string[]? writeIfEmpty = null) => TestManifests.Change("_test", m =>
     {
         m["ports"] = new JsonArray(new JsonObject { ["name"] = "game", ["label"] = "Game", ["protocols"] = new JsonArray("udp"), ["default"] = 27015 });
         var file = new JsonObject { ["path"] = "data/server.json", ["format"] = "json", ["mode"] = mode, ["set"] = set };
         if (section is not null)
         {
             file["section"] = section;
+        }
+
+        if (writeIfEmpty is not null)
+        {
+            file["writeIfEmpty"] = new JsonArray([.. writeIfEmpty.Select(k => (JsonNode)k)]);
         }
 
         m["configFiles"] = new JsonArray(file);

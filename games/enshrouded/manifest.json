@@ -43,7 +43,11 @@
     { "name": "game", "label": "Game", "protocols": ["udp"], "default": 15637, "description": "Players connect here; the server list asks here too." }
   ],
 
-  "install": { "steps": [ { "type": "steamcmd", "appId": 2278520 } ] },
+  "install": { "steps": [
+    { "type": "steamcmd", "appId": 2278520 },
+    { "type": "writeFileIfMissing", "path": "enshrouded_server.json",
+      "content": "{\n\t\"name\": \"Pulsar Enshrouded\",\n\t\"saveDirectory\": \"./savegame\",\n\t\"logDirectory\": \"./logs\",\n\t\"userGroups\": [\n\t\t{\n\t\t\t\"name\": \"Default\",\n\t\t\t\"password\": \"\",\n\t\t\t\"canKickBan\": false,\n\t\t\t\"canAccessInventories\": true,\n\t\t\t\"canEditWorld\": true,\n\t\t\t\"canEditBase\": true,\n\t\t\t\"canExtendBase\": true,\n\t\t\t\"reservedSlots\": 0\n\t\t}\n\t]\n}\n" }
+  ] },
   "update": { "steps": [ { "type": "steamcmd", "appId": 2278520 } ] },
 
   "runtime": {
@@ -59,7 +63,7 @@
     { "path": "enshrouded_server.json", "format": "json", "mode": "patch",
       "set": {
         "/name": "{{var.name}}",
-        "/password": "{{var.password}}",
+        "/userGroups/0/password": "{{var.password}}",
         "/saveDirectory": "./savegame",
         "/logDirectory": "./logs",
         "/ip": "{{port.game.ip}}",
@@ -79,6 +83,7 @@
         "/gameSettings/enableStarvingDebuff": "{{var.starving}}",
         "/gameSettings/pacifyAllEnemies": "{{var.pacifyEnemies}}"
       },
+      "writeIfEmpty": ["/userGroups/0/password"],
       "keepIfEmpty": ["/gameSettingsPreset", "/enableVoiceChat", "/enableTextChat", "/gameSettings/playerHealthFactor", "/gameSettings/playerStaminaFactor",
         "/gameSettings/enemyDamageFactor", "/gameSettings/enemyHealthFactor", "/gameSettings/miningDamageFactor", "/gameSettings/resourceDropStackAmountFactor",
         "/gameSettings/experienceCombatFactor", "/gameSettings/enableDurability", "/gameSettings/enableStarvingDebuff", "/gameSettings/pacifyAllEnemies"] }

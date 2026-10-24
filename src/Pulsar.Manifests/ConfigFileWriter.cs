@@ -274,9 +274,11 @@ public static partial class ConfigFileWriter
     }
 
     /// <summary>
-    /// The declared members of a JSON object, each named by its JSON Pointer: its value is replaced in place, or added
-    /// with the objects on its way, and an empty one is removed. The game's other members, their order and their values
-    /// stay; the file is written again with the indentation it had. A missing file starts as an empty object.
+    /// The declared members of a JSON object, each named by its JSON Pointer (array elements by their index): its value
+    /// is replaced in place, or added with the objects or arrays on its way, and an empty one is removed (written as an
+    /// empty string when the manifest says so; an array's element is never removed). The game's other members, their
+    /// order and their values stay; the file is written again with the indentation it had. A missing file starts as an
+    /// empty object.
     /// </summary>
     private static string Json(RenderedConfigFile file, string? existing, string newline)
     {
@@ -295,30 +297,23 @@ public static partial class ConfigFileWriter
         foreach (var entry in file.Entries)
         {
             var names = entry.Key[1..].Split('/');
-            JsonObject? parent = root;
-            foreach (var name in names[..^1])
+            var remove = entry.Value.Length == 0 && !entry.WriteEmpty;
+            JsonNode? parent = root;
+            for (var i = 0; i < names.Length - 1 && parent is not null; i++)
             {
-                switch (parent[name])
+                var next = JsonChild(parent, names[i]);
+                if (next is null && !remove)
                 {
-                    case null when entry.Value.Length == 0:
-                        parent = null; // nothing to remove
-                        break;
-                    case null:
-                        var created = new JsonObject();
-                        parent[name] = created;
-                        parent = created;
-                        break;
-                    case JsonObject inner:
-                        parent = inner;
-                        break;
-                    default:
-                        throw new LaunchPlanException($"{file.Path}: {entry.Key} goes through a value that is not an object; fix the file or delete it.");
+                    // A missing container: an array when the name after it is an index (Enshrouded's userGroups/0).
+                    next = JsonIndex(names[i + 1]) is not null ? new JsonArray() : new JsonObject();
+                    SetJsonChild(file, entry, parent, names[i], next);
+                }
+                else if (next is not (null or JsonObject or JsonArray))
+                {
+                    throw new LaunchPlanException($"{file.Path}: {entry.Key} goes through a value that is neither an object nor an array; fix the file or delete it.");
                 }
 
-                if (parent is null)
-                {
-                    break;
-                }
+                parent = next; // null: nothing to remove
             }
 
             if (parent is null)
@@ -326,13 +321,14 @@ public static partial class ConfigFileWriter
                 continue;
             }
 
-            if (entry.Value.Length == 0)
+            if (remove)
             {
-                parent.Remove(names[^1]);
+                // An array keeps its elements: removing one would move the others to other indexes.
+                (parent as JsonObject)?.Remove(names[^1]);
             }
             else
             {
-                parent[names[^1]] = JsonValueOf(file, entry);
+                SetJsonChild(file, entry, parent, names[^1], JsonValueOf(file, entry));
             }
         }
 
@@ -356,6 +352,42 @@ public static partial class ConfigFileWriter
             throw new LaunchPlanException($"{file.Path} is nested too deeply to add the settings to; fix it or delete the file.");
         }
     }
+
+    /// <summary>A member of an object, or an element of an array by its index; null when there is none.</summary>
+    private static JsonNode? JsonChild(JsonNode parent, string name) => parent switch
+    {
+        JsonObject members => members[name],
+        JsonArray elements => JsonIndex(name) is { } index && index < elements.Count ? elements[index] : null,
+        _ => null,
+    };
+
+    /// <summary>Sets a member, or an array's element: one that exists, or the one right after its last.</summary>
+    private static void SetJsonChild(RenderedConfigFile file, ConfigEntry entry, JsonNode parent, string name, JsonNode value)
+    {
+        if (parent is JsonObject members)
+        {
+            members[name] = value;
+        }
+        else if (parent is JsonArray elements && JsonIndex(name) is { } index && index <= elements.Count)
+        {
+            if (index == elements.Count)
+            {
+                elements.Add(value);
+            }
+            else
+            {
+                elements[index] = value;
+            }
+        }
+        else
+        {
+            throw new LaunchPlanException($"{file.Path}: {entry.Key} names an element past the end of an array, or a member of one; fix the file or delete it.");
+        }
+    }
+
+    /// <summary>A JSON Pointer array index (RFC 6901): 0, or digits without a leading zero.</summary>
+    private static int? JsonIndex(string name) =>
+        name.Length is > 0 and <= 6 && name.All(char.IsAsciiDigit) && (name == "0" || name[0] != '0') ? int.Parse(name, CultureInfo.InvariantCulture) : null;
 
     private static JsonValue JsonValueOf(RenderedConfigFile file, ConfigEntry entry) => entry.Kind switch
     {

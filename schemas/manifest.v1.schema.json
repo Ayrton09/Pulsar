@@ -313,7 +313,8 @@
         "set": { "type": "object", "minProperties": 1, "maxProperties": 128, "additionalProperties": { "type": "string" } },
         "section": { "type": "string", "pattern": "^[A-Za-z0-9_./:-]{1,128}$", "description": "unreal-ini: the [section] the keys go into, without its brackets. xml-properties: the root element." },
         "struct": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$", "description": "unreal-ini: the keys are members of this Struct=(Key=Value,...) line instead of plain lines." },
-        "keepIfEmpty": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string" }, "description": "Keys of set whose line stays as the file has it when their value is empty (an option left unset); an empty value of another key removes its line." }
+        "keepIfEmpty": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string" }, "description": "Keys of set whose line stays as the file has it when their value is empty (an option left unset); an empty value of another key removes its line." },
+        "writeIfEmpty": { "type": "array", "maxItems": 128, "uniqueItems": true, "items": { "type": "string" }, "description": "json only: keys of set whose empty value is written as an empty string instead of removing the member." }
       }
     },
     "ReadinessDefinition": {
