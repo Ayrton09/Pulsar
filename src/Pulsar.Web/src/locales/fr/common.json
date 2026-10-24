@@ -2990,7 +2990,74 @@
           "label": "CLUF de SCP: Secret Laboratory",
           "description": "Les conditions du jeu pour les serveurs : https://link.scpslgame.com/eula. Son serveur ne démarre pas sans les accepter.",
           "options": {
-            "accepted": "Je l'accepte"
+            "accepted": "Je les accepte"
+          }
+        },
+        "serverName": {
+          "label": "Nom du serveur",
+          "description": "Tel que les joueurs le voient dans la liste des serveurs. Les balises de couleur du jeu (<color=red>…</color>) fonctionnent."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "playerListTitle": {
+          "label": "Titre de la liste des joueurs",
+          "description": "Affiché au-dessus de la liste des joueurs. Vide : le nom du serveur."
+        },
+        "contactEmail": {
+          "label": "E-mail de contact",
+          "description": "Nécessaire pour la liste publique des serveurs : l'équipe du jeu y écrit pour vérifier le serveur."
+        },
+        "tickrate": {
+          "label": "Tickrate",
+          "description": "Mises à jour par seconde. 60 est la valeur du jeu ; plus haut utilise plus de CPU."
+        },
+        "friendlyFire": {
+          "label": "Tir allié",
+          "options": {
+            "true": "Oui",
+            "false": "Non"
+          }
+        },
+        "friendlyFireMultiplier": {
+          "label": "Dégâts du tir allié",
+          "description": "Part des dégâts subis par les coéquipiers. 0.4 est la valeur du jeu."
+        },
+        "roundRestartTime": {
+          "label": "Manche suivante après (s)"
+        },
+        "lobbyWaitingTime": {
+          "label": "Attente du lobby (s)",
+          "description": "Secondes d'attente du lobby avant le début de la manche."
+        },
+        "lateJoinTime": {
+          "label": "Arrivée tardive (s)",
+          "description": "Secondes après le début de la manche pendant lesquelles les joueurs qui rejoignent apparaissent encore."
+        },
+        "afkTime": {
+          "label": "Expulsion AFK après (s)",
+          "description": "Secondes sans bouger au point d'apparition avant qu'un joueur soit expulsé. 0 la désactive."
+        },
+        "warheadTime": {
+          "label": "Compte à rebours de l'ogive (s)"
+        },
+        "disableDecontamination": {
+          "label": "Désactiver la décontamination",
+          "description": "La Light Containment Zone n'est jamais décontaminée.",
+          "options": {
+            "true": "Oui",
+            "false": "Non"
+          }
+        },
+        "mapSeed": {
+          "label": "Graine de la carte",
+          "description": "La même graine donne la même installation. -1 : une nouvelle à chaque manche."
+        },
+        "whitelist": {
+          "label": "Joueurs en liste blanche uniquement",
+          "options": {
+            "true": "Oui",
+            "false": "Non"
           }
         }
       },

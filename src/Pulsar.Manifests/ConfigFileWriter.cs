@@ -27,6 +27,10 @@ public static partial class ConfigFileWriter
             ConfigFileFormat.SourceCfg when value.IndexOfAny(['"', ';']) >= 0 => "Quotes and semicolons are not allowed in Source configuration values.",
             // Unreal reads '\' as an escape inside quotes, and '"' would end the value early.
             ConfigFileFormat.UnrealIni when value.IndexOfAny(['"', '\\']) >= 0 => "Quotes and backslashes are not allowed in Unreal configuration values.",
+            // A YAML reader takes these for a list, a map, a quoted text or a comment rather than the value as typed.
+            ConfigFileFormat.Colon when value.Length > 0 && (char.IsWhiteSpace(value[0]) || char.IsWhiteSpace(value[^1]) || value[0] is '[' or '{' or '"' or '\'' or '#' or '&' or '*' or '!' or '|' or '>' or '%' or '@' or '`'
+                || value.StartsWith("- ", StringComparison.Ordinal) || value.Contains(" #", StringComparison.Ordinal) || value.Contains(": ", StringComparison.Ordinal))
+                => "This value would not be read as written in this configuration file (it starts or ends with a space, or looks like a list, a map, a quoted text or a comment).",
             _ => null,
         };
     }
@@ -378,6 +382,7 @@ public static partial class ConfigFileWriter
     {
         ConfigFileFormat.SourceCfg => $"{entry.Key} \"{entry.Value}\"",
         ConfigFileFormat.KeyValue => $"{entry.Key}={entry.Value}",
+        ConfigFileFormat.Colon => $"{entry.Key}: {entry.Value}",
         _ => $"{entry.Key}={entry.Value.Replace("\\", "\\\\", StringComparison.Ordinal)}",
     };
 
@@ -413,7 +418,12 @@ public static partial class ConfigFileWriter
                     return null;
                 }
 
-                var separator = format == ConfigFileFormat.KeyValue ? text.IndexOf('=', StringComparison.Ordinal) : text.IndexOfAny(['=', ':']);
+                var separator = format switch
+                {
+                    ConfigFileFormat.KeyValue => text.IndexOf('=', StringComparison.Ordinal),
+                    ConfigFileFormat.Colon => text.IndexOf(':', StringComparison.Ordinal),
+                    _ => text.IndexOfAny(['=', ':']),
+                };
                 var key = (separator < 0 ? text : text[..separator]).TrimEnd();
                 return key.Length > 0 ? key : null;
         }

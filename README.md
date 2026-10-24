@@ -92,7 +92,7 @@ change to Pulsar ([guide](docs/guides/manifests.md)).
 
 Each game's important settings are in the panel, from the map and slots to friendly fire, rates and multipliers, without
 editing its files. Pulsar changes only the lines of what you set there: the rest of a game's configuration, yours
-included, stays as it is (SCP: Secret Laboratory's settings are not in the panel yet).
+included, stays as it is.
 
 ## How it works
 

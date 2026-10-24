@@ -158,6 +158,14 @@ public sealed class GameSettingsTests
         Assert.True(ManifestFeatures.UsesGameSettings(TestManifests.Parse(WithFriendlyFire(keep: true))));
         Assert.True(ManifestFeatures.UsesGameSettings(TestManifests.Parse(TestManifests.Change("_test", m =>
             m["variables"]!.AsArray().Add(new JsonObject { ["key"] = "rate", ["label"] = "Rate", ["type"] = "number", ["min"] = 0, ["max"] = 2 })))));
+        // The colon format (SCP: Secret Laboratory) is new too, without any other of them.
+        Assert.True(ManifestFeatures.UsesGameSettings(TestManifests.Parse(TestManifests.Change("_test", m => m["configFiles"] = new JsonArray(new JsonObject
+        {
+            ["path"] = "data/config.txt",
+            ["format"] = "colon",
+            ["mode"] = "patch",
+            ["set"] = new JsonObject { ["server_name"] = "{{var.message}}" },
+        })))));
         // A condition on a boolean or a string is what every agent reads.
         Assert.False(ManifestFeatures.UsesGameSettings(TestManifests.Parse(WithFriendlyFire(keep: false))));
     }

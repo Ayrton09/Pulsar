@@ -2987,10 +2987,77 @@
     "scpsl": {
       "variables": {
         "eula": {
-          "label": "SCP: Secret Laboratory EULA",
-          "description": "Die Bedingungen des Spiels für Server: https://link.scpslgame.com/eula. Der Server läuft nicht, ohne sie zu akzeptieren.",
+          "label": "EULA von SCP: Secret Laboratory",
+          "description": "Die Bedingungen des Spiels für Server: https://link.scpslgame.com/eula. Der Server läuft ohne Zustimmung nicht.",
           "options": {
-            "accepted": "Ich akzeptiere sie"
+            "accepted": "Ich akzeptiere"
+          }
+        },
+        "serverName": {
+          "label": "Servername",
+          "description": "So sehen Spieler ihn in der Serverliste. Die Farb-Tags des Spiels (<color=red>…</color>) funktionieren."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "playerListTitle": {
+          "label": "Titel der Spielerliste",
+          "description": "Wird über der Spielerliste angezeigt. Leer: der Servername."
+        },
+        "contactEmail": {
+          "label": "Kontakt-E-Mail",
+          "description": "Für die öffentliche Serverliste erforderlich: Das Team des Spiels schreibt daran, um den Server zu prüfen."
+        },
+        "tickrate": {
+          "label": "Tickrate",
+          "description": "Aktualisierungen pro Sekunde. 60 ist der Standard des Spiels; höher braucht mehr CPU."
+        },
+        "friendlyFire": {
+          "label": "Friendly Fire",
+          "options": {
+            "true": "Ja",
+            "false": "Nein"
+          }
+        },
+        "friendlyFireMultiplier": {
+          "label": "Friendly-Fire-Schaden",
+          "description": "Anteil des Schadens, den Teamkameraden erleiden. 0.4 ist der Standard des Spiels."
+        },
+        "roundRestartTime": {
+          "label": "Nächste Runde nach (s)"
+        },
+        "lobbyWaitingTime": {
+          "label": "Lobby-Wartezeit (s)",
+          "description": "Sekunden, die die Lobby auf Spieler wartet, bevor die Runde beginnt."
+        },
+        "lateJoinTime": {
+          "label": "Späteres Beitreten (s)",
+          "description": "Sekunden nach Rundenbeginn, in denen beitretende Spieler noch spawnen."
+        },
+        "afkTime": {
+          "label": "AFK-Kick nach (s)",
+          "description": "Sekunden ohne Bewegung am Spawn, bevor ein Spieler gekickt wird. 0 schaltet es aus."
+        },
+        "warheadTime": {
+          "label": "Sprengkopf-Countdown (s)"
+        },
+        "disableDecontamination": {
+          "label": "Dekontamination ausschalten",
+          "description": "Die Light Containment Zone wird nie dekontaminiert.",
+          "options": {
+            "true": "Ja",
+            "false": "Nein"
+          }
+        },
+        "mapSeed": {
+          "label": "Map-Seed",
+          "description": "Derselbe Seed ergibt dieselbe Anlage. -1: jede Runde eine neue."
+        },
+        "whitelist": {
+          "label": "Nur Spieler auf der Whitelist",
+          "options": {
+            "true": "Ja",
+            "false": "Nein"
           }
         }
       },

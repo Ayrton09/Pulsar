@@ -168,6 +168,43 @@ public sealed class ConfigFileWriterTests
     }
 
     [Fact]
+    public void ColonFilesChangeTheirKeysAndKeepTheRest()
+    {
+        // As SCP: Secret Laboratory's config_gameplay.txt has them, a line its comment broke included.
+        const string existing = "#Server main settings\nserver_name: My Server Name\nmax_players: 20\n# The seconds that must pass\n"
+            + "the player stops sprinting.\nspawn_protect_team: [1, 2]\nmap_seed: -1\n";
+        var file = new RenderedConfigFile("config/config/config_gameplay.txt", ConfigFileFormat.Colon, ConfigFileMode.Patch,
+            [new ConfigEntry("server_name", "Pulsar <color=red>red</color>", Secret: false), new ConfigEntry("max_players", "12", Secret: false),
+                new ConfigEntry("friendly_fire", "true", Secret: false)]);
+
+        Assert.Equal("#Server main settings\nserver_name: Pulsar <color=red>red</color>\nmax_players: 12\n# The seconds that must pass\n"
+            + "the player stops sprinting.\nspawn_protect_team: [1, 2]\nmap_seed: -1\nfriendly_fire: true\n", ConfigFileWriter.Apply(file, existing));
+        Assert.Null(ConfigFileWriter.KeyOf(ConfigFileFormat.Colon, "#server_name: commented"));
+        Assert.Equal("auto_warhead_broadcast_message", ConfigFileWriter.KeyOf(ConfigFileFormat.Colon, "auto_warhead_broadcast_message: Alpha: now"));
+    }
+
+    [Theory]
+    [InlineData("[1, 2]")] // a list
+    [InlineData("{a: 1}")] // a map
+    [InlineData("\"quoted\"")]
+    [InlineData("'quoted'")]
+    [InlineData("- item")]
+    [InlineData("#comment")]
+    [InlineData("text #comment")]
+    [InlineData("key: value")]
+    [InlineData(" padded")]
+    [InlineData("padded ")]
+    [InlineData("&anchor")]
+    [InlineData("*alias")]
+    [InlineData("|")]
+    public void ColonValuesAreTakenAsTheyAreTyped(string value)
+    {
+        Assert.NotNull(ConfigFileWriter.ValueError(ConfigFileFormat.Colon, value));
+        Assert.Null(ConfigFileWriter.ValueError(ConfigFileFormat.Colon, "-1"));
+        Assert.Null(ConfigFileWriter.ValueError(ConfigFileFormat.Colon, "admin@example.com"));
+    }
+
+    [Fact]
     public void KeyValueFilesKeepValuesAsTheyAre()
     {
         const string existing = "# Mods to load\nMods=\nPublic=true\nWorkshopItems=1\nMap=Muldraugh, KY\n";

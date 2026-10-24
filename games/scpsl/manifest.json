@@ -2,9 +2,9 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "scpsl",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "SCP: Secret Laboratory",
-  "description": "SCP: Secret Laboratory dedicated server run by its LocalAdmin, installed anonymously with SteamCMD (about 1 GB). Its configuration is kept in the server folder, under config; LocalAdmin keeps its own settings and logs in the profile of the account the server runs as.",
+  "description": "SCP: Secret Laboratory dedicated server run by its LocalAdmin, installed anonymously with SteamCMD (about 1 GB). Its configuration is kept in the server folder, in config/config (config_gameplay.txt starts as the game's own template); LocalAdmin keeps its own settings and logs in the profile of the account the server runs as.",
   "authors": ["Pulsar contributors"],
   "platforms": ["windows-x64"],
 
@@ -13,15 +13,48 @@
   "variables": [
     { "key": "eula", "label": "SCP: Secret Laboratory EULA", "type": "enum", "required": true,
       "options": [ { "value": "accepted", "label": "I accept it" } ],
-      "description": "The game's terms for servers: https://link.scpslgame.com/eula. Its server does not run without accepting them." }
+      "description": "The game's terms for servers: https://link.scpslgame.com/eula. Its server does not run without accepting them." },
+    { "key": "serverName", "label": "Server name", "type": "string", "default": "Pulsar SCP SL", "maxLength": 100, "pattern": "^[^:#\"'\\[\\]{}`\\\\]{1,100}$",
+      "description": "As players see it in the server list. The game's color tags (<color=red>…</color>) work." },
+    { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 20, "min": 1, "max": 100 },
+    { "key": "playerListTitle", "label": "Player list title", "type": "string", "maxLength": 100, "pattern": "^[^:#\"'\\[\\]{}`\\\\]{1,100}$",
+      "description": "Shown above the player list. Empty: the server name." },
+    { "key": "contactEmail", "label": "Contact email", "type": "string", "maxLength": 254, "pattern": "^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,185}\\.[A-Za-z]{2,24}$",
+      "description": "Needed for the public server list: the game's staff writes to it to verify the server." },
+    { "key": "tickrate", "label": "Tick rate", "type": "integer", "min": 20, "max": 120,
+      "description": "Updates per second. 60 is the game's own; higher uses more CPU." },
+    { "key": "friendlyFire", "label": "Friendly fire", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ] },
+    { "key": "friendlyFireMultiplier", "label": "Friendly fire damage", "type": "number", "min": 0, "max": 10,
+      "description": "Share of the damage teammates take. 0.4 is the game's own." },
+    { "key": "roundRestartTime", "label": "Next round after (s)", "type": "integer", "min": 1, "max": 120 },
+    { "key": "lobbyWaitingTime", "label": "Lobby wait (s)", "type": "integer", "min": 5, "max": 120,
+      "description": "Seconds the lobby waits for players before the round starts." },
+    { "key": "lateJoinTime", "label": "Late join (s)", "type": "integer", "min": 0, "max": 600,
+      "description": "Seconds after the round starts that joining players still spawn." },
+    { "key": "afkTime", "label": "AFK kick after (s)", "type": "integer", "min": 0, "max": 3600,
+      "description": "Seconds in the spawn without moving before a player is kicked. 0 turns it off." },
+    { "key": "warheadTime", "label": "Warhead countdown (s)", "type": "integer", "min": 10, "max": 600 },
+    { "key": "disableDecontamination", "label": "Turn off decontamination", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Light Containment Zone is never decontaminated." },
+    { "key": "mapSeed", "label": "Map seed", "type": "integer", "min": -1, "max": 2147483647,
+      "description": "The same seed gives the same facility. -1: a new one every round." },
+    { "key": "whitelist", "label": "Only whitelisted players", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ] }
   ],
 
   "ports": [
     { "name": "game", "label": "Game", "protocols": ["udp"], "default": 7777 }
   ],
 
-  "install": { "steps": [ { "type": "steamcmd", "appId": 996560 }, { "type": "ensureDirectory", "path": "config/config" } ] },
-  "update": { "steps": [ { "type": "steamcmd", "appId": 996560 }, { "type": "ensureDirectory", "path": "config/config" } ] },
+  "install": { "steps": [
+    { "type": "steamcmd", "appId": 996560 },
+    { "type": "ensureDirectory", "path": "config/config" },
+    { "type": "copyFileIfMissing", "from": "ConfigTemplates/config_gameplay.template.txt", "to": "config/config/config_gameplay.txt" }
+  ] },
+  "update": { "steps": [
+    { "type": "steamcmd", "appId": 996560 },
+    { "type": "ensureDirectory", "path": "config/config" },
+    { "type": "copyFileIfMissing", "from": "ConfigTemplates/config_gameplay.template.txt", "to": "config/config/config_gameplay.txt" }
+  ] },
 
   "runtime": {
     "windows-x64": {
@@ -38,6 +71,28 @@
       "console": { "mode": "pty", "encoding": "utf-8" }
     }
   },
+
+  "configFiles": [
+    { "path": "config/config/config_gameplay.txt", "format": "colon", "mode": "patch",
+      "set": {
+        "server_name": "{{var.serverName}}",
+        "max_players": "{{var.maxPlayers}}",
+        "player_list_title": "{{var.playerListTitle}}",
+        "contact_email": "{{var.contactEmail}}",
+        "server_tickrate": "{{var.tickrate}}",
+        "friendly_fire": "{{var.friendlyFire}}",
+        "friendly_fire_multiplier": "{{var.friendlyFireMultiplier}}",
+        "auto_round_restart_time": "{{var.roundRestartTime}}",
+        "lobby_waiting_time": "{{var.lobbyWaitingTime}}",
+        "late_join_time": "{{var.lateJoinTime}}",
+        "afk_time": "{{var.afkTime}}",
+        "warhead_tminus_start_duration": "{{var.warheadTime}}",
+        "disable_decontamination": "{{var.disableDecontamination}}",
+        "map_seed": "{{var.mapSeed}}",
+        "enable_whitelist": "{{var.whitelist}}"
+      },
+      "keepIfEmpty": ["player_list_title", "contact_email", "server_tickrate", "friendly_fire", "friendly_fire_multiplier", "auto_round_restart_time", "lobby_waiting_time", "late_join_time", "afk_time", "warhead_tminus_start_duration", "disable_decontamination", "map_seed", "enable_whitelist"] }
+  ],
 
   "readiness": { "type": "logPattern", "pattern": "Waiting for players\\.\\.\\.", "timeoutSeconds": 300 },
 

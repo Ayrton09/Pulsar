@@ -2988,9 +2988,76 @@
       "variables": {
         "eula": {
           "label": "SCP: Secret Laboratory EULA",
-          "description": "サーバー向けのゲームの利用規約: https://link.scpslgame.com/eula。同意しないとサーバーは起動しません。",
+          "description": "サーバー向けのゲームの利用規約です: https://link.scpslgame.com/eula。同意しないとサーバーは起動しません。",
           "options": {
             "accepted": "同意します"
+          }
+        },
+        "serverName": {
+          "label": "サーバー名",
+          "description": "サーバーリストでプレイヤーに表示される名前です。ゲームのカラータグ(<color=red>…</color>)が使えます。"
+        },
+        "maxPlayers": {
+          "label": "スロット数"
+        },
+        "playerListTitle": {
+          "label": "プレイヤーリストのタイトル",
+          "description": "プレイヤーリストの上に表示されます。空欄の場合はサーバー名になります。"
+        },
+        "contactEmail": {
+          "label": "連絡先メールアドレス",
+          "description": "公開サーバーリストに必要です。ゲームのスタッフがサーバーを確認するためにこのアドレスへ連絡します。"
+        },
+        "tickrate": {
+          "label": "ティックレート",
+          "description": "1秒あたりの更新回数です。60がゲームの標準で、高くするほどCPUを多く使います。"
+        },
+        "friendlyFire": {
+          "label": "フレンドリーファイア",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "friendlyFireMultiplier": {
+          "label": "フレンドリーファイアのダメージ",
+          "description": "味方が受けるダメージの割合です。0.4がゲームの標準です。"
+        },
+        "roundRestartTime": {
+          "label": "次のラウンドまで(秒)"
+        },
+        "lobbyWaitingTime": {
+          "label": "ロビー待機(秒)",
+          "description": "ラウンド開始前にロビーがプレイヤーを待つ秒数です。"
+        },
+        "lateJoinTime": {
+          "label": "途中参加(秒)",
+          "description": "ラウンド開始後、参加したプレイヤーがまだスポーンできる秒数です。"
+        },
+        "afkTime": {
+          "label": "AFKキックまで(秒)",
+          "description": "スポーン地点で動かずにいるとプレイヤーがキックされるまでの秒数です。0でオフになります。"
+        },
+        "warheadTime": {
+          "label": "核弾頭カウントダウン(秒)"
+        },
+        "disableDecontamination": {
+          "label": "除染をオフにする",
+          "description": "Light Containment Zoneは除染されません。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "mapSeed": {
+          "label": "マップシード",
+          "description": "同じシードなら同じ施設になります。-1の場合は毎ラウンド新しくなります。"
+        },
+        "whitelist": {
+          "label": "ホワイトリストのプレイヤーのみ",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
           }
         }
       },

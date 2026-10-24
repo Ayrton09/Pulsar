@@ -2988,9 +2988,76 @@
       "variables": {
         "eula": {
           "label": "EULA do SCP: Secret Laboratory",
-          "description": "Os termos do jogo para servidores: https://link.scpslgame.com/eula. O servidor não roda sem aceitá-los.",
+          "description": "Os termos do jogo para servidores: https://link.scpslgame.com/eula. O servidor não funciona sem aceitá-los.",
           "options": {
             "accepted": "Eu aceito"
+          }
+        },
+        "serverName": {
+          "label": "Nome do servidor",
+          "description": "Como os jogadores veem na lista de servidores. As tags de cor do jogo (<color=red>…</color>) funcionam."
+        },
+        "maxPlayers": {
+          "label": "Slots"
+        },
+        "playerListTitle": {
+          "label": "Título da lista de jogadores",
+          "description": "Exibido acima da lista de jogadores. Vazio: o nome do servidor."
+        },
+        "contactEmail": {
+          "label": "E-mail de contato",
+          "description": "Necessário para a lista pública de servidores: a equipe do jogo escreve para ele para verificar o servidor."
+        },
+        "tickrate": {
+          "label": "Tick rate",
+          "description": "Atualizações por segundo. 60 é o padrão do jogo; mais alto usa mais CPU."
+        },
+        "friendlyFire": {
+          "label": "Fogo amigo",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "friendlyFireMultiplier": {
+          "label": "Dano do fogo amigo",
+          "description": "Parte do dano que os companheiros de equipe recebem. 0.4 é o padrão do jogo."
+        },
+        "roundRestartTime": {
+          "label": "Próxima rodada após (s)"
+        },
+        "lobbyWaitingTime": {
+          "label": "Espera no lobby (s)",
+          "description": "Segundos que o lobby espera por jogadores antes de a rodada começar."
+        },
+        "lateJoinTime": {
+          "label": "Entrada tardia (s)",
+          "description": "Segundos após o início da rodada em que os jogadores que entram ainda nascem."
+        },
+        "afkTime": {
+          "label": "Expulsão por AFK após (s)",
+          "description": "Segundos parado no ponto de spawn antes de o jogador ser expulso. 0 desativa."
+        },
+        "warheadTime": {
+          "label": "Contagem regressiva da ogiva (s)"
+        },
+        "disableDecontamination": {
+          "label": "Desativar a descontaminação",
+          "description": "A Light Containment Zone nunca é descontaminada.",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "mapSeed": {
+          "label": "Seed do mapa",
+          "description": "A mesma seed gera a mesma instalação. -1: uma nova a cada rodada."
+        },
+        "whitelist": {
+          "label": "Somente jogadores na lista de permissões",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
           }
         }
       },

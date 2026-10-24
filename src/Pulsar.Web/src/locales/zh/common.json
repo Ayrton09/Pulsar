@@ -2988,9 +2988,76 @@
       "variables": {
         "eula": {
           "label": "SCP: Secret Laboratory EULA",
-          "description": "游戏针对服务器的条款：https://link.scpslgame.com/eula。不接受条款，其服务器无法运行。",
+          "description": "游戏针对服务器的条款：https://link.scpslgame.com/eula。不接受则服务器无法运行。",
           "options": {
             "accepted": "我接受"
+          }
+        },
+        "serverName": {
+          "label": "服务器名称",
+          "description": "玩家在服务器列表中看到的名称。游戏的颜色标签（<color=red>…</color>）可用。"
+        },
+        "maxPlayers": {
+          "label": "玩家名额"
+        },
+        "playerListTitle": {
+          "label": "玩家列表标题",
+          "description": "显示在玩家列表上方。留空则使用服务器名称。"
+        },
+        "contactEmail": {
+          "label": "联系邮箱",
+          "description": "公开服务器列表需要：游戏官方人员会通过它联系以验证服务器。"
+        },
+        "tickrate": {
+          "label": "Tick 速率",
+          "description": "每秒更新次数。60 为游戏默认值，越高占用 CPU 越多。"
+        },
+        "friendlyFire": {
+          "label": "友军伤害",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "friendlyFireMultiplier": {
+          "label": "友军伤害倍率",
+          "description": "队友受到的伤害比例。0.4 为游戏默认值。"
+        },
+        "roundRestartTime": {
+          "label": "下一回合间隔（秒）"
+        },
+        "lobbyWaitingTime": {
+          "label": "大厅等待（秒）",
+          "description": "回合开始前大厅等待玩家的秒数。"
+        },
+        "lateJoinTime": {
+          "label": "迟到加入（秒）",
+          "description": "回合开始后，新加入的玩家仍可出生的秒数。"
+        },
+        "afkTime": {
+          "label": "AFK 踢出时间（秒）",
+          "description": "玩家在出生点不动多少秒后被踢出。0 表示关闭。"
+        },
+        "warheadTime": {
+          "label": "核弹倒计时（秒）"
+        },
+        "disableDecontamination": {
+          "label": "关闭净化",
+          "description": "轻收容区永不净化。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "mapSeed": {
+          "label": "地图种子",
+          "description": "相同的种子生成相同的设施。-1：每回合都生成新的。"
+        },
+        "whitelist": {
+          "label": "仅限白名单玩家",
+          "options": {
+            "true": "是",
+            "false": "否"
           }
         }
       },

@@ -36,8 +36,7 @@ public sealed class BundledGameSettingsTests
         var unset = Render(manifest, required);
 
         var options = manifest.VariableList.Where(v => !v.Required && !v.Secret && (v.Default is null || v.Type == VariableType.Boolean)).ToList();
-        // SCP: Secret Laboratory keeps its settings in a key: value file under a folder named after its port: not yet.
-        Assert.True(options.Count > 0 || game == "scpsl", $"{game} has no options.");
+        Assert.NotEmpty(options);
         foreach (var option in options)
         {
             var value = option.Type == VariableType.Boolean ? Flip(option) : Sample(option);
@@ -84,7 +83,7 @@ public sealed class BundledGameSettingsTests
             VariableType.Enum => [variable.Options![0].Value],
             VariableType.Integer or VariableType.Number => [(variable.Max == variable.Min ? variable.Min!.Value : variable.Min!.Value + 1).ToString(CultureInfo.InvariantCulture)],
             VariableType.Boolean => ["true"],
-            _ => new[] { "Pulsar test 1", "pulsar1", "Passw0rd-123", "monthly,vanilla", "https://example.com/pulsar", "12345678" },
+            _ => new[] { "Pulsar test 1", "pulsar1", "Passw0rd-123", "monthly,vanilla", "https://example.com/pulsar", "12345678", "admin@example.com" },
         };
         return candidates.FirstOrDefault(c => VariableValues.Check(variable, c) is null)
             ?? throw new InvalidOperationException($"No sample value for {variable.Key}.");

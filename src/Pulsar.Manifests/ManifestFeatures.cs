@@ -7,15 +7,15 @@ namespace Pulsar.Manifests;
 public static class ManifestFeatures
 {
     /// <summary>
-    /// The game settings of Pulsar 1.0.5: number variables, keys kept when empty, or conditions on a variable that is
-    /// neither a boolean nor a string.
+    /// The game settings of Pulsar 1.0.5: number variables, keys kept when empty, conditions on a variable that is
+    /// neither a boolean nor a string, or the colon format.
     /// </summary>
     public static bool UsesGameSettings(GameManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         var types = manifest.VariableList.ToDictionary(v => v.Key, v => v.Type, StringComparer.Ordinal);
         return manifest.VariableList.Any(v => v.Type == VariableType.Number)
-            || manifest.ConfigFileList.Any(f => f.KeepIfEmpty is { Count: > 0 })
+            || manifest.ConfigFileList.Any(f => f.KeepIfEmpty is { Count: > 0 } || f.Format == ConfigFileFormat.Colon)
             || manifest.Runtime.Values.SelectMany(r => Conditions(r.ArgumentList)).Any(c =>
                 c.If.Split('.') is ["var", var key] && types.TryGetValue(key, out var type) && type is not (VariableType.Boolean or VariableType.String));
     }

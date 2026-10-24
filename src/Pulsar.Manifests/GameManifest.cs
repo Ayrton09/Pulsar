@@ -336,6 +336,13 @@ public enum ConfigFileFormat
     /// </summary>
     [JsonStringEnumMemberName("xml-properties")]
     XmlProperties,
+
+    /// <summary>
+    /// <c>key: value</c> per line, <c>#</c> starting a comment (SCP: Secret Laboratory's <c>config_gameplay.txt</c>);
+    /// values are written as they are, so those a YAML reader would take for a list, a map or a quoted text are refused
+    /// (1.0.5).
+    /// </summary>
+    Colon,
 }
 
 public enum ConfigFileMode

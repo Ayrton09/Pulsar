@@ -71,7 +71,8 @@ Then:
    or `xml-properties`), patched by the agent before every start: only the keys the manifest sets change, the rest of
    the file (the admin's own settings) stays. List the options' keys in `"keepIfEmpty": [...]`: an option left empty
    in the panel then leaves its line as the file has it, instead of removing it. Bundled games use `patch` only.
-   `number` variables, `keepIfEmpty` and conditions on a choice need agents of Pulsar 1.0.5 or newer.
+   `colon` (`key: value`, SCP: Secret Laboratory) is the format for YAML-like files whose values are plain text.
+   `number` variables, `keepIfEmpty`, conditions on a choice and `colon` need agents of Pulsar 1.0.5 or newer.
 8. **Readiness and stop**: how the agent knows the game is ready (a console pattern, RCON answering, the query
    answering) and how to stop it cleanly (a console or RCON command, then a wait) before it is killed.
 9. **Query**: `"query": { "protocol": "a2s", "port": "query" }` lets the panel show the players and the map. `a2s`
