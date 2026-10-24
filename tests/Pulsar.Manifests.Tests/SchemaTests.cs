@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using LateApexEarlySpeed.Json.Schema;
+using LateApexEarlySpeed.Json.Schema.Common;
 
 namespace Pulsar.Manifests.Tests;
 
@@ -18,7 +19,7 @@ public sealed class SchemaTests
     [MemberData(nameof(BundledManifests))]
     public void EveryManifestInTheRepositoryMatchesTheSchema(string path)
     {
-        var result = Validator().Validate(File.ReadAllText(Path.Combine(TestManifests.RepositoryRoot(), path)));
+        var result = Validate(File.ReadAllText(Path.Combine(TestManifests.RepositoryRoot(), path)));
 
         Assert.True(result.IsValid, string.Join(Environment.NewLine, result.ValidationErrors.Select(e => $"{e.Keyword} at {e.InstanceLocation}: {e.ErrorMessage}")));
     }
@@ -61,7 +62,7 @@ public sealed class SchemaTests
         });
 
         Assert.False(ManifestParser.Parse(System.Text.Encoding.UTF8.GetBytes(json)).IsValid);
-        Assert.False(Validator().Validate(json).IsValid);
+        Assert.False(Validate(json).IsValid);
     }
 
     [Theory]
@@ -73,7 +74,7 @@ public sealed class SchemaTests
 
         var result = ManifestParser.Parse(System.Text.Encoding.UTF8.GetBytes(json));
         Assert.Contains(result.Errors, e => e.Path.EndsWith(".default", StringComparison.Ordinal));
-        Assert.False(Validator().Validate(json).IsValid);
+        Assert.False(Validate(json).IsValid);
     }
 
     // An addon's target is a relative path, or empty for the server's folder.
@@ -87,7 +88,7 @@ public sealed class SchemaTests
             """));
 
         Assert.True(ManifestParser.Parse(System.Text.Encoding.UTF8.GetBytes(json)).IsValid);
-        Assert.True(Validator().Validate(json).IsValid);
+        Assert.True(Validate(json).IsValid);
     }
 
     /// <summary>Every record of the model has a definition with the same JSON properties, required ones and enum values.</summary>
@@ -179,7 +180,10 @@ public sealed class SchemaTests
 
     private static string JsonName(string name) => JsonNamingPolicy.CamelCase.ConvertName(name);
 
-    private static JsonValidator Validator() => new(File.ReadAllText(SchemaPath()));
+    // The validator gives each pattern 200 ms by default, which a busy CI runner can take just to compile the schema's longer ones.
+    private static readonly JsonSchemaOptions s_validation = new() { RegexMatchTimeout = TimeSpan.FromSeconds(30) };
+
+    private static ValidationResult Validate(string json) => new JsonValidator(File.ReadAllText(SchemaPath())).Validate(json, s_validation);
 
     private static string SchemaPath() => Path.Combine(TestManifests.RepositoryRoot(), "schemas", "manifest.v1.schema.json");
 }
