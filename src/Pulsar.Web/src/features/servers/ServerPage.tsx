@@ -423,7 +423,11 @@ function OverviewCard({ details }: { details: ServerDetails }) {
       <h2 className="mb-4 text-lg font-semibold">{t('servers.overview')}</h2>
       <Facts
         items={[
-          [t('servers.game'), `${server.templateName} (${details.templateVersion})`],
+          // "(template 1.0.0)": a bare "(1.0.0)" reads as the game's own version.
+          [
+            t('servers.game'),
+            t('servers.gameWithTemplateVersion', { name: server.templateName, version: details.templateVersion }),
+          ],
           ...details.ports
             .filter((port) => port.port !== null)
             .map((port): [string, ReactNode] => [

@@ -433,6 +433,8 @@ describe('a game server page', () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText('0.0.0.0:27015')).toBeInTheDocument();
+    // The template's version, said to be one: a bare "(1.0.0)" reads as the game's.
+    expect(screen.getByText('Counter-Strike: Source (template 1.0.0)')).toBeInTheDocument();
     await user.click(screen.getByLabelText(/Also verify every installed file/));
     await user.click(screen.getByRole('button', { name: 'Update game' }));
 
