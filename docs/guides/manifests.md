@@ -75,7 +75,7 @@ Then:
    `number` variables, `keepIfEmpty`, conditions on a choice and `colon` need agents of Pulsar 1.0.5 or newer.
    `json` files (Pulsar 1.0.7 agents) name each member by its JSON Pointer (`"/gameSettings/enemyDamageFactor"`); a
    lone `{{var.x}}` of an integer, number or boolean variable, or a lone `{{port.x}}`, is written as a JSON number or
-   boolean, anything else as a string.
+   boolean, as is an enum whose options are all `true`/`false` (or all numbers); anything else is a string.
    `space` (`Key value` lines, Unturned's `Commands.dat`) needs 1.0.7 agents too.
 8. **Readiness and stop**: how the agent knows the game is ready (a console pattern, RCON answering, the query
    answering) and how to stop it cleanly (a console or RCON command, then a wait) before it is killed.

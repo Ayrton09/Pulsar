@@ -133,6 +133,46 @@ public sealed class JsonConfigTests
         Assert.Equal("16", written["literal"]!.GetValue<string>());
     }
 
+    [Fact]
+    public void AChoiceIsABooleanOrANumberWhenAllItsValuesAre()
+    {
+        static JsonObject Choice(string key, params (string Value, string? Mapped)[] options) => new()
+        {
+            ["key"] = key,
+            ["label"] = key,
+            ["type"] = "enum",
+            ["default"] = options[0].Value,
+            ["options"] = new JsonArray([.. options.Select(o => (JsonNode)new JsonObject
+            {
+                ["value"] = o.Value,
+                ["label"] = o.Value,
+                ["map"] = o.Mapped is null ? null : new JsonObject { ["level"] = o.Mapped },
+            })]),
+        };
+        var manifest = TestManifests.Parse(TestManifests.Change("_test", m =>
+        {
+            m["variables"]!.AsArray().Add(Choice("bound", ("true", null), ("false", null)));
+            m["variables"]!.AsArray().Add(Choice("ticks", ("30", "0.5"), ("60", "1")));
+            m["variables"]!.AsArray().Add(Choice("mode", ("PvP", "007"), ("PvE", "-1.25")));
+            m["configFiles"] = new JsonArray(new JsonObject
+            {
+                ["path"] = "data/server.json",
+                ["format"] = "json",
+                ["mode"] = "patch",
+                ["set"] = new JsonObject { ["/bound"] = "{{var.bound}}", ["/ticks"] = "{{var.ticks}}", ["/scale"] = "{{var.ticks.level}}", ["/mode"] = "{{var.mode}}", ["/level"] = "{{var.mode.level}}" },
+            });
+        }));
+
+        var file = Assert.Single(LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, new ServerBinding("abcd1234",
+            new Dictionary<string, string?> { ["bound"] = "false", ["ticks"] = "60", ["mode"] = "PvE" })).ConfigFiles);
+
+        // "007" is no JSON number: the mode's mapped values stay text.
+        Assert.Equal([ConfigValueKind.Boolean, ConfigValueKind.Number, ConfigValueKind.Number, ConfigValueKind.Text, ConfigValueKind.Text],
+            file.Entries.Select(e => e.Kind));
+        Assert.Equal("""{"bound":false,"ticks":60,"scale":1,"mode":"PvE","level":"-1.25"}""",
+            JsonNode.Parse(ConfigFileWriter.Apply(file, null))!.ToJsonString());
+    }
+
     [Theory]
     [InlineData("name")] // not a pointer
     [InlineData("/")]

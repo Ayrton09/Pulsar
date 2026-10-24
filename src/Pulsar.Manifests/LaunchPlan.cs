@@ -241,7 +241,7 @@ public static class VariableValues
 }
 
 /// <summary>Renders a manifest's runtime for one server (docs/architecture/04, "Argument templates").</summary>
-public static class LaunchPlanRenderer
+public static partial class LaunchPlanRenderer
 {
     public static LaunchPlan Render(GameManifest manifest, string platform, ServerBinding binding)
     {
@@ -278,10 +278,21 @@ public static class LaunchPlanRenderer
             {
                 VariableType.Integer or VariableType.Number => ConfigValueKind.Number,
                 VariableType.Boolean => ConfigValueKind.Boolean,
+                VariableType.Enum => KindOfChoices(definitions[key].Options!.Select(o => o.Value)),
                 _ => ConfigValueKind.Text,
             },
+            [["var", var key, var sub]] => KindOfChoices(definitions[key].Options!.Select(o => o.Map?.GetValueOrDefault(sub))),
             _ => ConfigValueKind.Text,
         };
+
+        // A choice's values (or what they map to) that are all true or false are a boolean, all plain numbers a number.
+        static ConfigValueKind KindOfChoices(IEnumerable<string?> values)
+        {
+            var list = values.ToList();
+            return list.All(v => v is "true" or "false") ? ConfigValueKind.Boolean
+                : list.All(v => v is not null && JsonNumber().IsMatch(v)) ? ConfigValueKind.Number
+                : ConfigValueKind.Text;
+        }
 
         bool IsSecret(string template) => Placeholders.Parse(template, out _).Any(p => p is ["rcon", "password"]
             || (p is ["var", var key, ..] && definitions.TryGetValue(key, out var variable) && variable.Secret));
@@ -589,4 +600,8 @@ public static class LaunchPlanRenderer
             }
         }
     }
+
+    /// <summary>A plain JSON number: an optional minus, no leading zeros, up to 6 decimals.</summary>
+    [GeneratedRegex(@"^-?(0|[1-9][0-9]{0,17})(\.[0-9]{1,6})?\z", RegexOptions.CultureInvariant)]
+    private static partial Regex JsonNumber();
 }
