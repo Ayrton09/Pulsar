@@ -31,6 +31,10 @@ the closest one to `games/<key>/manifest.json` and change it:
 - `ark-sa`: a log file and RCON on the game port's TCP side, secrets in an Unreal Engine ini rather than on the command line the game logs.
 - `7dtd`: standard output and a telnet console on an internal port, settings in an XML file copied from the game's.
 - `project-zomboid`: a Java server run directly, standard output and its input, a `key=value` ini.
+- `vrising`: JSON settings copied from the game's own and patched, secrets in a settings file, RCON on an internal port.
+- `enshrouded`: a JSON file the game rewrites, an array element (`/userGroups/0/password`) and `writeIfEmpty`.
+- `arma-reforger`: a JSON file the install writes because the game does not, a choice mapped to the values the game wants.
+- `unturned`: `Key value` lines (`space`), a command stop, a port that follows another.
 
 Then:
 

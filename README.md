@@ -78,12 +78,19 @@ Korean and Simplified Chinese**: each user picks theirs in My account (until the
 |---|---|---|---|
 | Counter-Strike 2 | SteamCMD | log + RCON | Metamod:Source, CounterStrikeSharp |
 | Counter-Strike: Source | SteamCMD | log + RCON | |
+| Team Fortress 2 | SteamCMD | log + RCON | |
+| Left 4 Dead 2 | SteamCMD | log + RCON | |
 | Rust | SteamCMD | log + RCON | Oxide (uMod), Carbon |
 | ARK: Survival Ascended | SteamCMD | log + RCON | |
 | Palworld | SteamCMD | console + RCON | |
 | 7 Days to Die | SteamCMD | console + telnet | |
 | Project Zomboid | SteamCMD | console | Steam Workshop mods |
 | Valheim | SteamCMD | console | |
+| V Rising | SteamCMD | console + RCON | |
+| Enshrouded | SteamCMD | console | |
+| Sons of the Forest | SteamCMD | console | |
+| Arma Reforger | SteamCMD | console | |
+| Unturned | SteamCMD | console | |
 | SCP: Secret Laboratory | SteamCMD | console | |
 | Minecraft: Java Edition | Mojang's server, the version you choose | console | |
 
