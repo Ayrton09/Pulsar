@@ -17,6 +17,19 @@ function keys(value: unknown, prefix = ''): string[] {
   return Object.entries(value).flatMap(([key, child]) => keys(child, prefix ? `${prefix}.${key}` : key));
 }
 
+/** Every leaf's path as its keys (a choice's value may hold a dot: "0.5"). */
+function paths(value: unknown, prefix: string[] = []): string[][] {
+  if (typeof value !== 'object' || value === null) {
+    return [prefix];
+  }
+  return Object.entries(value).flatMap(([key, child]) => paths(child, [...prefix, key]));
+}
+
+/** The text at a path of keys. */
+function atPath(locale: unknown, path: string[]): string {
+  return path.reduce<unknown>((value, key) => (value as Record<string, unknown>)[key], locale) as string;
+}
+
 /** The text at a key path. */
 function at(locale: unknown, path: string): string {
   return path.split('.').reduce<unknown>((value, key) => (value as Record<string, unknown>)[key], locale) as string;
@@ -87,9 +100,10 @@ describe('locales', () => {
 
   it.each(translations)("translate every bundled game's settings and ports in %s, and nothing else", (language) => {
     const translated = (resources[language]?.common as { gameText?: unknown }).gameText;
-    expect(keys(translated).sort()).toEqual(keys(gameTexts()).sort());
-    for (const path of keys(translated)) {
-      expect.soft(at(translated, path).trim(), path).not.toBe('');
+    const named = (all: string[][]) => all.map((path) => path.join(' › ')).sort();
+    expect(named(paths(translated))).toEqual(named(paths(gameTexts())));
+    for (const path of paths(translated)) {
+      expect.soft(atPath(translated, path).trim(), path.join(' › ')).not.toBe('');
     }
   });
 

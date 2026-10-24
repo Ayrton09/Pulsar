@@ -2147,52 +2147,6 @@
           "label": "EasyAntiCheat",
           "description": "コードを変更するMODの多くは、オフにする必要があります。"
         },
-        "difficulty": {
-          "label": "難易度",
-          "options": {
-            "0": "スカベンジャー",
-            "1": "アドベンチャラー",
-            "2": "ノマド",
-            "3": "ウォリアー",
-            "4": "サバイバリスト",
-            "5": "インセイン"
-          }
-        },
-        "dayLength": {
-          "label": "1日の長さ(実時間・分)",
-          "description": "ゲーム内の1日が実時間で何分かを指定します。"
-        },
-        "dayLightHours": {
-          "label": "昼の時間",
-          "description": "1日のうち昼間のゲーム内時間です。"
-        },
-        "bloodMoonFrequency": {
-          "label": "ブラッドムーンの間隔(日)",
-          "description": "0にするとブラッドムーンが発生しません。"
-        },
-        "bloodMoonEnemies": {
-          "label": "ブラッドムーンのゾンビ数(1人あたり)"
-        },
-        "zombieSpeedDay": {
-          "label": "昼のゾンビの速度",
-          "options": {
-            "0": "歩く",
-            "1": "ジョギング",
-            "2": "走る",
-            "3": "ダッシュ",
-            "4": "ナイトメア"
-          }
-        },
-        "zombieSpeedNight": {
-          "label": "夜のゾンビの速度",
-          "options": {
-            "0": "歩く",
-            "1": "ジョギング",
-            "2": "走る",
-            "3": "ダッシュ",
-            "4": "ナイトメア"
-          }
-        },
         "maxZombies": {
           "label": "ゾンビの最大数",
           "description": "マップ全体で同時に存在するゾンビの数です。90を超えると多くのサーバーで動作が重くなります。"
@@ -2206,34 +2160,115 @@
             "3": "全員キル可"
           }
         },
-        "dropOnDeath": {
-          "label": "死亡時のドロップ",
-          "options": {
-            "0": "なし",
-            "1": "すべて",
-            "2": "ツールベルトのみ",
-            "3": "バックパックのみ",
-            "4": "すべて削除"
-          }
-        },
-        "lootAbundance": {
-          "label": "ルートの量(%)"
-        },
-        "lootRespawnDays": {
-          "label": "ルートの再出現(日)"
-        },
-        "xp": {
-          "label": "経験値(%)"
-        },
-        "airDropHours": {
-          "label": "エアドロップの間隔(ゲーム内時間)",
-          "description": "0にするとエアドロップが発生しません。"
-        },
         "description": {
           "label": "説明"
         },
         "website": {
           "label": "ウェブサイト"
+        },
+        "sandboxCode": {
+          "label": "サンドボックスコード",
+          "description": "難易度、XP、ルート、ゾンビ、ブラッドムーン、エアドロップを、ゲームのサンドボックスオプションで作成した1つのコードにまとめたものです(V3.0以降)。"
+        },
+        "region": {
+          "label": "リージョン",
+          "description": "サーバーリストでプレイヤーがサーバーを見つける地域です。",
+          "options": {
+            "NorthAmericaEast": "北米東部",
+            "NorthAmericaWest": "北米西部",
+            "CentralAmerica": "中央アメリカ",
+            "SouthAmerica": "南米",
+            "Europe": "ヨーロッパ",
+            "Russia": "ロシア",
+            "Asia": "アジア",
+            "MiddleEast": "中東",
+            "Africa": "アフリカ",
+            "Oceania": "オセアニア"
+          }
+        },
+        "language": {
+          "label": "言語",
+          "description": "プレイヤーが話す言語の英語名です(例: German)。"
+        },
+        "worldGenSeed": {
+          "label": "ランダムワールドのシード値",
+          "description": "RWGワールドのときだけ有効です。新しいワールドのシード値です。"
+        },
+        "worldGenSize": {
+          "label": "ランダムワールドのサイズ",
+          "description": "RWGワールドのときだけ有効です。新しいワールドの幅と高さです。",
+          "options": {
+            "6144": "6144",
+            "8192": "8192",
+            "10240": "10240"
+          }
+        },
+        "maxAnimals": {
+          "label": "動物の最大数",
+          "description": "マップ全体で同時に存在する動物の数です。"
+        },
+        "viewDistance": {
+          "label": "最大描画距離",
+          "description": "プレイヤーが要求できる最大の描画距離です。小さいほどメモリ使用量が減ります。",
+          "options": {
+            "6": "6",
+            "7": "7",
+            "8": "8",
+            "9": "9",
+            "10": "10",
+            "11": "11",
+            "12": "12"
+          }
+        },
+        "landClaimCount": {
+          "label": "プレイヤーあたりの土地の所有権数"
+        },
+        "landClaimSize": {
+          "label": "土地の所有権の範囲(ブロック)"
+        },
+        "landClaimExpiryTime": {
+          "label": "土地の所有権の有効期限(日)",
+          "description": "プレイヤーがオフラインのままでも土地の保護が続く実際の日数です。"
+        },
+        "landClaimDecayMode": {
+          "label": "土地の所有権の失効方式",
+          "options": {
+            "0": "遅い",
+            "1": "速い",
+            "2": "失効するまでなし"
+          }
+        },
+        "bedrollExpiryTime": {
+          "label": "寝袋の有効期限(日)",
+          "description": "持ち主が最後にオンラインだった日から、寝袋が有効なままの実際の日数です。"
+        },
+        "safeZoneLevel": {
+          "label": "セーフゾーンの対象レベル",
+          "description": "このレベル以下のプレイヤーには敵のいないエリアが与えられます。"
+        },
+        "crossplay": {
+          "label": "クロスプレイ",
+          "description": "コンソールのプレイヤーが参加できます。EasyAntiCheatがオンで、スロットが最大8の場合のみ使えます。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "persistentProfiles": {
+          "label": "プレイヤープロファイルの保持",
+          "description": "セッションをまたいでプレイヤープロファイルを保持します。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "buildCreate": {
+          "label": "クリエイティブモード",
+          "description": "プレイヤーが制限なく建築できます。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
         }
       },
       "ports": {
@@ -2352,6 +2387,97 @@
         "babyMatureSpeed": {
           "label": "幼体の成長速度",
           "description": "大きいほど幼体が早く成長します。1がゲームの標準です。"
+        },
+        "hardcore": {
+          "label": "ハードコア",
+          "description": "死亡するとキャラクターがレベル1に戻ります。",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "playerDamage": {
+          "label": "プレイヤーのダメージ",
+          "description": "プレイヤーが与えるダメージです。1がゲームの標準です。"
+        },
+        "playerResistance": {
+          "label": "プレイヤーの防御力",
+          "description": "大きいほどプレイヤーが受けるダメージが減ります。1がゲームの標準です。"
+        },
+        "dinoDamage": {
+          "label": "野生ディノのダメージ",
+          "description": "野生ディノが与えるダメージです。1がゲームの標準です。"
+        },
+        "dinoResistance": {
+          "label": "野生ディノの防御力",
+          "description": "大きいほど野生ディノが受けるダメージが減ります。1がゲームの標準です。"
+        },
+        "structureResistance": {
+          "label": "建造物の防御力",
+          "description": "大きいほど建造物が受けるダメージが減ります。1がゲームの標準です。"
+        },
+        "stackSize": {
+          "label": "アイテムのスタック数",
+          "description": "すべてのスタック数に倍率をかけます。1がゲームの標準です。"
+        },
+        "resourceRespawn": {
+          "label": "資源の再出現間隔",
+          "description": "小さいほど資源が早く再出現します。1がゲームの標準です。"
+        },
+        "harvestHealth": {
+          "label": "資源の耐久力",
+          "description": "木・岩・死骸の耐久力です。1がゲームの標準です。"
+        },
+        "playerFoodDrain": {
+          "label": "プレイヤーの空腹進行速度",
+          "description": "大きいほどプレイヤーが早く空腹になります。1がゲームの標準です。"
+        },
+        "playerWaterDrain": {
+          "label": "プレイヤーの水分減少速度",
+          "description": "大きいほどプレイヤーが早く喉が渇きます。1がゲームの標準です。"
+        },
+        "dinoFoodDrain": {
+          "label": "ディノの空腹進行速度",
+          "description": "大きいほどテイム済みディノが早く空腹になります。1がゲームの標準です。"
+        },
+        "offlineRaidProtection": {
+          "label": "オフライン時のレイド保護",
+          "description": "部族のメンバー全員がオフラインの間は襲撃されません。",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "offlineRaidSeconds": {
+          "label": "レイド保護の開始までの時間(秒)",
+          "description": "最後のメンバーがログアウトしてから保護が始まるまでの秒数です。"
+        },
+        "maxPersonalTamedDinos": {
+          "label": "部族あたりのテイム済みディノの上限",
+          "description": "0 にすると上限がなくなります。"
+        },
+        "maxStructures": {
+          "label": "範囲内の建造物の上限"
+        },
+        "hitMarkers": {
+          "label": "ヒットマーカー",
+          "description": "遠距離攻撃のヒットマーカーです。",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "maxPlayersInTribe": {
+          "label": "部族あたりのプレイヤー数",
+          "description": "0 にすると無制限です。"
+        },
+        "pvpFriendlyFire": {
+          "label": "フレンドリーファイア無効(PvP)",
+          "description": "PvPサーバーで、部族の仲間・そのディノ・建造物同士がダメージを与え合わなくなります。",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
         }
       },
       "ports": {
@@ -2439,6 +2565,62 @@
         },
         "maxFps": {
           "label": "サーバー FPS"
+        },
+        "networkViewDistance": {
+          "label": "ネットワーク視野距離(m)",
+          "description": "エンティティをプレイヤーに送る距離です。"
+        },
+        "minGrassDistance": {
+          "label": "草の最小描画距離(m)",
+          "description": "0: プレイヤーが選びます。それ以外は 50~150 が最小値として強制されます。"
+        },
+        "fastValidation": {
+          "label": "高速検証",
+          "description": "プレイヤー参加時のマップ確認が速くなります。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "vonDisableUi": {
+          "label": "ボイス UI を隠す",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "vonDisableDirectUi": {
+          "label": "直接発話 UI を隠す",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "vonCrossFaction": {
+          "label": "無線は陣営をまたいで使える",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "playerSaveTime": {
+          "label": "プレイヤーの保存間隔(秒)"
+        },
+        "aiLimit": {
+          "label": "AI の上限",
+          "description": "同時に存在できる AI キャラクターの最大数です。-1: 無制限。"
+        },
+        "disableAi": {
+          "label": "AI を無効にする",
+          "description": "AI を一切出さず、PvP 向けにします。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "slotReservationTimeout": {
+          "label": "スロット予約(秒)",
+          "description": "切断したプレイヤーのスロットを確保しておく時間です。"
         }
       },
       "ports": {
@@ -2535,6 +2717,84 @@
         "bots": {
           "label": "ボット",
           "description": "サーバーを埋めるボットの数です。"
+        },
+        "tags": {
+          "label": "サーバータグ",
+          "description": "サーバー一覧に表示される、カンマ区切りのタグです。"
+        },
+        "lan": {
+          "label": "LAN 専用",
+          "description": "インターネットに公開されず、プレイヤーの認証も行われません。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "cheats": {
+          "label": "チート",
+          "description": "プレイヤーがチートコマンドを使えます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "voice": {
+          "label": "ボイスチャット",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "workshopMap": {
+          "label": "ワークショップのマップ ID",
+          "description": "開始マップの代わりに、この Steam ワークショップのマップで起動します。"
+        },
+        "workshopCollection": {
+          "label": "ワークショップのコレクション ID",
+          "description": "この Steam ワークショップのコレクションのマップを提供します。"
+        },
+        "mapGroup": {
+          "label": "マップグループ",
+          "description": "マップのローテーションを決める、gamemodes_server.txt のマップグループです。"
+        },
+        "overtime": {
+          "label": "延長戦",
+          "description": "最終ラウンド後に同点の場合、延長戦を行います。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "overtimeRounds": {
+          "label": "延長戦のラウンド数"
+        },
+        "halftime": {
+          "label": "ハーフタイム",
+          "description": "試合の途中でチームが陣営を入れ替えます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "matchClinch": {
+          "label": "勝敗が決まったら終了",
+          "description": "片方のチームに追いつけなくなった時点で試合が終了します。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "c4Timer": {
+          "label": "C4タイマー(秒)"
+        },
+        "botDifficulty": {
+          "label": "ボットの難易度",
+          "options": {
+            "0": "イージー",
+            "1": "ノーマル",
+            "2": "ハード",
+            "3": "エキスパート"
+          }
         }
       },
       "ports": {
@@ -2628,6 +2888,121 @@
         "bots": {
           "label": "ボット",
           "description": "サーバーを埋めるボットの数です。"
+        },
+        "tags": {
+          "label": "サーバータグ",
+          "description": "サーバー一覧に表示される、カンマ区切りのタグです。"
+        },
+        "region": {
+          "label": "リージョン",
+          "description": "サーバー一覧に表示されるリージョンです。",
+          "options": {
+            "0": "米国東部",
+            "1": "米国西部",
+            "2": "南米",
+            "3": "ヨーロッパ",
+            "4": "アジア",
+            "5": "オーストラリア",
+            "6": "中東",
+            "7": "アフリカ",
+            "255": "全世界",
+            "-1": "なし"
+          }
+        },
+        "steamGroup": {
+          "label": "Steam グループ ID",
+          "description": "サーバーをこの Steam グループに関連付けます。"
+        },
+        "lan": {
+          "label": "LAN 専用",
+          "description": "インターネットに公開されず、プレイヤーの認証も行われません。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "cheats": {
+          "label": "チート",
+          "description": "プレイヤーがチートコマンドを使えます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "voice": {
+          "label": "ボイスチャット",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "allowSpectators": {
+          "label": "観戦者",
+          "options": {
+            "0": "不許可",
+            "1": "許可"
+          }
+        },
+        "forceCamera": {
+          "label": "死亡したプレイヤーは自チームのみ観戦",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "fragLimit": {
+          "label": "フラグ上限",
+          "description": "マップが終了するキル数です。0: 無制限。"
+        },
+        "footsteps": {
+          "label": "足音",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "downloadUrl": {
+          "label": "高速ダウンロード URL",
+          "description": "プレイヤーがサーバーの代わりにカスタムマップやファイルをダウンロードする場所です。"
+        },
+        "allowDownload": {
+          "label": "ダウンロードを許可",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "pausable": {
+          "label": "プレイヤーが一時停止できる",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "pure": {
+          "label": "ピュアサーバー",
+          "description": "クライアントのどのファイルを許可するかを決めます。",
+          "options": {
+            "0": "pure_server_minimal.txt のみ",
+            "1": "完全なルール+ホワイトリスト",
+            "2": "完全なルール",
+            "-1": "オフ"
+          }
+        },
+        "maxRate": {
+          "label": "クライアントの最大レート",
+          "description": "クライアントが使える 1 秒あたりのバイト数です。0: 無制限。"
+        },
+        "maxUpdateRate": {
+          "label": "最大更新レート",
+          "description": "クライアントに送る 1 秒あたりの更新回数です。ティックレート 100 のサーバーでは 100 にします。"
+        },
+        "tvAutorecord": {
+          "label": "SourceTV のデモを録画",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
         }
       },
       "ports": {
@@ -2721,6 +3096,194 @@
             "true": "オン",
             "false": "オフ"
           }
+        },
+        "voiceChatMode": {
+          "label": "ボイスチャットの範囲",
+          "description": "ボイスチャットがオンの場合のみ有効です。",
+          "options": {
+            "Proximity": "近くのプレイヤー",
+            "Global": "全員"
+          }
+        },
+        "playerMana": {
+          "label": "プレイヤーのマナ",
+          "description": "1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "playerBodyHeat": {
+          "label": "プレイヤーの体温",
+          "description": "プレイヤーが極寒の地域で耐えられる時間です。難易度がカスタムのときだけ有効です。",
+          "options": {
+            "0.5": "低い",
+            "1.0": "デフォルト",
+            "1.5": "高い",
+            "2.0": "最大"
+          }
+        },
+        "divingTime": {
+          "label": "潜水時間",
+          "description": "プレイヤーが水中で最初に持っている酸素量です。1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "foodBuffDuration": {
+          "label": "料理バフの持続時間",
+          "description": "1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "shroudTime": {
+          "label": "シュラウド内の滞在時間",
+          "description": "プレイヤーがシュラウドに留まれる時間です。1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "tombstone": {
+          "label": "死亡時",
+          "description": "プレイヤーが死亡したときに失うものです。難易度がカスタムのときだけ有効です。",
+          "options": {
+            "AddBackpackMaterials": "バックパックの素材を失う",
+            "Everything": "すべて失う",
+            "NoTombstone": "すべて維持"
+          }
+        },
+        "gliderTurbulences": {
+          "label": "グライダーの乱気流",
+          "description": "乱気流がグライダーに影響します。難易度がカスタムのときだけ有効です。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "weather": {
+          "label": "天候の頻度",
+          "description": "難易度がカスタムのときだけ有効です。",
+          "options": {
+            "Disabled": "なし",
+            "Rare": "少ない",
+            "Normal": "ノーマル",
+            "Often": "多い"
+          }
+        },
+        "fishingDifficulty": {
+          "label": "釣りの難易度",
+          "description": "難易度がカスタムのときだけ有効です。",
+          "options": {
+            "VeryEasy": "とても簡単",
+            "Easy": "簡単",
+            "Normal": "ノーマル",
+            "Hard": "ハード",
+            "VeryHard": "とても難しい"
+          }
+        },
+        "plantGrowth": {
+          "label": "植物の成長速度",
+          "description": "1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "workstationSpeed": {
+          "label": "作業台の速度",
+          "description": "作業台で作るアイテムの製作時間の倍率です。大きいほど時間がかかります。1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "perkCost": {
+          "label": "武器強化のコスト",
+          "description": "武器の強化に必要なルーンの量です。1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "recyclingYield": {
+          "label": "解体時のルーン返却",
+          "description": "強化した武器を解体したときに返却されるルーンの割合です。0.5がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "miningXp": {
+          "label": "採掘XP",
+          "description": "1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "explorationXp": {
+          "label": "探索XP",
+          "description": "探索とクエスト完了で得られるXPです。1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "enemyAmount": {
+          "label": "敵の数",
+          "description": "ワールドにいる敵の数です。難易度がカスタムのときだけ有効です。",
+          "options": {
+            "Few": "少ない",
+            "Normal": "ノーマル",
+            "Many": "多い",
+            "Extreme": "極端"
+          }
+        },
+        "simultaneousAttacks": {
+          "label": "同時に攻撃する敵の数",
+          "description": "同時に攻撃できる敵の数です。難易度がカスタムのときだけ有効です。",
+          "options": {
+            "Few": "少ない",
+            "Normal": "ノーマル",
+            "Many": "多い",
+            "Extreme": "極端"
+          }
+        },
+        "enemyStamina": {
+          "label": "敵のスタミナ",
+          "description": "大きいほど敵がスタンしにくくなります。1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "enemyPerception": {
+          "label": "敵の感知範囲",
+          "description": "敵がプレイヤーを見たり聞いたりできる距離です(ボスを除く)。1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "enemyAttackFrequency": {
+          "label": "敵の攻撃頻度",
+          "description": "敵が攻撃してくる頻度です(ボスを除く)。1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "bossHealth": {
+          "label": "ボスの体力",
+          "description": "1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "bossDamage": {
+          "label": "ボスのダメージ",
+          "description": "1がゲームの標準です。難易度がカスタムのときだけ有効です。"
+        },
+        "tamingFailure": {
+          "label": "テイム中に動物を驚かせたとき",
+          "description": "難易度がカスタムのときだけ有効です。",
+          "options": {
+            "KeepProgress": "進行状況をすべて維持",
+            "LoseSomeProgress": "進行状況の一部を失う",
+            "LoseAllProgress": "進行状況をすべて失う"
+          }
+        },
+        "curse": {
+          "label": "シュラウドの呪い",
+          "description": "シュラウド内で攻撃されたときに呪いを受ける確率です。難易度がカスタムのときだけ有効です。",
+          "options": {
+            "Easy": "オフ",
+            "Normal": "ノーマル",
+            "Hard": "確率2倍"
+          }
+        },
+        "dayLength": {
+          "label": "昼の長さ",
+          "description": "昼が続く実際の時間です。難易度がカスタムのときだけ有効です。",
+          "options": {
+            "120000000000": "2分",
+            "600000000000": "10分",
+            "1200000000000": "20分",
+            "1800000000000": "30分(デフォルト)",
+            "2700000000000": "45分",
+            "3600000000000": "60分"
+          }
+        },
+        "nightLength": {
+          "label": "夜の長さ",
+          "description": "夜が続く実際の時間です。難易度がカスタムのときだけ有効です。",
+          "options": {
+            "120000000000": "2分",
+            "300000000000": "5分",
+            "720000000000": "12分(デフォルト)",
+            "1200000000000": "20分",
+            "1800000000000": "30分",
+            "3600000000000": "60分"
+          }
+        },
+        "hungerToStarving": {
+          "label": "空腹状態の長さ",
+          "description": "プレイヤーが空腹の状態から飢餓状態になるまでの時間です。難易度がカスタムのときだけ有効です。",
+          "options": {
+            "300000000000": "5分",
+            "600000000000": "10分(デフォルト)",
+            "900000000000": "15分",
+            "1200000000000": "20分"
+          }
         }
       },
       "ports": {
@@ -2767,6 +3330,83 @@
         },
         "steamGroupOnly": {
           "label": "Steam グループのメンバーのみ",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "tags": {
+          "label": "サーバータグ",
+          "description": "サーバー一覧に表示される、カンマ区切りのタグです。"
+        },
+        "region": {
+          "label": "リージョン",
+          "description": "サーバー一覧に表示されるリージョンです。",
+          "options": {
+            "0": "米国東部",
+            "1": "米国西部",
+            "2": "南米",
+            "3": "ヨーロッパ",
+            "4": "アジア",
+            "5": "オーストラリア",
+            "6": "中東",
+            "7": "アフリカ",
+            "255": "全世界",
+            "-1": "なし"
+          }
+        },
+        "searchKey": {
+          "label": "ロビー検索キー",
+          "description": "プレイヤーはこのキーでロビーからサーバーを見つけられます。"
+        },
+        "lan": {
+          "label": "LAN 専用",
+          "description": "インターネットに公開されず、プレイヤーの認証も行われません。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "cheats": {
+          "label": "チート",
+          "description": "プレイヤーがチートコマンドを使えます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "voice": {
+          "label": "ボイスチャット",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "visibleMaxPlayers": {
+          "label": "一覧に表示するスロット数",
+          "description": "-1: 実際のスロット数。"
+        },
+        "pure": {
+          "label": "ピュアサーバー",
+          "options": {
+            "0": "オフ",
+            "1": "ホワイトリスト以外のファイルは一致が必要",
+            "2": "ファイルは Steam 由来である必要"
+          }
+        },
+        "consistency": {
+          "label": "重要ファイルを検証",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "downloadUrl": {
+          "label": "高速ダウンロード URL",
+          "description": "プレイヤーがサーバーの代わりにカスタムコンテンツをダウンロードする場所です。"
+        },
+        "pausable": {
+          "label": "プレイヤーが一時停止できる",
           "options": {
             "0": "オフ",
             "1": "オン"
@@ -2830,7 +3470,8 @@
           "label": "ホワイトリストのプレイヤーのみ"
         },
         "pvp": {
-          "label": "プレイヤー同士でダメージを与えられる"
+          "label": "プレイヤー同士でダメージを与えられる",
+          "description": "Minecraft 1.21.8 以前でのみ有効です。新しいバージョンでは代わりに pvp ゲームルールを使います。"
         },
         "seed": {
           "label": "ワールドのシード値",
@@ -2907,6 +3548,50 @@
             "true": "はい",
             "false": "いいえ"
           }
+        },
+        "maxTickTime": {
+          "label": "最大ティック時間(ms)",
+          "description": "これより長いティックが起きるとサーバーが停止します。-1: 停止しない。"
+        },
+        "secureProfile": {
+          "label": "署名済みチャットキーを必須にする",
+          "description": "参加には Mojang が署名したチャットキーが必要です。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "maxWorldSize": {
+          "label": "ワールドボーダーの半径",
+          "description": "中心からのブロック数です。"
+        },
+        "entityRange": {
+          "label": "エンティティの範囲(%)",
+          "description": "エンティティをプレイヤーに送る距離を、割合で指定します。"
+        },
+        "pauseWhenEmpty": {
+          "label": "無人時に一時停止(秒)",
+          "description": "誰もいない状態が続いてからサーバーが一時停止するまでの秒数です(1.21.2 以降)。-1: 停止しない。"
+        },
+        "resourcePack": {
+          "label": "リソースパックの URL",
+          "description": "参加時にこのリソースパックがプレイヤーに提示されます。"
+        },
+        "resourcePackSha1": {
+          "label": "リソースパックの SHA-1",
+          "description": "クライアントが検証できるよう、パックの SHA-1 ハッシュを指定します。"
+        },
+        "requireResourcePack": {
+          "label": "リソースパックを必須にする",
+          "description": "パックを拒否したプレイヤーは切断されます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "resourcePackPrompt": {
+          "label": "リソースパックのメッセージ",
+          "description": "パックが提示されるときにプレイヤーに表示されるテキストです。"
         }
       },
       "ports": {
@@ -2993,6 +3678,133 @@
         },
         "guildSize": {
           "label": "ギルドあたりのプレイヤー数"
+        },
+        "autoSave": {
+          "label": "オートセーブの間隔(秒)",
+          "description": "ワールドの保存間隔(秒)です。30がゲームの標準です。"
+        },
+        "pvpDamage": {
+          "label": "プレイヤー間のダメージ",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "friendlyFire": {
+          "label": "フレンドリーファイア",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "invaders": {
+          "label": "拠点への襲撃(侵入者)",
+          "description": "敵がプレイヤーの拠点を襲撃します。",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "hardcore": {
+          "label": "ハードコア",
+          "description": "プレイヤーは死亡後にリスポーンできません。",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "palLost": {
+          "label": "死亡時にパルを失う",
+          "description": "死んだパルは二度と戻りません。",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "palDamageAttack": {
+          "label": "パルが与えるダメージ",
+          "description": "1がゲームの標準です。"
+        },
+        "palDamageDefense": {
+          "label": "パルが受けるダメージ",
+          "description": "1がゲームの標準です。"
+        },
+        "playerDamageAttack": {
+          "label": "プレイヤーが与えるダメージ",
+          "description": "1がゲームの標準です。"
+        },
+        "playerDamageDefense": {
+          "label": "プレイヤーが受けるダメージ",
+          "description": "1がゲームの標準です。"
+        },
+        "playerHunger": {
+          "label": "プレイヤーの空腹進行速度",
+          "description": "1がゲームの標準です。"
+        },
+        "playerStamina": {
+          "label": "プレイヤーのスタミナ消費",
+          "description": "1がゲームの標準です。"
+        },
+        "palHunger": {
+          "label": "パルの空腹進行速度",
+          "description": "1がゲームの標準です。"
+        },
+        "palStamina": {
+          "label": "パルのスタミナ消費",
+          "description": "1がゲームの標準です。"
+        },
+        "buildDecay": {
+          "label": "建造物の劣化",
+          "description": "0 にすると建造物が劣化しません。1がゲームの標準です。"
+        },
+        "itemWeight": {
+          "label": "アイテムの重量",
+          "description": "1がゲームの標準です。"
+        },
+        "equipDurability": {
+          "label": "装備の摩耗",
+          "description": "0 にすると装備が壊れません。1がゲームの標準です。"
+        },
+        "baseCamps": {
+          "label": "サーバー全体の拠点数",
+          "description": "サーバー全体で持てる拠点の最大数です。"
+        },
+        "buildingLimit": {
+          "label": "プレイヤーあたりの建造物数",
+          "description": "0 にすると無制限です。"
+        },
+        "supplyDropMinutes": {
+          "label": "支援物資投下の間隔(分)"
+        },
+        "respawnSeconds": {
+          "label": "リスポーンまでの時間(秒)"
+        },
+        "backups": {
+          "label": "ワールドのバックアップ",
+          "description": "ゲームが独自のワールドバックアップをセーブフォルダに保存します。",
+          "options": {
+            "True": "オン",
+            "False": "オフ"
+          }
+        },
+        "showPlayerList": {
+          "label": "メニューのプレイヤー一覧",
+          "options": {
+            "True": "はい",
+            "False": "いいえ"
+          }
+        },
+        "allowClientMods": {
+          "label": "MOD使用プレイヤー",
+          "description": "クライアントMODを使っているプレイヤーが参加できるかどうかです。",
+          "options": {
+            "True": "許可",
+            "False": "ブロック"
+          }
+        },
+        "publicIp": {
+          "label": "パブリックIP",
+          "description": "NATの内側にあるコミュニティサーバー用です。プレイヤーに見えるアドレスを指定します。"
         }
       },
       "ports": {
@@ -3113,6 +3925,135 @@
         "welcome": {
           "label": "ウェルカムメッセージ",
           "description": "プレイヤーが参加したときにチャットに表示されます。"
+        },
+        "map": {
+          "label": "マップ",
+          "description": "読み込むマップをセミコロンで区切って指定します。マップMODを先に、その後に Muldraugh, KY を指定します。1行で入力してください。"
+        },
+        "announceDeath": {
+          "label": "死亡を通知",
+          "description": "プレイヤーが死亡するとチャットにメッセージが表示されます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "noFire": {
+          "label": "火災なし",
+          "description": "火災が発生しません(キャンプファイアは使えます)。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "playerSafehouse": {
+          "label": "プレイヤーが安全拠点を確保できる",
+          "description": "管理者は常に確保できます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "safehouseLoot": {
+          "label": "他人が安全拠点を略奪できる",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "safehouseTrespass": {
+          "label": "他人が安全拠点に入れる",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "safehouseFire": {
+          "label": "火が安全拠点にダメージを与える",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "safehouseRespawn": {
+          "label": "自分の安全拠点でリスポーン",
+          "description": "プレイヤーは所属していた安全拠点でリスポーンします。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "safehouseDays": {
+          "label": "確保までに必要な生存日数",
+          "description": "安全拠点を確保するまでにプレイヤーが生存する必要があるゲーム内日数です。"
+        },
+        "lootRespawnHours": {
+          "label": "戦利品の再出現間隔(ゲーム内時間)",
+          "description": "0 にすると戦利品が再出現しません。"
+        },
+        "showSafety": {
+          "label": "PvP状態を表示",
+          "description": "PvPモードのプレイヤーの頭上にドクロが表示されます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "pvpMeleeDamage": {
+          "label": "PvPの近接ダメージ(%)"
+        },
+        "pvpFirearmDamage": {
+          "label": "PvPの銃器ダメージ(%)"
+        },
+        "sleepAllowed": {
+          "label": "プレイヤーが眠れる",
+          "description": "疲れたときに眠れますが、眠る必要はありません。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "sleepNeeded": {
+          "label": "プレイヤーに睡眠が必要",
+          "description": "プレイヤーは疲れ、眠る必要があります。前のオプションがオンの場合のみ有効です。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "maxAccountsPerUser": {
+          "label": "Steamユーザーあたりのアカウント数",
+          "description": "0 にすると無制限です。"
+        },
+        "backupsCount": {
+          "label": "保持するバックアップ数"
+        },
+        "backupsOnStart": {
+          "label": "起動のたびにバックアップ",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "backupsPeriod": {
+          "label": "バックアップの間隔(分)",
+          "description": "0 にすると無効になります。"
+        },
+        "faction": {
+          "label": "ファクション",
+          "description": "プレイヤーがファクションを作成・参加できます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "luaChecksum": {
+          "label": "Luaファイルが異なるクライアントをキック",
+          "description": "ゲームファイルがサーバーと一致しないプレイヤーはキックされます。",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
         }
       },
       "ports": {
@@ -3210,6 +4151,61 @@
         "headerImage": {
           "label": "ヘッダー画像のURL",
           "description": "サーバーブラウザに表示される512 × 256のJPGです。"
+        },
+        "level": {
+          "label": "マップの種類",
+          "description": "手続き型マップは上のシードとサイズを使います。",
+          "options": {
+            "procedural": "手続き型",
+            "barren": "Barren",
+            "hapis": "ハピス島",
+            "savas": "サバス島"
+          }
+        },
+        "gamemode": {
+          "label": "ゲームモード",
+          "options": {
+            "vanilla": "バニラ",
+            "softcore": "ソフトコア",
+            "hardcore": "ハードコア",
+            "primitive": "プリミティブ",
+            "weapontest": "武器テスト"
+          }
+        },
+        "tickRate": {
+          "label": "ティックレート",
+          "description": "サーバーの 1 秒あたりの更新回数です。ゲームの標準は 30 で、増やすと CPU を使います。"
+        },
+        "salt": {
+          "label": "マップのソルト",
+          "description": "シードとサイズと合わせて、既知のマップを再現します。"
+        },
+        "levelUrl": {
+          "label": "カスタムマップの URL",
+          "description": "マップファイルの直接ダウンロードリンクです。生成されるマップの代わりになります。"
+        },
+        "maxTeamSize": {
+          "label": "チームの最大人数",
+          "description": "チームの人数です。1: ソロのみ。"
+        },
+        "radiation": {
+          "label": "放射線",
+          "options": {
+            "on": "オン",
+            "off": "オフ"
+          }
+        },
+        "upkeepPeriod": {
+          "label": "維持費の期間(分)",
+          "description": "拠点の維持費が分散される時間(分)です。"
+        },
+        "saveBackups": {
+          "label": "保持するセーブバックアップ数",
+          "description": "ゲームが保持するワールドの古いコピーの数です。"
+        },
+        "logoImage": {
+          "label": "Rust+ ロゴの URL",
+          "description": "Rust+ コンパニオンアプリに表示されるロゴです。"
         }
       },
       "ports": {
@@ -3302,6 +4298,98 @@
             "true": "はい",
             "false": "いいえ"
           }
+        },
+        "hideFromList": {
+          "label": "公開リストに表示しない",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "serverInfoId": {
+          "label": "サーバー情報の Pastebin ID",
+          "description": "サーバー一覧の情報タブに表示されるテキストの Pastebin ID です。"
+        },
+        "ipBanning": {
+          "label": "IP BAN",
+          "description": "サーバーがプロキシやファイアウォールの背後にある場合はオフにします。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "fastRestart": {
+          "label": "ラウンドの高速再開",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "fastRestartDelay": {
+          "label": "高速再開の待機時間(秒)"
+        },
+        "intercomCooldown": {
+          "label": "インターコムのクールダウン(秒)"
+        },
+        "intercomSpeech": {
+          "label": "インターコムの発言時間(秒)"
+        },
+        "warheadGates": {
+          "label": "ウォーヘッドのカウントダウン中にゲートを開く",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "warheadDoors": {
+          "label": "ウォーヘッドのカウントダウン中にドアを開く",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "warheadLockZones": {
+          "label": "ウォーヘッドのカウントダウン中にチェックポイントを封鎖",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "keepItems": {
+          "label": "脱出後もアイテムを保持",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "endOnOnePlayer": {
+          "label": "1 人になったらラウンド終了",
+          "options": {
+            "true": "はい",
+            "false": "いいえ"
+          }
+        },
+        "spawnProtect": {
+          "label": "スポーン保護",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "spawnProtectTime": {
+          "label": "スポーン保護(秒)"
+        },
+        "mtfMinTime": {
+          "label": "MTF の増援、最短(秒)"
+        },
+        "mtfMaxTime": {
+          "label": "MTF の増援、最長(秒)"
+        },
+        "mtfMaxAmount": {
+          "label": "MTF 増援の人数"
+        },
+        "ciMaxAmount": {
+          "label": "カオスの増援の人数"
         }
       },
       "ports": {
@@ -3336,7 +4424,7 @@
         },
         "gameMode": {
           "label": "ゲームモード",
-          "description": "新しいワールドに適用されます。",
+          "description": "新しいワールドに適用されます。以下のカスタムゲームモードのオプションはカスタムのときだけ適用されます。",
           "options": {
             "Normal": "ノーマル",
             "Hard": "ハード",
@@ -3370,6 +4458,152 @@
             "true": "オン",
             "false": "オフ"
           }
+        },
+        "enemySpawn": {
+          "label": "敵が出現する",
+          "description": "ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "enemyHealth": {
+          "label": "敵の体力",
+          "description": "ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "Low": "低い",
+            "Normal": "ノーマル",
+            "High": "高い"
+          }
+        },
+        "enemyDamage": {
+          "label": "敵のダメージ",
+          "description": "ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "Low": "低い",
+            "Normal": "ノーマル",
+            "High": "高い"
+          }
+        },
+        "enemyArmour": {
+          "label": "敵の防具",
+          "description": "ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "Low": "低い",
+            "Normal": "ノーマル",
+            "High": "高い"
+          }
+        },
+        "enemyAggression": {
+          "label": "敵の攻撃性",
+          "description": "ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "Low": "低い",
+            "Normal": "ノーマル",
+            "High": "高い"
+          }
+        },
+        "animalSpawnRate": {
+          "label": "動物の出現率",
+          "description": "ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "Low": "低い",
+            "Normal": "ノーマル",
+            "High": "高い"
+          }
+        },
+        "startingSeason": {
+          "label": "開始時の季節",
+          "description": "ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "Spring": "春",
+            "Summer": "夏",
+            "Autumn": "秋",
+            "Winter": "冬"
+          }
+        },
+        "seasonLength": {
+          "label": "季節の長さ",
+          "description": "ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "Short": "短い",
+            "Default": "デフォルト",
+            "Long": "長い",
+            "Realistic": "リアル"
+          }
+        },
+        "dayLength": {
+          "label": "1日の長さ",
+          "description": "ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "Short": "短い",
+            "Default": "デフォルト",
+            "Long": "長い",
+            "Realistic": "リアル"
+          }
+        },
+        "precipitation": {
+          "label": "雨と雪",
+          "description": "雨や雪が降る頻度です。ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "Low": "低い",
+            "Default": "デフォルト",
+            "High": "高い"
+          }
+        },
+        "consumableEffects": {
+          "label": "空腹と喉の渇きのダメージ",
+          "description": "水分と満腹度が低いときに受けるダメージです。ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "Normal": "ノーマル",
+            "Hard": "ハード"
+          }
+        },
+        "playerStatsDamage": {
+          "label": "傷んだ食べ物のダメージ",
+          "description": "傷んだ食べ物や飲み物によるダメージです。ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "Off": "オフ",
+            "Normal": "ノーマル",
+            "Hard": "ハード"
+          }
+        },
+        "coldPenalties": {
+          "label": "寒さのペナルティ",
+          "description": "寒さが体力とスタミナの回復をどれだけ妨げるかです。ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "Off": "オフ",
+            "Normal": "ノーマル",
+            "Hard": "ハード"
+          }
+        },
+        "reducedFood": {
+          "label": "コンテナ内の食料を減らす",
+          "description": "ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "singleUseContainers": {
+          "label": "使い捨てコンテナ",
+          "description": "コンテナは一度しか開けられません。ゲームモードがカスタムで、新しいワールドのときだけ有効です。",
+          "options": {
+            "true": "オン",
+            "false": "オフ"
+          }
+        },
+        "idleDayCycle": {
+          "label": "無人時の昼夜サイクル速度",
+          "description": "誰もオンラインにいないときの時間の進み方です。0で停止、1で通常速度です。"
+        },
+        "activeFps": {
+          "label": "サーバーのフレームレート",
+          "description": "プレイヤーがオンラインのときの目標フレームレート(FPS)です。小さいほどCPU使用量が減ります。60がゲームの標準です。"
+        },
+        "idleFps": {
+          "label": "無人時のサーバーのフレームレート",
+          "description": "誰もオンラインにいないときの目標フレームレート(FPS)です。5がゲームの標準です。"
         }
       },
       "ports": {
@@ -3477,6 +4711,98 @@
             "2": "ハード",
             "3": "エキスパート"
           }
+        },
+        "tags": {
+          "label": "サーバータグ",
+          "description": "サーバー一覧に表示される、カンマ区切りのタグです。"
+        },
+        "region": {
+          "label": "リージョン",
+          "description": "サーバー一覧に表示されるリージョンです。",
+          "options": {
+            "0": "米国東部",
+            "1": "米国西部",
+            "2": "南米",
+            "3": "ヨーロッパ",
+            "4": "アジア",
+            "5": "オーストラリア",
+            "6": "中東",
+            "7": "アフリカ",
+            "255": "全世界",
+            "-1": "なし"
+          }
+        },
+        "lan": {
+          "label": "LAN 専用",
+          "description": "インターネットに公開されず、プレイヤーの認証も行われません。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "cheats": {
+          "label": "チート",
+          "description": "プレイヤーがチートコマンドを使えます。",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "stalemate": {
+          "label": "膠着時にサドンデス",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "stalemateTime": {
+          "label": "膠着までの時間(秒)"
+        },
+        "allowSpectators": {
+          "label": "観戦者",
+          "options": {
+            "0": "不許可",
+            "1": "許可"
+          }
+        },
+        "forceCamera": {
+          "label": "死亡したプレイヤーは自チームのみ観戦",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "disableSpread": {
+          "label": "ダメージのランダム幅なし",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "downloadUrl": {
+          "label": "高速ダウンロード URL",
+          "description": "プレイヤーがサーバーの代わりにカスタムマップをダウンロードする場所です。"
+        },
+        "allowDownload": {
+          "label": "ダウンロードを許可",
+          "options": {
+            "0": "オフ",
+            "1": "オン"
+          }
+        },
+        "pure": {
+          "label": "ピュアサーバー",
+          "description": "クライアントのどのファイルを許可するかを決めます。",
+          "options": {
+            "0": "pure_server_minimal.txt のみ",
+            "1": "完全なルール+ホワイトリスト",
+            "2": "完全なルール",
+            "-1": "オフ"
+          }
+        },
+        "visibleMaxPlayers": {
+          "label": "一覧に表示するスロット数",
+          "description": "-1: 実際のスロット数。"
         }
       },
       "ports": {
@@ -3542,6 +4868,26 @@
         },
         "welcome": {
           "label": "ウェルカムメッセージ"
+        },
+        "cycle": {
+          "label": "1 日の長さ(秒)",
+          "description": "昼と夜の 1 サイクルにかかる秒数です。3600 で 1 時間です。"
+        },
+        "chatRate": {
+          "label": "チャットの間隔(秒)",
+          "description": "プレイヤーのメッセージ間の最短秒数です。"
+        },
+        "timeout": {
+          "label": "Ping の上限(ms)",
+          "description": "このピングを超えたプレイヤーはキックされます。通常は 400~600 です。"
+        },
+        "decay": {
+          "label": "劣化までの時間(秒)",
+          "description": "放置された建造物や乗り物が劣化するまでの秒数です。"
+        },
+        "loadout": {
+          "label": "初期アイテム",
+          "description": "プレイヤーがスポーン時に持つアイテム ID を / で区切って指定します。"
         }
       },
       "ports": {
@@ -3657,6 +5003,26 @@
         },
         "saveInterval": {
           "label": "オートセーブの間隔(秒)"
+        },
+        "backups": {
+          "label": "保持するバックアップ数",
+          "description": "ゲームが保持するワールドの自動バックアップの数です。4がゲームの標準です。"
+        },
+        "backupShort": {
+          "label": "最初のバックアップまで(秒)",
+          "description": "最初の自動バックアップの間隔(秒)です。7200がゲームの標準です。"
+        },
+        "backupLong": {
+          "label": "以降のバックアップの間隔(秒)",
+          "description": "以降の自動バックアップの間隔(秒)です。43200がゲームの標準です。"
+        },
+        "fireHazards": {
+          "label": "火災の危険",
+          "description": "火が現実的に燃え広がります。"
+        },
+        "instanceId": {
+          "label": "クロスプレイのインスタンスID",
+          "description": "複数のクロスプレイ対応サーバーが1つの公開アドレスを共有する場合のみ指定します。"
         }
       },
       "ports": {
@@ -3703,7 +5069,8 @@
           "options": {
             "PvP": "PvP",
             "PvE": "PvE"
-          }
+          },
+          "description": "ルールセットを使う場合は、それと一致している必要があります。"
         },
         "difficulty": {
           "label": "難易度",
@@ -3711,13 +5078,15 @@
             "Difficulty_Easy": "リラックス",
             "Difficulty_Normal": "ノーマル",
             "Difficulty_Brutal": "ブルータル"
-          }
+          },
+          "description": "あらかじめ用意された難易度です。カスタムのゲームオプションより優先されます。カスタムを使うには空のままにします。"
         },
         "autoSave": {
           "label": "オートセーブの間隔(秒)"
         },
         "clanSize": {
-          "label": "クランの人数"
+          "label": "クランの人数",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。"
         },
         "castleDamage": {
           "label": "城へのダメージ",
@@ -3725,11 +5094,12 @@
             "Always": "常に",
             "Never": "なし",
             "TimeRestricted": "レイド時間中のみ"
-          }
+          },
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。"
         },
         "bloodBound": {
           "label": "血に縛られた装備",
-          "description": "死亡しても装備は持ち主のものです。",
+          "description": "死亡しても装備は持ち主のものです。ルールセットまたは難易度が設定されている間は無視されます。",
           "options": {
             "true": "オン",
             "false": "オフ"
@@ -3737,7 +5107,7 @@
         },
         "teleportBound": {
           "label": "アイテムでテレポート不可",
-          "description": "資源を持っているプレイヤーはウェイゲートを使えません。",
+          "description": "資源を持っているプレイヤーはウェイゲートを使えません。ルールセットまたは難易度が設定されている間は無視されます。",
           "options": {
             "true": "オン",
             "false": "オフ"
@@ -3745,28 +5115,179 @@
         },
         "materialYield": {
           "label": "資源の収量",
-          "description": "採集した資源の倍率。"
+          "description": "採集した資源の倍率。ルールセットまたは難易度が設定されている間は無視されます。"
         },
         "craftRate": {
-          "label": "クラフト速度"
+          "label": "クラフト速度",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。"
         },
         "buildCost": {
-          "label": "建築コスト"
+          "label": "建築コスト",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。"
         },
         "researchCost": {
-          "label": "研究コスト"
+          "label": "研究コスト",
+          "description": "新しいバージョンのゲームでは使われません。ルールセットまたは難易度が設定されている間は無視されます。"
         },
         "bloodDrain": {
-          "label": "血の消費"
+          "label": "血の消費",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。"
         },
         "durabilityDrain": {
-          "label": "耐久度の減少"
+          "label": "耐久度の減少",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。"
         },
         "sunDamage": {
-          "label": "日光ダメージ"
+          "label": "日光ダメージ",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。"
         },
         "castleDecay": {
-          "label": "城の劣化"
+          "label": "城の劣化",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "ruleset": {
+          "label": "ルールセット",
+          "description": "あらかじめ用意されたルールセットです。カスタムのゲームオプションより優先され、ゲームモードと一致している必要があります。カスタムでは下のオプションが使われます。",
+          "options": {
+            "StandardPvP": "スタンダードPvP",
+            "StandardPvP_Easy": "スタンダードPvP(簡単)",
+            "StandardPvP_Hard": "スタンダードPvP(ハード)",
+            "StandardPvP_DailySiege": "スタンダードPvP(毎日攻城)",
+            "StandardPvP_NoSiege": "スタンダードPvP(攻城なし)",
+            "StandardPvP_WeekendSiege": "スタンダードPvP(週末攻城)",
+            "SoloPvP": "ソロPvP",
+            "DuoPvP": "デュオPvP",
+            "DuoPvP_DailySiege": "デュオPvP(毎日攻城)",
+            "DuoPvP_NoSiege": "デュオPvP(攻城なし)",
+            "DuoPvP_WeekendSiege": "デュオPvP(週末攻城)",
+            "TrioPvP": "トリオPvP",
+            "TrioPvP_DailySiege": "トリオPvP(毎日攻城)",
+            "TrioPvP_NoSiege": "トリオPvP(攻城なし)",
+            "TrioPvP_WeekendSiege": "トリオPvP(週末攻城)",
+            "HardcorePvP": "フルルートPvP",
+            "HardcoreDuoPvP": "ハードコア・デュオPvP",
+            "HardcoreTrioPvP": "ハードコア・トリオPvP",
+            "Level30PvP": "PvP 夜明け(レベル30)",
+            "Level50PvP": "PvP 正午(レベル50)",
+            "Level70PvP": "PvP 黄昏(レベル70)",
+            "Level90PvP": "PvP 真夜中(レベル90)",
+            "StandardPvE": "スタンダードPvE",
+            "StandardPvE_Easy": "スタンダードPvE(簡単)",
+            "StandardPvE_Hard": "スタンダードPvE(ハード)",
+            "Level30PvE": "PvE 夜明け(レベル30)",
+            "Level50PvE": "PvE 正午(レベル50)",
+            "Level70PvE": "PvE 黄昏(レベル70)",
+            "Level90PvE": "PvE 真夜中(レベル90)",
+            "custom": "カスタム: 下のオプション"
+          }
+        },
+        "pvpProtection": {
+          "label": "新規プレイヤーのPvP保護",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。",
+          "options": {
+            "Disabled": "なし",
+            "VeryShort": "15分",
+            "Short": "30分",
+            "Medium": "1時間",
+            "Long": "2時間"
+          }
+        },
+        "playerDamageMode": {
+          "label": "プレイヤーのダメージ",
+          "description": "プレイヤー同士がダメージを与えられる時間帯です(PvEでは無効)。ルールセットまたは難易度が設定されている間は無視されます。",
+          "options": {
+            "Always": "常に",
+            "TimeRestricted": "レイド時間中のみ"
+          }
+        },
+        "castleHeartDamage": {
+          "label": "城の心臓",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。",
+          "options": {
+            "CanBeDestroyedOnlyWhenDecaying": "劣化時のみ破壊",
+            "CanBeDestroyedByPlayers": "プレイヤーが破壊できる",
+            "CanBeSeizedOrDestroyedByPlayers": "プレイヤーが奪取または破壊できる"
+          }
+        },
+        "siegeHealth": {
+          "label": "攻城ゴーレムの体力",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。",
+          "options": {
+            "VeryLow": "とても低い",
+            "Low": "低い",
+            "Normal": "ノーマル",
+            "High": "高い",
+            "VeryHigh": "とても高い"
+          }
+        },
+        "deathContainer": {
+          "label": "遺体から略奪できる人",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。",
+          "options": {
+            "Anyone": "誰でも",
+            "ClanMembers": "クランメンバー",
+            "OnlySelf": "持ち主のみ"
+          }
+        },
+        "dropGeneral": {
+          "label": "敵のドロップ",
+          "description": "敵の撃破や宝箱で手に入るドロップの倍率です。1がゲームの標準です。ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "stacks": {
+          "label": "スタック数",
+          "description": "1スタックに入るアイテム数の倍率です。1がゲームの標準です。ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "bloodEssenceYield": {
+          "label": "血のエッセンスの獲得量",
+          "description": "倒した敵から得られる血のエッセンスの倍率です。1がゲームの標準です。ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "dayLengthSeconds": {
+          "label": "1日の長さ(秒)",
+          "description": "1日が続く実際の秒数です。1080がゲームの標準です。ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "bloodMoonMin": {
+          "label": "ブラッドムーンの最短間隔(日)",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "bloodMoonMax": {
+          "label": "ブラッドムーンの最長間隔(日)",
+          "description": "ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "playerHealth": {
+          "label": "プレイヤーの体力",
+          "description": "プレイヤーの最大体力の倍率です。1がゲームの標準です。ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "damageReceived": {
+          "label": "プレイヤーが受けるダメージ",
+          "description": "プレイヤーが受けるあらゆるダメージの倍率です。1がゲームの標準です。ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "mobHealth": {
+          "label": "敵の体力",
+          "description": "通常の敵の体力の倍率です。1がゲームの標準です。ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "mobPower": {
+          "label": "敵のダメージ",
+          "description": "通常の敵が与えるダメージの倍率です。1がゲームの標準です。ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "vbloodHealth": {
+          "label": "ボスの体力",
+          "description": "Vブラッドのボスの体力の倍率です。1がゲームの標準です。ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "vbloodPower": {
+          "label": "ボスのダメージ",
+          "description": "Vブラッドのボスが与えるダメージの倍率です。1がゲームの標準です。ルールセットまたは難易度が設定されている間は無視されます。"
+        },
+        "maxAdmins": {
+          "label": "管理者用スロット",
+          "description": "サーバーが満員でも参加できる管理者の数です。"
+        },
+        "autoSaveCount": {
+          "label": "保持するオートセーブ数",
+          "description": "サーバーが保持するオートセーブの数です。25がゲームの標準です。"
+        },
+        "serverFps": {
+          "label": "サーバーのフレームレート",
+          "description": "サーバーの目標フレームレート(FPS)です。30がゲームの標準です。"
         }
       },
       "ports": {

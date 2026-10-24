@@ -2147,52 +2147,6 @@
           "label": "EasyAntiCheat",
           "description": "코드 모드 대부분은 끄는 것이 필요합니다."
         },
-        "difficulty": {
-          "label": "난이도",
-          "options": {
-            "0": "스캐빈저",
-            "1": "어드벤처러",
-            "2": "노마드",
-            "3": "워리어",
-            "4": "서바이벌리스트",
-            "5": "인세인"
-          }
-        },
-        "dayLength": {
-          "label": "하루 길이(실제 분)",
-          "description": "게임 속 하루가 실제로 몇 분인지 정합니다."
-        },
-        "dayLightHours": {
-          "label": "낮 시간",
-          "description": "하루 중 낮이 지속되는 게임 내 시간입니다."
-        },
-        "bloodMoonFrequency": {
-          "label": "블러드 문 주기(일)",
-          "description": "0이면 블러드 문이 나타나지 않습니다."
-        },
-        "bloodMoonEnemies": {
-          "label": "플레이어당 블러드 문 좀비 수"
-        },
-        "zombieSpeedDay": {
-          "label": "낮 좀비 속도",
-          "options": {
-            "0": "걷기",
-            "1": "조깅",
-            "2": "달리기",
-            "3": "전력 질주",
-            "4": "악몽"
-          }
-        },
-        "zombieSpeedNight": {
-          "label": "밤 좀비 속도",
-          "options": {
-            "0": "걷기",
-            "1": "조깅",
-            "2": "달리기",
-            "3": "전력 질주",
-            "4": "악몽"
-          }
-        },
         "maxZombies": {
           "label": "최대 좀비 수",
           "description": "맵 전체에서 동시에 존재하는 좀비 수입니다. 90을 넘으면 대부분의 서버가 느려집니다."
@@ -2206,34 +2160,115 @@
             "3": "모두 킬 가능"
           }
         },
-        "dropOnDeath": {
-          "label": "사망 시 드롭",
-          "options": {
-            "0": "없음",
-            "1": "전부",
-            "2": "툴벨트만",
-            "3": "배낭만",
-            "4": "전부 삭제"
-          }
-        },
-        "lootAbundance": {
-          "label": "전리품 양(%)"
-        },
-        "lootRespawnDays": {
-          "label": "전리품 리스폰(일)"
-        },
-        "xp": {
-          "label": "경험치(%)"
-        },
-        "airDropHours": {
-          "label": "에어드롭 주기(게임 시간)",
-          "description": "0이면 에어드롭이 나타나지 않습니다."
-        },
         "description": {
           "label": "설명"
         },
         "website": {
           "label": "웹사이트"
+        },
+        "sandboxCode": {
+          "label": "샌드박스 코드",
+          "description": "난이도, XP, 전리품, 좀비, 블러드 문, 공중 보급을 게임의 샌드박스 옵션으로 만든 하나의 코드로 지정합니다(V3.0 이상)."
+        },
+        "region": {
+          "label": "지역",
+          "description": "플레이어가 목록에서 서버를 찾는 지역입니다.",
+          "options": {
+            "NorthAmericaEast": "북미 동부",
+            "NorthAmericaWest": "북미 서부",
+            "CentralAmerica": "중앙아메리카",
+            "SouthAmerica": "남미",
+            "Europe": "유럽",
+            "Russia": "러시아",
+            "Asia": "아시아",
+            "MiddleEast": "중동",
+            "Africa": "아프리카",
+            "Oceania": "오세아니아"
+          }
+        },
+        "language": {
+          "label": "언어",
+          "description": "플레이어가 쓰는 언어의 영어 이름입니다(예: German)."
+        },
+        "worldGenSeed": {
+          "label": "무작위 월드 시드",
+          "description": "RWG 월드일 때만 적용됩니다. 새 월드의 시드입니다."
+        },
+        "worldGenSize": {
+          "label": "무작위 월드 크기",
+          "description": "RWG 월드일 때만 적용됩니다. 새 월드의 가로·세로 크기입니다.",
+          "options": {
+            "6144": "6144",
+            "8192": "8192",
+            "10240": "10240"
+          }
+        },
+        "maxAnimals": {
+          "label": "최대 동물 수",
+          "description": "맵 전체에서 동시에 존재하는 동물 수입니다."
+        },
+        "viewDistance": {
+          "label": "최대 시야 거리",
+          "description": "플레이어가 요청할 수 있는 최대 시야 거리입니다. 낮을수록 메모리를 적게 씁니다.",
+          "options": {
+            "6": "6",
+            "7": "7",
+            "8": "8",
+            "9": "9",
+            "10": "10",
+            "11": "11",
+            "12": "12"
+          }
+        },
+        "landClaimCount": {
+          "label": "플레이어당 토지 소유권 수"
+        },
+        "landClaimSize": {
+          "label": "토지 소유권 크기(블록)"
+        },
+        "landClaimExpiryTime": {
+          "label": "토지 소유권 만료(일)",
+          "description": "플레이어가 오프라인이어도 토지 보호가 유지되는 실제 일수입니다."
+        },
+        "landClaimDecayMode": {
+          "label": "토지 소유권 소멸 방식",
+          "options": {
+            "0": "느림",
+            "1": "빠름",
+            "2": "만료될 때까지 없음"
+          }
+        },
+        "bedrollExpiryTime": {
+          "label": "침낭 만료(일)",
+          "description": "주인이 마지막으로 접속한 뒤 침낭이 유지되는 실제 일수입니다."
+        },
+        "safeZoneLevel": {
+          "label": "안전 구역 적용 레벨",
+          "description": "이 레벨 이하의 플레이어는 적이 없는 구역을 받습니다."
+        },
+        "crossplay": {
+          "label": "크로스플레이",
+          "description": "콘솔 플레이어가 접속할 수 있습니다. EasyAntiCheat가 켜져 있고 슬롯이 최대 8개여야 합니다.",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "persistentProfiles": {
+          "label": "플레이어 프로필 유지",
+          "description": "세션이 끝나도 플레이어 프로필을 유지합니다.",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "buildCreate": {
+          "label": "크리에이티브 모드",
+          "description": "플레이어가 제한 없이 건축할 수 있습니다.",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
         }
       },
       "ports": {
@@ -2352,6 +2387,97 @@
         "babyMatureSpeed": {
           "label": "새끼 성장 속도",
           "description": "높을수록 새끼가 빨리 자랍니다. 1이 게임 기본값입니다."
+        },
+        "hardcore": {
+          "label": "하드코어",
+          "description": "죽으면 캐릭터가 1레벨로 돌아갑니다.",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "playerDamage": {
+          "label": "플레이어 피해량",
+          "description": "플레이어가 주는 피해입니다. 1이 게임 기본값입니다."
+        },
+        "playerResistance": {
+          "label": "플레이어 저항",
+          "description": "높을수록 플레이어가 받는 피해가 줄어듭니다. 1이 게임 기본값입니다."
+        },
+        "dinoDamage": {
+          "label": "야생 공룡 피해량",
+          "description": "야생 공룡이 주는 피해입니다. 1이 게임 기본값입니다."
+        },
+        "dinoResistance": {
+          "label": "야생 공룡 저항",
+          "description": "높을수록 야생 공룡이 받는 피해가 줄어듭니다. 1이 게임 기본값입니다."
+        },
+        "structureResistance": {
+          "label": "구조물 저항",
+          "description": "높을수록 구조물이 받는 피해가 줄어듭니다. 1이 게임 기본값입니다."
+        },
+        "stackSize": {
+          "label": "아이템 스택 크기",
+          "description": "모든 스택 크기에 배율을 곱합니다. 1이 게임 기본값입니다."
+        },
+        "resourceRespawn": {
+          "label": "자원 재생성 주기",
+          "description": "낮을수록 자원이 더 빨리 다시 생성됩니다. 1이 게임 기본값입니다."
+        },
+        "harvestHealth": {
+          "label": "자원 체력",
+          "description": "나무, 바위, 사체의 체력입니다. 1이 게임 기본값입니다."
+        },
+        "playerFoodDrain": {
+          "label": "플레이어 허기 소모",
+          "description": "높을수록 플레이어가 더 빨리 배고파집니다. 1이 게임 기본값입니다."
+        },
+        "playerWaterDrain": {
+          "label": "플레이어 수분 소모",
+          "description": "높을수록 플레이어가 더 빨리 목말라집니다. 1이 게임 기본값입니다."
+        },
+        "dinoFoodDrain": {
+          "label": "공룡 허기 소모",
+          "description": "높을수록 길들인 공룡이 더 빨리 배고파집니다. 1이 게임 기본값입니다."
+        },
+        "offlineRaidProtection": {
+          "label": "오프라인 습격 방지",
+          "description": "부족원이 모두 오프라인인 동안에는 습격당하지 않습니다.",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "offlineRaidSeconds": {
+          "label": "습격 방지 시작 지연(초)",
+          "description": "마지막 구성원이 나간 뒤 보호가 시작되기까지의 초 단위 시간입니다."
+        },
+        "maxPersonalTamedDinos": {
+          "label": "부족당 길들인 공룡 최대 수",
+          "description": "0이면 제한이 꺼집니다."
+        },
+        "maxStructures": {
+          "label": "범위 내 최대 구조물 수"
+        },
+        "hitMarkers": {
+          "label": "타격 표시",
+          "description": "원거리 공격의 타격 표시입니다.",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "maxPlayersInTribe": {
+          "label": "부족당 플레이어 수",
+          "description": "0이면 제한이 없습니다."
+        },
+        "pvpFriendlyFire": {
+          "label": "아군 피해 없음(PvP)",
+          "description": "PvP 서버에서 부족원, 그들의 공룡과 구조물이 서로에게 피해를 줄 수 없습니다.",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
         }
       },
       "ports": {
@@ -2439,6 +2565,62 @@
         },
         "maxFps": {
           "label": "서버 FPS"
+        },
+        "networkViewDistance": {
+          "label": "네트워크 시야 거리(m)",
+          "description": "엔티티를 플레이어에게 보내는 거리입니다."
+        },
+        "minGrassDistance": {
+          "label": "최소 풀 거리(m)",
+          "description": "0: 플레이어가 선택. 그 외에는 50~150이 최솟값으로 강제됩니다."
+        },
+        "fastValidation": {
+          "label": "빠른 검증",
+          "description": "플레이어가 참가할 때 맵 확인이 빨라집니다.",
+          "options": {
+            "true": "켜짐",
+            "false": "꺼짐"
+          }
+        },
+        "vonDisableUi": {
+          "label": "음성 UI 숨기기",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "vonDisableDirectUi": {
+          "label": "직접 발언 UI 숨기기",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "vonCrossFaction": {
+          "label": "무전기가 진영 간에도 작동",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "playerSaveTime": {
+          "label": "플레이어 저장 주기(초)"
+        },
+        "aiLimit": {
+          "label": "AI 제한",
+          "description": "동시에 존재할 수 있는 AI 캐릭터의 최대 수입니다. -1: 제한 없음."
+        },
+        "disableAi": {
+          "label": "AI 비활성화",
+          "description": "AI가 전혀 나오지 않으며 PvP용입니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "slotReservationTimeout": {
+          "label": "슬롯 예약(초)",
+          "description": "연결이 끊긴 플레이어의 슬롯을 유지하는 시간입니다."
         }
       },
       "ports": {
@@ -2535,6 +2717,84 @@
         "bots": {
           "label": "봇",
           "description": "서버를 채우는 봇의 수입니다."
+        },
+        "tags": {
+          "label": "서버 태그",
+          "description": "서버 목록에 표시되는 쉼표로 구분된 태그입니다."
+        },
+        "lan": {
+          "label": "LAN 전용",
+          "description": "인터넷에 공개되지 않으며 플레이어도 인증하지 않습니다.",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "cheats": {
+          "label": "치트",
+          "description": "플레이어가 치트 명령어를 사용할 수 있습니다.",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "voice": {
+          "label": "음성 채팅",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "workshopMap": {
+          "label": "워크숍 맵 ID",
+          "description": "시작 맵 대신 이 Steam 워크숍 맵으로 시작합니다."
+        },
+        "workshopCollection": {
+          "label": "워크숍 컬렉션 ID",
+          "description": "이 Steam 워크숍 컬렉션의 맵을 제공합니다."
+        },
+        "mapGroup": {
+          "label": "맵 그룹",
+          "description": "맵 순환을 정하는 gamemodes_server.txt의 맵 그룹입니다."
+        },
+        "overtime": {
+          "label": "연장전",
+          "description": "마지막 라운드 후 동점이면 연장전을 진행합니다.",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "overtimeRounds": {
+          "label": "연장전 라운드"
+        },
+        "halftime": {
+          "label": "하프타임",
+          "description": "경기 중간에 팀이 진영을 맞바꿉니다.",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "matchClinch": {
+          "label": "승부가 정해지면 종료",
+          "description": "한 팀이 따라잡을 수 없게 되면 경기가 끝납니다.",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "c4Timer": {
+          "label": "C4 타이머(초)"
+        },
+        "botDifficulty": {
+          "label": "봇 난이도",
+          "options": {
+            "0": "쉬움",
+            "1": "보통",
+            "2": "어려움",
+            "3": "전문가"
+          }
         }
       },
       "ports": {
@@ -2628,6 +2888,121 @@
         "bots": {
           "label": "봇",
           "description": "서버를 채우는 봇의 수입니다."
+        },
+        "tags": {
+          "label": "서버 태그",
+          "description": "서버 목록에 표시되는 쉼표로 구분된 태그입니다."
+        },
+        "region": {
+          "label": "지역",
+          "description": "서버 목록에 표시되는 지역입니다.",
+          "options": {
+            "0": "미국 동부",
+            "1": "미국 서부",
+            "2": "남아메리카",
+            "3": "유럽",
+            "4": "아시아",
+            "5": "오스트레일리아",
+            "6": "중동",
+            "7": "아프리카",
+            "255": "전 세계",
+            "-1": "없음"
+          }
+        },
+        "steamGroup": {
+          "label": "Steam 그룹 ID",
+          "description": "서버를 이 Steam 그룹에 연결합니다."
+        },
+        "lan": {
+          "label": "LAN 전용",
+          "description": "인터넷에 공개되지 않으며 플레이어도 인증하지 않습니다.",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "cheats": {
+          "label": "치트",
+          "description": "플레이어가 치트 명령어를 사용할 수 있습니다.",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "voice": {
+          "label": "음성 채팅",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "allowSpectators": {
+          "label": "관전자",
+          "options": {
+            "0": "허용 안 함",
+            "1": "허용"
+          }
+        },
+        "forceCamera": {
+          "label": "사망한 플레이어는 자기 팀만 관전",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "fragLimit": {
+          "label": "프래그 제한",
+          "description": "맵이 끝나는 킬 수입니다. 0: 제한 없음."
+        },
+        "footsteps": {
+          "label": "발소리",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "downloadUrl": {
+          "label": "고속 다운로드 URL",
+          "description": "플레이어가 서버 대신 커스텀 맵과 파일을 내려받는 위치입니다."
+        },
+        "allowDownload": {
+          "label": "다운로드 허용",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "pausable": {
+          "label": "플레이어가 일시정지 가능",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "pure": {
+          "label": "퓨어 서버",
+          "description": "클라이언트의 어떤 파일을 허용할지 정합니다.",
+          "options": {
+            "0": "pure_server_minimal.txt만",
+            "1": "전체 규칙 + 화이트리스트",
+            "2": "전체 규칙",
+            "-1": "꺼짐"
+          }
+        },
+        "maxRate": {
+          "label": "클라이언트 최대 속도",
+          "description": "클라이언트가 사용할 수 있는 초당 바이트 수입니다. 0: 제한 없음."
+        },
+        "maxUpdateRate": {
+          "label": "최대 업데이트 속도",
+          "description": "클라이언트에 보내는 초당 업데이트 횟수입니다. 틱레이트 100 서버에서는 100을 쓰세요."
+        },
+        "tvAutorecord": {
+          "label": "SourceTV 데모 녹화",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
         }
       },
       "ports": {
@@ -2721,6 +3096,194 @@
             "true": "켬",
             "false": "끔"
           }
+        },
+        "voiceChatMode": {
+          "label": "음성 채팅 범위",
+          "description": "음성 채팅이 켜져 있어야 합니다.",
+          "options": {
+            "Proximity": "근처 플레이어",
+            "Global": "모두"
+          }
+        },
+        "playerMana": {
+          "label": "플레이어 마나",
+          "description": "1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "playerBodyHeat": {
+          "label": "플레이어 체온",
+          "description": "플레이어가 매우 추운 지역에서 버틸 수 있는 시간입니다. 난이도가 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "0.5": "낮음",
+            "1.0": "기본",
+            "1.5": "높음",
+            "2.0": "최대"
+          }
+        },
+        "divingTime": {
+          "label": "잠수 시간",
+          "description": "플레이어가 물속에서 처음 갖는 산소량입니다. 1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "foodBuffDuration": {
+          "label": "음식 버프 지속 시간",
+          "description": "1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "shroudTime": {
+          "label": "슈라우드 체류 시간",
+          "description": "플레이어가 슈라우드에 머물 수 있는 시간입니다. 1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "tombstone": {
+          "label": "사망 시",
+          "description": "플레이어가 죽을 때 잃는 것입니다. 난이도가 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "AddBackpackMaterials": "배낭 속 재료를 잃음",
+            "Everything": "모두 잃음",
+            "NoTombstone": "모두 유지"
+          }
+        },
+        "gliderTurbulences": {
+          "label": "글라이더 난기류",
+          "description": "난기류가 글라이더에 영향을 줍니다. 난이도가 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "weather": {
+          "label": "날씨 빈도",
+          "description": "난이도가 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "Disabled": "없음",
+            "Rare": "드묾",
+            "Normal": "보통",
+            "Often": "자주"
+          }
+        },
+        "fishingDifficulty": {
+          "label": "낚시 난이도",
+          "description": "난이도가 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "VeryEasy": "매우 쉬움",
+            "Easy": "쉬움",
+            "Normal": "보통",
+            "Hard": "어려움",
+            "VeryHard": "매우 어려움"
+          }
+        },
+        "plantGrowth": {
+          "label": "식물 성장 속도",
+          "description": "1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "workstationSpeed": {
+          "label": "작업대 속도",
+          "description": "작업대 아이템의 제작 시간 배율입니다. 높을수록 오래 걸립니다. 1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "perkCost": {
+          "label": "무기 강화 비용",
+          "description": "무기를 강화하는 데 필요한 룬입니다. 1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "recyclingYield": {
+          "label": "분해 시 룬 반환",
+          "description": "강화된 무기를 분해할 때 돌려받는 룬의 비율입니다. 0.5가 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "miningXp": {
+          "label": "채굴 XP",
+          "description": "1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "explorationXp": {
+          "label": "탐험 XP",
+          "description": "탐험과 퀘스트 완료로 얻는 XP입니다. 1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "enemyAmount": {
+          "label": "적 수",
+          "description": "월드에 있는 적의 수입니다. 난이도가 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "Few": "적음",
+            "Normal": "보통",
+            "Many": "많음",
+            "Extreme": "극단적"
+          }
+        },
+        "simultaneousAttacks": {
+          "label": "동시 공격자 수",
+          "description": "동시에 공격할 수 있는 적의 수입니다. 난이도가 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "Few": "적음",
+            "Normal": "보통",
+            "Many": "많음",
+            "Extreme": "극단적"
+          }
+        },
+        "enemyStamina": {
+          "label": "적 스태미나",
+          "description": "높을수록 적을 기절시키기 어렵습니다. 1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "enemyPerception": {
+          "label": "적 감지 범위",
+          "description": "적이 플레이어를 보고 들을 수 있는 거리입니다(보스 제외). 1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "enemyAttackFrequency": {
+          "label": "적 공격 빈도",
+          "description": "적이 공격하는 빈도입니다(보스 제외). 1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "bossHealth": {
+          "label": "보스 체력",
+          "description": "1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "bossDamage": {
+          "label": "보스 피해량",
+          "description": "1이 게임 기본값입니다. 난이도가 사용자 지정일 때만 적용됩니다."
+        },
+        "tamingFailure": {
+          "label": "길들이는 중 야생동물을 놀라게 했을 때",
+          "description": "난이도가 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "KeepProgress": "진행 상황 모두 유지",
+            "LoseSomeProgress": "진행 상황 일부 잃음",
+            "LoseAllProgress": "진행 상황 모두 잃음"
+          }
+        },
+        "curse": {
+          "label": "슈라우드의 저주",
+          "description": "슈라우드 안에서 공격받을 때 저주에 걸릴 확률입니다. 난이도가 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "Easy": "끔",
+            "Normal": "보통",
+            "Hard": "확률 2배"
+          }
+        },
+        "dayLength": {
+          "label": "낮 길이",
+          "description": "낮이 지속되는 실제 시간입니다. 난이도가 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "120000000000": "2분",
+            "600000000000": "10분",
+            "1200000000000": "20분",
+            "1800000000000": "30분(기본)",
+            "2700000000000": "45분",
+            "3600000000000": "60분"
+          }
+        },
+        "nightLength": {
+          "label": "밤 길이",
+          "description": "밤이 지속되는 실제 시간입니다. 난이도가 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "120000000000": "2분",
+            "300000000000": "5분",
+            "720000000000": "12분(기본)",
+            "1200000000000": "20분",
+            "1800000000000": "30분",
+            "3600000000000": "60분"
+          }
+        },
+        "hungerToStarving": {
+          "label": "배고픈 상태 지속 시간",
+          "description": "플레이어가 굶주리기 전까지 배고픈 상태로 있는 시간입니다. 난이도가 사용자 지정일 때만 적용됩니다.",
+          "options": {
+            "300000000000": "5분",
+            "600000000000": "10분(기본)",
+            "900000000000": "15분",
+            "1200000000000": "20분"
+          }
         }
       },
       "ports": {
@@ -2770,6 +3333,83 @@
           "options": {
             "0": "끔",
             "1": "켬"
+          }
+        },
+        "tags": {
+          "label": "서버 태그",
+          "description": "서버 목록에 표시되는 쉼표로 구분된 태그입니다."
+        },
+        "region": {
+          "label": "지역",
+          "description": "서버 목록에 표시되는 지역입니다.",
+          "options": {
+            "0": "미국 동부",
+            "1": "미국 서부",
+            "2": "남아메리카",
+            "3": "유럽",
+            "4": "아시아",
+            "5": "오스트레일리아",
+            "6": "중동",
+            "7": "아프리카",
+            "255": "전 세계",
+            "-1": "없음"
+          }
+        },
+        "searchKey": {
+          "label": "로비 검색 키",
+          "description": "플레이어가 이 키로 로비에서 서버를 찾을 수 있습니다."
+        },
+        "lan": {
+          "label": "LAN 전용",
+          "description": "인터넷에 공개되지 않으며 플레이어도 인증하지 않습니다.",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "cheats": {
+          "label": "치트",
+          "description": "플레이어가 치트 명령어를 사용할 수 있습니다.",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "voice": {
+          "label": "음성 채팅",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "visibleMaxPlayers": {
+          "label": "목록에 표시되는 슬롯",
+          "description": "-1: 실제 슬롯 수."
+        },
+        "pure": {
+          "label": "퓨어 서버",
+          "options": {
+            "0": "꺼짐",
+            "1": "화이트리스트를 제외한 파일이 일치해야 함",
+            "2": "파일은 Steam에서 온 것이어야 함"
+          }
+        },
+        "consistency": {
+          "label": "중요 파일 검사",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "downloadUrl": {
+          "label": "고속 다운로드 URL",
+          "description": "플레이어가 서버 대신 커스텀 콘텐츠를 내려받는 위치입니다."
+        },
+        "pausable": {
+          "label": "플레이어가 일시정지 가능",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
           }
         }
       },
@@ -2830,7 +3470,8 @@
           "label": "화이트리스트의 플레이어만"
         },
         "pvp": {
-          "label": "플레이어끼리 피해를 줄 수 있음"
+          "label": "플레이어끼리 피해를 줄 수 있음",
+          "description": "Minecraft 1.21.8 이하에서만 적용됩니다. 새 버전은 대신 pvp 게임 규칙을 사용합니다."
         },
         "seed": {
           "label": "월드 시드",
@@ -2907,6 +3548,50 @@
             "true": "예",
             "false": "아니요"
           }
+        },
+        "maxTickTime": {
+          "label": "최대 틱 시간(ms)",
+          "description": "이보다 긴 틱이 발생하면 서버가 멈춥니다. -1: 멈추지 않음."
+        },
+        "secureProfile": {
+          "label": "서명된 채팅 키 필요",
+          "description": "참가하려면 Mojang이 서명한 채팅 키가 필요합니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "maxWorldSize": {
+          "label": "월드 경계 반지름",
+          "description": "중심에서 떨어진 블록 수입니다."
+        },
+        "entityRange": {
+          "label": "엔티티 범위(%)",
+          "description": "엔티티를 플레이어에게 보내는 거리를 백분율로 지정합니다."
+        },
+        "pauseWhenEmpty": {
+          "label": "비었을 때 일시정지(초)",
+          "description": "아무도 접속하지 않은 상태에서 서버가 일시정지되기까지의 초입니다(1.21.2 이상). -1: 안 함."
+        },
+        "resourcePack": {
+          "label": "리소스 팩 URL",
+          "description": "참가할 때 이 리소스 팩이 플레이어에게 제안됩니다."
+        },
+        "resourcePackSha1": {
+          "label": "리소스 팩 SHA-1",
+          "description": "클라이언트가 확인할 수 있도록 팩의 SHA-1 해시를 지정합니다."
+        },
+        "requireResourcePack": {
+          "label": "리소스 팩 필수",
+          "description": "팩을 거부한 플레이어는 연결이 끊깁니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "resourcePackPrompt": {
+          "label": "리소스 팩 메시지",
+          "description": "팩이 제안될 때 플레이어에게 표시되는 텍스트입니다."
         }
       },
       "ports": {
@@ -2993,6 +3678,133 @@
         },
         "guildSize": {
           "label": "길드당 플레이어 수"
+        },
+        "autoSave": {
+          "label": "자동 저장 간격(초)",
+          "description": "월드 저장 사이의 간격(초)입니다. 30이 게임 기본값입니다."
+        },
+        "pvpDamage": {
+          "label": "플레이어 간 피해",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "friendlyFire": {
+          "label": "아군 피해",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "invaders": {
+          "label": "거점 습격(침입자)",
+          "description": "적이 플레이어 거점을 습격합니다.",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "hardcore": {
+          "label": "하드코어",
+          "description": "플레이어가 죽은 뒤 다시 살아날 수 없습니다.",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "palLost": {
+          "label": "사망 시 팰 소실",
+          "description": "죽은 팰은 영구히 사라집니다.",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "palDamageAttack": {
+          "label": "팰이 주는 피해",
+          "description": "1이 게임 기본값입니다."
+        },
+        "palDamageDefense": {
+          "label": "팰이 받는 피해",
+          "description": "1이 게임 기본값입니다."
+        },
+        "playerDamageAttack": {
+          "label": "플레이어가 주는 피해",
+          "description": "1이 게임 기본값입니다."
+        },
+        "playerDamageDefense": {
+          "label": "플레이어가 받는 피해",
+          "description": "1이 게임 기본값입니다."
+        },
+        "playerHunger": {
+          "label": "플레이어 허기 속도",
+          "description": "1이 게임 기본값입니다."
+        },
+        "playerStamina": {
+          "label": "플레이어 스태미나 소모",
+          "description": "1이 게임 기본값입니다."
+        },
+        "palHunger": {
+          "label": "팰 허기 속도",
+          "description": "1이 게임 기본값입니다."
+        },
+        "palStamina": {
+          "label": "팰 스태미나 소모",
+          "description": "1이 게임 기본값입니다."
+        },
+        "buildDecay": {
+          "label": "구조물 노후",
+          "description": "0이면 구조물이 노후되지 않습니다. 1이 게임 기본값입니다."
+        },
+        "itemWeight": {
+          "label": "아이템 무게",
+          "description": "1이 게임 기본값입니다."
+        },
+        "equipDurability": {
+          "label": "장비 마모",
+          "description": "0이면 장비가 절대 부서지지 않습니다. 1이 게임 기본값입니다."
+        },
+        "baseCamps": {
+          "label": "서버 전체 거점 수",
+          "description": "서버 전체에서 가질 수 있는 최대 거점 수입니다."
+        },
+        "buildingLimit": {
+          "label": "플레이어당 건축물 수",
+          "description": "0이면 제한이 없습니다."
+        },
+        "supplyDropMinutes": {
+          "label": "보급품 투하 간격(분)"
+        },
+        "respawnSeconds": {
+          "label": "부활 지연(초)"
+        },
+        "backups": {
+          "label": "월드 백업",
+          "description": "게임이 저장 폴더에 월드 자체 백업을 보관합니다.",
+          "options": {
+            "True": "켬",
+            "False": "끔"
+          }
+        },
+        "showPlayerList": {
+          "label": "메뉴의 플레이어 목록",
+          "options": {
+            "True": "예",
+            "False": "아니요"
+          }
+        },
+        "allowClientMods": {
+          "label": "모드를 쓰는 플레이어",
+          "description": "클라이언트 모드를 쓰는 플레이어가 접속할 수 있는지 여부입니다.",
+          "options": {
+            "True": "허용",
+            "False": "차단"
+          }
+        },
+        "publicIp": {
+          "label": "공인 IP",
+          "description": "NAT 뒤에 있는 커뮤니티 서버용입니다. 플레이어에게 보이는 주소입니다."
         }
       },
       "ports": {
@@ -3113,6 +3925,135 @@
         "welcome": {
           "label": "환영 메시지",
           "description": "플레이어가 접속하면 채팅에 표시됩니다."
+        },
+        "map": {
+          "label": "맵",
+          "description": "불러올 맵을 세미콜론으로 구분해 입력합니다. 맵 모드를 먼저, 그다음 Muldraugh, KY를 적습니다. 한 줄로 입력하세요."
+        },
+        "announceDeath": {
+          "label": "사망 알림",
+          "description": "플레이어가 죽으면 채팅에 메시지가 표시됩니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "noFire": {
+          "label": "불 없음",
+          "description": "불이 나지 않습니다(모닥불은 계속 사용할 수 있습니다).",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "playerSafehouse": {
+          "label": "플레이어가 안전가옥을 점령할 수 있음",
+          "description": "관리자는 항상 점령할 수 있습니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "safehouseLoot": {
+          "label": "낯선 사람이 안전가옥을 약탈할 수 있음",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "safehouseTrespass": {
+          "label": "낯선 사람이 안전가옥에 들어갈 수 있음",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "safehouseFire": {
+          "label": "불이 안전가옥에 피해를 줄 수 있음",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "safehouseRespawn": {
+          "label": "내 안전가옥에서 부활",
+          "description": "플레이어가 속해 있던 안전가옥에서 다시 살아납니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "safehouseDays": {
+          "label": "점령 전 생존해야 하는 일수",
+          "description": "플레이어가 안전가옥을 점령하기 전에 생존해야 하는 게임 내 일수입니다."
+        },
+        "lootRespawnHours": {
+          "label": "전리품 재생성 간격(게임 내 시간)",
+          "description": "0이면 전리품이 다시 생성되지 않습니다."
+        },
+        "showSafety": {
+          "label": "PvP 상태 표시",
+          "description": "PvP 모드인 플레이어 머리 위에 해골이 표시됩니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "pvpMeleeDamage": {
+          "label": "PvP 근접 피해(%)"
+        },
+        "pvpFirearmDamage": {
+          "label": "PvP 총기 피해(%)"
+        },
+        "sleepAllowed": {
+          "label": "플레이어가 잠을 잘 수 있음",
+          "description": "피곤할 때 잠을 잘 수 있지만 꼭 잘 필요는 없습니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "sleepNeeded": {
+          "label": "플레이어가 잠을 자야 함",
+          "description": "플레이어가 피곤해져서 잠을 자야 합니다. 앞의 옵션이 켜져 있어야 합니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "maxAccountsPerUser": {
+          "label": "Steam 사용자당 계정 수",
+          "description": "0이면 제한이 없습니다."
+        },
+        "backupsCount": {
+          "label": "보관할 백업 수"
+        },
+        "backupsOnStart": {
+          "label": "시작할 때마다 백업",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "backupsPeriod": {
+          "label": "백업 간격(분)",
+          "description": "0이면 꺼집니다."
+        },
+        "faction": {
+          "label": "팩션",
+          "description": "플레이어가 팩션을 만들고 가입할 수 있습니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "luaChecksum": {
+          "label": "Lua 파일이 다른 클라이언트 추방",
+          "description": "게임 파일이 서버와 다른 플레이어는 추방됩니다.",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
         }
       },
       "ports": {
@@ -3210,6 +4151,61 @@
         "headerImage": {
           "label": "헤더 이미지 URL",
           "description": "서버 브라우저에 표시되는 512 × 256 JPG입니다."
+        },
+        "level": {
+          "label": "맵 종류",
+          "description": "절차적 맵은 위의 시드와 크기를 사용합니다.",
+          "options": {
+            "procedural": "절차적",
+            "barren": "Barren",
+            "hapis": "하피스 섬",
+            "savas": "사바스 섬"
+          }
+        },
+        "gamemode": {
+          "label": "게임 모드",
+          "options": {
+            "vanilla": "바닐라",
+            "softcore": "소프트코어",
+            "hardcore": "하드코어",
+            "primitive": "원시",
+            "weapontest": "무기 테스트"
+          }
+        },
+        "tickRate": {
+          "label": "틱레이트",
+          "description": "서버의 초당 업데이트 횟수입니다. 게임 기본값은 30이며 높이면 CPU를 더 씁니다."
+        },
+        "salt": {
+          "label": "맵 솔트",
+          "description": "시드, 크기와 함께 알려진 맵을 다시 만듭니다."
+        },
+        "levelUrl": {
+          "label": "커스텀 맵 URL",
+          "description": "맵 파일의 직접 다운로드 링크입니다. 생성된 맵을 대체합니다."
+        },
+        "maxTeamSize": {
+          "label": "최대 팀 인원",
+          "description": "팀 인원입니다. 1: 솔로만."
+        },
+        "radiation": {
+          "label": "방사능",
+          "options": {
+            "on": "켜짐",
+            "off": "꺼짐"
+          }
+        },
+        "upkeepPeriod": {
+          "label": "유지비 주기(분)",
+          "description": "기지의 유지비가 분산되는 시간(분)입니다."
+        },
+        "saveBackups": {
+          "label": "보관할 저장 백업 수",
+          "description": "게임이 보관하는 월드의 이전 사본 수입니다."
+        },
+        "logoImage": {
+          "label": "Rust+ 로고 URL",
+          "description": "Rust+ 컴패니언 앱에 표시되는 로고입니다."
         }
       },
       "ports": {
@@ -3302,6 +4298,98 @@
             "true": "예",
             "false": "아니요"
           }
+        },
+        "hideFromList": {
+          "label": "공개 목록에서 숨기기",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "serverInfoId": {
+          "label": "서버 정보 Pastebin ID",
+          "description": "서버 목록의 정보 탭에 표시되는 텍스트의 Pastebin ID입니다."
+        },
+        "ipBanning": {
+          "label": "IP 차단",
+          "description": "서버가 프록시나 방화벽 뒤에 있으면 끄세요.",
+          "options": {
+            "true": "켜짐",
+            "false": "꺼짐"
+          }
+        },
+        "fastRestart": {
+          "label": "빠른 라운드 재시작",
+          "options": {
+            "true": "켜짐",
+            "false": "꺼짐"
+          }
+        },
+        "fastRestartDelay": {
+          "label": "빠른 재시작 지연(초)"
+        },
+        "intercomCooldown": {
+          "label": "인터콤 재사용 대기시간(초)"
+        },
+        "intercomSpeech": {
+          "label": "인터콤 발언 시간(초)"
+        },
+        "warheadGates": {
+          "label": "핵탄두 카운트다운 중 게이트 열기",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "warheadDoors": {
+          "label": "핵탄두 카운트다운 중 문 열기",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "warheadLockZones": {
+          "label": "핵탄두 카운트다운 중 체크포인트 잠금",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "keepItems": {
+          "label": "탈출 후 아이템 유지",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "endOnOnePlayer": {
+          "label": "한 명만 남으면 라운드 종료",
+          "options": {
+            "true": "예",
+            "false": "아니요"
+          }
+        },
+        "spawnProtect": {
+          "label": "스폰 보호",
+          "options": {
+            "true": "켜짐",
+            "false": "꺼짐"
+          }
+        },
+        "spawnProtectTime": {
+          "label": "스폰 보호(초)"
+        },
+        "mtfMinTime": {
+          "label": "MTF 웨이브, 가장 빠른 시점(초)"
+        },
+        "mtfMaxTime": {
+          "label": "MTF 웨이브, 가장 늦은 시점(초)"
+        },
+        "mtfMaxAmount": {
+          "label": "MTF 웨이브 인원"
+        },
+        "ciMaxAmount": {
+          "label": "카오스 웨이브 인원"
         }
       },
       "ports": {
@@ -3336,7 +4424,7 @@
         },
         "gameMode": {
           "label": "게임 모드",
-          "description": "새 월드에 적용됩니다.",
+          "description": "새 월드에 적용됩니다. 아래의 사용자 지정 게임 모드 옵션은 사용자 지정일 때만 적용됩니다.",
           "options": {
             "Normal": "보통",
             "Hard": "어려움",
@@ -3370,6 +4458,152 @@
             "true": "켬",
             "false": "끔"
           }
+        },
+        "enemySpawn": {
+          "label": "적 출현",
+          "description": "게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "enemyHealth": {
+          "label": "적 체력",
+          "description": "게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "Low": "낮음",
+            "Normal": "보통",
+            "High": "높음"
+          }
+        },
+        "enemyDamage": {
+          "label": "적 피해량",
+          "description": "게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "Low": "낮음",
+            "Normal": "보통",
+            "High": "높음"
+          }
+        },
+        "enemyArmour": {
+          "label": "적 방어력",
+          "description": "게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "Low": "낮음",
+            "Normal": "보통",
+            "High": "높음"
+          }
+        },
+        "enemyAggression": {
+          "label": "적 공격성",
+          "description": "게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "Low": "낮음",
+            "Normal": "보통",
+            "High": "높음"
+          }
+        },
+        "animalSpawnRate": {
+          "label": "동물 출현율",
+          "description": "게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "Low": "낮음",
+            "Normal": "보통",
+            "High": "높음"
+          }
+        },
+        "startingSeason": {
+          "label": "시작 계절",
+          "description": "게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "Spring": "봄",
+            "Summer": "여름",
+            "Autumn": "가을",
+            "Winter": "겨울"
+          }
+        },
+        "seasonLength": {
+          "label": "계절 길이",
+          "description": "게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "Short": "짧음",
+            "Default": "기본",
+            "Long": "김",
+            "Realistic": "현실적"
+          }
+        },
+        "dayLength": {
+          "label": "하루 길이",
+          "description": "게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "Short": "짧음",
+            "Default": "기본",
+            "Long": "김",
+            "Realistic": "현실적"
+          }
+        },
+        "precipitation": {
+          "label": "비와 눈",
+          "description": "비나 눈이 오는 빈도입니다. 게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "Low": "낮음",
+            "Default": "기본",
+            "High": "높음"
+          }
+        },
+        "consumableEffects": {
+          "label": "허기와 갈증 피해",
+          "description": "수분과 포만감이 낮을 때 받는 피해입니다. 게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "Normal": "보통",
+            "Hard": "어려움"
+          }
+        },
+        "playerStatsDamage": {
+          "label": "상한 음식 피해",
+          "description": "상하거나 썩은 음식과 음료로 인한 피해입니다. 게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "Off": "끔",
+            "Normal": "보통",
+            "Hard": "어려움"
+          }
+        },
+        "coldPenalties": {
+          "label": "추위 페널티",
+          "description": "추위가 체력과 스태미나 회복을 얼마나 방해하는지 정합니다. 게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "Off": "끔",
+            "Normal": "보통",
+            "Hard": "어려움"
+          }
+        },
+        "reducedFood": {
+          "label": "컨테이너 안 음식 줄이기",
+          "description": "게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "singleUseContainers": {
+          "label": "일회용 컨테이너",
+          "description": "컨테이너는 한 번만 열 수 있습니다. 게임 모드가 사용자 지정이고 새 월드일 때만 적용됩니다.",
+          "options": {
+            "true": "켬",
+            "false": "끔"
+          }
+        },
+        "idleDayCycle": {
+          "label": "서버가 비었을 때 낮밤 주기 속도",
+          "description": "아무도 접속하지 않았을 때 시간이 흐르는 속도입니다. 0이면 멈추고 1이 보통 속도입니다."
+        },
+        "activeFps": {
+          "label": "서버 프레임 속도",
+          "description": "플레이어가 접속 중일 때의 목표 초당 프레임 수입니다. 낮을수록 CPU를 적게 씁니다. 60이 게임 기본값입니다."
+        },
+        "idleFps": {
+          "label": "서버가 비었을 때 프레임 속도",
+          "description": "아무도 접속하지 않았을 때의 목표 초당 프레임 수입니다. 5가 게임 기본값입니다."
         }
       },
       "ports": {
@@ -3477,6 +4711,98 @@
             "2": "어려움",
             "3": "전문가"
           }
+        },
+        "tags": {
+          "label": "서버 태그",
+          "description": "서버 목록에 표시되는 쉼표로 구분된 태그입니다."
+        },
+        "region": {
+          "label": "지역",
+          "description": "서버 목록에 표시되는 지역입니다.",
+          "options": {
+            "0": "미국 동부",
+            "1": "미국 서부",
+            "2": "남아메리카",
+            "3": "유럽",
+            "4": "아시아",
+            "5": "오스트레일리아",
+            "6": "중동",
+            "7": "아프리카",
+            "255": "전 세계",
+            "-1": "없음"
+          }
+        },
+        "lan": {
+          "label": "LAN 전용",
+          "description": "인터넷에 공개되지 않으며 플레이어도 인증하지 않습니다.",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "cheats": {
+          "label": "치트",
+          "description": "플레이어가 치트 명령어를 사용할 수 있습니다.",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "stalemate": {
+          "label": "교착 시 서든 데스",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "stalemateTime": {
+          "label": "교착 시간(초)"
+        },
+        "allowSpectators": {
+          "label": "관전자",
+          "options": {
+            "0": "허용 안 함",
+            "1": "허용"
+          }
+        },
+        "forceCamera": {
+          "label": "사망한 플레이어는 자기 팀만 관전",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "disableSpread": {
+          "label": "무작위 피해 편차 없음",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "downloadUrl": {
+          "label": "고속 다운로드 URL",
+          "description": "플레이어가 서버 대신 커스텀 맵을 내려받는 위치입니다."
+        },
+        "allowDownload": {
+          "label": "다운로드 허용",
+          "options": {
+            "0": "꺼짐",
+            "1": "켜짐"
+          }
+        },
+        "pure": {
+          "label": "퓨어 서버",
+          "description": "클라이언트의 어떤 파일을 허용할지 정합니다.",
+          "options": {
+            "0": "pure_server_minimal.txt만",
+            "1": "전체 규칙 + 화이트리스트",
+            "2": "전체 규칙",
+            "-1": "꺼짐"
+          }
+        },
+        "visibleMaxPlayers": {
+          "label": "목록에 표시되는 슬롯",
+          "description": "-1: 실제 슬롯 수."
         }
       },
       "ports": {
@@ -3542,6 +4868,26 @@
         },
         "welcome": {
           "label": "환영 메시지"
+        },
+        "cycle": {
+          "label": "하루 길이(초)",
+          "description": "낮과 밤이 한 바퀴 도는 데 걸리는 초입니다. 3600은 1시간입니다."
+        },
+        "chatRate": {
+          "label": "채팅 지연(초)",
+          "description": "플레이어의 메시지 사이 최소 초입니다."
+        },
+        "timeout": {
+          "label": "핑 제한(ms)",
+          "description": "이 핑을 넘으면 강퇴됩니다. 보통 400~600입니다."
+        },
+        "decay": {
+          "label": "부식 시간(초)",
+          "description": "방치된 구조물과 차량이 부식되기까지의 초입니다."
+        },
+        "loadout": {
+          "label": "시작 아이템",
+          "description": "플레이어가 시작할 때 가지는 아이템 ID를 /로 구분해 지정합니다."
         }
       },
       "ports": {
@@ -3657,6 +5003,26 @@
         },
         "saveInterval": {
           "label": "자동 저장 간격(초)"
+        },
+        "backups": {
+          "label": "보관할 백업 수",
+          "description": "게임이 보관하는 월드 자동 백업의 수입니다. 4가 게임 기본값입니다."
+        },
+        "backupShort": {
+          "label": "첫 백업까지(초)",
+          "description": "처음 자동 백업 사이의 간격(초)입니다. 7200이 게임 기본값입니다."
+        },
+        "backupLong": {
+          "label": "이후 백업 간격(초)",
+          "description": "이후 자동 백업 사이의 간격(초)입니다. 43200이 게임 기본값입니다."
+        },
+        "fireHazards": {
+          "label": "화재 위험",
+          "description": "불이 현실적으로 번집니다."
+        },
+        "instanceId": {
+          "label": "크로스플레이 인스턴스 ID",
+          "description": "여러 크로스플레이 서버가 하나의 공개 주소를 공유할 때만 사용합니다."
         }
       },
       "ports": {
@@ -3703,7 +5069,8 @@
           "options": {
             "PvP": "PvP",
             "PvE": "PvE"
-          }
+          },
+          "description": "규칙 세트를 사용할 때는 그에 맞아야 합니다."
         },
         "difficulty": {
           "label": "난이도",
@@ -3711,13 +5078,15 @@
             "Difficulty_Easy": "여유로움",
             "Difficulty_Normal": "보통",
             "Difficulty_Brutal": "잔혹"
-          }
+          },
+          "description": "미리 정해진 난이도입니다. 사용자 지정 게임 옵션보다 우선합니다. 사용자 지정 옵션을 쓰려면 비워 두세요."
         },
         "autoSave": {
           "label": "자동 저장 간격(초)"
         },
         "clanSize": {
-          "label": "클랜 규모"
+          "label": "클랜 규모",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
         },
         "castleDamage": {
           "label": "성 피해",
@@ -3725,11 +5094,12 @@
             "Always": "항상",
             "Never": "안 함",
             "TimeRestricted": "습격 시간 동안"
-          }
+          },
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
         },
         "bloodBound": {
           "label": "혈맹 장비",
-          "description": "죽어도 장비가 주인에게 남습니다.",
+          "description": "죽어도 장비가 주인에게 남습니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다.",
           "options": {
             "true": "켬",
             "false": "끔"
@@ -3737,7 +5107,7 @@
         },
         "teleportBound": {
           "label": "아이템이 순간이동을 막음",
-          "description": "자원을 든 플레이어는 웨이게이트를 사용할 수 없습니다.",
+          "description": "자원을 든 플레이어는 웨이게이트를 사용할 수 없습니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다.",
           "options": {
             "true": "켬",
             "false": "끔"
@@ -3745,28 +5115,179 @@
         },
         "materialYield": {
           "label": "자원 수확량",
-          "description": "채집한 자원의 배율."
+          "description": "채집한 자원의 배율. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
         },
         "craftRate": {
-          "label": "제작 속도"
+          "label": "제작 속도",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
         },
         "buildCost": {
-          "label": "건설 비용"
+          "label": "건설 비용",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
         },
         "researchCost": {
-          "label": "연구 비용"
+          "label": "연구 비용",
+          "description": "최신 게임 버전에서는 더 이상 사용되지 않습니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
         },
         "bloodDrain": {
-          "label": "피 소모량"
+          "label": "피 소모량",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
         },
         "durabilityDrain": {
-          "label": "내구도 감소"
+          "label": "내구도 감소",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
         },
         "sunDamage": {
-          "label": "햇빛 피해"
+          "label": "햇빛 피해",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
         },
         "castleDecay": {
-          "label": "성 노후화"
+          "label": "성 노후화",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "ruleset": {
+          "label": "규칙 세트",
+          "description": "미리 정해진 규칙 세트입니다. 사용자 지정 게임 옵션보다 우선하며 게임 모드와 일치해야 합니다. 사용자 지정은 아래 옵션을 사용합니다.",
+          "options": {
+            "StandardPvP": "일반 PvP",
+            "StandardPvP_Easy": "일반 PvP, 쉬움",
+            "StandardPvP_Hard": "일반 PvP, 어려움",
+            "StandardPvP_DailySiege": "일반 PvP, 매일 공성",
+            "StandardPvP_NoSiege": "일반 PvP, 공성 없음",
+            "StandardPvP_WeekendSiege": "일반 PvP, 주말 공성",
+            "SoloPvP": "솔로 PvP",
+            "DuoPvP": "듀오 PvP",
+            "DuoPvP_DailySiege": "듀오 PvP, 매일 공성",
+            "DuoPvP_NoSiege": "듀오 PvP, 공성 없음",
+            "DuoPvP_WeekendSiege": "듀오 PvP, 주말 공성",
+            "TrioPvP": "트리오 PvP",
+            "TrioPvP_DailySiege": "트리오 PvP, 매일 공성",
+            "TrioPvP_NoSiege": "트리오 PvP, 공성 없음",
+            "TrioPvP_WeekendSiege": "트리오 PvP, 주말 공성",
+            "HardcorePvP": "풀 루팅 PvP",
+            "HardcoreDuoPvP": "하드코어 듀오 PvP",
+            "HardcoreTrioPvP": "하드코어 트리오 PvP",
+            "Level30PvP": "PvP 새벽(30레벨)",
+            "Level50PvP": "PvP 정오(50레벨)",
+            "Level70PvP": "PvP 황혼(70레벨)",
+            "Level90PvP": "PvP 자정(90레벨)",
+            "StandardPvE": "일반 PvE",
+            "StandardPvE_Easy": "일반 PvE, 쉬움",
+            "StandardPvE_Hard": "일반 PvE, 어려움",
+            "Level30PvE": "PvE 새벽(30레벨)",
+            "Level50PvE": "PvE 정오(50레벨)",
+            "Level70PvE": "PvE 황혼(70레벨)",
+            "Level90PvE": "PvE 자정(90레벨)",
+            "custom": "사용자 지정: 아래 옵션"
+          }
+        },
+        "pvpProtection": {
+          "label": "신규 플레이어 PvP 보호",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다.",
+          "options": {
+            "Disabled": "없음",
+            "VeryShort": "15분",
+            "Short": "30분",
+            "Medium": "1시간",
+            "Long": "2시간"
+          }
+        },
+        "playerDamageMode": {
+          "label": "플레이어 피해량",
+          "description": "플레이어끼리 피해를 줄 수 있는 때입니다(PvE에서는 해당 없음). 규칙 세트나 난이도가 설정되어 있으면 무시됩니다.",
+          "options": {
+            "Always": "항상",
+            "TimeRestricted": "습격 시간 동안"
+          }
+        },
+        "castleHeartDamage": {
+          "label": "성의 심장",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다.",
+          "options": {
+            "CanBeDestroyedOnlyWhenDecaying": "노후될 때만 파괴됨",
+            "CanBeDestroyedByPlayers": "플레이어가 파괴할 수 있음",
+            "CanBeSeizedOrDestroyedByPlayers": "플레이어가 빼앗거나 파괴할 수 있음"
+          }
+        },
+        "siegeHealth": {
+          "label": "공성 골렘 체력",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다.",
+          "options": {
+            "VeryLow": "매우 낮음",
+            "Low": "낮음",
+            "Normal": "보통",
+            "High": "높음",
+            "VeryHigh": "매우 높음"
+          }
+        },
+        "deathContainer": {
+          "label": "시체를 약탈할 수 있는 사람",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다.",
+          "options": {
+            "Anyone": "누구나",
+            "ClanMembers": "클랜원",
+            "OnlySelf": "주인만"
+          }
+        },
+        "dropGeneral": {
+          "label": "적 드롭",
+          "description": "처치와 상자에서 나오는 드롭의 배율입니다. 1이 게임 기본값입니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "stacks": {
+          "label": "스택 크기",
+          "description": "한 스택에 들어가는 아이템 수의 배율입니다. 1이 게임 기본값입니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "bloodEssenceYield": {
+          "label": "혈액 정수 획득량",
+          "description": "처치한 적에게서 얻는 혈액 정수의 배율입니다. 1이 게임 기본값입니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "dayLengthSeconds": {
+          "label": "하루 길이(초)",
+          "description": "하루가 지속되는 실제 초 단위 시간입니다. 1080이 게임 기본값입니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "bloodMoonMin": {
+          "label": "블러드 문 최단 간격(일)",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "bloodMoonMax": {
+          "label": "블러드 문 최장 간격(일)",
+          "description": "규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "playerHealth": {
+          "label": "플레이어 체력",
+          "description": "플레이어 최대 체력의 배율입니다. 1이 게임 기본값입니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "damageReceived": {
+          "label": "플레이어가 받는 피해",
+          "description": "플레이어가 받는 모든 피해의 배율입니다. 1이 게임 기본값입니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "mobHealth": {
+          "label": "적 체력",
+          "description": "일반 적의 체력 배율입니다. 1이 게임 기본값입니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "mobPower": {
+          "label": "적 피해량",
+          "description": "일반 적이 주는 피해의 배율입니다. 1이 게임 기본값입니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "vbloodHealth": {
+          "label": "보스 체력",
+          "description": "V 블러드 보스의 체력 배율입니다. 1이 게임 기본값입니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "vbloodPower": {
+          "label": "보스 피해량",
+          "description": "V 블러드 보스가 주는 피해의 배율입니다. 1이 게임 기본값입니다. 규칙 세트나 난이도가 설정되어 있으면 무시됩니다."
+        },
+        "maxAdmins": {
+          "label": "관리자 슬롯",
+          "description": "서버가 가득 차도 접속할 수 있는 관리자 수입니다."
+        },
+        "autoSaveCount": {
+          "label": "보관할 자동 저장 수",
+          "description": "서버가 보관하는 자동 저장의 수입니다. 25가 게임 기본값입니다."
+        },
+        "serverFps": {
+          "label": "서버 프레임 속도",
+          "description": "서버의 목표 초당 프레임 수입니다. 30이 게임 기본값입니다."
         }
       },
       "ports": {

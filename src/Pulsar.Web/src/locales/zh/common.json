@@ -2147,52 +2147,6 @@
           "label": "EasyAntiCheat",
           "description": "大多数代码类模组需要将其关闭。"
         },
-        "difficulty": {
-          "label": "难度",
-          "options": {
-            "0": "拾荒者",
-            "1": "冒险家",
-            "2": "游牧者",
-            "3": "战士",
-            "4": "生存专家",
-            "5": "疯狂"
-          }
-        },
-        "dayLength": {
-          "label": "一天时长（现实分钟）",
-          "description": "游戏内一整天对应的现实分钟数。"
-        },
-        "dayLightHours": {
-          "label": "白天小时数",
-          "description": "一天中白天持续的游戏内小时数。"
-        },
-        "bloodMoonFrequency": {
-          "label": "血月间隔（天）",
-          "description": "设为 0 则关闭血月。"
-        },
-        "bloodMoonEnemies": {
-          "label": "血月僵尸数（每名玩家）"
-        },
-        "zombieSpeedDay": {
-          "label": "白天僵尸速度",
-          "options": {
-            "0": "行走",
-            "1": "慢跑",
-            "2": "奔跑",
-            "3": "冲刺",
-            "4": "噩梦"
-          }
-        },
-        "zombieSpeedNight": {
-          "label": "夜间僵尸速度",
-          "options": {
-            "0": "行走",
-            "1": "慢跑",
-            "2": "奔跑",
-            "3": "冲刺",
-            "4": "噩梦"
-          }
-        },
         "maxZombies": {
           "label": "最大僵尸数",
           "description": "整张地图上同时存在的僵尸数量。超过 90 会拖慢大多数服务器。"
@@ -2206,34 +2160,115 @@
             "3": "可击杀所有人"
           }
         },
-        "dropOnDeath": {
-          "label": "死亡掉落",
-          "options": {
-            "0": "无",
-            "1": "全部",
-            "2": "仅快捷栏",
-            "3": "仅背包",
-            "4": "全部删除"
-          }
-        },
-        "lootAbundance": {
-          "label": "战利品丰富度（%）"
-        },
-        "lootRespawnDays": {
-          "label": "战利品刷新（天）"
-        },
-        "xp": {
-          "label": "经验（%）"
-        },
-        "airDropHours": {
-          "label": "空投间隔（游戏小时）",
-          "description": "设为 0 则关闭空投。"
-        },
         "description": {
           "label": "描述"
         },
         "website": {
           "label": "网站"
+        },
+        "sandboxCode": {
+          "label": "沙盒代码",
+          "description": "难度、经验、战利品、僵尸、血月和空投合并为一个由游戏沙盒选项生成的代码（V3.0 及更新版本）。"
+        },
+        "region": {
+          "label": "地区",
+          "description": "玩家在列表中查找服务器时所属的地区。",
+          "options": {
+            "NorthAmericaEast": "北美东部",
+            "NorthAmericaWest": "北美西部",
+            "CentralAmerica": "中美洲",
+            "SouthAmerica": "南美洲",
+            "Europe": "欧洲",
+            "Russia": "俄罗斯",
+            "Asia": "亚洲",
+            "MiddleEast": "中东",
+            "Africa": "非洲",
+            "Oceania": "大洋洲"
+          }
+        },
+        "language": {
+          "label": "语言",
+          "description": "玩家所说语言的英文名称，例如 German。"
+        },
+        "worldGenSeed": {
+          "label": "随机世界种子",
+          "description": "仅用于 RWG 世界：新世界的种子。"
+        },
+        "worldGenSize": {
+          "label": "随机世界大小",
+          "description": "仅用于 RWG 世界：新世界的宽度和高度。",
+          "options": {
+            "6144": "6144",
+            "8192": "8192",
+            "10240": "10240"
+          }
+        },
+        "maxAnimals": {
+          "label": "最大动物数",
+          "description": "整张地图上同时存在的动物数量。"
+        },
+        "viewDistance": {
+          "label": "最大视距",
+          "description": "玩家可请求的最大视距。数值越低占用内存越少。",
+          "options": {
+            "6": "6",
+            "7": "7",
+            "8": "8",
+            "9": "9",
+            "10": "10",
+            "11": "11",
+            "12": "12"
+          }
+        },
+        "landClaimCount": {
+          "label": "每位玩家的领地数"
+        },
+        "landClaimSize": {
+          "label": "领地保护范围（方块）"
+        },
+        "landClaimExpiryTime": {
+          "label": "领地保护失效时间（天）",
+          "description": "玩家离线多少真实天数后，其领地保护失效。"
+        },
+        "landClaimDecayMode": {
+          "label": "领地保护衰减方式",
+          "options": {
+            "0": "慢",
+            "1": "快",
+            "2": "到期前无衰减"
+          }
+        },
+        "bedrollExpiryTime": {
+          "label": "睡袋失效时间（天）",
+          "description": "所有者最后在线后，睡袋保持有效的真实天数。"
+        },
+        "safeZoneLevel": {
+          "label": "安全区适用等级上限",
+          "description": "等级不高于此值的玩家会获得一片无敌人的区域。"
+        },
+        "crossplay": {
+          "label": "跨平台游戏",
+          "description": "主机玩家可以加入。需要开启 EasyAntiCheat，且名额不超过 8。",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "persistentProfiles": {
+          "label": "持久玩家档案",
+          "description": "在多次会话之间保留玩家档案。",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "buildCreate": {
+          "label": "创造模式",
+          "description": "允许玩家不受限制地建造。",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
         }
       },
       "ports": {
@@ -2352,6 +2387,97 @@
         "babyMatureSpeed": {
           "label": "幼崽成熟速度",
           "description": "数值越高，幼崽成长越快。1 为游戏默认值。"
+        },
+        "hardcore": {
+          "label": "硬核",
+          "description": "角色死亡后会回到 1 级。",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "playerDamage": {
+          "label": "玩家伤害",
+          "description": "玩家造成的伤害。1 为游戏默认值。"
+        },
+        "playerResistance": {
+          "label": "玩家抗性",
+          "description": "数值越高，玩家受到的伤害越少。1 为游戏默认值。"
+        },
+        "dinoDamage": {
+          "label": "野生恐龙伤害",
+          "description": "野生恐龙造成的伤害。1 为游戏默认值。"
+        },
+        "dinoResistance": {
+          "label": "野生恐龙抗性",
+          "description": "数值越高，野生恐龙受到的伤害越少。1 为游戏默认值。"
+        },
+        "structureResistance": {
+          "label": "建筑抗性",
+          "description": "数值越高，建筑受到的伤害越少。1 为游戏默认值。"
+        },
+        "stackSize": {
+          "label": "物品堆叠大小",
+          "description": "对所有堆叠大小应用倍率。1 为游戏默认值。"
+        },
+        "resourceRespawn": {
+          "label": "资源刷新周期",
+          "description": "数值越低，资源刷新越快。1 为游戏默认值。"
+        },
+        "harvestHealth": {
+          "label": "资源生命值",
+          "description": "树木、岩石和尸体的生命值。1 为游戏默认值。"
+        },
+        "playerFoodDrain": {
+          "label": "玩家食物消耗",
+          "description": "数值越高，玩家越快饿。1 为游戏默认值。"
+        },
+        "playerWaterDrain": {
+          "label": "玩家水分消耗",
+          "description": "数值越高，玩家越快渴。1 为游戏默认值。"
+        },
+        "dinoFoodDrain": {
+          "label": "恐龙食物消耗",
+          "description": "数值越高，已驯服的恐龙越快饿。1 为游戏默认值。"
+        },
+        "offlineRaidProtection": {
+          "label": "离线袭击保护",
+          "description": "部落所有成员离线期间不会被袭击。",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "offlineRaidSeconds": {
+          "label": "袭击保护延迟（秒）",
+          "description": "最后一名成员离线后，保护生效前的秒数。"
+        },
+        "maxPersonalTamedDinos": {
+          "label": "每个部落的已驯服恐龙上限",
+          "description": "0 表示取消上限。"
+        },
+        "maxStructures": {
+          "label": "范围内最大建筑数"
+        },
+        "hitMarkers": {
+          "label": "命中标记",
+          "description": "远程攻击的命中标记。",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "maxPlayersInTribe": {
+          "label": "每个部落的玩家数",
+          "description": "0 表示不限制。"
+        },
+        "pvpFriendlyFire": {
+          "label": "禁用友军伤害（PvP）",
+          "description": "在 PvP 服务器上，部落成员、其恐龙和建筑之间无法互相伤害。",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
         }
       },
       "ports": {
@@ -2439,6 +2565,62 @@
         },
         "maxFps": {
           "label": "服务器 FPS"
+        },
+        "networkViewDistance": {
+          "label": "网络视距(米)",
+          "description": "向玩家发送实体的距离。"
+        },
+        "minGrassDistance": {
+          "label": "最小草地距离(米)",
+          "description": "0:由玩家选择。否则强制最小值为 50 到 150。"
+        },
+        "fastValidation": {
+          "label": "快速验证",
+          "description": "玩家加入时更快地检查地图。",
+          "options": {
+            "true": "开启",
+            "false": "关闭"
+          }
+        },
+        "vonDisableUi": {
+          "label": "隐藏语音界面",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "vonDisableDirectUi": {
+          "label": "隐藏直接发言界面",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "vonCrossFaction": {
+          "label": "无线电可跨阵营通话",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "playerSaveTime": {
+          "label": "玩家存档周期(秒)"
+        },
+        "aiLimit": {
+          "label": "AI 上限",
+          "description": "同时存在的 AI 角色最大数量。-1:无限制。"
+        },
+        "disableAi": {
+          "label": "禁用 AI",
+          "description": "完全没有 AI,适用于 PvP。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "slotReservationTimeout": {
+          "label": "名额保留(秒)",
+          "description": "为已断线玩家保留名额的时长。"
         }
       },
       "ports": {
@@ -2535,6 +2717,84 @@
         "bots": {
           "label": "机器人",
           "description": "用来填充服务器的机器人数量。"
+        },
+        "tags": {
+          "label": "服务器标签",
+          "description": "显示在服务器列表中的标签,以逗号分隔。"
+        },
+        "lan": {
+          "label": "仅限局域网",
+          "description": "不会在互联网上列出,玩家也不会被验证。",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "cheats": {
+          "label": "作弊",
+          "description": "玩家可以使用作弊命令。",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "voice": {
+          "label": "语音聊天",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "workshopMap": {
+          "label": "创意工坊地图 ID",
+          "description": "使用此 Steam 创意工坊地图启动,而不是起始地图。"
+        },
+        "workshopCollection": {
+          "label": "创意工坊合集 ID",
+          "description": "托管此 Steam 创意工坊合集中的地图。"
+        },
+        "mapGroup": {
+          "label": "地图组",
+          "description": "来自 gamemodes_server.txt 的地图组,决定地图轮换。"
+        },
+        "overtime": {
+          "label": "加时赛",
+          "description": "最后一轮结束后比分持平时进行加时赛。",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "overtimeRounds": {
+          "label": "加时赛回合数"
+        },
+        "halftime": {
+          "label": "半场",
+          "description": "比赛中途双方互换阵营。",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "matchClinch": {
+          "label": "胜负已定即结束",
+          "description": "一方无法被追上时比赛即结束。",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "c4Timer": {
+          "label": "C4 倒计时（秒）"
+        },
+        "botDifficulty": {
+          "label": "机器人难度",
+          "options": {
+            "0": "简单",
+            "1": "普通",
+            "2": "困难",
+            "3": "专家"
+          }
         }
       },
       "ports": {
@@ -2628,6 +2888,121 @@
         "bots": {
           "label": "机器人",
           "description": "用来填充服务器的机器人数量。"
+        },
+        "tags": {
+          "label": "服务器标签",
+          "description": "显示在服务器列表中的标签,以逗号分隔。"
+        },
+        "region": {
+          "label": "地区",
+          "description": "显示在服务器列表中的地区。",
+          "options": {
+            "0": "美国东部",
+            "1": "美国西部",
+            "2": "南美洲",
+            "3": "欧洲",
+            "4": "亚洲",
+            "5": "澳大利亚",
+            "6": "中东",
+            "7": "非洲",
+            "255": "全球",
+            "-1": "无"
+          }
+        },
+        "steamGroup": {
+          "label": "Steam 组 ID",
+          "description": "将服务器关联到此 Steam 组。"
+        },
+        "lan": {
+          "label": "仅限局域网",
+          "description": "不会在互联网上列出,玩家也不会被验证。",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "cheats": {
+          "label": "作弊",
+          "description": "玩家可以使用作弊命令。",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "voice": {
+          "label": "语音聊天",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "allowSpectators": {
+          "label": "观察者",
+          "options": {
+            "0": "不允许",
+            "1": "允许"
+          }
+        },
+        "forceCamera": {
+          "label": "阵亡玩家只能观看己方队伍",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "fragLimit": {
+          "label": "击杀上限",
+          "description": "地图结束时的击杀数。0:无限制。"
+        },
+        "footsteps": {
+          "label": "脚步声",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "downloadUrl": {
+          "label": "快速下载 URL",
+          "description": "玩家下载自定义地图和文件的地址(不经过服务器)。"
+        },
+        "allowDownload": {
+          "label": "允许下载",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "pausable": {
+          "label": "玩家可以暂停",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "pure": {
+          "label": "纯净服务器",
+          "description": "允许哪些客户端文件。",
+          "options": {
+            "0": "仅 pure_server_minimal.txt",
+            "1": "完整规则加白名单",
+            "2": "完整规则",
+            "-1": "关闭"
+          }
+        },
+        "maxRate": {
+          "label": "客户端最大速率",
+          "description": "客户端每秒可使用的字节数。0:无限制。"
+        },
+        "maxUpdateRate": {
+          "label": "最大更新率",
+          "description": "每秒发送给客户端的更新次数。tick 率为 100 的服务器请设为 100。"
+        },
+        "tvAutorecord": {
+          "label": "录制 SourceTV 录像",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
         }
       },
       "ports": {
@@ -2721,6 +3096,194 @@
             "true": "开",
             "false": "关"
           }
+        },
+        "voiceChatMode": {
+          "label": "语音聊天范围",
+          "description": "需要开启语音聊天。",
+          "options": {
+            "Proximity": "附近的玩家",
+            "Global": "所有人"
+          }
+        },
+        "playerMana": {
+          "label": "玩家法力值",
+          "description": "1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "playerBodyHeat": {
+          "label": "玩家体温",
+          "description": "玩家在极寒区域能坚持的时间。仅在难度为自定义时生效。",
+          "options": {
+            "0.5": "低",
+            "1.0": "默认",
+            "1.5": "高",
+            "2.0": "最高"
+          }
+        },
+        "divingTime": {
+          "label": "潜水时间",
+          "description": "玩家水下初始的氧气量。1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "foodBuffDuration": {
+          "label": "食物增益持续时间",
+          "description": "1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "shroudTime": {
+          "label": "Shroud 停留时间",
+          "description": "玩家可在 Shroud 中停留的时间。1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "tombstone": {
+          "label": "死亡时",
+          "description": "玩家死亡时会失去什么。仅在难度为自定义时生效。",
+          "options": {
+            "AddBackpackMaterials": "失去背包中的材料",
+            "Everything": "失去全部",
+            "NoTombstone": "全部保留"
+          }
+        },
+        "gliderTurbulences": {
+          "label": "滑翔翼气流",
+          "description": "气流扰动会影响滑翔翼。仅在难度为自定义时生效。",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "weather": {
+          "label": "天气频率",
+          "description": "仅在难度为自定义时生效。",
+          "options": {
+            "Disabled": "无",
+            "Rare": "稀少",
+            "Normal": "普通",
+            "Often": "频繁"
+          }
+        },
+        "fishingDifficulty": {
+          "label": "钓鱼难度",
+          "description": "仅在难度为自定义时生效。",
+          "options": {
+            "VeryEasy": "非常简单",
+            "Easy": "简单",
+            "Normal": "普通",
+            "Hard": "困难",
+            "VeryHard": "非常困难"
+          }
+        },
+        "plantGrowth": {
+          "label": "植物生长速度",
+          "description": "1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "workstationSpeed": {
+          "label": "工作站速度",
+          "description": "工作站物品生产时间的倍率；数值越高耗时越长。1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "perkCost": {
+          "label": "武器升级成本",
+          "description": "升级武器所需的符文。1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "recyclingYield": {
+          "label": "分解时返还符文",
+          "description": "分解已升级武器时返还的符文比例。0.5 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "miningXp": {
+          "label": "采矿经验",
+          "description": "1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "explorationXp": {
+          "label": "探索经验",
+          "description": "探索和完成任务获得的经验。1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "enemyAmount": {
+          "label": "敌人数量",
+          "description": "世界中的敌人数量。仅在难度为自定义时生效。",
+          "options": {
+            "Few": "少",
+            "Normal": "普通",
+            "Many": "多",
+            "Extreme": "极端"
+          }
+        },
+        "simultaneousAttacks": {
+          "label": "同时攻击者",
+          "description": "可同时发起攻击的敌人数量。仅在难度为自定义时生效。",
+          "options": {
+            "Few": "少",
+            "Normal": "普通",
+            "Many": "多",
+            "Extreme": "极端"
+          }
+        },
+        "enemyStamina": {
+          "label": "敌人耐力",
+          "description": "数值越高，敌人越难被击晕。1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "enemyPerception": {
+          "label": "敌人感知范围",
+          "description": "敌人能看到和听到玩家的距离（不含首领）。1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "enemyAttackFrequency": {
+          "label": "敌人攻击频率",
+          "description": "敌人发起攻击的频率（不含首领）。1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "bossHealth": {
+          "label": "首领生命值",
+          "description": "1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "bossDamage": {
+          "label": "首领伤害",
+          "description": "1 为游戏默认值。仅在难度为自定义时生效。"
+        },
+        "tamingFailure": {
+          "label": "驯服时惊吓野生动物",
+          "description": "仅在难度为自定义时生效。",
+          "options": {
+            "KeepProgress": "保留全部进度",
+            "LoseSomeProgress": "失去部分进度",
+            "LoseAllProgress": "失去全部进度"
+          }
+        },
+        "curse": {
+          "label": "Shroud 诅咒",
+          "description": "在 Shroud 中受到攻击时获得诅咒的几率。仅在难度为自定义时生效。",
+          "options": {
+            "Easy": "关",
+            "Normal": "普通",
+            "Hard": "几率翻倍"
+          }
+        },
+        "dayLength": {
+          "label": "白天时长",
+          "description": "白天持续的真实时间。仅在难度为自定义时生效。",
+          "options": {
+            "120000000000": "2 分钟",
+            "600000000000": "10 分钟",
+            "1200000000000": "20 分钟",
+            "1800000000000": "30 分钟（默认）",
+            "2700000000000": "45 分钟",
+            "3600000000000": "60 分钟"
+          }
+        },
+        "nightLength": {
+          "label": "夜晚时长",
+          "description": "夜晚持续的真实时间。仅在难度为自定义时生效。",
+          "options": {
+            "120000000000": "2 分钟",
+            "300000000000": "5 分钟",
+            "720000000000": "12 分钟（默认）",
+            "1200000000000": "20 分钟",
+            "1800000000000": "30 分钟",
+            "3600000000000": "60 分钟"
+          }
+        },
+        "hungerToStarving": {
+          "label": "饥饿状态时长",
+          "description": "玩家从饥饿状态进入饥饿致死前的时长。仅在难度为自定义时生效。",
+          "options": {
+            "300000000000": "5 分钟",
+            "600000000000": "10 分钟（默认）",
+            "900000000000": "15 分钟",
+            "1200000000000": "20 分钟"
+          }
         }
       },
       "ports": {
@@ -2770,6 +3333,83 @@
           "options": {
             "0": "关",
             "1": "开"
+          }
+        },
+        "tags": {
+          "label": "服务器标签",
+          "description": "显示在服务器列表中的标签,以逗号分隔。"
+        },
+        "region": {
+          "label": "地区",
+          "description": "显示在服务器列表中的地区。",
+          "options": {
+            "0": "美国东部",
+            "1": "美国西部",
+            "2": "南美洲",
+            "3": "欧洲",
+            "4": "亚洲",
+            "5": "澳大利亚",
+            "6": "中东",
+            "7": "非洲",
+            "255": "全球",
+            "-1": "无"
+          }
+        },
+        "searchKey": {
+          "label": "大厅搜索密钥",
+          "description": "玩家可通过此密钥在大厅中找到服务器。"
+        },
+        "lan": {
+          "label": "仅限局域网",
+          "description": "不会在互联网上列出,玩家也不会被验证。",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "cheats": {
+          "label": "作弊",
+          "description": "玩家可以使用作弊命令。",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "voice": {
+          "label": "语音聊天",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "visibleMaxPlayers": {
+          "label": "列表中显示的名额",
+          "description": "-1:实际名额。"
+        },
+        "pure": {
+          "label": "纯净服务器",
+          "options": {
+            "0": "关闭",
+            "1": "文件必须一致(白名单除外)",
+            "2": "文件必须来自 Steam"
+          }
+        },
+        "consistency": {
+          "label": "检查关键文件",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "downloadUrl": {
+          "label": "快速下载 URL",
+          "description": "玩家下载自定义内容的地址(不经过服务器)。"
+        },
+        "pausable": {
+          "label": "玩家可以暂停",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
           }
         }
       },
@@ -2830,7 +3470,8 @@
           "label": "仅限白名单玩家"
         },
         "pvp": {
-          "label": "玩家之间可以互相伤害"
+          "label": "玩家之间可以互相伤害",
+          "description": "仅适用于 Minecraft 1.21.8 及更早版本:新版本改用 pvp 游戏规则。"
         },
         "seed": {
           "label": "世界种子",
@@ -2907,6 +3548,50 @@
             "true": "是",
             "false": "否"
           }
+        },
+        "maxTickTime": {
+          "label": "最大 tick 时间(毫秒)",
+          "description": "单个 tick 超过此时间会停止服务器。-1:不停止。"
+        },
+        "secureProfile": {
+          "label": "要求签名聊天密钥",
+          "description": "玩家需要 Mojang 签名的聊天密钥才能加入。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "maxWorldSize": {
+          "label": "世界边界半径",
+          "description": "距中心的方块数。"
+        },
+        "entityRange": {
+          "label": "实体范围(%)",
+          "description": "向玩家发送实体的距离,以百分比表示。"
+        },
+        "pauseWhenEmpty": {
+          "label": "无人时暂停(秒)",
+          "description": "无人在线多少秒后服务器暂停(1.21.2 及更高版本)。-1:不暂停。"
+        },
+        "resourcePack": {
+          "label": "资源包 URL",
+          "description": "玩家加入时会被提示使用此资源包。"
+        },
+        "resourcePackSha1": {
+          "label": "资源包 SHA-1",
+          "description": "资源包的 SHA-1 哈希,供客户端校验。"
+        },
+        "requireResourcePack": {
+          "label": "强制使用资源包",
+          "description": "拒绝资源包的玩家会被断开连接。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "resourcePackPrompt": {
+          "label": "资源包提示信息",
+          "description": "提示资源包时向玩家显示的文字。"
         }
       },
       "ports": {
@@ -2993,6 +3678,133 @@
         },
         "guildSize": {
           "label": "每个公会的玩家数"
+        },
+        "autoSave": {
+          "label": "自动存档间隔（秒）",
+          "description": "世界保存之间的秒数。30 为游戏默认值。"
+        },
+        "pvpDamage": {
+          "label": "玩家间伤害",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "friendlyFire": {
+          "label": "友军伤害",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "invaders": {
+          "label": "基地袭击（入侵者）",
+          "description": "敌人会袭击玩家基地。",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "hardcore": {
+          "label": "硬核",
+          "description": "玩家死亡后无法重生。",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "palLost": {
+          "label": "死亡时失去帕鲁",
+          "description": "死亡的帕鲁将永久消失。",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "palDamageAttack": {
+          "label": "帕鲁造成的伤害",
+          "description": "1 为游戏默认值。"
+        },
+        "palDamageDefense": {
+          "label": "帕鲁受到的伤害",
+          "description": "1 为游戏默认值。"
+        },
+        "playerDamageAttack": {
+          "label": "玩家造成的伤害",
+          "description": "1 为游戏默认值。"
+        },
+        "playerDamageDefense": {
+          "label": "玩家受到的伤害",
+          "description": "1 为游戏默认值。"
+        },
+        "playerHunger": {
+          "label": "玩家饥饿速度",
+          "description": "1 为游戏默认值。"
+        },
+        "playerStamina": {
+          "label": "玩家耐力消耗",
+          "description": "1 为游戏默认值。"
+        },
+        "palHunger": {
+          "label": "帕鲁饥饿速度",
+          "description": "1 为游戏默认值。"
+        },
+        "palStamina": {
+          "label": "帕鲁耐力消耗",
+          "description": "1 为游戏默认值。"
+        },
+        "buildDecay": {
+          "label": "建筑损耗",
+          "description": "0 表示建筑不会损耗。1 为游戏默认值。"
+        },
+        "itemWeight": {
+          "label": "物品重量",
+          "description": "1 为游戏默认值。"
+        },
+        "equipDurability": {
+          "label": "装备损耗",
+          "description": "0 表示装备永不损坏。1 为游戏默认值。"
+        },
+        "baseCamps": {
+          "label": "服务器基地总数",
+          "description": "整个服务器最多可拥有的基地数。"
+        },
+        "buildingLimit": {
+          "label": "每位玩家的建筑数",
+          "description": "0 表示不限制。"
+        },
+        "supplyDropMinutes": {
+          "label": "补给空投间隔（分钟）"
+        },
+        "respawnSeconds": {
+          "label": "重生延迟（秒）"
+        },
+        "backups": {
+          "label": "世界备份",
+          "description": "游戏会在存档文件夹中保存世界的自动备份。",
+          "options": {
+            "True": "开",
+            "False": "关"
+          }
+        },
+        "showPlayerList": {
+          "label": "菜单中的玩家列表",
+          "options": {
+            "True": "是",
+            "False": "否"
+          }
+        },
+        "allowClientMods": {
+          "label": "使用模组的玩家",
+          "description": "是否允许使用客户端模组的玩家加入。",
+          "options": {
+            "True": "允许",
+            "False": "禁止"
+          }
+        },
+        "publicIp": {
+          "label": "公网 IP",
+          "description": "适用于 NAT 后的社区服务器：玩家看到的地址。"
         }
       },
       "ports": {
@@ -3113,6 +3925,135 @@
         "welcome": {
           "label": "欢迎消息",
           "description": "玩家加入时显示在聊天中。"
+        },
+        "map": {
+          "label": "地图",
+          "description": "要加载的地图，用分号分隔：先写地图模组，再写 Muldraugh, KY。只能一行。"
+        },
+        "announceDeath": {
+          "label": "公告死亡",
+          "description": "玩家死亡时在聊天中发送消息。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "noFire": {
+          "label": "禁止火焰",
+          "description": "不会起火（营火仍可使用）。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "playerSafehouse": {
+          "label": "玩家可以占领安全屋",
+          "description": "管理员始终可以占领。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "safehouseLoot": {
+          "label": "陌生人可以搜刮安全屋",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "safehouseTrespass": {
+          "label": "陌生人可以进入安全屋",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "safehouseFire": {
+          "label": "火焰可损坏安全屋",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "safehouseRespawn": {
+          "label": "在自己的安全屋重生",
+          "description": "玩家会在其所属的安全屋重生。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "safehouseDays": {
+          "label": "占领前需要存活的天数",
+          "description": "玩家占领安全屋前必须存活的游戏内天数。"
+        },
+        "lootRespawnHours": {
+          "label": "战利品刷新间隔（游戏小时）",
+          "description": "0 表示战利品不会刷新。"
+        },
+        "showSafety": {
+          "label": "显示 PvP 状态",
+          "description": "处于 PvP 模式的玩家头顶会显示骷髅图标。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "pvpMeleeDamage": {
+          "label": "PvP 近战伤害（%）"
+        },
+        "pvpFirearmDamage": {
+          "label": "PvP 枪械伤害（%）"
+        },
+        "sleepAllowed": {
+          "label": "玩家可以睡觉",
+          "description": "玩家疲劳时可以睡觉，但不是必须的。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "sleepNeeded": {
+          "label": "玩家需要睡眠",
+          "description": "玩家会疲劳并必须睡觉。需要开启上一项。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "maxAccountsPerUser": {
+          "label": "每个 Steam 用户的账号数",
+          "description": "0 表示不限制。"
+        },
+        "backupsCount": {
+          "label": "保留的备份数"
+        },
+        "backupsOnStart": {
+          "label": "每次启动时备份",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "backupsPeriod": {
+          "label": "备份间隔（分钟）",
+          "description": "0 表示关闭。"
+        },
+        "faction": {
+          "label": "阵营",
+          "description": "玩家可以创建并加入阵营。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "luaChecksum": {
+          "label": "踢出 Lua 文件不一致的客户端",
+          "description": "游戏文件与服务器不一致的玩家会被踢出。",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
         }
       },
       "ports": {
@@ -3210,6 +4151,61 @@
         "headerImage": {
           "label": "头图 URL",
           "description": "显示在服务器浏览器中的 512 × 256 JPG 图片。"
+        },
+        "level": {
+          "label": "地图类型",
+          "description": "程序生成地图使用上方的种子和大小。",
+          "options": {
+            "procedural": "程序生成",
+            "barren": "Barren",
+            "hapis": "哈皮斯岛",
+            "savas": "萨瓦斯岛"
+          }
+        },
+        "gamemode": {
+          "label": "游戏模式",
+          "options": {
+            "vanilla": "原版",
+            "softcore": "软核",
+            "hardcore": "硬核",
+            "primitive": "原始",
+            "weapontest": "武器测试"
+          }
+        },
+        "tickRate": {
+          "label": "tick 率",
+          "description": "服务器每秒更新次数。游戏默认值为 30;更高会占用更多 CPU。"
+        },
+        "salt": {
+          "label": "地图盐值",
+          "description": "与种子和大小一起可重现已知地图。"
+        },
+        "levelUrl": {
+          "label": "自定义地图 URL",
+          "description": "地图文件的直接下载链接。将替代生成的地图。"
+        },
+        "maxTeamSize": {
+          "label": "队伍人数上限",
+          "description": "每队玩家数。1:仅单人。"
+        },
+        "radiation": {
+          "label": "辐射",
+          "options": {
+            "on": "开启",
+            "off": "关闭"
+          }
+        },
+        "upkeepPeriod": {
+          "label": "维护周期(分钟)",
+          "description": "基地维护费用分摊的时间(分钟)。"
+        },
+        "saveBackups": {
+          "label": "保留的存档备份数",
+          "description": "游戏保留的旧世界副本数量。"
+        },
+        "logoImage": {
+          "label": "Rust+ 徽标 URL",
+          "description": "显示在 Rust+ 配套应用中的徽标。"
         }
       },
       "ports": {
@@ -3302,6 +4298,98 @@
             "true": "是",
             "false": "否"
           }
+        },
+        "hideFromList": {
+          "label": "从公开列表中隐藏",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "serverInfoId": {
+          "label": "服务器信息 Pastebin ID",
+          "description": "显示在服务器列表信息标签页中的文本的 Pastebin ID。"
+        },
+        "ipBanning": {
+          "label": "IP 封禁",
+          "description": "如果服务器位于代理或防火墙之后,请关闭。",
+          "options": {
+            "true": "开启",
+            "false": "关闭"
+          }
+        },
+        "fastRestart": {
+          "label": "快速重启回合",
+          "options": {
+            "true": "开启",
+            "false": "关闭"
+          }
+        },
+        "fastRestartDelay": {
+          "label": "快速重启延迟(秒)"
+        },
+        "intercomCooldown": {
+          "label": "广播冷却时间(秒)"
+        },
+        "intercomSpeech": {
+          "label": "广播发言时长(秒)"
+        },
+        "warheadGates": {
+          "label": "核弹倒计时期间大门开启",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "warheadDoors": {
+          "label": "核弹倒计时期间房门开启",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "warheadLockZones": {
+          "label": "核弹倒计时期间锁定检查点",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "keepItems": {
+          "label": "逃脱后保留物品",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "endOnOnePlayer": {
+          "label": "只剩一名玩家时回合结束",
+          "options": {
+            "true": "是",
+            "false": "否"
+          }
+        },
+        "spawnProtect": {
+          "label": "出生保护",
+          "options": {
+            "true": "开启",
+            "false": "关闭"
+          }
+        },
+        "spawnProtectTime": {
+          "label": "出生保护(秒)"
+        },
+        "mtfMinTime": {
+          "label": "MTF 增援波,最早(秒)"
+        },
+        "mtfMaxTime": {
+          "label": "MTF 增援波,最晚(秒)"
+        },
+        "mtfMaxAmount": {
+          "label": "MTF 增援波人数"
+        },
+        "ciMaxAmount": {
+          "label": "混沌增援波人数"
         }
       },
       "ports": {
@@ -3336,7 +4424,7 @@
         },
         "gameMode": {
           "label": "游戏模式",
-          "description": "适用于新世界。",
+          "description": "适用于新世界。下方的自定义游戏模式选项仅在选择自定义时生效。",
           "options": {
             "Normal": "普通",
             "Hard": "困难",
@@ -3370,6 +4458,152 @@
             "true": "开",
             "false": "关"
           }
+        },
+        "enemySpawn": {
+          "label": "敌人刷新",
+          "description": "仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "enemyHealth": {
+          "label": "敌人生命值",
+          "description": "仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "Low": "低",
+            "Normal": "普通",
+            "High": "高"
+          }
+        },
+        "enemyDamage": {
+          "label": "敌人伤害",
+          "description": "仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "Low": "低",
+            "Normal": "普通",
+            "High": "高"
+          }
+        },
+        "enemyArmour": {
+          "label": "敌人护甲",
+          "description": "仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "Low": "低",
+            "Normal": "普通",
+            "High": "高"
+          }
+        },
+        "enemyAggression": {
+          "label": "敌人攻击性",
+          "description": "仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "Low": "低",
+            "Normal": "普通",
+            "High": "高"
+          }
+        },
+        "animalSpawnRate": {
+          "label": "动物刷新率",
+          "description": "仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "Low": "低",
+            "Normal": "普通",
+            "High": "高"
+          }
+        },
+        "startingSeason": {
+          "label": "起始季节",
+          "description": "仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "Spring": "春",
+            "Summer": "夏",
+            "Autumn": "秋",
+            "Winter": "冬"
+          }
+        },
+        "seasonLength": {
+          "label": "季节时长",
+          "description": "仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "Short": "短",
+            "Default": "默认",
+            "Long": "长",
+            "Realistic": "写实"
+          }
+        },
+        "dayLength": {
+          "label": "昼长",
+          "description": "仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "Short": "短",
+            "Default": "默认",
+            "Long": "长",
+            "Realistic": "写实"
+          }
+        },
+        "precipitation": {
+          "label": "雨雪",
+          "description": "下雨或下雪的频率。仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "Low": "低",
+            "Default": "默认",
+            "High": "高"
+          }
+        },
+        "consumableEffects": {
+          "label": "饥渴伤害",
+          "description": "水分和饱食度过低时受到的伤害。仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "Normal": "普通",
+            "Hard": "困难"
+          }
+        },
+        "playerStatsDamage": {
+          "label": "劣质食物伤害",
+          "description": "劣质或腐烂的食物和饮品造成的伤害。仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "Off": "关",
+            "Normal": "普通",
+            "Hard": "困难"
+          }
+        },
+        "coldPenalties": {
+          "label": "寒冷惩罚",
+          "description": "寒冷对生命值和耐力恢复的影响程度。仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "Off": "关",
+            "Normal": "普通",
+            "Hard": "困难"
+          }
+        },
+        "reducedFood": {
+          "label": "容器中食物减少",
+          "description": "仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "singleUseContainers": {
+          "label": "一次性容器",
+          "description": "容器只能打开一次。仅在游戏模式为自定义且为新世界时生效。",
+          "options": {
+            "true": "开",
+            "false": "关"
+          }
+        },
+        "idleDayCycle": {
+          "label": "服务器无人时的昼夜循环速度",
+          "description": "无人在线时时间流逝的速度：0 表示停止，1 为正常速度。"
+        },
+        "activeFps": {
+          "label": "服务器帧率",
+          "description": "有玩家在线时的目标帧率（每秒帧数）。数值越低占用 CPU 越少。60 为游戏默认值。"
+        },
+        "idleFps": {
+          "label": "服务器无人时的帧率",
+          "description": "无人在线时的目标帧率（每秒帧数）。5 为游戏默认值。"
         }
       },
       "ports": {
@@ -3477,6 +4711,98 @@
             "2": "困难",
             "3": "专家"
           }
+        },
+        "tags": {
+          "label": "服务器标签",
+          "description": "显示在服务器列表中的标签,以逗号分隔。"
+        },
+        "region": {
+          "label": "地区",
+          "description": "显示在服务器列表中的地区。",
+          "options": {
+            "0": "美国东部",
+            "1": "美国西部",
+            "2": "南美洲",
+            "3": "欧洲",
+            "4": "亚洲",
+            "5": "澳大利亚",
+            "6": "中东",
+            "7": "非洲",
+            "255": "全球",
+            "-1": "无"
+          }
+        },
+        "lan": {
+          "label": "仅限局域网",
+          "description": "不会在互联网上列出,玩家也不会被验证。",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "cheats": {
+          "label": "作弊",
+          "description": "玩家可以使用作弊命令。",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "stalemate": {
+          "label": "僵局时进入突然死亡",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "stalemateTime": {
+          "label": "僵局时间(秒)"
+        },
+        "allowSpectators": {
+          "label": "观察者",
+          "options": {
+            "0": "不允许",
+            "1": "允许"
+          }
+        },
+        "forceCamera": {
+          "label": "阵亡玩家只能观看己方队伍",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "disableSpread": {
+          "label": "无随机伤害浮动",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "downloadUrl": {
+          "label": "快速下载 URL",
+          "description": "玩家下载自定义地图的地址(不经过服务器)。"
+        },
+        "allowDownload": {
+          "label": "允许下载",
+          "options": {
+            "0": "关闭",
+            "1": "开启"
+          }
+        },
+        "pure": {
+          "label": "纯净服务器",
+          "description": "允许哪些客户端文件。",
+          "options": {
+            "0": "仅 pure_server_minimal.txt",
+            "1": "完整规则加白名单",
+            "2": "完整规则",
+            "-1": "关闭"
+          }
+        },
+        "visibleMaxPlayers": {
+          "label": "列表中显示的名额",
+          "description": "-1:实际名额。"
         }
       },
       "ports": {
@@ -3542,6 +4868,26 @@
         },
         "welcome": {
           "label": "欢迎消息"
+        },
+        "cycle": {
+          "label": "昼夜时长(秒)",
+          "description": "一个完整昼夜所需的秒数。3600 为一小时。"
+        },
+        "chatRate": {
+          "label": "聊天间隔(秒)",
+          "description": "玩家两条消息之间的最短秒数。"
+        },
+        "timeout": {
+          "label": "延迟上限(毫秒)",
+          "description": "延迟超过此值的玩家会被踢出。常用值为 400 到 600。"
+        },
+        "decay": {
+          "label": "损毁时间(秒)",
+          "description": "无人看管的建筑和载具损毁前的秒数。"
+        },
+        "loadout": {
+          "label": "初始物品",
+          "description": "玩家出生时携带的物品 ID,以 / 分隔。"
         }
       },
       "ports": {
@@ -3657,6 +5003,26 @@
         },
         "saveInterval": {
           "label": "自动存档间隔（秒）"
+        },
+        "backups": {
+          "label": "保留的备份数",
+          "description": "游戏保留的世界自动备份数量。4 为游戏默认值。"
+        },
+        "backupShort": {
+          "label": "首次备份间隔（秒）",
+          "description": "最初几次自动备份之间的秒数。7200 为游戏默认值。"
+        },
+        "backupLong": {
+          "label": "后续备份间隔（秒）",
+          "description": "之后各次自动备份之间的秒数。43200 为游戏默认值。"
+        },
+        "fireHazards": {
+          "label": "火灾隐患",
+          "description": "火焰会真实地蔓延。"
+        },
+        "instanceId": {
+          "label": "跨平台实例 ID",
+          "description": "仅当多个跨平台服务器共用一个公网地址时才需要。"
         }
       },
       "ports": {
@@ -3703,7 +5069,8 @@
           "options": {
             "PvP": "PvP",
             "PvE": "PvE"
-          }
+          },
+          "description": "使用规则集时，必须与规则集一致。"
         },
         "difficulty": {
           "label": "难度",
@@ -3711,13 +5078,15 @@
             "Difficulty_Easy": "轻松",
             "Difficulty_Normal": "普通",
             "Difficulty_Brutal": "残酷"
-          }
+          },
+          "description": "预设难度。它会覆盖自定义游戏选项；留空则使用自定义选项。"
         },
         "autoSave": {
           "label": "自动存档间隔（秒）"
         },
         "clanSize": {
-          "label": "氏族规模"
+          "label": "氏族规模",
+          "description": "设置了规则集或难度时会被忽略。"
         },
         "castleDamage": {
           "label": "城堡伤害",
@@ -3725,11 +5094,12 @@
             "Always": "始终",
             "Never": "从不",
             "TimeRestricted": "突袭时段内"
-          }
+          },
+          "description": "设置了规则集或难度时会被忽略。"
         },
         "bloodBound": {
           "label": "血契装备",
-          "description": "玩家死亡时装备仍归其所有者。",
+          "description": "玩家死亡时装备仍归其所有者。设置了规则集或难度时会被忽略。",
           "options": {
             "true": "开",
             "false": "关"
@@ -3737,7 +5107,7 @@
         },
         "teleportBound": {
           "label": "物品阻止传送",
-          "description": "携带资源的玩家无法使用传送门。",
+          "description": "携带资源的玩家无法使用传送门。设置了规则集或难度时会被忽略。",
           "options": {
             "true": "开",
             "false": "关"
@@ -3745,28 +5115,179 @@
         },
         "materialYield": {
           "label": "资源产量",
-          "description": "所采集资源的倍率。"
+          "description": "所采集资源的倍率。设置了规则集或难度时会被忽略。"
         },
         "craftRate": {
-          "label": "制作速度"
+          "label": "制作速度",
+          "description": "设置了规则集或难度时会被忽略。"
         },
         "buildCost": {
-          "label": "建造成本"
+          "label": "建造成本",
+          "description": "设置了规则集或难度时会被忽略。"
         },
         "researchCost": {
-          "label": "研究成本"
+          "label": "研究成本",
+          "description": "新版本游戏已不再使用。设置了规则集或难度时会被忽略。"
         },
         "bloodDrain": {
-          "label": "鲜血消耗"
+          "label": "鲜血消耗",
+          "description": "设置了规则集或难度时会被忽略。"
         },
         "durabilityDrain": {
-          "label": "耐久度损失"
+          "label": "耐久度损失",
+          "description": "设置了规则集或难度时会被忽略。"
         },
         "sunDamage": {
-          "label": "阳光伤害"
+          "label": "阳光伤害",
+          "description": "设置了规则集或难度时会被忽略。"
         },
         "castleDecay": {
-          "label": "城堡衰败"
+          "label": "城堡衰败",
+          "description": "设置了规则集或难度时会被忽略。"
+        },
+        "ruleset": {
+          "label": "规则集",
+          "description": "预设规则集。它会覆盖自定义游戏选项，且必须与游戏模式一致。选择自定义时使用下方的选项。",
+          "options": {
+            "StandardPvP": "标准 PvP",
+            "StandardPvP_Easy": "标准 PvP，简单",
+            "StandardPvP_Hard": "标准 PvP，困难",
+            "StandardPvP_DailySiege": "标准 PvP，每日攻城",
+            "StandardPvP_NoSiege": "标准 PvP，无攻城",
+            "StandardPvP_WeekendSiege": "标准 PvP，周末攻城",
+            "SoloPvP": "单人 PvP",
+            "DuoPvP": "双人 PvP",
+            "DuoPvP_DailySiege": "双人 PvP，每日攻城",
+            "DuoPvP_NoSiege": "双人 PvP，无攻城",
+            "DuoPvP_WeekendSiege": "双人 PvP，周末攻城",
+            "TrioPvP": "三人 PvP",
+            "TrioPvP_DailySiege": "三人 PvP，每日攻城",
+            "TrioPvP_NoSiege": "三人 PvP，无攻城",
+            "TrioPvP_WeekendSiege": "三人 PvP，周末攻城",
+            "HardcorePvP": "完全掠夺 PvP",
+            "HardcoreDuoPvP": "硬核双人 PvP",
+            "HardcoreTrioPvP": "硬核三人 PvP",
+            "Level30PvP": "PvP 黎明（30 级）",
+            "Level50PvP": "PvP 正午（50 级）",
+            "Level70PvP": "PvP 黄昏（70 级）",
+            "Level90PvP": "PvP 午夜（90 级）",
+            "StandardPvE": "标准 PvE",
+            "StandardPvE_Easy": "标准 PvE，简单",
+            "StandardPvE_Hard": "标准 PvE，困难",
+            "Level30PvE": "PvE 黎明（30 级）",
+            "Level50PvE": "PvE 正午（50 级）",
+            "Level70PvE": "PvE 黄昏（70 级）",
+            "Level90PvE": "PvE 午夜（90 级）",
+            "custom": "自定义：使用下方的选项"
+          }
+        },
+        "pvpProtection": {
+          "label": "新玩家 PvP 保护",
+          "description": "设置了规则集或难度时会被忽略。",
+          "options": {
+            "Disabled": "无",
+            "VeryShort": "15 分钟",
+            "Short": "30 分钟",
+            "Medium": "1 小时",
+            "Long": "2 小时"
+          }
+        },
+        "playerDamageMode": {
+          "label": "玩家伤害",
+          "description": "玩家何时可以互相伤害（PvE 中无效）。设置了规则集或难度时会被忽略。",
+          "options": {
+            "Always": "始终",
+            "TimeRestricted": "突袭时段内"
+          }
+        },
+        "castleHeartDamage": {
+          "label": "城堡之心",
+          "description": "设置了规则集或难度时会被忽略。",
+          "options": {
+            "CanBeDestroyedOnlyWhenDecaying": "仅在衰减时可被摧毁",
+            "CanBeDestroyedByPlayers": "玩家可以摧毁",
+            "CanBeSeizedOrDestroyedByPlayers": "玩家可以夺取或摧毁"
+          }
+        },
+        "siegeHealth": {
+          "label": "攻城魔像生命值",
+          "description": "设置了规则集或难度时会被忽略。",
+          "options": {
+            "VeryLow": "非常低",
+            "Low": "低",
+            "Normal": "普通",
+            "High": "高",
+            "VeryHigh": "非常高"
+          }
+        },
+        "deathContainer": {
+          "label": "谁可以搜刮尸体",
+          "description": "设置了规则集或难度时会被忽略。",
+          "options": {
+            "Anyone": "任何人",
+            "ClanMembers": "氏族成员",
+            "OnlySelf": "仅所有者"
+          }
+        },
+        "dropGeneral": {
+          "label": "敌人掉落",
+          "description": "击杀和宝箱掉落物的倍率。1 为游戏默认值。设置了规则集或难度时会被忽略。"
+        },
+        "stacks": {
+          "label": "堆叠大小",
+          "description": "每个堆叠可容纳物品数量的倍率。1 为游戏默认值。设置了规则集或难度时会被忽略。"
+        },
+        "bloodEssenceYield": {
+          "label": "鲜血精华产量",
+          "description": "击败敌人所得鲜血精华的倍率。1 为游戏默认值。设置了规则集或难度时会被忽略。"
+        },
+        "dayLengthSeconds": {
+          "label": "一天时长（秒）",
+          "description": "一整天持续的真实秒数。1080 为游戏默认值。设置了规则集或难度时会被忽略。"
+        },
+        "bloodMoonMin": {
+          "label": "血月最早间隔（天）",
+          "description": "设置了规则集或难度时会被忽略。"
+        },
+        "bloodMoonMax": {
+          "label": "血月最晚间隔（天）",
+          "description": "设置了规则集或难度时会被忽略。"
+        },
+        "playerHealth": {
+          "label": "玩家生命值",
+          "description": "玩家最大生命值的倍率。1 为游戏默认值。设置了规则集或难度时会被忽略。"
+        },
+        "damageReceived": {
+          "label": "玩家受到的伤害",
+          "description": "玩家受到的所有伤害的倍率。1 为游戏默认值。设置了规则集或难度时会被忽略。"
+        },
+        "mobHealth": {
+          "label": "敌人生命值",
+          "description": "普通敌人生命值的倍率。1 为游戏默认值。设置了规则集或难度时会被忽略。"
+        },
+        "mobPower": {
+          "label": "敌人伤害",
+          "description": "普通敌人造成伤害的倍率。1 为游戏默认值。设置了规则集或难度时会被忽略。"
+        },
+        "vbloodHealth": {
+          "label": "首领生命值",
+          "description": "V Blood 首领生命值的倍率。1 为游戏默认值。设置了规则集或难度时会被忽略。"
+        },
+        "vbloodPower": {
+          "label": "首领伤害",
+          "description": "V Blood 首领造成伤害的倍率。1 为游戏默认值。设置了规则集或难度时会被忽略。"
+        },
+        "maxAdmins": {
+          "label": "管理员名额",
+          "description": "服务器已满时仍可加入的管理员数量。"
+        },
+        "autoSaveCount": {
+          "label": "保留的自动存档数",
+          "description": "服务器保留的自动存档数量。25 为游戏默认值。"
+        },
+        "serverFps": {
+          "label": "服务器帧率",
+          "description": "服务器的目标帧率（每秒帧数）。30 为游戏默认值。"
         }
       },
       "ports": {

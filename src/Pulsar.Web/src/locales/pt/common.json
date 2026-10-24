@@ -2147,52 +2147,6 @@
           "label": "EasyAntiCheat",
           "description": "A maioria dos mods de código exige que ele esteja desativado."
         },
-        "difficulty": {
-          "label": "Dificuldade",
-          "options": {
-            "0": "Catador",
-            "1": "Aventureiro",
-            "2": "Nômade",
-            "3": "Guerreiro",
-            "4": "Sobrevivente",
-            "5": "Insano"
-          }
-        },
-        "dayLength": {
-          "label": "Duração do dia (minutos reais)",
-          "description": "Minutos reais que dura um dia inteiro do jogo."
-        },
-        "dayLightHours": {
-          "label": "Horas de luz",
-          "description": "Horas de jogo com luz do dia em um dia."
-        },
-        "bloodMoonFrequency": {
-          "label": "Lua de sangue a cada (dias)",
-          "description": "0 desativa as luas de sangue."
-        },
-        "bloodMoonEnemies": {
-          "label": "Zumbis da lua de sangue por jogador"
-        },
-        "zombieSpeedDay": {
-          "label": "Velocidade dos zumbis de dia",
-          "options": {
-            "0": "Andar",
-            "1": "Trotar",
-            "2": "Correr",
-            "3": "Corrida rápida",
-            "4": "Pesadelo"
-          }
-        },
-        "zombieSpeedNight": {
-          "label": "Velocidade dos zumbis à noite",
-          "options": {
-            "0": "Andar",
-            "1": "Trotar",
-            "2": "Correr",
-            "3": "Corrida rápida",
-            "4": "Pesadelo"
-          }
-        },
         "maxZombies": {
           "label": "Máx. de zumbis",
           "description": "Zumbis vivos ao mesmo tempo em todo o mapa. Acima de 90 deixa a maioria dos servidores lenta."
@@ -2206,34 +2160,115 @@
             "3": "Matar todos"
           }
         },
-        "dropOnDeath": {
-          "label": "O que se perde ao morrer",
-          "options": {
-            "0": "Nada",
-            "1": "Tudo",
-            "2": "Só a barra de atalhos",
-            "3": "Só a mochila",
-            "4": "Apagar tudo"
-          }
-        },
-        "lootAbundance": {
-          "label": "Abundância de itens (%)"
-        },
-        "lootRespawnDays": {
-          "label": "Reaparição de itens (dias)"
-        },
-        "xp": {
-          "label": "Experiência (%)"
-        },
-        "airDropHours": {
-          "label": "Lançamento aéreo a cada (horas de jogo)",
-          "description": "0 desativa os lançamentos aéreos."
-        },
         "description": {
           "label": "Descrição"
         },
         "website": {
           "label": "Site"
+        },
+        "sandboxCode": {
+          "label": "Código Sandbox",
+          "description": "Dificuldade, XP, saque, zumbis, luas de sangue e lançamentos aéreos em um único código criado com as opções Sandbox do jogo (V3.0 e mais recentes)."
+        },
+        "region": {
+          "label": "Região",
+          "description": "Onde os jogadores encontram o servidor na lista.",
+          "options": {
+            "NorthAmericaEast": "América do Norte (leste)",
+            "NorthAmericaWest": "América do Norte (oeste)",
+            "CentralAmerica": "América Central",
+            "SouthAmerica": "América do Sul",
+            "Europe": "Europa",
+            "Russia": "Rússia",
+            "Asia": "Ásia",
+            "MiddleEast": "Oriente Médio",
+            "Africa": "África",
+            "Oceania": "Oceania"
+          }
+        },
+        "language": {
+          "label": "Idioma",
+          "description": "O nome em inglês do idioma que os jogadores falam, como German."
+        },
+        "worldGenSeed": {
+          "label": "Semente do mundo aleatório",
+          "description": "Somente com o mundo RWG: a semente de um mundo novo."
+        },
+        "worldGenSize": {
+          "label": "Tamanho do mundo aleatório",
+          "description": "Somente com o mundo RWG: largura e altura de um mundo novo.",
+          "options": {
+            "6144": "6144",
+            "8192": "8192",
+            "10240": "10240"
+          }
+        },
+        "maxAnimals": {
+          "label": "Máx. de animais",
+          "description": "Animais vivos ao mesmo tempo em todo o mapa."
+        },
+        "viewDistance": {
+          "label": "Distância de visão máxima",
+          "description": "A maior distância de visão que um jogador pode pedir. Menor usa menos memória.",
+          "options": {
+            "6": "6",
+            "7": "7",
+            "8": "8",
+            "9": "9",
+            "10": "10",
+            "11": "11",
+            "12": "12"
+          }
+        },
+        "landClaimCount": {
+          "label": "Reivindicações de terreno por jogador"
+        },
+        "landClaimSize": {
+          "label": "Tamanho das reivindicações de terreno (blocos)"
+        },
+        "landClaimExpiryTime": {
+          "label": "Expiração das reivindicações de terreno (dias)",
+          "description": "Dias reais que um jogador pode ficar offline antes de suas reivindicações deixarem de proteger."
+        },
+        "landClaimDecayMode": {
+          "label": "Deterioração das reivindicações de terreno",
+          "options": {
+            "0": "Lento",
+            "1": "Rápido",
+            "2": "Nenhum até expirar"
+          }
+        },
+        "bedrollExpiryTime": {
+          "label": "Expiração do saco de dormir (dias)",
+          "description": "Dias reais em que um saco de dormir continua ativo depois que o dono esteve online pela última vez."
+        },
+        "safeZoneLevel": {
+          "label": "Zona segura até o nível",
+          "description": "Jogadores neste nível ou abaixo ganham uma zona sem inimigos."
+        },
+        "crossplay": {
+          "label": "Crossplay",
+          "description": "Jogadores de console podem entrar. Exige EasyAntiCheat ativado e no máximo 8 slots.",
+          "options": {
+            "true": "Ativado",
+            "false": "Desativado"
+          }
+        },
+        "persistentProfiles": {
+          "label": "Perfis de jogador persistentes",
+          "description": "Mantém os perfis dos jogadores entre as sessões.",
+          "options": {
+            "true": "Ativado",
+            "false": "Desativado"
+          }
+        },
+        "buildCreate": {
+          "label": "Modo criativo",
+          "description": "Permite que os jogadores construam sem limites.",
+          "options": {
+            "true": "Ativado",
+            "false": "Desativado"
+          }
         }
       },
       "ports": {
@@ -2352,6 +2387,97 @@
         "babyMatureSpeed": {
           "label": "Velocidade de maturação dos filhotes",
           "description": "Quanto maior, mais rápido os filhotes crescem. 1 é a do jogo."
+        },
+        "hardcore": {
+          "label": "Hardcore",
+          "description": "Os personagens voltam ao nível 1 quando morrem.",
+          "options": {
+            "True": "Sim",
+            "False": "Não"
+          }
+        },
+        "playerDamage": {
+          "label": "Dano dos jogadores",
+          "description": "Dano causado pelos jogadores. 1 é o valor do jogo."
+        },
+        "playerResistance": {
+          "label": "Resistência dos jogadores",
+          "description": "Quanto maior, menos dano os jogadores recebem. 1 é o valor do jogo."
+        },
+        "dinoDamage": {
+          "label": "Dano dos dinos selvagens",
+          "description": "Dano causado pelos dinos selvagens. 1 é o valor do jogo."
+        },
+        "dinoResistance": {
+          "label": "Resistência dos dinos selvagens",
+          "description": "Quanto maior, menos dano os dinos selvagens recebem. 1 é o valor do jogo."
+        },
+        "structureResistance": {
+          "label": "Resistência das estruturas",
+          "description": "Quanto maior, menos dano as estruturas recebem. 1 é o valor do jogo."
+        },
+        "stackSize": {
+          "label": "Tamanho das pilhas de itens",
+          "description": "Multiplica o tamanho de todas as pilhas. 1 é o valor do jogo."
+        },
+        "resourceRespawn": {
+          "label": "Período de reaparição de recursos",
+          "description": "Menor faz os recursos reaparecerem mais cedo. 1 é o valor do jogo."
+        },
+        "harvestHealth": {
+          "label": "Vida dos recursos",
+          "description": "Vida de árvores, rochas e carcaças. 1 é o valor do jogo."
+        },
+        "playerFoodDrain": {
+          "label": "Consumo de comida dos jogadores",
+          "description": "Quanto maior, mais rápido os jogadores sentem fome. 1 é o valor do jogo."
+        },
+        "playerWaterDrain": {
+          "label": "Consumo de água dos jogadores",
+          "description": "Quanto maior, mais rápido os jogadores sentem sede. 1 é o valor do jogo."
+        },
+        "dinoFoodDrain": {
+          "label": "Consumo de comida dos dinos",
+          "description": "Quanto maior, mais rápido os dinos domesticados sentem fome. 1 é o valor do jogo."
+        },
+        "offlineRaidProtection": {
+          "label": "Proteção contra ataques offline",
+          "description": "As tribos não podem ser atacadas enquanto todos os seus membros estiverem offline.",
+          "options": {
+            "True": "Sim",
+            "False": "Não"
+          }
+        },
+        "offlineRaidSeconds": {
+          "label": "Atraso da proteção contra ataques (s)",
+          "description": "Segundos desde que o último membro sai até a proteção começar."
+        },
+        "maxPersonalTamedDinos": {
+          "label": "Máx. de dinos domesticados por tribo",
+          "description": "0 desativa o limite."
+        },
+        "maxStructures": {
+          "label": "Máx. de estruturas no alcance"
+        },
+        "hitMarkers": {
+          "label": "Marcadores de acerto",
+          "description": "Marcadores de acerto para ataques à distância.",
+          "options": {
+            "True": "Sim",
+            "False": "Não"
+          }
+        },
+        "maxPlayersInTribe": {
+          "label": "Jogadores por tribo",
+          "description": "0 significa sem limite."
+        },
+        "pvpFriendlyFire": {
+          "label": "Sem fogo amigo (PvP)",
+          "description": "Em servidores PvP, os membros da tribo, seus dinos e estruturas não podem se ferir entre si.",
+          "options": {
+            "True": "Sim",
+            "False": "Não"
+          }
         }
       },
       "ports": {
@@ -2439,6 +2565,62 @@
         },
         "maxFps": {
           "label": "FPS do servidor"
+        },
+        "networkViewDistance": {
+          "label": "Distância de visão de rede (m)",
+          "description": "A que distância as entidades são enviadas aos jogadores."
+        },
+        "minGrassDistance": {
+          "label": "Distância mínima da grama (m)",
+          "description": "0: os jogadores escolhem. Caso contrário, um mínimo de 50 a 150 é imposto."
+        },
+        "fastValidation": {
+          "label": "Validação rápida",
+          "description": "Verificações mais rápidas do mapa quando um jogador entra.",
+          "options": {
+            "true": "Ativado",
+            "false": "Desativado"
+          }
+        },
+        "vonDisableUi": {
+          "label": "Ocultar a interface de voz",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "vonDisableDirectUi": {
+          "label": "Ocultar a interface de fala direta",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "vonCrossFaction": {
+          "label": "Os rádios funcionam entre facções",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "playerSaveTime": {
+          "label": "Período de salvamento dos jogadores (s)"
+        },
+        "aiLimit": {
+          "label": "Limite de IA",
+          "description": "Máximo de personagens de IA ao mesmo tempo. -1: sem limite."
+        },
+        "disableAi": {
+          "label": "Desativar a IA",
+          "description": "Nenhuma IA, para PvP.",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "slotReservationTimeout": {
+          "label": "Reserva de slot (s)",
+          "description": "Por quanto tempo o slot de um jogador desconectado é mantido para ele."
         }
       },
       "ports": {
@@ -2535,6 +2717,84 @@
         "bots": {
           "label": "Bots",
           "description": "Quantos bots completam o servidor."
+        },
+        "tags": {
+          "label": "Tags do servidor",
+          "description": "Tags separadas por vírgulas exibidas na lista de servidores."
+        },
+        "lan": {
+          "label": "Apenas LAN",
+          "description": "Não aparece na internet e os jogadores não são autenticados.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "cheats": {
+          "label": "Cheats",
+          "description": "Os jogadores podem usar comandos de cheat.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "voice": {
+          "label": "Chat de voz",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "workshopMap": {
+          "label": "ID do mapa da Workshop",
+          "description": "Inicia neste mapa da Workshop da Steam em vez do mapa inicial."
+        },
+        "workshopCollection": {
+          "label": "ID da coleção da Workshop",
+          "description": "Hospeda os mapas desta coleção da Workshop da Steam."
+        },
+        "mapGroup": {
+          "label": "Grupo de mapas",
+          "description": "Grupo de mapas de gamemodes_server.txt que define a rotação de mapas."
+        },
+        "overtime": {
+          "label": "Prorrogação",
+          "description": "Joga-se prorrogação se o placar estiver empatado após a última rodada.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "overtimeRounds": {
+          "label": "Rodadas de prorrogação"
+        },
+        "halftime": {
+          "label": "Intervalo",
+          "description": "As equipes trocam de lado no meio da partida.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "matchClinch": {
+          "label": "Encerrar ao garantir a vitória",
+          "description": "A partida termina assim que uma equipe não puder mais ser alcançada.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "c4Timer": {
+          "label": "Temporizador do C4 (s)"
+        },
+        "botDifficulty": {
+          "label": "Dificuldade dos bots",
+          "options": {
+            "0": "Fácil",
+            "1": "Normal",
+            "2": "Difícil",
+            "3": "Especialista"
+          }
         }
       },
       "ports": {
@@ -2628,6 +2888,121 @@
         "bots": {
           "label": "Bots",
           "description": "Quantos bots completam o servidor."
+        },
+        "tags": {
+          "label": "Tags do servidor",
+          "description": "Tags separadas por vírgulas exibidas na lista de servidores."
+        },
+        "region": {
+          "label": "Região",
+          "description": "Região exibida na lista de servidores.",
+          "options": {
+            "0": "EUA Leste",
+            "1": "EUA Oeste",
+            "2": "América do Sul",
+            "3": "Europa",
+            "4": "Ásia",
+            "5": "Austrália",
+            "6": "Oriente Médio",
+            "7": "África",
+            "255": "Mundo",
+            "-1": "Nenhuma"
+          }
+        },
+        "steamGroup": {
+          "label": "ID do grupo da Steam",
+          "description": "Vincula o servidor a este grupo da Steam."
+        },
+        "lan": {
+          "label": "Apenas LAN",
+          "description": "Não aparece na internet e os jogadores não são autenticados.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "cheats": {
+          "label": "Cheats",
+          "description": "Os jogadores podem usar comandos de cheat.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "voice": {
+          "label": "Chat de voz",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "allowSpectators": {
+          "label": "Espectadores",
+          "options": {
+            "0": "Não permitidos",
+            "1": "Permitidos"
+          }
+        },
+        "forceCamera": {
+          "label": "Jogadores mortos só veem a própria equipe",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "fragLimit": {
+          "label": "Limite de frags",
+          "description": "Abates com os quais o mapa termina. 0: sem limite."
+        },
+        "footsteps": {
+          "label": "Passos",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "downloadUrl": {
+          "label": "URL de download rápido",
+          "description": "De onde os jogadores baixam mapas e arquivos personalizados em vez do servidor."
+        },
+        "allowDownload": {
+          "label": "Permitir downloads",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "pausable": {
+          "label": "Os jogadores podem pausar",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "pure": {
+          "label": "Servidor pure",
+          "description": "Quais arquivos dos clientes são permitidos.",
+          "options": {
+            "0": "Somente pure_server_minimal.txt",
+            "1": "Regras completas mais lista de permitidos",
+            "2": "Regras completas",
+            "-1": "Desativado"
+          }
+        },
+        "maxRate": {
+          "label": "Taxa máxima do cliente",
+          "description": "Bytes por segundo que um cliente pode usar. 0: sem limite."
+        },
+        "maxUpdateRate": {
+          "label": "Taxa máxima de atualização",
+          "description": "Atualizações por segundo enviadas a um cliente. Use 100 em um servidor com tick rate 100."
+        },
+        "tvAutorecord": {
+          "label": "Gravar demos do SourceTV",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
         }
       },
       "ports": {
@@ -2721,6 +3096,194 @@
             "true": "Ativado",
             "false": "Desativado"
           }
+        },
+        "voiceChatMode": {
+          "label": "Alcance do chat de voz",
+          "description": "Exige o chat de voz ativado.",
+          "options": {
+            "Proximity": "Jogadores próximos",
+            "Global": "Todos"
+          }
+        },
+        "playerMana": {
+          "label": "Mana do jogador",
+          "description": "1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "playerBodyHeat": {
+          "label": "Calor corporal do jogador",
+          "description": "Quanto tempo os jogadores aguentam em áreas muito frias. Somente com a dificuldade Personalizado.",
+          "options": {
+            "0.5": "Baixo",
+            "1.0": "Padrão",
+            "1.5": "Alto",
+            "2.0": "Máximo"
+          }
+        },
+        "divingTime": {
+          "label": "Tempo de mergulho",
+          "description": "Oxigênio com que os jogadores começam debaixo d'água. 1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "foodBuffDuration": {
+          "label": "Duração dos bônus de comida",
+          "description": "1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "shroudTime": {
+          "label": "Tempo no Shroud",
+          "description": "Quanto tempo os jogadores podem ficar no Shroud. 1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "tombstone": {
+          "label": "Ao morrer",
+          "description": "O que os jogadores perdem quando morrem. Somente com a dificuldade Personalizado.",
+          "options": {
+            "AddBackpackMaterials": "Perder os materiais da mochila",
+            "Everything": "Perder tudo",
+            "NoTombstone": "Manter tudo"
+          }
+        },
+        "gliderTurbulences": {
+          "label": "Turbulências do planador",
+          "description": "As turbulências afetam o planador. Somente com a dificuldade Personalizado.",
+          "options": {
+            "true": "Ativado",
+            "false": "Desativado"
+          }
+        },
+        "weather": {
+          "label": "Frequência do clima",
+          "description": "Somente com a dificuldade Personalizado.",
+          "options": {
+            "Disabled": "Nenhum",
+            "Rare": "Raro",
+            "Normal": "Normal",
+            "Often": "Frequente"
+          }
+        },
+        "fishingDifficulty": {
+          "label": "Dificuldade da pesca",
+          "description": "Somente com a dificuldade Personalizado.",
+          "options": {
+            "VeryEasy": "Muito fácil",
+            "Easy": "Fácil",
+            "Normal": "Normal",
+            "Hard": "Difícil",
+            "VeryHard": "Muito difícil"
+          }
+        },
+        "plantGrowth": {
+          "label": "Velocidade de crescimento das plantas",
+          "description": "1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "workstationSpeed": {
+          "label": "Velocidade das estações de trabalho",
+          "description": "Escala os tempos de produção dos itens de oficina; maior demora mais. 1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "perkCost": {
+          "label": "Custo de melhoria de armas",
+          "description": "Runas necessárias para melhorar as armas. 1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "recyclingYield": {
+          "label": "Runas devolvidas ao desmontar",
+          "description": "Proporção das Runas devolvida ao desmontar armas melhoradas. 0.5 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "miningXp": {
+          "label": "XP de mineração",
+          "description": "1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "explorationXp": {
+          "label": "XP de exploração",
+          "description": "XP por explorar e concluir missões. 1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "enemyAmount": {
+          "label": "Quantidade de inimigos",
+          "description": "Quantos inimigos existem no mundo. Somente com a dificuldade Personalizado.",
+          "options": {
+            "Few": "Poucos",
+            "Normal": "Normal",
+            "Many": "Muitos",
+            "Extreme": "Extremo"
+          }
+        },
+        "simultaneousAttacks": {
+          "label": "Atacantes simultâneos",
+          "description": "Quantos inimigos podem atacar ao mesmo tempo. Somente com a dificuldade Personalizado.",
+          "options": {
+            "Few": "Poucos",
+            "Normal": "Normal",
+            "Many": "Muitos",
+            "Extreme": "Extremo"
+          }
+        },
+        "enemyStamina": {
+          "label": "Vigor dos inimigos",
+          "description": "Quanto maior, mais difícil atordoar os inimigos. 1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "enemyPerception": {
+          "label": "Percepção dos inimigos",
+          "description": "A que distância os inimigos veem e ouvem os jogadores, exceto chefes. 1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "enemyAttackFrequency": {
+          "label": "Frequência de ataque dos inimigos",
+          "description": "Com que frequência os inimigos atacam, exceto chefes. 1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "bossHealth": {
+          "label": "Vida dos chefes",
+          "description": "1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "bossDamage": {
+          "label": "Dano dos chefes",
+          "description": "1 é o valor do jogo. Somente com a dificuldade Personalizado."
+        },
+        "tamingFailure": {
+          "label": "Assustar a fauna ao domesticar",
+          "description": "Somente com a dificuldade Personalizado.",
+          "options": {
+            "KeepProgress": "Manter todo o progresso",
+            "LoseSomeProgress": "Perder parte do progresso",
+            "LoseAllProgress": "Perder todo o progresso"
+          }
+        },
+        "curse": {
+          "label": "Maldição do Shroud",
+          "description": "Chance de receber a maldição ao ser atacado no Shroud. Somente com a dificuldade Personalizado.",
+          "options": {
+            "Easy": "Desativado",
+            "Normal": "Normal",
+            "Hard": "Chance dobrada"
+          }
+        },
+        "dayLength": {
+          "label": "Duração do dia (luz)",
+          "description": "Tempo real que o dia dura. Somente com a dificuldade Personalizado.",
+          "options": {
+            "120000000000": "2 minutos",
+            "600000000000": "10 minutos",
+            "1200000000000": "20 minutos",
+            "1800000000000": "30 minutos (padrão)",
+            "2700000000000": "45 minutos",
+            "3600000000000": "60 minutos"
+          }
+        },
+        "nightLength": {
+          "label": "Duração da noite",
+          "description": "Tempo real que a noite dura. Somente com a dificuldade Personalizado.",
+          "options": {
+            "120000000000": "2 minutos",
+            "300000000000": "5 minutos",
+            "720000000000": "12 minutos (padrão)",
+            "1200000000000": "20 minutos",
+            "1800000000000": "30 minutos",
+            "3600000000000": "60 minutos"
+          }
+        },
+        "hungerToStarving": {
+          "label": "Duração do estado de fome",
+          "description": "Quanto tempo os jogadores ficam com fome antes de passar fome de vez. Somente com a dificuldade Personalizado.",
+          "options": {
+            "300000000000": "5 minutos",
+            "600000000000": "10 minutos (padrão)",
+            "900000000000": "15 minutos",
+            "1200000000000": "20 minutos"
+          }
         }
       },
       "ports": {
@@ -2767,6 +3330,83 @@
         },
         "steamGroupOnly": {
           "label": "Somente membros do grupo da Steam",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "tags": {
+          "label": "Tags do servidor",
+          "description": "Tags separadas por vírgulas exibidas na lista de servidores."
+        },
+        "region": {
+          "label": "Região",
+          "description": "Região exibida na lista de servidores.",
+          "options": {
+            "0": "EUA Leste",
+            "1": "EUA Oeste",
+            "2": "América do Sul",
+            "3": "Europa",
+            "4": "Ásia",
+            "5": "Austrália",
+            "6": "Oriente Médio",
+            "7": "África",
+            "255": "Mundo",
+            "-1": "Nenhuma"
+          }
+        },
+        "searchKey": {
+          "label": "Chave de busca do lobby",
+          "description": "Os jogadores podem encontrar o servidor nos lobbies com esta chave."
+        },
+        "lan": {
+          "label": "Apenas LAN",
+          "description": "Não aparece na internet e os jogadores não são autenticados.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "cheats": {
+          "label": "Cheats",
+          "description": "Os jogadores podem usar comandos de cheat.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "voice": {
+          "label": "Chat de voz",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "visibleMaxPlayers": {
+          "label": "Slots exibidos na lista",
+          "description": "-1: os slots reais."
+        },
+        "pure": {
+          "label": "Servidor pure",
+          "options": {
+            "0": "Desativado",
+            "1": "Os arquivos devem coincidir, exceto a lista de permitidos",
+            "2": "Os arquivos devem vir da Steam"
+          }
+        },
+        "consistency": {
+          "label": "Verificar arquivos críticos",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "downloadUrl": {
+          "label": "URL de download rápido",
+          "description": "De onde os jogadores baixam conteúdo personalizado em vez do servidor."
+        },
+        "pausable": {
+          "label": "Os jogadores podem pausar",
           "options": {
             "0": "Desativado",
             "1": "Ativado"
@@ -2830,7 +3470,8 @@
           "label": "Somente jogadores da lista de permitidos"
         },
         "pvp": {
-          "label": "Os jogadores podem se ferir"
+          "label": "Os jogadores podem se ferir",
+          "description": "Vale apenas para o Minecraft 1.21.8 e anteriores: as versões mais novas usam a regra de jogo pvp."
         },
         "seed": {
           "label": "Semente do mundo",
@@ -2907,6 +3548,50 @@
             "true": "Sim",
             "false": "Não"
           }
+        },
+        "maxTickTime": {
+          "label": "Tempo máximo de tick (ms)",
+          "description": "Um tick mais longo que isso para o servidor. -1: nunca."
+        },
+        "secureProfile": {
+          "label": "Exigir chaves de chat assinadas",
+          "description": "Os jogadores precisam de chaves de chat assinadas pela Mojang para entrar.",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "maxWorldSize": {
+          "label": "Raio da borda do mundo",
+          "description": "Blocos a partir do centro."
+        },
+        "entityRange": {
+          "label": "Alcance de entidades (%)",
+          "description": "A que distância as entidades são enviadas aos jogadores, em porcentagem."
+        },
+        "pauseWhenEmpty": {
+          "label": "Pausar quando vazio (s)",
+          "description": "Segundos sem ninguém online antes de o servidor pausar (1.21.2 e posteriores). -1: nunca."
+        },
+        "resourcePack": {
+          "label": "URL do pacote de recursos",
+          "description": "Este pacote de recursos é oferecido aos jogadores ao entrarem."
+        },
+        "resourcePackSha1": {
+          "label": "SHA-1 do pacote de recursos",
+          "description": "O hash SHA-1 do pacote, para que os clientes possam verificá-lo."
+        },
+        "requireResourcePack": {
+          "label": "Exigir o pacote de recursos",
+          "description": "Os jogadores que recusam o pacote são desconectados.",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "resourcePackPrompt": {
+          "label": "Mensagem do pacote de recursos",
+          "description": "Texto exibido aos jogadores quando o pacote é oferecido."
         }
       },
       "ports": {
@@ -2993,6 +3678,133 @@
         },
         "guildSize": {
           "label": "Jogadores por guilda"
+        },
+        "autoSave": {
+          "label": "Salvamento automático a cada (s)",
+          "description": "Segundos entre os salvamentos do mundo. 30 é o valor do jogo."
+        },
+        "pvpDamage": {
+          "label": "Dano entre jogadores",
+          "options": {
+            "True": "Sim",
+            "False": "Não"
+          }
+        },
+        "friendlyFire": {
+          "label": "Fogo amigo",
+          "options": {
+            "True": "Sim",
+            "False": "Não"
+          }
+        },
+        "invaders": {
+          "label": "Ataques às bases (invasores)",
+          "description": "Os inimigos atacam as bases dos jogadores.",
+          "options": {
+            "True": "Sim",
+            "False": "Não"
+          }
+        },
+        "hardcore": {
+          "label": "Hardcore",
+          "description": "Os jogadores não podem renascer depois de morrer.",
+          "options": {
+            "True": "Sim",
+            "False": "Não"
+          }
+        },
+        "palLost": {
+          "label": "Pals perdidos ao morrer",
+          "description": "Os Pals que morrem são perdidos para sempre.",
+          "options": {
+            "True": "Sim",
+            "False": "Não"
+          }
+        },
+        "palDamageAttack": {
+          "label": "Dano causado pelos Pals",
+          "description": "1 é o valor do jogo."
+        },
+        "palDamageDefense": {
+          "label": "Dano recebido pelos Pals",
+          "description": "1 é o valor do jogo."
+        },
+        "playerDamageAttack": {
+          "label": "Dano causado pelos jogadores",
+          "description": "1 é o valor do jogo."
+        },
+        "playerDamageDefense": {
+          "label": "Dano recebido pelos jogadores",
+          "description": "1 é o valor do jogo."
+        },
+        "playerHunger": {
+          "label": "Ritmo de fome dos jogadores",
+          "description": "1 é o valor do jogo."
+        },
+        "playerStamina": {
+          "label": "Consumo de vigor do jogador",
+          "description": "1 é o valor do jogo."
+        },
+        "palHunger": {
+          "label": "Ritmo de fome dos Pals",
+          "description": "1 é o valor do jogo."
+        },
+        "palStamina": {
+          "label": "Consumo de vigor dos Pals",
+          "description": "1 é o valor do jogo."
+        },
+        "buildDecay": {
+          "label": "Deterioração das estruturas",
+          "description": "0 impede que as estruturas se deteriorem. 1 é o valor do jogo."
+        },
+        "itemWeight": {
+          "label": "Peso dos itens",
+          "description": "1 é o valor do jogo."
+        },
+        "equipDurability": {
+          "label": "Desgaste do equipamento",
+          "description": "0 significa que o equipamento nunca quebra. 1 é o valor do jogo."
+        },
+        "baseCamps": {
+          "label": "Bases no servidor",
+          "description": "Máximo de bases que o servidor inteiro pode ter."
+        },
+        "buildingLimit": {
+          "label": "Construções por jogador",
+          "description": "0 significa sem limite."
+        },
+        "supplyDropMinutes": {
+          "label": "Lançamento de suprimentos a cada (min)"
+        },
+        "respawnSeconds": {
+          "label": "Atraso de renascimento (s)"
+        },
+        "backups": {
+          "label": "Backups do mundo",
+          "description": "O jogo guarda os próprios backups do mundo na pasta de salvamento.",
+          "options": {
+            "True": "Ativado",
+            "False": "Desativado"
+          }
+        },
+        "showPlayerList": {
+          "label": "Lista de jogadores no menu",
+          "options": {
+            "True": "Sim",
+            "False": "Não"
+          }
+        },
+        "allowClientMods": {
+          "label": "Jogadores com mods",
+          "description": "Se jogadores que usam mods de cliente podem entrar.",
+          "options": {
+            "True": "Permitidos",
+            "False": "Bloqueados"
+          }
+        },
+        "publicIp": {
+          "label": "IP público",
+          "description": "Para servidores da comunidade atrás de NAT: o endereço que os jogadores veem."
         }
       },
       "ports": {
@@ -3113,6 +3925,135 @@
         "welcome": {
           "label": "Mensagem de boas-vindas",
           "description": "Mostrada no chat quando um jogador entra."
+        },
+        "map": {
+          "label": "Mapas",
+          "description": "Mapas a carregar, separados por ponto e vírgula: primeiro os mods de mapas, depois Muldraugh, KY. Uma única linha."
+        },
+        "announceDeath": {
+          "label": "Anunciar mortes",
+          "description": "Uma mensagem no chat quando um jogador morre.",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "noFire": {
+          "label": "Sem fogo",
+          "description": "Os fogos não podem começar (as fogueiras continuam funcionando).",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "playerSafehouse": {
+          "label": "Os jogadores podem reivindicar abrigos",
+          "description": "Os administradores sempre podem reivindicá-las.",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "safehouseLoot": {
+          "label": "Estranhos podem saquear os abrigos",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "safehouseTrespass": {
+          "label": "Estranhos podem entrar nos abrigos",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "safehouseFire": {
+          "label": "O fogo pode danificar os abrigos",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "safehouseRespawn": {
+          "label": "Renascer no seu abrigo",
+          "description": "Os jogadores renascem em um abrigo ao qual pertenciam.",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "safehouseDays": {
+          "label": "Dias de sobrevivência antes de reivindicar",
+          "description": "Dias de jogo que um jogador precisa sobreviver antes de reivindicar um abrigo."
+        },
+        "lootRespawnHours": {
+          "label": "Reaparição de saque a cada (horas de jogo)",
+          "description": "0 significa que o saque nunca reaparece."
+        },
+        "showSafety": {
+          "label": "Mostrar status de PvP",
+          "description": "Uma caveira sobre os jogadores em modo PvP.",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "pvpMeleeDamage": {
+          "label": "Dano corpo a corpo no PvP (%)"
+        },
+        "pvpFirearmDamage": {
+          "label": "Dano de armas de fogo no PvP (%)"
+        },
+        "sleepAllowed": {
+          "label": "Os jogadores podem dormir",
+          "description": "Os jogadores podem dormir quando cansados, mas não precisam.",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "sleepNeeded": {
+          "label": "Os jogadores precisam dormir",
+          "description": "Os jogadores ficam cansados e precisam dormir. Exige a opção anterior ativada.",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "maxAccountsPerUser": {
+          "label": "Contas por usuário da Steam",
+          "description": "0 significa sem limite."
+        },
+        "backupsCount": {
+          "label": "Backups mantidos"
+        },
+        "backupsOnStart": {
+          "label": "Backup a cada inicialização",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "backupsPeriod": {
+          "label": "Backup a cada (min)",
+          "description": "0 desativa."
+        },
+        "faction": {
+          "label": "Facções",
+          "description": "Os jogadores podem criar facções e entrar nelas.",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "luaChecksum": {
+          "label": "Expulsar clientes com arquivos Lua diferentes",
+          "description": "Jogadores cujos arquivos do jogo não coincidem com os do servidor são expulsos.",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
         }
       },
       "ports": {
@@ -3210,6 +4151,61 @@
         "headerImage": {
           "label": "URL da imagem de cabeçalho",
           "description": "Um JPG de 512 × 256 mostrado no navegador de servidores."
+        },
+        "level": {
+          "label": "Tipo de mapa",
+          "description": "Os mapas procedurais usam a semente e o tamanho acima.",
+          "options": {
+            "procedural": "Procedural",
+            "barren": "Barren",
+            "hapis": "Ilha Hapis",
+            "savas": "Ilha Savas"
+          }
+        },
+        "gamemode": {
+          "label": "Modo de jogo",
+          "options": {
+            "vanilla": "Vanilla",
+            "softcore": "Softcore",
+            "hardcore": "Hardcore",
+            "primitive": "Primitivo",
+            "weapontest": "Teste de armas"
+          }
+        },
+        "tickRate": {
+          "label": "Tick rate",
+          "description": "Atualizações do servidor por segundo. O padrão do jogo é 30; mais custa CPU."
+        },
+        "salt": {
+          "label": "Sal do mapa",
+          "description": "Com a semente e o tamanho, recria um mapa conhecido."
+        },
+        "levelUrl": {
+          "label": "URL do mapa personalizado",
+          "description": "Link de download direto de um arquivo de mapa. Substitui o mapa gerado."
+        },
+        "maxTeamSize": {
+          "label": "Tamanho máximo da equipe",
+          "description": "Jogadores por equipe. 1: apenas solo."
+        },
+        "radiation": {
+          "label": "Radiação",
+          "options": {
+            "on": "Ativado",
+            "off": "Desativado"
+          }
+        },
+        "upkeepPeriod": {
+          "label": "Período de manutenção (min)",
+          "description": "Minutos em que o custo de manutenção de uma base é distribuído."
+        },
+        "saveBackups": {
+          "label": "Backups de salvamento mantidos",
+          "description": "Quantas cópias antigas do mundo o jogo mantém."
+        },
+        "logoImage": {
+          "label": "URL do logo do Rust+",
+          "description": "Logo exibido no aplicativo companheiro Rust+."
         }
       },
       "ports": {
@@ -3302,6 +4298,98 @@
             "true": "Sim",
             "false": "Não"
           }
+        },
+        "hideFromList": {
+          "label": "Ocultar da lista pública",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "serverInfoId": {
+          "label": "ID do Pastebin com as infos do servidor",
+          "description": "ID do Pastebin do texto exibido na aba de informações da lista de servidores."
+        },
+        "ipBanning": {
+          "label": "Banimentos por IP",
+          "description": "Desative se o servidor estiver atrás de um proxy ou firewall.",
+          "options": {
+            "true": "Ativado",
+            "false": "Desativado"
+          }
+        },
+        "fastRestart": {
+          "label": "Reinício rápido de rodada",
+          "options": {
+            "true": "Ativado",
+            "false": "Desativado"
+          }
+        },
+        "fastRestartDelay": {
+          "label": "Atraso do reinício rápido (s)"
+        },
+        "intercomCooldown": {
+          "label": "Recarga do intercomunicador (s)"
+        },
+        "intercomSpeech": {
+          "label": "Duração da fala do intercomunicador (s)"
+        },
+        "warheadGates": {
+          "label": "Portões abertos durante a contagem da ogiva",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "warheadDoors": {
+          "label": "Portas abertas durante a contagem da ogiva",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "warheadLockZones": {
+          "label": "Bloquear os checkpoints durante a contagem da ogiva",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "keepItems": {
+          "label": "Manter itens após escapar",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "endOnOnePlayer": {
+          "label": "A rodada termina com um só jogador",
+          "options": {
+            "true": "Sim",
+            "false": "Não"
+          }
+        },
+        "spawnProtect": {
+          "label": "Proteção ao nascer",
+          "options": {
+            "true": "Ativado",
+            "false": "Desativado"
+          }
+        },
+        "spawnProtectTime": {
+          "label": "Proteção ao nascer (s)"
+        },
+        "mtfMinTime": {
+          "label": "Onda MTF, no mínimo (s)"
+        },
+        "mtfMaxTime": {
+          "label": "Onda MTF, no máximo (s)"
+        },
+        "mtfMaxAmount": {
+          "label": "Tamanho da onda MTF"
+        },
+        "ciMaxAmount": {
+          "label": "Tamanho da onda do Caos"
         }
       },
       "ports": {
@@ -3336,7 +4424,7 @@
         },
         "gameMode": {
           "label": "Modo de jogo",
-          "description": "Vale para um mundo novo.",
+          "description": "Vale para um mundo novo. As opções do modo de jogo personalizado abaixo só valem com Personalizado.",
           "options": {
             "Normal": "Normal",
             "Hard": "Difícil",
@@ -3370,6 +4458,152 @@
             "true": "Ativado",
             "false": "Desativado"
           }
+        },
+        "enemySpawn": {
+          "label": "Inimigos surgem",
+          "description": "Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "true": "Ativado",
+            "false": "Desativado"
+          }
+        },
+        "enemyHealth": {
+          "label": "Vida dos inimigos",
+          "description": "Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "Low": "Baixo",
+            "Normal": "Normal",
+            "High": "Alto"
+          }
+        },
+        "enemyDamage": {
+          "label": "Dano dos inimigos",
+          "description": "Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "Low": "Baixo",
+            "Normal": "Normal",
+            "High": "Alto"
+          }
+        },
+        "enemyArmour": {
+          "label": "Armadura dos inimigos",
+          "description": "Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "Low": "Baixo",
+            "Normal": "Normal",
+            "High": "Alto"
+          }
+        },
+        "enemyAggression": {
+          "label": "Agressividade dos inimigos",
+          "description": "Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "Low": "Baixo",
+            "Normal": "Normal",
+            "High": "Alto"
+          }
+        },
+        "animalSpawnRate": {
+          "label": "Taxa de surgimento de animais",
+          "description": "Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "Low": "Baixo",
+            "Normal": "Normal",
+            "High": "Alto"
+          }
+        },
+        "startingSeason": {
+          "label": "Estação inicial",
+          "description": "Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "Spring": "Primavera",
+            "Summer": "Verão",
+            "Autumn": "Outono",
+            "Winter": "Inverno"
+          }
+        },
+        "seasonLength": {
+          "label": "Duração das estações",
+          "description": "Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "Short": "Curto",
+            "Default": "Padrão",
+            "Long": "Longo",
+            "Realistic": "Realista"
+          }
+        },
+        "dayLength": {
+          "label": "Duração do dia",
+          "description": "Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "Short": "Curto",
+            "Default": "Padrão",
+            "Long": "Longo",
+            "Realistic": "Realista"
+          }
+        },
+        "precipitation": {
+          "label": "Chuva e neve",
+          "description": "Com que frequência chove ou neva. Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "Low": "Baixo",
+            "Default": "Padrão",
+            "High": "Alto"
+          }
+        },
+        "consumableEffects": {
+          "label": "Dano por fome e sede",
+          "description": "Dano recebido quando a hidratação e a saciedade estão baixas. Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "Normal": "Normal",
+            "Hard": "Difícil"
+          }
+        },
+        "playerStatsDamage": {
+          "label": "Dano por comida ruim",
+          "description": "Dano de comida e bebida ruins ou podres. Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "Off": "Desativado",
+            "Normal": "Normal",
+            "Hard": "Difícil"
+          }
+        },
+        "coldPenalties": {
+          "label": "Penalidades de frio",
+          "description": "O quanto o frio prejudica a regeneração de vida e vigor. Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "Off": "Desativado",
+            "Normal": "Normal",
+            "Hard": "Difícil"
+          }
+        },
+        "reducedFood": {
+          "label": "Menos comida nos recipientes",
+          "description": "Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "true": "Ativado",
+            "false": "Desativado"
+          }
+        },
+        "singleUseContainers": {
+          "label": "Recipientes de uso único",
+          "description": "Os recipientes só podem ser abertos uma vez. Somente com o modo de jogo Personalizado, em um mundo novo.",
+          "options": {
+            "true": "Ativado",
+            "false": "Desativado"
+          }
+        },
+        "idleDayCycle": {
+          "label": "Velocidade do ciclo de dia com o servidor vazio",
+          "description": "Quão rápido o tempo passa enquanto ninguém está online: 0 o para, 1 é a velocidade normal."
+        },
+        "activeFps": {
+          "label": "Taxa de quadros do servidor",
+          "description": "Quadros por segundo desejados com jogadores online. Menor usa menos CPU. 60 é o valor do jogo."
+        },
+        "idleFps": {
+          "label": "Taxa de quadros do servidor vazio",
+          "description": "Quadros por segundo desejados com ninguém online. 5 é o valor do jogo."
         }
       },
       "ports": {
@@ -3477,6 +4711,98 @@
             "2": "Difícil",
             "3": "Especialista"
           }
+        },
+        "tags": {
+          "label": "Tags do servidor",
+          "description": "Tags separadas por vírgulas exibidas na lista de servidores."
+        },
+        "region": {
+          "label": "Região",
+          "description": "Região exibida na lista de servidores.",
+          "options": {
+            "0": "EUA Leste",
+            "1": "EUA Oeste",
+            "2": "América do Sul",
+            "3": "Europa",
+            "4": "Ásia",
+            "5": "Austrália",
+            "6": "Oriente Médio",
+            "7": "África",
+            "255": "Mundo",
+            "-1": "Nenhuma"
+          }
+        },
+        "lan": {
+          "label": "Apenas LAN",
+          "description": "Não aparece na internet e os jogadores não são autenticados.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "cheats": {
+          "label": "Cheats",
+          "description": "Os jogadores podem usar comandos de cheat.",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "stalemate": {
+          "label": "Morte súbita em empate",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "stalemateTime": {
+          "label": "Tempo de empate (s)"
+        },
+        "allowSpectators": {
+          "label": "Espectadores",
+          "options": {
+            "0": "Não permitidos",
+            "1": "Permitidos"
+          }
+        },
+        "forceCamera": {
+          "label": "Jogadores mortos só veem a própria equipe",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "disableSpread": {
+          "label": "Sem variação aleatória de dano",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "downloadUrl": {
+          "label": "URL de download rápido",
+          "description": "De onde os jogadores baixam mapas personalizados em vez do servidor."
+        },
+        "allowDownload": {
+          "label": "Permitir downloads",
+          "options": {
+            "0": "Desativado",
+            "1": "Ativado"
+          }
+        },
+        "pure": {
+          "label": "Servidor pure",
+          "description": "Quais arquivos dos clientes são permitidos.",
+          "options": {
+            "0": "Somente pure_server_minimal.txt",
+            "1": "Regras completas mais lista de permitidos",
+            "2": "Regras completas",
+            "-1": "Desativado"
+          }
+        },
+        "visibleMaxPlayers": {
+          "label": "Slots exibidos na lista",
+          "description": "-1: os slots reais."
         }
       },
       "ports": {
@@ -3542,6 +4868,26 @@
         },
         "welcome": {
           "label": "Mensagem de boas-vindas"
+        },
+        "cycle": {
+          "label": "Duração do dia (s)",
+          "description": "Segundos que um dia e uma noite completos duram. 3600 é uma hora."
+        },
+        "chatRate": {
+          "label": "Atraso do chat (s)",
+          "description": "Segundos mínimos entre as mensagens de um jogador."
+        },
+        "timeout": {
+          "label": "Limite de ping (ms)",
+          "description": "Jogadores com ping acima disso são expulsos. O usual é 400 a 600."
+        },
+        "decay": {
+          "label": "Tempo de deterioração (s)",
+          "description": "Segundos até que estruturas e veículos abandonados se deteriorem."
+        },
+        "loadout": {
+          "label": "Itens iniciais",
+          "description": "IDs dos itens com que os jogadores nascem, separados por /."
         }
       },
       "ports": {
@@ -3657,6 +5003,26 @@
         },
         "saveInterval": {
           "label": "Salvamento automático a cada (s)"
+        },
+        "backups": {
+          "label": "Backups mantidos",
+          "description": "Quantos backups automáticos do mundo o jogo mantém. 4 é o valor do jogo."
+        },
+        "backupShort": {
+          "label": "Primeiro backup após (s)",
+          "description": "Segundos entre os primeiros backups automáticos. 7200 é o valor do jogo."
+        },
+        "backupLong": {
+          "label": "Backups seguintes a cada (s)",
+          "description": "Segundos entre os backups automáticos seguintes. 43200 é o valor do jogo."
+        },
+        "fireHazards": {
+          "label": "Perigo de incêndios",
+          "description": "O fogo se espalha de forma realista."
+        },
+        "instanceId": {
+          "label": "ID da instância de crossplay",
+          "description": "Somente quando vários servidores com crossplay compartilham um endereço público."
         }
       },
       "ports": {
@@ -3703,7 +5069,8 @@
           "options": {
             "PvP": "PvP",
             "PvE": "PvE"
-          }
+          },
+          "description": "Com um conjunto de regras, precisa combinar com ele."
         },
         "difficulty": {
           "label": "Dificuldade",
@@ -3711,13 +5078,15 @@
             "Difficulty_Easy": "Tranquilo",
             "Difficulty_Normal": "Normal",
             "Difficulty_Brutal": "Brutal"
-          }
+          },
+          "description": "Uma dificuldade pronta. Ela substitui as opções de jogo personalizadas; deixe vazio para usá-las."
         },
         "autoSave": {
           "label": "Salvamento automático a cada (s)"
         },
         "clanSize": {
-          "label": "Tamanho do clã"
+          "label": "Tamanho do clã",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
         },
         "castleDamage": {
           "label": "Dano ao castelo",
@@ -3725,11 +5094,12 @@
             "Always": "Sempre",
             "Never": "Nunca",
             "TimeRestricted": "Durante o horário de ataques"
-          }
+          },
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
         },
         "bloodBound": {
           "label": "Equipamento ligado ao sangue",
-          "description": "O equipamento fica com o dono quando ele morre.",
+          "description": "O equipamento fica com o dono quando ele morre. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida.",
           "options": {
             "true": "Ativado",
             "false": "Desativado"
@@ -3737,7 +5107,7 @@
         },
         "teleportBound": {
           "label": "Itens bloqueiam teletransportes",
-          "description": "Jogadores carregando recursos não podem usar os portais.",
+          "description": "Jogadores carregando recursos não podem usar os portais. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida.",
           "options": {
             "true": "Ativado",
             "false": "Desativado"
@@ -3745,28 +5115,179 @@
         },
         "materialYield": {
           "label": "Rendimento de recursos",
-          "description": "Multiplicador dos recursos coletados."
+          "description": "Multiplicador dos recursos coletados. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
         },
         "craftRate": {
-          "label": "Velocidade de criação"
+          "label": "Velocidade de criação",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
         },
         "buildCost": {
-          "label": "Custo de construção"
+          "label": "Custo de construção",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
         },
         "researchCost": {
-          "label": "Custo de pesquisa"
+          "label": "Custo de pesquisa",
+          "description": "As versões mais novas do jogo não o usam mais. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
         },
         "bloodDrain": {
-          "label": "Consumo de sangue"
+          "label": "Consumo de sangue",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
         },
         "durabilityDrain": {
-          "label": "Perda de durabilidade"
+          "label": "Perda de durabilidade",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
         },
         "sunDamage": {
-          "label": "Dano do sol"
+          "label": "Dano do sol",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
         },
         "castleDecay": {
-          "label": "Deterioração do castelo"
+          "label": "Deterioração do castelo",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "ruleset": {
+          "label": "Conjunto de regras",
+          "description": "Um conjunto de regras pronto que substitui as opções de jogo personalizadas e precisa combinar com o modo de jogo. Personalizado usa as opções abaixo.",
+          "options": {
+            "StandardPvP": "PvP padrão",
+            "StandardPvP_Easy": "PvP padrão, fácil",
+            "StandardPvP_Hard": "PvP padrão, difícil",
+            "StandardPvP_DailySiege": "PvP padrão, cerco diário",
+            "StandardPvP_NoSiege": "PvP padrão, sem cerco",
+            "StandardPvP_WeekendSiege": "PvP padrão, cerco no fim de semana",
+            "SoloPvP": "PvP solo",
+            "DuoPvP": "PvP em dupla",
+            "DuoPvP_DailySiege": "PvP em dupla, cerco diário",
+            "DuoPvP_NoSiege": "PvP em dupla, sem cerco",
+            "DuoPvP_WeekendSiege": "PvP em dupla, cerco no fim de semana",
+            "TrioPvP": "PvP em trio",
+            "TrioPvP_DailySiege": "PvP em trio, cerco diário",
+            "TrioPvP_NoSiege": "PvP em trio, sem cerco",
+            "TrioPvP_WeekendSiege": "PvP em trio, cerco no fim de semana",
+            "HardcorePvP": "PvP com saque completo",
+            "HardcoreDuoPvP": "PvP hardcore em dupla",
+            "HardcoreTrioPvP": "PvP hardcore em trio",
+            "Level30PvP": "PvP Alvorada (nível 30)",
+            "Level50PvP": "PvP Meio-dia (nível 50)",
+            "Level70PvP": "PvP Crepúsculo (nível 70)",
+            "Level90PvP": "PvP Meia-noite (nível 90)",
+            "StandardPvE": "PvE padrão",
+            "StandardPvE_Easy": "PvE padrão, fácil",
+            "StandardPvE_Hard": "PvE padrão, difícil",
+            "Level30PvE": "PvE Alvorada (nível 30)",
+            "Level50PvE": "PvE Meio-dia (nível 50)",
+            "Level70PvE": "PvE Crepúsculo (nível 70)",
+            "Level90PvE": "PvE Meia-noite (nível 90)",
+            "custom": "Personalizado: as opções abaixo"
+          }
+        },
+        "pvpProtection": {
+          "label": "Proteção PvP para novos jogadores",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida.",
+          "options": {
+            "Disabled": "Nenhum",
+            "VeryShort": "15 minutos",
+            "Short": "30 minutos",
+            "Medium": "1 hora",
+            "Long": "2 horas"
+          }
+        },
+        "playerDamageMode": {
+          "label": "Dano dos jogadores",
+          "description": "Quando os jogadores podem se ferir (não no PvE). Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida.",
+          "options": {
+            "Always": "Sempre",
+            "TimeRestricted": "Durante o horário de ataques"
+          }
+        },
+        "castleHeartDamage": {
+          "label": "Coração do castelo",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida.",
+          "options": {
+            "CanBeDestroyedOnlyWhenDecaying": "Destruído só ao se deteriorar",
+            "CanBeDestroyedByPlayers": "Os jogadores podem destruí-lo",
+            "CanBeSeizedOrDestroyedByPlayers": "Os jogadores podem tomá-lo ou destruí-lo"
+          }
+        },
+        "siegeHealth": {
+          "label": "Vida do golem de cerco",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida.",
+          "options": {
+            "VeryLow": "Muito baixa",
+            "Low": "Baixo",
+            "Normal": "Normal",
+            "High": "Alto",
+            "VeryHigh": "Muito alta"
+          }
+        },
+        "deathContainer": {
+          "label": "Quem pode saquear um corpo",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida.",
+          "options": {
+            "Anyone": "Qualquer um",
+            "ClanMembers": "Membros do clã",
+            "OnlySelf": "Somente o dono"
+          }
+        },
+        "dropGeneral": {
+          "label": "Saque dos inimigos",
+          "description": "Multiplicador do que as mortes e os baús dropam. 1 é o valor do jogo. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "stacks": {
+          "label": "Tamanho das pilhas",
+          "description": "Multiplicador de quantos itens cabem em uma pilha. 1 é o valor do jogo. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "bloodEssenceYield": {
+          "label": "Rendimento de essência de sangue",
+          "description": "Multiplicador da essência de sangue dos inimigos derrotados. 1 é o valor do jogo. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "dayLengthSeconds": {
+          "label": "Duração do dia (s)",
+          "description": "Segundos reais que um dia inteiro dura. 1080 é o valor do jogo. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "bloodMoonMin": {
+          "label": "Lua de sangue no mínimo a cada (dias)",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "bloodMoonMax": {
+          "label": "Lua de sangue no máximo a cada (dias)",
+          "description": "Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "playerHealth": {
+          "label": "Vida do jogador",
+          "description": "Multiplicador da vida máxima dos jogadores. 1 é o valor do jogo. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "damageReceived": {
+          "label": "Dano recebido pelos jogadores",
+          "description": "Multiplicador de qualquer dano que os jogadores recebem. 1 é o valor do jogo. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "mobHealth": {
+          "label": "Vida dos inimigos",
+          "description": "Multiplicador da vida dos inimigos comuns. 1 é o valor do jogo. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "mobPower": {
+          "label": "Dano dos inimigos",
+          "description": "Multiplicador do dano causado pelos inimigos comuns. 1 é o valor do jogo. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "vbloodHealth": {
+          "label": "Vida dos chefes",
+          "description": "Multiplicador da vida dos chefes V Blood. 1 é o valor do jogo. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "vbloodPower": {
+          "label": "Dano dos chefes",
+          "description": "Multiplicador do dano causado pelos chefes V Blood. 1 é o valor do jogo. Ignorado enquanto houver um conjunto de regras ou uma dificuldade definida."
+        },
+        "maxAdmins": {
+          "label": "Slots de administradores",
+          "description": "Administradores que podem entrar mesmo com o servidor cheio."
+        },
+        "autoSaveCount": {
+          "label": "Salvamentos automáticos mantidos",
+          "description": "Quantos salvamentos automáticos o servidor mantém. 25 é o valor do jogo."
+        },
+        "serverFps": {
+          "label": "Taxa de quadros do servidor",
+          "description": "Quadros por segundo desejados do servidor. 30 é o valor do jogo."
         }
       },
       "ports": {
