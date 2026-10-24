@@ -21,3 +21,9 @@ Checked on 2026-10-05 on Windows 11 Pro (build 26200), with the Steam build of t
 - Mods are CurseForge project ids (`-mods=`); the server downloads them itself.
 - On Windows Server, its own guides say the Amazon root certificate revocation list must be imported for it to be
   listed; Pulsar does not change the machine's certificates.
+
+## Options added in 1.0.8
+
+Version 1.2.0 adds 19 options: hardcore, player and wild creature damage and resistance, structure resistance, item stack size, resource respawn period, harvest health, player food and water drain, creature food drain, offline raid protection and its delay, max tamed creatures per tribe, max structures in range, hit markers (`GameUserSettings.ini`), players per tribe and no friendly fire in PvP (`Game.ini`).
+
+They come from AMP's template for the game (and, where noted, other panels' templates or the game's documentation); they were not each tried on a real server. The test suite checks that they are written to the right file and key, and that an option left empty changes nothing.
