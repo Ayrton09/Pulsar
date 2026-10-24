@@ -12,3 +12,9 @@ through a development panel and agent:
   whether a password is needed (also on loopback). The server also prints a Server Code that friends can join with.
 - Without a game server login token it says it is neither listed on the internet nor joinable over it.
 - `Shutdown` from its console saves the world and exits with code 0 in about 2 s.
+
+## Options added in 1.0.8
+
+Day length (`Cycle`), chat delay (`Chatrate`), ping timeout (`Timeout`), decay time (`Decay`) and starting items (`Loadout`), in `Commands.dat`. The gameplay file (`Config.txt`) is not covered: Pulsar has no format for it.
+
+They come from AMP's template and the game's server documentation; none was tried on a real server.

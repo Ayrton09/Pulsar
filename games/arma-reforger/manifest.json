@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "arma-reforger",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Arma Reforger",
   "description": "Arma Reforger dedicated server, installed anonymously with SteamCMD. Its settings are in server.json and its logs, saves and mods in the profile folder of the server.",
   "authors": ["Pulsar contributors"],
@@ -50,7 +50,23 @@
       "options": [ { "value": "false", "label": "Allowed" }, { "value": "true", "label": "Disabled" } ] },
     { "key": "battlEye", "label": "BattlEye", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ] },
     { "key": "viewDistance", "label": "Max view distance (m)", "type": "integer", "min": 500, "max": 10000 },
-    { "key": "maxFps", "label": "Server FPS", "type": "integer", "default": 60, "min": 30, "max": 120 }
+    { "key": "maxFps", "label": "Server FPS", "type": "integer", "default": 60, "min": 30, "max": 120 },
+    { "key": "networkViewDistance", "label": "Network view distance (m)", "type": "integer", "min": 500, "max": 5000,
+      "description": "How far away entities are sent to players." },
+    { "key": "minGrassDistance", "label": "Min grass distance (m)", "type": "integer", "min": 0, "max": 150,
+      "description": "0: players choose. Otherwise 50 to 150 is forced as the minimum." },
+    { "key": "fastValidation", "label": "Fast validation", "type": "enum", "options": [ { "value": "true", "label": "On" }, { "value": "false", "label": "Off" } ],
+      "description": "Faster checks of the map when a player joins." },
+    { "key": "vonDisableUi", "label": "Hide voice UI", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ] },
+    { "key": "vonDisableDirectUi", "label": "Hide direct speech UI", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ] },
+    { "key": "vonCrossFaction", "label": "Radios work across factions", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ] },
+    { "key": "playerSaveTime", "label": "Player save period (s)", "type": "integer", "min": 10, "max": 3600 },
+    { "key": "aiLimit", "label": "AI limit", "type": "integer", "min": -1, "max": 10000,
+      "description": "Most AI characters at once. -1: no limit." },
+    { "key": "disableAi", "label": "Disable AI", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "No AI at all, for PvP." },
+    { "key": "slotReservationTimeout", "label": "Slot reservation (s)", "type": "integer", "min": 5, "max": 300,
+      "description": "How long a disconnected player's slot is kept for them." }
   ],
 
   "ports": [
@@ -95,10 +111,21 @@
         "/game/crossPlatform": "{{var.crossPlatform}}",
         "/game/gameProperties/disableThirdPerson": "{{var.thirdPerson}}",
         "/game/gameProperties/battlEye": "{{var.battlEye}}",
-        "/game/gameProperties/serverMaxViewDistance": "{{var.viewDistance}}"
+        "/game/gameProperties/serverMaxViewDistance": "{{var.viewDistance}}",
+        "/game/gameProperties/networkViewDistance": "{{var.networkViewDistance}}",
+        "/game/gameProperties/serverMinGrassDistance": "{{var.minGrassDistance}}",
+        "/game/gameProperties/fastValidation": "{{var.fastValidation}}",
+        "/game/gameProperties/VONDisableUI": "{{var.vonDisableUi}}",
+        "/game/gameProperties/VONDisableDirectSpeechUI": "{{var.vonDisableDirectUi}}",
+        "/game/gameProperties/VONCanTransmitCrossFaction": "{{var.vonCrossFaction}}",
+        "/operating/playerSaveTime": "{{var.playerSaveTime}}",
+        "/operating/aiLimit": "{{var.aiLimit}}",
+        "/operating/disableAI": "{{var.disableAi}}",
+        "/operating/slotReservationTimeout": "{{var.slotReservationTimeout}}"
       },
       "keepIfEmpty": ["/game/crossPlatform", "/game/gameProperties/disableThirdPerson", "/game/gameProperties/battlEye",
-        "/game/gameProperties/serverMaxViewDistance"] }
+        "/game/gameProperties/serverMaxViewDistance",
+        "/game/gameProperties/networkViewDistance", "/game/gameProperties/serverMinGrassDistance", "/game/gameProperties/fastValidation", "/game/gameProperties/VONDisableUI", "/game/gameProperties/VONDisableDirectSpeechUI", "/game/gameProperties/VONCanTransmitCrossFaction", "/operating/playerSaveTime", "/operating/aiLimit", "/operating/disableAI", "/operating/slotReservationTimeout"] }
   ],
 
   "query": { "protocol": "a2s", "port": "query" },

@@ -12,3 +12,9 @@ through a development panel and agent:
 - Ready when A2S answers on the query port, in 60 to 90 s (it registers with Bohemia's backend first). A2S gives the
   name, the scenario and the slots; it does not say whether a password is needed.
 - Ctrl+C stops it with exit code 0 in about 4 s.
+
+## Options added in 1.0.8
+
+In `server.json`: network view distance, minimum grass distance, fast validation, voice UI options and cross-faction radios (all in `game.gameProperties`, which the shipped file already has), and player save period, AI limit, disable AI and slot reservation timeout (in `operating`, an object Pulsar adds to the file when one of them is set).
+
+Their paths are those of AMP's template for the game. None was tried on a real server: as noted above, the server refuses to start on a member it does not know, so if a start fails after setting one of them, clear it.

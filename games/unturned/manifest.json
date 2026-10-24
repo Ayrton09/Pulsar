@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "unturned",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Unturned",
   "description": "Unturned dedicated server, installed anonymously with SteamCMD. Its settings and world live in Servers/pulsar of the server folder; to be listed on the internet it needs a game server login token.",
   "authors": ["Pulsar contributors"],
@@ -28,7 +28,17 @@
       "options": [ { "value": "pvp", "label": "PvP", "map": { "pve": "" } }, { "value": "pve", "label": "PvE", "map": { "pve": "on" } } ] },
     { "key": "owner", "label": "Owner (SteamID64)", "type": "string", "maxLength": 17, "pattern": "^7656119[0-9]{10}$",
       "description": "This player is an administrator of the server." },
-    { "key": "welcome", "label": "Welcome message", "type": "string", "maxLength": 128, "pattern": "^[^\"/]{1,128}$" }
+    { "key": "welcome", "label": "Welcome message", "type": "string", "maxLength": 128, "pattern": "^[^\"/]{1,128}$" },
+    { "key": "cycle", "label": "Day length (s)", "type": "integer", "min": 60, "max": 86400,
+      "description": "Seconds a full day and night lasts. 3600 is one hour." },
+    { "key": "chatRate", "label": "Chat delay (s)", "type": "number", "min": 0, "max": 60,
+      "description": "Minimum seconds between the messages of a player." },
+    { "key": "timeout", "label": "Ping timeout (ms)", "type": "integer", "min": 200, "max": 5000,
+      "description": "Players over this ping are kicked. 400 to 600 is usual." },
+    { "key": "decay", "label": "Decay time (s)", "type": "integer", "min": 0, "max": 31536000,
+      "description": "Seconds until unattended structures and vehicles decay." },
+    { "key": "loadout", "label": "Starting items", "type": "string", "maxLength": 128, "pattern": "^[0-9]+(/[0-9]+)*$",
+      "description": "Item IDs players spawn with, separated by /." }
   ],
 
   "ports": [
@@ -66,9 +76,14 @@
         "Perspective": "{{var.perspective}}",
         "PvE": "{{var.combat.pve}}",
         "Owner": "{{var.owner}}",
-        "Welcome": "{{var.welcome}}"
+        "Welcome": "{{var.welcome}}",
+        "Cycle": "{{var.cycle}}",
+        "Chatrate": "{{var.chatRate}}",
+        "Timeout": "{{var.timeout}}",
+        "Decay": "{{var.decay}}",
+        "Loadout": "{{var.loadout}}"
       },
-      "keepIfEmpty": ["Mode", "Perspective", "Owner", "Welcome"] }
+      "keepIfEmpty": ["Mode", "Perspective", "Owner", "Welcome", "Cycle", "Chatrate", "Timeout", "Decay", "Loadout"] }
   ],
 
   "query": { "protocol": "a2s", "port": "game" },

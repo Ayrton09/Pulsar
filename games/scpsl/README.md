@@ -11,3 +11,9 @@ Checked on 2026-10-04 on Windows 11 Pro (build 26200), with the Steam build of t
   the game, and a trailing `\` would escape that quote.
 - LocalAdmin itself keeps its settings and logs in `%APPDATA%\SCP Secret Laboratory` of the account the server runs
   as (each server has its own account when the agent runs as a service).
+
+## Options added in 1.0.8
+
+Hide from the public list, server info Pastebin ID, IP bans, fast round restart (and delay), intercom cooldown and speech time, warhead countdown effects (gates, doors, checkpoints), keep items after escaping, round end with one player, spawn protection (and time), MTF wave times and sizes and Chaos wave size, in `config_gameplay.txt`.
+
+They come from AMP's template; none was tried on a real server. A key the game's file does not have is added at the end of it.
