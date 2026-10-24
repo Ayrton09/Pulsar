@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "project-zomboid",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Project Zomboid",
   "description": "Project Zomboid dedicated server, installed anonymously with SteamCMD (about 7 GB), run with the Java runtime it ships. Its world and settings live in the zomboid folder of the server.",
   "authors": ["Pulsar contributors"],
@@ -24,7 +24,28 @@
       "description": "Steam Workshop item ids, separated by semicolons. The server downloads them when it starts.",
       "workshop": { "appId": 108600 } },
     { "key": "mods", "label": "Mod ids", "type": "string", "default": "", "maxLength": 2048, "pattern": "^[A-Za-z0-9_ .;\\\\-]*$",
-      "description": "The mods to load, by their mod id (not their Workshop id), separated by semicolons. Build 42 writes each as \\ModId." }
+      "description": "The mods to load, by their mod id (not their Workshop id), separated by semicolons. Build 42 writes each as \\ModId." },
+    { "key": "pvp", "label": "PvP", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Players can hurt each other." },
+    { "key": "safetySystem", "label": "PvP safety toggle", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Each player chooses whether to take part in PvP." },
+    { "key": "pauseEmpty", "label": "Pause when empty", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Time stops while nobody is playing." },
+    { "key": "open", "label": "Anyone can join", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "No: only accounts on the server's whitelist join." },
+    { "key": "autoWhitelist", "label": "Add new players to the whitelist", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ] },
+    { "key": "globalChat", "label": "Global chat", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ] },
+    { "key": "voice", "label": "Voice chat", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ] },
+    { "key": "vac", "label": "Steam VAC", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Valve's anti-cheat." },
+    { "key": "saveMinutes", "label": "Autosave every (min)", "type": "integer", "min": 0, "max": 1440,
+      "description": "0: the game's own." },
+    { "key": "pingLimit", "label": "Ping limit (ms)", "type": "integer", "min": 0, "max": 2000,
+      "description": "Players with a higher ping are kicked. 0 turns it off." },
+    { "key": "description", "label": "Description", "type": "string", "maxLength": 200, "pattern": "^.{1,200}$",
+      "description": "Shown in the server browser." },
+    { "key": "welcome", "label": "Welcome message", "type": "string", "maxLength": 500, "pattern": "^.{1,500}$",
+      "description": "Shown in the chat when a player joins." }
   ],
 
   "ports": [
@@ -66,8 +87,21 @@
         "UDPPort": "{{port.udp}}",
         "UPnP": "false",
         "WorkshopItems": "{{var.workshopItems}}",
-        "Mods": "{{var.mods}}"
-      } }
+        "Mods": "{{var.mods}}",
+        "PVP": "{{var.pvp}}",
+        "SafetySystem": "{{var.safetySystem}}",
+        "PauseEmpty": "{{var.pauseEmpty}}",
+        "Open": "{{var.open}}",
+        "AutoCreateUserInWhiteList": "{{var.autoWhitelist}}",
+        "GlobalChat": "{{var.globalChat}}",
+        "VoiceEnable": "{{var.voice}}",
+        "SteamVAC": "{{var.vac}}",
+        "SaveWorldEveryMinutes": "{{var.saveMinutes}}",
+        "PingLimit": "{{var.pingLimit}}",
+        "PublicDescription": "{{var.description}}",
+        "ServerWelcomeMessage": "{{var.welcome}}"
+      },
+      "keepIfEmpty": ["PVP", "SafetySystem", "PauseEmpty", "Open", "AutoCreateUserInWhiteList", "GlobalChat", "VoiceEnable", "SteamVAC", "SaveWorldEveryMinutes", "PingLimit", "PublicDescription", "ServerWelcomeMessage"] }
   ],
 
   "query": { "protocol": "a2s", "port": "game" },

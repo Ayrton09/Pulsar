@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "7dtd",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "7 Days to Die",
   "description": "7 Days to Die dedicated server, installed anonymously with SteamCMD (about 17 GB). Its settings live in pulsar-serverconfig.xml, a copy of the game's own serverconfig.xml that its updates leave alone.",
   "authors": ["Pulsar contributors"],
@@ -26,7 +26,46 @@
         { "value": "hidden", "label": "Not listed", "map": { "value": "0" } }
       ] },
     { "key": "eac", "label": "EasyAntiCheat", "type": "boolean", "default": true,
-      "description": "Most code mods need it off." }
+      "description": "Most code mods need it off." },
+    { "key": "difficulty", "label": "Difficulty", "type": "enum",
+      "options": [
+        { "value": "0", "label": "Scavenger" }, { "value": "1", "label": "Adventurer" }, { "value": "2", "label": "Nomad" },
+        { "value": "3", "label": "Warrior" }, { "value": "4", "label": "Survivalist" }, { "value": "5", "label": "Insane" }
+      ] },
+    { "key": "dayLength", "label": "Day length (real minutes)", "type": "integer", "min": 10, "max": 240,
+      "description": "Real minutes a whole game day lasts." },
+    { "key": "dayLightHours", "label": "Daylight hours", "type": "integer", "min": 0, "max": 24,
+      "description": "Game hours of daylight in a day." },
+    { "key": "bloodMoonFrequency", "label": "Blood moon every (days)", "type": "integer", "min": 0, "max": 100,
+      "description": "0 turns blood moons off." },
+    { "key": "bloodMoonEnemies", "label": "Blood moon zombies per player", "type": "integer", "min": 0, "max": 64 },
+    { "key": "zombieSpeedDay", "label": "Zombie speed by day", "type": "enum", "options": [
+        { "value": "0", "label": "Walk" }, { "value": "1", "label": "Jog" }, { "value": "2", "label": "Run" },
+        { "value": "3", "label": "Sprint" }, { "value": "4", "label": "Nightmare" }
+      ] },
+    { "key": "zombieSpeedNight", "label": "Zombie speed by night", "type": "enum", "options": [
+        { "value": "0", "label": "Walk" }, { "value": "1", "label": "Jog" }, { "value": "2", "label": "Run" },
+        { "value": "3", "label": "Sprint" }, { "value": "4", "label": "Nightmare" }
+      ] },
+    { "key": "maxZombies", "label": "Max zombies", "type": "integer", "min": 1, "max": 200,
+      "description": "Zombies alive at once on the whole map. Over 90 slows most servers down." },
+    { "key": "playerKilling", "label": "Player killing", "type": "enum",
+      "options": [
+        { "value": "0", "label": "No killing" }, { "value": "1", "label": "Kill allies only" },
+        { "value": "2", "label": "Kill strangers only" }, { "value": "3", "label": "Kill everyone" }
+      ] },
+    { "key": "dropOnDeath", "label": "Drop on death", "type": "enum",
+      "options": [
+        { "value": "0", "label": "Nothing" }, { "value": "1", "label": "Everything" }, { "value": "2", "label": "Toolbelt only" },
+        { "value": "3", "label": "Backpack only" }, { "value": "4", "label": "Delete everything" }
+      ] },
+    { "key": "lootAbundance", "label": "Loot abundance (%)", "type": "integer", "min": 25, "max": 1000 },
+    { "key": "lootRespawnDays", "label": "Loot respawn (days)", "type": "integer", "min": 0, "max": 100 },
+    { "key": "xp", "label": "Experience (%)", "type": "integer", "min": 25, "max": 1000 },
+    { "key": "airDropHours", "label": "Air drop every (game hours)", "type": "integer", "min": 0, "max": 1000,
+      "description": "0 turns air drops off." },
+    { "key": "description", "label": "Description", "type": "string", "maxLength": 200, "pattern": "^.{1,200}$" },
+    { "key": "website", "label": "Website", "type": "string", "maxLength": 200, "pattern": "^https?://[^\\s<>\"]{1,192}$" }
   ],
 
   "ports": [
@@ -79,8 +118,25 @@
         "TelnetPort": "{{port.telnet}}",
         "TelnetPassword": "{{rcon.password}}",
         "WebDashboardEnabled": "false",
-        "UserDataFolder": "{{server.dir}}/UserData"
-      } }
+        "UserDataFolder": "{{server.dir}}/UserData",
+        "GameDifficulty": "{{var.difficulty}}",
+        "DayNightLength": "{{var.dayLength}}",
+        "DayLightLength": "{{var.dayLightHours}}",
+        "BloodMoonFrequency": "{{var.bloodMoonFrequency}}",
+        "BloodMoonEnemyCount": "{{var.bloodMoonEnemies}}",
+        "ZombieMove": "{{var.zombieSpeedDay}}",
+        "ZombieMoveNight": "{{var.zombieSpeedNight}}",
+        "MaxSpawnedZombies": "{{var.maxZombies}}",
+        "PlayerKillingMode": "{{var.playerKilling}}",
+        "DropOnDeath": "{{var.dropOnDeath}}",
+        "LootAbundance": "{{var.lootAbundance}}",
+        "LootRespawnDays": "{{var.lootRespawnDays}}",
+        "XPMultiplier": "{{var.xp}}",
+        "AirDropFrequency": "{{var.airDropHours}}",
+        "ServerDescription": "{{var.description}}",
+        "ServerWebsiteURL": "{{var.website}}"
+      },
+      "keepIfEmpty": ["GameDifficulty", "DayNightLength", "DayLightLength", "BloodMoonFrequency", "BloodMoonEnemyCount", "ZombieMove", "ZombieMoveNight", "MaxSpawnedZombies", "PlayerKillingMode", "DropOnDeath", "LootAbundance", "LootRespawnDays", "XPMultiplier", "AirDropFrequency", "ServerDescription", "ServerWebsiteURL"] }
   ],
 
   "query": { "protocol": "a2s", "port": "game" },

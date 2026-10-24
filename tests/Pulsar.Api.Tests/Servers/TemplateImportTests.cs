@@ -44,18 +44,19 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
             Assert.Equal(HttpStatusCode.Conflict, again.StatusCode); // same key and version: templates never change
         }
 
+        var bundled = (string)JsonNode.Parse(File.ReadAllText(GamePath("css")))!["version"]!;
         var next = Manifest(m =>
         {
             m["key"] = "css-community";
-            m["version"] = "1.1.0";
+            m["version"] = GameServerTests.NextVersion(bundled);
             m["runtime"]!["windows-x64"]!["executable"] = "bin/srcds_x64.exe";
         });
         var nextPreview = await PreviewAsync(admin, next);
-        Assert.Equal("1.0.0", nextPreview.PreviousVersion);
+        Assert.Equal(bundled, nextPreview.PreviousVersion);
         Assert.Equal(["runtime"], nextPreview.ChangedSections);
 
         var templates = await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct);
-        Assert.Contains(templates!, t => t.Key == "css-community" && t.Version == "1.0.0");
+        Assert.Contains(templates!, t => t.Key == "css-community" && t.Version == bundled);
     }
 
     [DatabaseFact]

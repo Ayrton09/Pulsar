@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "css",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Counter-Strike: Source",
   "description": "Counter-Strike: Source dedicated server (srcds), installed anonymously with SteamCMD.",
   "authors": ["Pulsar contributors"],
@@ -15,7 +15,31 @@
     { "key": "map", "label": "Starting map", "type": "string", "default": "de_dust2", "maxLength": 64, "pattern": "^[A-Za-z0-9_]{1,64}$" },
     { "key": "maxPlayers", "label": "Slots", "type": "integer", "default": 16, "min": 2, "max": 64 },
     { "key": "password", "label": "Join password", "type": "string", "secret": true, "maxLength": 32, "pattern": "^[A-Za-z0-9_-]{1,32}$",
-      "description": "Players need it to join. Leave empty for a public server." }
+      "description": "Players need it to join. Leave empty for a public server." },
+    { "key": "tickrate", "label": "Tick rate", "type": "enum",
+      "options": [ { "value": "66", "label": "66 (the game's)" }, { "value": "100", "label": "100" } ],
+      "description": "Updates per second. 100 is smoother and uses more CPU and bandwidth." },
+    { "key": "friendlyFire", "label": "Friendly fire", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
+      "description": "Teammates can hurt each other." },
+    { "key": "maxRounds", "label": "Max rounds", "type": "integer", "min": 0, "max": 100,
+      "description": "Rounds a match lasts. 0: no limit." },
+    { "key": "timeLimit", "label": "Map time limit (min)", "type": "integer", "min": 0, "max": 1440,
+      "description": "Minutes before the map changes. 0: no limit." },
+    { "key": "winLimit", "label": "Win limit", "type": "integer", "min": 0, "max": 100,
+      "description": "Rounds a team must win to end the map. 0: no limit." },
+    { "key": "roundTime", "label": "Round time (min)", "type": "number", "min": 1, "max": 9,
+      "description": "Minutes a round lasts." },
+    { "key": "freezeTime", "label": "Freeze time (s)", "type": "integer", "min": 0, "max": 60,
+      "description": "Seconds players cannot move at the start of a round." },
+    { "key": "startMoney", "label": "Start money", "type": "integer", "min": 0, "max": 16000 },
+    { "key": "autoTeamBalance", "label": "Auto team balance", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ] },
+    { "key": "limitTeams", "label": "Max team size difference", "type": "integer", "min": 0, "max": 30,
+      "description": "How many more players one team may have than the other. 0: no limit." },
+    { "key": "c4Timer", "label": "C4 timer (s)", "type": "integer", "min": 10, "max": 90 },
+    { "key": "allTalk", "label": "All talk", "type": "enum", "options": [ { "value": "1", "label": "On" }, { "value": "0", "label": "Off" } ],
+      "description": "Both teams hear each other on voice chat." },
+    { "key": "bots", "label": "Bots", "type": "integer", "min": 0, "max": 32,
+      "description": "How many bots fill the server." }
   ],
 
   "ports": [
@@ -35,6 +59,7 @@
         "-console", "-condebug", "-nocrashdialog",
         "-ip", "{{port.game.ip}}",
         "-port", "{{port.game}}",
+        { "if": "var.tickrate", "then": ["-tickrate", "{{var.tickrate}}"] },
         { "if": "port.tv", "then": ["+tv_enable", "1", "+tv_port", "{{port.tv}}"] },
         "+maxplayers", "{{var.maxPlayers}}",
         "+map", "{{var.map}}",
@@ -54,7 +79,22 @@
 
   "configFiles": [
     { "path": "cstrike/cfg/server.cfg", "format": "source-cfg", "mode": "patch",
-      "set": { "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}" } }
+      "set": {
+        "hostname": "{{var.hostname}}", "sv_password": "{{var.password}}",
+        "mp_friendlyfire": "{{var.friendlyFire}}",
+        "mp_maxrounds": "{{var.maxRounds}}",
+        "mp_timelimit": "{{var.timeLimit}}",
+        "mp_winlimit": "{{var.winLimit}}",
+        "mp_roundtime": "{{var.roundTime}}",
+        "mp_freezetime": "{{var.freezeTime}}",
+        "mp_startmoney": "{{var.startMoney}}",
+        "mp_autoteambalance": "{{var.autoTeamBalance}}",
+        "mp_limitteams": "{{var.limitTeams}}",
+        "mp_c4timer": "{{var.c4Timer}}",
+        "sv_alltalk": "{{var.allTalk}}",
+        "bot_quota": "{{var.bots}}"
+      },
+      "keepIfEmpty": ["mp_friendlyfire", "mp_maxrounds", "mp_timelimit", "mp_winlimit", "mp_roundtime", "mp_freezetime", "mp_startmoney", "mp_autoteambalance", "mp_limitteams", "mp_c4timer", "sv_alltalk", "bot_quota"] }
   ],
 
   "query": { "protocol": "a2s", "port": "game" },

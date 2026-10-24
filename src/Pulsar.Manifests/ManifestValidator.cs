@@ -719,8 +719,10 @@ public static partial class ManifestValidator
                     var guarded = guardedPorts;
                     switch (condition.If.Split('.'))
                     {
-                        // A boolean holds when true; any other variable when it has a value (an option left unset does not).
+                        // A boolean holds when true; any other variable when it has a value (an option left unset does not),
+                        // so its arguments may take an optional choice's sub-value.
                         case ["var", var key] when context.Variables.ContainsKey(key):
+                            guarded = new HashSet<string>(guardedPorts, StringComparer.Ordinal) { $"var.{key}" };
                             break;
                         case ["port", var name] when context.Ports.ContainsKey(name):
                             guarded = new HashSet<string>(guardedPorts, StringComparer.Ordinal) { name };
@@ -765,10 +767,10 @@ public static partial class ManifestValidator
                     {
                         context.Error(path, $"'{key}.{sub}' is not a sub-value every option of the enum maps.");
                     }
-                    else if (rest is [_] && !variable.Required && variable.Default is null)
+                    else if (rest is [_] && !variable.Required && variable.Default is null && !guardedPorts.Contains($"var.{key}"))
                     {
-                        // Unset, there would be no option to take the sub-value from.
-                        context.Error(path, $"Enum variable '{key}' is used with a sub-value, so it needs a default or to be required.");
+                        // Unset, there would be no option to take the sub-value from (inside its own condition, there is one).
+                        context.Error(path, $"Enum variable '{key}' is used with a sub-value, so it needs a default, to be required or a condition on it.");
                     }
                     else if (variable.Type == VariableType.String && variable.Pattern is null)
                     {

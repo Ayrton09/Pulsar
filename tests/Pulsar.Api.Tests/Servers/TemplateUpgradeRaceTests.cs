@@ -32,7 +32,8 @@ public sealed class TemplateUpgradeRaceTests(TemplateUpgradeRaceTests.RacingFact
         await GameServerTests.AllocateAsync(admin, node.Node.Id, "0.0.0.0", "27015-27020");
         var server = await GameServerTests.InstalledAsync(admin, agent, "css");
         var manifest = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(GameServerTests.GamePath("css"), Ct))!.AsObject();
-        manifest["version"] = "1.1.0";
+        var newer = GameServerTests.NextVersion((string)manifest["version"]!);
+        manifest["version"] = newer;
         Guid next;
         using (var imported = await admin.PostAsync("/api/v1/templates", new TemplateContentRequest(manifest.ToJsonString())))
         {
@@ -44,7 +45,7 @@ public sealed class TemplateUpgradeRaceTests(TemplateUpgradeRaceTests.RacingFact
         using (var upgraded = await admin.PutAsync($"/api/v1/servers/{server}/template", new UpgradeTemplateRequest(next)))
         {
             await AccessScenario.EnsureSuccessAsync(upgraded);
-            Assert.Equal("1.1.0", (await upgraded.Content.ReadFromJsonAsync<ServerDetails>(AccessScenario.Json, Ct))!.TemplateVersion);
+            Assert.Equal(newer, (await upgraded.Content.ReadFromJsonAsync<ServerDetails>(AccessScenario.Json, Ct))!.TemplateVersion);
         }
 
         Assert.False(factory.Racing.Armed); // the race did happen

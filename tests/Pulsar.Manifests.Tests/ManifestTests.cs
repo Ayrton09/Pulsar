@@ -440,7 +440,16 @@ public sealed class ManifestTests
         });
 
         // Unset, there would be no option to take the sub-value from.
-        Assert.Contains(TestManifests.Errors(json((JsonObject)optional.DeepClone())), e => e.Message.Contains("needs a default or to be required", StringComparison.Ordinal));
+        Assert.Contains(TestManifests.Errors(json((JsonObject)optional.DeepClone())), e => e.Message.Contains("needs a default, to be required or a condition on it", StringComparison.Ordinal));
+
+        // Inside its own condition, it has one whenever the arguments are used.
+        var guarded = Parse(Manifest(m =>
+        {
+            m["variables"]!.AsArray().Add(optional.DeepClone());
+            m["runtime"]!["windows-x64"]!["arguments"]!.AsArray().Add(new JsonObject { ["if"] = "var.mode", ["then"] = new JsonArray("--mode={{var.mode.flag}}") });
+        }));
+        Assert.DoesNotContain("--mode=1", Render(guarded, new Dictionary<string, string?>()).Arguments);
+        Assert.Equal("--mode=1", Render(guarded, new Dictionary<string, string?> { ["mode"] = "a" }).Arguments[^1]);
 
         var withDefault = (JsonObject)optional.DeepClone();
         withDefault["default"] = "a";

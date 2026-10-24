@@ -88,20 +88,31 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         var server = await InstalledAsync(admin, agent, "css");
 
         var updated = await PutAsync<ServerSettings>(admin, $"/api/v1/servers/{server}/settings", new UpdateServerSettingsRequest(
-            new Dictionary<string, string?> { ["hostname"] = "Renamed", ["maxPlayers"] = "32", ["password"] = "" }, ["-tickrate", "66"], AutoStart: true,
-            RestartOnCrash: false));
-        Assert.Equal(["-tickrate", "66"], updated.ExtraArguments);
+            new Dictionary<string, string?>
+            {
+                ["hostname"] = "Renamed",
+                ["maxPlayers"] = "32",
+                ["password"] = "",
+                ["tickrate"] = "100",
+                ["friendlyFire"] = "1",
+            },
+            ["-nohltv"], AutoStart: true, RestartOnCrash: false));
+        Assert.Equal(["-nohltv"], updated.ExtraArguments);
         Assert.False(updated.Variables.Single(v => v.Definition.Key == "password").HasValue);
+
+        // The admin's own settings in the game's file: Pulsar changes only the lines of what the panel sets.
+        var configPath = Path.Combine(agent.ServersRoot, (await ServerApi.GetAsync(admin, server))!.Server.ShortId, "cstrike", "cfg", "server.cfg");
+        Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
+        await File.WriteAllTextAsync(configPath, "// mine\nhostname \"Old\"\nmp_maxrounds 30\nmp_friendlyfire 0\nsv_lan 0\n", Ct);
 
         await ServerApi.CommandAsync(admin, server, "start");
         await ServerApi.WaitForAsync(admin, server, s => s.Server.RuntimeState == ServerRuntimeState.Running, "running");
         var game = agent.Processes.Started.Last(p => !p.IsSteamCmd);
         Assert.Equal(["+maxplayers", "32"], game.Arguments.SkipWhile(a => a != "+maxplayers").Take(2));
-        Assert.Equal(["-tickrate", "66"], game.Arguments.TakeLast(2));
-        var config = await File.ReadAllTextAsync(Path.Combine(agent.ServersRoot, (await ServerApi.GetAsync(admin, server))!.Server.ShortId, "cstrike",
-            "cfg", "server.cfg"), Ct);
-        Assert.Contains("hostname \"Renamed\"", config, StringComparison.Ordinal);
-        Assert.DoesNotContain("sv_password", config, StringComparison.Ordinal);
+        Assert.Equal(["-tickrate", "100"], game.Arguments.SkipWhile(a => a != "-tickrate").Take(2));
+        Assert.Equal("-nohltv", game.Arguments[^1]);
+        var config = await File.ReadAllTextAsync(configPath, Ct);
+        Assert.Equal("// mine\nhostname \"Renamed\"\nmp_maxrounds 30\nmp_friendlyfire \"1\"\nsv_lan 0\n", config.ReplaceLineEndings("\n"));
 
         // Ports change only while stopped.
         using (var refused = await PutResponseAsync(admin, $"/api/v1/servers/{server}/ports",
@@ -151,11 +162,13 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         await AllocateAsync(admin, agent.Config!.NodeId, "0.0.0.0", "27015-27020");
         var server = await InstalledAsync(admin, agent, "css");
         var original = (await ServerApi.GetAsync(admin, server))!;
-        Assert.Equal("1.0.0", original.TemplateVersion);
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(GamePath("css"), Ct))!.AsObject();
+        var bundled = (string)manifest["version"]!;
+        var newer = NextVersion(bundled);
+        Assert.Equal(bundled, original.TemplateVersion);
 
         // A newer version of the same game: a new setting written to its configuration file.
-        var manifest = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(GamePath("css"), Ct))!.AsObject();
-        manifest["version"] = "1.1.0";
+        manifest["version"] = newer;
         manifest["variables"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse(
             """{ "key": "contact", "label": "Contact", "type": "string", "default": "admin at example", "pattern": "^[a-z ]{0,32}$" }"""));
         manifest["configFiles"]![0]!["set"]!["sv_contact"] = "{{var.contact}}";
@@ -166,9 +179,9 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
             next = (await imported.Content.ReadFromJsonAsync<TemplateDetails>(AccessScenario.Json, Ct))!.Template.Id;
         }
 
-        Assert.Equal(new TemplateUpgradeView(next, "1.1.0"), (await ServerApi.GetAsync(admin, server))!.TemplateUpgrade);
+        Assert.Equal(new TemplateUpgradeView(next, newer), (await ServerApi.GetAsync(admin, server))!.TemplateUpgrade);
         var upgraded = await PutAsync<ServerDetails>(admin, $"/api/v1/servers/{server}/template", new UpgradeTemplateRequest(next));
-        Assert.Equal("1.1.0", upgraded.TemplateVersion);
+        Assert.Equal(newer, upgraded.TemplateVersion);
         Assert.Null(upgraded.TemplateUpgrade);
         await ServerApi.WaitForAsync(admin, server, s => s.Server.InstallState == InstallState.Installed && s.Server.ActiveOperation is null,
             "provisioned and installed again");
@@ -186,6 +199,13 @@ public sealed class GameServerTests(PulsarApiFactory factory) : IClassFixture<Pu
         }
 
         await ServerApi.CommandAsync(admin, server, "stop");
+    }
+
+    /// <summary>A version newer than <paramref name="version"/> ("1.1.0" gives "1.2.0"), for a test's own newer template.</summary>
+    internal static string NextVersion(string version)
+    {
+        var parts = version.Split('.');
+        return $"{parts[0]}.{int.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture) + 1}.0";
     }
 
     internal static string GamePath(string game)

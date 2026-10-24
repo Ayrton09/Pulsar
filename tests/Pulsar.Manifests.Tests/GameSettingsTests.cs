@@ -8,8 +8,6 @@ namespace Pulsar.Manifests.Tests;
 /// </summary>
 public sealed class GameSettingsTests
 {
-    private const string Rcon = "Rc0nPassw0rdRc0nPassw0rdRc0nPass";
-
     private static readonly VariableDefinition s_rate = new("rate", "Rate", VariableType.Number, Min: 0.1m, Max: 100m);
 
     [Theory]
@@ -85,15 +83,16 @@ public sealed class GameSettingsTests
     public void AnOptionLeftUnsetLeavesItsLineAsTheFileHasIt()
     {
         var manifest = TestManifests.Parse(WithFriendlyFire(keep: true));
-        const string existing = "hostname \"Mine\"\nmp_friendlyfire 1\nsv_password \"old\"\n";
+        const string existing = "hostname \"Mine\"\nmp_friendlyfire 1\nbot_quota 5\nsv_lan 0\n";
 
-        var unset = CssConfig(manifest, new Dictionary<string, string?>());
-        var set = CssConfig(manifest, new Dictionary<string, string?> { ["friendlyFire"] = "0" });
+        var unset = Config(manifest, new Dictionary<string, string?>());
+        var set = Config(manifest, new Dictionary<string, string?> { ["friendlyFire"] = "0" });
 
-        // Not written at all: the admin's own value stays. A key not kept when empty is removed (the join password).
+        // Not written at all: the admin's own value stays. A key not kept when empty is removed (bot_quota); what the
+        // manifest does not declare stays (sv_lan).
         Assert.DoesNotContain(unset.Entries, e => e.Key == "mp_friendlyfire");
-        Assert.Equal("hostname \"Pulsar CS:S\"\nmp_friendlyfire 1\n", ConfigFileWriter.Apply(unset, existing));
-        Assert.Equal("hostname \"Pulsar CS:S\"\nmp_friendlyfire \"0\"\n", ConfigFileWriter.Apply(set, existing));
+        Assert.Equal("hostname \"hello\"\nmp_friendlyfire 1\nsv_lan 0\n", ConfigFileWriter.Apply(unset, existing));
+        Assert.Equal("hostname \"hello\"\nmp_friendlyfire \"0\"\nsv_lan 0\n", ConfigFileWriter.Apply(set, existing));
     }
 
     [Fact]
@@ -101,16 +100,25 @@ public sealed class GameSettingsTests
     {
         var manifest = TestManifests.Parse(WithFriendlyFire(keep: false));
 
-        var unset = CssConfig(manifest, new Dictionary<string, string?>());
+        var unset = Config(manifest, new Dictionary<string, string?>());
 
-        Assert.Equal("hostname \"Pulsar CS:S\"\n", ConfigFileWriter.Apply(unset, "mp_friendlyfire 1\n"));
+        Assert.Equal("hostname \"hello\"\n", ConfigFileWriter.Apply(unset, "mp_friendlyfire 1\n"));
     }
 
     [Fact]
     public void OnlyKeysOfTheFileCanBeKeptWhenEmpty()
     {
-        var errors = TestManifests.Errors(TestManifests.Change("css", m =>
-            m["configFiles"]![0]!["keepIfEmpty"] = new JsonArray("mp_friendlyfire")));
+        var errors = TestManifests.Errors(TestManifests.Change("_test", m =>
+        {
+            m["configFiles"] = new JsonArray(new JsonObject
+            {
+                ["path"] = "data/server.cfg",
+                ["format"] = "source-cfg",
+                ["mode"] = "patch",
+                ["set"] = new JsonObject { ["hostname"] = "{{var.message}}" },
+                ["keepIfEmpty"] = new JsonArray("mp_friendlyfire"),
+            });
+        }));
 
         Assert.Contains(errors, e => e.Path == "configFiles[0].keepIfEmpty");
     }
@@ -154,7 +162,8 @@ public sealed class GameSettingsTests
         Assert.False(ManifestFeatures.UsesGameSettings(TestManifests.Parse(WithFriendlyFire(keep: false))));
     }
 
-    private static string WithFriendlyFire(bool keep) => TestManifests.Change("css", m =>
+    /// <summary>The test game with a Source-style configuration file: its greeting as the hostname, friendly fire and bots.</summary>
+    private static string WithFriendlyFire(bool keep) => TestManifests.Change("_test", m =>
     {
         m["variables"]!.AsArray().Add(new JsonObject
         {
@@ -163,15 +172,22 @@ public sealed class GameSettingsTests
             ["type"] = "enum",
             ["options"] = new JsonArray(new JsonObject { ["value"] = "1", ["label"] = "On" }, new JsonObject { ["value"] = "0", ["label"] = "Off" }),
         });
-        var file = m["configFiles"]![0]!.AsObject();
-        file["set"]!["mp_friendlyfire"] = "{{var.friendlyFire}}";
+        m["variables"]!.AsArray().Add(new JsonObject { ["key"] = "bots", ["label"] = "Bots", ["type"] = "integer", ["min"] = 0, ["max"] = 32 });
+        var file = new JsonObject
+        {
+            ["path"] = "data/server.cfg",
+            ["format"] = "source-cfg",
+            ["mode"] = "patch",
+            ["set"] = new JsonObject { ["hostname"] = "{{var.message}}", ["mp_friendlyfire"] = "{{var.friendlyFire}}", ["bot_quota"] = "{{var.bots}}" },
+        };
         if (keep)
         {
             file["keepIfEmpty"] = new JsonArray("mp_friendlyfire");
         }
+
+        m["configFiles"] = new JsonArray(file);
     });
 
-    private static RenderedConfigFile CssConfig(GameManifest manifest, IReadOnlyDictionary<string, string?> values) =>
-        Assert.Single(LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, new ServerBinding("abcd1234", values,
-            new Dictionary<string, PortAssignment> { ["game"] = new("0.0.0.0", 27115) }, RconPassword: Rcon)).ConfigFiles);
+    private static RenderedConfigFile Config(GameManifest manifest, IReadOnlyDictionary<string, string?> values) =>
+        Assert.Single(LaunchPlanRenderer.Render(manifest, ManifestValidator.WindowsX64, new ServerBinding("abcd1234", values)).ConfigFiles);
 }

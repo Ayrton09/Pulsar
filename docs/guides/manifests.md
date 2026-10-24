@@ -51,7 +51,10 @@ Then:
    values with `;` or `"`: leave them out of the pattern too, so users see why where they type); mark passwords and
    tokens `"secret": true` (the panel never shows them again). A
    setting that lists Steam Workshop items gets `"workshop": { "appId": <the game's app id> }` and an editor that
-   shows the items by name.
+   shows the items by name. A multiplier is a `number` (a decimal between `min` and `max`). The game's options (friendly
+   fire, rates, autosave…) are best left without a `default`: the panel shows them under "More game options", and
+   left empty they change nothing (see 7). An optional choice can be used inside its own condition only:
+   `{ "if": "var.combat", "then": ["-modifier", "combat", "{{var.combat}}"] }` adds nothing until one is made.
 5. **Ports**: each with the protocols players use. Pulsar opens firewall rules only for these. A port the game always
    opens at another port's number plus one (or more) says so with `"follows": { "port": "game", "offset": 1 }`. A
    port only the agent uses (a telnet console) is `"internal": true` and never opened. Name the port players connect
@@ -65,7 +68,10 @@ Then:
    out which a game needs; a launcher that starts the real server may hide its output (run the real executable). List in `sensitiveCommandPrefixes` the commands that carry secrets, so they are not audited
    in clear. They also keep users out of those settings in extra arguments (`-Name=…`, or `?Name=…` URL options as ARK takes them), which would store a secret in clear.
 7. **Configuration files**: settings the game reads from a file (`source-cfg`, `properties`, `unreal-ini`, `key-value`
-   or `xml-properties`), written or patched by the agent before every start.
+   or `xml-properties`), patched by the agent before every start: only the keys the manifest sets change, the rest of
+   the file (the admin's own settings) stays. List the options' keys in `"keepIfEmpty": [...]`: an option left empty
+   in the panel then leaves its line as the file has it, instead of removing it. Bundled games use `patch` only.
+   `number` variables, `keepIfEmpty` and conditions on a choice need agents of Pulsar 1.0.5 or newer.
 8. **Readiness and stop**: how the agent knows the game is ready (a console pattern, RCON answering, the query
    answering) and how to stop it cleanly (a console or RCON command, then a wait) before it is killed.
 9. **Query**: `"query": { "protocol": "a2s", "port": "query" }` lets the panel show the players and the map. `a2s`

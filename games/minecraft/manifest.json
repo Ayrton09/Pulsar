@@ -2,7 +2,7 @@
   "$schema": "../../schemas/manifest.v1.schema.json",
   "schemaVersion": 1,
   "key": "minecraft",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Minecraft: Java Edition",
   "description": "Minecraft: Java Edition's dedicated server, downloaded from Mojang, with the Java runtime its version needs (Eclipse Temurin, from Adoptium). Players need Minecraft: Java Edition of the same version.",
   "authors": ["Pulsar contributors"],
@@ -38,7 +38,30 @@
     { "key": "pvp", "label": "Players can hurt each other", "type": "boolean", "default": true },
     { "key": "seed", "label": "World seed", "type": "string", "default": "", "maxLength": 64, "pattern": "^[^\\\\]{0,64}$",
       "description": "Only used when the world is created." },
-    { "key": "viewDistance", "label": "View distance (chunks)", "type": "integer", "default": 10, "min": 3, "max": 32 }
+    { "key": "viewDistance", "label": "View distance (chunks)", "type": "integer", "default": 10, "min": 3, "max": 32 },
+    { "key": "simulationDistance", "label": "Simulation distance (chunks)", "type": "integer", "min": 3, "max": 32,
+      "description": "How far from players mobs move and crops grow. Lower uses less CPU." },
+    { "key": "hardcore", "label": "Hardcore", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Players who die become spectators. Set it before the world is created." },
+    { "key": "spawnProtection", "label": "Spawn protection (blocks)", "type": "integer", "min": 0, "max": 1000,
+      "description": "Only operators build this close to the spawn. 0 turns it off." },
+    { "key": "allowFlight", "label": "Allow flight", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Players who fly in survival (with mods) are not kicked." },
+    { "key": "forceGamemode", "label": "Force the game mode", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Players get the server's game mode every time they join." },
+    { "key": "enforceWhitelist", "label": "Kick players not on the whitelist", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "When the whitelist is reloaded, players no longer on it are kicked." },
+    { "key": "generateStructures", "label": "Generate structures", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "Villages, temples and other structures. Only for chunks generated from then on." },
+    { "key": "idleTimeout", "label": "Kick idle players after (min)", "type": "integer", "min": 0, "max": 1440,
+      "description": "0: never." },
+    { "key": "opPermissionLevel", "label": "Operator permission level", "type": "enum",
+      "options": [
+        { "value": "1", "label": "1: build in the spawn" }, { "value": "2", "label": "2: cheat commands" },
+        { "value": "3", "label": "3: kick and ban" }, { "value": "4", "label": "4: every command" }
+      ] },
+    { "key": "hideOnlinePlayers", "label": "Hide online players", "type": "enum", "options": [ { "value": "true", "label": "Yes" }, { "value": "false", "label": "No" } ],
+      "description": "The server list does not show who is playing." }
   ],
 
   "ports": [
@@ -75,8 +98,20 @@
         "white-list": "{{var.whitelist}}",
         "pvp": "{{var.pvp}}",
         "level-seed": "{{var.seed}}",
-        "view-distance": "{{var.viewDistance}}"
-      } }
+        "view-distance": "{{var.viewDistance}}",
+        "simulation-distance": "{{var.simulationDistance}}",
+        "hardcore": "{{var.hardcore}}",
+        "spawn-protection": "{{var.spawnProtection}}",
+        "allow-flight": "{{var.allowFlight}}",
+        "force-gamemode": "{{var.forceGamemode}}",
+        "enforce-whitelist": "{{var.enforceWhitelist}}",
+        "generate-structures": "{{var.generateStructures}}",
+        "player-idle-timeout": "{{var.idleTimeout}}",
+        "op-permission-level": "{{var.opPermissionLevel}}",
+        "hide-online-players": "{{var.hideOnlinePlayers}}"
+      },
+      "keepIfEmpty": ["level-seed", "simulation-distance", "hardcore", "spawn-protection", "allow-flight", "force-gamemode", "enforce-whitelist",
+        "generate-structures", "player-idle-timeout", "op-permission-level", "hide-online-players"] }
   ],
 
   "query": { "protocol": "minecraft", "port": "game" },
