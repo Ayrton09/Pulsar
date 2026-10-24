@@ -450,6 +450,10 @@ A stop step that closes a game's window (`WM_CLOSE`, as `taskkill` without `/F` 
 
 Satisfactory, once its worlds can live in the server folder: its dedicated server keeps them in the running account's `%LOCALAPPDATA%\FactoryGame\Saved\SaveGames` (no argument moves them, and manifests may not redirect that variable), so backups would miss them; its name and passwords are set in the game when it is claimed.
 
+More game options where a new patch format is needed (1.0.8 added every option other panels expose that fits the existing formats): Project Zomboid's sandbox settings (zombie population, loot, XP, day length) live in `<server>_SandboxVars.lua`, a nested Lua table the game writes at its first start; Unturned's gameplay tuning lives in `Config.txt`, sectioned text of its own.
+
+Minecraft: Bedrock Edition beyond what 1.0.8 does: its player count (the RakNet ping went away with NetherNet, and NetherNet's status, if any, is not documented), and firewall rules for the UDP range set in its UDP ports option (Pulsar's rules cover allocated ports only).
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).

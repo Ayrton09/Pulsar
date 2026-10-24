@@ -87,8 +87,8 @@ public sealed class InstallSteps(InstallOptions options, IServerFiles files)
                     : "Downloading the latest Minecraft server from Mojang, then its Java runtime",
             MinecraftBedrockStep bedrock => bedrock.VersionVar is { } key && variables.GetValueOrDefault(key) is { Length: > 0 } version
                 && version != MinecraftBedrockStep.Latest
-                    ? $"Downloading the Minecraft Bedrock {version} server from Mojang"
-                    : "Downloading the latest Minecraft Bedrock server from Mojang",
+                    ? $"Getting the Minecraft Bedrock {version} server from Mojang, unless it is already installed"
+                    : "Getting the latest Minecraft Bedrock server from Mojang, unless it is already installed",
             EnsureDirectoryStep ensure => $"Creating the folder {ensure.Path}",
             WriteFileIfMissingStep write => $"Writing {write.Path} if it is missing",
             CopyFileIfMissingStep copy => $"Copying {copy.From} to {copy.To} if it is missing",

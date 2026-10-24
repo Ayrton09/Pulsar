@@ -138,7 +138,7 @@ export function ServerRow({ server, headingLevel = 2 }: { server: ServerSummary;
   return (
     <article
       aria-labelledby={`server-card-${server.id}`}
-      className="relative flex flex-col gap-3 px-4 py-3 transition-colors focus-within:bg-surface-raised/40 hover:bg-surface-raised/40 md:flex-row md:items-center md:gap-6"
+      className="relative flex flex-col gap-3 px-4 py-3 transition-colors focus-within:bg-surface-raised/40 hover:bg-surface-raised/40 lg:flex-row lg:items-center lg:gap-6"
     >
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -158,7 +158,7 @@ export function ServerRow({ server, headingLevel = 2 }: { server: ServerSummary;
         </p>
         <StateReason server={server} />
       </div>
-      <div className="md:w-72 md:shrink-0">
+      <div className="lg:w-72 lg:shrink-0">
         {alive && server.nodeConnected ? (
           <CardUsage serverId={server.id} />
         ) : (
@@ -169,7 +169,7 @@ export function ServerRow({ server, headingLevel = 2 }: { server: ServerSummary;
           </p>
         )}
       </div>
-      <div className="flex min-h-9 items-center justify-between gap-2 md:shrink-0 md:justify-end">
+      <div className="flex min-h-9 items-center justify-between gap-2 lg:shrink-0 lg:justify-end">
         <AddressChip address={server.gameAddress} />
         <div className="relative z-10">
           <PowerButtons server={server} compact />
