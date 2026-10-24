@@ -1217,6 +1217,7 @@
       "off": "Disattivata. Inserire una porta per attivarla.",
       "taken": "{{server}} usa la porta {{port}}.",
       "takenByOther": "Un altro server usa la porta {{port}}.",
+      "busy": "Un altro programma del nodo usa la porta {{port}}.",
       "otherAddress": "La porta {{port}} è un'allocazione di un altro indirizzo del nodo.",
       "notAllocated": "La porta {{port}} non è tra le allocazioni del nodo.",
       "invalid": "Le porte vanno da 1 a 65535.",

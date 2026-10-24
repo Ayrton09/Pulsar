@@ -1217,6 +1217,7 @@
       "off": "Off. Type a port to turn it on.",
       "taken": "{{server}} uses port {{port}}.",
       "takenByOther": "Another server uses port {{port}}.",
+      "busy": "Another program on the node uses port {{port}}.",
       "otherAddress": "Port {{port}} is an allocation of another address of the node.",
       "notAllocated": "Port {{port}} is not one of the node's allocations.",
       "invalid": "Ports go from 1 to 65535.",

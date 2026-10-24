@@ -7,6 +7,7 @@ import {
   suggestAllocations,
   suggestNumbers,
   type NodeAllocation,
+  type PortInUse,
   type TemplatePort,
 } from './portChoices';
 
@@ -150,5 +151,45 @@ describe('suggestAllocations', () => {
     const pair = [allocation(2470), allocation(2471)];
     expect(suggestAllocations(valheim, [lone, ...pair])).toEqual({ game: pair[0]?.id });
     expect(suggestAllocations(valheim, [lone])).toEqual({ game: '' });
+  });
+});
+
+describe('ports other programs hold', () => {
+  const held = (portNumber: number, protocol = 'udp', address = '0.0.0.0'): PortInUse => ({
+    address,
+    port: portNumber,
+    protocol,
+  });
+
+  it('are busy on a protocol the port needs, wherever they are bound, unless the server holds them itself', () => {
+    expect(checkPort(27015, null, [], true, undefined, [held(27015, 'udp', '127.0.0.1')], ['udp'])).toEqual({
+      kind: 'busy',
+    });
+    // TCP only: a UDP game can still have it.
+    expect(checkPort(27015, null, [], true, undefined, [held(27015, 'tcp')], ['udp'])).toEqual({
+      kind: 'new',
+      address: '0.0.0.0',
+    });
+    // A free allocation does not make it free.
+    expect(checkPort(27015, null, [allocation(27015)], true, undefined, [held(27015)], ['udp'])).toEqual({
+      kind: 'busy',
+    });
+    // The server's own running game.
+    const own = allocation(27015, { inUse: true, serverId: 's1', serverName: 'Mine' });
+    expect(checkPort(27015, null, [own], true, 's1', [held(27015)], ['udp']).kind).toBe('existing');
+    // Another server's: who uses it says more than that something does.
+    expect(checkPort(27015, null, [own], true, undefined, [held(27015)], ['udp'])).toEqual({
+      kind: 'taken',
+      serverName: 'Mine',
+    });
+  });
+
+  it('are skipped by the numbers proposed, followers included', () => {
+    expect(suggestNumbers(sourceGame, [], [held(27015), held(27016)])).toEqual({ game: '27017', tv: '' });
+    // 2456 would put its query port on 2457, which is held; 2457 itself is held too.
+    expect(suggestNumbers(valheim, [], [held(2457)])).toEqual({ game: '2458' });
+    expect(portsReady(checkPorts(sourceGame, { game: '27015', tv: '' }, [], true, undefined, [held(27015)]))).toBe(
+      false,
+    );
   });
 });

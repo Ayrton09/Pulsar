@@ -4572,6 +4572,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/nodes/{id}/ports-in-use": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NodePortsInUse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/nodes/{id}/allocations/{allocationId}": {
         parameters: {
             query?: never;
@@ -12815,6 +12897,11 @@ export interface components {
             uptime: string;
             disks: null | components["schemas"]["DiskUsageView"][];
         };
+        NodePortsInUse: {
+            known: boolean;
+            ports: components["schemas"]["PortInUse"][];
+            truncated: boolean;
+        };
         /** @enum {unknown} */
         NodeStatus: "pendingEnrollment" | "active" | "disabled" | "pendingApproval";
         NodeSummary: {
@@ -13019,6 +13106,12 @@ export interface components {
             status: components["schemas"]["AckStatus"];
             /** Format: double */
             roundTripMilliseconds: number;
+        };
+        PortInUse: {
+            address: string;
+            /** Format: int32 */
+            port: number;
+            protocol: string;
         };
         /** @enum {unknown} */
         PortProtocol: "udp" | "tcp";

@@ -1217,6 +1217,7 @@
       "off": "Desativada. Digite uma porta para ativá-la.",
       "taken": "{{server}} usa a porta {{port}}.",
       "takenByOther": "Outro servidor usa a porta {{port}}.",
+      "busy": "Outro programa do nó usa a porta {{port}}.",
       "otherAddress": "A porta {{port}} é uma alocação de outro endereço do nó.",
       "notAllocated": "A porta {{port}} não é uma das alocações do nó.",
       "invalid": "As portas vão de 1 a 65535.",

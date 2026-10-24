@@ -1217,6 +1217,7 @@
       "off": "Désactivé. Saisissez un port pour l’activer.",
       "taken": "{{server}} utilise le port {{port}}.",
       "takenByOther": "Un autre serveur utilise le port {{port}}.",
+      "busy": "Un autre programme du nœud utilise le port {{port}}.",
       "otherAddress": "Le port {{port}} est une allocation d’une autre adresse du nœud.",
       "notAllocated": "Le port {{port}} ne fait pas partie des allocations du nœud.",
       "invalid": "Les ports vont de 1 à 65535.",

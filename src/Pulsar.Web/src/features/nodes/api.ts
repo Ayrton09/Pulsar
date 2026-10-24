@@ -21,6 +21,7 @@ export const nodeKeys = {
   enrollmentTokens: ['enrollment-tokens'] as const,
   detail: (id: string) => ['nodes', id] as const,
   allocations: (id: string) => ['nodes', id, 'allocations'] as const,
+  portsInUse: (id: string) => ['nodes', id, 'ports-in-use'] as const,
 };
 
 export type AllocationView = Schemas['AllocationView'];
@@ -31,6 +32,19 @@ export function useAllocations(nodeId: string | undefined) {
     queryKey: nodeKeys.allocations(nodeId ?? ''),
     queryFn: () => unwrap(api.GET('/api/v1/nodes/{id}/allocations', { params: { path: { id: nodeId ?? '' } } })),
     enabled: !!nodeId,
+  });
+}
+
+/**
+ * The ports any program uses on the node's machine now, as its agent sees them (agents of 1.0.7 or newer; `known` is
+ * false otherwise). Asked again each time it is needed: they change as programs start and stop.
+ */
+export function useNodePortsInUse(nodeId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: nodeKeys.portsInUse(nodeId ?? ''),
+    queryFn: () => unwrap(api.GET('/api/v1/nodes/{id}/ports-in-use', { params: { path: { id: nodeId ?? '' } } })),
+    enabled: enabled && !!nodeId,
+    staleTime: 0,
   });
 }
 

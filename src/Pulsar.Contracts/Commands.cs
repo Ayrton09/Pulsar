@@ -56,6 +56,7 @@ public sealed record CommandEnvelope(
 [JsonDerivedType(typeof(ForgetSteamLoginCommand), ForgetSteamLoginCommand.Type)]
 [JsonDerivedType(typeof(UseAgentsAddressCommand), UseAgentsAddressCommand.Type)]
 [JsonDerivedType(typeof(UpdatePulsarCommand), UpdatePulsarCommand.Type)]
+[JsonDerivedType(typeof(ListPortsInUseCommand), ListPortsInUseCommand.Type)]
 public abstract record AgentCommand;
 
 /// <summary>Round-trip check of the signed command path (the UI's "test connection").</summary>
@@ -110,6 +111,16 @@ public sealed record UseAgentsAddressCommand(int Port, string? Url = null) : Age
 public sealed record UpdatePulsarCommand(string Version, string ManifestSha256, Guid? Attempt = null) : AgentCommand
 {
     public const string Type = "node.update_pulsar";
+}
+
+/// <summary>
+/// The ports in use on the node's machine, by any program (1.0.7): the TCP ports listened on and the UDP ports bound,
+/// answered as a <see cref="PortsInUseResult"/>. The create dialog skips them when it proposes a server's ports, and says
+/// so when one is typed, so a game is not given a port another program holds.
+/// </summary>
+public sealed record ListPortsInUseCommand : AgentCommand
+{
+    public const string Type = "node.ports_in_use";
 }
 
 /// <summary>
@@ -447,12 +458,24 @@ public sealed record SendBackupCommand(Guid ServerId, Guid BackupId, string Tick
 [JsonDerivedType(typeof(FileEntryResult), "files.entry")]
 [JsonDerivedType(typeof(BackupResult), "backups.created")]
 [JsonDerivedType(typeof(AddonsResult), "addons.changed")]
+[JsonDerivedType(typeof(PortsInUseResult), "node.ports_in_use")]
 public abstract record CommandResult;
 
 /// <summary>
 /// Addons an operation installed, updated (an addon installed again after a game update) or removed (no release).
 /// </summary>
 public sealed record AddonsResult(IReadOnlyList<AddonRelease> Addons) : CommandResult;
+
+/// <summary>The ports in use on the node's machine (<see cref="ListPortsInUseCommand"/>), each once, at most <see cref="MaxPorts"/>.</summary>
+/// <param name="Truncated">There were more: the lowest numbers are the ones listed.</param>
+public sealed record PortsInUseResult(IReadOnlyList<PortInUse> Ports, bool Truncated = false) : CommandResult
+{
+    public const int MaxPorts = 4096;
+}
+
+/// <param name="Address">The local address it is bound to: 0.0.0.0 or :: for every interface.</param>
+/// <param name="Protocol"><c>tcp</c> (listening) or <c>udp</c>.</param>
+public sealed record PortInUse(string Address, int Port, string Protocol);
 
 /// <param name="Release">The release installed (a GitHub tag); null when the addon was removed.</param>
 public sealed record AddonRelease(string Key, string? Release);
@@ -619,6 +642,7 @@ public static class AgentCapabilities
     /// an agent the installer or the setups installed as a service, not by one the agent MSI maintains.
     /// </summary>
     public const string UpdatePulsar = UpdatePulsarCommand.Type;
+    public const string ListPortsInUse = ListPortsInUseCommand.Type;
 
     /// <summary>Not a command: the panel runs on this agent's machine, so an update of the agent there updates the panel too.</summary>
     public const string PanelHost = "node.panel_host";
@@ -627,6 +651,7 @@ public static class AgentCapabilities
     public static string Of(AgentCommand command) => command switch
     {
         PingCommand => Ping,
+        ListPortsInUseCommand => ListPortsInUse,
         RotateCredentialCommand => RotateCredential,
         UpdatePanelKeysCommand => UpdatePanelKeys,
         ProvisionServerCommand => ProvisionServer,

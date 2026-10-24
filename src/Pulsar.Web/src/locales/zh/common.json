@@ -1217,6 +1217,7 @@
       "off": "已关闭。输入端口即可启用。",
       "taken": "{{server}} 正在使用端口 {{port}}。",
       "takenByOther": "另一台服务器正在使用端口 {{port}}。",
+      "busy": "节点上的另一个程序正在使用端口 {{port}}。",
       "otherAddress": "端口 {{port}} 是节点另一个地址的端口分配。",
       "notAllocated": "端口 {{port}} 不在节点的端口分配中。",
       "invalid": "端口范围为 1 到 65535。",

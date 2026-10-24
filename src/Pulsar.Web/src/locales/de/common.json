@@ -1217,6 +1217,7 @@
       "off": "Aus. Geben Sie einen Port ein, um ihn zu aktivieren.",
       "taken": "{{server}} verwendet Port {{port}}.",
       "takenByOther": "Ein anderer Server verwendet Port {{port}}.",
+      "busy": "Ein anderes Programm auf dem Node verwendet Port {{port}}.",
       "otherAddress": "Port {{port}} ist eine Zuweisung einer anderen Adresse des Nodes.",
       "notAllocated": "Port {{port}} gehört nicht zu den Zuweisungen des Nodes.",
       "invalid": "Ports reichen von 1 bis 65535.",

@@ -115,6 +115,14 @@ public sealed record CreatedNode(NodeSummary Node, EnrollmentInstructions Enroll
 
 public sealed record PingResult(AckStatus Status, double RoundTripMilliseconds);
 
+/// <summary>The ports in use on a node's machine, by any program (1.0.7).</summary>
+/// <param name="Known">
+/// False when the node is not connected or its agent is older than 1.0.7: then nothing is known, which is not "nothing
+/// is in use".
+/// </param>
+/// <param name="Truncated">The agent listed only the lowest of more ports.</param>
+public sealed record NodePortsInUse(bool Known, IReadOnlyList<PortInUse> Ports, bool Truncated);
+
 /// <summary>The agent's answer to a command that starts work on the node (accepted means started, not finished).</summary>
 public sealed record AgentCommandResult(AckStatus Status, string? ErrorCode);
 
@@ -359,6 +367,30 @@ public sealed class NodeManagement(
         }
 
         return new PingResult(ack.Status, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+    }
+
+    /// <summary>
+    /// The ports in use on the node's machine, as its agent sees them now: what the create dialog skips when it proposes
+    /// a server's ports. Entries that are not a port, a protocol and an address are dropped.
+    /// </summary>
+    public async Task<Result<NodePortsInUse>> PortsInUseAsync(NodeId id, CancellationToken cancellationToken)
+    {
+        if (!await db.Nodes.AnyAsync(n => n.Id == id, cancellationToken))
+        {
+            return NodeErrors.NotFound;
+        }
+
+        var ack = await connections.SendAsync(id, new ListPortsInUseCommand(), request.UserId, cancellationToken);
+        if (ack is not { Status: AckStatus.Accepted, Result: PortsInUseResult result })
+        {
+            return new NodePortsInUse(false, [], false);
+        }
+
+        var ports = (result.Ports ?? [])
+            .Where(p => p is { Port: >= 1 and <= 65535, Protocol: "tcp" or "udp" } && System.Net.IPAddress.TryParse(p.Address, out _))
+            .Take(PortsInUseResult.MaxPorts)
+            .ToList();
+        return new NodePortsInUse(true, ports, result.Truncated);
     }
 
     /// <summary>Asks the node's agent to replace its key now (it also does so on its own every 90 days).</summary>

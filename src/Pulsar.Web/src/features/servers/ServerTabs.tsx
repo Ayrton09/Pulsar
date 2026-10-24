@@ -7,7 +7,7 @@ import { errorMessage } from '../../lib/errors';
 import { useFormatBytes } from '../../lib/format';
 import { canOnNode, canOnServer, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
-import { useAllocations } from '../nodes/api';
+import { useAllocations, useNodePortsInUse } from '../nodes/api';
 import {
   useCancelOperation,
   useServerSettings,
@@ -438,6 +438,9 @@ export function NetworkTab(props: { details: ServerDetails }) {
   const canEdit = canOnServer(me, server, Permission.ServerSettingsEdit) && stopped && server.activeOperation === null;
   const options = (allocations.data ?? []).filter((a) => !a.inUse || a.serverId === server.id);
   const canAddPorts = canOnNode(me, server.nodeId, Permission.NodeManage);
+  // Asked while the ports can change (the server stopped): its own are free then.
+  const portsInUse = useNodePortsInUse(server.nodeId, canAddPorts && canEdit);
+  const inUse = portsInUse.data?.ports ?? [];
   const templatePorts: TemplatePort[] = details.ports.map((port) => ({
     name: port.name,
     label: port.label,
@@ -454,7 +457,7 @@ export function NetworkTab(props: { details: ServerDetails }) {
     ...chosen,
   };
   const numbersReady =
-    allocations.isSuccess && portsReady(checkPorts(templatePorts, numbers, allocations.data, true, server.id));
+    allocations.isSuccess && portsReady(checkPorts(templatePorts, numbers, allocations.data, true, server.id, inUse));
 
   if (details.ports.length === 0) {
     return (
@@ -481,6 +484,7 @@ export function NetworkTab(props: { details: ServerDetails }) {
           onChange={(port, value) => setChosen((c) => ({ ...c, [port]: value }))}
           allocations={allocations.data}
           serverId={server.id}
+          inUse={inUse}
           disabled={!canEdit}
         />
       )}

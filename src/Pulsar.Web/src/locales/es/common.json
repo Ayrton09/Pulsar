@@ -1217,6 +1217,7 @@
       "off": "Apagado. Escribí un puerto para activarlo.",
       "taken": "{{server}} usa el puerto {{port}}.",
       "takenByOther": "Otro servidor usa el puerto {{port}}.",
+      "busy": "Otro programa del nodo usa el puerto {{port}}.",
       "otherAddress": "El puerto {{port}} es una asignación de otra dirección del nodo.",
       "notAllocated": "El puerto {{port}} no es una de las asignaciones del nodo.",
       "invalid": "Los puertos van del 1 al 65535.",

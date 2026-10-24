@@ -218,6 +218,12 @@ Each transfer is a connection of the agent to the panel, and a node holds only s
 - *Capabilities:* `server.addon_install` and `server.addon_remove`; the panel refuses addons for agents without them (`addon.unsupported`).
 - *Errors:* `addon.no_release`, `addon.no_asset` (not exactly one asset matches), `addon.no_checksum` (GitHub publishes no SHA-256), `addon.checksum_mismatch`, `addon.untrusted_host`, `addon.download_failed`, `addon.unsupported_source`, `addon.bad_archive` (an entry outside the target, or more than Pulsar unpacks), `addon.file_missing` (at a start: a file an installed addon edits is missing; a missing anchor is `config.invalid`).
 
+### Ports in use (1.0.7)
+
+- *Command:* `node.ports_in_use` (`ListPortsInUseCommand`, no payload), answered in its ack with `PortsInUseResult(Ports, Truncated)`: each `PortInUse(Address, Port, Protocol)` once, the TCP ports listened on and the UDP ports bound on the agent's machine by any program (.NET's `IPGlobalProperties`), IPv4-mapped addresses as IPv4, the lowest ports first and at most 4096 (`Truncated` past that).
+- *Panel:* `GET /api/v1/nodes/{id}/ports-in-use` (`node.view`, `node.manage` or `server.create` on the node, as the allocations it goes with) asks the agent each time; `known: false` when the node is not connected or its agent is older (not announcing the capability), which is not "nothing in use". Entries that are not a port from 1 to 65535, `tcp` or `udp` and an IP address are dropped.
+- *Use:* the create dialog and the Network tab, for whoever types port numbers, mark such a number busy (on a protocol the game's port uses, whatever address it is bound to; the server's own allocation excepted) and propose the next free one.
+
 ### Protocol versioning
 
 - Major version in the path (`/agent/v1/…`) and in `ProtocolVersion`.

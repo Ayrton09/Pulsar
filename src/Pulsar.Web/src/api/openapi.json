@@ -4648,6 +4648,86 @@
         }
       }
     },
+    "/api/v1/nodes/{id}/ports-in-use": {
+      "get": {
+        "tags": [
+          "Nodes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodePortsInUse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/nodes/{id}/allocations/{allocationId}": {
       "delete": {
         "tags": [
@@ -14743,6 +14823,28 @@
           }
         }
       },
+      "NodePortsInUse": {
+        "required": [
+          "known",
+          "ports",
+          "truncated"
+        ],
+        "type": "object",
+        "properties": {
+          "known": {
+            "type": "boolean"
+          },
+          "ports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortInUse"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
       "NodeStatus": {
         "enum": [
           "pendingEnrollment",
@@ -15639,6 +15741,26 @@
           "roundTripMilliseconds": {
             "type": "number",
             "format": "double"
+          }
+        }
+      },
+      "PortInUse": {
+        "required": [
+          "address",
+          "port",
+          "protocol"
+        ],
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "protocol": {
+            "type": "string"
           }
         }
       },

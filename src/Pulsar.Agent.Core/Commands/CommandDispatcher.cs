@@ -31,13 +31,15 @@ public interface IAgentControl
 /// </summary>
 /// <param name="steamLogins">The cached Steam logins (<see cref="ForgetSteamLoginCommand"/>); null: an agent without servers.</param>
 /// <param name="updater">Updates Pulsar on this machine (<see cref="UpdatePulsarCommand"/>); null: an agent that never does.</param>
+/// <param name="portsInUse">The ports in use on this machine (<see cref="ListPortsInUseCommand"/>); null: the machine's own.</param>
 public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger, ServerHost? servers = null, SteamLoginStore? steamLogins = null,
-    AgentUpdater? updater = null)
+    AgentUpdater? updater = null, Func<PortsInUseResult>? portsInUse = null)
 {
     /// <summary>Command types this agent handles (and features it has), announced as capabilities in its Hello.</summary>
     public IReadOnlySet<string> SupportedCommands { get; } = new HashSet<string>(
         [
             AgentCapabilities.Ping, AgentCapabilities.RotateCredential, AgentCapabilities.UpdatePanelKeys, AgentCapabilities.UseAgentsAddress,
+            AgentCapabilities.ListPortsInUse,
             .. servers?.Capabilities ?? [],
             .. steamLogins is null ? [] : new[] { AgentCapabilities.ForgetSteamLogin },
             .. updater?.Capabilities ?? [],
@@ -61,6 +63,8 @@ public sealed partial class CommandDispatcher(ILogger<CommandDispatcher> logger,
             case PingCommand:
                 LogPing(envelope.CommandId, envelope.ActorUserId);
                 return Ack(envelope, AckStatus.Accepted);
+            case ListPortsInUseCommand:
+                return new CommandAck(envelope.CommandId, AckStatus.Accepted, null, null, (portsInUse ?? PortsInUse.List)());
             case RotateCredentialCommand:
                 LogRotationRequested(envelope.CommandId, envelope.ActorUserId);
                 return Ack(envelope, control.RequestCredentialRotation() ? AckStatus.Accepted : AckStatus.AlreadyInState);

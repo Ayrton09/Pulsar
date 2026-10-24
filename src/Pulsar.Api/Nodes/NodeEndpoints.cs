@@ -77,6 +77,9 @@ public static class NodeEndpoints
         nodes.MapGet("/{id:guid}/allocations", async (Guid id, NodeAllocations allocations, CancellationToken ct) =>
                 (await allocations.ListAsync(new NodeId(id), ct)).ToHttp())
             .RequirePermission(Permissions.Node.View, Permissions.Node.Manage, Permissions.Server.Create);
+        // The ports any program uses on the node's machine (1.0.7), for those who choose a server's ports by number.
+        nodes.MapGet("/{id:guid}/ports-in-use", async (Guid id, NodeManagement m, CancellationToken ct) => (await m.PortsInUseAsync(new NodeId(id), ct)).ToHttp())
+            .RequirePermission(Permissions.Node.View, Permissions.Node.Manage, Permissions.Server.Create);
         nodes.MapPost("/{id:guid}/allocations", async (Guid id, CreateAllocationsRequest request, NodeAllocations allocations, CancellationToken ct) =>
                 (await allocations.CreateAsync(new NodeId(id), request.IpAddress, request.Ports, request.Notes, ct)).ToHttp())
             .RequirePermission(Permissions.Node.Manage);

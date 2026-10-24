@@ -5,6 +5,8 @@ export type NodeAllocation = Pick<
   Schemas['AllocationView'],
   'id' | 'ipAddress' | 'port' | 'inUse' | 'serverId' | 'serverName'
 >;
+/** A port another program holds on the node's machine (1.0.7 agents). */
+export type PortInUse = Schemas['PortInUse'];
 
 const anyAddress = '0.0.0.0';
 
@@ -17,6 +19,7 @@ export type PortCheck =
   | { kind: 'existing'; address: string }
   | { kind: 'new'; address: string }
   | { kind: 'taken'; serverName: string | null }
+  | { kind: 'busy' }
   | { kind: 'otherAddress' }
   | { kind: 'notAllocated' }
   | { kind: 'invalid' }
@@ -49,16 +52,23 @@ export function parsePort(value: string): number | null {
   return port >= 1 && port <= 65535 ? port : null;
 }
 
-/** Where `port` on `address` (null: any) would land, `serverId` being the server's own when it exists already. */
+/**
+ * Where `port` on `address` (null: any) would land, `serverId` being the server's own when it exists already. A
+ * number another program holds (`inUse`, on one of the port's `protocols`) is busy, unless it is the server's own.
+ */
 export function checkPort(
   port: number,
   address: string | null,
   allocations: NodeAllocation[],
   canAdd: boolean,
   serverId?: string,
+  inUse: PortInUse[] = [],
+  protocols: string[] = [],
 ): PortCheck {
   const onPort = allocations.filter((a) => a.port === port);
   const mine = (a: NodeAllocation) => serverId !== undefined && a.serverId === serverId;
+  // The address is left out: a program on one interface still keeps a game on every interface from starting.
+  const busy = inUse.some((p) => p.port === port && protocols.includes(p.protocol));
   const found = onPort
     .filter((a) => (!a.inUse || mine(a)) && (address === null || a.ipAddress === address))
     .sort(
@@ -68,7 +78,7 @@ export function checkPort(
         a.ipAddress.localeCompare(b.ipAddress),
     )[0];
   if (found) {
-    return { kind: 'existing', address: found.ipAddress };
+    return busy && !mine(found) ? { kind: 'busy' } : { kind: 'existing', address: found.ipAddress };
   }
   const wanted = address ?? anyAddress;
   const overlapping = onPort.filter(
@@ -77,6 +87,9 @@ export function checkPort(
   const taken = overlapping.find((a) => a.inUse && !mine(a));
   if (taken) {
     return { kind: 'taken', serverName: taken.serverName };
+  }
+  if (busy) {
+    return { kind: 'busy' };
   }
   if (overlapping.length > 0) {
     return { kind: 'otherAddress' };
@@ -91,6 +104,7 @@ export function checkPorts(
   allocations: NodeAllocation[],
   canAdd: boolean,
   serverId?: string,
+  inUse: PortInUse[] = [],
 ): PortChoice[] {
   const choices = chosenPorts(ports).map((port): PortChoice => {
     const value = values[port.name] ?? '';
@@ -107,7 +121,7 @@ export function checkPorts(
       const check: PortCheck = { kind: 'invalid' };
       return { port, number, check, followers: followers.map((f) => ({ ...f, check })) };
     }
-    const check = checkPort(number, null, allocations, canAdd, serverId);
+    const check = checkPort(number, null, allocations, canAdd, serverId, inUse, port.protocols);
     const address = check.kind === 'existing' || check.kind === 'new' ? check.address : null;
     return {
       port,
@@ -118,7 +132,7 @@ export function checkPorts(
         check:
           f.number === null || f.number > 65535
             ? { kind: 'invalid' }
-            : checkPort(f.number, address, allocations, canAdd, serverId),
+            : checkPort(f.number, address, allocations, canAdd, serverId, inUse, f.port.protocols),
       })),
     };
   });
@@ -141,7 +155,11 @@ export const portsReady = (choices: PortChoice[]) =>
  * The numbers the create dialog starts with, for whoever manages the node: each required port's default, or the next
  * number up whose port and followers are free (a second server of a game gets the next ports); optional ports off.
  */
-export function suggestNumbers(ports: TemplatePort[], allocations: NodeAllocation[]): Record<string, string> {
+export function suggestNumbers(
+  ports: TemplatePort[],
+  allocations: NodeAllocation[],
+  inUse: PortInUse[] = [],
+): Record<string, string> {
   const values: Record<string, string> = {};
   for (const port of chosenPorts(ports)) {
     if (!port.required) {
@@ -150,9 +168,14 @@ export function suggestNumbers(ports: TemplatePort[], allocations: NodeAllocatio
     }
     // A thousand numbers up is plenty: past that the node is full there, and the user types one.
     for (let number = port.default; number <= Math.min(65535, port.default + 1000); number++) {
-      const tried = checkPorts(ports, { ...values, [port.name]: String(number) }, allocations, true).find(
-        (c) => c.port.name === port.name,
-      );
+      const tried = checkPorts(
+        ports,
+        { ...values, [port.name]: String(number) },
+        allocations,
+        true,
+        undefined,
+        inUse,
+      ).find((c) => c.port.name === port.name);
       if (tried && usable(tried.check) && tried.followers.every((f) => usable(f.check))) {
         values[port.name] = String(number);
         break;

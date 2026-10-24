@@ -9,7 +9,7 @@ import { errorMessage } from '../../lib/errors';
 import { canOnNode, Permission } from '../../lib/permissions';
 import { useCurrentUser } from '../auth/api';
 import { useWatchNodes } from '../live/hooks';
-import { useAllocations, useNodes } from '../nodes/api';
+import { useAllocations, useNodePortsInUse, useNodes } from '../nodes/api';
 import { useCreateServer, useTemplate, useTemplates, type TemplateDetails, type TemplateVariable } from './api';
 import { useGameText } from './gameText';
 import { PortNumberFields } from './PortFields';
@@ -21,6 +21,7 @@ import {
   suggestAllocations,
   suggestNumbers,
   type NodeAllocation,
+  type PortInUse,
 } from './portChoices';
 import { newestOfEachGame } from './templateVersions';
 import { VariableFields } from './VariableFields';
@@ -79,14 +80,17 @@ export function CreateServerDialog({
   // Whoever manages the node types port numbers (added to its allocations when missing); others choose allocations.
   const canAddPorts = nodeId !== '' && canOnNode(me, nodeId, Permission.NodeManage);
   const nodeAllocations: NodeAllocation[] = useMemo(() => allocations.data ?? [], [allocations.data]);
+  // The ports other programs hold on the node's machine: the numbers proposed skip them.
+  const portsInUse = useNodePortsInUse(nodeId || undefined, canAddPorts);
+  const inUse = useMemo(() => portsInUse.data?.ports ?? [], [portsInUse.data]);
   const suggested = useMemo(
     () =>
       !details
         ? {}
         : canAddPorts
-          ? suggestNumbers(details.ports, nodeAllocations)
+          ? suggestNumbers(details.ports, nodeAllocations, inUse)
           : suggestAllocations(details.ports, nodeAllocations),
-    [details, canAddPorts, nodeAllocations],
+    [details, canAddPorts, nodeAllocations, inUse],
   );
   const portValues = ports ?? suggested;
 
@@ -110,7 +114,7 @@ export function CreateServerDialog({
   const portsValid =
     !!details &&
     (canAddPorts
-      ? portsReady(checkPorts(details.ports, portValues, nodeAllocations, true))
+      ? portsReady(checkPorts(details.ports, portValues, nodeAllocations, true, undefined, inUse))
       : chosenPorts(details.ports).every((port) => !port.required || (portValues[port.name] ?? '') !== ''));
   const stepValid = (current: Step) =>
     current === 'basics'
@@ -272,7 +276,8 @@ export function CreateServerDialog({
             details={details}
             canAdd={canAddPorts}
             allocations={nodeAllocations}
-            loading={allocations.isPending}
+            inUse={inUse}
+            loading={allocations.isPending || (canAddPorts && portsInUse.isPending)}
             error={allocations.error}
             ports={portValues}
             showErrors={showErrors}
@@ -322,6 +327,7 @@ interface PortsStepProps {
   details: TemplateDetails;
   canAdd: boolean;
   allocations: NodeAllocation[];
+  inUse: PortInUse[];
   loading: boolean;
   error: Error | null;
   ports: Record<string, string>;
@@ -329,7 +335,17 @@ interface PortsStepProps {
   onChange: (port: string, value: string) => void;
 }
 
-function PortsStep({ details, canAdd, allocations, loading, error, ports, showErrors, onChange }: PortsStepProps) {
+function PortsStep({
+  details,
+  canAdd,
+  allocations,
+  inUse,
+  loading,
+  error,
+  ports,
+  showErrors,
+  onChange,
+}: PortsStepProps) {
   const { t } = useTranslation();
   if (details.ports.length === 0) {
     return <p className="text-sm text-muted">{t('servers.wizard.noPorts')}</p>;
@@ -341,7 +357,15 @@ function PortsStep({ details, canAdd, allocations, loading, error, ports, showEr
     return <Spinner label={t('common.loading')} />;
   }
   if (canAdd) {
-    return <PortNumberFields ports={details.ports} values={ports} onChange={onChange} allocations={allocations} />;
+    return (
+      <PortNumberFields
+        ports={details.ports}
+        values={ports}
+        onChange={onChange}
+        allocations={allocations}
+        inUse={inUse}
+      />
+    );
   }
 
   const free = allocations.filter((a) => !a.inUse);

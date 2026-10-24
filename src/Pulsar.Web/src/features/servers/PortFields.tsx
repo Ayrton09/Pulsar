@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Field, Input } from '../../components/ui/Form';
-import { checkPorts, type NodeAllocation, type PortCheck, type TemplatePort } from './portChoices';
+import { checkPorts, type NodeAllocation, type PortCheck, type PortInUse, type TemplatePort } from './portChoices';
 
 /** What a port's check says: where it lands (a note) or why it cannot (an error). */
 function usePortCheckText() {
@@ -19,6 +19,8 @@ function usePortCheckText() {
             ? t('servers.ports.taken', { server: check.serverName, port })
             : t('servers.ports.takenByOther', { port }),
         };
+      case 'busy':
+        return { error: t('servers.ports.busy', { port }) };
       case 'otherAddress':
         return { error: t('servers.ports.otherAddress', { port }) };
       case 'notAllocated':
@@ -41,6 +43,8 @@ interface PortNumberFieldsProps {
   allocations: NodeAllocation[];
   /** The server whose ports these are, when it exists: its own allocations are free for it. */
   serverId?: string;
+  /** Ports other programs hold on the node's machine. */
+  inUse?: PortInUse[];
   disabled?: boolean;
 }
 
@@ -48,12 +52,20 @@ interface PortNumberFieldsProps {
  * A game's ports typed as numbers, for whoever manages the node: each says at once whether it uses one of the node's
  * allocations, is added to them, or cannot be had (another server's). The ports that follow one show theirs.
  */
-export function PortNumberFields({ ports, values, onChange, allocations, serverId, disabled }: PortNumberFieldsProps) {
+export function PortNumberFields({
+  ports,
+  values,
+  onChange,
+  allocations,
+  serverId,
+  inUse,
+  disabled,
+}: PortNumberFieldsProps) {
   const { t } = useTranslation();
   const text = usePortCheckText();
   return (
     <div className="space-y-4">
-      {checkPorts(ports, values, allocations, true, serverId).map((choice) => {
+      {checkPorts(ports, values, allocations, true, serverId, inUse).map((choice) => {
         const { port } = choice;
         const status = text(choice.check, choice.number);
         const usual = t('servers.wizard.portDefault', {
