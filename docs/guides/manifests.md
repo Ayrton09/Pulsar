@@ -73,6 +73,9 @@ Then:
    in the panel then leaves its line as the file has it, instead of removing it. Bundled games use `patch` only.
    `colon` (`key: value`, SCP: Secret Laboratory) is the format for YAML-like files whose values are plain text.
    `number` variables, `keepIfEmpty`, conditions on a choice and `colon` need agents of Pulsar 1.0.5 or newer.
+   `json` files (Pulsar 1.0.7 agents) name each member by its JSON Pointer (`"/gameSettings/enemyDamageFactor"`); a
+   lone `{{var.x}}` of an integer, number or boolean variable, or a lone `{{port.x}}`, is written as a JSON number or
+   boolean, anything else as a string.
 8. **Readiness and stop**: how the agent knows the game is ready (a console pattern, RCON answering, the query
    answering) and how to stop it cleanly (a console or RCON command, then a wait) before it is killed.
 9. **Query**: `"query": { "protocol": "a2s", "port": "query" }` lets the panel show the players and the map. `a2s`

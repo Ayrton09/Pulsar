@@ -702,7 +702,11 @@ public sealed partial class ServerManagement(
 
     /// <summary>Whether the node's agent reads <paramref name="manifest"/>: game settings need an agent of Pulsar 1.0.5 or newer.</summary>
     private static bool AgentReads(AgentConnectionInfo? connection, GameManifest manifest) =>
-        !ManifestFeatures.UsesGameSettings(manifest) || connection?.Capabilities.Contains(AgentCapabilities.GameSettings, StringComparer.Ordinal) == true;
+        (!ManifestFeatures.UsesGameSettings(manifest) || Announces(connection, AgentCapabilities.GameSettings))
+        && (!ManifestFeatures.UsesJsonConfig(manifest) || Announces(connection, AgentCapabilities.JsonConfig));
+
+    private static bool Announces(AgentConnectionInfo? connection, string capability) =>
+        connection?.Capabilities.Contains(capability, StringComparer.Ordinal) == true;
 
     /// <summary>Allocations added for a server's port numbers are audited as the node's, as if added from its page.</summary>
     private void RecordAddedAllocations(Server server, IReadOnlyList<NodeAllocation> added)

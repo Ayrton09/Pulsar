@@ -155,6 +155,7 @@ public sealed partial class ServerHost(
             yield return AgentCapabilities.InstallAddon;
             yield return AgentCapabilities.RemoveAddon;
             yield return AgentCapabilities.GameSettings;
+            yield return AgentCapabilities.JsonConfig;
             if (installOptions.TestGameAvailable)
             {
                 yield return AgentCapabilities.TestGame;

@@ -1,8 +1,8 @@
 namespace Pulsar.Manifests;
 
 /// <summary>
-/// What a manifest uses that agents older than Pulsar 1.0.5 do not read: they refuse such a manifest, so the panel
-/// gives it only to agents that announce they read it.
+/// What a manifest uses that older agents do not read (those before Pulsar 1.0.5, or 1.0.7): they refuse such a
+/// manifest, so the panel gives it only to agents that announce they read it.
 /// </summary>
 public static class ManifestFeatures
 {
@@ -18,6 +18,13 @@ public static class ManifestFeatures
             || manifest.ConfigFileList.Any(f => f.KeepIfEmpty is { Count: > 0 } || f.Format == ConfigFileFormat.Colon)
             || manifest.Runtime.Values.SelectMany(r => Conditions(r.ArgumentList)).Any(c =>
                 c.If.Split('.') is ["var", var key] && types.TryGetValue(key, out var type) && type is not (VariableType.Boolean or VariableType.String));
+    }
+
+    /// <summary>The JSON configuration files of Pulsar 1.0.7.</summary>
+    public static bool UsesJsonConfig(GameManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.ConfigFileList.Any(f => f.Format == ConfigFileFormat.Json);
     }
 
     private static IEnumerable<ArgumentCondition> Conditions(IEnumerable<ArgumentTemplate> arguments) =>

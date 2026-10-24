@@ -1,4 +1,8 @@
+using System.Globalization;
 using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace Pulsar.Manifests;
@@ -63,6 +67,11 @@ public static partial class ConfigFileWriter
         if (file.Format == ConfigFileFormat.XmlProperties)
         {
             return Join(XmlProperties(file, existing), newline);
+        }
+
+        if (file.Format == ConfigFileFormat.Json)
+        {
+            return Json(file, existing, newline);
         }
 
         var output = new List<string>();
@@ -262,6 +271,106 @@ public static partial class ConfigFileWriter
         }
 
         return output;
+    }
+
+    /// <summary>
+    /// The declared members of a JSON object, each named by its JSON Pointer: its value is replaced in place, or added
+    /// with the objects on its way, and an empty one is removed. The game's other members, their order and their values
+    /// stay; the file is written again with the indentation it had. A missing file starts as an empty object.
+    /// </summary>
+    private static string Json(RenderedConfigFile file, string? existing, string newline)
+    {
+        JsonObject root;
+        try
+        {
+            var text = existing?.TrimStart('\uFEFF');
+            root = string.IsNullOrWhiteSpace(text) ? [] : JsonNode.Parse(text, documentOptions: new JsonDocumentOptions { AllowDuplicateProperties = false }) as JsonObject
+                ?? throw new LaunchPlanException($"{file.Path} is not a JSON object; fix it or delete the file.");
+        }
+        catch (JsonException)
+        {
+            throw new LaunchPlanException($"{file.Path} is not valid JSON (comments, repeated members and trailing commas are not kept); fix it or delete the file.");
+        }
+
+        foreach (var entry in file.Entries)
+        {
+            var names = entry.Key[1..].Split('/');
+            JsonObject? parent = root;
+            foreach (var name in names[..^1])
+            {
+                switch (parent[name])
+                {
+                    case null when entry.Value.Length == 0:
+                        parent = null; // nothing to remove
+                        break;
+                    case null:
+                        var created = new JsonObject();
+                        parent[name] = created;
+                        parent = created;
+                        break;
+                    case JsonObject inner:
+                        parent = inner;
+                        break;
+                    default:
+                        throw new LaunchPlanException($"{file.Path}: {entry.Key} goes through a value that is not an object; fix the file or delete it.");
+                }
+
+                if (parent is null)
+                {
+                    break;
+                }
+            }
+
+            if (parent is null)
+            {
+                continue;
+            }
+
+            if (entry.Value.Length == 0)
+            {
+                parent.Remove(names[^1]);
+            }
+            else
+            {
+                parent[names[^1]] = JsonValueOf(file, entry);
+            }
+        }
+
+        var (character, size) = JsonIndentation(existing);
+        var options = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            IndentCharacter = character,
+            IndentSize = size,
+            NewLine = newline,
+            // A file, not a web page: letters stay as they are typed, quotes and control characters are still escaped.
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
+        return root.ToJsonString(options) + newline;
+    }
+
+    private static JsonValue JsonValueOf(RenderedConfigFile file, ConfigEntry entry) => entry.Kind switch
+    {
+        ConfigValueKind.Number when decimal.TryParse(entry.Value, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture,
+            out var number) => JsonValue.Create(number),
+        ConfigValueKind.Boolean when entry.Value is "true" or "false" => JsonValue.Create(entry.Value == "true"),
+        ConfigValueKind.Text => JsonValue.Create(entry.Value),
+        _ => throw new LaunchPlanException($"{file.Path} {entry.Key}: '{(entry.Secret ? "***" : entry.Value)}' is not a {entry.Kind.ToString().ToLowerInvariant()}."),
+    };
+
+    /// <summary>How the file's first indented line is indented (tabs or 1 to 8 spaces), two spaces otherwise.</summary>
+    private static (char Character, int Size) JsonIndentation(string? existing)
+    {
+        foreach (var line in Lines(existing))
+        {
+            var indent = line.Length - line.TrimStart(' ', '\t').Length;
+            if (indent > 0 && indent < line.Length)
+            {
+                return line[0] == '\t' ? ('\t', 1) : (' ', Math.Min(indent, 8));
+            }
+        }
+
+        return (' ', 2);
     }
 
     /// <summary>Whether position <paramref name="end"/> of the line is inside an XML comment (<c>&lt;!-- … --&gt;</c>).</summary>

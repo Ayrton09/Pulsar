@@ -61,7 +61,17 @@ public sealed record QueryEndpoint(QueryProtocol Protocol, string Address, int P
 /// <summary>One line a configuration file gets; an empty <see cref="Value"/> removes the key.</summary>
 public sealed record ConfigEntry(string Key, string Value, bool Secret)
 {
+    /// <summary>What the value is in a JSON file; every other format writes it as text.</summary>
+    public ConfigValueKind Kind { get; init; }
+
     public override string ToString() => Secret ? $"{Key}=***" : $"{Key}={Value}";
+}
+
+public enum ConfigValueKind
+{
+    Text,
+    Number,
+    Boolean,
 }
 
 public sealed record RenderedConfigFile(string Path, ConfigFileFormat Format, ConfigFileMode Mode, IReadOnlyList<ConfigEntry> Entries)
@@ -260,6 +270,19 @@ public static class LaunchPlanRenderer
             _ => throw new LaunchPlanException($"Unsupported placeholder {string.Join('.', parts)}."),
         };
 
+        // A lone placeholder gives its type to a JSON value: "{{port.game}}" is a number, "{{var.name}}" a string.
+        ConfigValueKind KindOf(string template) => Placeholders.Strip(template).Length > 0 ? ConfigValueKind.Text : Placeholders.Parse(template, out _) switch
+        {
+            [["port", _]] => ConfigValueKind.Number,
+            [["var", var key]] => definitions[key].Type switch
+            {
+                VariableType.Integer or VariableType.Number => ConfigValueKind.Number,
+                VariableType.Boolean => ConfigValueKind.Boolean,
+                _ => ConfigValueKind.Text,
+            },
+            _ => ConfigValueKind.Text,
+        };
+
         bool IsSecret(string template) => Placeholders.Parse(template, out _).Any(p => p is ["rcon", "password"]
             || (p is ["var", var key, ..] && definitions.TryGetValue(key, out var variable) && variable.Secret));
 
@@ -343,7 +366,7 @@ public static class LaunchPlanRenderer
                     throw new LaunchPlanException(secret ? $"{file.Path} {entry.Key}: {error}" : $"{file.Path} {entry.Key}: {error} ('{value}')");
                 }
 
-                return new ConfigEntry(entry.Key, value, secret);
+                return new ConfigEntry(entry.Key, value, secret) { Kind = file.Format == ConfigFileFormat.Json ? KindOf(entry.Value) : ConfigValueKind.Text };
             }),
         ])
         { Section = file.Section, Struct = file.Struct }).ToList();

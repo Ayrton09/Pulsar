@@ -343,6 +343,14 @@ public enum ConfigFileFormat
     /// (1.0.5).
     /// </summary>
     Colon,
+
+    /// <summary>
+    /// Members of a JSON object (Enshrouded's <c>enshrouded_server.json</c>), each key a JSON Pointer
+    /// (<c>/gameSettings/enemyDamageFactor</c>); the game's other members stay. A value that is a lone variable or port
+    /// placeholder takes its type: integer, number and port values are JSON numbers, boolean ones <c>true</c> or
+    /// <c>false</c>, anything else a string. Patch mode only (1.0.7).
+    /// </summary>
+    Json,
 }
 
 public enum ConfigFileMode

@@ -883,12 +883,27 @@ public static partial class ManifestValidator
                 context.Error(path, "'section' and 'struct' belong to the 'unreal-ini' and 'xml-properties' formats.");
             }
 
+            if (file.Format == ConfigFileFormat.Json)
+            {
+                if (file.Mode != ConfigFileMode.Patch)
+                {
+                    context.Error($"{path}.mode", "'json' files are patched (the game's other settings stay).");
+                }
+
+                // "/a" set to a value leaves no object for "/a/b" to go into.
+                if (file.Set.Keys.Any(k => file.Set.Keys.Any(o => o.StartsWith(k + "/", StringComparison.OrdinalIgnoreCase))))
+                {
+                    context.Error($"{path}.set", "A key cannot be inside another key's value ('/a' and '/a/b').");
+                }
+            }
+
             foreach (var (key, value) in file.Set)
             {
                 var keyPattern = file.Format switch
                 {
                     ConfigFileFormat.SourceCfg => SourceCfgKeyPattern(),
                     ConfigFileFormat.UnrealIni => UnrealKeyPattern(),
+                    ConfigFileFormat.Json => JsonPointerPattern(),
                     _ => PropertiesKeyPattern(),
                 };
                 if (!keyPattern.IsMatch(key))
@@ -1130,6 +1145,10 @@ public static partial class ManifestValidator
 
     [GeneratedRegex(@"^[A-Za-z0-9_.-]{1,128}\z", RegexOptions.CultureInvariant)]
     private static partial Regex PropertiesKeyPattern();
+
+    /// <summary>A JSON Pointer to an object member, 1 to 8 names deep; no escapes (<c>~</c>), so no <c>/</c> inside a name.</summary>
+    [GeneratedRegex(@"^(/[A-Za-z0-9_.-]{1,64}){1,8}\z", RegexOptions.CultureInvariant)]
+    private static partial Regex JsonPointerPattern();
 
     [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_]{0,127}\z", RegexOptions.CultureInvariant)]
     private static partial Regex EnvironmentNamePattern();

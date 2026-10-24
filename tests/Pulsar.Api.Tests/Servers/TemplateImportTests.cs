@@ -7,6 +7,7 @@ using Pulsar.Api.Servers;
 using Pulsar.Api.Tests.Infrastructure;
 using Pulsar.Application.Abstractions;
 using Pulsar.Application.Servers;
+using Pulsar.Contracts;
 using Pulsar.Domain.Access;
 using Pulsar.Domain.Common;
 using Pulsar.Domain.Servers;
@@ -122,6 +123,44 @@ public sealed class TemplateImportTests(PulsarApiFactory factory) : IClassFixtur
 
         Assert.Equal(HttpStatusCode.Forbidden, preview.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, import.StatusCode);
+    }
+
+    [DatabaseFact]
+    public async Task AGameWithJsonSettingsGoesOnlyToAgentsThatWriteThem()
+    {
+        using var admin = await factory.CreateAdminClientAsync();
+        var manifest = Manifest(m =>
+        {
+            m["key"] = "css-json";
+            m["configFiles"] = JsonNode.Parse("""
+                [{ "path": "cstrike/cfg/pulsar.json", "format": "json", "mode": "patch", "set": { "/server/name": "{{var.hostname}}", "/server/slots": "{{var.maxPlayers}}" } }]
+                """);
+        });
+        using (var imported = await admin.PostAsync("/api/v1/templates", new TemplateContentRequest(manifest)))
+        {
+            Assert.Equal(HttpStatusCode.Created, imported.StatusCode);
+        }
+
+        var template = (await admin.Http.GetFromJsonAsync<List<TemplateView>>(new Uri("/api/v1/templates", UriKind.Relative), AccessScenario.Json, Ct))!
+            .Single(t => t.Key == "css-json");
+
+        // An agent of 1.0.5 or 1.0.6 reads the game settings but not JSON files: it would refuse the manifest at the start.
+        foreach (var (name, capabilities, refused) in new[]
+        {
+            ("json-old", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings }, true),
+            ("json-new", new[] { AgentCapabilities.ProvisionServer, AgentCapabilities.GameSettings, AgentCapabilities.JsonConfig }, false),
+        })
+        {
+            var node = await NodeApi.CreateAsync(admin, name);
+            await using var agent = new TestAgent(factory);
+            await agent.EnrollAsync(node.Enrollment.Token, node.Enrollment.PanelKeyFingerprint);
+            await agent.ConnectAsync((await agent.AuthenticateAsync()).AccessToken, capabilities);
+
+            using var response = await admin.PostAsync("/api/v1/servers", new CreateServerRequest(node.Node.Id, template.Id, "Json", null));
+
+            var body = await response.Content.ReadAsStringAsync(Ct);
+            Assert.Equal(refused, body.Contains("server.template_unsupported", StringComparison.Ordinal));
+        }
     }
 
     private static async Task<TemplateImportPreview> PreviewAsync(PanelClient client, string content)
