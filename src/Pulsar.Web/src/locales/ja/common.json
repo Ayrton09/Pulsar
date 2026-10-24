@@ -2428,59 +2428,6 @@
         }
       }
     },
-    "core-keeper": {
-      "description": "Core Keeper の専用サーバーです。SteamCMD で匿名インストールされます。ワールドはサーバーの save フォルダーにあります。",
-      "variables": {
-        "worldName": {
-          "label": "ワールド名"
-        },
-        "world": {
-          "label": "ワールドスロット",
-          "description": "スロットごとに別のワールドです。"
-        },
-        "worldSeed": {
-          "label": "ワールドのシード値",
-          "description": "新しいワールドのみ。0 または空:ランダム。"
-        },
-        "worldMode": {
-          "label": "ワールドモード",
-          "description": "新しいワールドのみ。",
-          "options": {
-            "0": "ノーマル",
-            "1": "ハード",
-            "2": "クリエイティブ",
-            "4": "カジュアル"
-          }
-        },
-        "maxPlayers": {
-          "label": "スロット数"
-        },
-        "password": {
-          "label": "参加パスワード",
-          "description": "アドレスで参加するプレイヤーに必要です。"
-        },
-        "season": {
-          "label": "シーズン",
-          "description": "空:日付に応じたシーズン。",
-          "options": {
-            "0": "なし",
-            "1": "イースター",
-            "2": "ハロウィン",
-            "3": "クリスマス",
-            "4": "バレンタイン",
-            "5": "アニバーサリー",
-            "6": "桜",
-            "7": "旧正月"
-          }
-        }
-      },
-      "ports": {
-        "game": {
-          "label": "ゲーム",
-          "description": "プレイヤーはここにアドレスで接続します(Direct Connect)。"
-        }
-      }
-    },
     "cs2": {
       "description": "Counter-Strike 2 の専用サーバーです。SteamCMD で匿名インストールされます(約 75 GB)。",
       "variables": {

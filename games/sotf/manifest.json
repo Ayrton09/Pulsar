@@ -44,7 +44,10 @@
 
   "install": { "steps": [
     { "type": "steamcmd", "appId": 2465200 },
-    { "type": "ensureDirectory", "path": "userdata" }
+    { "type": "ensureDirectory", "path": "userdata" },
+    { "type": "writeFileIfMissing", "path": "steam_appid.txt", "content": "1326470" },
+    { "type": "writeFileIfMissing", "path": "userdata/ownerswhitelist.txt",
+      "content": "# The SteamID64 of each owner of the server, one per line: they administrate it from the game.\n" }
   ] },
   "update": { "steps": [ { "type": "steamcmd", "appId": 2465200 } ] },
 
@@ -72,6 +75,7 @@
         "/GameMode": "{{var.gameMode}}",
         "/SaveInterval": "{{var.saveInterval}}",
         "/LanOnly": "{{var.lanOnly}}",
+        "/SkipNetworkAccessibilityTest": "true",
         "/GameSettings/Gameplay.TreeRegrowth": "{{var.treeRegrowth}}",
         "/GameSettings/Structure.Damage": "{{var.structureDamage}}"
       },
@@ -79,10 +83,10 @@
   ],
 
   "query": { "protocol": "a2s", "port": "query" },
-  "readiness": { "type": "logPattern", "pattern": "Server is up and running", "timeoutSeconds": 1800 },
+  "readiness": { "type": "logPattern", "pattern": "Dedicated server loaded.", "timeoutSeconds": 1800 },
 
   "stop": {
-    "steps": [ { "type": "consoleCommand", "command": "stop" } ],
+    "steps": [ { "type": "ctrlC" } ],
     "timeoutSeconds": 120
   },
 

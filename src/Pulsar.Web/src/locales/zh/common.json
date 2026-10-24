@@ -2428,59 +2428,6 @@
         }
       }
     },
-    "core-keeper": {
-      "description": "Core Keeper 专用服务器，通过 SteamCMD 匿名安装。其世界位于服务器的 save 文件夹。",
-      "variables": {
-        "worldName": {
-          "label": "世界名称"
-        },
-        "world": {
-          "label": "世界槽位",
-          "description": "每个槽位是一个独立的世界。"
-        },
-        "worldSeed": {
-          "label": "世界种子",
-          "description": "仅用于新世界。0 或留空：随机。"
-        },
-        "worldMode": {
-          "label": "世界模式",
-          "description": "仅用于新世界。",
-          "options": {
-            "0": "普通",
-            "1": "困难",
-            "2": "创造",
-            "4": "休闲"
-          }
-        },
-        "maxPlayers": {
-          "label": "玩家名额"
-        },
-        "password": {
-          "label": "加入密码",
-          "description": "通过地址加入的玩家需要它。"
-        },
-        "season": {
-          "label": "季节",
-          "description": "留空：按日期对应的季节。",
-          "options": {
-            "0": "无",
-            "1": "复活节",
-            "2": "万圣节",
-            "3": "圣诞节",
-            "4": "情人节",
-            "5": "周年纪念",
-            "6": "樱花",
-            "7": "农历新年"
-          }
-        }
-      },
-      "ports": {
-        "game": {
-          "label": "游戏",
-          "description": "玩家在此通过地址连接（Direct Connect）。"
-        }
-      }
-    },
     "cs2": {
       "description": "Counter-Strike 2 专用服务器，通过 SteamCMD 匿名安装（约 75 GB）。",
       "variables": {

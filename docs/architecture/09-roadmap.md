@@ -446,6 +446,8 @@ the other nodes, without anyone carrying a setup to each PC, and without breakin
 
 Linux agent. (Server hosts and bulk enrollment: Phase 14; backups of running games: Phase 15; client certificates for agents: Phase 16; SFTP: Phase 17.)
 
+A stop step that closes a game's window (`WM_CLOSE`, as `taskkill` without `/F` does), for games whose server is a windowed program that neither reads its console nor takes Ctrl+C: Core Keeper (checked on 2026-10-24: `CoreKeeperServer.exe` is a GUI program, Ctrl+C left it running until the stop timed out, and its own launch script stops it with `taskkill`). The host would post the message on the game's own desktop, which needs checking with servers run as their own accounts by the agent's service.
+
 ## Before the first public release
 
 - A Windows installer: Phase 18 (`PulsarSetup.exe`, Inno Setup, on top of `Install-Pulsar.ps1`, with the ZIP still published for automation).

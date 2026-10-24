@@ -2428,59 +2428,6 @@
         }
       }
     },
-    "core-keeper": {
-      "description": "Server dedicato di Core Keeper, installato in modo anonimo con SteamCMD. I suoi mondi si trovano nella cartella save del server.",
-      "variables": {
-        "worldName": {
-          "label": "Nome del mondo"
-        },
-        "world": {
-          "label": "Slot del mondo",
-          "description": "Ogni slot è un mondo a sé."
-        },
-        "worldSeed": {
-          "label": "Seed del mondo",
-          "description": "Solo per un mondo nuovo. 0 o vuoto: casuale."
-        },
-        "worldMode": {
-          "label": "Modalità del mondo",
-          "description": "Solo per un mondo nuovo.",
-          "options": {
-            "0": "Normale",
-            "1": "Difficile",
-            "2": "Creativa",
-            "4": "Casual"
-          }
-        },
-        "maxPlayers": {
-          "label": "Slots"
-        },
-        "password": {
-          "label": "Password di accesso",
-          "description": "I giocatori che entrano con l'indirizzo ne hanno bisogno."
-        },
-        "season": {
-          "label": "Stagione",
-          "description": "Vuoto: la stagione della data.",
-          "options": {
-            "0": "Nessuno",
-            "1": "Pasqua",
-            "2": "Halloween",
-            "3": "Natale",
-            "4": "San Valentino",
-            "5": "Anniversario",
-            "6": "Fiori di ciliegio",
-            "7": "Capodanno lunare"
-          }
-        }
-      },
-      "ports": {
-        "game": {
-          "label": "Gioco",
-          "description": "I giocatori si connettono qui con l'indirizzo (Direct Connect)."
-        }
-      }
-    },
     "cs2": {
       "description": "Server dedicato di Counter-Strike 2, installato in modo anonimo con SteamCMD (circa 75 GB).",
       "variables": {

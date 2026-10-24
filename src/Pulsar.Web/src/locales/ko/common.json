@@ -2428,59 +2428,6 @@
         }
       }
     },
-    "core-keeper": {
-      "description": "Core Keeper 전용 서버입니다. SteamCMD로 익명 설치됩니다. 월드는 서버의 save 폴더에 있습니다.",
-      "variables": {
-        "worldName": {
-          "label": "월드 이름"
-        },
-        "world": {
-          "label": "월드 슬롯",
-          "description": "슬롯마다 별도의 월드입니다."
-        },
-        "worldSeed": {
-          "label": "월드 시드",
-          "description": "새 월드에만 적용됩니다. 0 또는 비움: 무작위."
-        },
-        "worldMode": {
-          "label": "월드 모드",
-          "description": "새 월드에만 적용됩니다.",
-          "options": {
-            "0": "보통",
-            "1": "어려움",
-            "2": "크리에이티브",
-            "4": "캐주얼"
-          }
-        },
-        "maxPlayers": {
-          "label": "슬롯"
-        },
-        "password": {
-          "label": "접속 비밀번호",
-          "description": "주소로 참가하는 플레이어에게 필요합니다."
-        },
-        "season": {
-          "label": "시즌",
-          "description": "비움: 날짜에 맞는 시즌.",
-          "options": {
-            "0": "없음",
-            "1": "부활절",
-            "2": "할로윈",
-            "3": "크리스마스",
-            "4": "발렌타인데이",
-            "5": "기념일",
-            "6": "벚꽃",
-            "7": "설날"
-          }
-        }
-      },
-      "ports": {
-        "game": {
-          "label": "게임",
-          "description": "플레이어가 여기로 주소를 통해 접속합니다(Direct Connect)."
-        }
-      }
-    },
     "cs2": {
       "description": "Counter-Strike 2 전용 서버입니다. SteamCMD로 익명 설치됩니다(약 75 GB).",
       "variables": {

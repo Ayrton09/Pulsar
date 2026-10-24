@@ -8,7 +8,6 @@ const steamApps: Readonly<Record<string, number>> = {
   '7dtd': 251570,
   'ark-sa': 2399830,
   'arma-reforger': 1874880,
-  'core-keeper': 1621690,
   cs2: 730,
   css: 240,
   enshrouded: 1203620,
